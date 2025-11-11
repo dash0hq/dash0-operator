@@ -640,7 +640,7 @@ deploy_application_under_monitoring() {
     build_test_application test-app-image-nodejs
     push_test_application_image push-test-app-image-nodejs
     helm_install_test_application \
-      test-resources/node.js/express/dash0-operator-test-app-nodejs \
+      test-resources/node.js/express/helm-chart \
       test-app-nodejs \
       "$target_namespace" \
       "$kind" \
@@ -650,7 +650,7 @@ deploy_application_under_monitoring() {
       "$extraValues"
     if [[ "$additional_namespaces" = true ]]; then
       helm_install_test_application \
-        test-resources/node.js/express/dash0-operator-test-app-nodejs \
+        test-resources/node.js/express/helm-chart \
         test-app-nodejs-2 \
         test-namespace-2 \
         daemonset \
@@ -659,7 +659,7 @@ deploy_application_under_monitoring() {
         "$test_app_nodejs_image_pull_policy" \
         "$extraValues"
       helm_install_test_application \
-        test-resources/node.js/express/dash0-operator-test-app-nodejs \
+        test-resources/node.js/express/helm-chart \
         test-app-nodejs-3 \
         test-namespace-3 \
         statefulset \
@@ -672,7 +672,7 @@ deploy_application_under_monitoring() {
     build_test_application test-app-image-jvm
     push_test_application_image push-test-app-image-jvm
     helm_install_test_application \
-      "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
+      "test-resources/jvm/spring-boot/helm-chart" \
       "test-app-jvm" \
       "${target_namespace}" \
       "${kind}" \
@@ -682,7 +682,7 @@ deploy_application_under_monitoring() {
       "$extraValues"
     if [[ "$additional_namespaces" = true ]]; then
       helm_install_test_application \
-        "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
+        "test-resources/jvm/spring-boot/helm-chart" \
         "test-app-jvm-ns2" \
         "test-namespace-2" \
         "daemonset"
@@ -691,7 +691,7 @@ deploy_application_under_monitoring() {
         "$test_app_jvm_image_pull_policy" \
         "$extraValues"
       helm_install_test_application \
-        "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
+        "test-resources/jvm/spring-boot/helm-chart" \
         "test-app-jvm-ns3" \
         "test-namespace-3" \
         "statefulset" \
@@ -704,7 +704,7 @@ deploy_application_under_monitoring() {
     build_test_application test-app-image-dotnet
     push_test_application_image push-test-app-image-dotnet
     helm_install_test_application \
-      "test-resources/dotnet/dash0-operator-test-app-dotnet" \
+      "test-resources/dotnet/helm-chart" \
       "test-app-dotnet" \
       "${target_namespace}" \
       "${kind}" \
@@ -714,7 +714,7 @@ deploy_application_under_monitoring() {
       "$extraValues"
     if [[ "$additional_namespaces" = true ]]; then
       helm_install_test_application \
-        "test-resources/dotnet/dash0-operator-test-app-dotnet" \
+        "test-resources/dotnet/helm-chart" \
         "test-app-dotnet-ns2" \
         "test-namespace-2" \
         "daemonset" \
@@ -723,7 +723,7 @@ deploy_application_under_monitoring() {
         "$test_app_dotnet_image_pull_policy" \
         "$extraValues"
       helm_install_test_application \
-        "test-resources/dotnet/dash0-operator-test-app-dotnet" \
+        "test-resources/dotnet/helm-chart" \
         "test-app-dotnet-ns3" \
         "test-namespace-3" \
         "statefulset" \
@@ -736,7 +736,7 @@ deploy_application_under_monitoring() {
     build_test_application test-app-image-python
     push_test_application_image push-test-app-image-python
     helm_install_test_application \
-      "test-resources/python/flask/dash0-operator-test-app-python" \
+      "test-resources/python/flask/helm-chart" \
       "test-app-python" \
       "${target_namespace}" \
       "${kind}" \
@@ -746,7 +746,7 @@ deploy_application_under_monitoring() {
       "$extraValues"
     if [[ "$additional_namespaces" = true ]]; then
       helm_install_test_application \
-        "test-resources/python/flask/dash0-operator-test-app-python" \
+        "test-resources/python/flask/helm-chart" \
         "test-app-python-ns2" \
         "test-namespace-2" \
         "daemonset" \
@@ -755,7 +755,7 @@ deploy_application_under_monitoring() {
         "$test_app_python_image_pull_policy" \
         "$extraValues"
       helm_install_test_application \
-        "test-resources/python/flask/dash0-operator-test-app-python" \
+        "test-resources/python/flask/helm-chart" \
         "test-app-python-ns3" \
         "test-namespace-3" \
         "statefulset" \
