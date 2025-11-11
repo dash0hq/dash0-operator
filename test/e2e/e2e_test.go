@@ -105,7 +105,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		if cleanupSteps.stopOOMDetection {
 			stopPodCrashOrOOMKillDetection <- true
 		}
-		uninstallOtlpSink(workingDir, &cleanupSteps)
+		uninstallOtlpSink(&cleanupSteps)
 		undeployNginxIngressController(&cleanupSteps)
 
 		if cleanupSteps.removeTestApplicationNamespace {
@@ -1946,5 +1946,5 @@ func cleanupAll() {
 		_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace, "--ignore-not-found"))
 	}
 	undeployOperator(operatorNamespace)
-	uninstallOtlpSink(workingDir, &cleanupSteps)
+	uninstallOtlpSink(&cleanupSteps)
 }

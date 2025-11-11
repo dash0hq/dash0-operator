@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+collector:
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: 0.139.0
+    pullPolicy: IfNotPresent
+  grpcPort: 4317
+  httpPort: 4318
+
+  telemetryFileExportVolume:
+    path: /tmp/telemetry
+

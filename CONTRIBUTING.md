@@ -281,8 +281,7 @@ be configured using `test-resources/kind-config-lr.yaml`.
 ### End-to-End Tests
 
 The end-to-end tests have been tested with [Docker Desktop](https://docs.docker.com/desktop/features/kubernetes/)
-on Mac (with Kubernetes support enabled) and [kind](https://kind.sigs.k8s.io/), as well experimentally against remote
-clusters.
+on Mac (with Kubernetes support enabled) and [kind](https://kind.sigs.k8s.io/).
 Docker Desktop is probably the easiest setup to get started with.
 See below for additional instructions for [kind](#running-end-to-end-tests-on-kind).
 

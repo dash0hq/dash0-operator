@@ -95,7 +95,7 @@ kubectl delete secret \
 
 kubectl delete ns "$operator_namespace" --ignore-not-found
 
-kubectl delete --ignore-not-found=true -f test-resources/otlp-sink/otlp-sink.yaml --wait
+helm uninstall --namespace otlp-sink otlp-sink --ignore-not-found || true
 
 kubectl delete --ignore-not-found=true customresourcedefinition dash0monitorings.operator.dash0.com
 kubectl delete --ignore-not-found=true customresourcedefinition dash0operatorconfigurations.operator.dash0.com

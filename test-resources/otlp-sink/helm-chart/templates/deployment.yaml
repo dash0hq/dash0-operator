@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otlp-sink
+  labels:
+    dash0.com/enable: "false"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: otlp-sink
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: otlp-sink
+    spec:
+      containers:
+        - name: otelcol
+          image: "{{ .Values.collector.image.repository }}:{{ .Values.collector.image.tag }}"
+          imagePullPolicy: "{{ .Values.collector.image.pullPolicy }}"
+          args: ["--config=/etc/otelcol/config/config.yaml"]
+          env:
+            - name: K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: GOMEMLIMIT
+              value: 400MiB
+          ports:
+            - name: otlp
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+          volumeMounts:
+            - name: otelcol-config
+              mountPath: /etc/otelcol/config
+              readOnly: true
+            - name: telemetry-file-export
+              mountPath: /telemetry
+              readOnly: false
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13100
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13100
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+              ephemeral-storage: 500Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+              ephemeral-storage: 500Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: otelcol-config
+          configMap:
+            name: otlp-sink
+            items:
+              - key: config.yaml
+                path: config.yaml
+        - name: telemetry-file-export
+          hostPath:
+            type: DirectoryOrCreate
+            path: {{ .Values.collector.telemetryFileExportVolume.path }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+      terminationGracePeriodSeconds: 10

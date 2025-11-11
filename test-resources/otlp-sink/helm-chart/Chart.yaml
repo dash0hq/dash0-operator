@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: otlp-sink
+description: An OpenTelemetry collector that writes the received telemetry to disk, and makes it available for searching
+type: application
+version: 1.0.0

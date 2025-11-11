@@ -577,28 +577,22 @@ deploy_otlp_sink_if_requested() {
     return
   fi
 
-  echo "deploying otlp-sink"
-  tmpfile=$(mktemp "${TMPDIR}otlp-sink-yaml.XXXX")
-  trap 'rm -f "$tmpfile"' EXIT
   local otlp_sink_dir="$(realpath "$(pwd)")/test-resources/e2e/volumes/otlp-sink"
-  sed "s|/tmp/telemetry|$otlp_sink_dir|g" test-resources/otlp-sink/otlp-sink.yaml > "$tmpfile"
-
   mkdir -p "$otlp_sink_dir"
-  echo "deleting old OTLP sink old telemetry dump files"
+  echo "deleting old OTLP sink telemetry dump files"
   rm -rf "$otlp_sink_dir/traces.jsonl"
   rm -rf "$otlp_sink_dir/metrics.jsonl"
   rm -rf "$otlp_sink_dir/logs.jsonl"
-  echo "creating OTLP sink old telemetry dump files"
+  echo "creating OTLP sink telemetry dump files"
   touch "$otlp_sink_dir/traces.jsonl"
   touch "$otlp_sink_dir/metrics.jsonl"
   touch "$otlp_sink_dir/logs.jsonl"
 
-  kubectl apply -f "$tmpfile"
-  kubectl rollout status \
-    deployment \
-    otlp-sink \
-    --namespace otlp-sink \
-    --timeout 1m
+  local helm_install_command="helm install --namespace otlp-sink --create-namespace --wait --timeout 60s otlp-sink test-resources/otlp-sink/helm-chart"
+  helm_install_command+=" --set collector.telemetryFileExportVolume.path=$otlp_sink_dir"
+  echo "deploying otlp-sink"
+  echo "$helm_install_command"
+  $helm_install_command
 }
 
 install_operator_configuration_resource() {
