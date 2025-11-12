@@ -5,7 +5,9 @@
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"/../..
+project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
+
+cd "$project_root"
 
 command -v act >/dev/null 2>&1 || {
   cat <<EOF >&2
@@ -28,4 +30,3 @@ act \
   -j "$job" \
   "$trigger"
 set +x
-

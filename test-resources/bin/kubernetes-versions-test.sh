@@ -6,7 +6,9 @@
 set -euo pipefail
 set -x
 
-cd "$(dirname "${BASH_SOURCE[0]}")"/../..
+project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
+
+cd "$project_root"
 
 all_versions=(
   # v1.20.2  # not tested
@@ -57,4 +59,3 @@ run_tests_on_kubernetes_version () {
 for v in "${all_versions[@]}"; do
   run_tests_on_kubernetes_version "$v"
 done
-

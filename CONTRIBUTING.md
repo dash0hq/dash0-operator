@@ -96,6 +96,13 @@ Alternatively, instead of providing `test-resources/.env`, make sure that the en
 `test-resources/.env.template` are set via other means.
 Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernetes context before running the scripts.
 
+Optional: In `test-resources/bin` you will find two scripts that help with bootstrapping a local registry and kind
+cluster, ready to pull images from the local registry: `create_cluster_and_registry.sh` and `delete_cluster_and_registry.sh`
+In order to use these scripts, it is required to set `LOCAL_REGISTRY_VOLUME_PATH` to a local directory path that will
+be used as storage by the registry container. In addition, `DASH0_KIND_CLUSTER` and `DASH0_KIND_CONFIG` can be used
+to customize the created cluster if needed. By default, the cluster's name will be `dash0-operator-lab` and it will
+be configured using `test-resources/kind-config-lr.yaml`.
+
 * `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
   the namespace `operator-namespace`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a test
@@ -130,6 +137,7 @@ Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernete
       It is recommended to set this in `test-resources/.env`.
     * `DEPLOY_APPLICATION_UNDER_MONITORING`: Set this to "false" to skip deploying a workload in the test namespace.
       This is assumed to be "true" by default.
+    * `DEPLOY_NGINX_INGRESS`: Set this to "false" to skip deploying an nginx ingress to the cluster.
     * `DEPLOY_MONITORING_RESOURCE`: Set this to "false" to skip deploying the Dash0 monitoring resource to the test
       namespace.
       This is assumed to be "true" by default.
@@ -200,7 +208,8 @@ Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernete
       has been provided.
     * Additional configuration for the Helm deployment can be put into `test-resources/bin/extra-values.yaml` (create
       the file if necessary).
-* Last but not least, there are a couple of environment variables that control which images are built and used:
+* Last but not least, there are a couple of environment variables that control which images are built and used, and whether
+  the built images are pushed automatically:
   * `IMAGE_REPOSITORY_PREFIX`: Set this to `registry.tld/path/` to build images as
     `registry.tld/path/operator-controller` instead of just `operator-controller`. (Default: `""`)
   * `IMAGE_TAG`: Set this to use a different image tag, i.e. set this to `some-tag` to use the images like
@@ -209,6 +218,8 @@ Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernete
      which works with Docker Desktop when building images locally.
   * `SKIP_IMAGE_BUILDS`: Set this to `true` to skip all image builds for operator images (test app images will still be
      built, see `SKIP_TEST_APP_IMAGE_BUILDS`.)
+  * `PUSH_BUILT_IMAGES`: when using a local registry, or when testing against a remote cluster, it can be convenient to
+    automatically push the built images to the configured registry (defined by `IMAGE_REPOSITORY_PREFIX`)
 * There are also sets of four variables for each of the container images to override the values provided by
   `IMAGE_REPOSITORY_PREFIX`, `IMAGE_TAG`, and `PULL_POLICY`. These can be used if you need a different
   container image registry, tag or pull policy per image. The `*_IMAGE_REPOSITORY` variables together

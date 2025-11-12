@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+
+
+###############################################################################
+# Functions related to running a local registry.
+###############################################################################
+
+# this file is intended to be sourced by other scripts, so we disable `unused` warnings
+# shellcheck disable=SC2034,SC2154,SC2317
+
+create_registry() {
+  local reg_name="${1}"
+  local reg_port="${2}"
+  local reg_volume_path="${3}"
+  echo "Creating registry [name=$reg_name] on port [port=$reg_port] mounting [path=$reg_volume_path]..."
+  if [ "$(docker inspect -f '{{.State.Running}}' "${reg_name}" 2>/dev/null || true)" != 'true' ]; then
+    docker run \
+      -d --restart=always -p "127.0.0.1:${reg_port}:5000" -v "${reg_volume_path}:/var/lib/registry" --network bridge --name "${reg_name}" \
+      registry:2
+    echo "Done."
+  else
+    echo "Registry container [name=$reg_name] already exists. Skipping creation."
+  fi
+}
+
+delete_registry() {
+  local reg_name="${1}"
+  echo "Stopping and deleting registry container [name=$reg_name]..."
+  if docker ps -a --format '{{.Names}}' | grep -qx "$reg_name"; then
+      docker stop "${reg_name}" && docker rm "${reg_name}"
+      echo "Done."
+  else
+      echo "Registry container not found. Skipping."
+  fi
+}
+
+# note: this function needs to be called after the kind cluster has been created
+connect_kind_network() {
+  local reg_name="${1}"
+  echo "Connecting registry network to kind network..."
+  if [ "$(docker inspect -f='{{json .NetworkSettings.Networks.kind}}' "${reg_name}")" = 'null' ]; then
+    docker network connect "kind" "${reg_name}"
+    echo "Done."
+  else
+    echo "Networks either already connected or state could not be determined. Skipping."
+  fi
+}

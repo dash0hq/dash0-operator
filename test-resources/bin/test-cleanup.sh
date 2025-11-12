@@ -5,13 +5,21 @@
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"/../..
+project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
+scripts_lib="test-resources/bin/lib"
 
-operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
-target_namespace=${1:-test-namespace}
+cd "$project_root"
+
+# shellcheck source=./lib/constants
+source "$scripts_lib/constants"
+
+operator_namespace="${OPERATOR_NAMESPACE:-$default_operator_ns}"
+target_namespace="${1:-$default_target_ns}"
 delete_namespaces=${2:-true}
 
-source test-resources/bin/util
+# shellcheck source=./lib/util
+source "$scripts_lib/util"
+
 load_env_file
 verify_kubectx
 
@@ -31,8 +39,6 @@ helm uninstall --namespace test-namespace-3 test-app-dotnet-ns3 --ignore-not-fou
 helm uninstall --namespace "$target_namespace" test-app-python --ignore-not-found || true
 helm uninstall --namespace test-namespace-2 test-app-python-ns2 --ignore-not-found || true
 helm uninstall --namespace test-namespace-3 test-app-python-ns3 --ignore-not-found || true
-
-kubectl delete -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml --ignore-not-found || true
 
 wait_for_third_party_resource_deletion="false"
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml; then

@@ -211,8 +211,8 @@ shellcheck-lint: shellcheck-check-installed ## Run static code analysis for all 
 zig-installed:
 	@set +x
 	@if ! zig version > /dev/null; then \
-	  echo "error: zig is not installed. Run 'brew install zig' or similar."; \
-	  exit 1; \
+		echo "error: zig is not installed. Run 'brew install zig' or similar."; \
+		exit 1; \
 	fi
 
 .PHONY: zig-fmt-check
@@ -232,8 +232,8 @@ zig-fmt: zig-installed ## Fix Zig code formatting.
 npm-installed:
 	@set +x
 	@if ! npm --version > /dev/null; then \
-	  echo "error: npm is not installed."; \
-	  exit 1; \
+		echo "error: npm is not installed."; \
+		exit 1; \
 	fi
 
 .PHONY: instrumentation-test-lint
@@ -339,6 +339,48 @@ image-filelog-offset-sync: ## Build the filelog offset sync container image.
 .PHONY: image-filelog-offset-volume-ownership
 image-filelog-offset-volume-ownership: ## Build the filelog offset volume ownership container image.
 	@$(call build_container_image,$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY),$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG),images,images/filelogoffsetvolumeownership/Dockerfile)
+
+.PHONY: push-images
+push-images: \
+	push-image-controller \
+	push-image-instrumentation \
+	push-image-collector \
+	push-image-config-reloader \
+	push-image-filelog-offset-sync \
+	push-image-filelog-offset-volume-ownership ## Push all container images using the full image reference.
+
+define push_container_image
+$(eval $@_IMAGE_REPOSITORY = $(1))
+$(eval $@_IMAGE_TAG = $(2))
+push_cmd="$(CONTAINER_TOOL) push";                                                              \
+push_cmd="$$push_cmd $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG)";                                   \
+echo "$$push_cmd";                                                                              \
+$$push_cmd;
+endef
+
+.PHONY: push-image-controller
+push-image-controller: ## Push the manager container image.
+	@$(call push_container_image,$(CONTROLLER_IMAGE_REPOSITORY),$(CONTROLLER_IMAGE_TAG))
+
+.PHONY: push-image-instrumentation
+push-image-instrumentation: ## Push the instrumentation image.
+	@$(call push_container_image,$(INSTRUMENTATION_IMAGE_REPOSITORY),$(INSTRUMENTATION_IMAGE_TAG))
+
+.PHONY: push-image-collector
+push-image-collector: ## Push the OpenTelemetry collector container image.
+	@$(call push_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG))
+
+.PHONY: push-image-config-reloader
+push-image-config-reloader: ## Push the config reloader container image.
+	@$(call push_container_image,$(CONFIGURATION_RELOADER_IMAGE_REPOSITORY),$(CONFIGURATION_RELOADER_IMAGE_TAG))
+
+.PHONY: push-image-filelog-offset-sync
+push-image-filelog-offset-sync: ## Push the filelog offset sync container image.
+	@$(call push_container_image,$(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY),$(FILELOG_OFFSET_SYNC_IMAGE_TAG))
+
+.PHONY: push-image-filelog-offset-volume-ownership
+push-image-filelog-offset-volume-ownership: ## Push the filelog offset volume ownership container image.
+	@$(call push_container_image,$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY),$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG))
 
 .PHONY: deploy
 deploy: ## Deploy the controller via helm to the current kubectl context.
