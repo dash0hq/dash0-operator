@@ -20,8 +20,11 @@ spec:
       containers:
         - name: otelcol
           image: "{{ .Values.collector.image.repository }}:{{ .Values.collector.image.tag }}"
+          {{- if .Values.collector.image.pullPolicy }}
           imagePullPolicy: "{{ .Values.collector.image.pullPolicy }}"
-          args: ["--config=/etc/otelcol/config/config.yaml"]
+          {{- end }}
+          args:
+          - "--config=/etc/otelcol/config/config.yaml"
           env:
             - name: K8S_POD_IP
               valueFrom:
@@ -65,6 +68,45 @@ spec:
             requests:
               cpu: 10m
               memory: 64Mi
+              ephemeral-storage: 500Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+        - name: telemetry-matcher
+          image: "{{ .Values.telemetryMatcher.image.repository }}:{{ .Values.telemetryMatcher.image.tag }}"
+          {{- if .Values.telemetryMatcher.image.pullPolicy }}
+          imagePullPolicy: "{{ .Values.telemetryMatcher.image.pullPolicy }}"
+          {{- end }}
+          env:
+            - name: PORT
+              value: "{{ .Values.telemetryMatcher.port }}"
+            - name: TELEMETRY_DIR
+              value: /telemetry
+          ports:
+            - name: http
+              containerPort: {{ .Values.telemetryMatcher.port }}
+              protocol: TCP
+          volumeMounts:
+            - name: telemetry-file-export
+              mountPath: /telemetry
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.telemetryMatcher.port }}
+              scheme: HTTP
+            initialDelaySeconds: 1
+            periodSeconds: 1
+          resources:
+            limits:
+              cpu: 200m
+              memory: 512Mi
+              ephemeral-storage: 500Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
               ephemeral-storage: 500Mi
           securityContext:
             allowPrivilegeEscalation: false

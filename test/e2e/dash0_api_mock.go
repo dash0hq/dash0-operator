@@ -44,7 +44,7 @@ var (
 	)
 
 	dash0ApiMockServerExternalBaseUrl = "http://localhost:8001"
-	dash0ApiMockServerClient          *http.Client
+	dash0ApiMockServerHttpClient      *http.Client
 
 	dash0ApiMockImage ImageSpec
 )
@@ -53,14 +53,13 @@ func init() {
 	// disable keep-alive
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.DisableKeepAlives = true
-	dash0ApiMockServerClient = &http.Client{Transport: t}
+	dash0ApiMockServerHttpClient = &http.Client{Transport: t}
 }
 
 func determineDash0ApiMockImage() {
 	repositoryPrefix := getEnvOrDefault("TEST_IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix)
 	imageTag := getEnvOrDefault("TEST_IMAGE_TAG", defaultImageTag)
 	pullPolicy := getEnvOrDefault("TEST_IMAGE_PULL_POLICY", defaultPullPolicy)
-
 	dash0ApiMockImage =
 		determineContainerImage(
 			"DASH0_API_MOCK",
@@ -145,11 +144,11 @@ func fetchCapturedApiRequests(idx int, count int) []StoredRequest {
 }
 
 func getStoredApiRequests(g Gomega) *StoredRequests {
-	updateUrlForKind()
+	updateDash0ApiUrlForKind()
 	fetchStoredRequestsUrl := fmt.Sprintf("%s/requests", dash0ApiMockServerExternalBaseUrl)
 	req, err := http.NewRequest(http.MethodGet, fetchStoredRequestsUrl, nil)
 	g.Expect(err).NotTo(HaveOccurred())
-	res, err := dash0ApiMockServerClient.Do(req)
+	res, err := dash0ApiMockServerHttpClient.Do(req)
 	g.Expect(err).NotTo(HaveOccurred())
 	body, err := io.ReadAll(res.Body)
 	defer func() {
@@ -173,12 +172,11 @@ func getStoredApiRequests(g Gomega) *StoredRequests {
 }
 
 func cleanupStoredApiRequests() {
-	updateUrlForKind()
 	By("cleaning up stored requests from the Dash0 API mock server")
 	Eventually(func(g Gomega) {
 		req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/requests", dash0ApiMockServerExternalBaseUrl), nil)
 		g.Expect(err).NotTo(HaveOccurred())
-		res, err := dash0ApiMockServerClient.Do(req)
+		res, err := dash0ApiMockServerHttpClient.Do(req)
 		g.Expect(err).NotTo(HaveOccurred())
 		if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 			defer func() {
@@ -202,9 +200,8 @@ func cleanupStoredApiRequests() {
 	}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
 }
 
-func updateUrlForKind() {
+func updateDash0ApiUrlForKind() {
 	if isKindCluster() {
-		// note: this has not been tested yet, retest next time when running the e2e tests with kind
-		dash0ApiMockServerExternalBaseUrl = fmt.Sprintf("http://%s", kindClusterIngressIp)
+		dash0ApiMockServerExternalBaseUrl = fmt.Sprintf("http://%s/dash0-api-mock", kindClusterIngressIp)
 	}
 }

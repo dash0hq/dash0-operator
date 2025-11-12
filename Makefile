@@ -63,8 +63,12 @@ TEST_APP_PYTHON_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operato
 TEST_APP_PYTHON_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
 # Variables for additional container images used in end-to-end tests:
+
 DASH0_API_MOCK_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-api-mock
 DASH0_API_MOCK_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
+TELEMETRY_MATCHER_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)telemetry-matcher
+TELEMETRY_MATCHER_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 # Maintenance note: Keep this in sync with EnvtestK8sVersion in test/util/constants.go.
@@ -193,6 +197,8 @@ helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@$(call lint_helm_chart,test-resources/jvm/spring-boot/dash0-operator-test-app-jvm)
 	@$(call lint_helm_chart,test-resources/node.js/express/dash0-operator-test-app-nodejs)
 	@$(call lint_helm_chart,test-resources/python/flask/dash0-operator-test-app-python)
+	@$(call lint_helm_chart,test/e2e/dash0-api-mock/dash0-api-mock)
+	@$(call lint_helm_chart,test-resources/otlp-sink/helm-chart)
 
 .PHONY: shellcheck-check-installed
 shellcheck-check-installed:
@@ -283,6 +289,11 @@ test-app-image-python: ## Build the Python test application.
 .PHONY: dash0-api-mock-image
 dash0-api-mock-image: ## Build the Dash0 API mock container image, which is used in end-to-end tests.
 	@$(call build_container_image,$(DASH0_API_MOCK_IMAGE_REPOSITORY),$(DASH0_API_MOCK_IMAGE_TAG),test/e2e/dash0-api-mock)
+
+.PHONY: telemetry-matcher-image
+telemetry-matcher-image: ## Build the telemetry-matcher container image, which is used in end-to-end tests.
+	@$(call build_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG),test-resources/otlp-sink/telemetrymatcher)
+
 
 ##@ Build
 

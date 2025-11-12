@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+FROM --platform=${BUILDPLATFORM} golang:1.25-alpine3.22 AS builder
+
+WORKDIR /usr/local/go/src/telemetrymatcher
+
+# Copy go.mod and friends and run go mod download separately before starting the container image build, to improve
+# container build caching.
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+
+# now copy the actual go sources and compile them
+COPY *.go .
+COPY *.txt .
+
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN CGO_ENABLED=0 \
+    GOOS=${TARGETOS:-linux} \
+    GOARCH=${TARGETARCH} \
+    go build \
+    -ldflags '-extldflags "-static"' \
+    -v \
+    telemetrymatcher
+
+FROM --platform=${BUILDPLATFORM} alpine:3.22.2 AS certs
+RUN apk --update add ca-certificates && apk cache clean
+
+FROM scratch
+COPY --from=builder /usr/local/go/src/telemetrymatcher/telemetrymatcher /app/telemetrymatcher
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+USER 65532:65532
+ENTRYPOINT [ "/app/telemetrymatcher" ]
