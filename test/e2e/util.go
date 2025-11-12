@@ -5,6 +5,7 @@ package e2e
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,8 +17,6 @@ import (
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/collector/pdata/pcommon"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -174,79 +173,69 @@ func executeHttpRequest(
 	}
 }
 
+func executeTelemetryMatcherRequest(g Gomega, requestUrl string) {
+	req, err := http.NewRequest(http.MethodGet, requestUrl, nil)
+	g.Expect(err).NotTo(HaveOccurred())
+	res, err := telemetryMatcherHttpClient.Do(req)
+	g.Expect(err).NotTo(HaveOccurred())
+	body, err := io.ReadAll(res.Body)
+	defer func() {
+		_ = res.Body.Close()
+	}()
+	if err != nil {
+		g.Expect(fmt.Errorf("unable to read the telemetry-matcher response payload, status code was %d, after "+
+			"executing the HTTP request to %s", res.StatusCode, req.URL.String()))
+	}
+	var expectationResult ExpectationResult
+	unmarshalErr := json.Unmarshal(body, &expectationResult)
+
+	// Note: HTTP status 404 is used if we do not find any matching telemetry object, hence we do not handle that status
+	// as an "unexpected" status, but handle it below via Expect(expectationResult.Success).To(BeTrue()).
+	if (res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices) &&
+		res.StatusCode != http.StatusNotFound {
+		if unmarshalErr != nil {
+			// Unexpected HTTP status code, plus the response is not in the expected ExpectationResult shape. Log
+			// the raw response body.
+			g.Expect(fmt.Errorf("unexpected status code %d when executing the HTTP request to %s, response body is %s",
+				res.StatusCode,
+				req.URL.String(),
+				string(body),
+			)).ToNot(HaveOccurred())
+		} else {
+			// Unexpected HTTP status code, but at least the response is in the expected ExpectationResult shape.
+			// Using expectationResult.Description directly in the test failure gives us a pretty-print of the
+			// (potentially lengthy) description attribute, which should usually contain the error message.
+			g.Expect(fmt.Errorf("unexpected status code %d when executing the HTTP request to %s, reason: %v",
+				res.StatusCode,
+				req.URL.String(),
+				expectationResult.Description,
+			)).ToNot(HaveOccurred())
+		}
+	}
+
+	// At this point, we know that telemetry-matcher responded with one of the expected status codes, we need to
+	// belatedly make sure that we were also able to unmarshall the response body.
+	g.Expect(unmarshalErr).ToNot(
+		HaveOccurred(),
+		fmt.Sprintf(
+			"cannot unmarshal telemetry-matcher response from %s: %s",
+			req.URL.String(),
+			string(body),
+		))
+
+	if expectationResult.Description != "" {
+		g.Expect(expectationResult.Success).To(BeTrue(), expectationResult.Description)
+	} else {
+		g.Expect(expectationResult.Success).To(BeTrue())
+	}
+}
+
 func getPort(runtime runtimeType, workloadType workloadType) int {
 	return workloadType.basePort + runtime.portOffset
 }
 
 func testImageBuildsShouldBeSkipped() bool {
 	return os.Getenv("SKIP_TEST_APP_IMAGE_BUILDS") == "true"
-}
-
-func verifyResourceAttributeEquals[T any](
-	resourceAttributes pcommon.Map,
-	key string,
-	expectedValue string,
-	matchResult *ResourceMatchResult[T],
-) {
-	actualValue, hasValue := resourceAttributes.Get(key)
-	if hasValue {
-		if actualValue.Str() == expectedValue {
-			matchResult.addPassedAssertion(key)
-		} else {
-			matchResult.addFailedAssertion(
-				key,
-				fmt.Sprintf("expected %s but it was %s", expectedValue, actualValue.Str()),
-			)
-		}
-	} else {
-		matchResult.addFailedAssertion(
-			key,
-			fmt.Sprintf("expected %s but the object had no such resource attribute", expectedValue),
-		)
-	}
-}
-
-func verifyResourceAttributeStartsWith[T any](
-	resourceAttributes pcommon.Map,
-	key string,
-	expectedPrefix string,
-	matchResult *ResourceMatchResult[T],
-) {
-	actualValue, hasValue := resourceAttributes.Get(key)
-	if hasValue {
-		if strings.HasPrefix(actualValue.Str(), expectedPrefix) {
-			matchResult.addPassedAssertion(key)
-		} else {
-			matchResult.addFailedAssertion(
-				key,
-				fmt.Sprintf("expected a value starting with %s but it was %s", expectedPrefix, actualValue.Str()),
-			)
-		}
-	} else {
-		matchResult.addFailedAssertion(
-			key,
-			fmt.Sprintf(
-				"expected a values starting with %s but the object had no such resource attribute",
-				expectedPrefix,
-			),
-		)
-	}
-}
-
-func verifyResourceAttributeExists[T any](
-	resourceAttributes pcommon.Map,
-	key string,
-	matchResult *ResourceMatchResult[T],
-) {
-	_, hasValue := resourceAttributes.Get(key)
-	if hasValue {
-		matchResult.addPassedAssertion(key)
-	} else {
-		matchResult.addFailedAssertion(
-			key,
-			"expected any value but the object had no such resource attribute",
-		)
-	}
 }
 
 func initTemplateOnce(tpl *template.Template, source string, name string) *template.Template {

@@ -4,30 +4,23 @@
 package e2e
 
 import (
-	"bufio"
 	"fmt"
-	"os"
+	"net/url"
+	"strconv"
 	"time"
-
-	"go.opentelemetry.io/collector/pdata/ptrace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 
 	. "github.com/onsi/gomega"
 )
 
-const (
-	tracesJsonMaxLineLength = 1_048_576
-
-	spanKindKey      = "span.kind"
-	httpTargetAttrib = "http.target"
-	httpRouteAttrib  = "http.route"
-	urlQueryAttrib   = "url.query"
-)
-
-var (
-	traceUnmarshaller = &ptrace.JSONUnmarshaler{}
-)
-
+// verifySpans is meant to be polled in a gomega Eventually loop; it will send an HTTP request to the workload each time
+// and then check whether a matching span has been produced. For workload types that are deployed without a matching
+// service (like cronjob or job), the HTTP request to trigger the span is omitted, for these workload types we rely on
+// the workload to send HTTP requests to itself.
+//
+// Since we send an HTTP request each time verifySpans is called, the workload might in fact produce a number of spans;
+// the span that is found by the telemetry-matcher might not be from the HTTP request from the same invocation. However,
+// since the query always includes a unique test ID, it is guaranteed that the span has been triggered by the same test
+// case.
 func verifySpans(
 	g Gomega,
 	runtime runtimeType,
@@ -37,27 +30,27 @@ func verifySpans(
 	timestampLowerBound time.Time,
 	expectClusterName bool,
 ) {
-	allMatchResults :=
-		sendRequestAndFindMatchingSpans(
-			g,
-			runtime,
-			workloadType,
-			route,
-			query,
-			timestampLowerBound,
-			true,
-			expectClusterName,
-		)
-	allMatchResults.expectAtLeastOneMatch(
+	if !workloadType.isBatch {
+		sendRequest(g, runtime, workloadType, route, query)
+	}
+	askTelemetryMatcherForMatchingSpans(
 		g,
-		fmt.Sprintf(
-			"%s %s: expected to find at least one matching HTTP server span",
-			runtime.runtimeTypeLabel,
-			workloadType.workloadTypeString,
-		),
+		expectAtLeastOne,
+		runtime,
+		workloadType,
+		true,
+		expectClusterName,
+		timestampLowerBound,
+		route,
+		query,
+		"",
 	)
 }
 
+// verifyNoSpans is meant to be polled in a gomega Consistently loop; it will send an HTTP request to the workload each
+// time and then verify that no spans have been produced. For workload types that are deployed without a matching
+// service (like cronjob or job), the HTTP request to trigger the span is omitted, for these workload types we rely on
+// the workload to send HTTP requests to itself.
 func verifyNoSpans(
 	g Gomega,
 	runtime runtimeType,
@@ -66,246 +59,94 @@ func verifyNoSpans(
 	query string,
 	timestampLowerBound time.Time,
 ) {
-	allMatchResults :=
-		sendRequestAndFindMatchingSpans(
-			g,
-			runtime,
-			workloadType,
-			route,
-			query,
-			timestampLowerBound,
-			false,
-			false,
-		)
-	allMatchResults.expectZeroMatches(
-		g,
-		fmt.Sprintf(
-			"%s %s: expected to find no matching HTTP server span",
-			runtime.runtimeTypeLabel,
-			workloadType.workloadTypeString,
-		),
-	)
-}
-
-func sendRequestAndFindMatchingSpans(
-	g Gomega,
-	runtime runtimeType,
-	workloadType workloadType,
-	route string,
-	query string,
-	timestampLowerBound time.Time,
-	checkResourceAttributes bool,
-	expectClusterName bool,
-) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
 	if !workloadType.isBatch {
 		sendRequest(g, runtime, workloadType, route, query)
 	}
-	var resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans])
-	if checkResourceAttributes {
-		resourceMatchFn = workloadSpansResourceMatcher(runtime, workloadType, expectClusterName)
-	}
-	return fileHasMatchingSpan(
+	askTelemetryMatcherForMatchingSpans(
 		g,
-		resourceMatchFn,
-		matchHttpServerSpanWithHttpTarget(route, query),
+		expectNoMatches,
+		runtime,
+		workloadType,
+		false,
+		false,
 		timestampLowerBound,
+		route,
+		query,
+		"",
 	)
 }
 
-//nolint:all
-func fileHasMatchingSpan(
+// askTelemetryMatcherForMatchingSpans executes an HTTP request to query telemetry-matcher to search through the
+// telemetry captured in otlp-sink for a span matching the given criteria.
+func askTelemetryMatcherForMatchingSpans(
 	g Gomega,
-	resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans]),
-	spanMatchFn func(ptrace.Span, *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]),
+	expectationMode expectationMode,
+	runtime runtimeType,
+	workloadType workloadType,
+	checkResourceAttributes bool,
+	expectClusterName bool,
 	timestampLowerBound time.Time,
-) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
-	fileHandle, err := os.Open("test-resources/e2e/volumes/otlp-sink/traces.jsonl")
-	g.Expect(err).NotTo(HaveOccurred())
-	defer func() {
-		_ = fileHandle.Close()
-	}()
-	scanner := bufio.NewScanner(fileHandle)
-	scanner.Buffer(make([]byte, tracesJsonMaxLineLength), tracesJsonMaxLineLength)
-
-	matchResults := newMatchResultList[ptrace.ResourceSpans, ptrace.Span]()
-
-	// read file line by line
-	for scanner.Scan() {
-		resourceSpanBytes := scanner.Bytes()
-		traces, err := traceUnmarshaller.UnmarshalTraces(resourceSpanBytes)
-		if err != nil {
-			// ignore lines that cannot be parsed
-			continue
-		}
-		hasMatchingSpans(
-			traces,
-			resourceMatchFn,
-			spanMatchFn,
-			timestampLowerBound,
-			&matchResults,
-		)
-	}
-
-	g.Expect(scanner.Err()).NotTo(HaveOccurred())
-
-	return matchResults
+	route string,
+	query string,
+	target string,
+) {
+	updateTelemetryMatcherUrlForKind()
+	requestUrl := compileTelemetryMatcherUrlForSpans(
+		expectationMode,
+		runtime,
+		workloadType,
+		checkResourceAttributes,
+		expectClusterName,
+		timestampLowerBound,
+		route,
+		query,
+		target,
+	)
+	executeTelemetryMatcherRequest(g, requestUrl)
 }
 
-//nolint:all
-func hasMatchingSpans(
-	traces ptrace.Traces,
-	resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans]),
-	spanMatchFn func(ptrace.Span, *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]),
+func compileTelemetryMatcherUrlForSpans(
+	expectationMode expectationMode,
+	runtime runtimeType,
+	workloadType workloadType,
+	checkResourceAttributes bool,
+	expectClusterName bool,
 	timestampLowerBound time.Time,
-	allMatchResults *MatchResultList[ptrace.ResourceSpans, ptrace.Span],
-) {
-	for i := 0; i < traces.ResourceSpans().Len(); i++ {
-		resourceSpan := traces.ResourceSpans().At(i)
-		resourceMatchResult := newResourceMatchResult(resourceSpan)
-		if resourceMatchFn != nil {
-			resourceMatchFn(resourceSpan, &resourceMatchResult)
+	route string,
+	query string,
+	target string,
+) string {
+	baseUrl := fmt.Sprintf("%s/matching-spans", telemetryMatcherBaseUrl)
+	params := url.Values{}
+	params.Add(queryParamExpectationMode, string(expectationMode))
+	// e.g. "Node.js", "JVM", ".NET", ...
+	params.Add(queryParamRuntime, runtime.runtimeTypeLabel)
+	// e.g. "dash0-operator-nodejs-20-express-test", "dash0-operator-jvm-spring-boot-test", ...
+	params.Add(queryParamRuntimeWorkloadName, runtime.workloadName)
+	// e.g. "deployment", "daemonset"
+	params.Add(queryParamWorkloadType, workloadType.workloadTypeString)
+	params.Add(queryParamRoute, route)
+	params.Add(queryParamQuery, query)
+	if target == "" {
+		// Usually, the expected target can be derived from expectedRoute and expectedQuery, which is why most test
+		// cases leave it empty so that this method derives it; but in some special test scenarios we let the test case
+		// specify it explicitly, for example for "truncates attributes when the transform is active".
+		if query != "" {
+			params.Add(queryParamTarget, fmt.Sprintf("%s?%s", route, query))
+		} else {
+			params.Add(queryParamTarget, route)
 		}
-
-		for j := 0; j < resourceSpan.ScopeSpans().Len(); j++ {
-			scopeSpan := resourceSpan.ScopeSpans().At(j)
-			for k := 0; k < scopeSpan.Spans().Len(); k++ {
-				span := scopeSpan.Spans().At(k)
-				if !span.StartTimestamp().AsTime().After(timestampLowerBound) {
-					// This span is too old, it is probably from a previously running test case, ignore it.
-					continue
-				}
-				spanMatchResult := newObjectMatchResult[ptrace.ResourceSpans, ptrace.Span](
-					span.Name(),
-					resourceSpan,
-					resourceMatchResult,
-					span,
-				)
-				spanMatchFn(span, &spanMatchResult)
-				allMatchResults.addResultForObject(spanMatchResult)
-			}
-		}
+	} else {
+		params.Add(queryParamTarget, target)
 	}
-}
-
-//nolint:all
-func workloadSpansResourceMatcher(runtime runtimeType, workloadType workloadType, expectClusterName bool) func(
-	ptrace.ResourceSpans,
-	*ResourceMatchResult[ptrace.ResourceSpans],
-) {
-	return func(resourceSpans ptrace.ResourceSpans, matchResult *ResourceMatchResult[ptrace.ResourceSpans]) {
-		resourceAttributes := resourceSpans.Resource().Attributes()
-
-		if expectClusterName {
-			verifyResourceAttributeEquals(
-				resourceAttributes,
-				string(semconv.K8SClusterNameKey),
-				e2eKubernetesContext,
-				matchResult,
-			)
-		}
-
-		// Note: On kind clusters, the workload type attribute (k8s.deployment.name) etc. is often missing. This needs
-		// to be investigated more.
-		workloadAttribute := fmt.Sprintf("k8s.%s.name", workloadType.workloadTypeString)
-		if workloadType.workloadTypeString == "replicaset" {
-			// There is no k8s.replicaset.name attribute.
-			matchResult.addSkippedAssertion(workloadAttribute, "not checked, there is no k8s.replicaset.name attribute")
-		} else {
-			verifyResourceAttributeEquals(
-				resourceAttributes,
-				workloadAttribute,
-				workloadName(runtime, workloadType),
-				matchResult,
-			)
-		}
-
-		expectedPodName := workloadName(runtime, workloadType)
-		if workloadType.workloadTypeString == "pod" {
-			verifyResourceAttributeEquals(
-				resourceAttributes,
-				string(semconv.K8SPodNameKey),
-				expectedPodName,
-				matchResult,
-			)
-		} else {
-			verifyResourceAttributeStartsWith(
-				resourceAttributes,
-				string(semconv.K8SPodNameKey),
-				fmt.Sprintf("%s-", expectedPodName),
-				matchResult,
-			)
-		}
-
-		verifyResourceAttributeStartsWith(
-			resourceAttributes,
-			"k8s.pod.label.test.label/key",
-			"label-value",
-			matchResult,
-		)
-		verifyResourceAttributeStartsWith(
-			resourceAttributes,
-			"k8s.pod.annotation.test.annotation/key",
-			"annotation value",
-			matchResult,
-		)
+	params.Add(queryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
+	params.Add(queryParamCheckResourceAttributes, strconv.FormatBool(checkResourceAttributes))
+	if expectClusterName {
+		// Note: Using the name of the Kubernetes context as the cluster name match parameter works because we set this
+		// as the clusterName setting for the operator configuration resource when doing helm install or creating the
+		// operator configuration resource.
+		params.Add(queryParamClusterName, e2eKubernetesContext)
 	}
-}
-
-func matchHttpServerSpanWithHttpTarget(expectedRoute string, expectedQuery string) func(
-	ptrace.Span,
-	*ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span],
-) {
-	return func(span ptrace.Span, matchResult *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]) {
-		if span.Kind() == ptrace.SpanKindServer {
-			matchResult.addPassedAssertion(spanKindKey)
-		} else {
-			matchResult.addFailedAssertion(
-				spanKindKey,
-				fmt.Sprintf("expected a server span, this span has kind \"%s\"", span.Kind().String()),
-			)
-		}
-
-		var expectedTarget string
-		if expectedQuery != "" {
-			expectedTarget = fmt.Sprintf("%s?%s", expectedRoute, expectedQuery)
-		} else {
-			expectedTarget = expectedRoute
-		}
-
-		target, hasTarget := span.Attributes().Get(httpTargetAttrib)
-		route, hasRoute := span.Attributes().Get(httpRouteAttrib)
-		query, hasQuery := span.Attributes().Get(urlQueryAttrib)
-		if hasTarget {
-			if target.Str() == expectedTarget {
-				matchResult.addPassedAssertion(httpTargetAttrib)
-			} else {
-				matchResult.addFailedAssertion(
-					httpTargetAttrib,
-					fmt.Sprintf("expected %s but it was %s", expectedTarget, target.Str()),
-				)
-			}
-		} else if hasRoute && hasQuery {
-			if route.Str() == expectedRoute &&
-				(query.Str() == expectedQuery ||
-					// .NET instrumentation includes the "?" in the query attribute
-					query.Str() == "?"+expectedQuery) {
-				matchResult.addPassedAssertion(httpRouteAttrib + " and " + urlQueryAttrib)
-			} else {
-				matchResult.addFailedAssertion(
-					httpRouteAttrib+" and "+urlQueryAttrib,
-					fmt.Sprintf("expected %s & %s but it was %s & %s", expectedRoute, expectedQuery, route.Str(), query.Str()),
-				)
-			}
-		} else {
-			matchResult.addFailedAssertion(
-				httpTargetAttrib+" or ("+httpRouteAttrib+" and "+urlQueryAttrib+")",
-				fmt.Sprintf(
-					"expected %s or (%s and %s) but the span had no such atttribute",
-					expectedTarget,
-					expectedRoute,
-					expectedQuery,
-				),
-			)
-		}
-	}
+	requestUrl := baseUrl + "?" + params.Encode()
+	return requestUrl
 }

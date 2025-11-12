@@ -63,7 +63,15 @@ func verifyThatWorkloadHasBeenInstrumented(
 	query := fmt.Sprintf("id=%s", testId)
 	timestampLowerBound := time.Now()
 	Eventually(func(g Gomega) {
-		verifySpans(g, runtime, workloadType, testEndpoint, query, timestampLowerBound, expectClusterName)
+		verifySpans(
+			g,
+			runtime,
+			workloadType,
+			testEndpoint,
+			query,
+			timestampLowerBound,
+			expectClusterName,
+		)
 	}, spanTimeout, pollingInterval).Should(Succeed())
 	By(fmt.Sprintf("%s %s: matching spans have been received", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 }

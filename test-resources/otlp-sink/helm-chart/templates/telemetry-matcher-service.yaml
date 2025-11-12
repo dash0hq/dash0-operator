@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetry-matcher
+  labels:
+    app.kubernetes.io/name: otlp-sink
+    app.kubernetes.io/component: telemetry-matcher-service
+spec:
+  selector:
+    app.kubernetes.io/instance: otlp-sink
+  ports:
+    - port: {{ .Values.telemetryMatcher.port }}
+      targetPort: {{ .Values.telemetryMatcher.port }}
+  type: ClusterIP
