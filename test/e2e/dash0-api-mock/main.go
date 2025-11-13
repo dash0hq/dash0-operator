@@ -90,7 +90,7 @@ func handleGetCheckRuleOriginsRequest(ginCtx *gin.Context) {
 	checkRuleOriginMutex.RLock()
 	defer checkRuleOriginMutex.RUnlock()
 
-	var responsePayload []any
+	responsePayload := make([]any, 0, len(checkRuleOrigins))
 	for _, checkRuleOrigin := range checkRuleOrigins {
 		responsePayload = append(responsePayload, map[string]any{
 			"origin": checkRuleOrigin,

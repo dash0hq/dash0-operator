@@ -93,10 +93,10 @@ run_test_case \
   "no __environ symbol: read unset environment variable" \
   "no_environ_symbol" \
   "./noenviron" \
-  "The environmet variable \"NO_ENVIRON_TEST_VAR\" is not set."
+  "The environment variable \"NO_ENVIRON_TEST_VAR\" is not set."
 run_test_case \
   "no __environ symbol: read an environment variable that is set" \
   "no_environ_symbol" \
   "./noenviron" \
-  "The environmet variable \"NO_ENVIRON_TEST_VAR\" had the value: \"some-value\"." \
+  "The environment variable \"NO_ENVIRON_TEST_VAR\" had the value: \"some-value\"." \
   "NO_ENVIRON_TEST_VAR=some-value"

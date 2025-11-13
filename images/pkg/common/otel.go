@@ -150,7 +150,10 @@ func createMetricExporterFromProtocolEnvVar(ctx context.Context, protocol string
 	case ProtocolHttpJson:
 		log.Fatalf("Cannot create the OTLP HTTP metrics exporter: the protocol 'http/json' is currently unsupported")
 	default:
-		log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
+		log.Fatalf(
+			"Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v",
+			protocol,
+		)
 	}
 	return metricExporter
 }
@@ -171,14 +174,21 @@ func createLogExporterFromProtocolEnvVar(ctx context.Context, protocol string) s
 	case ProtocolHttpJson:
 		log.Fatalf("Cannot create the OTLP HTTP log exporter: the protocol 'http/json' is currently unsupported")
 	default:
-		log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
+		log.Fatalf(
+			"Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v",
+			protocol,
+		)
 	}
 	return logExporter
 }
 
-func InitOTelSdkWithConfig(ctx context.Context, meterName string, oTelSdkConfig *OTelSdkConfig) (*otelzap.Core, otelmetric.Meter) {
+func InitOTelSdkWithConfig(
+	ctx context.Context,
+	meterName string,
+	oTelSdkConfig *OTelSdkConfig,
+) (*otelzap.Core, otelmetric.Meter) {
 	// InitOTelSdkWithConfig is used in the operator manager process. Depending on changes to the operator configuration
-	// resouce (in particular, spec.selfMonitoring.enabled and the export config), the OTel SDK might need to be
+	// resource (in particular, spec.selfMonitoring.enabled and the export config), the OTel SDK might need to be
 	// started, shut down, and restarted multiple times during the lifetime of the operator manager process. This can
 	// potentially be triggered by different threads, thus we need thread safety here.
 	oTelSdkMutex.Lock()
@@ -242,6 +252,7 @@ func InitOTelSdkWithConfig(ctx context.Context, meterName string, oTelSdkConfig 
 	return otelZapBridge, meterProvider.Meter(meterName)
 }
 
+//nolint:dupl
 func createMetricExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConfig) sdkmetric.Exporter {
 	var metricExporter sdkmetric.Exporter
 	var err error
@@ -292,6 +303,7 @@ func createMetricExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkC
 	return metricExporter
 }
 
+//nolint:dupl
 func createLogExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConfig) sdklog.Exporter {
 	var logExporter sdklog.Exporter
 	var err error
