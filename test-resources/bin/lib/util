@@ -20,6 +20,11 @@ load_env_file () {
     exit 1
   fi
 
+  if [[ -z "${LOCAL_REGISTRY_VOLUME_PATH:-}" ]]; then
+    echo "warning: LOCAL_REGISTRY_VOLUME_PATH is not set, please set it in $env_file or via other means."
+    exit 1
+  fi
+
   if [[ -z "${DASH0_AUTHORIZATION_TOKEN:-}" ]]; then
     echo "warning: DASH0_AUTHORIZATION_TOKEN is not set. Exporting telemetry to Dash0 might not work; set it in $env_file or via other means."
   fi
@@ -385,7 +390,7 @@ push_all_images() {
 deploy_filelog_offsets_pvc() {
   echo "STEP $step_counter: install filelog offset persistent volume claim"
   if [[ "$is_kind_cluster" = "true" ]]; then
-    kubectl patch persistentvolume offset-storage-volume --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]j' || true
+    kubectl patch persistentvolume offset-storage-volume --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]' || true
     kubectl apply -f test-resources/customresources/filelogoffsetpvc/offset-storage-pvc-kind.yaml
   else
     kubectl apply -f test-resources/customresources/filelogoffsetpvc/offset-storage-pvc-docker.yaml
