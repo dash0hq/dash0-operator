@@ -10,22 +10,29 @@
 operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
 
 load_env_file () {
-  if [[ -f test-resources/.env ]]; then
-    source test-resources/.env
+  local env_file="test-resources/.env"
+  if [[ -f $env_file ]]; then
+    echo "Loading env from file [$env_file]"
+    source "$env_file"
   fi
   if [[ -z "${ALLOWED_KUBECTXS:-}" ]]; then
-    echo "error: ALLOWED_KUBECTXS is not set, please set it in test-resources/.env or via other means"
+    echo "error: ALLOWED_KUBECTXS is not set, please set it in $env_file or via other means"
+    exit 1
+  fi
+
+  if [[ -z "${LOCAL_REGISTRY_VOLUME_PATH:-}" ]]; then
+    echo "warning: LOCAL_REGISTRY_VOLUME_PATH is not set, please set it in $env_file or via other means."
     exit 1
   fi
 
   if [[ -z "${DASH0_AUTHORIZATION_TOKEN:-}" ]]; then
-    echo "warning: DASH0_AUTHORIZATION_TOKEN is not set. Exporting telemetry to Dash0 might not work; set it in test-resources/.env or via other means."
+    echo "warning: DASH0_AUTHORIZATION_TOKEN is not set. Exporting telemetry to Dash0 might not work; set it in $env_file or via other means."
   fi
   if [[ -z "${DASH0_INGRESS_ENDPOINT:-}" ]]; then
-    echo "warning: DASH0_INGRESS_ENDPOINT is not set. Exporting telemetry to Dash0 might not work; set it in test-resources/.env or via other means."
+    echo "warning: DASH0_INGRESS_ENDPOINT is not set. Exporting telemetry to Dash0 might not work; set it in $env_file or via other means."
   fi
   if [[ -z "${DASH0_API_ENDPOINT:-}" ]]; then
-    echo "warning: DASH0_API_ENDPOINT is not set. Synchronizing K8s resources via the Dash0 API might not work; set it in test-resources/.env or via other means."
+    echo "warning: DASH0_API_ENDPOINT is not set. Synchronizing K8s resources via the Dash0 API might not work; set it in $env_file or via other means."
   fi
   # Provide default values for missing environment variables, otherwise scripts will fail with "XYZ: unbound variable"
   # later on, since we run scripts generally with set -u. The variables might not be needed at all, for example when
@@ -60,11 +67,11 @@ setup_test_environment () {
   fi
 
   test-resources/bin/render-templates.sh
-  check_if_kubectx_is_kind_or_minikube_cluster
   determine_container_images
   determine_test_app_images
 
   install_cert_manager_if_necessary
+  install_nginx_ingress
 }
 
 ensure_namespace_exists() {
@@ -89,6 +96,28 @@ install_cert_manager_if_necessary() {
   fi
 }
 
+install_nginx_ingress() {
+  if [[ "${DEPLOY_NGINX_INGRESS:-}" = "false" ]]; then
+    return
+  fi
+  echo "checking if ingress-nginx is already running..."
+  if ! kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=5s; then
+    echo "deploying ingress-nginx..."
+    echo
+    kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
+    echo
+    echo "waiting for ingress-nginx..."
+    kubectl wait \
+      --namespace ingress-nginx \
+      --for=condition=ready \
+      pod \
+      --selector=app.kubernetes.io/component=controller \
+      --timeout=90s
+  else
+    echo ingress-nginx is already running
+  fi
+}
+
 is_remote_image() {
   image_name="$1"
   if [[ $image_name = */* ]]; then
@@ -101,14 +130,14 @@ is_remote_image() {
 determine_container_images() {
   # The defaults when using the Helm chart from local sources are:
   # - use the locally built image with tag latest
-  # - use pull policy "Never"
+  # - use pull policy "Always"
   # The defaults when using a remote helm chart are:
   # - default to not setting an explicit image repository or tag
   # - default to not setting a pull policy, instead let Kubernetes use the default pull policy
 
   local image_repository_prefix=${IMAGE_REPOSITORY_PREFIX:-}
   local image_tag=${IMAGE_TAG:-latest}
-  local pull_policy=${PULL_POLICY:-Never}
+  local pull_policy=${PULL_POLICY:-Always}
 
   controller_image_repository="${image_repository_prefix}operator-controller"
   controller_image_tag="$image_tag"
@@ -264,7 +293,7 @@ determine_pull_policy() {
 determine_test_app_images() {
   local image_repository_prefix=${TEST_IMAGE_REPOSITORY_PREFIX:-}
   local image_tag=${TEST_IMAGE_TAG:-latest}
-  local pull_policy=${TEST_IMAGE_PULL_POLICY:-Never}
+  local pull_policy=${TEST_IMAGE_PULL_POLICY:-Always}
 
   test_app_dotnet_image_repository="${image_repository_prefix}dash0-operator-dotnet-test-app"
   test_app_dotnet_image_tag="$image_tag"
@@ -337,65 +366,31 @@ build_all_images() {
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY=$filelog_offset_volume_ownership_image_repository \
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG="$filelog_offset_volume_ownership_image_tag" \
     make images
-
-  if [[ "$is_kind_cluster" = "true" ]]; then
-    echo loading images into Kind cluster
-    kind load docker-image \
-      --name "$kind_cluster_name" \
-      operator-controller:latest \
-      instrumentation:latest \
-      collector:latest \
-      configuration-reloader:latest \
-      filelog-offset-sync:latest \
-      filelog-offset-volume-ownership:latest
-  fi
 }
 
-check_if_kubectx_is_kind_or_minikube_cluster() {
-  check_if_kubectx_is_kind
-  check_if_kubectx_is_minikube
-}
-
-check_if_kubectx_is_kind() {
-  is_kind_cluster="false"
-  if command -v kind >/dev/null 2>&1; then
-    # kind is installed, check if the current kube context is a kind cluster
-    current_kubectx=$(kubectl config current-context)
-    kind_clusters=$(kind get clusters 2>&1)
-    if [[ "$kind_clusters" = "No kind clusters found." ]]; then
-      return
-    fi
-    while IFS= read -r cluster; do
-      if [[ "$current_kubectx" = "kind-$cluster" ]]; then
-        is_kind_cluster="true"
-        kind_cluster_name="$cluster"
-        return
-      fi
-    done <<< "$kind_clusters"
+push_all_images() {
+  if [[ "${PUSH_BUILT_IMAGES:-}" != "true" ]]; then
+    return
   fi
-}
 
-check_if_kubectx_is_minikube() {
-  is_minikube_cluster="false"
-  if command -v minikube >/dev/null 2>&1; then
-    # minikube is installed, check if the current kube context is a minikube cluster
-    current_kubectx=$(kubectl config current-context)
-    minikube_clusters=$(minikube profile list --output=json | jq -r '.valid[].Name')
-    while IFS= read -r cluster; do
-      if [[ "$current_kubectx" = "$cluster" ]]; then
-        echo 'Detected minikube cluster, will run `eval $(minikube docker-env)`'
-        is_minikube_cluster="true"
-        eval $(minikube docker-env)
-        return
-      fi
-    done <<< "$minikube_clusters"
-  fi
+  CONTROLLER_IMAGE_REPOSITORY="$controller_image_repository" \
+    CONTROLLER_IMAGE_TAG="$controller_image_tag" \
+    INSTRUMENTATION_IMAGE_REPOSITORY="$instrumentation_image_repository" \
+    INSTRUMENTATION_IMAGE_TAG="$instrumentation_image_tag" \
+    COLLECTOR_IMAGE_REPOSITORY="$collector_image_repository" \
+    CONFIGURATION_RELOADER_IMAGE_REPOSITORY="$configuration_reloader_image_repository" \
+    CONFIGURATION_RELOADER_IMAGE_TAG="$configuration_reloader_image_tag" \
+    FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY=$filelog_offset_sync_image_repository \
+    FILELOG_OFFSET_SYNC_IMAGE_TAG="$filelog_offset_sync_image_tag" \
+    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY=$filelog_offset_volume_ownership_image_repository \
+    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG="$filelog_offset_volume_ownership_image_tag" \
+    make push-images
 }
 
 deploy_filelog_offsets_pvc() {
   echo "STEP $step_counter: install filelog offset persistent volume claim"
   if [[ "$is_kind_cluster" = "true" ]]; then
-    kubectl patch persistentvolume offset-storage-volume --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]j' || true
+    kubectl patch persistentvolume offset-storage-volume --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]' || true
     kubectl apply -f test-resources/customresources/filelogoffsetpvc/offset-storage-pvc-kind.yaml
   else
     kubectl apply -f test-resources/customresources/filelogoffsetpvc/offset-storage-pvc-docker.yaml
@@ -441,7 +436,7 @@ run_helm() {
     helm_install_command+=" --values test-resources/bin/extra-values.yaml"
   fi
   if [[ "${USE_CERT_MANAGER:-}" = "true" ]]; then
-     helm_install_command+=" --values test-resources/cert-manager/helm-values.yaml"
+    helm_install_command+=" --values test-resources/cert-manager/helm-values.yaml"
   fi
   helm_install_command+=" --set operator.developmentMode=true"
   if [[ "${OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED:-}" = "true" ]]; then
@@ -642,7 +637,8 @@ deploy_application_under_monitoring() {
   runtime_under_test="${1:-nodejs}"
   echo "STEP $step_counter: deploy application under monitoring ($runtime_under_test)"
   if [[ "${runtime_under_test:-}" = "nodejs" ]]; then
-    build_test_application test-resources/node.js/express dash0-operator-nodejs-20-express-test-app
+    build_test_application test-resources/node.js/express "$test_app_nodejs_image_repository"
+    push_test_application_image "$test_app_nodejs_image_repository"
     helm_install_test_application \
       test-resources/node.js/express/dash0-operator-test-app-nodejs \
       test-app-nodejs \
@@ -670,7 +666,8 @@ deploy_application_under_monitoring() {
         "$test_app_nodejs_image_pull_policy"
     fi
   elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
-    build_test_application test-resources/jvm/spring-boot dash0-operator-jvm-spring-boot-test-app
+    build_test_application test-resources/jvm/spring-boot "$test_app_jvm_image_repository"
+    push_test_application_image "$test_app_jvm_image_repository"
     helm_install_test_application \
       "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
       "test-app-jvm" \
@@ -698,7 +695,8 @@ deploy_application_under_monitoring() {
         "$test_app_jvm_image_pull_policy"
     fi
   elif [[ "${runtime_under_test:-}" = "dotnet" ]]; then
-    build_test_application test-resources/dotnet dash0-operator-dotnet-test-app
+    build_test_application test-resources/dotnet "$test_app_dotnet_image_repository"
+    push_test_application_image "$test_app_dotnet_image_repository"
     helm_install_test_application \
       "test-resources/dotnet/dash0-operator-test-app-dotnet" \
       "test-app-dotnet" \
@@ -726,7 +724,8 @@ deploy_application_under_monitoring() {
         "$test_app_dotnet_image_pull_policy"
     fi
   elif [[ "${runtime_under_test:-}" = "python" ]]; then
-    build_test_application test-resources/python/flask dash0-operator-python-flask-test-app
+    build_test_application test-resources/python/flask "$test_app_python_image_repository"
+    push_test_application_image "$test_app_python_image_repository"
     helm_install_test_application \
       "test-resources/python/flask/dash0-operator-test-app-python" \
       "test-app-python" \
@@ -758,35 +757,6 @@ deploy_application_under_monitoring() {
     exit 1
   fi
 
-  if [[ "$is_kind_cluster" = "true" ]]; then
-    echo
-    echo "Note: The test application is running on a kind cluster, make sure cloud-provider-kind is running."
-    echo
-    echo "checking if ingress-nginx is already running..."
-    if ! kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=5s; then
-      echo "deploying ingress-nginx..."
-      echo
-      kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
-      echo
-      echo "waiting for ingress-nginx..."
-      kubectl wait \
-        --namespace ingress-nginx \
-        --for=condition=ready \
-        pod \
-        --selector=app.kubernetes.io/component=controller \
-        --timeout=90s
-    else
-      echo ingress-nginx is already running
-    fi
-    ingress_ip=$(kubectl get services \
-      --namespace ingress-nginx \
-      ingress-nginx-controller \
-      --output jsonpath='{.status.loadBalancer.ingress[0].ip}'
-    )
-    echo
-    echo "Use http://$ingress_ip/$kind/$runtime_under_test/dash0-k8s-operator-test to access the test application"
-  fi
-
   finish_step
 }
 
@@ -802,13 +772,18 @@ build_test_application() {
   echo "building container image for application under monitoring ($image_name)"
   docker build . -t "$image_name"
   popd > /dev/null
+}
 
-  if [[ "$is_kind_cluster" = "true" ]]; then
-    echo loading test image into Kind cluster
-    kind load docker-image \
-      --name "$kind_cluster_name" \
-      "$image_name:latest"
+push_test_application_image() {
+  if [[ "${PUSH_BUILT_IMAGES:-}" != "true" ]]; then
+    return
   fi
+
+  local image_name="$1"
+  local image_tag="${2:-latest}"
+
+  echo "pushing test app image [name=$image_name, tag=$image_tag]..."
+  docker push "$image_name:$image_tag"
 }
 
 helm_install_test_application() {
@@ -870,10 +845,8 @@ trim() {
 }
 
 finish_scenario() {
-  if [[ "$is_minikube_cluster" = "true" ]]; then
-    echo 'Detected minikube cluster, will run `eval $(minikube docker-env -u)`'
-    eval $(minikube docker-env -u)
-  fi
+  echo "scenario completed"
+  echo
 }
 
 finish_step() {

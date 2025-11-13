@@ -1,6 +1,7 @@
-# See CONTRIBUTING.md -> "Running End-to-End Tests on kind" for instructions to run e2e tests on a kind cluster.
+# See CONTRIBUTING.md -> "Semi-Manual Test Scenarios" and "Running End-to-End Tests on kind" for instructions to run
+# semi-manual and e2e tests on a kind cluster.
 
-# Before creating a cluster with this config, the two hostPath settings below need to be aligned with your local file
+# Before creating a cluster with this config, the hostPath settings below need to be aligned with your local file
 # system structure.
 #
 # Alternatively, create a symbolic link from
@@ -12,8 +13,7 @@
 #     cd /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes
 #     ln -s /${the-actual-path-to-your-dash0-operator-repository}/test-resources/e2e/volumes volumes
 #
-# Also, make sure the path mentioned under `hostPath` is listed in Docker Desktop's settings under
-# "Resources -> File sharing".
+# When using Docker Desktop, make sure the path mentioned under `hostPath` is listed under "Resources -> File sharing".
 
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4

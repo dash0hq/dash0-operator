@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -12,13 +12,15 @@ cd "$project_root"
 
 # shellcheck source=./lib/constants
 source "$scripts_lib/constants"
+# shellcheck source=./lib/kind
+source "$scripts_lib/kind"
+# shellcheck source=./lib/registry
+source "$scripts_lib/registry"
 
 operator_namespace="${OPERATOR_NAMESPACE:-$default_operator_ns}"
 target_namespace="${1:-$default_target_ns}"
 kind="${2:-$default_workload_kind}"
 runtime_under_test="${3:-$default_runtime}"
-additional_namespaces="${ADDITIONAL_NAMESPACES:-false}"
-operator_webhook_service_name="$default_operator_webhook_service_name"
 
 # shellcheck source=./lib/util
 source "$scripts_lib/util"
@@ -35,10 +37,6 @@ finish_step
 
 echo "STEP $step_counter: creating target namespace (if necessary)"
 ensure_namespace_exists "${target_namespace}"
-if [[ "$additional_namespaces" = "true" ]]; then
-  ensure_namespace_exists test-namespace-2
-  ensure_namespace_exists test-namespace-3
-fi
 finish_step
 
 echo "STEP $step_counter: creating operator namespace and authorization token secret"
@@ -56,6 +54,8 @@ finish_step
 
 deploy_additional_resources
 
+deploy_dash0_api_sync_resources
+
 echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
@@ -64,36 +64,8 @@ echo "STEP $step_counter: push images"
 push_all_images
 finish_step
 
-if [[ "${FILELOG_OFFSETS_PVC:-}" = "true" ]]; then
-  deploy_filelog_offsets_pvc
-  finish_step
-fi
-
 echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
 finish_step
-
-if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" = "false" ]]; then
-  # if no operator configuration resource has been deployed via the helm chart, deploy one now
-  echo "STEP $step_counter: deploy the Dash0 operator configuration resource"
-  install_operator_configuration_resource
-  finish_step
-else
-  echo "not deploying a Dash0 operator configuration resource (has been deployed with the helm chart already)"
-  echo
-fi
-
-if [[ "${DEPLOY_MONITORING_RESOURCE:-}" != "false" ]]; then
-  echo "STEP $step_counter: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
-  install_monitoring_resource "$additional_namespaces"
-  finish_step
-else
-  echo "not deploying a Dash0 monitoring resource"
-  echo
-fi
-
-deploy_application_under_monitoring "$runtime_under_test"
-
-deploy_dash0_api_sync_resources
 
 finish_scenario

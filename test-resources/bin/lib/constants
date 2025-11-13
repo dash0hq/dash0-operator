@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+###############################################################################
+# Global constants used by various test scripts. 
+###############################################################################
+
+# this file is intended to be sourced by other scripts, so we disable `unused` warnings
+# shellcheck disable=SC2034,SC2154,SC2317
+
+# path to project root
+project_root="$(dirname "${BASH_SOURCE[0]}")"/../../..
+
+# various other paths, relative to project_root
+scripts_bin="test-resources/bin"
+
+# local registry (note: these are currently not configurable to avoid the need for templating in kind-config.yaml)
+local_reg_name='kind-registry'
+local_reg_port='5001'
+
+# defaults
+default_kind_cluster="dash0-operator-lab"
+default_kind_config="test-resources/kind-config-lr.yaml"
+default_operator_ns="operator-namespace"
+default_target_ns="test-namespace"
+default_workload_kind="deployment"
+default_runtime="nodejs"
+default_operator_webhook_service_name=dash0-operator-webhook-service

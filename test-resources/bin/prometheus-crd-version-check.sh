@@ -5,14 +5,18 @@
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"/../..
+project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
+scripts_lib="test-resources/bin/lib"
 
-source test-resources/bin/third-party-crd-version-check-util
+cd "$project_root"
+
+# shellcheck source=./lib/third-party-crd-version-check-util
+source "$scripts_lib/third-party-crd-version-check-util"
 
 module_name=github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring
 chart_readme=helm-chart/dash0-operator/README.md
 unit_test_crd_file=test/util/crds/monitoring.coreos.com_prometheusrules.yaml
-test_resources_util_file=test-resources/bin/util
+test_resources_util_file="$scripts_lib/util"
 
 get_module_version_from_go_mod "$module_name"
 

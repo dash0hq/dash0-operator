@@ -5,16 +5,24 @@
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"/../..
+project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
+scripts_lib="test-resources/bin/lib"
 
-operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
-target_namespace=${1:-test-namespace}
-kind=${2:-deployment}
-runtime_under_test=${3:-nodejs}
+cd "$project_root"
+
+# shellcheck source=./lib/constants
+source "$scripts_lib/constants"
+
+operator_namespace="${OPERATOR_NAMESPACE:-$default_operator_ns}"
+target_namespace="${1:-$default_target_ns}"
+kind="${2:-$default_workload_kind}"
+runtime_under_test="${3:-$default_runtime}"
 additional_namespaces="${ADDITIONAL_NAMESPACES:-false}"
-operator_webhook_service_name=dash0-operator-webhook-service
+operator_webhook_service_name="$default_operator_webhook_service_name"
 
-source test-resources/bin/util
+# shellcheck source=./lib/util
+source "$scripts_lib/util"
+
 load_env_file
 verify_kubectx
 setup_test_environment
@@ -54,6 +62,10 @@ echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
 
+echo "STEP $step_counter: push images"
+push_all_images
+finish_step
+
 if [[ "${FILELOG_OFFSETS_PVC:-}" = "true" ]]; then
   deploy_filelog_offsets_pvc
   finish_step
@@ -85,4 +97,3 @@ else
 fi
 
 finish_scenario
-

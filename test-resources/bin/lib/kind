@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+###############################################################################
+# Functions related to interacting with kind.
+###############################################################################
+
+# this file is intended to be sourced by other scripts, so we disable `unused` warnings
+# shellcheck disable=SC2034,SC2154,SC2317
+
+start_kind() {
+  local name="${1}"
+  local kind_config="${2}"
+  echo "Creating kind cluster with [name=$name] and [config=$kind_config]..."
+  kind create cluster --name "$name" --config "$kind_config"
+  echo "Done."
+}
+
+delete_cluster() {
+  local name="${1}"
+  echo "Deleting kind cluster with [name=$name]..."
+  kind delete cluster -n "$name"
+  echo "Done."
+}

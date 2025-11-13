@@ -5,9 +5,14 @@
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"/../..
+project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
+scripts_lib="test-resources/bin/lib"
 
-source test-resources/bin/util
+cd "$project_root"
+
+# shellcheck source=./lib/util
+source "$scripts_lib/util"
+
 load_env_file
 
 TELEMETRY_COLLECTION_ENABLED="${TELEMETRY_COLLECTION_ENABLED:-true}"
