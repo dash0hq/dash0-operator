@@ -198,7 +198,7 @@ helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@$(call lint_helm_chart,test-resources/node.js/express/dash0-operator-test-app-nodejs)
 	@$(call lint_helm_chart,test-resources/python/flask/dash0-operator-test-app-python)
 	@$(call lint_helm_chart,test/e2e/dash0-api-mock/dash0-api-mock)
-	@$(call lint_helm_chart,test-resources/otlp-sink/helm-chart)
+	@$(call lint_helm_chart,test/e2e/otlp-sink/helm-chart)
 
 .PHONY: shellcheck-check-installed
 shellcheck-check-installed:
@@ -292,7 +292,7 @@ dash0-api-mock-image: ## Build the Dash0 API mock container image, which is used
 
 .PHONY: telemetry-matcher-image
 telemetry-matcher-image: ## Build the telemetry-matcher container image, which is used in end-to-end tests.
-	@$(call build_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG),test-resources/otlp-sink/telemetrymatcher)
+	@$(call build_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG),test/e2e/otlp-sink/telemetrymatcher)
 
 
 ##@ Build

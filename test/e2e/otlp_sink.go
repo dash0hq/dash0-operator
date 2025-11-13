@@ -47,7 +47,7 @@ const (
 )
 
 const (
-	otlpSinkChartPath   = "test-resources/otlp-sink/helm-chart"
+	otlpSinkChartPath   = "test/e2e/otlp-sink/helm-chart"
 	otlpSinkReleaseName = "otlp-sink"
 
 	otlpSinkNamespace = "otlp-sink"
