@@ -38,4 +38,16 @@ jobs:
         uses: anthropics/claude-code-action@8a1c4371755898f67cd97006ba7c97702d5fc4bf # v1.0.16
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          timeout_minutes: "60"
+          timeout_minutes: "30"
+          prompt: |
+            List only critical problems in this pull request. Report nothing if no critical problems exist.
+
+            CORRECTNESS: Issues that cause failures or incorrect behavior
+            PERFORMANCE: Issues causing significant resource waste
+            SECURITY: Vulnerabilities or credential exposure
+
+            Rules:
+            - Do not list things that are working correctly
+            - Do not provide explanations unless necessary to understand the issue
+            - Do not post any comments not related to critical problems
+            - Do not post comments that repeat things that have already been pointed out
