@@ -6,6 +6,8 @@ package main
 import (
 	"fmt"
 	"log"
+
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 )
 
 // MatchResultList collects match results for a collection of potentially matching objects.
@@ -36,13 +38,13 @@ func (mrl *MatchResultList[R, O]) hasMatch() bool {
 	return false
 }
 
-func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(message string) ExpectationResult {
+func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(message string) shared.ExpectationResult {
 	var bestMatchScoreSoFar float32 = 0
 	bestMatches := make([]ObjectMatchResult[R, O], 0)
 	for _, omr := range mrl.objectResults {
 		if omr.isMatch() {
 			// We have a match, simply return from the function.
-			return newSuccess()
+			return shared.NewSuccess()
 
 		} else {
 			matchScore := omr.matchScore()
@@ -88,10 +90,10 @@ func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(message string) Expectat
 			message,
 		)
 	}
-	return newFailureWithDescription(description)
+	return shared.NewFailureWithDescription(description)
 }
 
-func (mrl *MatchResultList[R, O]) expectExactlyOneMatch(message string) ExpectationResult {
+func (mrl *MatchResultList[R, O]) expectExactlyOneMatch(message string) shared.ExpectationResult {
 	atLeastOneResult := mrl.expectAtLeastOneMatch(message)
 	if !atLeastOneResult.Success {
 		return atLeastOneResult
@@ -99,16 +101,16 @@ func (mrl *MatchResultList[R, O]) expectExactlyOneMatch(message string) Expectat
 
 	numberOfMatches := mrl.numberOfMatches()
 	if numberOfMatches == 1 {
-		return newSuccess()
+		return shared.NewSuccess()
 	}
-	return newFailureWithDescription(fmt.Sprintf(
+	return shared.NewFailureWithDescription(fmt.Sprintf(
 		"%s -- expected exactly one matching object but there were actually %d matching objects",
 		message,
 		numberOfMatches,
 	))
 }
 
-func (mrl *MatchResultList[R, O]) expectZeroMatches(message string) ExpectationResult {
+func (mrl *MatchResultList[R, O]) expectZeroMatches(message string) shared.ExpectationResult {
 	matchingResults := make([]ObjectMatchResult[R, O], 0)
 	for _, omr := range mrl.objectResults {
 		if omr.isMatch() {
@@ -116,9 +118,9 @@ func (mrl *MatchResultList[R, O]) expectZeroMatches(message string) ExpectationR
 		}
 	}
 	if len(matchingResults) == 0 {
-		return newSuccess()
+		return shared.NewSuccess()
 	} else {
-		return newFailureWithDescription(
+		return shared.NewFailureWithDescription(
 			fmt.Sprintf(
 				"%s -- expected no matching objects but found %d matches, here is an arbitrary matching result:\n%s",
 				message,

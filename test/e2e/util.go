@@ -17,8 +17,11 @@ import (
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/google/uuid"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 )
 
 var (
@@ -186,7 +189,7 @@ func executeTelemetryMatcherRequest(g Gomega, requestUrl string) {
 		g.Expect(fmt.Errorf("unable to read the telemetry-matcher response payload, status code was %d, after "+
 			"executing the HTTP request to %s", res.StatusCode, req.URL.String()))
 	}
-	var expectationResult ExpectationResult
+	var expectationResult shared.ExpectationResult
 	unmarshalErr := json.Unmarshal(body, &expectationResult)
 
 	// Note: HTTP status 404 is used if we do not find any matching telemetry object, hence we do not handle that status

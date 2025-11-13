@@ -12,11 +12,13 @@ import (
 	"k8s.io/utils/ptr"
 
 	. "github.com/onsi/gomega"
+
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 )
 
 func verifyAtLeastOneSelfMonitoringLogRecord(
 	g Gomega,
-	resourceMatcherMode logResourceMatcherMode,
+	resourceMatcherMode shared.LogResourceMatcherMode,
 	serviceVersion string,
 	timestampLowerBound time.Time,
 	logBodyEquals string,
@@ -24,7 +26,7 @@ func verifyAtLeastOneSelfMonitoringLogRecord(
 ) {
 	askTelemetryMatcherForMatchingLogRecords(
 		g,
-		expectAtLeastOne,
+		shared.ExpectAtLeastOne,
 		resourceMatcherMode,
 		nil,
 		nil,
@@ -45,8 +47,8 @@ func verifyExactlyOneWorkloadLogRecord(
 ) {
 	askTelemetryMatcherForMatchingLogRecords(
 		g,
-		expectExactlyOne,
-		logResourceMatcherWorkload,
+		shared.ExpectExactlyOne,
+		shared.LogResourceMatcherWorkload,
 		ptr.To(runtime),
 		ptr.To(workloadType),
 		"",
@@ -60,8 +62,8 @@ func verifyExactlyOneWorkloadLogRecord(
 // telemetry captured in otlp-sink for a log record matching the given criteria.
 func askTelemetryMatcherForMatchingLogRecords(
 	g Gomega,
-	expectationMode expectationMode,
-	resourceMatcherMode logResourceMatcherMode,
+	expectationMode shared.ExpectationMode,
+	resourceMatcherMode shared.LogResourceMatcherMode,
 	runtime *runtimeType,
 	workloadType *workloadType,
 	serviceVersion string,
@@ -84,8 +86,8 @@ func askTelemetryMatcherForMatchingLogRecords(
 }
 
 func compileTelemetryMatcherUrlForLogRecords(
-	expectationMode expectationMode,
-	resourceMatcherMode logResourceMatcherMode,
+	expectationMode shared.ExpectationMode,
+	resourceMatcherMode shared.LogResourceMatcherMode,
 	runtime *runtimeType,
 	workloadType *workloadType,
 	serviceVersion string,
@@ -95,28 +97,28 @@ func compileTelemetryMatcherUrlForLogRecords(
 ) string {
 	baseUrl := fmt.Sprintf("%s/matching-logs", telemetryMatcherBaseUrl)
 	params := url.Values{}
-	params.Add(queryParamExpectationMode, string(expectationMode))
-	params.Add(queryParamLogsResourceMatcherMode, string(resourceMatcherMode))
+	params.Add(shared.QueryParamExpectationMode, string(expectationMode))
+	params.Add(shared.QueryParamLogsResourceMatcherMode, string(resourceMatcherMode))
 	if runtime != nil {
-		params.Add(queryParamRuntime, runtime.runtimeTypeLabel)
-		params.Add(queryParamRuntimeWorkloadName, runtime.workloadName)
+		params.Add(shared.QueryParamRuntime, runtime.runtimeTypeLabel)
+		params.Add(shared.QueryParamRuntimeWorkloadName, runtime.workloadName)
 	}
 	if workloadType != nil {
-		params.Add(queryParamWorkloadType, workloadType.workloadTypeString)
+		params.Add(shared.QueryParamWorkloadType, workloadType.workloadTypeString)
 	}
 	// Note: Using the name of the Kubernetes context as the cluster name match parameter works because we set this
 	// as the clusterName setting for the operator configuration resource when doing helm install or creating the
 	// operator configuration resource.
-	params.Add(queryParamClusterName, e2eKubernetesContext)
-	params.Add(queryParamOperatorNamespace, operatorNamespace)
+	params.Add(shared.QueryParamClusterName, e2eKubernetesContext)
+	params.Add(shared.QueryParamOperatorNamespace, operatorNamespace)
 	if serviceVersion != "" {
-		params.Add(queryParamServiceVersion, serviceVersion)
+		params.Add(shared.QueryParamServiceVersion, serviceVersion)
 	}
-	params.Add(queryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
+	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
 	if logBodyEquals != "" {
-		params.Add(queryParamLogBodyEquals, logBodyEquals)
+		params.Add(shared.QueryParamLogBodyEquals, logBodyEquals)
 	} else if logBodyContains != "" {
-		params.Add(queryParamLogBodyContains, logBodyContains)
+		params.Add(shared.QueryParamLogBodyContains, logBodyContains)
 	}
 	requestUrl := baseUrl + "?" + params.Encode()
 	return requestUrl

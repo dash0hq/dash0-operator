@@ -13,37 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-)
 
-const (
-	// common telemetry-matcher query parameters
-	queryParamExpectationMode        = "expectation-mode"
-	queryParamRuntime                = "runtime"
-	queryParamRuntimeWorkloadName    = "runtime-workload-name"
-	queryParamWorkloadType           = "workload-type"
-	queryParamTimestampLowerBoundStr = "timestamp-lower-bound"
-	queryParamClusterName            = "cluster"
-	queryParamOperatorNamespace      = "operator-namespace"
-
-	// query parameters for matching spans
-	queryParamCheckResourceAttributes = "check-resource-attributes"
-	queryParamRoute                   = "route"
-	queryParamQuery                   = "query"
-	queryParamTarget                  = "target"
-
-	// query parameters for matching logs
-	queryParamLogsResourceMatcherMode = "logs-resource-matcher"
-	queryParamServiceVersion          = "service-version"
-	queryParamLogBodyEquals           = "log-body-equals"
-	queryParamLogBodyContains         = "log-body-contains"
-
-	// query parameters for matching metrics
-	queryParamMetricsMatchMode            = "metrics-match-mode"
-	queryParamDeploymentName              = "deployment-name"
-	queryParamExpectPodUid                = "expect-pod-uid"
-	queryParamFailOnNamespaceOtherThan    = "fail-on-namespace-other-than"
-	queryParamFailOnNamespaceScopedMetric = "fail-on-namespace-scoped-metric"
-	queryParamMetricNameList              = "metric-name-list"
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 )
 
 type Routes struct {
@@ -51,7 +22,7 @@ type Routes struct {
 }
 
 type commonQueryParams struct {
-	mode                expectationMode
+	mode                shared.ExpectationMode
 	runtime             string
 	runtimeWorkloadName string
 	workloadType        string
@@ -87,7 +58,7 @@ func (r *Routes) matchingSpansRouteHandler(c *gin.Context) {
 		return
 	}
 
-	checkResourceAttributes, ok := readBooleanQueryParameter(c, queryParamCheckResourceAttributes)
+	checkResourceAttributes, ok := readBooleanQueryParameter(c, shared.QueryParamCheckResourceAttributes)
 	if !ok {
 		return
 	}
@@ -101,9 +72,9 @@ func (r *Routes) matchingSpansRouteHandler(c *gin.Context) {
 		)
 	}
 
-	route := c.Query(queryParamRoute)
-	query := c.Query(queryParamQuery)
-	target := c.Query(queryParamTarget)
+	route := c.Query(shared.QueryParamRoute)
+	query := c.Query(shared.QueryParamQuery)
+	target := c.Query(shared.QueryParamTarget)
 
 	allMatchResults, err := readFileAndGetMatchingSpans(
 		r.Config.TracesFile,
@@ -112,7 +83,7 @@ func (r *Routes) matchingSpansRouteHandler(c *gin.Context) {
 		commonParams.timestampLowerBound,
 	)
 	if err != nil {
-		c.JSON(500, ExpectationResult{
+		c.JSON(500, shared.ExpectationResult{
 			Success:     false,
 			Description: fmt.Sprintf("error: %v", err),
 		})
@@ -137,49 +108,49 @@ func (r *Routes) matchingLogsRouteHandler(c *gin.Context) {
 	}
 
 	resourceMatcherMode, ok :=
-		readMandatoryStringEnumQueryParameter(c, queryParamLogsResourceMatcherMode, allLogResourceMatcherModes)
+		readMandatoryStringEnumQueryParameter(c, shared.QueryParamLogsResourceMatcherMode, shared.AllLogResourceMatcherModes)
 	if !ok {
 		return
 	}
 
-	serviceVersion := c.Query(queryParamServiceVersion)
+	serviceVersion := c.Query(shared.QueryParamServiceVersion)
 	var resourceMatchFn func(plog.ResourceLogs, *ResourceMatchResult[plog.ResourceLogs])
-	switch logResourceMatcherMode(resourceMatcherMode) {
-	case logResourceMatcherWorkload:
+	switch shared.LogResourceMatcherMode(resourceMatcherMode) {
+	case shared.LogResourceMatcherWorkload:
 		resourceMatchFn = workloadLogsResourceMatcher(commonParams.runtimeWorkloadName, commonParams.workloadType)
-	case logResourceMatcherSelfMonitoringLogsOperatorManager:
+	case shared.LogResourceMatcherSelfMonitoringLogsOperatorManager:
 		resourceMatchFn = selfMonitoringLogsResourceMatcherOperatorManager(
 			commonParams.clusterName,
 			commonParams.operatorNamespace,
 			serviceVersion,
 		)
-	case logResourceMatcherSelfMonitoringLogsCollector:
+	case shared.LogResourceMatcherSelfMonitoringLogsCollector:
 		resourceMatchFn = selfMonitoringLogsResourceMatcherCollector(
 			commonParams.clusterName,
 			commonParams.operatorNamespace,
 		)
 	default:
-		c.JSON(400, ExpectationResult{
+		c.JSON(400, shared.ExpectationResult{
 			Success:     false,
 			Description: fmt.Sprintf("unknown logs resource matcher mode: %s", resourceMatcherMode),
 		})
 		return
 	}
 
-	logBodyEqualsStr := c.Query(queryParamLogBodyEquals)
-	logBodyContainsStr := c.Query(queryParamLogBodyContains)
+	logBodyEqualsStr := c.Query(shared.QueryParamLogBodyEquals)
+	logBodyContainsStr := c.Query(shared.QueryParamLogBodyContains)
 	var logMatchFn func(plog.LogRecord, *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord])
 	if logBodyEqualsStr != "" {
 		logMatchFn = logBodyEqualsMatcher(logBodyEqualsStr)
 	} else if logBodyContainsStr != "" {
 		logMatchFn = logBodyContainsMatcher(logBodyContainsStr)
 	} else {
-		c.JSON(400, ExpectationResult{
+		c.JSON(400, shared.ExpectationResult{
 			Success: false,
 			Description: fmt.Sprintf(
-				"no log records match criteria (%s, %s, ...) have been provided",
-				queryParamLogBodyEquals,
-				queryParamLogBodyContains,
+				"no log record matching criteria (%s, %s, ...) have been provided",
+				shared.QueryParamLogBodyEquals,
+				shared.QueryParamLogBodyContains,
 			),
 		})
 		return
@@ -192,7 +163,7 @@ func (r *Routes) matchingLogsRouteHandler(c *gin.Context) {
 		commonParams.timestampLowerBound,
 	)
 	if err != nil {
-		c.JSON(500, ExpectationResult{
+		c.JSON(500, shared.ExpectationResult{
 			Success:     false,
 			Description: fmt.Sprintf("error: %v", err),
 		})
@@ -216,13 +187,14 @@ func (r *Routes) matchingMetricsRouteHandler(c *gin.Context) {
 		return
 	}
 
-	failOnNamespaceOtherThan := c.Query(queryParamFailOnNamespaceOtherThan)
-	failOnNamespaceScopedMetric, ok := readBooleanQueryParameter(c, queryParamFailOnNamespaceScopedMetric)
+	failOnNamespaceOtherThan := c.Query(shared.QueryParamFailOnNamespaceOtherThan)
+	failOnNamespaceScopedMetric, ok := readBooleanQueryParameter(c, shared.QueryParamFailOnNamespaceScopedMetric)
 	if !ok {
 		return
 	}
 
-	matchMode, ok := readMandatoryStringEnumQueryParameter(c, queryParamMetricsMatchMode, allMetricsMatchModes)
+	matchMode, ok :=
+		readMandatoryStringEnumQueryParameter(c, shared.QueryParamMetricsMatchMode, shared.AllMetricsMatchModes)
 	if !ok {
 		return
 	}
@@ -230,27 +202,28 @@ func (r *Routes) matchingMetricsRouteHandler(c *gin.Context) {
 	var resourceMatchFn resourceMatcher
 	var metricMatchFn metricMatcher
 
-	switch metricsMatchMode(matchMode) {
-	case metricsMatchModeWorkload:
-		deploymentName := c.Query(queryParamDeploymentName)
-		expectPodUid, ok := readBooleanQueryParameter(c, queryParamExpectPodUid)
+	switch shared.MetricsMatchMode(matchMode) {
+	case shared.MetricsMatchModeWorkload:
+		deploymentName := c.Query(shared.QueryParamDeploymentName)
+		expectPodUid, ok := readBooleanQueryParameter(c, shared.QueryParamExpectPodUid)
 		if !ok {
 			return
 		}
-		metricNameListId, ok := readMandatoryStringEnumQueryParameter(c, queryParamMetricNameList, allMetricNameLists)
+		metricNameListId, ok :=
+			readMandatoryStringEnumQueryParameter(c, shared.QueryParamMetricNameList, shared.AllMetricNameLists)
 		if !ok {
 			return
 		}
 		var metricNames []string
-		switch metricNameList(metricNameListId) {
-		case kubeletStatsReceiverMetricNameList:
+		switch shared.MetricNameList(metricNameListId) {
+		case shared.KubeletStatsReceiverMetricNameList:
 			metricNames = kubeletStatsReceiverMetricNames
-		case k8sClusterReceiverMetricNameList:
+		case shared.K8sClusterReceiverMetricNameList:
 			metricNames = k8sClusterReceiverMetricNames
-		case prometheusReceiverMetricNameList:
+		case shared.PrometheusReceiverMetricNameList:
 			metricNames = prometheusReceiverMetricNames
 		default:
-			c.JSON(400, ExpectationResult{
+			c.JSON(400, shared.ExpectationResult{
 				Success:     false,
 				Description: fmt.Sprintf("unknown metric name list: %s", metricNameListId),
 			})
@@ -259,20 +232,20 @@ func (r *Routes) matchingMetricsRouteHandler(c *gin.Context) {
 		resourceMatchFn = resourceAttributeMatcherWorkloads(deploymentName, expectPodUid)
 		metricMatchFn = metricNameIsMemberOfList(metricNames)
 
-	case metricsMatchModeSelfMonitoringOperatorManager:
+	case shared.MetricsMatchModeSelfMonitoringOperatorManager:
 		resourceMatchFn = resourceAttributeMatcherSelfMonitoringOperatorManager(commonParams.operatorNamespace)
 		metricMatchFn = hasDash0OperatorPrefixMatcher()
 
-	case metricsMatchModeSelfMonitoringCollector:
+	case shared.MetricsMatchModeSelfMonitoringCollector:
 		resourceMatchFn = resourceAttributeMatcherSelfMonitoringCollector(commonParams.operatorNamespace)
 		metricMatchFn = hasOtelColPrefixMatcher()
 
-	case metricsMatchModeMatchAll:
+	case shared.MetricsMatchModeMatchAll:
 		resourceMatchFn = matchAllResourceAttributeMatcher()
 		metricMatchFn = matchAllMetricMatcher()
 
 	default:
-		c.JSON(400, ExpectationResult{
+		c.JSON(400, shared.ExpectationResult{
 			Success:     false,
 			Description: fmt.Sprintf("unknown metrics matcher mode: %s", matchMode),
 		})
@@ -296,12 +269,12 @@ func (r *Routes) matchingMetricsRouteHandler(c *gin.Context) {
 			// "Expectation Failed" when something like this happens. This code usually specifically refers to the
 			// "Expect" request-header field, so we are arguably abusing this status code here quite a bit. OTOH, there
 			// is no other more matching HTTP status code.
-			c.JSON(417, ExpectationResult{
+			c.JSON(417, shared.ExpectationResult{
 				Success:     false,
 				Description: fmt.Sprintf("assertion error: %v", err),
 			})
 		} else {
-			c.JSON(500, ExpectationResult{
+			c.JSON(500, shared.ExpectationResult{
 				Success:     false,
 				Description: fmt.Sprintf("error: %v", err),
 			})
@@ -318,18 +291,18 @@ func (r *Routes) matchingMetricsRouteHandler(c *gin.Context) {
 }
 
 func readCommonQueryParams(c *gin.Context) (commonQueryParams, bool) {
-	mode, ok := readMandatoryStringEnumQueryParameter(c, queryParamExpectationMode, allExpectationModes)
+	mode, ok := readMandatoryStringEnumQueryParameter(c, shared.QueryParamExpectationMode, shared.AllExpectationModes)
 	if !ok {
 		return commonQueryParams{}, false
 	}
-	timestampLowerBoundStr := c.Query(queryParamTimestampLowerBoundStr)
+	timestampLowerBoundStr := c.Query(shared.QueryParamTimestampLowerBoundStr)
 	timestampLowerBoundUnixMillis, err := strconv.ParseInt(timestampLowerBoundStr, 10, 64)
 	if err != nil {
-		c.JSON(400, ExpectationResult{
+		c.JSON(400, shared.ExpectationResult{
 			Success: false,
 			Description: fmt.Sprintf(
 				"invalid or missing %s query param: \"%s\"",
-				queryParamTimestampLowerBoundStr,
+				shared.QueryParamTimestampLowerBoundStr,
 				timestampLowerBoundStr,
 			),
 		})
@@ -338,13 +311,13 @@ func readCommonQueryParams(c *gin.Context) (commonQueryParams, bool) {
 	timestampLowerBound := time.UnixMilli(timestampLowerBoundUnixMillis)
 
 	return commonQueryParams{
-		mode:                expectationMode(mode),
-		runtime:             c.Query(queryParamRuntime),
-		runtimeWorkloadName: c.Query(queryParamRuntimeWorkloadName),
-		workloadType:        c.Query(queryParamWorkloadType),
+		mode:                shared.ExpectationMode(mode),
+		runtime:             c.Query(shared.QueryParamRuntime),
+		runtimeWorkloadName: c.Query(shared.QueryParamRuntimeWorkloadName),
+		workloadType:        c.Query(shared.QueryParamWorkloadType),
 		timestampLowerBound: timestampLowerBound,
-		clusterName:         c.Query(queryParamClusterName),
-		operatorNamespace:   c.Query(queryParamOperatorNamespace),
+		clusterName:         c.Query(shared.QueryParamClusterName),
+		operatorNamespace:   c.Query(shared.QueryParamOperatorNamespace),
 	}, true
 }
 
@@ -355,7 +328,7 @@ func readBooleanQueryParameter(c *gin.Context, queryParam string) (bool, bool) {
 		var err error
 		value, err = strconv.ParseBool(valueStr)
 		if err != nil {
-			c.JSON(400, ExpectationResult{
+			c.JSON(400, shared.ExpectationResult{
 				Success: false,
 				Description: fmt.Sprintf(
 					"invalid value for query param %s: \"%s\", expecting \"true\" or \"false\"",
@@ -372,14 +345,14 @@ func readBooleanQueryParameter(c *gin.Context, queryParam string) (bool, bool) {
 func readMandatoryStringEnumQueryParameter(c *gin.Context, queryParam string, validValues []string) (string, bool) {
 	value := c.Query(queryParam)
 	if value == "" {
-		c.JSON(400, ExpectationResult{
+		c.JSON(400, shared.ExpectationResult{
 			Success:     false,
 			Description: fmt.Sprintf("missing %s query param", queryParam),
 		})
 		return "", false
 	}
 	if !slices.Contains(validValues, value) {
-		c.JSON(400, ExpectationResult{
+		c.JSON(400, shared.ExpectationResult{
 			Success:     false,
 			Description: fmt.Sprintf("invalid query param value for \"%s\": \"%s\"", queryParam, value),
 		})
@@ -394,9 +367,9 @@ func processMatchResults[R any, O any](
 	allMatchResults *MatchResultList[R, O],
 	signalTypeLabel string,
 ) {
-	var expectationResult ExpectationResult
+	var expectationResult shared.ExpectationResult
 	switch commonParams.mode {
-	case expectAtLeastOne:
+	case shared.ExpectAtLeastOne:
 		expectationResult = allMatchResults.expectAtLeastOneMatch(
 			fmt.Sprintf(
 				"%s %s: expected to find at least one matching %s",
@@ -405,7 +378,7 @@ func processMatchResults[R any, O any](
 				signalTypeLabel,
 			),
 		)
-	case expectExactlyOne:
+	case shared.ExpectExactlyOne:
 		expectationResult = allMatchResults.expectExactlyOneMatch(
 			fmt.Sprintf(
 				"%s %s: expected to find exactly one matching %s",
@@ -414,7 +387,7 @@ func processMatchResults[R any, O any](
 				signalTypeLabel,
 			),
 		)
-	case expectNoMatches:
+	case shared.ExpectNoMatches:
 		expectationResult = allMatchResults.expectZeroMatches(
 			fmt.Sprintf(
 				"%s %s: expected to find no matching %ss",
@@ -424,7 +397,7 @@ func processMatchResults[R any, O any](
 			),
 		)
 	default:
-		c.JSON(400, ExpectationResult{
+		c.JSON(400, shared.ExpectationResult{
 			Success:     false,
 			Description: fmt.Sprintf("unknown expectation mode: %s", string(commonParams.mode)),
 		})

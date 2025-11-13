@@ -1,19 +1,22 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+# Note: This Dockerfile expects test/e2e as the build context.
+
 FROM --platform=${BUILDPLATFORM} golang:1.25-alpine3.22 AS builder
 
 WORKDIR /usr/local/go/src/telemetrymatcher
 
 # Copy go.mod and friends and run go mod download separately before starting the container image build, to improve
 # container build caching.
-COPY go.mod .
-COPY go.sum .
+COPY otlp-sink/telemetrymatcher/go.mod .
+COPY otlp-sink/telemetrymatcher/go.sum .
+COPY pkg /usr/local/go/pkg
 RUN go mod download
 
 # now copy the actual go sources and compile them
-COPY *.go .
-COPY *.txt .
+COPY otlp-sink/telemetrymatcher/*.go .
+COPY otlp-sink/telemetrymatcher/*.txt .
 
 ARG TARGETOS
 ARG TARGETARCH
