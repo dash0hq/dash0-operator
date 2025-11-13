@@ -125,14 +125,14 @@ is_remote_image() {
 determine_container_images() {
   # The defaults when using the Helm chart from local sources are:
   # - use the locally built image with tag latest
-  # - use pull policy "Never"
+  # - use pull policy "Always"
   # The defaults when using a remote helm chart are:
   # - default to not setting an explicit image repository or tag
   # - default to not setting a pull policy, instead let Kubernetes use the default pull policy
 
   local image_repository_prefix=${IMAGE_REPOSITORY_PREFIX:-}
   local image_tag=${IMAGE_TAG:-latest}
-  local pull_policy=${PULL_POLICY:-Never}
+  local pull_policy=${PULL_POLICY:-Always}
 
   controller_image_repository="${image_repository_prefix}operator-controller"
   controller_image_tag="$image_tag"
