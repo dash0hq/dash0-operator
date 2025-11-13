@@ -1,4 +1,4 @@
-module github.com/dash0hq/dash0-operator/test-resources/otlp-sink/telemetrymatcher
+module github.com/dash0hq/dash0-operator/test/e2e/otlp-sink/telemetrymatcher
 
 go 1.25.4
 

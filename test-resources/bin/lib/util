@@ -588,7 +588,7 @@ deploy_otlp_sink_if_requested() {
   touch "$otlp_sink_dir/metrics.jsonl"
   touch "$otlp_sink_dir/logs.jsonl"
 
-  local helm_install_command="helm install --namespace otlp-sink --create-namespace --wait --timeout 60s otlp-sink test-resources/otlp-sink/helm-chart"
+  local helm_install_command="helm install --namespace otlp-sink --create-namespace --wait --timeout 60s otlp-sink test/e2e/otlp-sink/helm-chart"
   helm_install_command+=" --set collector.telemetryFileExportVolume.path=$otlp_sink_dir"
   echo "deploying otlp-sink"
   echo "$helm_install_command"
