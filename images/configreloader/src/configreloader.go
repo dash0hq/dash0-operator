@@ -139,7 +139,9 @@ func initializeHashes(configurationFilePaths []string) error {
 		if err != nil {
 			return fmt.Errorf("cannot open configuration file '%s': %w", configurationFilePath, err)
 		}
-		defer configurationFile.Close()
+		defer func() {
+			_ = configurationFile.Close()
+		}()
 
 		configurationFileHash := md5.New()
 		if _, err := io.Copy(configurationFileHash, configurationFile); err != nil {
@@ -166,7 +168,9 @@ func checkConfiguration(
 		if err != nil {
 			return false, fmt.Errorf("cannot open configuration file '%s': %w", configurationFilePath, err)
 		}
-		defer configurationFile.Close()
+		defer func() {
+			_ = configurationFile.Close()
+		}()
 
 		configurationFileHash := md5.New()
 		if _, err := io.Copy(configurationFileHash, configurationFile); err != nil {
@@ -227,7 +231,9 @@ func parsePidFile(pidFilePath string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cannot open '%s' pid file: %w", pidFilePath, err)
 	}
-	defer collectorPidFile.Close()
+	defer func() {
+		_ = collectorPidFile.Close()
+	}()
 
 	scanner := bufio.NewScanner(collectorPidFile)
 	scanner.Split(bufio.ScanWords)

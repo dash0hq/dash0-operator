@@ -156,14 +156,7 @@ func main() {
 			logger.Info("no offset files restored")
 		}
 	case "sync":
-		if err := syncOffsets(ctx, settings); err != nil {
-			logger.Error(
-				"an error occurred while syncing file offsets to configmap",
-				errorLabel,
-				err,
-			)
-			os.Exit(1)
-		}
+		syncOffsets(ctx, settings)
 	}
 
 	common.ShutDownOTelSdk(ctx)
@@ -277,7 +270,7 @@ func restoreFile(tr *tar.Reader) (IsArchiveOver, HasRestoredFileFromArchive, err
 	}
 }
 
-func syncOffsets(ctx context.Context, settings *Settings) error {
+func syncOffsets(ctx context.Context, settings *Settings) {
 	ticker := time.NewTicker(5 * time.Second)
 	shutdown := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
@@ -307,8 +300,6 @@ func syncOffsets(ctx context.Context, settings *Settings) error {
 	}()
 
 	<-done
-
-	return nil
 }
 
 type OffsetSizeBytes int
@@ -370,7 +361,7 @@ func doSyncOffsets(settings *Settings) (IsOffsetUpdated, OffsetSizeBytes, error)
 	}
 
 	currentValue = newValue
-	return false, OffsetSizeBytes(len(buf.Bytes())), nil
+	return true, OffsetSizeBytes(len(buf.Bytes())), nil
 }
 
 func patchConfigMap(
