@@ -292,8 +292,7 @@ dash0-api-mock-image: ## Build the Dash0 API mock container image, which is used
 
 .PHONY: telemetry-matcher-image
 telemetry-matcher-image: ## Build the telemetry-matcher container image, which is used in end-to-end tests.
-	@$(call build_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG),test/e2e/otlp-sink/telemetrymatcher)
-
+	@$(call build_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG),test/e2e,test/e2e/otlp-sink/telemetrymatcher/Dockerfile)
 
 ##@ Build
 

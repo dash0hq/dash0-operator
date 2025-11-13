@@ -13,79 +13,12 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-type expectationMode string
-
-const (
-	expectAtLeastOne expectationMode = "at-least-one"
-	expectExactlyOne expectationMode = "exactly-one"
-	expectNoMatches  expectationMode = "no-matches"
-)
-
-type logResourceMatcherMode string
-
-const (
-	logResourceMatcherWorkload                          logResourceMatcherMode = "workload"
-	logResourceMatcherSelfMonitoringLogsOperatorManager logResourceMatcherMode = "self-monitoring-logs-operator-manager"
-	logResourceMatcherSelfMonitoringLogsCollector       logResourceMatcherMode = "self-monitoring-logs-collector"
-)
-
-type metricsMatchMode string
-
-const (
-	metricsMatchModeWorkload                      metricsMatchMode = "metrics-match-mode-worklaod"
-	metricsMatchModeSelfMonitoringOperatorManager metricsMatchMode = "metrics-match-mode-self-monitoring-operator-manager"
-	metricsMatchModeSelfMonitoringCollector       metricsMatchMode = "metrics-match-mode-self-monitoring-collector"
-	metricsMatchModeMatchAll                      metricsMatchMode = "metrics-match-mode-match-all"
-)
-
-type metricNameList string
-
-const (
-	kubeletStatsReceiverMetricNameList metricNameList = "kubelet-stats-receiver"
-	k8sClusterReceiverMetricNameList   metricNameList = "k8s-cluster-receiver"
-	prometheusReceiverMetricNameList   metricNameList = "prometheus-receiver"
-)
-
 const (
 	otlpSinkChartPath   = "test/e2e/otlp-sink/helm-chart"
 	otlpSinkReleaseName = "otlp-sink"
 
 	otlpSinkNamespace = "otlp-sink"
-
-	// common telemetry-matcher query parameters
-	queryParamExpectationMode        = "expectation-mode"
-	queryParamRuntime                = "runtime"
-	queryParamRuntimeWorkloadName    = "runtime-workload-name"
-	queryParamWorkloadType           = "workload-type"
-	queryParamTimestampLowerBoundStr = "timestamp-lower-bound"
-	queryParamClusterName            = "cluster"
-
-	// query parameters for matching spans
-	queryParamCheckResourceAttributes = "check-resource-attributes"
-	queryParamRoute                   = "route"
-	queryParamQuery                   = "query"
-	queryParamTarget                  = "target"
-
-	// query parameters for matching logs
-	queryParamLogsResourceMatcherMode = "logs-resource-matcher"
-	queryParamOperatorNamespace       = "operator-namespace"
-	queryParamServiceVersion          = "service-version"
-	queryParamLogBodyEquals           = "log-body-equals"
-	queryParamLogBodyContains         = "log-body-contains"
-
-	// query parameters for matching metrics
-	queryParamMetricsMatchMode            = "metrics-match-mode"
-	queryParamDeploymentName              = "deployment-name"
-	queryParamExpectPodUid                = "expect-pod-uid"
-	queryParamFailOnNamespaceOtherThan    = "fail-on-namespace-other-than"
-	queryParamFailOnNamespaceScopedMetric = "fail-on-namespace-scoped-metric"
-	queryParamMetricNameList              = "metric-name-list"
 )
-
-type ExpectationResult struct {
-	Success     bool   `json:"success"`
-	Description string `json:"description,omitempty"`
-}
 
 var (
 	telemetryMatcherBaseUrl    = "http://localhost:8002"

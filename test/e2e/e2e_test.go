@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	gomegaformat "github.com/onsi/gomega/format"
 
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 	"github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -281,7 +282,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					Eventually(func(g Gomega) {
 						verifyAtLeastOneSelfMonitoringLogRecord(
 							g,
-							logResourceMatcherSelfMonitoringLogsOperatorManager,
+							shared.LogResourceMatcherSelfMonitoringLogsOperatorManager,
 							"",
 							operatorStartupTimeLowerBound,
 							"operator manager configuration:",
@@ -295,7 +296,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					Eventually(func(g Gomega) {
 						verifyAtLeastOneSelfMonitoringLogRecord(
 							g,
-							logResourceMatcherSelfMonitoringLogsCollector,
+							shared.LogResourceMatcherSelfMonitoringLogsCollector,
 							"",
 							operatorStartupTimeLowerBound,
 							collectorReadyLogMessage,
@@ -1180,7 +1181,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				By("now searching collected spans for health checks...")
 				askTelemetryMatcherForMatchingSpans(
 					Default,
-					expectAtLeastOne,
+					shared.ExpectAtLeastOne,
 					runtimeTypeNodeJs,
 					workloadTypeDeployment,
 					false,
@@ -1247,7 +1248,7 @@ traces:
 				By("now searching collected spans for health checks...")
 				askTelemetryMatcherForMatchingSpans(
 					Default,
-					expectNoMatches,
+					shared.ExpectNoMatches,
 					runtimeTypeNodeJs,
 					workloadTypeDeployment,
 					false,
@@ -1345,7 +1346,7 @@ trace_statements:
 					truncatedQuery := query[0:10]
 					askTelemetryMatcherForMatchingSpans(
 						g,
-						expectAtLeastOne,
+						shared.ExpectAtLeastOne,
 						runtimeTypeNodeJs,
 						workloadTypeDeployment,
 						false,

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 )
 
 type namespaceChecks struct {
@@ -59,56 +61,56 @@ var (
 func verifyKubeletStatsMetrics(g Gomega, timestampLowerBound time.Time) {
 	askTelemetryMatcherForMatchingMetrics(
 		g,
-		expectAtLeastOne,
-		metricsMatchModeWorkload,
+		shared.ExpectAtLeastOne,
+		shared.MetricsMatchModeWorkload,
 		deploymentMetricsMatchConfig,
 		deploymentMetricsMatchConfig.namespaceChecks,
 		timestampLowerBound,
-		kubeletStatsReceiverMetricNameList,
+		shared.KubeletStatsReceiverMetricNameList,
 	)
 }
 
 func verifyK8skClusterReceiverMetrics(g Gomega, timestampLowerBound time.Time) {
 	askTelemetryMatcherForMatchingMetrics(
 		g,
-		expectAtLeastOne,
-		metricsMatchModeWorkload,
+		shared.ExpectAtLeastOne,
+		shared.MetricsMatchModeWorkload,
 		workloadMetricsMatchConfig,
 		workloadMetricsMatchConfig.namespaceChecks,
 		timestampLowerBound,
-		k8sClusterReceiverMetricNameList,
+		shared.K8sClusterReceiverMetricNameList,
 	)
 }
 
 func verifyPrometheusMetrics(g Gomega, timestampLowerBound time.Time) {
 	askTelemetryMatcherForMatchingMetrics(
 		g,
-		expectAtLeastOne,
-		metricsMatchModeWorkload,
+		shared.ExpectAtLeastOne,
+		shared.MetricsMatchModeWorkload,
 		deploymentMetricsMatchConfig,
 		deploymentMetricsMatchConfig.namespaceChecks,
 		timestampLowerBound,
-		prometheusReceiverMetricNameList,
+		shared.PrometheusReceiverMetricNameList,
 	)
 }
 
 func verifyNonNamespaceScopedKubeletStatsMetricsOnly(g Gomega, timestampLowerBound time.Time) {
 	askTelemetryMatcherForMatchingMetrics(
 		g,
-		expectAtLeastOne,
-		metricsMatchModeWorkload,
+		shared.ExpectAtLeastOne,
+		shared.MetricsMatchModeWorkload,
 		nodeMetricsMatchConfig,
 		nodeMetricsMatchConfig.namespaceChecks,
 		timestampLowerBound,
-		kubeletStatsReceiverMetricNameList,
+		shared.KubeletStatsReceiverMetricNameList,
 	)
 }
 
 func verifyOperatorSelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time) {
 	askTelemetryMatcherForMatchingMetrics(
 		g,
-		expectAtLeastOne,
-		metricsMatchModeSelfMonitoringOperatorManager,
+		shared.ExpectAtLeastOne,
+		shared.MetricsMatchModeSelfMonitoringOperatorManager,
 		metricsResourceMatchConfig{},
 		// This test runs with the same timestampLowerBound as other tests ("should produce node-based metrics via the
 		// kubeletstats receiver", "should produce cluster metrics via the k8s_cluster receiver", "should produce
@@ -124,8 +126,8 @@ func verifyOperatorSelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time
 func verifyCollectorSelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time) {
 	askTelemetryMatcherForMatchingMetrics(
 		g,
-		expectAtLeastOne,
-		metricsMatchModeSelfMonitoringCollector,
+		shared.ExpectAtLeastOne,
+		shared.MetricsMatchModeSelfMonitoringCollector,
 		metricsResourceMatchConfig{},
 		// This test runs with the same timestampLowerBound as other tests ("should produce node-based metrics via the
 		// kubeletstats receiver", "should produce cluster metrics via the k8s_cluster receiver", "should produce
@@ -141,8 +143,8 @@ func verifyCollectorSelfMonitoringMetrics(g Gomega, timestampLowerBound time.Tim
 func verifyNoMetricsAtAll(g Gomega, timestampLowerBound time.Time) {
 	askTelemetryMatcherForMatchingMetrics(
 		g,
-		expectNoMatches,
-		metricsMatchModeMatchAll,
+		shared.ExpectNoMatches,
+		shared.MetricsMatchModeMatchAll,
 		matchAllConfig,
 		matchAllConfig.namespaceChecks,
 		timestampLowerBound,
@@ -154,12 +156,12 @@ func verifyNoMetricsAtAll(g Gomega, timestampLowerBound time.Time) {
 // telemetry captured in otlp-sink for a metric matching the given criteria.
 func askTelemetryMatcherForMatchingMetrics(
 	g Gomega,
-	expectationMode expectationMode,
-	metricsMatchMode metricsMatchMode,
+	expectationMode shared.ExpectationMode,
+	metricsMatchMode shared.MetricsMatchMode,
 	metricsMatchConfig metricsResourceMatchConfig,
 	namespaceChecks namespaceChecks,
 	timestampLowerBound time.Time,
-	metricNameList metricNameList,
+	metricNameList shared.MetricNameList,
 ) {
 	updateTelemetryMatcherUrlForKind()
 	requestUrl := compileTelemetryMatcherUrlForMetrics(
@@ -174,33 +176,36 @@ func askTelemetryMatcherForMatchingMetrics(
 }
 
 func compileTelemetryMatcherUrlForMetrics(
-	expectationMode expectationMode,
-	metricsMatchMode metricsMatchMode,
+	expectationMode shared.ExpectationMode,
+	metricsMatchMode shared.MetricsMatchMode,
 	metricsMatchConfig metricsResourceMatchConfig,
 	namespaceChecks namespaceChecks,
 	timestampLowerBound time.Time,
-	metricNameList metricNameList,
+	metricNameList shared.MetricNameList,
 ) string {
 	baseUrl := fmt.Sprintf("%s/matching-metrics", telemetryMatcherBaseUrl)
 	params := url.Values{}
-	params.Add(queryParamExpectationMode, string(expectationMode))
-	params.Add(queryParamMetricsMatchMode, string(metricsMatchMode))
+	params.Add(shared.QueryParamExpectationMode, string(expectationMode))
+	params.Add(shared.QueryParamMetricsMatchMode, string(metricsMatchMode))
 	if metricsMatchConfig.expectedDeploymentName != "" {
-		params.Add(queryParamDeploymentName, metricsMatchConfig.expectedDeploymentName)
+		params.Add(shared.QueryParamDeploymentName, metricsMatchConfig.expectedDeploymentName)
 	}
-	params.Add(queryParamExpectPodUid, strconv.FormatBool(metricsMatchConfig.expectPodUid))
+	params.Add(shared.QueryParamExpectPodUid, strconv.FormatBool(metricsMatchConfig.expectPodUid))
 	if namespaceChecks.failOnNamespaceOtherThan != "" {
-		params.Add(queryParamFailOnNamespaceOtherThan, namespaceChecks.failOnNamespaceOtherThan)
+		params.Add(shared.QueryParamFailOnNamespaceOtherThan, namespaceChecks.failOnNamespaceOtherThan)
 	}
-	params.Add(queryParamFailOnNamespaceScopedMetric, strconv.FormatBool(namespaceChecks.failOnNamespaceScopedMetric))
+	params.Add(
+		shared.QueryParamFailOnNamespaceScopedMetric,
+		strconv.FormatBool(namespaceChecks.failOnNamespaceScopedMetric),
+	)
 	// Note: Using the name of the Kubernetes context as the cluster name match parameter works because we set this
 	// as the clusterName setting for the operator configuration resource when doing helm install or creating the
 	// operator configuration resource.
-	params.Add(queryParamClusterName, e2eKubernetesContext)
-	params.Add(queryParamOperatorNamespace, operatorNamespace)
-	params.Add(queryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
+	params.Add(shared.QueryParamClusterName, e2eKubernetesContext)
+	params.Add(shared.QueryParamOperatorNamespace, operatorNamespace)
+	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
 	if metricNameList != "" {
-		params.Add(queryParamMetricNameList, string(metricNameList))
+		params.Add(shared.QueryParamMetricNameList, string(metricNameList))
 	}
 	requestUrl := baseUrl + "?" + params.Encode()
 	return requestUrl

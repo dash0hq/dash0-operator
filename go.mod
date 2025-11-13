@@ -52,6 +52,7 @@ require (
 	github.com/brunoga/deep v1.2.5 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/dash0hq/dash0-operator/test/e2e/pkg/shared v0.0.0-00010101000000-000000000000 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/elastic/go-grok v0.3.1 // indirect
 	github.com/elastic/lunes v0.1.0 // indirect
@@ -161,3 +162,5 @@ require (
 )
 
 replace github.com/dash0hq/dash0-operator/images/pkg/common => ./images/pkg/common
+
+replace github.com/dash0hq/dash0-operator/test/e2e/pkg/shared => ./test/e2e/pkg/shared

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 )
 
 // verifySpans is meant to be polled in a gomega Eventually loop; it will send an HTTP request to the workload each time
@@ -35,7 +37,7 @@ func verifySpans(
 	}
 	askTelemetryMatcherForMatchingSpans(
 		g,
-		expectAtLeastOne,
+		shared.ExpectAtLeastOne,
 		runtime,
 		workloadType,
 		true,
@@ -64,7 +66,7 @@ func verifyNoSpans(
 	}
 	askTelemetryMatcherForMatchingSpans(
 		g,
-		expectNoMatches,
+		shared.ExpectNoMatches,
 		runtime,
 		workloadType,
 		false,
@@ -80,7 +82,7 @@ func verifyNoSpans(
 // telemetry captured in otlp-sink for a span matching the given criteria.
 func askTelemetryMatcherForMatchingSpans(
 	g Gomega,
-	expectationMode expectationMode,
+	expectationMode shared.ExpectationMode,
 	runtime runtimeType,
 	workloadType workloadType,
 	checkResourceAttributes bool,
@@ -106,7 +108,7 @@ func askTelemetryMatcherForMatchingSpans(
 }
 
 func compileTelemetryMatcherUrlForSpans(
-	expectationMode expectationMode,
+	expectationMode shared.ExpectationMode,
 	runtime runtimeType,
 	workloadType workloadType,
 	checkResourceAttributes bool,
@@ -118,34 +120,34 @@ func compileTelemetryMatcherUrlForSpans(
 ) string {
 	baseUrl := fmt.Sprintf("%s/matching-spans", telemetryMatcherBaseUrl)
 	params := url.Values{}
-	params.Add(queryParamExpectationMode, string(expectationMode))
+	params.Add(shared.QueryParamExpectationMode, string(expectationMode))
 	// e.g. "Node.js", "JVM", ".NET", ...
-	params.Add(queryParamRuntime, runtime.runtimeTypeLabel)
+	params.Add(shared.QueryParamRuntime, runtime.runtimeTypeLabel)
 	// e.g. "dash0-operator-nodejs-20-express-test", "dash0-operator-jvm-spring-boot-test", ...
-	params.Add(queryParamRuntimeWorkloadName, runtime.workloadName)
+	params.Add(shared.QueryParamRuntimeWorkloadName, runtime.workloadName)
 	// e.g. "deployment", "daemonset"
-	params.Add(queryParamWorkloadType, workloadType.workloadTypeString)
-	params.Add(queryParamRoute, route)
-	params.Add(queryParamQuery, query)
+	params.Add(shared.QueryParamWorkloadType, workloadType.workloadTypeString)
+	params.Add(shared.QueryParamRoute, route)
+	params.Add(shared.QueryParamQuery, query)
 	if target == "" {
 		// Usually, the expected target can be derived from expectedRoute and expectedQuery, which is why most test
 		// cases leave it empty so that this method derives it; but in some special test scenarios we let the test case
 		// specify it explicitly, for example for "truncates attributes when the transform is active".
 		if query != "" {
-			params.Add(queryParamTarget, fmt.Sprintf("%s?%s", route, query))
+			params.Add(shared.QueryParamTarget, fmt.Sprintf("%s?%s", route, query))
 		} else {
-			params.Add(queryParamTarget, route)
+			params.Add(shared.QueryParamTarget, route)
 		}
 	} else {
-		params.Add(queryParamTarget, target)
+		params.Add(shared.QueryParamTarget, target)
 	}
-	params.Add(queryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
-	params.Add(queryParamCheckResourceAttributes, strconv.FormatBool(checkResourceAttributes))
+	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
+	params.Add(shared.QueryParamCheckResourceAttributes, strconv.FormatBool(checkResourceAttributes))
 	if expectClusterName {
 		// Note: Using the name of the Kubernetes context as the cluster name match parameter works because we set this
 		// as the clusterName setting for the operator configuration resource when doing helm install or creating the
 		// operator configuration resource.
-		params.Add(queryParamClusterName, e2eKubernetesContext)
+		params.Add(shared.QueryParamClusterName, e2eKubernetesContext)
 	}
 	requestUrl := baseUrl + "?" + params.Encode()
 	return requestUrl
