@@ -20,7 +20,7 @@ const (
 )
 
 var (
-	telemetryMatcherBaseUrl    = "http://localhost:8002"
+	telemetryMatcherBaseUrl    = "http://localhost:8080/telemetry-matcher"
 	telemetryMatcherHttpClient *http.Client
 
 	telemetryMatcherImage ImageSpec
@@ -114,10 +114,4 @@ func uninstallOtlpSink(cleanupSteps *neccessaryCleanupSteps) {
 			"--wait",
 			"--ignore-not-found",
 		))).To(Succeed())
-}
-
-func updateTelemetryMatcherUrlForKind() {
-	if isKindCluster() {
-		telemetryMatcherBaseUrl = fmt.Sprintf("http://%s/telemetry-matcher", kindClusterIngressIp)
-	}
 }

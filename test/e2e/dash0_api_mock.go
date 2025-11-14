@@ -43,7 +43,7 @@ var (
 		dash0ApiMockServicePort,
 	)
 
-	dash0ApiMockServerExternalBaseUrl = "http://localhost:8001"
+	dash0ApiMockServerExternalBaseUrl = fmt.Sprintf("http://localhost:8080/dash0-api-mock")
 	dash0ApiMockServerHttpClient      *http.Client
 
 	dash0ApiMockImage ImageSpec
@@ -144,7 +144,11 @@ func fetchCapturedApiRequests(idx int, count int) []StoredRequest {
 }
 
 func getStoredApiRequests(g Gomega) *StoredRequests {
-	updateDash0ApiUrlForKind()
+	if !isKindCluster() {
+		// TODO Get rid of isKindCluster() here, either make the ingress port configurable or make the
+		// ingress-nginx-controller use port 8080 in between Docker Desktop as well.
+		dash0ApiMockServerExternalBaseUrl = fmt.Sprintf("http://localhost/dash0-api-mock")
+	}
 	fetchStoredRequestsUrl := fmt.Sprintf("%s/requests", dash0ApiMockServerExternalBaseUrl)
 	req, err := http.NewRequest(http.MethodGet, fetchStoredRequestsUrl, nil)
 	g.Expect(err).NotTo(HaveOccurred())
@@ -198,10 +202,4 @@ func cleanupStoredApiRequests() {
 			_ = res.Body.Close()
 		}()
 	}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
-}
-
-func updateDash0ApiUrlForKind() {
-	if isKindCluster() {
-		dash0ApiMockServerExternalBaseUrl = fmt.Sprintf("http://%s/dash0-api-mock", kindClusterIngressIp)
-	}
 }

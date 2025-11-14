@@ -16,7 +16,6 @@ import (
 var (
 	activeKubeCtxIsKindCluster *bool
 	kindClusterName            string
-	kindClusterIngressIp       string
 )
 
 func isKindCluster() bool {

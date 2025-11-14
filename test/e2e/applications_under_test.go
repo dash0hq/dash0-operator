@@ -20,57 +20,47 @@ const (
 var (
 	workloadTypeCronjob = workloadType{
 		workloadTypeString: "cronjob",
-		basePort:           1205,
 		isBatch:            true,
 	}
 	workloadTypeDaemonSet = workloadType{
 		workloadTypeString: "daemonset",
-		basePort:           1206,
 		isBatch:            false,
 	}
 	workloadTypeDeployment = workloadType{
 		workloadTypeString: "deployment",
 		isBatch:            false,
-		basePort:           1207,
 	}
 	workloadTypeJob = workloadType{
 		workloadTypeString: "job",
-		basePort:           1208,
 		isBatch:            true,
 	}
 	workloadTypePod = workloadType{
 		workloadTypeString: "pod",
-		basePort:           1211,
 		isBatch:            false,
 	}
 	workloadTypeReplicaSet = workloadType{
 		workloadTypeString: "replicaset",
-		basePort:           1209,
 		isBatch:            false,
 	}
 	workloadTypeStatefulSet = workloadType{
 		workloadTypeString: "statefulset",
-		basePort:           1210,
 		isBatch:            false,
 	}
 
 	runtimeTypeNodeJs = runtimeType{
 		runtimeTypeLabel: runtimeTypeLabelNodeJs,
-		portOffset:       0,
 		workloadName:     workloadNameNodeJs,
 		helmChartPath:    chartPathNodeJs,
 		helmReleaseName:  releaseNameNodeJs,
 	}
 	runtimeTypeJvm = runtimeType{
 		runtimeTypeLabel: runtimeTypeLabelJvm,
-		portOffset:       100,
 		workloadName:     workloadNameJvm,
 		helmChartPath:    chartPathJvm,
 		helmReleaseName:  releaseNameJvm,
 	}
 	runtimeTypeDotnet = runtimeType{
 		runtimeTypeLabel: runtimeTypeLabelDotnet,
-		portOffset:       200,
 		workloadName:     workloadNameDotnet,
 		helmChartPath:    chartPathDotnet,
 		helmReleaseName:  releaseNameDotnet,
