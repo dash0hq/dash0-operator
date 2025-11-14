@@ -43,7 +43,7 @@ spec:
             - name: otelcol-config
               mountPath: /etc/otelcol/config
               readOnly: true
-            - name: telemetry-file-export
+            - name: {{ .Values.telemetryFilesVolume.name }}
               mountPath: /telemetry
               readOnly: false
           livenessProbe:
@@ -89,7 +89,7 @@ spec:
               containerPort: {{ .Values.telemetryMatcher.port }}
               protocol: TCP
           volumeMounts:
-            - name: telemetry-file-export
+            - name: {{ .Values.telemetryFilesVolume.name }}
               mountPath: /telemetry
               readOnly: true
           readinessProbe:
@@ -120,10 +120,9 @@ spec:
             items:
               - key: config.yaml
                 path: config.yaml
-        - name: telemetry-file-export
-          hostPath:
-            type: DirectoryOrCreate
-            path: {{ .Values.collector.telemetryFileExportVolume.path }}
+
+        - {{- .Values.telemetryFilesVolume | toYaml | nindent 10 }}
+
       automountServiceAccountToken: false
       securityContext:
         runAsUser: 0

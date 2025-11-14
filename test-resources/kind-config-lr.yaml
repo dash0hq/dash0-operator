@@ -41,13 +41,9 @@ nodes:
     labels:
       nginx-ingress: "true"
     extraMounts:
-      - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/otlp-sink
-        containerPath: /tmp/telemetry
       - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/offset-storage
         containerPath: /offset-storage
   - role: worker
     extraMounts:
-      - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/otlp-sink
-        containerPath: /tmp/telemetry
       - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/offset-storage
         containerPath: /offset-storage

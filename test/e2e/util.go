@@ -57,6 +57,16 @@ type runtimeType struct {
 	helmReleaseName  string
 }
 
+// getProjectDir returns the repository's root directory
+func getProjectDir() (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return wd, err
+	}
+	wd = strings.Replace(wd, "/test/e2e", "", -1)
+	return wd, nil
+}
+
 func generateNewTestId(runtime runtimeType, workloadType workloadType) string {
 	testIdUuid := uuid.New()
 	testId := testIdUuid.String()

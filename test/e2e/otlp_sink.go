@@ -6,7 +6,6 @@ package e2e
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"os/exec"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -61,9 +60,7 @@ func rebuildTelemetryMatcherImage() {
 	loadImageToKindClusterIfRequired(telemetryMatcherImage, nil)
 }
 
-func deployOtlpSink(workingDir string, cleanupSteps *neccessaryCleanupSteps) {
-	createDirAndDeleteOldExportedTelemetry()
-
+func deployOtlpSink(cleanupSteps *neccessaryCleanupSteps) {
 	helmArgs := []string{"install",
 		"--namespace",
 		otlpSinkNamespace,
@@ -75,14 +72,6 @@ func deployOtlpSink(workingDir string, cleanupSteps *neccessaryCleanupSteps) {
 		otlpSinkChartPath,
 	}
 
-	if !isKindCluster() {
-		e2eTestExportDir := fmt.Sprintf(
-			"%s/test-resources/e2e/volumes/otlp-sink",
-			workingDir,
-		)
-		helmArgs =
-			append(helmArgs, "--set", fmt.Sprintf("collector.telemetryFileExportVolume.path=%s", e2eTestExportDir))
-	}
 	helmArgs = append(
 		helmArgs,
 		"--set",
@@ -100,18 +89,6 @@ func deployOtlpSink(workingDir string, cleanupSteps *neccessaryCleanupSteps) {
 	)
 	cleanupSteps.removeOtlpSink = true
 	Expect(runAndIgnoreOutput(exec.Command("helm", helmArgs...))).To(Succeed())
-}
-
-func createDirAndDeleteOldExportedTelemetry() {
-	_ = os.MkdirAll("test-resources/e2e/volumes/otlp-sink", 0755)
-	By("deleting old telemetry files")
-	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/traces.jsonl")
-	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/metrics.jsonl")
-	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/logs.jsonl")
-	By("creating telemetry dump files")
-	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/traces.jsonl")
-	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/metrics.jsonl")
-	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/logs.jsonl")
 }
 
 func uninstallOtlpSink(cleanupSteps *neccessaryCleanupSteps) {

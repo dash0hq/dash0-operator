@@ -336,19 +336,15 @@ The collected data can be found in `test-resources/e2e/logs`.
 It is often helpful to understand why the test case has failed.
 In addition, the data that the OpenTelemetry collectors emitted during the last test case can be reviewed in
 `test-resources/e2e/volumes/otlp-sink`, in `logs.jsonl`, `metrics.jsonl`, and `traces.jsonl` respectively.
+These files are located in the volume configured as `telemetryFilesVolume` in
+`test/e2e/otlp-sink/helm-chart/values.yaml`.
+(For systems that use a virtual machine to run containers like Docker Desktop on macOS, use
+`docker run -it --rm --privileged --pid=host justincormack/nsenter1` or a similar mechanism to get access.)
 
 #### Running End-to-End Tests on kind
 
 To use kind for running the end-to-end tests, you need to create a kind cluster first.
 The file <test-resources/kind-config.yaml> file can be used as a blueprint to create a cluster.
-
-Before creating the cluster, the two hostPath settings in `test-resources/kind-config.yaml` need to be aligned with your
-local file system structure.
-(Alternatively, create a symbolic link from
-`/Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/` to the actual path, see instructions in
-`test-resources/kind-config.yaml` for details).
-Also, make sure the path mentioned under `hostPath` is listed in Docker Desktop's settings under
-"Resources -> File sharing".
 
 Then execute the following command to create the cluster:
 
@@ -369,8 +365,8 @@ Then, start it (in a separate shell) with the following command and leave it run
 sudo cloud-provider-kind
 ```
 
-Last but not least, set `E2E_KUBECTX` in `test-resources/.env` to the name of the Kubernetes context that corresponds to
-your kind cluster (e.g. `kind-dash0-operator-playground`).
+Last but not least, set `E2E_KUBECTX` (for example in `test-resources/.env`) to the name of the Kubernetes context that
+corresponds to your kind cluster (e.g. `kind-dash0-operator-playground`).
 
 Optionally, once you are done, execute the following command to delete the cluster:
 
