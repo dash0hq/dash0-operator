@@ -1,6 +1,16 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+telemetryFilesVolume:
+  name: telemetry-files
+  # We could also use an emptyDir volume by default, but using a hostPath volume gives you a chance to look into the
+  # captured telemetry for troubleshooting purposes when a test case fails.
+  # The *.jsonl files are truncated by the file exporter at startup, so while the files remain on disk after the e2e
+  # test suite has finished, they are discarded at the next start (i.e. they will not grow indefinitely on disk).
+  hostPath:
+    path: /tmp/dash0-operator-e2e-test-captured-telemetry
+    type: DirectoryOrCreate
+
 collector:
   image:
     repository: otel/opentelemetry-collector-contrib
@@ -8,9 +18,6 @@ collector:
 
   grpcPort: 4317
   httpPort: 4318
-
-  telemetryFileExportVolume:
-    path: /tmp/telemetry
 
 telemetryMatcher:
   image:

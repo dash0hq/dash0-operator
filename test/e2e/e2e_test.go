@@ -31,8 +31,6 @@ const (
 )
 
 var (
-	workingDir string
-
 	stopPodCrashOrOOMKillDetection chan bool
 
 	cleanupSteps = neccessaryCleanupSteps{}
@@ -45,10 +43,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		// Do not truncate string diff output.
 		gomegaformat.MaxLength = 0
 
-		pwdOutput, err := run(exec.Command("pwd"), false)
-		Expect(err).NotTo(HaveOccurred())
-		workingDir = strings.TrimSpace(pwdOutput)
-		e2ePrint("workingDir: %s\n", workingDir)
+		// make sure the working dir for shell commands is the root of the repository
+		projectDir, err := getProjectDir()
+		Expect(err).ToNot(HaveOccurred())
+		e2ePrint("chdir: %s\n", projectDir)
+		Expect(os.Chdir(projectDir)).To(Succeed())
 
 		if _, err := os.Stat(dotEnvFile); err == nil {
 			Expect(godotenv.Load(dotEnvFile)).To(Succeed())
@@ -86,7 +85,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		determineTelemetryMatcherImage()
 		rebuildTelemetryMatcherImage()
 
-		deployOtlpSink(workingDir, &cleanupSteps)
+		deployOtlpSink(&cleanupSteps)
 		if isKindCluster() {
 			deployIngressController(&cleanupSteps)
 		}
