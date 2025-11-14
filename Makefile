@@ -261,7 +261,8 @@ PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
   test-app-image-jvm \
-  test-app-image-nodejs ## Build all test application container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+  test-app-image-nodejs \
+	test-app-image-python ## Build all test application container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 .PHONY: test-app-image-dotnet
 test-app-image-dotnet: ## Build the .NET test application.

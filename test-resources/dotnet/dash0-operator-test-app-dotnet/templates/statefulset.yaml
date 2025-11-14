@@ -23,7 +23,7 @@ spec:
         test.label/key: "label-value"
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "{{ .Values.statefulset.port }}"
+        prometheus.io/port: "{{ .Values.statefulset.targetPort }}"
         test.annotation/key: "annotation value"
     spec:
       terminationGracePeriodSeconds: 3
@@ -33,7 +33,7 @@ spec:
           env:
             - name: PORT
               # See https://opentelemetry.io/docs/zero-code/dotnet/instrumentations/#instrumentation-options
-              value: "{{ .Values.statefulset.port }}"
+              value: "{{ .Values.statefulset.targetPort }}"
             - name: OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_DISABLE_URL_QUERY_REDACTION
               value: "true"
             - name: OTEL_DOTNET_EXPERIMENTAL_ASPNET_DISABLE_URL_QUERY_REDACTION
@@ -41,14 +41,14 @@ spec:
             - name: OTEL_DOTNET_EXPERIMENTAL_HTTPCLIENT_DISABLE_URL_QUERY_REDACTION
               value: "true"
           ports:
-            - containerPort: {{ .Values.statefulset.port }}
+            - containerPort: {{ .Values.statefulset.targetPort }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           readinessProbe:
             httpGet:
               path: /ready
-              port: {{ .Values.statefulset.port }}
+              port: {{ .Values.statefulset.targetPort }}
             initialDelaySeconds: 1
             periodSeconds: 1
 {{- end }}

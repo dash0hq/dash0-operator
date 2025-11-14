@@ -23,7 +23,7 @@ spec:
         test.label/key: "label-value"
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "{{ .Values.deployment.port }}"
+        prometheus.io/port: "{{ .Values.deployment.targetPort }}"
         test.annotation/key: "annotation value"
     spec:
       containers:
@@ -31,18 +31,18 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           env:
             - name: PORT
-              value: "{{ .Values.deployment.port }}"
+              value: "{{ .Values.deployment.targetPort }}"
             # - name: CREATE_TARGET_INFO_METRIC
             #   value: "true"
           ports:
-            - containerPort: {{ .Values.deployment.port }}
+            - containerPort: {{ .Values.deployment.targetPort }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           readinessProbe:
             httpGet:
               path: /ready
-              port: {{ .Values.deployment.port }}
+              port: {{ .Values.deployment.targetPort }}
             initialDelaySeconds: 1
             periodSeconds: 1
           # For testing k8s.volume.* metrics with a volume:

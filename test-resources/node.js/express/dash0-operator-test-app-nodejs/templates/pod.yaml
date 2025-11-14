@@ -14,7 +14,7 @@ metadata:
     {{- end }}
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "{{ .Values.pod.port }}"
+    prometheus.io/port: "{{ .Values.pod.targetPort }}"
     test.annotation/key: "annotation value"
 spec:
   containers:
@@ -22,16 +22,16 @@ spec:
       image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
       env:
         - name: PORT
-          value: "{{ .Values.pod.port }}"
+          value: "{{ .Values.pod.targetPort }}"
       ports:
-        - containerPort: {{ .Values.pod.port }}
+        - containerPort: {{ .Values.pod.targetPort }}
       resources:
         {{- toYaml .Values.resources | nindent 8 }}
       imagePullPolicy: {{ .Values.image.pullPolicy }}
       readinessProbe:
         httpGet:
           path: /ready
-          port: {{ .Values.pod.port }}
+          port: {{ .Values.pod.targetPort }}
         initialDelaySeconds: 1
         periodSeconds: 1
 {{- end }}

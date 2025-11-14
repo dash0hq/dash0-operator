@@ -23,7 +23,7 @@ spec:
         test.label/key: "label-value"
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "{{ .Values.replicaset.port }}"
+        prometheus.io/port: "{{ .Values.replicaset.targetPort }}"
         test.annotation/key: "annotation value"
     spec:
       containers:
@@ -31,16 +31,16 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           env:
             - name: PORT
-              value: "{{ .Values.replicaset.port }}"
+              value: "{{ .Values.replicaset.targetPort }}"
           ports:
-            - containerPort: {{ .Values.replicaset.port }}
+            - containerPort: {{ .Values.replicaset.targetPort }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           readinessProbe:
             httpGet:
               path: /ready
-              port: {{ .Values.replicaset.port }}
+              port: {{ .Values.replicaset.targetPort }}
             initialDelaySeconds: 1
             periodSeconds: 1
 {{- end }}
