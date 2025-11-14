@@ -22,7 +22,7 @@ spec:
         test.label/key: "label-value"
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "{{ .Values.daemonset.port }}"
+        prometheus.io/port: "{{ .Values.daemonset.targetPort }}"
         test.annotation/key: "annotation value"
     spec:
       containers:
@@ -30,16 +30,16 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           env:
             - name: PORT
-              value: "{{ .Values.daemonset.port }}"
+              value: "{{ .Values.daemonset.targetPort }}"
           ports:
-            - containerPort: {{ .Values.daemonset.port }}
+            - containerPort: {{ .Values.daemonset.targetPort }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           readinessProbe:
             httpGet:
               path: /ready
-              port: {{ .Values.daemonset.port }}
+              port: {{ .Values.daemonset.targetPort }}
             initialDelaySeconds: 1
             periodSeconds: 1
 {{- end }}

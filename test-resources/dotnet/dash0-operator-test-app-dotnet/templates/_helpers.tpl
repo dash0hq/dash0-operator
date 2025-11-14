@@ -24,7 +24,7 @@ spec:
   ports:
     - port: {{ .port }}
       targetPort: {{ .targetPort }}
-  type: LoadBalancer
+  type: ClusterIP
 {{- end }}
 
 {{/*

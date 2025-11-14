@@ -15,6 +15,7 @@ project_root="$(dirname "${BASH_SOURCE[0]}")"/../../..
 
 # various other paths, relative to project_root
 scripts_bin="test-resources/bin"
+scripts_lib="test-resources/bin/lib"
 
 # local registry (note: these are currently not configurable to avoid the need for templating in kind-config.yaml)
 local_reg_name='kind-registry'

@@ -104,7 +104,7 @@ install_nginx_ingress() {
   if ! kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=5s; then
     echo "deploying ingress-nginx..."
     echo
-    kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
+    kubectl apply -k test-resources/nginx
     echo
     echo "waiting for ingress-nginx..."
     kubectl wait \
@@ -672,7 +672,7 @@ deploy_application_under_monitoring() {
       "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
       "test-app-jvm" \
       "${target_namespace}" \
-      "${kind}"
+      "${kind}" \
       "$test_app_jvm_image_repository" \
       "$test_app_jvm_image_tag" \
       "$test_app_jvm_image_pull_policy"
@@ -701,7 +701,7 @@ deploy_application_under_monitoring() {
       "test-resources/dotnet/dash0-operator-test-app-dotnet" \
       "test-app-dotnet" \
       "${target_namespace}" \
-      "${kind}"
+      "${kind}" \
       "$test_app_dotnet_image_repository" \
       "$test_app_dotnet_image_tag" \
       "$test_app_dotnet_image_pull_policy"

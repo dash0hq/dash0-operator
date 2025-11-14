@@ -31,6 +31,15 @@ nodes:
       - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/filelog-offsets
         containerPath: /offset-storage
   - role: worker
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 4443
+        protocol: TCP
+    labels:
+      nginx-ingress: "true"
     extraMounts:
       - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/otlp-sink
         containerPath: /tmp/telemetry
