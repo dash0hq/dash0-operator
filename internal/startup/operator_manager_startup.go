@@ -87,6 +87,7 @@ type commandLineArguments struct {
 	operatorConfigurationSelfMonitoringEnabled                            bool
 	operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
+	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationClusterName                                      string
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
@@ -259,6 +260,7 @@ func Start() {
 			//nolint:lll
 			KubernetesInfrastructureMetricsCollectionEnabled: cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
 			CollectPodLabelsAndAnnotationsEnabled:            cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
+			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 		}
 		if len(cliArgs.operatorConfigurationApiEndpoint) > 0 {
@@ -356,6 +358,12 @@ func defineCommandLineArguments() *commandLineArguments {
 		"operator-configuration-collect-pod-labels-and-annotations-enabled",
 		true,
 		"The value for collectPodLabelsAndAnnotations.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.")
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
+		"operator-configuration-prometheus-crd-support-enabled",
+		false,
+		"The value for prometheusCrdSupport.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.")
 	flag.StringVar(
 		&cliArgs.operatorConfigurationClusterName,

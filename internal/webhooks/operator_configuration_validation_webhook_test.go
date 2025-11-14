@@ -196,6 +196,25 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"collectPodLabelsAndAnnotations.enabled=false.")))
 	})
 
+	It("should reject a new operator configuration resource with telemetry collection disabled but Prometheus CRD support explicitly enabled", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(true),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)))
+	})
+
 	It("should reject a new operator configuration resource with a GRPC export having both insecure and insecureSkipVerify set to true", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
