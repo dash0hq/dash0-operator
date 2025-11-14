@@ -45,13 +45,11 @@ type neccessaryCleanupSteps struct {
 
 type workloadType struct {
 	workloadTypeString string
-	basePort           int
 	isBatch            bool
 }
 
 type runtimeType struct {
 	runtimeTypeLabel string
-	portOffset       int
 	workloadName     string
 	helmChartPath    string
 	helmReleaseName  string
@@ -98,7 +96,6 @@ func sendRequest(g Gomega, runtime runtimeType, workloadType workloadType, route
 		g,
 		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString,
-		getPort(runtime, workloadType),
 		httpPathWithQuery,
 		200,
 		"We make Observability easy for every developer.",
@@ -110,7 +107,6 @@ func sendReadyProbe(g Gomega, runtime runtimeType, workloadType workloadType) {
 		g,
 		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString,
-		getPort(runtime, workloadType),
 		"/ready",
 		204,
 		"",
@@ -121,21 +117,23 @@ func executeHttpRequest(
 	g Gomega,
 	runtimeTypeLabel string,
 	workloadTypeString string,
-	port int,
 	httpPathWithQuery string,
 	expectedStatus int,
 	expectedBody string,
 ) {
-	url := fmt.Sprintf("http://localhost:%d%s", port, httpPathWithQuery)
-	if isKindCluster() {
-		url = fmt.Sprintf(
-			"http://%s/%s/%s%s",
-			kindClusterIngressIp,
-			workloadTypeString,
-			strings.ToLower(runtimeTypeLabel),
-			httpPathWithQuery,
-		)
+	port := 8080
+	// TODO Get rid of isKindCluster() here, either make the ingress port configurable or make the
+	// ingress-nginx-controller use port 8080 in between Docker Desktop as well.
+	if !isKindCluster() {
+		port = 80
 	}
+	url := fmt.Sprintf(
+		"http://localhost:%d/%s/%s%s",
+		port,
+		workloadTypeString,
+		strings.ToLower(runtimeTypeLabel),
+		httpPathWithQuery,
+	)
 	httpClient := http.Client{
 		Timeout: 500 * time.Millisecond,
 	}
@@ -241,10 +239,6 @@ func executeTelemetryMatcherRequest(g Gomega, requestUrl string) {
 	} else {
 		g.Expect(expectationResult.Success).To(BeTrue())
 	}
-}
-
-func getPort(runtime runtimeType, workloadType workloadType) int {
-	return workloadType.basePort + runtime.portOffset
 }
 
 func testImageBuildsShouldBeSkipped() bool {

@@ -352,19 +352,6 @@ Then execute the following command to create the cluster:
 kind create cluster --name dash0-operator-playground --config test-resources/kind-config.yaml
 ```
 
-Also, the [Kubernetes Cloud Provider for KIND](https://github.com/kubernetes-sigs/cloud-provider-kind) needs to be
-running. Install it with the following commands:
-
-```
-go install sigs.k8s.io/cloud-provider-kind@latest
-sudo install ~/go/bin/cloud-provider-kind /usr/local/bin
-```
-
-Then, start it (in a separate shell) with the following command and leave it running:
-```
-sudo cloud-provider-kind
-```
-
 Last but not least, set `E2E_KUBECTX` (for example in `test-resources/.env`) to the name of the Kubernetes context that
 corresponds to your kind cluster (e.g. `kind-dash0-operator-playground`).
 
