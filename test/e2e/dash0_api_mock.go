@@ -70,19 +70,6 @@ func determineDash0ApiMockImage() {
 		)
 }
 
-func rebuildDash0ApiMockImage() {
-	if testImageBuildsShouldBeSkipped() {
-		e2ePrint("Skipping make dash0-api-mock-image (SKIP_TEST_APP_IMAGE_BUILDS=true)\n")
-		return
-	}
-	By(fmt.Sprintf("building the %v image", dash0ApiMockImage))
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command("make", "dash0-api-mock-image"))).To(Succeed())
-
-	loadImageToKindClusterIfRequired(dash0ApiMockImage, nil)
-}
-
 func installDash0ApiMock() {
 	helmArgs := []string{"install",
 		"--namespace",

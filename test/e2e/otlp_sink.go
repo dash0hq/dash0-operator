@@ -47,19 +47,6 @@ func determineTelemetryMatcherImage() {
 		)
 }
 
-func rebuildTelemetryMatcherImage() {
-	if testImageBuildsShouldBeSkipped() {
-		e2ePrint("Skipping make telemetry-matcher-image (SKIP_TEST_APP_IMAGE_BUILDS=true)\n")
-		return
-	}
-	By(fmt.Sprintf("building the %v image", telemetryMatcherImage))
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command("make", "telemetry-matcher-image"))).To(Succeed())
-
-	loadImageToKindClusterIfRequired(telemetryMatcherImage, nil)
-}
-
 func deployOtlpSink(cleanupSteps *neccessaryCleanupSteps) {
 	helmArgs := []string{"install",
 		"--namespace",

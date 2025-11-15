@@ -80,11 +80,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 		determineContainerImages()
 		determineTestAppImages()
-		rebuildAppUnderTestContainerImages()
 		determineDash0ApiMockImage()
-		rebuildDash0ApiMockImage()
 		determineTelemetryMatcherImage()
-		rebuildTelemetryMatcherImage()
 
 		deployOtlpSink(&cleanupSteps)
 		deployThirdPartyCrds(&cleanupSteps)
@@ -1475,14 +1472,12 @@ trace_statements:
 
 		Describe("operator startup", func() {
 			BeforeAll(func() {
-				// TODO building the images with alternative tags will not work when running the e2e tests against a
-				// cluster where images need to be pushed to a specific registry, we probably need to come up with an
-				// alternative solution for this test case.
 				Expect(
 					runAndIgnoreOutput(
 						exec.Command(
 							"make",
 							"images",
+							"push-images",
 							fmt.Sprintf("IMAGE_TAG=%s", updateTestAdditionalImageTag),
 						))).To(Succeed())
 			})

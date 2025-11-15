@@ -100,19 +100,6 @@ func determineTestAppImages() {
 		)
 }
 
-func rebuildAppUnderTestContainerImages() {
-	if testImageBuildsShouldBeSkipped() {
-		e2ePrint("Skipping make test-app-images (SKIP_TEST_APP_IMAGE_BUILDS=true)\n")
-		return
-	}
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"make",
-				"test-app-images",
-			))).To(Succeed())
-}
-
 //nolint:unparam
 func installNodeJsDaemonSet(namespace string) error {
 	return installTestAppWorkload(

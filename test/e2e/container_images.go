@@ -6,10 +6,6 @@ package e2e
 import (
 	"fmt"
 	"os"
-	"os/exec"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 type ImageSpec struct {
@@ -35,7 +31,7 @@ const (
 
 	defaultImageRepositoryPrefix = ""
 	defaultImageTag              = tagLatest
-	defaultPullPolicy            = "Never"
+	defaultPullPolicy            = "Always"
 )
 
 var (
@@ -163,30 +159,6 @@ func getEnvOrDefault(name string, defaultValue string) string {
 		return value
 	}
 	return defaultValue
-}
-
-func loadImageToKindClusterIfRequired(image ImageSpec, additionalTag *ImageSpec) {
-	if !isKindCluster() {
-		return
-	}
-
-	bothImages := []ImageSpec{image}
-	if additionalTag != nil {
-		bothImages = append(bothImages, *additionalTag)
-	}
-	for _, img := range bothImages {
-		By(fmt.Sprintf("loading the image %s into the kind cluster %s", renderFullyQualifiedImageName(img), kindClusterName))
-		err := runAndIgnoreOutput(
-			exec.Command(
-				"kind",
-				"load",
-				"docker-image",
-				"--name",
-				kindClusterName,
-				renderFullyQualifiedImageName(img),
-			))
-		Expect(err).ToNot(HaveOccurred())
-	}
 }
 
 func deriveAlternativeImagesForUpdateTest(images Images) Images {
