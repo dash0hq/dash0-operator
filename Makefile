@@ -263,12 +263,25 @@ lint: golangci-lint helm-chart-lint shellcheck-lint zig-fmt-check instrumentatio
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix zig-fmt
 
+##@ Building/Pushing Test App and Auxiliary Images
+
+PHONY: all-images
+all-images: \
+  images \
+  all-auxiliary-images ## Build all production and all auxiliary images (i.e. images that are used in test scripts and/or e2e tests. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+
+PHONY: all-auxiliary-images
+all-auxiliary-images: \
+  test-app-images \
+  dash0-api-mock-image \
+  telemetry-matcher-image ## Build all auxiliary images that are used in test scripts and/or e2e tests, that is, test applications, dash0-api-mock, telemetry-matcher etc. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+
 PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
   test-app-image-jvm \
   test-app-image-nodejs \
-	test-app-image-python ## Build all test application container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+  test-app-image-python ## Build all test application container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 .PHONY: test-app-image-dotnet
 test-app-image-dotnet: ## Build the .NET test application.
@@ -294,7 +307,49 @@ dash0-api-mock-image: ## Build the Dash0 API mock container image, which is used
 telemetry-matcher-image: ## Build the telemetry-matcher container image, which is used in end-to-end tests.
 	@$(call build_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG),test/e2e,test/e2e/otlp-sink/telemetrymatcher/Dockerfile)
 
-##@ Build
+PHONY: push-all-images
+push-all-images: \
+  push-images \
+  push-all-auxiliary-images ## Push all production and all auxiliary images (i.e. images that are used in test scripts and/or e2e tests.
+
+PHONY: push-all-auxiliary-images
+push-all-auxiliary-images: \
+  push-test-app-images \
+  push-dash0-api-mock-image \
+  push-telemetry-matcher-image ## Push all auxiliary images that are used in test scripts and/or e2e tests, that is, test applications, dash0-api-mock, telemetry-matcher etc.
+
+PHONY: push-test-app-images
+push-test-app-images: \
+  push-test-app-image-dotnet \
+  push-test-app-image-jvm \
+  push-test-app-image-nodejs \
+  push-test-app-image-python ## Push all test application container images.
+
+.PHONY: push-test-app-image-dotnet
+push-test-app-image-dotnet: ## Push the .NET test app image.
+	@$(call push_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG))
+
+.PHONY: push-test-app-image-jvm
+push-test-app-image-jvm: ## Push the JVM test app image.
+	@$(call push_container_image,$(TEST_APP_JVM_IMAGE_REPOSITORY),$(TEST_APP_JVM_IMAGE_TAG))
+
+.PHONY: push-test-app-image-nodejs
+push-test-app-image-nodejs: ## Push the Node.js test app image.
+	@$(call push_container_image,$(TEST_APP_NODEJS_IMAGE_REPOSITORY),$(TEST_APP_NODEJS_IMAGE_TAG))
+
+.PHONY: push-test-app-image-python
+push-test-app-image-python: ## Push the Python test app image.
+	@$(call push_container_image,$(TEST_APP_PYTHON_IMAGE_REPOSITORY),$(TEST_APP_PYTHON_IMAGE_TAG))
+
+.PHONY: push-dash0-api-mock-image
+push-dash0-api-mock-image: ## Push the Dash0 API mock container image.
+	@$(call push_container_image,$(DASH0_API_MOCK_IMAGE_REPOSITORY),$(DASH0_API_MOCK_IMAGE_TAG))
+
+.PHONY: push-telemetry-matcher-image
+push-telemetry-matcher-image: ## Push the telemetry-matcher container image.
+	@$(call push_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG))
+
+##@ Build Production Code and Production Images
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
