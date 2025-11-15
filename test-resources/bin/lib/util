@@ -619,8 +619,8 @@ deploy_application_under_monitoring() {
   runtime_under_test="${1:-nodejs}"
   echo "STEP $step_counter: deploy application under monitoring ($runtime_under_test)"
   if [[ "${runtime_under_test:-}" = "nodejs" ]]; then
-    build_test_application test-resources/node.js/express "$test_app_nodejs_image_repository"
-    push_test_application_image "$test_app_nodejs_image_repository"
+    build_test_application test-app-image-nodejs
+    push_test_application_image push-test-app-image-nodejs
     helm_install_test_application \
       test-resources/node.js/express/dash0-operator-test-app-nodejs \
       test-app-nodejs \
@@ -648,8 +648,8 @@ deploy_application_under_monitoring() {
         "$test_app_nodejs_image_pull_policy"
     fi
   elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
-    build_test_application test-resources/jvm/spring-boot "$test_app_jvm_image_repository"
-    push_test_application_image "$test_app_jvm_image_repository"
+    build_test_application test-app-image-jvm
+    push_test_application_image push-test-app-image-jvm
     helm_install_test_application \
       "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
       "test-app-jvm" \
@@ -677,8 +677,8 @@ deploy_application_under_monitoring() {
         "$test_app_jvm_image_pull_policy"
     fi
   elif [[ "${runtime_under_test:-}" = "dotnet" ]]; then
-    build_test_application test-resources/dotnet "$test_app_dotnet_image_repository"
-    push_test_application_image "$test_app_dotnet_image_repository"
+    build_test_application test-app-image-dotnet
+    push_test_application_image push-test-app-image-dotnet
     helm_install_test_application \
       "test-resources/dotnet/dash0-operator-test-app-dotnet" \
       "test-app-dotnet" \
@@ -706,8 +706,8 @@ deploy_application_under_monitoring() {
         "$test_app_dotnet_image_pull_policy"
     fi
   elif [[ "${runtime_under_test:-}" = "python" ]]; then
-    build_test_application test-resources/python/flask "$test_app_python_image_repository"
-    push_test_application_image "$test_app_python_image_repository"
+    build_test_application test-app-image-python
+    push_test_application_image push-test-app-image-python
     helm_install_test_application \
       "test-resources/python/flask/dash0-operator-test-app-python" \
       "test-app-python" \
@@ -747,13 +747,14 @@ build_test_application() {
     return
   fi
 
-  local app_path="$1"
-  local image_name="$2"
-
-  pushd "$app_path" > /dev/null
-  echo "building container image for application under monitoring ($image_name)"
-  docker build . -t "$image_name"
-  popd > /dev/null
+  local make_rule="$1"
+  TEST_APP_DOTNET_IMAGE_REPOSITORY="$test_app_dotnet_image_repository" \
+    TEST_APP_DOTNET_IMAGE_TAG="$test_app_dotnet_image_tag" \
+    TEST_APP_JVM_IMAGE_REPOSITORY="$test_app_jvm_image_repository" \
+    TEST_APP_JVM_IMAGE_TAG="$test_app_jvm_image_tag" \
+    TEST_APP_NODEJS_IMAGE_REPOSITORY="$test_app_nodejs_image_repository" \
+    TEST_APP_NODEJS_IMAGE_TAG="$test_app_nodejs_image_tag" \
+    make "$make_rule"
 }
 
 push_test_application_image() {
@@ -761,11 +762,14 @@ push_test_application_image() {
     return
   fi
 
-  local image_name="$1"
-  local image_tag="${2:-latest}"
-
-  echo "pushing test app image [name=$image_name, tag=$image_tag]..."
-  docker push "$image_name:$image_tag"
+  local make_rule="$1"
+  TEST_APP_DOTNET_IMAGE_REPOSITORY="$test_app_dotnet_image_repository" \
+    TEST_APP_DOTNET_IMAGE_TAG="$test_app_dotnet_image_tag" \
+    TEST_APP_JVM_IMAGE_REPOSITORY="$test_app_jvm_image_repository" \
+    TEST_APP_JVM_IMAGE_TAG="$test_app_jvm_image_tag" \
+    TEST_APP_NODEJS_IMAGE_REPOSITORY="$test_app_nodejs_image_repository" \
+    TEST_APP_NODEJS_IMAGE_TAG="$test_app_nodejs_image_tag" \
+    make "$make_rule"
 }
 
 helm_install_test_application() {
