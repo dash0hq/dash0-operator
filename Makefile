@@ -152,8 +152,11 @@ injector-unit-tests: zig-installed ## Run the Zig unit tests for the Dash0 injec
 helm-unit-tests: ## Run the Helm chart unit tests.
 	cd helm-chart/dash0-operator && helm unittest -f 'tests/**/*.yaml' .
 
+.PHONY: build-all-test-e2e
+build-all-test-e2e: all-images test-e2e ## Builds (but does not push) all container images, then runs the end-to-end tests.
+
 .PHONY: build-all-push-all-test-e2e
-build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and pushes all container images, then run the end-to-end tests.
+build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and pushes all container images, then runs the end-to-end tests.
 
 # Invoking ginkgo via go run makes sure we use the version from go.mod and not a version installed globally, which
 # would be used when simply running `ginkgo -v test/e2e`. An alternative would be to invoke ginkgo via go test, that
