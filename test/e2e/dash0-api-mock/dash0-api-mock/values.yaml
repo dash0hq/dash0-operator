@@ -4,7 +4,7 @@
 image:
   repository: dash0-api-mock
   tag: latest
-  pullPolicy: Never
+  pullPolicy: Always
 
 port: 8001
 

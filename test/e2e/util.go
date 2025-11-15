@@ -241,10 +241,6 @@ func executeTelemetryMatcherRequest(g Gomega, requestUrl string) {
 	}
 }
 
-func testImageBuildsShouldBeSkipped() bool {
-	return os.Getenv("SKIP_TEST_APP_IMAGE_BUILDS") == "true"
-}
-
 func initTemplateOnce(tpl *template.Template, source string, name string) *template.Template {
 	if tpl == nil {
 		tpl =

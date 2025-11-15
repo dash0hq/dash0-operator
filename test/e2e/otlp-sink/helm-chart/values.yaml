@@ -23,6 +23,6 @@ telemetryMatcher:
   image:
     repository: telemetry-matcher
     tag: latest
-    pullPolicy: Never
+    pullPolicy: Always
 
   port: 8002

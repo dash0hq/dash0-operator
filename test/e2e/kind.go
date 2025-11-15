@@ -15,7 +15,6 @@ import (
 
 var (
 	activeKubeCtxIsKindCluster *bool
-	kindClusterName            string
 )
 
 func isKindCluster() bool {
@@ -43,7 +42,6 @@ func isKindCluster() bool {
 	Expect(err).NotTo(HaveOccurred())
 	for _, clusterName := range getNonEmptyLines(kindClusters) {
 		if kubernetesContext == fmt.Sprintf("kind-%s", clusterName) {
-			kindClusterName = clusterName
 			activeKubeCtxIsKindCluster = ptr.To(true)
 			break
 		}
