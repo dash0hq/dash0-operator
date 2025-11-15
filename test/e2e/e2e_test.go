@@ -72,6 +72,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 		checkIfRequiredPortsAreBlocked()
 
+		ensureNginxIngressControllerIsInstalled(&cleanupSteps)
 		ensureMetricsServerIsInstalled(&cleanupSteps)
 
 		recreateNamespace(applicationUnderTestNamespace)
@@ -86,9 +87,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		rebuildTelemetryMatcherImage()
 
 		deployOtlpSink(&cleanupSteps)
-		if isKindCluster() {
-			deployIngressController(&cleanupSteps)
-		}
 		deployThirdPartyCrds(&cleanupSteps)
 
 		stopPodCrashOrOOMKillDetection = failOnPodCrashOrOOMKill(&cleanupSteps)
