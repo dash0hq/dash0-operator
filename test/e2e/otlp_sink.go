@@ -20,8 +20,8 @@ const (
 )
 
 var (
-	telemetryMatcherBaseUrl    = "http://localhost:8080/telemetry-matcher"
 	telemetryMatcherHttpClient *http.Client
+	telemetryMatcherBaseUrl    string
 
 	telemetryMatcherImage ImageSpec
 )
@@ -31,6 +31,10 @@ func init() {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.DisableKeepAlives = true
 	telemetryMatcherHttpClient = &http.Client{Transport: t}
+}
+
+func determineTelemetryMatcherUrl(port string) {
+	telemetryMatcherBaseUrl = fmt.Sprintf("http://localhost:%s/telemetry-matcher", port)
 }
 
 func determineTelemetryMatcherImage() {
