@@ -22,6 +22,8 @@ const (
 	applicationPathDotnet  = "test-resources/dotnet"
 	workloadNameDotnet     = "dash0-operator-dotnet-test"
 	releaseNameDotnet      = "test-app-dotnet"
+
+	defaultIngressPort = "8080"
 )
 
 var (

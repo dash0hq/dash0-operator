@@ -82,6 +82,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		determineTestAppImages()
 		determineDash0ApiMockImage()
 		determineTelemetryMatcherImage()
+		determineUrls()
 
 		deployOtlpSink(&cleanupSteps)
 		deployThirdPartyCrds(&cleanupSteps)
@@ -1898,4 +1899,14 @@ func cleanupAll() {
 	}
 	undeployOperator(operatorNamespace)
 	uninstallOtlpSink(&cleanupSteps)
+}
+
+func determineUrls() {
+	port := defaultIngressPort
+	if portEnvVarValue := os.Getenv("INGRESS_PORT"); portEnvVarValue != "" {
+		port = portEnvVarValue
+	}
+	determineTestAppBaseUrl(port)
+	determineTelemetryMatcherUrl(port)
+	determineDash0ApiMockBaseUrl(port)
 }

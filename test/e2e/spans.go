@@ -92,11 +92,6 @@ func askTelemetryMatcherForMatchingSpans(
 	query string,
 	target string,
 ) {
-	if !isKindCluster() {
-		// TODO Get rid of isKindCluster() here, either make the ingress port configurable or make the
-		// ingress-nginx-controller use port 8080 in between Docker Desktop as well.
-		telemetryMatcherBaseUrl = fmt.Sprintf("http://localhost/telemetry-matcher")
-	}
 	requestUrl := compileTelemetryMatcherUrlForSpans(
 		expectationMode,
 		runtime,

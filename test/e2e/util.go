@@ -27,7 +27,12 @@ import (
 var (
 	verboseHttp          bool
 	e2eKubernetesContext string
+	testAppBaseUrl       string
 )
+
+func determineTestAppBaseUrl(port string) {
+	testAppBaseUrl = fmt.Sprintf("http://localhost:%s", port)
+}
 
 func e2ePrint(format string, a ...any) {
 	fmt.Fprintf(GinkgoWriter, "%v: "+format, slices.Concat([]interface{}{time.Now()}, a)...)
@@ -92,7 +97,7 @@ func workloadName(runtime runtimeType, workloadType workloadType) string {
 
 func sendRequest(g Gomega, runtime runtimeType, workloadType workloadType, route string, query string) {
 	httpPathWithQuery := fmt.Sprintf("%s?%s", route, query)
-	executeHttpRequest(
+	executeTestAppHttpRequest(
 		g,
 		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString,
@@ -103,7 +108,7 @@ func sendRequest(g Gomega, runtime runtimeType, workloadType workloadType, route
 }
 
 func sendReadyProbe(g Gomega, runtime runtimeType, workloadType workloadType) {
-	executeHttpRequest(
+	executeTestAppHttpRequest(
 		g,
 		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString,
@@ -113,7 +118,7 @@ func sendReadyProbe(g Gomega, runtime runtimeType, workloadType workloadType) {
 	)
 }
 
-func executeHttpRequest(
+func executeTestAppHttpRequest(
 	g Gomega,
 	runtimeTypeLabel string,
 	workloadTypeString string,
@@ -121,15 +126,9 @@ func executeHttpRequest(
 	expectedStatus int,
 	expectedBody string,
 ) {
-	port := 8080
-	// TODO Get rid of isKindCluster() here, either make the ingress port configurable or make the
-	// ingress-nginx-controller use port 8080 in between Docker Desktop as well.
-	if !isKindCluster() {
-		port = 80
-	}
 	url := fmt.Sprintf(
-		"http://localhost:%d/%s/%s%s",
-		port,
+		"%s/%s/%s%s",
+		testAppBaseUrl,
 		workloadTypeString,
 		strings.ToLower(runtimeTypeLabel),
 		httpPathWithQuery,
