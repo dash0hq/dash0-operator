@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package e2e
+package main
 
 import (
 	"fmt"
+	"log"
 
-	. "github.com/onsi/gomega"
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 )
 
 // MatchResultList collects match results for a collection of potentially matching objects.
@@ -28,22 +29,23 @@ func (mrl *MatchResultList[R, O]) addResultForObject(matchResult ObjectMatchResu
 	mrl.objectResults = append(mrl.objectResults, matchResult)
 }
 
-func (mrl *MatchResultList[R, O]) hasMatch(g Gomega) bool {
+func (mrl *MatchResultList[R, O]) hasMatch() bool {
 	for _, omr := range mrl.objectResults {
-		if omr.isMatch(g) {
+		if omr.isMatch() {
 			return true
 		}
 	}
 	return false
 }
 
-func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string) {
+func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(message string) shared.ExpectationResult {
 	var bestMatchScoreSoFar float32 = 0
 	bestMatches := make([]ObjectMatchResult[R, O], 0)
 	for _, omr := range mrl.objectResults {
-		if omr.isMatch(g) {
+		if omr.isMatch() {
 			// We have a match, simply return from the function.
-			return
+			return shared.NewSuccess()
+
 		} else {
 			matchScore := omr.matchScore()
 			if matchScore > bestMatchScoreSoFar {
@@ -54,8 +56,8 @@ func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string
 			}
 		}
 	}
-	// We didn't find a match the rest of the method is about presenting the most likely matches.
 
+	// We didn't find a match the rest of the method is about presenting the most likely matches.
 	bestMatchesAsString := ""
 	for i, omr := range bestMatches {
 		bestMatchesAsString += fmt.Sprintf("\n--------\n%v", omr)
@@ -63,7 +65,6 @@ func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string
 			break
 		}
 	}
-	foundMatchingSpan := false
 	var description string
 	if len(mrl.objectResults) > 0 && len(bestMatches) > 0 {
 		description = fmt.Sprintf(
@@ -89,31 +90,37 @@ func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string
 			message,
 		)
 	}
-	g.Expect(foundMatchingSpan).To(BeTrue(), description)
+	return shared.NewFailureWithDescription(description)
 }
 
-func (mrl *MatchResultList[R, O]) expectExactlyOneMatch(g Gomega, message string) {
-	mrl.expectAtLeastOneMatch(g, message)
-	numberOfMatches := mrl.numberOfMatches(g)
-	g.Expect(numberOfMatches).To(Equal(1),
-		fmt.Sprintf(
-			"%s -- expected exactly one matching object but there were %d matching objects",
-			message,
-			numberOfMatches,
-		),
-	)
+func (mrl *MatchResultList[R, O]) expectExactlyOneMatch(message string) shared.ExpectationResult {
+	atLeastOneResult := mrl.expectAtLeastOneMatch(message)
+	if !atLeastOneResult.Success {
+		return atLeastOneResult
+	}
+
+	numberOfMatches := mrl.numberOfMatches()
+	if numberOfMatches == 1 {
+		return shared.NewSuccess()
+	}
+	return shared.NewFailureWithDescription(fmt.Sprintf(
+		"%s -- expected exactly one matching object but there were actually %d matching objects",
+		message,
+		numberOfMatches,
+	))
 }
 
-func (mrl *MatchResultList[R, O]) expectZeroMatches(g Gomega, message string) {
+func (mrl *MatchResultList[R, O]) expectZeroMatches(message string) shared.ExpectationResult {
 	matchingResults := make([]ObjectMatchResult[R, O], 0)
 	for _, omr := range mrl.objectResults {
-		if omr.isMatch(g) {
+		if omr.isMatch() {
 			matchingResults = append(matchingResults, omr)
 		}
 	}
-	if len(matchingResults) > 0 {
-		g.Expect(len(matchingResults)).To(
-			BeZero(),
+	if len(matchingResults) == 0 {
+		return shared.NewSuccess()
+	} else {
+		return shared.NewFailureWithDescription(
 			fmt.Sprintf(
 				"%s -- expected no matching objects but found %d matches, here is an arbitrary matching result:\n%s",
 				message,
@@ -124,10 +131,10 @@ func (mrl *MatchResultList[R, O]) expectZeroMatches(g Gomega, message string) {
 	}
 }
 
-func (mrl *MatchResultList[R, O]) numberOfMatches(g Gomega) int {
+func (mrl *MatchResultList[R, O]) numberOfMatches() int {
 	numMatches := 0
 	for _, omr := range mrl.objectResults {
-		if omr.isMatch(g) {
+		if omr.isMatch() {
 			numMatches++
 		}
 	}
@@ -190,13 +197,15 @@ func (omr *ObjectMatchResult[R, O]) addFailedAssertion(id string, message string
 	omr.assertionOutcomes = append(omr.assertionOutcomes, newAssertionOutcome(id, assertionFailed, message))
 }
 
-//nolint:unused
 func (omr *ObjectMatchResult[R, O]) addSkippedAssertion(id string, message string) {
 	omr.assertionOutcomes = append(omr.assertionOutcomes, newAssertionOutcome(id, assertionSkipped, message))
 }
 
-func (omr *ObjectMatchResult[R, O]) isMatch(g Gomega) bool {
-	g.Expect(omr.assertionOutcomes).ToNot(BeEmpty())
+func (omr *ObjectMatchResult[R, O]) isMatch() bool {
+	if len(omr.assertionOutcomes) == 0 {
+		log.Printf("warning: isMatch called with empty assertion outcomes list")
+		return false
+	}
 	for _, assertionOutcome := range omr.assertionOutcomes {
 		if !assertionOutcome.ok() {
 			return false

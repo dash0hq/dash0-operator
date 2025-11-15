@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 apiVersion: v2
-name: dash0-api-mock
-description: A Helm chart for the Dash0 API mock service
+name: otlp-sink
+description: An OpenTelemetry collector that writes the received telemetry to disk, and makes it available for searching
 type: application
 version: 1.0.0

@@ -14,8 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
-	"go.opentelemetry.io/collector/pdata/plog"
-	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/startup"
@@ -24,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	gomegaformat "github.com/onsi/gomega/format"
 
+	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 	"github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -32,8 +31,6 @@ const (
 )
 
 var (
-	workingDir string
-
 	stopPodCrashOrOOMKillDetection chan bool
 
 	cleanupSteps = neccessaryCleanupSteps{}
@@ -46,10 +43,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		// Do not truncate string diff output.
 		gomegaformat.MaxLength = 0
 
-		pwdOutput, err := run(exec.Command("pwd"), false)
-		Expect(err).NotTo(HaveOccurred())
-		workingDir = strings.TrimSpace(pwdOutput)
-		e2ePrint("workingDir: %s\n", workingDir)
+		// make sure the working dir for shell commands is the root of the repository
+		projectDir, err := getProjectDir()
+		Expect(err).ToNot(HaveOccurred())
+		e2ePrint("chdir: %s\n", projectDir)
+		Expect(os.Chdir(projectDir)).To(Succeed())
 
 		if _, err := os.Stat(dotEnvFile); err == nil {
 			Expect(godotenv.Load(dotEnvFile)).To(Succeed())
@@ -78,16 +76,16 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 		recreateNamespace(applicationUnderTestNamespace)
 		cleanupSteps.removeTestApplicationNamespace = true
-		recreateNamespace(dash0ApiMockNamespace)
-		cleanupSteps.removeApiMockNamespace = true
 
 		determineContainerImages()
 		determineTestAppImages()
-		determineDash0ApiMockImage()
 		rebuildAppUnderTestContainerImages()
+		determineDash0ApiMockImage()
 		rebuildDash0ApiMockImage()
+		determineTelemetryMatcherImage()
+		rebuildTelemetryMatcherImage()
 
-		deployOtlpSink(workingDir, &cleanupSteps)
+		deployOtlpSink(&cleanupSteps)
 		if isKindCluster() {
 			deployIngressController(&cleanupSteps)
 		}
@@ -107,15 +105,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		if cleanupSteps.stopOOMDetection {
 			stopPodCrashOrOOMKillDetection <- true
 		}
-		uninstallOtlpSink(workingDir, &cleanupSteps)
+		uninstallOtlpSink(&cleanupSteps)
 		undeployNginxIngressController(&cleanupSteps)
 
 		if cleanupSteps.removeTestApplicationNamespace {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
-		}
-		if cleanupSteps.removeApiMockNamespace {
-			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", dash0ApiMockNamespace))
 		}
 		uninstallMetricsServerIfApplicable(&cleanupSteps)
 
@@ -284,22 +279,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				It("has operator manager logs", func() {
 					By("checking for the log record from the operator manager start")
 					Eventually(func(g Gomega) {
-						verifyAtLeastOneLogRecord(
+						verifyAtLeastOneSelfMonitoringLogRecord(
 							g,
-							selfMonitoringLogsResourceMatcherOperatorManager(images.operator.tag),
-							func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
-								expectedLogBody := "operator manager configuration:"
-								logBody := logRecord.Body().AsString()
-								if logBody == expectedLogBody {
-									matchResult.addPassedAssertion(logBodyKey)
-								} else {
-									matchResult.addFailedAssertion(
-										logBodyKey,
-										fmt.Sprintf("expected %s but it was %s", expectedLogBody, logBody),
-									)
-								}
-							},
+							shared.LogResourceMatcherSelfMonitoringLogsOperatorManager,
+							"",
 							operatorStartupTimeLowerBound,
+							"operator manager configuration:",
+							"",
 						)
 					}, 15*time.Second, pollingInterval).Should(Succeed())
 				})
@@ -307,21 +293,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				It("has collector logs", func() {
 					By("checking for a log record from the collector")
 					Eventually(func(g Gomega) {
-						verifyAtLeastOneLogRecord(
+						verifyAtLeastOneSelfMonitoringLogRecord(
 							g,
-							selfMonitoringLogsResourceMatcherCollector,
-							func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
-								logBody := logRecord.Body().AsString()
-								if logBody == collectorReadyLogMessage {
-									matchResult.addPassedAssertion(logBodyKey)
-								} else {
-									matchResult.addFailedAssertion(
-										logBodyKey,
-										fmt.Sprintf("expected %s but it was %s", collectorReadyLogMessage, logBody),
-									)
-								}
-							},
+							shared.LogResourceMatcherSelfMonitoringLogsCollector,
+							"",
 							operatorStartupTimeLowerBound,
+							collectorReadyLogMessage,
+							"",
 						)
 					}, 45*time.Second, pollingInterval).Should(Succeed())
 				})
@@ -368,19 +346,21 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						fmt.Sprintf("id=%s", testId),
 					)
 
+					expectedLogMessagePart := fmt.Sprintf("processing request %s", testId)
 					By(
 						fmt.Sprintf(
-							"waiting for a log message with body \"processing request %s\" to appear after min timestamp %v",
-							testId,
+							"waiting for a log message with body \"%s\" to appear after min timestamp %v",
+							expectedLogMessagePart,
 							timestampLowerBound,
 						))
 					Eventually(func(g Gomega) {
-						verifyExactlyOneLogRecord(
+						verifyExactlyOneWorkloadLogRecord(
 							g,
 							runtimeTypeNodeJs,
 							workloadTypeDeployment,
-							testId,
 							timestampLowerBound,
+							"",
+							expectedLogMessagePart,
 						)
 					}, 1*time.Minute, pollingInterval).Should(Succeed())
 
@@ -401,12 +381,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 					By("verifying that the previous log message is not reported again (checking for 30 seconds)")
 					Consistently(func(g Gomega) {
-						verifyExactlyOneLogRecord(
+						verifyExactlyOneWorkloadLogRecord(
 							g,
 							runtimeTypeNodeJs,
 							workloadTypeDeployment,
-							testId,
 							timestampLowerBound,
+							"",
+							expectedLogMessagePart,
 						)
 					}, 30*time.Second, pollingInterval).Should(Succeed())
 				})
@@ -1108,7 +1089,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 	Describe("without an existing operator deployment", func() {
 
-		Describe("collect basic metrics without having a Dash0 monitoring resource ", func() {
+		Describe("collect basic metrics without having a Dash0 monitoring resource", func() {
 
 			var timestampLowerBound time.Time
 
@@ -1197,14 +1178,18 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
 				By("Node.js deployment: matching spans have been received")
 				By("now searching collected spans for health checks...")
-				matchResults := fileHasMatchingSpan(
+				askTelemetryMatcherForMatchingSpans(
 					Default,
-					nil,
-					matchHttpServerSpanWithHttpTarget("/ready", ""),
+					shared.ExpectAtLeastOne,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					false,
+					false,
 					timestampLowerBound,
+					"/ready",
+					"", // health check spans have no query parameter
+					"",
 				)
-				matchResults.expectAtLeastOneMatch(
-					Default, "Node.js deployment: expected to find /ready check spans")
 			})
 
 			It("does not emit health check spans when filter is active", func() {
@@ -1260,14 +1245,18 @@ traces:
 				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
 				By("Node.js deployment: matching spans have been received")
 				By("now searching collected spans for health checks...")
-				matchResults := fileHasMatchingSpan(
+				askTelemetryMatcherForMatchingSpans(
 					Default,
-					nil,
-					matchHttpServerSpanWithHttpTarget("/ready", ""),
+					shared.ExpectNoMatches,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					false,
+					false,
 					timestampLowerBound,
+					"/ready",
+					"", // health check spans have no query parameter
+					"",
 				)
-				matchResults.expectZeroMatches(
-					Default, "Node.js deployment: expected to find no /ready check spans")
 			})
 		})
 
@@ -1346,64 +1335,28 @@ trace_statements:
 				Eventually(func(g Gomega) {
 					route := testEndpoint
 					query := fmt.Sprintf("id=%s", testId)
+
+					// send an HTTP request using the full URL and query
 					sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, route, query)
-					resourceMatchFn :=
-						workloadSpansResourceMatcher(runtimeTypeNodeJs, workloadTypeDeployment, false)
-					spanMatchFn := func(span ptrace.Span, matchResult *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]) {
-						if span.Kind() == ptrace.SpanKindServer {
-							matchResult.addPassedAssertion(spanKindKey)
-						} else {
-							matchResult.addFailedAssertion(
-								spanKindKey,
-								fmt.Sprintf("expected a server span, this span has kind \"%s\"", span.Kind().String()),
-							)
-						}
 
-						truncatedRoute := route[0:10]
-						truncatedQuery := query[0:10]
-
-						target, hasTarget := span.Attributes().Get(httpTargetAttrib)
-						route, hasRoute := span.Attributes().Get(httpRouteAttrib)
-						query, hasQuery := span.Attributes().Get(urlQueryAttrib)
-						if hasTarget {
-							if target.Str() == truncatedRoute {
-								matchResult.addPassedAssertion(httpTargetAttrib)
-							} else {
-								matchResult.addFailedAssertion(
-									httpTargetAttrib,
-									fmt.Sprintf("expected %s but it was %s", truncatedRoute, target.Str()),
-								)
-							}
-						} else if hasRoute && hasQuery {
-							if route.Str() == truncatedRoute && query.Str() == truncatedQuery {
-								matchResult.addPassedAssertion(httpRouteAttrib + " and " + urlQueryAttrib)
-							} else {
-								matchResult.addFailedAssertion(
-									httpRouteAttrib+" and "+urlQueryAttrib,
-									fmt.Sprintf("expected %s & %s but it was %s & %s", truncatedRoute, truncatedQuery, route.Str(), query.Str()),
-								)
-							}
-						} else {
-							matchResult.addFailedAssertion(
-								httpTargetAttrib+" or ("+httpRouteAttrib+" and "+urlQueryAttrib+")",
-								fmt.Sprintf(
-									"expected %s or (%s and %s) but the span had no such attributes",
-									truncatedRoute,
-									truncatedRoute,
-									truncatedQuery,
-								),
-							)
-						}
-					}
-					allMatchResults :=
-						fileHasMatchingSpan(
-							g,
-							resourceMatchFn,
-							spanMatchFn,
-							timestampLowerBound,
-						)
-					allMatchResults.expectAtLeastOneMatch(g,
-						"Node.js deployment: expected to find at least one matching HTTP server span with truncated attributes",
+					// check whether the produced span has been truncated according to the transformation rules which
+					// have been configured above
+					truncatedRoute := route[0:10]
+					truncatedQuery := query[0:10]
+					askTelemetryMatcherForMatchingSpans(
+						g,
+						shared.ExpectAtLeastOne,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						false,
+						false,
+						timestampLowerBound,
+						truncatedRoute,
+						truncatedQuery,
+						// This is the expected http.target attribute. Since the route "/dash0-k8s-operator-test" is
+						// already > 10 chars, so the target (which is route + query) will only contain the truncated
+						// route.
+						truncatedRoute,
 					)
 				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
 			})
@@ -1951,5 +1904,5 @@ func cleanupAll() {
 		_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace, "--ignore-not-found"))
 	}
 	undeployOperator(operatorNamespace)
-	uninstallOtlpSink(workingDir, &cleanupSteps)
+	uninstallOtlpSink(&cleanupSteps)
 }

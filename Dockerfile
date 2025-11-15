@@ -7,9 +7,11 @@ WORKDIR /workspace
 COPY go.mod go.mod
 COPY go.sum go.sum
 
-# This particular COPY needs to be executed before go mod download since it is referenced by a replace directive
-# in go.mod.
+# These particular COPY instructions need to be executed before go mod download since it is referenced by a replace
+# directive in go.mod.
 COPY images/pkg/common/ images/pkg/common/
+# Only used in test/e2e sources, not in production code.
+COPY test/e2e/pkg/shared test/e2e/pkg/shared
 
 # download dependencies before building and copying the sources, so that we don't need to re-download as much
 # and so that source changes do not invalidate the cached container image build layer

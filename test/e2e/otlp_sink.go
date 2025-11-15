@@ -5,113 +5,113 @@ package e2e
 
 import (
 	"fmt"
-	"log"
-	"os"
+	"net/http"
 	"os/exec"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-func deployOtlpSink(workingDir string, cleanupSteps *neccessaryCleanupSteps) {
+const (
+	otlpSinkChartPath   = "test/e2e/otlp-sink/helm-chart"
+	otlpSinkReleaseName = "otlp-sink"
 
-	createDirAndDeleteOldExportedTelemetry()
+	otlpSinkNamespace = "otlp-sink"
+)
 
-	originalManifest := fmt.Sprintf(
-		"%s/test-resources/otlp-sink/otlp-sink.yaml",
-		workingDir,
-	)
-	var e2eTestExportDir string
-	if !isKindCluster() {
-		e2eTestExportDir = fmt.Sprintf(
-			"%s/test-resources/e2e/volumes/otlp-sink",
-			workingDir,
+var (
+	telemetryMatcherBaseUrl    = "http://localhost:8080/telemetry-matcher"
+	telemetryMatcherHttpClient *http.Client
+
+	telemetryMatcherImage ImageSpec
+)
+
+func init() {
+	// disable keep-alive
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DisableKeepAlives = true
+	telemetryMatcherHttpClient = &http.Client{Transport: t}
+}
+
+func determineTelemetryMatcherImage() {
+	repositoryPrefix := getEnvOrDefault("TEST_IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix)
+	imageTag := getEnvOrDefault("TEST_IMAGE_TAG", defaultImageTag)
+	pullPolicy := getEnvOrDefault("TEST_IMAGE_PULL_POLICY", defaultPullPolicy)
+	telemetryMatcherImage =
+		determineContainerImage(
+			"TELEMETRY_MATCHER",
+			repositoryPrefix,
+			"telemetry-matcher",
+			imageTag,
+			pullPolicy,
 		)
+}
+
+func rebuildTelemetryMatcherImage() {
+	if testImageBuildsShouldBeSkipped() {
+		e2ePrint("Skipping make telemetry-matcher-image (SKIP_TEST_APP_IMAGE_BUILDS=true)\n")
+		return
 	}
-
-	tmpFile, err := os.CreateTemp(os.TempDir(), "otlp-sink-*.yaml")
-	if err != nil {
-		log.Fatalf("could not create temporary file to store the patched otlp-sink manifest: %v", err)
-	}
-	defer func() {
-		Expect(os.Remove(tmpFile.Name())).To(Succeed())
-	}()
-
-	Expect(func() error {
-		manifest, err := os.ReadFile(originalManifest)
-		if err != nil {
-			return fmt.Errorf("could not read otlp-sink manifest: %w", err)
-		}
-
-		if e2eTestExportDir != "" {
-			manifest = []byte(strings.ReplaceAll(string(manifest), "path: /tmp/telemetry", "path: "+e2eTestExportDir))
-		}
-		if err = os.WriteFile(tmpFile.Name(), manifest, 0644); err != nil {
-			return fmt.Errorf("could not write patched manifest to temporary file: %w", err)
-		}
-
-		return nil
-	}()).To(Succeed())
-
-	By("deploying otlp-sink")
+	By(fmt.Sprintf("building the %v image", telemetryMatcherImage))
 	Expect(
 		runAndIgnoreOutput(
-			exec.Command(
-				"kubectl",
-				"apply",
-				"-f",
-				tmpFile.Name(),
-			))).To(Succeed())
+			exec.Command("make", "telemetry-matcher-image"))).To(Succeed())
+
+	loadImageToKindClusterIfRequired(telemetryMatcherImage, nil)
+}
+
+func deployOtlpSink(cleanupSteps *neccessaryCleanupSteps) {
+	helmArgs := []string{"install",
+		"--namespace",
+		otlpSinkNamespace,
+		"--create-namespace",
+		"--wait",
+		"--timeout",
+		"60s",
+		otlpSinkReleaseName,
+		otlpSinkChartPath,
+	}
+
+	helmArgs = append(
+		helmArgs,
+		"--set",
+		fmt.Sprintf("telemetryMatcher.image.repository=%s", telemetryMatcherImage.repository),
+	)
+	helmArgs = append(
+		helmArgs,
+		"--set",
+		fmt.Sprintf("telemetryMatcher.image.tag=%s", telemetryMatcherImage.tag),
+	)
+	helmArgs = append(
+		helmArgs,
+		"--set",
+		fmt.Sprintf("telemetryMatcher.image.pullPolicy=%s", telemetryMatcherImage.pullPolicy),
+	)
 	cleanupSteps.removeOtlpSink = true
-
-	By("waiting for otlp-sink to become ready")
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command("kubectl",
-				"rollout",
-				"status",
-				"deployment",
-				"otlp-sink",
-				"--namespace",
-				"otlp-sink",
-				"--timeout",
-				"1m",
-			),
-		),
-	).To(Succeed())
+	Expect(runAndIgnoreOutput(exec.Command("helm", helmArgs...))).To(Succeed())
 }
 
-func createDirAndDeleteOldExportedTelemetry() {
-	_ = os.MkdirAll("test-resources/e2e/volumes/otlp-sink", 0755)
-	By("deleting old telemetry files")
-	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/traces.jsonl")
-	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/metrics.jsonl")
-	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/logs.jsonl")
-	By("creating telemetry dump files")
-	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/traces.jsonl")
-	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/metrics.jsonl")
-	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/logs.jsonl")
-}
-
-func uninstallOtlpSink(workingDir string, cleanupSteps *neccessaryCleanupSteps) {
+func uninstallOtlpSink(cleanupSteps *neccessaryCleanupSteps) {
 	if !cleanupSteps.removeOtlpSink {
 		return
 	}
 	By("removing otlp-sink")
-	originalManifest := fmt.Sprintf(
-		"%s/test-resources/otlp-sink/otlp-sink.yaml",
-		workingDir,
-	)
-
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"kubectl",
-				"delete",
-				"--ignore-not-found=true",
-				"-f",
-				originalManifest,
-				"--wait",
-			))).To(Succeed())
+	Expect(runAndIgnoreOutput(
+		exec.Command(
+			"helm",
+			"uninstall",
+			otlpSinkReleaseName,
+			"--namespace",
+			otlpSinkNamespace,
+			"--ignore-not-found",
+		))).To(Succeed())
+	Expect(runAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"delete",
+			"ns",
+			otlpSinkNamespace,
+			"--wait",
+			"--ignore-not-found",
+		))).To(Succeed())
 }

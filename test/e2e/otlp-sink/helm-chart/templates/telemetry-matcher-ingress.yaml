@@ -4,7 +4,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: dash0-api-mock-ingress
+  name: telemetry-matcher
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
@@ -12,10 +12,10 @@ spec:
   rules:
     - http:
         paths:
-          - path: /dash0-api-mock(/|$)(.*)
+          - path: /telemetry-matcher(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
               service:
-                name: dash0-api-mock-service
+                name: telemetry-matcher
                 port:
-                  number: {{ .Values.port }}
+                  number: {{ .Values.telemetryMatcher.port }}

@@ -5,7 +5,6 @@ package e2e
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -31,13 +30,6 @@ func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 		alwaysLogOutput = logCommandArgs[1]
 	} else {
 		alwaysLogOutput = false
-	}
-
-	dir, _ := getProjectDir()
-	cmd.Dir = dir
-
-	if err := os.Chdir(cmd.Dir); err != nil {
-		e2ePrint("chdir dir: %s\n", err)
 	}
 
 	command := strings.Join(cmd.Args, " ")
@@ -68,16 +60,6 @@ func getNonEmptyLines(output string) []string {
 	}
 
 	return res
-}
-
-// getProjectDir will return the directory where the project is
-func getProjectDir() (string, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return wd, err
-	}
-	wd = strings.Replace(wd, "/test/e2e", "", -1)
-	return wd, nil
 }
 
 func verifyCommandOutputContainsStrings(command *exec.Cmd, timeout time.Duration, needles ...string) {
