@@ -20,19 +20,16 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
 type OTelColResourceManager struct {
@@ -204,7 +201,7 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 	desiredResource client.Object,
 	logger *logr.Logger,
 ) (bool, bool, error) {
-	existingResource, err := m.createEmptyReceiverFor(desiredResource)
+	existingResource, err := resources.CreateEmptyReceiverFor(desiredResource)
 	if err != nil {
 		return false, false, err
 	}
@@ -228,26 +225,12 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 	}
 }
 
-func (m *OTelColResourceManager) createEmptyReceiverFor(desiredResource client.Object) (client.Object, error) {
-	objectKind := desiredResource.GetObjectKind()
-	gvk := schema.GroupVersionKind{
-		Group:   objectKind.GroupVersionKind().Group,
-		Version: objectKind.GroupVersionKind().Version,
-		Kind:    objectKind.GroupVersionKind().Kind,
-	}
-	runtimeObject, err := scheme.Scheme.New(gvk)
-	if err != nil {
-		return nil, err
-	}
-	return runtimeObject.(client.Object), nil
-}
-
 func (m *OTelColResourceManager) createResource(
 	ctx context.Context,
 	desiredResource client.Object,
 	logger *logr.Logger,
 ) error {
-	if err := m.setOwnerReference(desiredResource, logger); err != nil {
+	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
 		return err
 	}
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
@@ -271,7 +254,7 @@ func (m *OTelColResourceManager) updateResource(
 	desiredResource client.Object,
 	logger *logr.Logger,
 ) (bool, error) {
-	if err := m.setOwnerReference(desiredResource, logger); err != nil {
+	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
 		return false, err
 	}
 	// This will change the collector daemonset and collector deployment one more time after it has been created
@@ -317,27 +300,6 @@ func (m *OTelColResourceManager) updateResource(
 func isKnownIrrelevantPatch(patchResult *patch.PatchResult) bool {
 	patch := string(patchResult.Patch)
 	return slices.Contains(knownIrrelevantPatches, patch)
-}
-
-func (m *OTelColResourceManager) setOwnerReference(
-	object client.Object,
-	logger *logr.Logger,
-) error {
-	if object.GetNamespace() == "" {
-		// cluster scoped resources like ClusterRole and ClusterRoleBinding cannot have a namespace-scoped owner.
-		return nil
-	}
-	if err := controllerutil.SetControllerReference(&appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: m.operatorManagerDeployment.Namespace,
-			Name:      m.operatorManagerDeployment.Name,
-			UID:       m.operatorManagerDeployment.UID,
-		},
-	}, object, m.scheme); err != nil {
-		logger.Error(err, "cannot set owner reference on object")
-		return err
-	}
-	return nil
 }
 
 func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource client.Object, desiredResource client.Object) {

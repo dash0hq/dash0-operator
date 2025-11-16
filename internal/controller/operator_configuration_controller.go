@@ -19,6 +19,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -28,6 +29,7 @@ type OperatorConfigurationReconciler struct {
 	apiClients                  []ApiClient
 	authTokenClients            []selfmonitoringapiaccess.AuthTokenClient
 	collectorManager            *collectors.CollectorManager
+	targetAllocatorManager      *targetallocator.TargetAllocatorManager
 	pseudoClusterUid            types.UID
 	operatorDeploymentNamespace string
 	operatorDeploymentUID       types.UID
@@ -54,6 +56,7 @@ func NewOperatorConfigurationReconciler(
 	clientset *kubernetes.Clientset,
 	apiClients []ApiClient,
 	collectorManager *collectors.CollectorManager,
+	targetAllocatorManager *targetallocator.TargetAllocatorManager,
 	pseudoClusterUid types.UID,
 	operatorDeploymentNamespace string,
 	operatorDeploymentUID types.UID,
@@ -68,6 +71,7 @@ func NewOperatorConfigurationReconciler(
 		clientset:                   clientset,
 		apiClients:                  apiClients,
 		collectorManager:            collectorManager,
+		targetAllocatorManager:      targetAllocatorManager,
 		pseudoClusterUid:            pseudoClusterUid,
 		operatorDeploymentNamespace: operatorDeploymentNamespace,
 		operatorDeploymentUID:       operatorDeploymentUID,
@@ -152,6 +156,9 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 			return ctrl.Result{}, err
 		}
+		if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -216,6 +223,10 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	r.applyApiAccessSettings(ctx, operatorConfigurationResource, logger)
 
 	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
+		return ctrl.Result{}, err
+	}
+
+	if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -352,6 +363,21 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
+		return err
+	}
+	return nil
+}
+
+func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
+	ctx context.Context,
+	logger *logr.Logger,
+) error {
+	logger.Info("Reconciling OpenTelemetry target allocator.")
+	if _, err := r.targetAllocatorManager.ReconcileTargetAllocator(
+		ctx,
+		targetallocator.TriggeredByDash0ResourceReconcile,
+	); err != nil {
+		logger.Error(err, "Failed to reconcile the OpenTelemetry target-allocator, requeuing reconcile request.")
 		return err
 	}
 	return nil

@@ -83,8 +83,8 @@ type Dash0OperatorConfigurationSpec struct {
 	CollectPodLabelsAndAnnotations CollectPodLabelsAndAnnotations `json:"collectPodLabelsAndAnnotations,omitempty"`
 
 	// Settings for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig).
-	// This setting is optional, by default the operator will not scrape metrics endpoints described in
-	// Prometheus CRDs.
+	// This setting is optional and opt-in, by default the operator will not consider Prometheus CRDs when configuring
+	// the Prometheus receiver in the OpenTelemetry collectors.
 	// It is a validation error to set`telemetryCollection.enabled=false` and `prometheusCrdSupport.enabled=true` at
 	// the same time.
 	//

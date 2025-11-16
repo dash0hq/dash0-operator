@@ -556,6 +556,9 @@ run_helm() {
     if [[ "${KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED:-}" = "false" ]]; then
       helm_install_command+=" --set operator.kubernetesInfrastructureMetricsCollectionEnabled=false"
     fi
+    if [[ "${PROMETHEUS_CRD_SUPPORT_ENABLED:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.prometheusCrdSupportEnabled=true"
+    fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
@@ -807,9 +810,32 @@ helm_install_test_application() {
   $helm_install_command
 }
 
+helm_install_podinfo() {
+  helm install \
+    --namespace "$target_namespace" \
+    --values test-resources/podinfo/values.yaml \
+    podinfo \
+    oci://ghcr.io/stefanprodan/charts/podinfo
+}
+
 install_third_party_crds() {
   kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.2.0/config/crd/bases/perses.dev_persesdashboards.yaml
   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.86.2/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+  install_prometheus_crds
+}
+
+# todo: integrate with version check
+install_prometheus_crds() {
+  helm upgrade --install \
+    --namespace "$target_namespace" \
+    --set crds.alertmanagerconfigs.enabled=false \
+    --set crds.alertmanagers.enabled=false \
+    --set crds.prometheusagents.enabled=false \
+    --set crds.prometheuses.enabled=false \
+    --set crds.thanosrulers.enabled=false \
+    --set crds.prometheusrules.enabled=false \
+    prometheus-crds \
+    prometheus-community/prometheus-operator-crds
 }
 
 deploy_dash0_api_sync_resources() {
