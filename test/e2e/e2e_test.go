@@ -1472,17 +1472,6 @@ trace_statements:
 		})
 
 		Describe("operator startup", func() {
-			BeforeAll(func() {
-				Expect(
-					runAndIgnoreOutput(
-						exec.Command(
-							"make",
-							"images",
-							"push-images",
-							fmt.Sprintf("IMAGE_TAG=%s", updateTestAdditionalImageTag),
-						))).To(Succeed())
-			})
-
 			AfterAll(func() {
 				undeployOperator(operatorNamespace)
 			})
