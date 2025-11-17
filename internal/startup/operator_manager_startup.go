@@ -886,6 +886,7 @@ func startDash0Controllers(
 	collectorReconciler := collectors.NewCollectorReconciler(
 		k8sClient,
 		collectorManager,
+		envVars.operatorNamespace,
 		envVars.oTelCollectorNamePrefix,
 	)
 	if err := collectorReconciler.SetupWithManager(mgr); err != nil {

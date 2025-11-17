@@ -32,11 +32,13 @@ type CollectorReconciler struct {
 func NewCollectorReconciler(
 	k8sClient client.Client,
 	collectorManager *CollectorManager,
+	operatorNamespace string,
 	oTelCollectorNamePrefix string,
 ) *CollectorReconciler {
 	return &CollectorReconciler{
 		Client:                  k8sClient,
 		collectorManager:        collectorManager,
+		operatorNamespace:       operatorNamespace,
 		oTelCollectorNamePrefix: oTelCollectorNamePrefix,
 	}
 }
@@ -52,48 +54,55 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				otelcolresources.DeploymentCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
 				// Note: We are deliberately not watching the filelog receiver offsets ConfigMap, since it is updated
 				// frequently by the filelog offset sync container and does not require reconciliation.
-			})).
+			}, true)).
 		Watches(
 			&rbacv1.ClusterRole{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
 				otelcolresources.DaemonSetClusterRoleName(r.oTelCollectorNamePrefix),
 				otelcolresources.DeploymentClusterRoleName(r.oTelCollectorNamePrefix),
-			})).
+			}, false)).
 		Watches(
 			&rbacv1.ClusterRoleBinding{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
 				otelcolresources.DeploymentClusterRoleBindingName(r.oTelCollectorNamePrefix),
 				otelcolresources.DeploymentClusterRoleName(r.oTelCollectorNamePrefix),
-			})).
+			}, false)).
 		Watches(
 			&corev1.Service{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
 				otelcolresources.ServiceName(r.oTelCollectorNamePrefix),
-			})).
+			}, true)).
 		Watches(
 			&appsv1.DaemonSet{},
 			&handler.EnqueueRequestForObject{},
-			r.withNamePredicate([]string{
-				otelcolresources.DaemonSetName(r.oTelCollectorNamePrefix),
-			})).
+			builder.WithPredicates(
+				r.createNameFilterPredicate([]string{
+					otelcolresources.DaemonSetName(r.oTelCollectorNamePrefix),
+				}, true), generationOrLabelChangePredicate)).
 		Watches(
 			&appsv1.Deployment{},
 			&handler.EnqueueRequestForObject{},
-			r.withNamePredicate([]string{
-				otelcolresources.DeploymentName(r.oTelCollectorNamePrefix),
-			})).
+			builder.WithPredicates(
+				r.createNameFilterPredicate([]string{
+					otelcolresources.DeploymentName(r.oTelCollectorNamePrefix),
+				}, true), generationOrLabelChangePredicate)).
 		Complete(r)
 }
 
-func (r *CollectorReconciler) withNamePredicate(resourceNames []string) builder.Predicates {
-	return builder.WithPredicates(r.createFilterPredicate(resourceNames))
+var generationOrLabelChangePredicate = predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{})
+
+func (r *CollectorReconciler) withNamePredicate(resourceNames []string, namespaced bool) builder.Predicates {
+	return builder.WithPredicates(r.createNameFilterPredicate(resourceNames, namespaced))
 }
 
-func (r *CollectorReconciler) createFilterPredicate(resourceNames []string) predicate.Funcs {
-	resourceNamespace := r.operatorNamespace
+func (r *CollectorReconciler) createNameFilterPredicate(resourceNames []string, namespaced bool) predicate.Funcs {
+	resourceNamespace := ""
+	if namespaced {
+		resourceNamespace = r.operatorNamespace
+	}
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return resourceMatches(e.Object, resourceNamespace, resourceNames)
