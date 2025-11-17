@@ -202,15 +202,6 @@ tests:
             cpu: 5m
             memory: 32Mi
             ephemeral-storage: 123Mi
-        kubeRbacProxyContainerResources:
-          limits:
-            cpu: 234m
-            memory: 567Mi
-            ephemeral-storage: 890Mi
-          requests:
-            cpu: 6m
-            memory: 43Mi
-            ephemeral-storage: 234Mi
         managerPriorityClassName: operator-manager-priority-class
         developmentMode: true
         instrumentation:
@@ -461,24 +452,6 @@ tests:
           path: spec.template.spec.containers[0].resources.requests['ephemeral-storage']
           value: 123Mi
       - equal:
-          path: spec.template.spec.containers[1].resources.limits.cpu
-          value: 234m
-      - equal:
-          path: spec.template.spec.containers[1].resources.limits.memory
-          value: 567Mi
-      - equal:
-          path: spec.template.spec.containers[1].resources.limits['ephemeral-storage']
-          value: 890Mi
-      - equal:
-          path: spec.template.spec.containers[1].resources.requests.cpu
-          value: 6m
-      - equal:
-          path: spec.template.spec.containers[1].resources.requests.memory
-          value: 43Mi
-      - equal:
-          path: spec.template.spec.containers[1].resources.requests['ephemeral-storage']
-          value: 234Mi
-      - equal:
           path: spec.template.spec.priorityClassName
           value: operator-manager-priority-class
 
@@ -721,8 +694,6 @@ tests:
           digest: sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
         initContainerImage:
           digest: sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
-        kubeRbacProxyImage:
-          digest: sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
         collectorImage:
           digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
         configurationReloaderImage:
@@ -737,9 +708,6 @@ tests:
           value: ghcr.io/dash0hq/operator-controller@sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
       - notExists:
           path: spec.template.spec.containers[0].imagePullPolicy
-      - equal:
-          path: spec.template.spec.containers[1].image
-          value: quay.io/brancz/kube-rbac-proxy@sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
       - equal:
           path: spec.template.spec.containers[0].env[4].name
           value: DASH0_OPERATOR_IMAGE
@@ -822,8 +790,6 @@ tests:
           repository: customrepo.io/repo/custom-operator-controller
         initContainerImage:
           repository: customrepo.io/repo/custom-instrumentation
-        kubeRbacProxyImage:
-          repository: customrepo.io/repo/custom-kube-rbac-proxy
         collectorImage:
           repository: customrepo.io/repo/custom-collector
         configurationReloaderImage:
@@ -838,9 +804,6 @@ tests:
           value: customrepo.io/repo/custom-operator-controller:99.100.101
       - notExists:
           path: spec.template.spec.containers[0].imagePullPolicy
-      - equal:
-          path: spec.template.spec.containers[1].image
-          value: customrepo.io/repo/custom-kube-rbac-proxy:v0.20.0
       - equal:
           path: spec.template.spec.containers[0].env[4].name
           value: DASH0_OPERATOR_IMAGE
