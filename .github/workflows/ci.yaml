@@ -121,7 +121,7 @@ jobs:
   # meant for production use.
   build_and_push_images:
     name: Build Images
-    runs-on: ubuntu-latest
+    runs-on: 8core_32gb
     needs:
       - verify
       - injector_binary_and_instrumentation_image_tests
