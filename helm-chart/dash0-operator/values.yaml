@@ -88,6 +88,14 @@ operator:
   # resource will be created by the Helm chart then.
   collectPodLabelsAndAnnotationsEnabled: true
 
+  # An opt-in for enabling support for Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig). If set to true,
+  # the operator will deploy an OpenTelemetry target-allocator that watches Prometheus CRDs and provides an API that
+  # allows collectors to query the resulting scrape configs.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
+  # resource will be created by the Helm chart then.
+  prometheusCrdSupportEnabled: false
+
   # If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
   # optional. Per default, the resource attribute k8s.cluster.name will not be added.
   #

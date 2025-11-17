@@ -95,5 +95,9 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		spec.CollectPodLabelsAndAnnotations.Enabled = ptr.To(telemetryCollectionEnabled)
 		patchRequired = true
 	}
+	if spec.PrometheusCrdSupport.Enabled == nil {
+		spec.PrometheusCrdSupport.Enabled = ptr.To(false)
+		patchRequired = true
+	}
 	return patchRequired
 }

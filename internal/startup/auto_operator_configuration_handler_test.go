@@ -317,6 +317,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			SelfMonitoringEnabled: false,
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			CollectPodLabelsAndAnnotationsEnabled:            true,
+			PrometheusCrdSupportEnabled:                      false,
 		}, &logger)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -345,6 +346,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(*operatorConfiguration.Spec.SelfMonitoring.Enabled).To(BeFalse())
 			g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeTrue())
 			g.Expect(*operatorConfiguration.Spec.CollectPodLabelsAndAnnotations.Enabled).To(BeTrue())
+			g.Expect(*operatorConfiguration.Spec.PrometheusCrdSupport.Enabled).To(BeFalse())
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 		// Now call the handler a second time, simulating a new startup of the operator manager process, with different
@@ -358,6 +360,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 				SelfMonitoringEnabled: true,
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
 				CollectPodLabelsAndAnnotationsEnabled:            false,
+				PrometheusCrdSupportEnabled:                      true,
 			}, &logger)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -387,6 +390,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(*operatorConfiguration.Spec.SelfMonitoring.Enabled).To(BeTrue())
 			g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
 			g.Expect(*operatorConfiguration.Spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
+			g.Expect(*operatorConfiguration.Spec.PrometheusCrdSupport.Enabled).To(BeTrue())
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	})
 })

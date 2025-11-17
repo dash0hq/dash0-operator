@@ -99,8 +99,10 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 				CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-
 					Enabled: ptr.To(true),
+				},
+				PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+					Enabled: ptr.To(false),
 				},
 				TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 					Enabled: ptr.To(true),
@@ -127,6 +129,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(true),
 					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(false),
+					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: ptr.To(true),
 					},
@@ -149,6 +154,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
@@ -177,6 +185,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(false),
+					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: ptr.To(false),
 					},
@@ -195,6 +206,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(false),
+					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -205,6 +219,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
@@ -225,6 +242,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(false),
+					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: ptr.To(true),
 					},
@@ -238,6 +258,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
@@ -258,6 +281,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(true),
 					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(true),
+					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -268,6 +294,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(true),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(true),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
@@ -305,6 +334,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(true),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: ptr.To(false),

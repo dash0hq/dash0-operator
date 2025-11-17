@@ -55,6 +55,7 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 			SelfMonitoringEnabled: selfMonitoringEnabled,
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			CollectPodLabelsAndAnnotationsEnabled:            true,
+			PrometheusCrdSupportEnabled:                      false,
 		},
 		additionalHelmParameters,
 	)

@@ -304,7 +304,7 @@ func assembleDesiredState(
 	extraConfig util.ExtraConfig,
 	forDeletion bool,
 ) ([]clientObject, error) {
-	// Make sure the resulting objects (in particular the config maps) are do not depend on the (potentially non-stable)
+	// Make sure the resulting objects (in particular the config maps) do not depend on the (potentially non-stable)
 	// sort order of the input slices.
 	slices.Sort(monitoredNamespaces)
 	slices.Sort(namespacesWithLogCollection)

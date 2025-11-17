@@ -147,6 +147,7 @@ spec:
         - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
         - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
         - --operator-configuration-collect-pod-labels-and-annotations-enabled={{ .Values.operator.collectPodLabelsAndAnnotationsEnabled }}
+        - --operator-configuration-prometheus-crd-support-enabled={{ .Values.operator.prometheusCrdSupportEnabled }}
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
 {{- end }}{{/*closes "if .Values.operator.clusterName" */}}
@@ -173,6 +174,8 @@ spec:
         - name: DASH0_WEBHOOK_SERVICE_NAME
           value: {{ include "dash0-operator.webhookServiceName" . }}
         - name: OTEL_COLLECTOR_NAME_PREFIX
+          value: {{ .Release.Name | quote }}
+        - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
           value: {{ .Release.Name | quote }}
         - name: DASH0_OPERATOR_IMAGE
           value: {{ include "dash0-operator.image" . | quote }}

@@ -1,0 +1,30 @@
+# see https://github.com/stefanprodan/podinfo/blob/master/charts/podinfo/values.yaml for supported values
+
+replicaCount: 1
+logLevel: debug
+
+image:
+  repository: ghcr.io/stefanprodan/podinfo
+  tag: 6.9.2
+  pullPolicy: IfNotPresent
+
+service:
+  enabled: true
+  annotations: {}
+  type: ClusterIP
+  metricsPort: 9797
+  httpPort: 9898
+  grpcPort: 9999
+  grpcService: podinfo
+  nodePort: 31198
+
+hpa:
+  enabled: false
+
+ingress:
+  enabled: false
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  additionalLabels: {}

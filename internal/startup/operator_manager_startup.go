@@ -46,6 +46,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/postinstall"
 	"github.com/dash0hq/dash0-operator/internal/predelete"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
@@ -56,6 +58,7 @@ type environmentVariables struct {
 	deploymentName                              string
 	webhookServiceName                          string
 	oTelCollectorNamePrefix                     string
+	targetAllocatorNamePrefix                   string
 	operatorImage                               string
 	initContainerImage                          string
 	initContainerImagePullPolicy                corev1.PullPolicy
@@ -87,6 +90,7 @@ type commandLineArguments struct {
 	operatorConfigurationSelfMonitoringEnabled                            bool
 	operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
+	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationClusterName                                      string
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
@@ -104,6 +108,7 @@ const (
 	deploymentNameEnvVarName                              = "DASH0_DEPLOYMENT_NAME"
 	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
 	oTelCollectorNamePrefixEnvVarName                     = "OTEL_COLLECTOR_NAME_PREFIX"
+	targetAllocatorNamePrefixEnvVarName                   = "OTEL_TARGET_ALLOCATOR_NAME_PREFIX"
 	operatorImageEnvVarName                               = "DASH0_OPERATOR_IMAGE"
 	initContainerImageEnvVarName                          = "DASH0_INIT_CONTAINER_IMAGE"
 	initContainerImagePullPolicyEnvVarName                = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
@@ -259,6 +264,7 @@ func Start() {
 			//nolint:lll
 			KubernetesInfrastructureMetricsCollectionEnabled: cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
 			CollectPodLabelsAndAnnotationsEnabled:            cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
+			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 		}
 		if len(cliArgs.operatorConfigurationApiEndpoint) > 0 {
@@ -356,6 +362,12 @@ func defineCommandLineArguments() *commandLineArguments {
 		"operator-configuration-collect-pod-labels-and-annotations-enabled",
 		true,
 		"The value for collectPodLabelsAndAnnotations.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.")
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
+		"operator-configuration-prometheus-crd-support-enabled",
+		false,
+		"The value for prometheusCrdSupport.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.")
 	flag.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
@@ -503,6 +515,11 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
 	}
 
+	targetAllocatorNamePrefix, isSet := os.LookupEnv(targetAllocatorNamePrefixEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, targetAllocatorNamePrefixEnvVarName)
+	}
+
 	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
@@ -577,6 +594,7 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		deploymentName:                              deploymentName,
 		webhookServiceName:                          webhookServiceName,
 		oTelCollectorNamePrefix:                     oTelCollectorNamePrefix,
+		targetAllocatorNamePrefix:                   targetAllocatorNamePrefix,
 		operatorImage:                               operatorImage,
 		initContainerImage:                          initContainerImage,
 		initContainerImagePullPolicy:                initContainerImagePullPolicy,
@@ -893,6 +911,20 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the collector reconciler: %w", err)
 	}
 
+	targetAllocatorConfig := util.TargetAllocatorConfig{
+		Images:                    images,
+		OperatorNamespace:         envVars.operatorNamespace,
+		TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
+	}
+	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(k8sClient, mgr.GetScheme(), operatorDeploymentSelfReference, targetAllocatorConfig)
+	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
+		k8sClient, clientset, developmentMode, targetallocatorResourceManager,
+	)
+	targetAllocatorReconciler := targetallocator.NewTargetAllocatorReconciler(k8sClient, targetallocatorManager, envVars.operatorNamespace, envVars.targetAllocatorNamePrefix)
+	if err := targetAllocatorReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
+	}
+
 	clusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, &setupLog)
 	if err != nil {
 		return err
@@ -962,6 +994,7 @@ func startDash0Controllers(
 			prometheusRuleCrdReconciler,
 		},
 		collectorManager,
+		targetallocatorManager,
 		pseudoClusterUid,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,

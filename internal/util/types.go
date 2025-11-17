@@ -51,6 +51,17 @@ type CollectorConfig struct {
 	DevelopmentMode         bool
 	DebugVerbosityDetailed  bool
 }
+
+type TargetAllocatorConfig struct {
+	Images            Images
+	OperatorNamespace string
+	// TargetAllocatorNamePrefix is used as a prefix for OTel target-allocator Kubernetes resources created by the operator, set
+	// to value of the environment variable OTEL_TARGET_ALLOCATOR_NAME_PREFIX, which is set to the Helm release name by the
+	// operator Helm chart.
+	TargetAllocatorNamePrefix string
+	DevelopmentMode           bool
+}
+
 type Images struct {
 	OperatorImage                               string
 	InitContainerImage                          string

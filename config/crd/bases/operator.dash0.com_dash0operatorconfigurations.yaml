@@ -263,6 +263,22 @@ spec:
                   validation error to set `telemetryCollection.enabled=false` and
                   `kubernetesInfrastructureMetricsCollectionEnabledEnabled=true` at the same time.
                 type: boolean
+              prometheusCrdSupport:
+                description: |-
+                  Settings for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig).
+                  This setting is optional and opt-in, by default the operator will not consider Prometheus CRDs when configuring
+                  the Prometheus receiver in the OpenTelemetry collectors.
+                  It is a validation error to set`telemetryCollection.enabled=false` and `prometheusCrdSupport.enabled=true` at
+                  the same time.
+                properties:
+                  enabled:
+                    description: |-
+                      If enabled, the operator will add support for Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig) by
+                      deploying the OpenTelemetry target-allocator.
+                      It is a validation error to set`telemetryCollection.enabled=false` and `prometheusCrdSupport.enabled=true` at
+                      the same time.
+                    type: boolean
+                type: object
               selfMonitoring:
                 default:
                   enabled: true

@@ -369,6 +369,67 @@ rules:
   - get
   - list
   - watch
+# Permissions required due to the fact that the operator needs to create dedicated service accounts/cluster roles/
+# cluster role bindings for the OTel target-allocator and give it a set of permissions; which it can only
+# do if holds these permissions itself.
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - podmonitors
+  - probes
+  - prometheusrules
+  - scrapeconfigs
+  - servicemonitors
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "apps"
+  resources:
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups: 
+  - ""
+  resources:
+  - namespaces
+  - nodes
+  - nodes/metrics
+  - services
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
