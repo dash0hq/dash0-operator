@@ -39,3 +39,20 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           timeout_minutes: "60"
+          prompt: |
+            Review this PR and list only critical issues in these categories:
+
+            CORRECTNESS:
+              - [List issues that would cause errors, bugs or produce incorrect results]
+
+            PERFORMANCE:
+              - [List issues causing unnecessary resource usage or slow execution]
+
+            SECURITY:
+              - [List security vulnerabilities or exposure of sensitive data]
+
+            If no critical issues are found, provide a simple approval.
+
+            Sign off with a checkbox emoji (approved) or a red x emoji (issues found)
+
+            Do not include explanations, summaries, or general comments not related to issues.
