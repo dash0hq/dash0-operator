@@ -139,8 +139,6 @@ Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernete
 ```
 IMAGE_REPOSITORY_PREFIX="" \
   PULL_POLICY="Never" \
-  TEST_IMAGE_REPOSITORY_PREFIX="" \
-  TEST_IMAGE_PULL_POLICY="Never" \
   test-resources/bin/test-scenario-02-operator-cr-aum.sh
 ```
 
@@ -153,7 +151,6 @@ there to always have them set automatically instead of providing them with every
 **Quickstart for Kind with a [local container registry](#setting-up-a-kind-cluster-for-local-testing):**:
 ```
 IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
-  TEST_IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
   PUSH_BUILT_IMAGES=true \
   test-resources/bin/test-scenario-02-operator-cr-aum.sh
 ```
@@ -357,8 +354,6 @@ via `direnv` etc.).
 E2E_KUBECTX=docker-desktop \
   IMAGE_REPOSITORY_PREFIX="" \
   PULL_POLICY="Never" \
-  TEST_IMAGE_REPOSITORY_PREFIX="" \
-  TEST_IMAGE_PULL_POLICY="Never" \
   INGRESS_PORT=80 \
   make build-all-test-e2e
 ```
@@ -368,7 +363,6 @@ end-to-end tests on a kind cluster with a local registry, run
 ```
 E2E_KUBECTX=kind-dash0-operator-lab \
   IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
-  TEST_IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
   make build-all-push-all-test-e2e
 ```
 
@@ -384,8 +378,6 @@ The tests can also be run with images from any registry, like this:
 IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/ \
   IMAGE_TAG=main-dev \
   PULL_POLICY="" \
-  TEST_IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/ \
-  TEST_IMAGE_PULL_POLICY="" \
   make test-e2e
 ```
 

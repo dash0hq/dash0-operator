@@ -291,9 +291,9 @@ determine_pull_policy() {
 }
 
 determine_test_app_images() {
-  local image_repository_prefix=${TEST_IMAGE_REPOSITORY_PREFIX:-}
+  local image_repository_prefix=${TEST_IMAGE_REPOSITORY_PREFIX:-${IMAGE_REPOSITORY_PREFIX:-}}
   local image_tag=${TEST_IMAGE_TAG:-latest}
-  local pull_policy=${TEST_IMAGE_PULL_POLICY:-Always}
+  local pull_policy=${TEST_IMAGE_PULL_POLICY:-${PULL_POLICY:-Always}}
 
   test_app_dotnet_image_repository="${image_repository_prefix}dash0-operator-dotnet-test-app"
   test_app_dotnet_image_tag="$image_tag"

@@ -38,9 +38,7 @@ func determineTelemetryMatcherUrl(port string) {
 }
 
 func determineTelemetryMatcherImage() {
-	repositoryPrefix := getEnvOrDefault("TEST_IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix)
-	imageTag := getEnvOrDefault("TEST_IMAGE_TAG", defaultImageTag)
-	pullPolicy := getEnvOrDefault("TEST_IMAGE_PULL_POLICY", defaultPullPolicy)
+	repositoryPrefix, imageTag, pullPolicy := determineTestAppImageDefaults()
 	telemetryMatcherImage =
 		determineContainerImage(
 			"TELEMETRY_MATCHER",
