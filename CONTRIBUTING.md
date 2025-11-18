@@ -147,6 +147,8 @@ IMAGE_REPOSITORY_PREFIX="" \
 The test application can be called via `curl http://localhost/deployment/node.js/dash0-k8s-operator-test` (for
 example to create spans and logs).
 Run `test-resources/bin/test-cleanup.sh` to remove the operator and the test application afterward.
+If you are using `test-resources/.env`, you can also add the environment variables (`IMAGE_REPOSITORY_PREFIX` etc.)
+there to always have them set automatically instead of providing them with every script invocation.
 
 **Quickstart for Kind with a [local container registry](#setting-up-a-kind-cluster-for-local-testing):**:
 ```
@@ -159,6 +161,8 @@ IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
 The test application can be called via `curl http://localhost:8080/deployment/node.js/dash0-k8s-operator-test` (for
 example to create spans and logs).
 Run `test-resources/bin/test-cleanup.sh` to remove the operator and the test application afterward.
+If you are using `test-resources/.env`, you can also add the environment variables (`IMAGE_REPOSITORY_PREFIX` etc.)
+there to always have them set automatically instead of providing them with every script invocation.
 
 Moving beyond the quickstart instructions, here are more details on the test scripts and all available parameters:
 
@@ -367,6 +371,9 @@ E2E_KUBECTX=kind-dash0-operator-lab \
   TEST_IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
   make build-all-push-all-test-e2e
 ```
+
+If you are using `test-resources/.env`, you can also add the environment variables (`IMAGE_REPOSITORY_PREFIX` etc.)
+there to always have them set automatically instead of providing them with every end-to-end test run.
 
 In general, the end-to-end tests can be run via `make test-e2e`.
 The make target `test-e2e` assumes that all required images have been built beforehand and are available in the target
