@@ -268,20 +268,6 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 5
-      - name: kube-rbac-proxy
-        image: {{ include "dash0-operator.kubeRbacProxyImage" . | quote }}
-        args:
-        - --secure-listen-address=0.0.0.0:8443
-        - --upstream=http://127.0.0.1:8080/
-        - --logtostderr=true
-        - --v=0
-        ports:
-        - containerPort: 8443
-          name: https
-          protocol: TCP
-        resources:
-          {{- toYaml .Values.operator.kubeRbacProxyContainerResources | nindent 10 }}
-        {{ include "dash0-operator.restrictiveContainerSecurityContext" (dict "userId" 65532) | nindent 8 }}
       {{- with .Values.operator.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
