@@ -1,3 +1,8 @@
+# Source test-resources/.env if it exists. This avoids having to repeat settings from test-resources/.env on the command
+# line when calling make directly. If test-resources/.env does not exist, the -include instruction will be silently
+# ignored.
+-include test-resources/.env
+
 # Use the local Helm chart sources by default, can be overridden with a chart referencing a remote repository,
 # for example dash0-operator/dash0-operator. The remote repository needs to have been installed previously, e.g. via
 # helm repo add dash0-operator https://dash0hq.github.io/dash0-operator && helm repo update
