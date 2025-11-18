@@ -138,8 +138,8 @@ func (c *ReadyCheckExecuter) checkWebhookServiceEndpoint(
 				// ready check of the operator manager pod, this would be a cyclic dependency, i.e. a deadlock.
 				// Hence, this check is skipped for the operator manager pod's ready check.
 				// We do include the check when evaluating whether the operator configuration auto resource can be
-				// created. It can take a couple of seconds for the endpoint to be marked as ready with the ready
-				// condition after our own pod's ready check returns true.
+				// created. It can take a couple of seconds for the endpoint to be marked with the ready condition after
+				// our own pod's ready check returns true.
 				if endpoint.Conditions.Ready == nil || !*endpoint.Conditions.Ready {
 					// wait for the endpoint to be marked as ready
 					continue
