@@ -5,14 +5,16 @@ OPERATOR_HELM_CHART ?= helm-chart/dash0-operator
 
 # Variables for all operator container images:
 
-# Leave empty for local images, set to registry path (e.g., "ghcr.io/dash0hq/") for remote images
+# Use "localhost:5001/" for the local registry, leave empty for local images on Docker Desktop, set to any registry
+# path (e.g., "ghcr.io/dash0hq/") for remote images.
 IMAGE_REPOSITORY_PREFIX ?= ""
 
 # Use "latest" for local dev, specific tag for CI/remote registries
 IMAGE_TAG ?= latest
 
-# Use "Never" for local images, "" (empty) to let Kubernetes decide for remote images
-PULL_POLICY ?= Never
+# Use "Always" when using a local registry, use "Never" for local images on Docker Desktop, use "" (empty) to let
+# Kubernetes decide the pull policy for remote images.
+PULL_POLICY ?= Always
 
 CONTROLLER_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)operator-controller
 CONTROLLER_IMAGE_TAG ?= $(IMAGE_TAG)
