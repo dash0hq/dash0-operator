@@ -2,6 +2,7 @@ Contributing
 ============
 
 ## Prerequisites
+
 - Go (version >= v1.25)
 - Docker
 - kubectl version v1.11.3+.
@@ -25,10 +26,28 @@ thereby catching simple syntax, formatting or unit test issues before pushing ch
 Using this facility is optional, all checks will be run in CI anyway, the intent of the pre-push hooks is simply to
 reduce the turnaround time.
 
+## Setting Up a Kind Cluster for Local Testing
+
+Note: When using Docker Desktop with its integrated Kubernetes support via `kubeadm`, you can skip this section.
+
+This section describes the recommended way to set up a local [kind](https://kind.sigs.k8s.io/) cluster suitable for
+testing the operator; that is, for using the [semi-manual test scenarios](#semi-manual-test-scenarios) as well as
+running [end-to-end-tests](#end-to-end-tests).
+
+In order to use the scripts mentioned below, it is required to set `LOCAL_REGISTRY_VOLUME_PATH` to a local directory
+path that will be used as storage by the registry container. In addition, `DASH0_KIND_CLUSTER` and `DASH0_KIND_CONFIG`
+can be used to customize the created cluster if needed. By default, the cluster's name will be `dash0-operator-lab` and
+it will be configured using `test-resources/kind-config.yaml`.
+Run `test-resources/bin/create_cluster_and_registry.sh` to create the cluster and the local registry.
+
+The resulting cluster also has a port mapping for the ingress-nginx in the cluster, so that services in the cluster can
+be reached via `http://localhost:8080/...`.
+
+If you do no longer need the cluster, run `test-resources/bin/delete_cluster_and_registry.sh` to discard it.
+
 ## Deploying to a Local Cluster for Testing Purposes
 
-This approach is suitable for deploying the operator to a cluster running locally on your machine, for example
-via the Kubernetes support included in Docker Desktop.
+This approach is suitable for deploying the operator to a cluster running locally on your machine.
 
 As an alternative to the steps outlined in this section, there is also a suite of scripts available that take care of
 building and deploying everything required for a full local test, including the Dash0OperatorConfiguration resource, 
@@ -38,18 +57,24 @@ See section [Semi-Manual Test Scenarios](#semi-manual-test-scenarios) for more i
 In contrast to the semi-manual test scenarios, this section only describes the individual steps to build and deploy a
 bare-bones Dash0 operator.
 
-1. Run `make images` to build all required container images locally, this will tag the image as
-`operator-controller:latest`, `collector:latest` etc.
-2. Run `make deploy` to deploy the operator with locally built images to the cluster.
-   Note: No Dash0OperatorConfiguration or Dash0Monitoring resource will be created automatically, so the operator will
-   not really do anything.
-* Alternatively, deploy with images from a remote registry:
-  ```
-  make deploy \
-    IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/
-    IMAGE_TAG=main-dev \
-    PULL_POLICY=""
-  ```
+**With Docker Desktop:**
+
+Run `make images deploy IMAGE_REPOSITORY_PREFIX="" PULL_POLICY=Never` to build all required container images locally and
+deploy the Helm chart.
+This will tag the image as `operator-controller:latest`, `collector:latest` etc.
+
+Note: No Dash0OperatorConfiguration or Dash0Monitoring resource will be created automatically, so the operator will
+not really do anything.
+
+**With Kind and a Local Registry:**
+
+Run `make images push-images deploy IMAGE_REPOSITORY_PREFIX="localhost:5001/" PULL_POLICY=Always` to build all
+required container images locally, push them to the local registry and deploy the Helm chart.
+This will tag the image as `localhost:5001/operator-controller:latest`, `localhost:5001/collector:latest` etc.
+
+**Using images from a remote registry:**
+
+Run `make deploy IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/ IMAGE_TAG=main-dev PULL_POLICY=""`
 
 **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin privileges or be logged in as
 admin.
@@ -60,7 +85,7 @@ admin.
 make undeploy
 ```
 
-This will also remove the custom resource definition.
+This will also remove the custom resource definitions.
 
 ## Run Tests
 
@@ -70,7 +95,7 @@ make test
 
 This will run the go unit tests as well as the helm chart tests.
 
-### Semi-Manual Test Scenarios
+## Semi-Manual Test Scenarios
 
 The steps described in the section
 [Deploying to a Local Cluster for Testing Purposes](#deploying-to-a-local-cluster-for-testing-purposes) can be used
@@ -86,6 +111,10 @@ The scripts in `test-resources/bin` can be used for creating a specific scenario
 inspecting its behavior.
 They are also useful to actually report data to an actual Dash0 backend.
 
+When using [kind](https://kind.sigs.k8s.io/) for local testing, make sure to follow the instructions in
+[Setting Up a Kind Cluster for Local Testing](#setting-up-a-kind-cluster-for-local-testing) first.
+When using Docker Desktop, no additional setup steps for the cluster are necessary.
+
 If you haven't created `test-resources/.env` yet, you can copy the file `test-resources/.env.template` to
 `test-resources/.env`, or set the environment variables listed in `test-resources/.env.template` via other means.
 Make sure the comma-separated list `ALLOWED_KUBECTXS` contains the name of the kubernetes you want to use for the test
@@ -96,12 +125,32 @@ Alternatively, instead of providing `test-resources/.env`, make sure that the en
 `test-resources/.env.template` are set via other means.
 Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernetes context before running the scripts.
 
-Optional: In `test-resources/bin` you will find two scripts that help with bootstrapping a local registry and kind
-cluster, ready to pull images from the local registry: `create_cluster_and_registry.sh` and `delete_cluster_and_registry.sh`
-In order to use these scripts, it is required to set `LOCAL_REGISTRY_VOLUME_PATH` to a local directory path that will
-be used as storage by the registry container. In addition, `DASH0_KIND_CLUSTER` and `DASH0_KIND_CONFIG` can be used
-to customize the created cluster if needed. By default, the cluster's name will be `dash0-operator-lab` and it will
-be configured using `test-resources/kind-config-lr.yaml`.
+**Quickstart for Docker Desktop with kubeadm:**
+```
+IMAGE_REPOSITORY_PREFIX="" \
+  PULL_POLICY="Never" \
+  TEST_IMAGE_REPOSITORY_PREFIX="" \
+  TEST_IMAGE_PULL_POLICY="Never" \
+  test-resources/bin/test-scenario-02-operator-cr-aum.sh
+```
+
+The test application can be called via `curl http://localhost/deployment/node.js/dash0-k8s-operator-test` (for
+example to create spans and logs).
+Run `test-resources/bin/test-cleanup.sh` to remove the operator and the test application afterward.
+
+**Quickstart for Kind with a [local container registry](#setting-up-a-kind-cluster-for-local-testing):**:
+```
+IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
+  TEST_IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
+  PUSH_BUILT_IMAGES=true \
+  test-resources/bin/test-scenario-02-operator-cr-aum.sh
+```
+
+The test application can be called via `curl http://localhost:8080/deployment/node.js/dash0-k8s-operator-test` (for
+example to create spans and logs).
+Run `test-resources/bin/test-cleanup.sh` to remove the operator and the test application afterward.
+
+Moving beyond the quickstart instructions, here are more details on the test scripts and all available parameters:
 
 * `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
@@ -115,9 +164,9 @@ be configured using `test-resources/kind-config-lr.yaml`.
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
   so there is no need to clean up between individual invocations of the scenario scripts.
 * All scripts will, by default, use the target namespace `test-namespace` and the workload type `deployment`. They all
-  accept two command line parameters to override these defaults. For example, use
-  `test-resources/bin/test-scenario-01-aum-operator-cr.sh another-namespace replicaset` to run the scenario with
-  the target namespace `another-namespace` and a replica set workload.
+  accept three command line parameters to override these defaults. For example, use
+  `test-resources/bin/test-scenario-01-aum-operator-cr.sh another-namespace replicaset jvm` to run the scenario with
+  the target namespace `another-namespace` and a JVM based replica set workload.
 * Additional parameterization can be achieved via environment variables. Here is a full list of all available variables.
     * `ADDITIONAL_NAMESPACES`: Create two more test namespaces (in addition to the usual one test namespace) and deploy
       workloads there as well.
@@ -278,40 +327,48 @@ be configured using `test-resources/kind-config-lr.yaml`.
 * You can add `OPERATOR_HELM_CHART_VERSION=x.y.z` to the command above to install a specific version of the
   Helm chart. This can be useful to test upgrade scenarios.
 
-### End-to-End Tests
+## End-to-End Tests
 
-The end-to-end tests have been tested with [Docker Desktop](https://docs.docker.com/desktop/features/kubernetes/)
-on Mac (with Kubernetes support enabled) and [kind](https://kind.sigs.k8s.io/).
-Docker Desktop is probably the easiest setup to get started with.
-See below for additional instructions for [kind](#running-end-to-end-tests-on-kind).
+The end-to-end tests have been tested with 
+- [Docker Desktop](https://docs.docker.com/desktop/features/kubernetes/) on Mac (with its integrated Kubernetes support
+  enabled with the default option `kubeadm`), and
+- [kind](https://kind.sigs.k8s.io/).
 
 Copy the file `test-resources/.env.template` to `test-resources/.env` and set `E2E_KUBECTX` to the name of the
 Kubernetes context you want to use for the tests, or set `E2E_KUBECTX` via other means (e.g. export it in your shell,
 via `direnv` etc.).
 
-The end-to-end tests can be run via `make test-e2e`.
+**Quickstart for Docker Desktop with kubeadm:** To run the end-to-end tests on Docker Desktop, run
+```
+E2E_KUBECTX=docker-desktop \
+  IMAGE_REPOSITORY_PREFIX="" \
+  PULL_POLICY="Never" \
+  TEST_IMAGE_REPOSITORY_PREFIX="" \
+  TEST_IMAGE_PULL_POLICY="Never" \
+  INGRESS_PORT=80 \
+  make build-all-test-e2e
+```
+
+**Quickstart for Kind with a [local container registry](#setting-up-a-kind-cluster-for-local-testing):**: To run the
+end-to-end tests on a kind cluster with a local registry, run
+```
+E2E_KUBECTX=kind-dash0-operator-lab \
+  IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
+  TEST_IMAGE_REPOSITORY_PREFIX="localhost:5001/" \
+  make build-all-push-all-test-e2e
+```
+
+In general, the end-to-end tests can be run via `make test-e2e`.
 The make target `test-e2e` assumes that all required images have been built beforehand and are available in the target
 Kubernetes cluster (the one associated with the kubectl context determined by `E2E_KUBECTX`).
-Or, use `make build-images-test-e2e` to build all images from local sources and then run the end-to-end tests using
-those images.
-This make target assumes that the target Kubernetes cluster can access container images that have been built locally
-(which is generally only true for Docker Desktop's built-in Kubernetes cluster).
 
 The tests can also be run with images from any registry, like this:
 ```
 IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/ \
   IMAGE_TAG=main-dev \
   PULL_POLICY="" \
-  make test-e2e
-```
-
-If test applications are also coming from a remote registry:
-```
-IMAGE_REPOSITORY_PREFIX=some-registry/ \
-  PULL_POLICY="" \
-  TEST_IMAGE_REPOSITORY_PREFIX=some-registry/ \
+  TEST_IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/ \
   TEST_IMAGE_PULL_POLICY="" \
-  SKIP_TEST_APP_IMAGE_BUILDS=true \
   make test-e2e
 ```
 
@@ -341,27 +398,28 @@ These files are located in the volume configured as `telemetryFilesVolume` in
 (For systems that use a virtual machine to run containers like Docker Desktop on macOS, use
 `docker run -it --rm --privileged --pid=host justincormack/nsenter1` or a similar mechanism to get access.)
 
-#### Running End-to-End Tests on kind
+### Installing Basic Infrastructure for End-to-End Tests
 
-To use kind for running the end-to-end tests, you need to create a kind cluster first.
-The file <test-resources/kind-config.yaml> file can be used as a blueprint to create a cluster.
+The end-to-end test suite installs a couple of basic infrastructure in the cluster on demand, if it is missing:
+* ingress-nginx
+* metrics-server
+* cert-manager
 
-Then execute the following command to create the cluster:
+If these do not exist in the cluster when starting the e2e test suite, the suite will install them on startup and remove
+them once the suite is finished.
+You can avoid this overhead by installing them once manually, ahead of time.
+If these components do exist in the cluster when starting the e2e test suite, the suite will not install or change them,
+and also not remove them once the suite is finished.
 
+Execute the following commands to speed up the e2e test suite a bit:
 ```
-kind create cluster --name dash0-operator-playground --config test-resources/kind-config.yaml
+kubectl apply -k test-resources/nginx
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ &&
+helm upgrade --install --set args={--kubelet-insecure-tls} metrics-server metrics-server/metrics-server --namespace kube-system
+test-resources/cert-manager/deploy.sh
 ```
 
-Last but not least, set `E2E_KUBECTX` (for example in `test-resources/.env`) to the name of the Kubernetes context that
-corresponds to your kind cluster (e.g. `kind-dash0-operator-playground`).
-
-Optionally, once you are done, execute the following command to delete the cluster:
-
-```
-kind delete cluster --name dash0-operator-playground
-```
-
-#### Running End-to-End Tests against a Remote Cluster
+### Running End-to-End Tests against a Remote Cluster
 
 TODO: Add instructions for running the e2e tests against a remote cluster.
 Currently, this involves some local ad hoc modifications, like
