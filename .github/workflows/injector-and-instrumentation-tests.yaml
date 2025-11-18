@@ -31,7 +31,7 @@ jobs:
           echo "base_ref_branch=${GITHUB_BASE_REF:-main}" >> $GITHUB_OUTPUT
 
       - name: find SHA of last successful workflow run on main branch
-        uses: nrwl/nx-set-shas@826660b82addbef3abff5fa871492ebad618c9e1
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1
         id: last_succsesfull_commit_main_branch
         with:
           # Get the last successful commit on main branch (actually, on the target branch for the PR, but that is
