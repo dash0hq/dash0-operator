@@ -70,8 +70,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		// we clean up here at the beginning as well.
 		cleanupAll()
 
-		checkIfRequiredPortsAreBlocked()
-
 		ensureNginxIngressControllerIsInstalled(&cleanupSteps)
 		ensureMetricsServerIsInstalled(&cleanupSteps)
 
