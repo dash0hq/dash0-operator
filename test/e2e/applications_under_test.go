@@ -70,10 +70,7 @@ var (
 )
 
 func determineTestAppImages() {
-	repositoryPrefix := getEnvOrDefault("TEST_IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix)
-	imageTag := getEnvOrDefault("TEST_IMAGE_TAG", defaultImageTag)
-	pullPolicy := getEnvOrDefault("TEST_IMAGE_PULL_POLICY", defaultPullPolicy)
-
+	repositoryPrefix, imageTag, pullPolicy := determineTestAppImageDefaults()
 	testAppImages[runtimeTypeDotnet] =
 		determineContainerImage(
 			"TEST_APP_DOTNET",

@@ -61,9 +61,7 @@ func determineDash0ApiMockBaseUrl(port string) {
 }
 
 func determineDash0ApiMockImage() {
-	repositoryPrefix := getEnvOrDefault("TEST_IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix)
-	imageTag := getEnvOrDefault("TEST_IMAGE_TAG", defaultImageTag)
-	pullPolicy := getEnvOrDefault("TEST_IMAGE_PULL_POLICY", defaultPullPolicy)
+	repositoryPrefix, imageTag, pullPolicy := determineTestAppImageDefaults()
 	dash0ApiMockImage =
 		determineContainerImage(
 			"DASH0_API_MOCK",

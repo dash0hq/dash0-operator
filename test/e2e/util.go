@@ -34,6 +34,18 @@ func determineTestAppBaseUrl(port string) {
 	testAppBaseUrl = fmt.Sprintf("http://localhost:%s", port)
 }
 
+func determineTestAppImageDefaults() (string, string, string) {
+	repositoryPrefix := getEnvOrDefault(
+		"TEST_IMAGE_REPOSITORY_PREFIX",
+		getEnvOrDefault("IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix),
+	)
+	imageTag := getEnvOrDefault("TEST_IMAGE_TAG", defaultImageTag)
+	pullPolicy := getEnvOrDefault("TEST_IMAGE_PULL_POLICY",
+		getEnvOrDefault("PULL_POLICY", defaultPullPolicy),
+	)
+	return repositoryPrefix, imageTag, pullPolicy
+}
+
 func e2ePrint(format string, a ...any) {
 	fmt.Fprintf(GinkgoWriter, "%v: "+format, slices.Concat([]interface{}{time.Now()}, a)...)
 }
