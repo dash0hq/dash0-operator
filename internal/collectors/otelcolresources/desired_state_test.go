@@ -650,7 +650,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should omit the filelog offset container but add the volume ownership container if a PVC volume is provided for filelog offset storage", func() {
 		offsetStorageVolume := corev1.Volume{
-			Name: "offset-storage-volume",
+			Name: "filelogreceiver-offsets",
 			VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: "offset-storage-claim",
@@ -695,7 +695,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should omit the filelog offset container but add the volume ownership container if a host volume is provided for filelog offset storage", func() {
 		offsetStorageVolume := corev1.Volume{
-			Name: "offset-storage-volume",
+			Name: "filelogreceiver-offsets",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{},
 			},

@@ -1,8 +1,8 @@
 # See CONTRIBUTING.md -> "Setting Up a Kind Cluster for Local Testing" for instructions.
 #
-# This kind-config is intended to be used with a local registry and is the default config used by 
+# This kind-config is intended to be used with a local registry and is the default config used by
 # `test-resources/bin/create_cluster_and_registry.sh`.
-# 
+#
 # Before creating a cluster with this config, the hostPath settings below need to be aligned with your local file
 # system structure.
 #

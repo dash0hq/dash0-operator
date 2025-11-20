@@ -384,7 +384,7 @@ operator:
     # operator:
     #   collectors:
     #    filelogOffsetSyncStorageVolume:
-    #      name: offset-storage
+    #      name: filelogreceiver-offsets
     #      hostPath:
     #        path: /data/dash0-operator/offset-storage
     #        type: DirectoryOrCreate
@@ -399,7 +399,7 @@ operator:
     # operator:
     #   collectors:
     #     filelogOffsetSyncStorageVolume:
-    #       name: offset-storage
+    #       name: filelogreceiver-offsets
     #       persistentVolumeClaim:
     #         claimName: offset-storage-claim
     #

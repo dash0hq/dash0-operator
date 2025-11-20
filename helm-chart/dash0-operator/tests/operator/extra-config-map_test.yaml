@@ -20,7 +20,7 @@ tests:
             ephemeral-storage: 606Mi
         collectors:
           filelogOffsetSyncStorageVolume:
-            name: offset-storage
+            name: filelogreceiver-offsets
             persistentVolumeClaim:
               claimName: offset-storage-claim
           daemonSetCollectorContainerResources:
@@ -105,7 +105,7 @@ tests:
                 ephemeral-storage: 606Mi
                 memory: 406Mi
             collectorFilelogOffsetStorageVolume:
-              name: offset-storage
+              name: filelogreceiver-offsets
               persistentVolumeClaim:
                 claimName: offset-storage-claim
             collectorDaemonSetCollectorContainerResources:

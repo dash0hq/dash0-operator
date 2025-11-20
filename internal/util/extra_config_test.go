@@ -456,7 +456,7 @@ collectorDaemonSetFileLogOffsetSyncContainerResources:
     memory: 33Mi
     ephemeral-storage: 500Mi
 collectorFilelogOffsetStorageVolume:
-  name: offset-storage
+  name: filelogreceiver-offsets
   hostPath:
     path: /data/dash0-operator/offset-storage
     type: DirectoryOrCreate
@@ -514,7 +514,7 @@ deploymentTolerations:
 
 					filelogOffsetStorageVolume := extraConfig.CollectorFilelogOffsetStorageVolume
 					Expect(filelogOffsetStorageVolume).ToNot(BeNil())
-					Expect(filelogOffsetStorageVolume.Name).To(Equal("offset-storage"))
+					Expect(filelogOffsetStorageVolume.Name).To(Equal("filelogreceiver-offsets"))
 					Expect(filelogOffsetStorageVolume.HostPath.Path).To(Equal("/data/dash0-operator/offset-storage"))
 					Expect(filelogOffsetStorageVolume.HostPath.Type).ToNot(BeNil())
 					Expect(*filelogOffsetStorageVolume.HostPath.Type).To(Equal(corev1.HostPathDirectoryOrCreate))
@@ -940,7 +940,7 @@ collectorDaemonSetConfigurationReloaderContainerResources:
 
 			_, err := tmpFile.WriteString(`
 collectorFilelogOffsetStorageVolume:
-  name: offset-storage
+  name: filelogreceiver-offsets
   hostPath:
     path: /data/dash0-operator/offset-storage
     type: DirectoryOrCreate
@@ -965,7 +965,7 @@ collectorFilelogOffsetStorageVolume:
 
 			_, err := tmpFile.WriteString(`
 collectorFilelogOffsetStorageVolume:
-  name: offset-storage
+  name: filelogreceiver-offsets
   hostPath:
     path: /data/dash0-operator/offset-storage
     type: DirectoryOrCreate
@@ -980,7 +980,7 @@ collectorFilelogOffsetStorageVolume:
 					g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 					filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
 					g.Expect(filelogOffsetStorageVolume).ToNot(BeNil())
-					g.Expect(filelogOffsetStorageVolume.Name).To(Equal("offset-storage"))
+					g.Expect(filelogOffsetStorageVolume.Name).To(Equal("filelogreceiver-offsets"))
 					g.Expect(filelogOffsetStorageVolume.HostPath.Path).To(Equal("/data/dash0-operator/offset-storage"))
 					g.Expect(filelogOffsetStorageVolume.HostPath.Type).ToNot(BeNil())
 					g.Expect(*filelogOffsetStorageVolume.HostPath.Type).To(Equal(corev1.HostPathDirectoryOrCreate))
@@ -998,7 +998,7 @@ collectorFilelogOffsetStorageVolume:
 			// called once, after the last update.
 			_, err := tmpFile.WriteString(`
 collectorFilelogOffsetStorageVolume:
-  name: offset-storage
+  name: filelogreceiver-offsets
   hostPath:
     path: /data/dash0-operator/offset-storage-1
     type: DirectoryOrCreate
@@ -1007,7 +1007,7 @@ collectorFilelogOffsetStorageVolume:
 			time.Sleep(20 * time.Millisecond)
 			_, err = tmpFile.WriteString(`
 collectorFilelogOffsetStorageVolume:
-  name: offset-storage
+  name: filelogreceiver-offsets
   hostPath:
     path: /data/dash0-operator/offset-storage-2
     type: DirectoryOrCreate
@@ -1016,7 +1016,7 @@ collectorFilelogOffsetStorageVolume:
 			time.Sleep(20 * time.Millisecond)
 			_, err = tmpFile.WriteString(`
 collectorFilelogOffsetStorageVolume:
-  name: offset-storage
+  name: filelogreceiver-offsets
   hostPath:
     path: /data/dash0-operator/offset-storage-3
     type: DirectoryOrCreate
@@ -1030,7 +1030,7 @@ collectorFilelogOffsetStorageVolume:
 				g.Expect(updatedConfig.CollectorFilelogOffsetStorageVolume).ToNot(BeNil())
 				filelogOffsetStorageVolume := updatedConfig.CollectorFilelogOffsetStorageVolume
 				g.Expect(filelogOffsetStorageVolume).ToNot(BeNil())
-				g.Expect(filelogOffsetStorageVolume.Name).To(Equal("offset-storage"))
+				g.Expect(filelogOffsetStorageVolume.Name).To(Equal("filelogreceiver-offsets"))
 				g.Expect(filelogOffsetStorageVolume.HostPath.Path).To(Equal("/data/dash0-operator/offset-storage-3"))
 				g.Expect(filelogOffsetStorageVolume.HostPath.Type).ToNot(BeNil())
 				g.Expect(*filelogOffsetStorageVolume.HostPath.Type).To(Equal(corev1.HostPathDirectoryOrCreate))
