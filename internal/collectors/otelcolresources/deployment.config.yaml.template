@@ -15,7 +15,7 @@ receivers:
         enabled: true
       k8s.namespace.phase:
         enabled: false
-
+  k8s_events:
 
 processors:
 {{- if .SendBatchMaxSize }}
@@ -91,6 +91,137 @@ processors:
       - context: resource
       - statements:
         - truncate_all(resource.attributes, 2048)
+
+  transform/k8s_events:
+    error_mode: ignore
+    log_statements:
+      ##### Pod Specific Transformations ####
+      - context: log
+        conditions:
+          - resource.attributes["k8s.object.kind"] == "Pod" and resource.attributes["k8s.object.uid"] != nil and log.attributes["k8s.event.name"] != nil
+        statements:
+          # Set EventName to "k8s.event" this also marks the log record as a handled event
+          - set(log.event_name, "k8s.event")
+
+          # Set k8s.pod.name in resource attributes
+          - set(resource.attributes["k8s.pod.name"], resource.attributes["k8s.object.name"]) where resource.attributes["k8s.object.name"] != nil
+
+          # Set k8s.pod.uid in resource attributes
+          - set(resource.attributes["k8s.pod.uid"], resource.attributes["k8s.object.uid"]) where resource.attributes["k8s.object.uid"] != nil
+
+      ##### DaemonSet Specific Transformations ####
+      - context: log
+        conditions:
+          - resource.attributes["k8s.object.kind"] == "DaemonSet" and resource.attributes["k8s.object.uid"] != nil and log.attributes["k8s.event.name"] != nil
+        statements:
+          # Set EventName to "k8s.event" this also marks the log record as a handled event
+          - set(log.event_name, "k8s.event")
+
+          # Set k8s.daemonset.name in resource attributes
+          - set(resource.attributes["k8s.daemonset.name"], resource.attributes["k8s.object.name"]) where resource.attributes["k8s.object.name"] != nil
+
+          # Set k8s.daemonset.uid in resource attributes
+          - set(resource.attributes["k8s.daemonset.uid"], resource.attributes["k8s.object.uid"]) where resource.attributes["k8s.object.uid"] != nil
+
+      ##### Deployment Specific Transformations ####
+      - context: log
+        conditions:
+          - resource.attributes["k8s.object.kind"] == "Deployment" and resource.attributes["k8s.object.uid"] != nil and log.attributes["k8s.event.name"] != nil
+        statements:
+          # Set EventName to "k8s.event" this also marks the log record as a handled event
+          - set(log.event_name, "k8s.event")
+
+          # Set k8s.deployment.name in resource attributes
+          - set(resource.attributes["k8s.deployment.name"], resource.attributes["k8s.object.name"]) where resource.attributes["k8s.object.name"] != nil
+
+          # Set k8s.deployment.uid in resource attributes
+          - set(resource.attributes["k8s.deployment.uid"], resource.attributes["k8s.object.uid"]) where resource.attributes["k8s.object.uid"] != nil
+
+      ##### ReplicaSet Specific Transformations ####
+      - context: log
+        conditions:
+          - resource.attributes["k8s.object.kind"] == "ReplicaSet" and resource.attributes["k8s.object.uid"] != nil and log.attributes["k8s.event.name"] != nil
+        statements:
+          # Set EventName to "k8s.event" this also marks the log record as a handled event
+          - set(log.event_name, "k8s.event")
+
+          # Set k8s.replicaset.name in resource attributes
+          - set(resource.attributes["k8s.replicaset.name"], resource.attributes["k8s.object.name"]) where resource.attributes["k8s.object.name"] != nil
+
+          # Set k8s.replicaset.uid in resource attributes
+          - set(resource.attributes["k8s.replicaset.uid"], resource.attributes["k8s.object.uid"]) where resource.attributes["k8s.object.uid"] != nil
+
+      ##### StatefulSet Specific Transformations ####
+      - context: log
+        conditions:
+          - resource.attributes["k8s.object.kind"] == "StatefulSet" and resource.attributes["k8s.object.uid"] != nil and log.attributes["k8s.event.name"] != nil
+        statements:
+          # Set EventName to "k8s.event" this also marks the log record as a handled event
+          - set(log.event_name, "k8s.event")
+
+          # Set k8s.statefulset.name in resource attributes
+          - set(resource.attributes["k8s.statefulset.name"], resource.attributes["k8s.object.name"]) where resource.attributes["k8s.object.name"] != nil
+
+          # Set k8s.statefulset.uid in resource attributes
+          - set(resource.attributes["k8s.statefulset.uid"], resource.attributes["k8s.object.uid"]) where resource.attributes["k8s.object.uid"] != nil
+
+      ##### Job Specific Transformations ####
+      - context: log
+        conditions:
+          - resource.attributes["k8s.object.kind"] == "Job" and resource.attributes["k8s.object.uid"] != nil and log.attributes["k8s.event.name"] != nil
+        statements:
+          # Set EventName to "k8s.event" this also marks the log record as a handled event
+          - set(log.event_name, "k8s.event")
+
+          # Set k8s.job.name in resource attributes
+          - set(resource.attributes["k8s.job.name"], resource.attributes["k8s.object.name"]) where resource.attributes["k8s.object.name"] != nil
+
+          # Set k8s.job.uid in resource attributes
+          - set(resource.attributes["k8s.job.uid"], resource.attributes["k8s.object.uid"]) where resource.attributes["k8s.object.uid"] != nil
+
+      ##### CronJob Specific Transformations ####
+      - context: log
+        conditions:
+          - resource.attributes["k8s.object.kind"] == "CronJob" and resource.attributes["k8s.object.uid"] != nil and log.attributes["k8s.event.name"] != nil
+        statements:
+          # Set EventName to "k8s.event" this also marks the log record as a handled event
+          - set(log.event_name, "k8s.event")
+
+          # Set k8s.cronjob.name in resource attributes
+          - set(resource.attributes["k8s.cronjob.name"], resource.attributes["k8s.object.name"]) where resource.attributes["k8s.object.name"] != nil
+
+          # Set k8s.cronjob.uid in resource attributes
+          - set(resource.attributes["k8s.cronjob.uid"], resource.attributes["k8s.object.uid"]) where resource.attributes["k8s.object.uid"] != nil
+
+      ##### Common Transformations ####
+      - context: log
+        conditions:
+          - log.event_name == "k8s.event" and resource.attributes["k8s.object.uid"] != nil and log.attributes["k8s.event.name"] != nil
+        statements:
+          # Move k8s.namespace.name from attributes to resource attributes
+          - set(resource.attributes["k8s.namespace.name"], log.attributes["k8s.namespace.name"]) where log.attributes["k8s.namespace.name"] != nil
+          - delete_key(attributes, "k8s.namespace.name") where attributes["k8s.namespace.name"] != nil
+
+          # Move k8s.object.fieldpath from resource attributes to attributes
+          - set(log.attributes["k8s.object.fieldpath"], resource.attributes["k8s.object.fieldpath"]) where resource.attributes["k8s.object.fieldpath"] != nil
+          - delete_key(resource.attributes, "k8s.object.fieldpath")
+
+          # Move k8s.object.resource_version from resource attributes to attributes
+          - set(attributes["k8s.object.resource_version"], resource.attributes["k8s.object.resource_version"]) where resource.attributes["k8s.object.resource_version"] != nil
+          - delete_key(resource.attributes, "k8s.object.resource_version")
+
+          # Set timestamp to k8s.event.start_time if available
+          - set(log.cache["event_start_time"], UnixNano(Time(log.attributes["k8s.event.start_time"], "%Y-%m-%dT%H:%M:%SZ"))) where log.attributes["k8s.event.start_time"] != nil
+          - set(log.time_unix_nano, log.cache["event_start_time"]) where cache["event_start_time"] > 0
+
+          ## Cleanup ##
+          # Remove k8s.object.kind and k8s.object.api_version from resource attributes
+          - delete_key(resource.attributes, "k8s.object.kind")
+          - delete_key(resource.attributes, "k8s.object.api_version")
+
+          # Remove previously copied attributes
+          - delete_key(resource.attributes, "k8s.object.name")
+          - delete_key(resource.attributes, "k8s.object.uid")
 
   {{- if .ClusterName }}
   resource/clustername:
@@ -224,6 +355,26 @@ service:
       - transform/metrics/custom_telemetry_transform
       {{- end }}
       - transform/resources
+      exporters:
+      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+      - debug
+      {{- end }}
+      {{- range $i, $exporter := .Exporters }}
+      - {{ $exporter.Name }}
+      {{- end }}
+
+    logs/k8sevents:
+      receivers:
+      - k8s_events
+      processors:
+      - transform/k8s_events
+      - k8sattributes
+      {{- if .ClusterName }}
+      - resource/clustername
+      {{- end }}
+      - transform/resources
+      - memory_limiter
+      - batch
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
