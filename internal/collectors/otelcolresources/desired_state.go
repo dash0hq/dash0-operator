@@ -1113,14 +1113,10 @@ func assembleFileLogVolumeOwnershipInitContainer(
 	config *oTelColConfig,
 	filelogOffsetsVolume corev1.Volume,
 ) corev1.Container {
+	// See images/filelogoffsetvolumeownership/README.md for information on this init container.
 	initFilelogOffsetVolumeOwnershipContainer := corev1.Container{
 		Name:  "filelog-offset-volume-ownership",
 		Image: config.Images.FilelogOffsetVolumeOwnershipImage,
-		Command: []string{
-			"/bin/sh",
-			"-c",
-			fmt.Sprintf("/bin/mkdir -p %s && /bin/chown -R %d:%d %s", offsetsDirPath, defaultUser, defaultGroup, offsetsDirPath),
-		},
 		Env: []corev1.EnvVar{
 			k8sNodeNameEnvVar,
 		},
