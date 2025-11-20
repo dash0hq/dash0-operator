@@ -45,6 +45,16 @@ be reached via `http://localhost:8080/...`.
 
 If you do no longer need the cluster, run `test-resources/bin/delete_cluster_and_registry.sh` to discard it.
 
+## Using Minikube for Local Testing
+
+In general, the instructions for Docker Desktop should work for Minikube as well.
+There is one additional step though:
+* Run `eval $(minikube docker-env)` before running any scripts from `test-resources/bin` or before running end-to-end
+  tests.
+* You might want to run `eval $(minikube docker-env -u)` when you are done testing, to undo this.
+
+See https://minikube.sigs.k8s.io/docs/commands/docker-env/ for more information.
+
 ## Deploying to a Local Cluster for Testing Purposes
 
 This approach is suitable for deploying the operator to a cluster running locally on your machine.
