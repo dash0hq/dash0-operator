@@ -216,7 +216,19 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `DEPLOY_VIEW`: Set to "true" to deploy a view resource that will be synchronized to Dash0 via the Dash0 API.
       This defaults to "false".
     * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
-      based storage.
+      based storage. Possible values:
+        * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters
+          created via test-resources/bin/create_cluster_and_registry.sh or based on `test-resources/kind-config.yaml`
+          (i.e. clusters that have the `offset-storage` extra mounts), then use this for filelog offset storage
+        * `FILELOG_OFFSETS_PVC=docker`: deploy a StorageClass and PersistentVolumeClaim suitable for Docker Desktop,
+          then use this for filelog offset storage
+        * `FILELOG_OFFSETS_PVC=gke`: deploy a PersistentVolumeClaim suitable for GCP GKE clusters, then use this for
+          filelog offset storage
+        * `FILELOG_OFFSETS_PVC=aws-efs-dp`: deploy a StorageClass and PersistentVolumeClaim suitable for an AWS EKS
+          cluster, based on an AWS EFS file system, with dynamic provisioning (see
+          https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html and
+          https://github.com/kubernetes-sigs/aws-efs-csi-driver/tree/master/examples/kubernetes/dynamic_provisioning)
+      Take a look at the files in `test-resources/filelog-offset-storage` for details.
     * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default
       config map based storage.
     * `INSTRUMENT_WORKLOADS_MODE`: Set this to "all", "created-and-updated" or "none" to control the

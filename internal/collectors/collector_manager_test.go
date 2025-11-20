@@ -811,7 +811,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 				},
 			}
 			changedConfig.CollectorFilelogOffsetStorageVolume = &corev1.Volume{
-				Name: "offset-storage",
+				Name: "filelogreceiver-offsets",
 				VolumeSource: corev1.VolumeSource{
 					HostPath: &corev1.HostPathVolumeSource{
 						Path: "/data/dash0-operator/offset-storage",
@@ -853,9 +853,9 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(collectorContainer.Resources.Requests.Memory().String()).To(Equal("600Mi"))
 			Expect(collectorContainer.Env).To(ContainElement(MatchEnvVar("GOMEMLIMIT", "500MiB")))
 
-			Expect(podSpec.Volumes).To(ContainElement(MatchVolume("offset-storage")))
+			Expect(podSpec.Volumes).To(ContainElement(MatchVolume("filelogreceiver-offsets")))
 			offsetStorageVolumeIdx := slices.IndexFunc(podSpec.Volumes, func(c corev1.Volume) bool {
-				return c.Name == "offset-storage"
+				return c.Name == "filelogreceiver-offsets"
 			})
 			offsetStorageVolume := podSpec.Volumes[offsetStorageVolumeIdx]
 			Expect(offsetStorageVolume.HostPath).ToNot(BeNil())

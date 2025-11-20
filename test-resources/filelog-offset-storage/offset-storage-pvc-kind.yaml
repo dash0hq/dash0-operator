@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: offset-storage-volume
+  name: filelogreceiver-offsets
 spec:
   storageClassName: standard
   accessModes:
@@ -18,7 +18,7 @@ metadata:
   name: offset-storage-claim
   namespace: operator-namespace
 spec:
-  volumeName: offset-storage-volume
+  volumeName: filelogreceiver-offsets
   accessModes:
     - ReadWriteOnce
   resources:

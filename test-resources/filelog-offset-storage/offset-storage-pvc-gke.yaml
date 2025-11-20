@@ -1,0 +1,13 @@
+# See https://docs.cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: offset-storage-claim
+  namespace: operator-namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 300Mi
+  storageClassName: standard-rwo

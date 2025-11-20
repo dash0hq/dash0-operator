@@ -64,10 +64,7 @@ echo "STEP $step_counter: push images"
 push_all_images
 finish_step
 
-if [[ "${FILELOG_OFFSETS_PVC:-}" = "true" ]]; then
-  deploy_filelog_offsets_pvc
-  finish_step
-fi
+deploy_filelog_offsets_pvc
 
 echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm

@@ -66,10 +66,7 @@ echo "STEP $step_counter: push images"
 push_all_images
 finish_step
 
-if [[ "${FILELOG_OFFSETS_PVC:-}" = "true" ]]; then
-  deploy_filelog_offsets_pvc
-  finish_step
-fi
+deploy_filelog_offsets_pvc
 
 deploy_application_under_monitoring "$runtime_under_test"
 

@@ -7,6 +7,9 @@ provisioner: docker.io/hostpath
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  # To inspect the volume content and permissions:
+  #   docker run -it --rm --privileged --pid=host justincormack/nsenter1
+  #   cd /var/lib/k8s-pvs/offset-storage-claim
   name: offset-storage-claim
   namespace: operator-namespace
 spec:

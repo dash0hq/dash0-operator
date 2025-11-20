@@ -773,7 +773,7 @@ for considerations around using `hostPath` volumes):
 operator:
   collectors:
    filelogOffsetSyncStorageVolume:
-     name: offset-storage
+     name: filelogreceiver-offsets
      hostPath:
        path: /data/dash0-operator/offset-storage
        type: DirectoryOrCreate
@@ -790,7 +790,7 @@ https://kubernetes.io/docs/concepts/storage/persistent-volumes/#reclaiming.
 operator:
   collectors:
     filelogOffsetSyncStorageVolume:
-      name: offset-storage
+      name: filelogreceiver-offsets
       persistentVolumeClaim:
         claimName: offset-storage-claim
 ```
@@ -2017,7 +2017,9 @@ clusters:
   disabled, collecting these requires access to the `/pod` endpoint of the kubelet API which is not available in GKE
   autopilot due to the lack of the `nodes/proxy` permission
 
-Please note that the `AllowlistSynchronizer` resource is not removed automatically with `helm uninstall dash0-operator`.
+**Note:** Using a volume for filelog offsets is currently not supported in GKE Autopilot clusters.
+
+**Note:** The `AllowlistSynchronizer` resource is not removed automatically with `helm uninstall dash0-operator`.
 If you decide to remove the Dash0 operator Helm release from the cluster, you might want to delete the
 `AllowlistSynchronizer` manually afterward, for example by executing
 `kubectl delete AllowlistSynchronizer dash0-allowlist-synchronizer`.

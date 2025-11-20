@@ -388,13 +388,27 @@ push_all_images() {
 }
 
 deploy_filelog_offsets_pvc() {
-  echo "STEP $step_counter: install filelog offset persistent volume claim"
-  if [[ "$is_kind_cluster" = "true" ]]; then
-    kubectl patch persistentvolume offset-storage-volume --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]' || true
-    kubectl apply -f test-resources/customresources/filelogoffsetpvc/offset-storage-pvc-kind.yaml
-  else
-    kubectl apply -f test-resources/customresources/filelogoffsetpvc/offset-storage-pvc-docker.yaml
+  if [[ -z "${FILELOG_OFFSETS_PVC:-}" ]]; then
+    return
   fi
+  echo "STEP $step_counter: install filelog offset persistent volume claim ($FILELOG_OFFSETS_PVC)"
+  if [[ "$FILELOG_OFFSETS_PVC" = "kind" ]]; then
+    kubectl patch persistentvolume filelogreceiver-offsets --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]' || true
+    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-kind.yaml
+  elif [[ "$FILELOG_OFFSETS_PVC" = "docker" ]]; then
+    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-docker.yaml
+  elif [[ "$FILELOG_OFFSETS_PVC" = "gke" ]]; then
+    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-gke.yaml
+  elif [[ "$FILELOG_OFFSETS_PVC" = "aws-efs-dp" ]]; then
+    if ! kubectl get storageclass efs-sc > /dev/null; then
+      kubectl apply -f test-resources/filelog-offset-storage/aws-efs-dynamic-provisioning-storage-class.yaml
+    fi
+    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-aws-efs-dp.yaml
+  else
+    echo "Error: Unsupported value for environment variable FILELOG_OFFSETS_PVC: $FILELOG_OFFSETS_PVC"
+    exit 1
+  fi
+  finish_step
 }
 
 deploy_additional_resources() {
@@ -445,10 +459,10 @@ run_helm() {
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchMaxSize=$OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
   fi
-  if [[ "${FILELOG_OFFSETS_PVC:-}" = "true" ]]; then
-    helm_install_command+=" --values test-resources/bin/filelog-offset-volume-pvc-values.yaml"
+  if [[ -n "${FILELOG_OFFSETS_PVC:-}" ]]; then
+    helm_install_command+=" --values test-resources/filelog-offset-storage/volume-values-pvc.yaml"
   elif [[ "${FILELOG_OFFSETS_HOST_PATH_VOLUME:-}" = "true" ]]; then
-    helm_install_command+=" --values test-resources/bin/filelog-offset-volume-hostpath-values.yaml"
+    helm_install_command+=" --values test-resources/filelog-offset-storage/volume-values-hostpath.yaml"
   fi
 
   if [[ -n "$controller_image_repository" ]]; then
