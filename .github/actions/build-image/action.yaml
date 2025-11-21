@@ -28,6 +28,10 @@ inputs:
     description: "whether to scan the built image with Trivy"
     required: false
     default: 'false'
+  scanSeverity:
+    description: "severity setting for the Trivy scanner, see https://trivy.dev/docs/latest/guide/configuration/filtering/#by-severity"
+    required: false
+    default: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
 
 runs:
   using: "composite"
@@ -104,6 +108,16 @@ runs:
         format: 'sarif'
         output: 'trivy-results.sarif'
         exit-code: '1' # fail build if vulnerabilities are found
+        severity: ${{ inputs.scanSeverity }}
+        limit-severities-for-sarif: true
+
+    # The scan results are also available at https://github.com/dash0hq/dash0-operator/security/code-scanning with
+    # query "is:open pr:xyz", but having them in the build log is just also handy sometimes.
+    - name: echo sarif file
+      if: ${{ always() && inputs.scan == 'true' }}
+      shell: bash
+      run: |
+        cat trivy-results.sarif
 
     - name: upload Trivy scan results to GitHub Security tab
       if: ${{ always() && inputs.scan == 'true' }}
