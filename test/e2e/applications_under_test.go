@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	testAppHelmInstallTimeout = "60s"
+	testAppHelmInstallTimeout = "120s"
 )
 
 var (
