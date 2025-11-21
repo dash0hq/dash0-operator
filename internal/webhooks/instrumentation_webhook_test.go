@@ -103,14 +103,14 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				namespace string,
 				name string,
 			) *corev1.Pod {
-				pod := CreateBasicPod(ctx, k8sClient, namespace, name)
+				pod := BasicPod(namespace, name)
 				pod.ObjectMeta.OwnerReferences = []metav1.OwnerReference{{
 					Name:       "strimzi-podset-name",
 					APIVersion: "core.strimzi.io/v1beta2",
 					Kind:       "StrimziPodSet",
 					UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
 				}}
-				UpdateWorkload(ctx, k8sClient, pod)
+				CreateWorkload(ctx, k8sClient, pod)
 				return pod
 			}),
 			GetFn: WrapPodFnAsTestableWorkload(GetPod),
@@ -130,14 +130,14 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				k8sClient client.Client,
 				namespace string,
 				name string) *appsv1.ReplicaSet {
-				rs := CreateBasicReplicaSet(ctx, k8sClient, namespace, name)
+				rs := BasicReplicaSet(namespace, name)
 				rs.OwnerReferences = []metav1.OwnerReference{{
 					Name:       "owner-name",
 					APIVersion: "api/v1beta2",
 					Kind:       "Kind",
 					UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
 				}}
-				UpdateWorkload(ctx, k8sClient, rs)
+				CreateWorkload(ctx, k8sClient, rs)
 				return rs
 			}),
 			GetFn: WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
