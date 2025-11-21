@@ -19,7 +19,7 @@ More information can be found via the [Kubebuilder Documentation](https://book.k
 
 ## Install Husky Hooks
 
-When working on the operator code base with the intent of contributing changes, it is recommended to install the 
+When working on the operator code base with the intent of contributing changes, it is recommended to install the
 pre-push git hooks via `make husky-setup-hooks`.
 This will install a git pre-push hook that runs `make build`, `make lint` and `make test` before every `git push`,
 thereby catching simple syntax, formatting or unit test issues before pushing changes.
@@ -51,7 +51,13 @@ In general, the instructions for Docker Desktop should work for Minikube as well
 There is one additional step though:
 * Run `eval $(minikube docker-env)` before running any scripts from `test-resources/bin` or before running end-to-end
   tests.
-* You might want to run `eval $(minikube docker-env -u)` when you are done testing, to undo this.
+  This makes container images you build locally available in the cluster.
+  Be aware that this only takes effect in the current shell, that is, if you open a new shell, you need to execute this
+  again.
+  (You will run into `ErrImageNeverPull` when you build images in a shell where this has not been executed, or your
+  tests will use outdated imgages.)
+* To undo this, you might want to run `eval $(minikube docker-env -u)` when you are done testing, or alternatively close
+  the current shell.
 
 See https://minikube.sigs.k8s.io/docs/commands/docker-env/ for more information.
 
@@ -60,7 +66,7 @@ See https://minikube.sigs.k8s.io/docs/commands/docker-env/ for more information.
 This approach is suitable for deploying the operator to a cluster running locally on your machine.
 
 As an alternative to the steps outlined in this section, there is also a suite of scripts available that take care of
-building and deploying everything required for a full local test, including the Dash0OperatorConfiguration resource, 
+building and deploying everything required for a full local test, including the Dash0OperatorConfiguration resource,
 Dash0Monitoring resources, test workloads, third-party CRDs etc.)
 See section [Semi-Manual Test Scenarios](#semi-manual-test-scenarios) for more information on that.
 
@@ -352,7 +358,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
 
 ## End-to-End Tests
 
-The end-to-end tests have been tested with 
+The end-to-end tests have been tested with
 - [Docker Desktop](https://docs.docker.com/desktop/features/kubernetes/) on Mac (with its integrated Kubernetes support
   enabled with the default option `kubeadm`), and
 - [kind](https://kind.sigs.k8s.io/).
@@ -442,12 +448,48 @@ test-resources/cert-manager/deploy.sh
 
 ### Running End-to-End Tests against a Remote Cluster
 
-TODO: Add instructions for running the e2e tests against a remote cluster.
-Currently, this involves some local ad hoc modifications, like
-* pushing the test image to the remote registry,
-* changing`test-resources/node.js/express/deployment.yaml` and friends
-    * to set the container image `ghcr.io/dash0hq/dash0-operator-nodejs-20-express-test-app:latest"`, and
-    * removing `imagePullPolicy: Never`
+Running end-to-end tests with a remote cluster requires network access from the machine running the end-to-end tests
+to an ingress in the cluster.
+Setting up the ingress in the cluster might depend on the specific cloud that is being used (for example, GKE
+Autopilot will not allow deploying a regular ingress-nginx with port 80).
+The script `test-resources/bin/deploy-ingress-nginx.sh` and the manifest `test-resources/nginx/kustomization.yaml` can
+serve as a starting point, but YMMV.
+
+Once an ingress has been set up, it needs to be made accessible from the machine running the tests.
+For the ingress-nginx mentioned above, this could be achieved with port-forwarding:
+```
+# start this in a separate shell, leave the kubectl port-forward command running while the test suite is running
+kubectl --namespace ingress-nginx port-forward $(kubectl get pods --namespace ingress-nginx -l app.kubernetes.io/component=controller -o jsonpath="{.items[0].metadata.name}") 8080:80
+```
+
+Note: The commands below assume that the remote cluster uses nodes with CPU architecture AMD64 (hence
+`IMAGE_PLATFORMS=linux/amd64`), otherwise `IMAGE_PLATFORMS` might need to be set differently (in particular when the CPU
+architecture of the machine running `make build-all-push-all-test-e2e` and the cluster nodes differ).
+
+Assuming worloads in the cluster can be reached, running the end-to-end tests can be done as follows:
+
+**With locally build images and the local Helm chart:**
+
+These require a remote registry that you can push to, which is network-reachable from the test cluster.
+If the registry requires authentication, additional steps are necessary.
+
+```
+E2E_KUBECTX=$kubectx_for_your_test_cluster \
+  IMAGE_PLATFORMS=linux/amd64 \
+  IMAGE_REPOSITORY_PREFIX="your-container-image-registry.com/base/path/to/repositories/" \
+  make build-all-push-all-test-e2e
+```
+
+**With a published Helm chart and officially released images:**
+
+```
+E2E_KUBECTX=$kubectx_for_your_test_cluster \
+  OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+  OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
+  IMAGE_PLATFORMS=linux/amd64 \
+  TEST_IMAGE_REPOSITORY_PREFIX="your-container-image-registry.com/base/path/to/repositories/" \
+  make all-auxiliary-images push-all-auxiliary-images test-e2e
+```
 
 ## Migration Strategy When Updating Instrumentation Values
 
