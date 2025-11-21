@@ -34,7 +34,7 @@ func ensureNginxIngressControllerIsInstalled(cleanupSteps *neccessaryCleanupStep
 
 	e2ePrint(
 		"Hint: To get a faster feedback cycle on e2e tests, deploy the ingress-nginx once via the following commands:\n" +
-			"  kubectl apply -k test-resources/nginx\n" +
+			"  test-resources/bin/deploy-ingress-nginx.sh\n" +
 			"If the e2e tests find an existing ingress-nginx installation, they will not deploy the ingress-nginx and " +
 			"they will also not undeploy it after running the test suite.\n",
 	)

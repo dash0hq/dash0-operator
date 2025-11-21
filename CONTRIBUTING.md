@@ -434,7 +434,7 @@ and also not remove them once the suite is finished.
 
 Execute the following commands to speed up the e2e test suite a bit:
 ```
-kubectl apply -k test-resources/nginx
+test-resources/bin/deploy-ingress-nginx.sh
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ &&
 helm upgrade --install --set args={--kubelet-insecure-tls} metrics-server metrics-server/metrics-server --namespace kube-system
 test-resources/cert-manager/deploy.sh
