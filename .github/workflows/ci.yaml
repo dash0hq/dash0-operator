@@ -171,6 +171,7 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
           context: images/collector
           scan: 'true'
+          scanSeverity: 'UNKNOWN,HIGH,CRITICAL'
 
       - name: build configuration reloader image
         uses: ./.github/actions/build-image
