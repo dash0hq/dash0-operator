@@ -55,7 +55,7 @@ var (
 )
 
 func Retry(operationLabel string, operation func() error, logger *logr.Logger) error {
-	return RetryWithCustomBackoff(operationLabel, operation, defaultRetryBackoff, true, logger)
+	return RetryWithCustomBackoff(operationLabel, operation, defaultRetryBackoff, true, true, logger)
 }
 
 func RetryWithCustomBackoff(
@@ -63,6 +63,7 @@ func RetryWithCustomBackoff(
 	operation func() error,
 	backoff wait.Backoff,
 	logAttempts bool,
+	logFinalFailureAsError bool,
 	logger *logr.Logger,
 ) error {
 	attempt := 0
@@ -93,10 +94,18 @@ func RetryWithCustomBackoff(
 							err,
 						))
 				}
-			} else {
+			} else if logFinalFailureAsError {
 				logger.Error(err,
 					fmt.Sprintf(
 						"%s failed after attempt %d/%d, no more retries left.", operationLabel, attempt, backoff.Steps))
+			} else {
+				logger.Info(fmt.Sprintf(
+					"%s failed after attempt %d/%d, no more retries left, final error: %v.",
+					operationLabel,
+					attempt,
+					backoff.Steps,
+					err,
+				))
 			}
 
 			// Note: retry.OnError stops retrying correctly after the specified number of Steps, returning this

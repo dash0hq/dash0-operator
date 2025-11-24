@@ -136,6 +136,7 @@ func deployRenderedMonitoringResource(
 			Steps:    3,
 		},
 		true,
+		true,
 		&retryLogger,
 	)
 	Expect(err).ToNot(HaveOccurred())

@@ -161,6 +161,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 			Steps:    6,
 		},
 		true,
+		true,
 		logger,
 	)
 }

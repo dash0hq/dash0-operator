@@ -428,6 +428,7 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 			},
 			backoff,
 			false,
+			false,
 			logger,
 		)
 

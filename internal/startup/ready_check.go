@@ -108,6 +108,7 @@ func (c *ReadyCheckExecuter) pollWebhookServiceEndpoint(ctx context.Context, log
 		},
 		c.retryBackoff,
 		false,
+		true,
 		logger,
 	); err != nil {
 		e := fmt.Errorf("waiting for the webhook service endpoint has timed out (no more retries left): %v", err)
