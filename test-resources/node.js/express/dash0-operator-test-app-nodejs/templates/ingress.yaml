@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
-
 {{- if .Values.deployment.enabled }}
 {{ include "nodejs-test-app.ingress" (dict "workloadType" "deployment" "path" .Values.deployment.ingressPath "port" .Values.deployment.port) }}
 {{- end }}

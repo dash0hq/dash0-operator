@@ -22,7 +22,8 @@ spec:
   selector:
     app: {{ .selector }}
   ports:
-    - port: {{ .port }}
+    - name: http
+      port: {{ .port }}
       targetPort: {{ .targetPort }}
   type: ClusterIP
 {{- end }}

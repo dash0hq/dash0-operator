@@ -22,6 +22,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 
@@ -701,9 +703,10 @@ func createReconciler() *OperatorConfigurationReconciler {
 		k8sClient.Scheme(),
 		OperatorManagerDeployment,
 		util.CollectorConfig{
-			Images:                  TestImages,
-			OperatorNamespace:       operatorNamespace,
-			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+			Images:                    TestImages,
+			OperatorNamespace:         operatorNamespace,
+			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
+			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 		},
 	)
 	collectorManager := collectors.NewCollectorManager(
@@ -712,6 +715,19 @@ func createReconciler() *OperatorConfigurationReconciler {
 		util.ExtraConfigDefaults,
 		false,
 		oTelColResourceManager,
+	)
+	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
+		k8sClient,
+		k8sClient.Scheme(),
+		OperatorManagerDeployment,
+		util.TargetAllocatorConfig{
+			Images:                    TestImages,
+			OperatorNamespace:         operatorNamespace,
+			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
+		})
+	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
+		k8sClient, clientset, false, targetallocatorResourceManager,
 	)
 	delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
 	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
@@ -724,6 +740,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 			apiClient2,
 		},
 		collectorManager,
+		targetallocatorManager,
 		ClusterUidTest,
 		OperatorManagerDeployment.Namespace,
 		OperatorManagerDeployment.UID,

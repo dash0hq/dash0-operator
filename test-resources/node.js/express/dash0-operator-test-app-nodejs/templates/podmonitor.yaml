@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.deployment.prometheus.podMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  labels:
+    app.kubernetes.io/name: dash0-operator-nodejs-20-express-test
+  name: dash0-operator-nodejs-20-express-test
+spec:
+  podMetricsEndpoints:
+    - interval: 30s
+      path: /metrics
+      portNumber: 1207
+  selector:
+    matchLabels:
+      app: dash0-operator-nodejs-20-express-test-deployment-app
+{{- end }}

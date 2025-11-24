@@ -176,6 +176,12 @@ receivers:
 
 {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
   prometheus:
+{{- if .PrometheusCrdSupportEnabled }}
+    target_allocator:
+      endpoint: http://{{ .TargetAllocatorServiceName }}
+      interval: 30s
+      collector_id: ${env:K8S_POD_NAME}
+{{- end }}
     config:
 {{- /*
 This particular set of scrape config jobs (dash0-kubernetes-pods-scrape-config and

@@ -40,23 +40,41 @@ type CollectorConfig struct {
 	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the
 	// operator Helm chart.
 	OTelCollectorNamePrefix string
-	SendBatchMaxSize        *uint32
-	NodeIp                  string
-	NodeName                string
-	PseudoClusterUid        types.UID
-	IsIPv6Cluster           bool
-	IsDocker                bool
-	DisableHostPorts        bool
-	IsGkeAutopilot          bool
-	DevelopmentMode         bool
-	DebugVerbosityDetailed  bool
+	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
+	// config of the prometheus_receiver
+	TargetAllocatorNamePrefix string
+	SendBatchMaxSize          *uint32
+	NodeIp                    string
+	NodeName                  string
+	PseudoClusterUid          types.UID
+	IsIPv6Cluster             bool
+	IsDocker                  bool
+	DisableHostPorts          bool
+	IsGkeAutopilot            bool
+	DevelopmentMode           bool
+	DebugVerbosityDetailed    bool
 }
+
+type TargetAllocatorConfig struct {
+	Images            Images
+	OperatorNamespace string
+	// TargetAllocatorNamePrefix is used as a prefix for OTel target-allocator Kubernetes resources created by the operator, set
+	// to value of the environment variable OTEL_TARGET_ALLOCATOR_NAME_PREFIX, which is set to the Helm release name by the
+	// operator Helm chart.
+	TargetAllocatorNamePrefix string
+	// CollectorComponent is used as a label matcher, so scrape targets are only assigned to Dash0 daemonset collectors.
+	CollectorComponent string
+	DevelopmentMode    bool
+}
+
 type Images struct {
 	OperatorImage                               string
 	InitContainerImage                          string
 	InitContainerImagePullPolicy                corev1.PullPolicy
 	CollectorImage                              string
 	CollectorImagePullPolicy                    corev1.PullPolicy
+	TargetAllocatorImage                        string
+	TargetAllocatorPullPolicy                   corev1.PullPolicy
 	ConfigurationReloaderImage                  string
 	ConfigurationReloaderImagePullPolicy        corev1.PullPolicy
 	FilelogOffsetSyncImage                      string
