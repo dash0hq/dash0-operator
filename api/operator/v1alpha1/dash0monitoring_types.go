@@ -6,6 +6,7 @@ package v1alpha1
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -27,6 +28,7 @@ const (
 	annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators = "dash0.com/status.previousInstrumentWorkloads.traceContext.propagators"
 	annotationNameSpecInstrumentWorkloadsLabelSelector                     = "dash0.com/spec.instrumentWorkloads.labelSelector"
 	annotationNameStatusPreviousInstrumentWorkloadsLabelSelector           = "dash0.com/status.previousInstrumentWorkloads.labelSelector"
+	annotationNameSpecEventCollectionEnabled                               = "dash0.com/spec.eventCollection.enabled"
 )
 
 // Dash0Monitoring is the schema for the Dash0Monitoring API
@@ -399,6 +401,14 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 		dst.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators] =
 			*src.Spec.InstrumentWorkloads.TraceContext.Propagators
 	}
+	if src.Spec.EventCollection.Enabled != nil {
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
+		}
+		dst.Annotations[annotationNameSpecEventCollectionEnabled] =
+			strconv.FormatBool(*src.Spec.EventCollection.Enabled)
+	}
+
 	dst.Spec.LogCollection = src.Spec.LogCollection
 	dst.Spec.PrometheusScraping = src.Spec.PrometheusScraping
 	dst.Spec.PrometheusScraping.Enabled = src.Spec.PrometheusScraping.Enabled
@@ -452,6 +462,16 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 			dst.Spec.InstrumentWorkloads.TraceContext.Propagators = ptr.To(propagators)
 		}
 		delete(dst.Annotations, annotationNameSpecInstrumentWorkloadsTraceContextPropagators)
+
+		eventCollectionEnabledAnnotationValue, eventCollectionEnabledFound :=
+			src.Annotations[annotationNameSpecEventCollectionEnabled]
+		if eventCollectionEnabledFound && strings.TrimSpace(eventCollectionEnabledAnnotationValue) != "" {
+			if eventCollectionEnabled, err := strconv.ParseBool(eventCollectionEnabledAnnotationValue); err == nil {
+				dst.Spec.EventCollection.Enabled = ptr.To(eventCollectionEnabled)
+			}
+			// Deliberately not handling the error here, if the annotation has an invalid value, we ignore it.
+		}
+		delete(dst.Annotations, annotationNameSpecEventCollectionEnabled)
 	}
 	dst.Spec.LogCollection = src.Spec.LogCollection
 	dst.Spec.PrometheusScraping = src.Spec.PrometheusScraping

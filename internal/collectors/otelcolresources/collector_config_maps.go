@@ -80,8 +80,8 @@ type collectorConfigurationTemplateValues struct {
 	IsGkeAutopilot                                   bool
 	PseudoClusterUid                                 string
 	ClusterName                                      string
-	NamespacesWithMonitoring                         []string
 	NamespacesWithLogCollection                      []string
+	NamespacesWithEventCollection                    []string
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
 	CustomFilters                                    customFilters
@@ -137,6 +137,7 @@ func assembleDaemonSetCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		namespacesWithLogCollection,
+		nil, // namespacesWithEventCollection is not used when rendering the daemonset config map
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -149,6 +150,7 @@ func assembleDaemonSetCollectorConfigMap(
 func assembleDeploymentCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
+	namespacesWithEventCollection []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
 	forDeletion bool,
@@ -156,8 +158,9 @@ func assembleDeploymentCollectorConfigMap(
 	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
-		nil,
-		nil,
+		nil, // namespacesWithLogCollection is not used when rendering the deployment config map
+		namespacesWithEventCollection,
+		nil, // namespacesWithPrometheusScraping is not used when rendering the deployment config map
 		filters,
 		transforms,
 		deploymentCollectorConfigurationTemplate,
@@ -170,6 +173,7 @@ func assembleCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithLogCollection []string,
+	namespacesWithEventCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -213,8 +217,8 @@ func assembleCollectorConfigMap(
 				IsGkeAutopilot:                                   config.IsGkeAutopilot,
 				PseudoClusterUid:                                 string(config.PseudoClusterUid),
 				ClusterName:                                      config.ClusterName,
-				NamespacesWithMonitoring:                         monitoredNamespaces,
 				NamespacesWithLogCollection:                      namespacesWithLogCollection,
+				NamespacesWithEventCollection:                    namespacesWithEventCollection,
 				NamespaceOttlFilter:                              namespaceOttlFilter,
 				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
 				CustomFilters:                                    customTelemetryFilters,

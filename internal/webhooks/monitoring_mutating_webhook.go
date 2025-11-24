@@ -148,6 +148,10 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 		}
 		patchRequired = true
 	}
+	if monitoringSpec.EventCollection.Enabled == nil {
+		monitoringSpec.EventCollection.Enabled = ptr.To(telemetryCollectionEnabled)
+		patchRequired = true
+	}
 	if monitoringSpec.PrometheusScraping.Enabled == nil {
 		monitoringSpec.PrometheusScraping.Enabled = ptr.To(telemetryCollectionEnabled)
 		patchRequired = true
