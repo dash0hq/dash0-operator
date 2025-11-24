@@ -83,6 +83,7 @@ func (h *OperatorPostInstallHandler) WaitForOperatorConfigurationResourceToBecom
 		},
 		h.retryBackoff,
 		false,
+		true,
 		h.logger,
 	); err != nil {
 		return fmt.Errorf(

@@ -642,6 +642,7 @@ func executeSingleHttpRequestWithRetryAndReadBody(
 			Factor:   1.5,
 		},
 		true,
+		true,
 		logger,
 	); err != nil {
 		return nil, err
