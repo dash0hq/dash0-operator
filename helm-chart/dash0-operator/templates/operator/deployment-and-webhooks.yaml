@@ -1530,6 +1530,26 @@ spec:
                       type: object
                     type: array
                 type: object
+              eventCollection:
+                description: |-
+                  Settings for collecting Kubernetes events in the target namespace. This setting is optional, by default the
+                  operator will collect Kubernetes events in the target namespace; unless there is an operator configuration
+                  resource with `telemetryCollection.enabled=false`, then event collection is off by default. It is a validation
+                  error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+                  `eventCollection.enabled=true` in any monitoring resource at the same time.
+                properties:
+                  enabled:
+                    description: |-
+                      Opt-out for Kubernetes event collection for the target namespace. If set to `false`, the operator will not
+                      collect Kubernetes events in the target namespace.
+
+                      This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
+                      and the operator will collect Kubernetes events in the target namespace; unless there is an operator
+                      configuration resource with `telemetryCollection.enabled=false`, then event collection is off by default. It is a
+                      validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+                      `eventCollection.enabled=true` in any monitoring resource at the same time.
+                    type: boolean
+                type: object
               export:
                 description: |-
                   The configuration of the observability backend to which telemetry data will be sent. This property is optional.

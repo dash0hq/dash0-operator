@@ -148,6 +148,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						LogCollection: dash0common.LogCollection{
 							Enabled: ptr.To(true),
 						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: ptr.To(true),
+						},
 						PrometheusScraping: dash0common.PrometheusScraping{
 							Enabled: ptr.To(true),
 						},
@@ -157,6 +160,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				normalizeTelemetryRelatedSettingsTestConfig{
 					spec: dash0v1beta1.Dash0MonitoringSpec{
 						LogCollection:      dash0common.LogCollection{},
+						EventCollection:    dash0common.EventCollection{},
 						PrometheusScraping: dash0common.PrometheusScraping{},
 					},
 					wanted: dash0v1beta1.Dash0MonitoringSpec{
@@ -164,6 +168,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 							Mode: dash0common.InstrumentWorkloadsModeAll,
 						},
 						LogCollection: dash0common.LogCollection{
+							Enabled: ptr.To(true),
+						},
+						EventCollection: dash0common.EventCollection{
 							Enabled: ptr.To(true),
 						},
 						PrometheusScraping: dash0common.PrometheusScraping{
@@ -180,6 +187,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						LogCollection: dash0common.LogCollection{
 							Enabled: ptr.To(false),
 						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: ptr.To(false),
+						},
 						PrometheusScraping: dash0common.PrometheusScraping{
 							Enabled: ptr.To(false),
 						},
@@ -189,6 +199,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 							Mode: dash0common.InstrumentWorkloadsModeNone,
 						},
 						LogCollection: dash0common.LogCollection{
+							Enabled: ptr.To(false),
+						},
+						EventCollection: dash0common.EventCollection{
 							Enabled: ptr.To(false),
 						},
 						PrometheusScraping: dash0common.PrometheusScraping{
@@ -221,6 +234,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						LogCollection: dash0common.LogCollection{
 							Enabled: ptr.To(false),
 						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: ptr.To(false),
+						},
 						PrometheusScraping: dash0common.PrometheusScraping{
 							Enabled: ptr.To(false),
 						},
@@ -230,6 +246,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				normalizeTelemetryRelatedSettingsTestConfig{
 					spec: dash0v1beta1.Dash0MonitoringSpec{
 						LogCollection:      dash0common.LogCollection{},
+						EventCollection:    dash0common.EventCollection{},
 						PrometheusScraping: dash0common.PrometheusScraping{},
 					},
 					wanted: dash0v1beta1.Dash0MonitoringSpec{
@@ -237,6 +254,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 							Mode: dash0common.InstrumentWorkloadsModeNone,
 						},
 						LogCollection: dash0common.LogCollection{
+							Enabled: ptr.To(false),
+						},
+						EventCollection: dash0common.EventCollection{
 							Enabled: ptr.To(false),
 						},
 						PrometheusScraping: dash0common.PrometheusScraping{
@@ -254,6 +274,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						LogCollection: dash0common.LogCollection{
 							Enabled: ptr.To(true),
 						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: ptr.To(true),
+						},
 						PrometheusScraping: dash0common.PrometheusScraping{
 							Enabled: ptr.To(true),
 						},
@@ -263,6 +286,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 							Mode: dash0common.InstrumentWorkloadsModeAll,
 						},
 						LogCollection: dash0common.LogCollection{
+							Enabled: ptr.To(true),
+						},
+						EventCollection: dash0common.EventCollection{
 							Enabled: ptr.To(true),
 						},
 						PrometheusScraping: dash0common.PrometheusScraping{
@@ -534,6 +560,9 @@ spec:
 					LogCollection: dash0common.LogCollection{
 						Enabled: ptr.To(true),
 					},
+					EventCollection: dash0common.EventCollection{
+						Enabled: ptr.To(true),
+					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(true),
 					},
@@ -550,6 +579,9 @@ spec:
 						Mode:          dash0common.InstrumentWorkloadsModeNone,
 					},
 					LogCollection: dash0common.LogCollection{
+						Enabled: ptr.To(false),
+					},
+					EventCollection: dash0common.EventCollection{
 						Enabled: ptr.To(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{

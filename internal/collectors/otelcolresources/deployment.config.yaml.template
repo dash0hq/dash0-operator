@@ -5,6 +5,7 @@ extensions:
   pprof: {}
   {{- end }}
 
+{{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 }}
 
 receivers:
   k8s_cluster:
@@ -15,10 +16,13 @@ receivers:
         enabled: true
       k8s.namespace.phase:
         enabled: false
+
+{{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
   k8s_events:
     namespaces:
-{{- range $i, $namespace := .NamespacesWithMonitoring }}
+{{- range $i, $namespace := .NamespacesWithEventCollection }}
     - '{{ $namespace }}'
+{{- end }}
 {{- end }}
 
 processors:
@@ -91,6 +95,7 @@ processors:
       - statements:
         - truncate_all(resource.attributes, 2048)
 
+  {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
   transform/k8s_events:
     error_mode: ignore
     log_statements:
@@ -221,6 +226,7 @@ processors:
           # Remove previously copied attributes
           - delete_key(resource.attributes, "k8s.object.name")
           - delete_key(resource.attributes, "k8s.object.uid")
+  {{- end }}
 
   {{- if .ClusterName }}
   resource/clustername:
@@ -362,6 +368,7 @@ service:
       - {{ $exporter.Name }}
       {{- end }}
 
+    {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
     logs/k8sevents:
       receivers:
       - k8s_events
@@ -381,6 +388,7 @@ service:
       {{- range $i, $exporter := .Exporters }}
       - {{ $exporter.Name }}
       {{- end }}
+    {{- end }}
 
 {{- if .InternalTelemetryEnabled }}
   telemetry:
