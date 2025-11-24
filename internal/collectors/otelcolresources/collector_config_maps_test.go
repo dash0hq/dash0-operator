@@ -112,7 +112,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	configMapTypeDefinitions := []configMapTypeDefinition{
 		{
 			cmType:                    configMapTypeDaemonSet,
-			assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces,
+			assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapForTest,
 			exporterPipelineNames: []string{
 				"traces/downstream",
 				"metrics/downstream",
@@ -1505,6 +1505,57 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
+	Describe("event collection", func() {
+		var config = &oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+		}
+
+		It("should not render the k8s_event receiver if no namespace has event collection enabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				config,
+				[]string{},
+				[]string{},
+				nil,
+				nil,
+				false,
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(readFromMap(collectorConfig, []string{"receivers", "k8s_events"})).To(BeNil())
+			Expect(readFromMap(collectorConfig, []string{"processors", "transform/k8s_events"})).To(BeNil())
+			pipelines := readPipelines(collectorConfig)
+			Expect(pipelines["logs/k8sevents"]).To(BeNil())
+		})
+
+		It("should render the k8s_events receiver with all namespaces for which event collection is enabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				config,
+				[]string{"namespace-1", "namespace-2", "namespace-3"},
+				[]string{"namespace-1", "namespace-2"},
+				nil,
+				nil,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sEventsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "k8s_events"})
+			Expect(k8sEventsReceiverRaw).ToNot(BeNil())
+			k8sEventsReceiver := k8sEventsReceiverRaw.(map[string]interface{})
+			namespaces := k8sEventsReceiver["namespaces"].([]interface{})
+			Expect(namespaces).To(HaveLen(2))
+			Expect(namespaces).To(ContainElement("namespace-1"))
+			Expect(namespaces).To(ContainElement("namespace-2"))
+
+			Expect(readFromMap(collectorConfig, []string{"processors", "transform/k8s_events"})).ToNot(BeNil())
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(pipelines["logs/k8sevents"]).NotTo(BeNil())
+		})
+	})
+
 	Describe("configurable filtering of telemetry per namespace", func() {
 		var filterTestConfigs []TableEntry
 		for _, cmTypeDef := range configMapTypeDefinitions {
@@ -2437,7 +2488,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(grpcOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4317", expected)))
 			Expect(httpOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4318", expected)))
 
-			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, nil, false)
+			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig = parseConfigMapContent(configMap)
 			healthCheckEndpoint = readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
@@ -2616,7 +2667,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	}, daemonSetAndDeployment)
 })
 
-func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
+func assembleDaemonSetCollectorConfigMapForTest(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	filters []NamespacedFilter,
@@ -2644,6 +2695,7 @@ func assembleDeploymentCollectorConfigMapForTest(
 	return assembleDeploymentCollectorConfigMap(
 		config,
 		monitoredNamespaces,
+		nil,
 		filters,
 		transforms,
 		forDeletion,

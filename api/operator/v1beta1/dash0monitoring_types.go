@@ -70,6 +70,15 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	LogCollection dash0common.LogCollection `json:"logCollection,omitempty"`
 
+	// Settings for collecting Kubernetes events in the target namespace. This setting is optional, by default the
+	// operator will collect Kubernetes events in the target namespace; unless there is an operator configuration
+	// resource with `telemetryCollection.enabled=false`, then event collection is off by default. It is a validation
+	// error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+	//`eventCollection.enabled=true` in any monitoring resource at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	EventCollection dash0common.EventCollection `json:"eventCollection,omitempty"`
+
 	// Settings for scraping Prometheus metrics from pods in the target namespace according to their
 	// prometheus.io/scrape annotations. This setting is optional, by default the operator will scrape metrics from pods
 	// with these notations in the target namespace; unless there is an operator configuration resource with

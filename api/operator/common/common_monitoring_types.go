@@ -54,6 +54,20 @@ type LogCollection struct {
 	Enabled *bool `json:"enabled"`
 }
 
+type EventCollection struct {
+	// Opt-out for Kubernetes event collection for the target namespace. If set to `false`, the operator will not
+	// collect Kubernetes events in the target namespace.
+	//
+	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
+	// and the operator will collect Kubernetes events in the target namespace; unless there is an operator
+	// configuration resource with `telemetryCollection.enabled=false`, then event collection is off by default. It is a
+	// validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+	// `eventCollection.enabled=true` in any monitoring resource at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled"`
+}
+
 type PrometheusScraping struct {
 	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
 	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry

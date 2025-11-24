@@ -374,6 +374,90 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					},
 				},
 			}),
+			Entry("with event collection annotation with value true", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation":                        "test-value",
+						annotationNameSpecEventCollectionEnabled: "true",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+					EventCollection: dash0common.EventCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+			}),
+			Entry("with event collection annotation with value false", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation":                        "test-value",
+						annotationNameSpecEventCollectionEnabled: "false",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+					EventCollection: dash0common.EventCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+			}),
+			Entry("with event collection annotation with invalid value", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation":                        "test-value",
+						annotationNameSpecEventCollectionEnabled: "invalid",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+			}),
 			Entry("with multiple annotations for saving attributes not supported in v1alpha1", convertToTestCase{
 				srcObjectMeta: metav1.ObjectMeta{
 					Namespace: TestNamespaceName,
@@ -387,6 +471,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
 						annotationNameSpecInstrumentWorkloadsLabelSelector:                     "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
 						annotationNameStatusPreviousInstrumentWorkloadsLabelSelector:           "dash0-auto-instrument=yes-please",
+						annotationNameSpecEventCollectionEnabled:                               "false",
 					},
 				},
 				srcSpec:               Dash0MonitoringSpec{},
@@ -398,6 +483,9 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						TraceContext: dash0v1beta1.TraceContext{
 							Propagators: ptr.To("tracecontext,xray"),
 						},
+					},
+					EventCollection: dash0common.EventCollection{
+						Enabled: ptr.To(false),
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -698,6 +786,50 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstSpec:   Dash0MonitoringSpec{},
 				expectedDstStatus: Dash0MonitoringStatus{},
 			}),
+			Entry("with event collection explicitly enabled", convertFromTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
+					EventCollection: dash0common.EventCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation":                        "test-value",
+						annotationNameSpecEventCollectionEnabled: "true",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with event collection disabled", convertFromTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
+					EventCollection: dash0common.EventCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation":                        "test-value",
+						annotationNameSpecEventCollectionEnabled: "false",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
 			Entry("with multiple attributes not supported in v1alpha1", convertFromTestCase{
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
@@ -706,6 +838,9 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						TraceContext: dash0v1beta1.TraceContext{
 							Propagators: ptr.To("tracecontext,xray"),
 						},
+					},
+					EventCollection: dash0common.EventCollection{
+						Enabled: ptr.To(false),
 					},
 				},
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -728,6 +863,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
 						annotationNameSpecInstrumentWorkloadsLabelSelector:                     "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
 						annotationNameStatusPreviousInstrumentWorkloadsLabelSelector:           "dash0-auto-instrument=affirmative",
+						annotationNameSpecEventCollectionEnabled:                               "false",
 					},
 				},
 				expectedDstSpec:   Dash0MonitoringSpec{},

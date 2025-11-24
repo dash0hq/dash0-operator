@@ -83,7 +83,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Expect(annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 			Expect(annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 		}
-		collectorConfigConfigMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
+		collectorConfigConfigMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
 		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/metrics"))
@@ -229,7 +229,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(numberOfResourcesWithoutKubernetesInfrastructureMetricsCollectionEnabled))
 
-		collectorConfigConfigMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
+		collectorConfigConfigMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
 		Expect(collectorConfigConfigMapContent).To(
 			ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
@@ -265,7 +265,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
 		Expect(configMapContent).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -283,7 +283,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
 		Expect(configMapContent).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -303,7 +303,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
 		Expect(configMapContent).NotTo(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -666,10 +666,53 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
-		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
 		Expect(configMapContent).To(ContainSubstring("- /var/log/pods/namespace-1_*/*/*.log"))
 		Expect(configMapContent).NotTo(ContainSubstring(fmt.Sprintf("- /var/log/pods/%s_*/*/*.log", OperatorNamespace)))
 		Expect(configMapContent).To(ContainSubstring("- /var/log/pods/namespace-2_*/*/*.log"))
+	})
+
+	It("should collect events from configured namespaces", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			Images:            TestImages,
+		}, []dash0v1beta1.Dash0Monitoring{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "namespace-1",
+				},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					EventCollection: dash0common.EventCollection{Enabled: ptr.To(true)},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "namespace-2",
+				},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					EventCollection: dash0common.EventCollection{Enabled: ptr.To(false)},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "namespace-3",
+				},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					EventCollection: dash0common.EventCollection{Enabled: ptr.To(true)},
+				},
+			},
+		}, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		configMapContent := getDeploymentCollectorConfigMapContent(desiredState)
+		Expect(configMapContent).To(ContainSubstring("- 'namespace-1'"))
+		Expect(configMapContent).NotTo(ContainSubstring("- 'namespace-2'"))
+		Expect(configMapContent).To(ContainSubstring("- 'namespace-3'"))
 	})
 
 	It("should scrape Prometheus metrics from namespaces when enabled", func() {
@@ -707,7 +750,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
-		configMap := getDaemonSetCollectorConfigConfigMap(desiredState)
+		configMap := getDaemonSetCollectorConfigMap(desiredState)
 		collectorConfig := parseConfigMapContent(configMap)
 		namespaces := readFromMap(collectorConfig, []string{
 			"receivers",
@@ -916,12 +959,20 @@ func getConfigMap(desiredState []clientObject, name string) *corev1.ConfigMap {
 	return nil
 }
 
-func getDaemonSetCollectorConfigConfigMap(desiredState []clientObject) *corev1.ConfigMap {
+func getDaemonSetCollectorConfigMap(desiredState []clientObject) *corev1.ConfigMap {
 	return getConfigMap(desiredState, ExpectedDaemonSetCollectorConfigMapName)
 }
 
-func getDaemonSetCollectorConfigConfigMapContent(desiredState []clientObject) string {
-	return getDaemonSetCollectorConfigConfigMap(desiredState).Data["config.yaml"]
+func getDaemonSetCollectorConfigMapContent(desiredState []clientObject) string {
+	return getDaemonSetCollectorConfigMap(desiredState).Data["config.yaml"]
+}
+
+func getDeploymentCollectorConfigMap(desiredState []clientObject) *corev1.ConfigMap {
+	return getConfigMap(desiredState, ExpectedDeploymentCollectorConfigMapName)
+}
+
+func getDeploymentCollectorConfigMapContent(desiredState []clientObject) string {
+	return getDeploymentCollectorConfigMap(desiredState).Data["config.yaml"]
 }
 
 func getFileOffsetConfigMapContent(desiredState []clientObject) string {
