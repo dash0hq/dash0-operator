@@ -160,6 +160,7 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation
           context: images/instrumentation
           scan: 'true'
+          scanSeverity: 'UNKNOWN,HIGH,CRITICAL'
 
       - name: build collector image
         uses: ./.github/actions/build-image
