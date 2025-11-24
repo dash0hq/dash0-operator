@@ -16,6 +16,10 @@ receivers:
       k8s.namespace.phase:
         enabled: false
   k8s_events:
+    namespaces:
+{{- range $i, $namespace := .NamespacesWithMonitoring }}
+    - '{{ $namespace }}'
+{{- end }}
 
 processors:
 {{- if .SendBatchMaxSize }}
