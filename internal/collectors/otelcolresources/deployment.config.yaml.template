@@ -8,6 +8,7 @@ extensions:
 {{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 }}
 
 receivers:
+  {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
   k8s_cluster:
     metrics:
       k8s.container.status.reason:
@@ -16,14 +17,15 @@ receivers:
         enabled: true
       k8s.namespace.phase:
         enabled: false
+  {{- end }}
 
-{{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
+  {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
   k8s_events:
     namespaces:
-{{- range $i, $namespace := .NamespacesWithEventCollection }}
+    {{- range $i, $namespace := .NamespacesWithEventCollection }}
     - '{{ $namespace }}'
-{{- end }}
-{{- end }}
+     {{- end }}
+  {{- end }}
 
 processors:
 {{- if .SendBatchMaxSize }}
@@ -64,7 +66,7 @@ processors:
       # The following two work only if k8s.pod.uid and k8s.container.name are set
       - container.image.name
       - container.image.tag
-{{- if .CollectPodLabelsAndAnnotationsEnabled }}
+      {{- if .CollectPodLabelsAndAnnotationsEnabled }}
       labels:
         - tag_name: k8s.pod.label.$$1
           key_regex: (.*)
@@ -73,7 +75,7 @@ processors:
         - tag_name: k8s.pod.annotation.$$1
           key_regex: (.*)
           from: pod
-{{- end }}
+      {{- end }}
     passthrough: false
     pod_association:
     - sources:
@@ -241,13 +243,14 @@ processors:
         action: insert
   {{- end }}
 
-{{ if .NamespaceOttlFilter }}
+{{ if (and .KubernetesInfrastructureMetricsCollectionEnabled .NamespaceOttlFilter) }}
   filter/metrics/only_monitored_namespaces:
     metrics:
       metric:
         - {{ .NamespaceOttlFilter }}
 {{- end }}
 
+  {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
   # Remove noisy replicaset metrics (by default, Kubernetes keeps a history of 10 replicasets for each deployment,
   # collecting metrics about all of them leads to a lot of metrics with no value). Removing zero-value datapoints
   # makes sure the backend knows about the actual active replicaset (with desired > 0).
@@ -257,8 +260,9 @@ processors:
       datapoint:
       - metric.name == "k8s.replicaset.available" and value_int == 0
       - metric.name == "k8s.replicaset.desired" and value_int == 0
+  {{- end }}
 
-{{ if .CustomFilters.HasMetricFilters }}
+{{ if (and .KubernetesInfrastructureMetricsCollectionEnabled .CustomFilters.HasMetricFilters) }}
   filter/metrics/custom_telemetry_filter:
     error_mode: ignore
     metrics:
@@ -276,7 +280,7 @@ processors:
       {{- end }}
 {{- end }}
 
-{{ if .CustomTransforms.HasMetricTransforms }}
+{{ if (and .KubernetesInfrastructureMetricsCollectionEnabled .CustomTransforms.HasMetricTransforms) }}
   transform/metrics/custom_telemetry_transform:
     error_mode: {{ .CustomTransforms.GlobalErrorMode }}
     metric_statements:
@@ -344,6 +348,7 @@ service:
 
   pipelines:
 
+    {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
     metrics/downstream:
       receivers:
       - k8s_cluster
@@ -372,6 +377,7 @@ service:
       {{- range $i, $exporter := .Exporters }}
       - {{ $exporter.Name }}
       {{- end }}
+    {{- end }}
 
     {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
     logs/k8sevents:

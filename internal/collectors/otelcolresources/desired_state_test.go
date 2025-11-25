@@ -672,6 +672,21 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(configMapContent).To(ContainSubstring("- /var/log/pods/namespace-2_*/*/*.log"))
 	})
 
+	It("should collect Kubernetes infrastructure metrics when enabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Images: TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		configMapContent := getDeploymentCollectorConfigMapContent(desiredState)
+		Expect(configMapContent).To(ContainSubstring("k8s_cluster:"))
+		Expect(configMapContent).To(ContainSubstring("metrics/downstream:"))
+	})
+
 	It("should collect events from configured namespaces", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
