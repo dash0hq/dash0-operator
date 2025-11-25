@@ -14,7 +14,7 @@
     "cookie-parser": "~1.4.7",
     "debug": "~4.4.3",
     "express": "^5.1.0",
-    "http-errors": "~2.0.0",
+    "http-errors": "~2.0.1",
     "morgan": "~1.10.1",
     "nocache": "^4.0.0",
     "prettier": "^3.6.2",
