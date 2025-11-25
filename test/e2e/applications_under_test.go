@@ -264,7 +264,7 @@ func runTestAppHelmUninstall(namespace string, releaseName string) error {
 			"--namespace",
 			namespace,
 			"--ignore-not-found",
-		), false)
+		))
 }
 
 func uninstallDotnetRelease(namespace string) error {
