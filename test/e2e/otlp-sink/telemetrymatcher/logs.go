@@ -18,7 +18,9 @@ import (
 const (
 	logsJsonMaxLineLength = 1_048_576
 
-	logBodyKey = "log.body"
+	logBodyKey     = "log.body"
+	eventReasonKey = "k8s.event.reason"
+	eventNameKey   = "k8s.event.name"
 )
 
 var (
@@ -139,6 +141,26 @@ func workloadLogsResourceMatcher(runtimeWorkloadName string, workloadType string
 				matchResult,
 			)
 		}
+	}
+}
+func workloadKubernetesEventResourceMatcher(clusterName string, namespace string) func(
+	plog.ResourceLogs,
+	*ResourceMatchResult[plog.ResourceLogs],
+) {
+	return func(resourceLogs plog.ResourceLogs, matchResult *ResourceMatchResult[plog.ResourceLogs]) {
+		resourceAttributes := resourceLogs.Resource().Attributes()
+		verifyResourceAttributeEquals(
+			resourceAttributes,
+			string(semconv.K8SClusterNameKey),
+			clusterName,
+			matchResult,
+		)
+		verifyResourceAttributeEquals(
+			resourceAttributes,
+			string(semconv.K8SNamespaceNameKey),
+			namespace,
+			matchResult,
+		)
 	}
 }
 
@@ -329,6 +351,62 @@ func logBodyContainsMatcher(
 			matchResult.addFailedAssertion(
 				logBodyKey,
 				fmt.Sprintf("expected a string containing %s but it was %s", expectedLogBodyPart, logRecord.Body().AsString()),
+			)
+		}
+	}
+}
+
+func kubernetesEventsMatcher(
+	expectedLogBodyPart string,
+	expectedEventReason string,
+	expectedEventNameContains string,
+) func(plog.LogRecord, *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
+	return func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
+		if strings.Contains(logRecord.Body().AsString(), expectedLogBodyPart) {
+			matchResult.addPassedAssertion(logBodyKey)
+		} else {
+			matchResult.addFailedAssertion(
+				logBodyKey,
+				fmt.Sprintf("expected a string containing %s but it was %s", expectedLogBodyPart, logRecord.Body().AsString()),
+			)
+		}
+		eventReason, hasReason := logRecord.Attributes().Get(eventReasonKey)
+		if hasReason {
+			if eventReason.Str() == expectedEventReason {
+				matchResult.addPassedAssertion(eventReasonKey)
+			} else {
+				matchResult.addFailedAssertion(
+					eventReasonKey,
+					fmt.Sprintf("expected %s but it was %s", expectedEventReason, eventReason.Str()),
+				)
+			}
+		} else {
+			matchResult.addFailedAssertion(
+				eventReasonKey,
+				fmt.Sprintf(
+					"expected %s but the log record had no such atttribute",
+					expectedEventReason,
+				),
+			)
+		}
+
+		eventName, hasEventName := logRecord.Attributes().Get(eventNameKey)
+		if hasEventName {
+			if strings.Contains(eventName.Str(), expectedEventNameContains) {
+				matchResult.addPassedAssertion(eventNameKey)
+			} else {
+				matchResult.addFailedAssertion(
+					eventNameKey,
+					fmt.Sprintf("expected a string containing %s but it was %s", expectedEventNameContains, eventName.Str()),
+				)
+			}
+		} else {
+			matchResult.addFailedAssertion(
+				eventNameKey,
+				fmt.Sprintf(
+					"expected a string containing %s but the log record had no such atttribute",
+					expectedEventNameContains,
+				),
 			)
 		}
 	}

@@ -315,11 +315,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			Describe("log collection", func() {
 				It("collects logs, but does not collect the same logs twice from a file when the collector pod churns", func() {
 					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
-					deployDash0MonitoringResource(
-						applicationUnderTestNamespace,
-						dash0MonitoringValuesDefault,
-						operatorNamespace,
-					)
 
 					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
@@ -397,6 +392,38 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 							expectedLogMessagePart,
 						)
 					}, 30*time.Second, pollingInterval).Should(Succeed())
+				})
+			})
+
+			Describe("event collection", func() {
+				It("collects Kubernetes events", func() {
+					timestampLowerBound := time.Now()
+
+					expectedEventNamePart := "dash0-operator-nodejs-20-express-test-deployment-"
+					expectedLogBodyPart := fmt.Sprintf("Created pod: %s", expectedEventNamePart)
+					By(
+						fmt.Sprintf(
+							"waiting for a Kubernetes event with body %s... to be collected after min timestamp %v",
+							expectedLogBodyPart,
+							timestampLowerBound,
+						))
+
+					// The k8s_events receiver is somewhat sluggish to start watching the configured namespaces, and if
+					// the K8s event happened the receiver started, it will be missed. We repeatedly install and
+					// uninstall a test workload to make sure we have an event happening _after_ the receiver has
+					// started up.
+					Eventually(func(g Gomega) {
+						Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+						time.Sleep(5 * time.Second)
+						Expect(uninstallNodeJsRelease(applicationUnderTestNamespace)).To(Succeed())
+						verifyExactlyOneWorkloadKubernetesEvent(
+							g,
+							timestampLowerBound,
+							expectedLogBodyPart,
+							"SuccessfulCreate",
+							expectedEventNamePart,
+						)
+					}, 2*time.Minute, 1*time.Second).Should(Succeed())
 				})
 			})
 

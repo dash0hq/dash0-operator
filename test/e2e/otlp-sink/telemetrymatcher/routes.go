@@ -28,6 +28,7 @@ type commonQueryParams struct {
 	workloadType        string
 	timestampLowerBound time.Time
 	clusterName         string
+	namespace           string
 	operatorNamespace   string
 }
 
@@ -42,6 +43,7 @@ func (r *Routes) defineRoutes(router *gin.Engine) {
 	router.GET("/matching-spans", r.matchingSpansRouteHandler)
 	router.GET("/matching-logs", r.matchingLogsRouteHandler)
 	router.GET("/matching-metrics", r.matchingMetricsRouteHandler)
+	router.GET("/matching-events", r.matchingEventsRouteHandler)
 }
 
 func (r *Routes) readyCheckRouteHandler(c *gin.Context) {
@@ -175,6 +177,45 @@ func (r *Routes) matchingLogsRouteHandler(c *gin.Context) {
 		commonParams,
 		allMatchResults,
 		"log record",
+	)
+}
+
+// matchingEventsRouteHandler checks for log records that represent events, using the given query parameters of the
+// request.
+func (r *Routes) matchingEventsRouteHandler(c *gin.Context) {
+	commonParams, ok := readCommonQueryParams(c)
+	if !ok {
+		return
+	}
+
+	resourceMatchFn := workloadKubernetesEventResourceMatcher(
+		commonParams.clusterName,
+		commonParams.namespace,
+	)
+	logBodyContainsStr := c.Query(shared.QueryParamLogBodyContains)
+	eventReason := c.Query(shared.QueryParamEventReason)
+	eventNameContains := c.Query(shared.QueryParamEventNameContains)
+	logMatchFn := kubernetesEventsMatcher(logBodyContainsStr, eventReason, eventNameContains)
+
+	allMatchResults, err := readFileAndGetMatchingLogs(
+		r.Config.LogsFile,
+		resourceMatchFn,
+		logMatchFn,
+		commonParams.timestampLowerBound,
+	)
+	if err != nil {
+		c.JSON(500, shared.ExpectationResult{
+			Success:     false,
+			Description: fmt.Sprintf("error: %v", err),
+		})
+		return
+	}
+
+	processMatchResults(
+		c,
+		commonParams,
+		allMatchResults,
+		"event/log record",
 	)
 }
 
@@ -317,6 +358,7 @@ func readCommonQueryParams(c *gin.Context) (commonQueryParams, bool) {
 		workloadType:        c.Query(shared.QueryParamWorkloadType),
 		timestampLowerBound: timestampLowerBound,
 		clusterName:         c.Query(shared.QueryParamClusterName),
+		namespace:           c.Query(shared.QueryParamNamespace),
 		operatorNamespace:   c.Query(shared.QueryParamOperatorNamespace),
 	}, true
 }
