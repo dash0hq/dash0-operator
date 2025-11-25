@@ -21,7 +21,7 @@ import (
 
 const (
 	localHelmChart            = "helm-chart/dash0-operator"
-	operatorHelmReleaseName   = "e2e-tests-operator-helm-release"
+	operatorHelmReleaseName   = "e2e-tests-operator-hr"
 	defaultWebhookServiceName = "dash0-operator-webhook-service"
 )
 

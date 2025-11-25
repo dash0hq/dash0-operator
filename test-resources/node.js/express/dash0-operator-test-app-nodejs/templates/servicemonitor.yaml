@@ -14,6 +14,6 @@ spec:
       path: /metrics
       port: http
   selector:
-    matchNames:
-      - dash0-operator-nodejs-20-express-test-deployment-service
+    matchLabels:
+      app: dash0-operator-nodejs-20-express-test-deployment-service
 {{- end }}

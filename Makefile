@@ -81,6 +81,8 @@ TELEMETRY_MATCHER_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 # Maintenance note: Keep this in sync with EnvtestK8sVersion in test/util/constants.go.
 ENVTEST_K8S_VERSION = 1.34.1
 
+GINKGO_FOCUS ?=
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -171,8 +173,12 @@ build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and p
 # flag), and ginkgo's own timeout.
 .PHONY: test-e2e
 test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-images-test-e2e).
+ifdef GINKGO_FOCUS
+	go run github.com/onsi/ginkgo/v2/ginkgo -v -focus="$(GINKGO_FOCUS)" test/e2e
+else
 	go run github.com/onsi/ginkgo/v2/ginkgo -v test/e2e
-
+endif
+	
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.5.0
 golangci-lint-install:

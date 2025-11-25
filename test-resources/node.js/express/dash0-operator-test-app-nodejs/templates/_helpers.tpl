@@ -18,6 +18,8 @@ metadata:
   annotations:
     {{- toYaml .annotations | nindent 4 }}
   {{- end }}
+  labels:
+    app: dash0-operator-nodejs-20-express-test-{{ .workloadType }}-service
 spec:
   selector:
     app: {{ .selector }}

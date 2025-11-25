@@ -40,8 +40,6 @@ helm uninstall --namespace "$target_namespace" test-app-python --ignore-not-foun
 helm uninstall --namespace test-namespace-2 test-app-python-ns2 --ignore-not-found || true
 helm uninstall --namespace test-namespace-3 test-app-python-ns3 --ignore-not-found || true
 
-helm uninstall --namespace "$target_namespace" podinfo --ignore-not-found || true
-
 wait_for_third_party_resource_deletion="false"
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml; then
   wait_for_third_party_resource_deletion="true"
@@ -60,6 +58,8 @@ if [[ "$wait_for_third_party_resource_deletion" = "true" ]]; then
   echo "Waiting for third party resource deletion to be synchronized to the Dash0 API."
   sleep 2
 fi
+
+helm uninstall --namespace "$target_namespace" prometheus-crds --ignore-not-found || true
 
 kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true

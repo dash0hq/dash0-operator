@@ -131,6 +131,15 @@ To actually have the operator properly monitor your workloads, two more things n
 
 Both steps are described in the following sections.
 
+### Support for Prometheus CRDs
+
+If you would like to enable support for Prometheus CRDs
+1. ensure the CRDs (`ServiceMonitor`, `PodMonitor`, `ScrapeConfig`) are installed in the cluster
+2. include `--set operator.prometheusCrdSupportEnabled=true` when running `helm install`
+
+Alternatively, if you are creating the operator configuration resource manually, refer to the [Configuration](#configuration)
+section below.
+
 ## Configuration
 
 ### Configuring the Dash0 Backend Connection
@@ -236,6 +245,11 @@ Here is a list of configuration options for this resource:
   Also note that this setting is not exposed via Helm, i.e. if you want to set this to false you need to deploy the
   operator configuration resource manually, i.e. omit the Helm value `operator.dash0Export.enabled` or set it to false,
   then deploy an operator configuration resource via `kubectl apply -f` or similar.
+* <a href="#operatorconfigurationresource.spec.prometheusCrdSupport.enabled"><span id="operatorconfigurationresource.spec.prometheusCrdSupport.enabled">`spec.prometheusCrdSupport.enabled`</span></a>:
+  A flag controlling whether support for Prometheus CRDs will be enabled. This setting is optional and the default is `false`.
+  Setting it to `true` and having at least one namespace with `prometheusScraping` enabled, will deploy the OpenTelemetry
+  target-allocator and update the `prometheusreceiver` in the OpenTelemetry collectors, so they query the allocator for targets
+  to be scraped.
 
 After providing the required values (at least `endpoint` and `authorization`), save the file and apply the resource to
 the Kubernetes cluster you want to monitor:
@@ -420,6 +434,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
   of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry Prometheus
   receiver.
+  In addition, if the operator configuration resource has `prometheusCrdSupport.enabled=true`, the collectors will scrape metrics
+  from endpoints defined in Prometheus CRs (`ServiceMonitor`, `PodMonitor`, `ScrapeConfig`) present in this namespace.
   This setting is optional, it defaults to true; unless there is an operator configuration resource with
   `telemetryCollection.enabled=false`, then Prometheus scraping is off by default.
   It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and

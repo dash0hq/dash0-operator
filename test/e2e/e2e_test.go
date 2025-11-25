@@ -84,6 +84,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 		deployOtlpSink(&cleanupSteps)
 		deployThirdPartyCrds(&cleanupSteps)
+		deployPrometheusCrds(&cleanupSteps)
 
 		stopPodCrashOrOOMKillDetection = failOnPodCrashOrOOMKill(&cleanupSteps)
 
@@ -109,6 +110,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		uninstallMetricsServerIfApplicable(&cleanupSteps)
 
 		removeThirdPartyCrds(&cleanupSteps)
+		removePrometheusCrds(&cleanupSteps)
 
 		if kubeContextHasBeenChanged {
 			revertKubernetesContext(originalKubeContext)
@@ -171,7 +173,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					func(workloadType workloadType, runtime runtimeType) {
 						testId := generateNewTestId(runtime, workloadType)
 						By(fmt.Sprintf("installing the %s %s", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
-						Expect(installTestAppWorkload(runtime, workloadType, applicationUnderTestNamespace, testId, nil)).To(Succeed())
+						Expect(installTestAppWorkload(
+							runtime,
+							workloadType,
+							applicationUnderTestNamespace,
+							testId,
+							nil,
+							nil)).To(Succeed())
 						By(fmt.Sprintf("verifying that the %s %s has been instrumented by the webhook",
 							runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 						verifyThatWorkloadHasBeenInstrumented(
@@ -602,6 +610,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				verifyDeploymentCollectorConfigMapDoesNotContainStrings(operatorNamespace, " \n")
 			})
 
+			//nolint:lll
+			It("should not deploy the OpenTelemetry target-allocator since the default for prometheusCrdSupport.enabled is `false`", func() {
+				verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+			})
+
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
 		// Dash0 monitoring resource"
 
@@ -746,7 +759,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeJob)
 					By(fmt.Sprintf("installing the %s %s", runtimeTypeNodeJs.runtimeTypeLabel, workloadTypeJob.workloadTypeString))
 					Expect(
-						installTestAppWorkload(runtimeTypeNodeJs, workloadTypeJob, applicationUnderTestNamespace, testId, nil),
+						installTestAppWorkload(runtimeTypeNodeJs, workloadTypeJob, applicationUnderTestNamespace, testId, nil, nil),
 					).To(Succeed())
 					By(fmt.Sprintf("verifying that the %s %s has been instrumented by the webhook",
 						runtimeTypeNodeJs.runtimeTypeLabel, workloadTypeJob.workloadTypeString))
@@ -1013,7 +1026,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 				By("installing the Node.js deployment")
 				Expect(
-					installTestAppWorkload(runtimeTypeNodeJs, workloadTypeDeployment, applicationUnderTestNamespace, testId, nil),
+					installTestAppWorkload(runtimeTypeNodeJs, workloadTypeDeployment, applicationUnderTestNamespace, testId, nil, nil),
 				).To(Succeed())
 				By("verifying that the Node.js deployment has been instrumented by the webhook")
 				verifyThatWorkloadHasBeenInstrumented(
@@ -1191,7 +1204,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					`
 traces:
   span:
-  - 'attributes["http.route"] == "/ready"'
+  	- 'attributes["http.route"] == "/ready"'
 `
 				// minTimestampCollectorRestart := time.Now()
 				deployDash0MonitoringResource(
@@ -1288,7 +1301,7 @@ traces:
 				transform :=
 					`
 trace_statements:
-- truncate_all(span.attributes, 10)
+	- truncate_all(span.attributes, 10)
 `
 				// minTimestampCollectorRestart := time.Now()
 				deployDash0MonitoringResource(
@@ -1730,6 +1743,7 @@ trace_statements:
 							config.namespace,
 							testIds[config.workloadType.workloadTypeString],
 							nil,
+							nil,
 						)).To(Succeed())
 					})
 
@@ -1790,6 +1804,106 @@ trace_statements:
 		})
 
 	}) // end of suite "without an existing operator deployment"
+
+	// Prometheus CRD tests
+	Describe("with an existing operator deployment and prometheusCrdSupport enabled", func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				images,
+				true,
+				map[string]string{
+					"operator.prometheusCrdSupportEnabled": "true",
+				},
+			)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		Describe("without any Dash0 monitoring resources", func() {
+			It("should not deploy the OpenTelemetry target-allocator", func() {
+				verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+			})
+		})
+
+		Describe("with a deployed Dash0 monitoring resource but prometheusScraping.enabled=false", func() {
+			BeforeAll(func() {
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringWithScrapingDisabled,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			It("should not deploy the OpenTelemetry target-allocator", func() {
+				verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+			})
+		})
+
+		Describe("with a deployed Dash0 monitoring resource and prometheusScraping.enabled=true", func() {
+			BeforeAll(func() {
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			})
+
+			It("should deploy the OpenTelemetry target-allocator", func() {
+				waitForTargetAllocatorToStart(operatorNamespace)
+			})
+
+			Describe("with a deployed test application and ServiceMonitor", func() {
+				var timestampLowerBound time.Time
+
+				BeforeAll(func() {
+					timestampLowerBound = time.Now()
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeploymentWithServiceMonitor(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				It("should collect metrics from the app's /metrics endpoint", func() {
+					By("waiting for prometheus receiver metrics")
+					Eventually(func(g Gomega) {
+						verifyPrometheusMetricsIgnoreNamespaceChecks(g, timestampLowerBound)
+					}, 90*time.Second, time.Second).Should(Succeed())
+				})
+
+			})
+
+			Describe("with a deployed test application and PodMonitor", func() {
+				var timestampLowerBound time.Time
+
+				BeforeAll(func() {
+					timestampLowerBound = time.Now()
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeploymentWithPodMonitor(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				It("should collect metrics from the app's /metrics endpoint", func() {
+					By("waiting for prometheus receiver metrics")
+					Eventually(func(g Gomega) {
+						verifyPrometheusMetricsIgnoreNamespaceChecks(g, timestampLowerBound)
+					}, 90*time.Second, time.Second).Should(Succeed())
+				})
+
+			})
+		})
+	})
+
 })
 
 type runtimeWorkloadTestConfig struct {

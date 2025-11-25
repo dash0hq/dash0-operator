@@ -4,5 +4,7 @@
 deployment:
   enabled: true
   prometheus:
+    annotations:
+      enabled: false
     podMonitor:
       enabled: true

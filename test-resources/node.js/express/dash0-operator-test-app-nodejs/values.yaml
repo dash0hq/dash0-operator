@@ -37,7 +37,7 @@ deployment:
   ingressPath: /deployment/node.js(/|$)(.*)
   prometheus:
     annotations:
-      enabled: false
+      enabled: true
     serviceMonitor: # note: should not be enabled together with podMonitor
       enabled: false
     podMonitor: # note: should not be enabled together with serviceMonitor
