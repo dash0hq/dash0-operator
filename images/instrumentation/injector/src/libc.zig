@@ -76,7 +76,7 @@ pub fn getLibCInfo() !types.LibCInfo {
         if (err == error.PermissionsNotFoundInMaps or err == error.CannotFindLibcMemoryRange) {
             // The error will be properly logged in the code calling getLibCInfo, but for those specific errors, let's
             // include a dump of /proc/self/maps in the log output.
-            print.printMessage("printing content of {s} below as debugging information", .{proc_self_maps_path});
+            print.printDebug("printing content of {s} below as debugging information", .{proc_self_maps_path});
             logProcSelfMaps(proc_self_maps_path) catch {
                 // ignore errors from logProcSelfMaps deliberately
             };
@@ -95,18 +95,18 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
     // could make this logic allocation-free.
     const self_exe_file =
         std.fs.openFileAbsolute(self_exe_path, .{ .mode = .read_only }) catch |err| {
-            print.printMessage("Cannot open \"{s}\": {}", .{ self_exe_path, err });
+            print.printError("Cannot open \"{s}\": {}", .{ self_exe_path, err });
             return UnknownLibC;
         };
     defer self_exe_file.close();
 
     const elf_header = std.elf.Header.read(self_exe_file) catch |err| {
-        print.printMessage("Cannot read ELF header from  \"{s}\": {}", .{ self_exe_path, err });
+        print.printError("Cannot read ELF header from  \"{s}\": {}", .{ self_exe_path, err });
         return UnknownLibC;
     };
 
     if (!elf_header.is_64) {
-        print.printMessage("ELF header from \"{s}\" seems to not be from a 64 bit binary", .{self_exe_path});
+        print.printError("ELF header from \"{s}\" seems to not be from a 64 bit binary", .{self_exe_path});
         return error.ElfNot64Bit;
     }
 
@@ -128,7 +128,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
     }
 
     if (dynamic_symbols_table_offset == 0) {
-        print.printMessage("No dynamic section found in ELF metadata when inspecting \"{s}\"", .{self_exe_path});
+        print.printError("No dynamic section found in ELF metadata when inspecting \"{s}\"", .{self_exe_path});
         return error.ElfDynamicSymbolTableNotFound;
     }
 
@@ -168,7 +168,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
         }
     }
     if (strtab_addr == 0) {
-        print.printMessage("No string table found when inspecting ELF binary \"{s}\"", .{self_exe_path});
+        print.printError("No string table found when inspecting ELF binary \"{s}\"", .{self_exe_path});
         return error.ElfStringsTableNotFound;
     }
 
@@ -196,7 +196,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
             }
         }
         if (string_table_offset == 0) {
-            print.printMessage("Could not map string table address when inspecting ELF binary \"{s}\"", .{self_exe_path});
+            print.printError("Could not map string table address when inspecting ELF binary \"{s}\"", .{self_exe_path});
             return error.ElfStringsTableNotFound;
         }
     }
@@ -216,7 +216,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
                 if (std.mem.indexOf(u8, lib_name, musl_name_part)) |_| {
                     // lib_name exists on the stack, we need to allocate a string with the same content on the heap
                     const lib_name_owned = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{lib_name}) catch |err| {
-                        print.printMessage("Failed to allocate memory for libc name: {}", .{err});
+                        print.printError("Failed to allocate memory for libc name: {}", .{err});
                         return error.CannotAllocateMemory;
                     };
                     return LibCNameAndFlavor{ .flavor = types.LibCFlavor.MUSL, .name = lib_name_owned };
@@ -226,7 +226,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
                     print.printDebug("found a libc: {s}", .{lib_name});
                     // lib_name exists on the stack, we need to allocate a string with the same content on the heap
                     const lib_name_owned = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{lib_name}) catch |err| {
-                        print.printMessage("Failed to allocate memory for libc name: {}", .{err});
+                        print.printError("Failed to allocate memory for libc name: {}", .{err});
                         return error.CannotAllocateMemory;
                     };
                     return LibCNameAndFlavor{ .flavor = types.LibCFlavor.GNU, .name = lib_name_owned };
@@ -305,7 +305,7 @@ fn getLibCMemoryLocations(self_maps_path: []const u8, libc_name_and_flavor: LibC
         types.LibCFlavor.MUSL => {
             const at_base = auxv.getauxval(std.elf.AT_BASE);
             if (at_base == 0) {
-                print.printMessage("cannot find AT_BASE in /proc/self/auxv", .{});
+                print.printError("cannot find AT_BASE in /proc/self/auxv", .{});
                 return error.CannotFindAtBase;
             }
             return findMuslMemoryRangeAndLookupMemoryLocations(
@@ -732,7 +732,7 @@ fn tryToFindSymbolsInMemoryRange(
     end: usize,
 ) !types.LibCInfo {
     const linker = elf.ElfDynLib.open(start, end) catch |err| {
-        print.printMessage("cannot open libc mapped range {x}-{x} as ELF library: {}", .{ start, end, err });
+        print.printWarn("cannot open libc mapped range {x}-{x} as ELF library: {}", .{ start, end, err });
         return error.CannotOpenLibc;
     };
 
@@ -783,6 +783,6 @@ fn logProcSelfMaps(self_maps_path: []const u8) !void {
     var in_stream = buf_reader.reader();
     var buf: [1024]u8 = undefined;
     while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-        print.printMessage("{s}", .{line});
+        print.printDebug("{s}", .{line});
     }
 }

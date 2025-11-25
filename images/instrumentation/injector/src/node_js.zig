@@ -19,7 +19,7 @@ pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_val
     // that does not exist or cannot be opened will crash the Node.js process
     // with an 'ERR_MODULE_NOT_FOUND' error.
     std.fs.cwd().access(dash0_nodejs_otel_sdk_distribution, .{}) catch |err| {
-        print.printMessage("Skipping injection of the Node.js OTel SDK distribution in '{s}' because of an issue accessing the Node.js module at {s}: {}", .{ node_options_env_var_name, dash0_nodejs_otel_sdk_distribution, err });
+        print.printError("Skipping injection of the Node.js OTel SDK distribution in '{s}' because of an issue accessing the Node.js module at {s}: {}", .{ node_options_env_var_name, dash0_nodejs_otel_sdk_distribution, err });
         return null;
     };
     return getModifiedNodeOptionsValue(original_value_optional);
@@ -50,7 +50,7 @@ fn getModifiedNodeOptionsValue(original_value_optional: ?[:0]const u8) ?types.Nu
         // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
         // parent process.
         const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s} {s}", .{ require_dash0_nodejs_otel_sdk_distribution, original_value }) catch |err| {
-            print.printMessage("Cannot allocate memory to manipulate the value of '{s}': {}", .{ node_options_env_var_name, err });
+            print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ node_options_env_var_name, err });
             return null;
         };
         return return_buffer.ptr;
