@@ -17,7 +17,7 @@ test "initLogLevel: DASH0_INJECTOR_DEBUG and DASH0_INJECTOR_LOG_LEVEL are not se
     const original_environ = try test_util.clearStdCEnviron();
     defer test_util.reset(original_environ);
     print.initLogLevel();
-    try testing.expectEqual(.Info, print.getLogLevel());
+    try testing.expectEqual(.Error, print.getLogLevel());
 }
 
 test "initLogLevel: DASH0_INJECTOR_DEBUG=false, no DASH0_INJECTOR_LOG_LEVEL" {
@@ -25,7 +25,7 @@ test "initLogLevel: DASH0_INJECTOR_DEBUG=false, no DASH0_INJECTOR_LOG_LEVEL" {
     defer test_util.reset(original_environ);
 
     print.initLogLevel();
-    try testing.expectEqual(.Info, print.getLogLevel());
+    try testing.expectEqual(.Error, print.getLogLevel());
 }
 
 test "initLogLevel: DASH0_INJECTOR_DEBUG is an arbitrary string, no DASH0_INJECTOR_LOG_LEVEL" {
@@ -33,7 +33,7 @@ test "initLogLevel: DASH0_INJECTOR_DEBUG is an arbitrary string, no DASH0_INJECT
     defer test_util.reset(original_environ);
 
     print.initLogLevel();
-    try testing.expectEqual(.Info, print.getLogLevel());
+    try testing.expectEqual(.Error, print.getLogLevel());
 }
 
 test "initLogLevel: DASH0_INJECTOR_DEBUG=true, no DASH0_INJECTOR_LOG_LEVEL" {
@@ -60,6 +60,22 @@ test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=info, no DASH0_INJECTOR_DEBUG" {
     try testing.expectEqual(.Info, print.getLogLevel());
 }
 
+test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=warn, no DASH0_INJECTOR_DEBUG" {
+    const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_LOG_LEVEL=warn"});
+    defer test_util.reset(original_environ);
+
+    print.initLogLevel();
+    try testing.expectEqual(.Warn, print.getLogLevel());
+}
+
+test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=error, no DASH0_INJECTOR_DEBUG" {
+    const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_LOG_LEVEL=error"});
+    defer test_util.reset(original_environ);
+
+    print.initLogLevel();
+    try testing.expectEqual(.Error, print.getLogLevel());
+}
+
 test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=none, no DASH0_INJECTOR_DEBUG" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_LOG_LEVEL=none"});
     defer test_util.reset(original_environ);
@@ -73,7 +89,7 @@ test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL is an arbitrary string, no DASH0_IN
     defer test_util.reset(original_environ);
 
     print.initLogLevel();
-    try testing.expectEqual(.Info, print.getLogLevel());
+    try testing.expectEqual(.Error, print.getLogLevel());
 }
 
 test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=debug, DASH0_INJECTOR_DEBUG=true" {
@@ -84,8 +100,8 @@ test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=debug, DASH0_INJECTOR_DEBUG=true" {
     try testing.expectEqual(.Debug, print.getLogLevel());
 }
 
-test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=info, DASH0_INJECTOR_DEBUG=true" {
-    const original_environ = try test_util.setStdCEnviron(&[2][]const u8{ "DASH0_INJECTOR_LOG_LEVEL=info", "DASH0_INJECTOR_DEBUG=true" });
+test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=error, DASH0_INJECTOR_DEBUG=true" {
+    const original_environ = try test_util.setStdCEnviron(&[2][]const u8{ "DASH0_INJECTOR_LOG_LEVEL=error", "DASH0_INJECTOR_DEBUG=true" });
     defer test_util.reset(original_environ);
 
     print.initLogLevel();
@@ -114,6 +130,22 @@ test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=info, DASH0_INJECTOR_DEBUG=false" {
 
     print.initLogLevel();
     try testing.expectEqual(.Info, print.getLogLevel());
+}
+
+test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=warn, DASH0_INJECTOR_DEBUG=false" {
+    const original_environ = try test_util.setStdCEnviron(&[2][]const u8{ "DASH0_INJECTOR_LOG_LEVEL=warn", "DASH0_INJECTOR_DEBUG=false" });
+    defer test_util.reset(original_environ);
+
+    print.initLogLevel();
+    try testing.expectEqual(.Warn, print.getLogLevel());
+}
+
+test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=error, DASH0_INJECTOR_DEBUG=false" {
+    const original_environ = try test_util.setStdCEnviron(&[2][]const u8{ "DASH0_INJECTOR_LOG_LEVEL=error", "DASH0_INJECTOR_DEBUG=false" });
+    defer test_util.reset(original_environ);
+
+    print.initLogLevel();
+    try testing.expectEqual(.Error, print.getLogLevel());
 }
 
 test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=none, DASH0_INJECTOR_DEBUG=false" {

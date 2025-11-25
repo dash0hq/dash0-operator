@@ -8,7 +8,7 @@ const print = @import("print.zig");
 // Executables requiring getauxval will bind to libc's getauxval, not the symbol exported here.
 pub export fn getauxval(auxv_type: u32) callconv(.C) usize {
     var auxv_file = std.fs.openFileAbsolute("/proc/self/auxv", .{}) catch |err| {
-        print.printMessage("Failed to open /proc/self/auxv: {}", .{err});
+        print.printError("Failed to open /proc/self/auxv: {}", .{err});
         return 0;
     };
     defer auxv_file.close();
@@ -21,7 +21,7 @@ pub export fn getauxval(auxv_type: u32) callconv(.C) usize {
                 break;
             }
 
-            print.printMessage("Failed to read from /proc/self/auxv: {}", .{err});
+            print.printError("Failed to read from /proc/self/auxv: {}", .{err});
             return 0;
         };
 

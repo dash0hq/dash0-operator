@@ -33,9 +33,9 @@ const InjectorError = error{
 fn initEnviron() callconv(.C) void {
     const libc_info = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
-            print.printMessage("no libc found: {}", .{err});
+            print.printError("no libc found: {}", .{err});
         } else {
-            print.printMessage("failed to identify libc: {}", .{err});
+            print.printError("failed to identify libc: {}", .{err});
         }
         return;
     };
@@ -44,7 +44,7 @@ fn initEnviron() callconv(.C) void {
     environ_ptr = libc_info.environ_ptr;
 
     updateStdOsEnviron() catch |err| {
-        print.printMessage("initEnviron(): cannot update std.os.environ: {}; ", .{err});
+        print.printError("initEnviron(): cannot update std.os.environ: {}; ", .{err});
         return;
     };
     print.initLogLevel();
@@ -56,7 +56,7 @@ fn initEnviron() callconv(.C) void {
     }, libc_info.name });
 
     const maybe_modified_resource_attributes = res_attrs.getModifiedOtelResourceAttributesValue(std.posix.getenv(res_attrs.otel_resource_attributes_env_var_name)) catch |err| {
-        print.printMessage("cannot calculate modified OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
+        print.printError("cannot calculate modified OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
         return;
     };
 
@@ -72,7 +72,7 @@ fn initEnviron() callconv(.C) void {
                 true,
             );
         if (setenv_res != 0) {
-            print.printMessage("failed to set modified value for '{s}' to '{s}': errno={}", .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, setenv_res });
+            print.printError("failed to set modified value for '{s}' to '{s}': errno={}", .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, setenv_res });
         }
     }
 
@@ -85,7 +85,7 @@ fn initEnviron() callconv(.C) void {
     modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
     modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
     modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
-    print.printMessage("environment injection finished", .{});
+    print.printInfo("environment injection finished", .{});
 }
 
 fn updateStdOsEnviron() !void {
@@ -116,7 +116,7 @@ fn modifyEnvironmentVariable(setenv_fn_ptr: types.SetenvFnPtr, name: [:0]const u
         );
         const setenv_res = setenv_fn_ptr(name, value, true);
         if (setenv_res != 0) {
-            print.printMessage(
+            print.printError(
                 "failed to set modified value for '{s}' to '{s}': errno={}",
                 .{ name, value, setenv_res },
             );

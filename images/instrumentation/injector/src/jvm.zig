@@ -19,7 +19,7 @@ pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value_op
     // Check the existence of the Jar file: by passing a `-javaagent` to a
     // jar file that does not exist or cannot be opened will crash the JVM
     std.fs.cwd().access(otel_java_agent_path, .{}) catch |err| {
-        print.printMessage("Skipping injection of OTel Java agent in 'JAVA_TOOL_OPTIONS' because of an issue accessing the Jar file at {s}: {}", .{ otel_java_agent_path, err });
+        print.printError("Skipping injection of OTel Java agent in 'JAVA_TOOL_OPTIONS' because of an issue accessing the Jar file at {s}: {}", .{ otel_java_agent_path, err });
         return null;
     };
 
@@ -61,7 +61,7 @@ fn getModifiedJavaToolOptionsValue(original_java_tool_options_env_var_value_opti
                 original_java_tool_options_env_var_value,
                 javaagent_flag_value,
             }) catch |err| {
-                print.printMessage("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
+                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                 return null;
             };
         return return_buffer.ptr;

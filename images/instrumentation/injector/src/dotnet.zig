@@ -55,11 +55,11 @@ pub fn setLibcFlavor(lf: types.LibCFlavor) void {
 
 pub fn getDotnetValues() ?DotnetValues {
     if (libc_flavor == null) {
-        print.printMessage("invariant violated: libc flavor has not been set prior to calling getDotnetValues().", .{});
+        print.printError("invariant violated: libc flavor has not been set prior to calling getDotnetValues().", .{});
         return null;
     }
     if (libc_flavor == types.LibCFlavor.UNKNOWN) {
-        print.printMessage("Cannot determine libc flavor", .{});
+        print.printError("Cannot determine libc flavor", .{});
         return null;
     }
 
@@ -69,7 +69,7 @@ pub fn getDotnetValues() ?DotnetValues {
 
     if (libc_flavor) |libc_f| {
         const values = determineDotnetValues(libc_f, builtin.cpu.arch) catch |err| {
-            print.printMessage("Cannot determine .NET environment variables: {}", .{err});
+            print.printError("Cannot determine .NET environment variables: {}", .{err});
             cached_dotnet_values = .{
                 .values = null,
                 // do not try to determine the .NET values again
@@ -87,7 +87,7 @@ pub fn getDotnetValues() ?DotnetValues {
         };
         for (paths_to_check) |p| {
             std.fs.cwd().access(std.mem.span(p), .{}) catch |err| {
-                print.printMessage("Skipping injection of injecting the .NET OpenTelemetry instrumentation because of an issue accessing {s}: {}", .{ p, err });
+                print.printError("Skipping injection of injecting the .NET OpenTelemetry instrumentation because of an issue accessing {s}: {}", .{ p, err });
                 cached_dotnet_values = .{
                     .values = null,
                     // do not try to determine the .NET values again
