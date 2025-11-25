@@ -9,7 +9,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "body-parser": "^2.2.0",
+    "body-parser": "^2.2.1",
     "bootstrap": "^5.3.8",
     "cookie-parser": "~1.4.7",
     "debug": "~4.4.3",
