@@ -33,7 +33,7 @@ processors:
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
-      # - k8s.cronjob.uid actually not implemented although advertised in k8sattributes' readme.
+      - k8s.cronjob.uid
       - k8s.daemonset.name
       - k8s.daemonset.uid
       - k8s.deployment.name
