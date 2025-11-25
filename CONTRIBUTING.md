@@ -422,12 +422,17 @@ When an end-to-end test case fails, the test suite automatically collects pod de
 from the Kubernetes cluster at the time of the failure.
 The collected data can be found in `test-resources/e2e/logs`.
 It is often helpful to understand why the test case has failed.
-In addition, the data that the OpenTelemetry collectors emitted during the last test case can be reviewed in
-`test-resources/e2e/volumes/otlp-sink`, in `logs.jsonl`, `metrics.jsonl`, and `traces.jsonl` respectively.
-These files are located in the volume configured as `telemetryFilesVolume` in
-`test/e2e/otlp-sink/helm-chart/values.yaml`.
-(For systems that use a virtual machine to run containers like Docker Desktop on macOS, use
-`docker run -it --rm --privileged --pid=host justincormack/nsenter1` or a similar mechanism to get access.)
+In addition, the data that the OpenTelemetry collectors emitted during the test suite can be reviewed in a couple of
+places:
+- While the test suite is running: Via the logs of the `otlp-sink` pod's `otelcol` container (the collector
+  configuration has a debug exporter with detailed verbosity).
+- While the test suite is running: In the `telemetry-files` volume of the `otlp-sink` pod.
+  This volume is configured as `telemetryFilesVolume` in `test/e2e/otlp-sink/helm-chart/values.yaml`.
+  (For systems that use a virtual machine to run containers like Docker Desktop on macOS, use
+  `docker run -it --rm --privileged --pid=host justincormack/nsenter1` or a similar mechanism to get access.)
+  The volume contains three files, `logs.jsonl`, `metrics.jsonl`, and `traces.jsonl`, which are newline delimited JSON
+  files of the collected telemetry.
+- After a failed test: In `test-resources/e2e/logs/kubectl_-n_otlp-sink_logs_otlp-sink-.*_--all-containers=true`.
 
 ### Installing Basic Infrastructure for End-to-End Tests
 

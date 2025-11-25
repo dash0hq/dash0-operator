@@ -12,6 +12,7 @@ const (
 	QueryParamWorkloadType           = "workload-type"
 	QueryParamTimestampLowerBoundStr = "timestamp-lower-bound"
 	QueryParamClusterName            = "cluster"
+	QueryParamNamespace              = "namespace"
 	QueryParamOperatorNamespace      = "operator-namespace"
 
 	// query parameters for matching spans
@@ -27,6 +28,11 @@ const (
 	QueryParamServiceVersion          = "service-version"
 	QueryParamLogBodyEquals           = "log-body-equals"
 	QueryParamLogBodyContains         = "log-body-contains"
+
+	// query parameters for matching Kubernetes events
+
+	QueryParamEventReason       = "event-reason"
+	QueryParamEventNameContains = "event-name-contains"
 
 	// query parameters for matching metrics
 
