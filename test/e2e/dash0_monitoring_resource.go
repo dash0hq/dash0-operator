@@ -72,7 +72,7 @@ func renderDash0MonitoringResourceTemplate(dash0MonitoringValues dash0Monitoring
 
 func renderDash0MonitoringResourceTemplateV1Alpha1(dash0MonitoringValues dash0MonitoringValues) string {
 	By("rendering Dash0Monitoring resource template")
-	dash0MonitoringResourceTemplate = initTemplateOnce(
+	dash0MonitoringResourceV1Alpha1Template = initTemplateOnce(
 		dash0MonitoringResourceV1Alpha1Template,
 		dash0MonitoringResourceV1Alpha1Source,
 		"dash0monitoring",
