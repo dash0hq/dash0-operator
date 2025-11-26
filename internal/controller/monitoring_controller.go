@@ -157,6 +157,9 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err = r.reconcileOpenTelemetryCollector(ctx, nil, &logger); err != nil {
 			return ctrl.Result{}, err
 		}
+		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, &logger); err != nil {
+			return ctrl.Result{}, err
+		}
 
 		return ctrl.Result{}, nil
 	} else if checkResourceResult.StopReconcile {
@@ -207,6 +210,9 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// being true. We still want to handle this case correctly for good measure (reconcile the otel collector, then
 		// stop the reconcile of the monitoring resource).
 		if r.reconcileOpenTelemetryCollector(ctx, monitoringResource, &logger) != nil {
+			return ctrl.Result{}, err
+		}
+		if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
 			return ctrl.Result{}, err
 		}
 		// The Dash0 monitoring resource is slated for deletion, the finalizer has already been removed in the last
@@ -332,6 +338,11 @@ func (r *MonitoringReconciler) runCleanupActions(
 
 	if err := r.reconcileOpenTelemetryCollector(ctx, monitoringResource, logger); err != nil {
 		// err has been logged in r.reconcileOpenTelemetryCollector already
+		return err
+	}
+
+	if err := r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
+		// err has been logged in r.reconcileOpenTelemetryTargetAllocator already
 		return err
 	}
 

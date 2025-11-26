@@ -1204,7 +1204,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					`
 traces:
   span:
-  	- 'attributes["http.route"] == "/ready"'
+  - 'attributes["http.route"] == "/ready"'
 `
 				// minTimestampCollectorRestart := time.Now()
 				deployDash0MonitoringResource(
@@ -1301,7 +1301,7 @@ traces:
 				transform :=
 					`
 trace_statements:
-	- truncate_all(span.attributes, 10)
+- truncate_all(span.attributes, 10)
 `
 				// minTimestampCollectorRestart := time.Now()
 				deployDash0MonitoringResource(

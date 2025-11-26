@@ -833,7 +833,6 @@ install_third_party_crds() {
   install_prometheus_crds
 }
 
-# todo: integrate with version check
 install_prometheus_crds() {
   helm upgrade --install \
     --namespace "$target_namespace" \

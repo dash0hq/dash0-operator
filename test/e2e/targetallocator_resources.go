@@ -105,5 +105,5 @@ func verifyThatTargetAllocatorIsNotDeployed(operatorNamespace string) {
 				targetAllocatorName,
 			))).ToNot(Succeed())
 	}
-	Eventually(verifyTargetAllocatorDeploymentDoesNotExist, 60*time.Second, time.Second).Should(Succeed())
+	Consistently(verifyTargetAllocatorDeploymentDoesNotExist, 60*time.Second, time.Second).Should(Succeed())
 }
