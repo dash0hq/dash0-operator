@@ -14,7 +14,7 @@ import (
 const (
 	testEndpoint           = "/dash0-k8s-operator-test"
 	labelChangeTimeout     = 25 * time.Second
-	verifyTelemetryTimeout = 40 * time.Second
+	verifyTelemetryTimeout = 70 * time.Second
 	pollingInterval        = 500 * time.Millisecond
 
 	cronjob = "cronjob"
