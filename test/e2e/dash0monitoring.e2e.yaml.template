@@ -23,3 +23,7 @@ spec:
   transform:
   {{- .Transform | indent 4 -}}
 {{- end }}
+{{- if .PrometheusScrapingEnabled }}
+  prometheusScraping:
+    enabled: {{ .PrometheusScrapingEnabled }}
+{{- end }}

@@ -21,7 +21,7 @@ import (
 
 const (
 	localHelmChart            = "helm-chart/dash0-operator"
-	operatorHelmReleaseName   = "e2e-tests-operator-helm-release"
+	operatorHelmReleaseName   = "e2e-tests-operator-hr"
 	defaultWebhookServiceName = "dash0-operator-webhook-service"
 )
 
@@ -55,6 +55,7 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 			SelfMonitoringEnabled: selfMonitoringEnabled,
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			CollectPodLabelsAndAnnotationsEnabled:            true,
+			PrometheusCrdSupportEnabled:                      false,
 		},
 		additionalHelmParameters,
 	)

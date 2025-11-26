@@ -88,6 +88,14 @@ operator:
   # resource will be created by the Helm chart then.
   collectPodLabelsAndAnnotationsEnabled: true
 
+  # An opt-in for enabling support for Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig). If set to true,
+  # the operator will deploy an OpenTelemetry target-allocator that watches Prometheus CRDs and provides an API that
+  # allows collectors to query the resulting scrape configs.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
+  # resource will be created by the Helm chart then.
+  prometheusCrdSupportEnabled: false
+
   # If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
   # optional. Per default, the resource attribute k8s.cluster.name will not be added.
   #
@@ -285,6 +293,16 @@ operator:
     repository: "ghcr.io/dash0hq/collector"
     # overrides the image tag, which defaults to the chart appVersion.
     tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
+  # the container image to use for the target-allocator component (there should usually be no reason to override this)
+  targetAllocatorImage:
+    repository: "ghcr.io/open-telemetry/opentelemetry-operator/target-allocator"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag: "0.140.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy

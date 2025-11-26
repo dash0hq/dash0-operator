@@ -22,8 +22,10 @@ spec:
         app: {{ .Values.deployment.selector }}
         test.label/key: "label-value"
       annotations:
+        {{- if .Values.deployment.prometheus.annotations.enabled }}
         prometheus.io/scrape: "true"
         prometheus.io/port: "{{ .Values.deployment.targetPort }}"
+        {{- end }}
         test.annotation/key: "annotation value"
     spec:
       containers:

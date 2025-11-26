@@ -52,9 +52,10 @@ var _ = Describe("The collector manager", Ordered, func() {
 			k8sClient.Scheme(),
 			OperatorManagerDeployment,
 			util.CollectorConfig{
-				Images:                  TestImages,
-				OperatorNamespace:       operatorNamespace,
-				OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+				Images:                    TestImages,
+				OperatorNamespace:         operatorNamespace,
+				OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
+				TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			},
 		)
 		collectorManager = NewCollectorManager(

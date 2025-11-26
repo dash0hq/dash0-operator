@@ -38,6 +38,8 @@ type oTelColConfig struct {
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
+	PrometheusCrdSupportEnabled                      bool
+	TargetAllocatorNamePrefix                        string
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	DisableHostPorts                                 bool
@@ -304,7 +306,7 @@ func assembleDesiredState(
 	extraConfig util.ExtraConfig,
 	forDeletion bool,
 ) ([]clientObject, error) {
-	// Make sure the resulting objects (in particular the config maps) are do not depend on the (potentially non-stable)
+	// Make sure the resulting objects (in particular the config maps) do not depend on the (potentially non-stable)
 	// sort order of the input slices.
 	slices.Sort(monitoredNamespaces)
 	slices.Sort(namespacesWithLogCollection)
@@ -1653,4 +1655,9 @@ func obsoleteResourceObjectMeta(namespace string, name string) metav1.ObjectMeta
 		Name:      name,
 		Namespace: namespace,
 	}
+}
+
+// exposing this const for the configuration of the target-allocator
+func CollectorDaemonSetServiceComponent() string {
+	return daemonSetServiceComponent
 }

@@ -248,7 +248,7 @@ func selfMonitoringLogsResourceMatcherCollector(
 		verifyResourceAttributeEquals(
 			attributes,
 			string(semconv.K8SDaemonSetNameKey),
-			"e2e-tests-operator-helm-release-opentelemetry-collector-agent-daemonset",
+			"e2e-tests-operator-hr-opentelemetry-collector-agent-daemonset",
 			matchResult,
 		)
 		verifyResourceAttributeExists(
@@ -259,7 +259,7 @@ func selfMonitoringLogsResourceMatcherCollector(
 		verifyResourceAttributeStartsWith(
 			attributes,
 			string(semconv.K8SPodNameKey),
-			"e2e-tests-operator-helm-release-opentelemetry-collector-a",
+			"e2e-tests-operator-hr-opentelemetry-collector-a",
 			matchResult,
 		)
 		verifyResourceAttributeStartsWith(

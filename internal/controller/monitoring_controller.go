@@ -25,6 +25,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -33,6 +34,7 @@ type MonitoringReconciler struct {
 	clientset              *kubernetes.Clientset
 	instrumenter           *instrumentation.Instrumenter
 	collectorManager       *collectors.CollectorManager
+	targetAllocatorManager *targetallocator.TargetAllocatorManager
 	danglingEventsTimeouts *util.DanglingEventsTimeouts
 }
 
@@ -68,6 +70,7 @@ func NewMonitoringReconciler(
 	clientset *kubernetes.Clientset,
 	instrumenter *instrumentation.Instrumenter,
 	collectorManager *collectors.CollectorManager,
+	targetAllocatorManager *targetallocator.TargetAllocatorManager,
 	danglingEventsTimeouts *util.DanglingEventsTimeouts,
 ) *MonitoringReconciler {
 	return &MonitoringReconciler{
@@ -75,6 +78,7 @@ func NewMonitoringReconciler(
 		clientset:              clientset,
 		instrumenter:           instrumenter,
 		collectorManager:       collectorManager,
+		targetAllocatorManager: targetAllocatorManager,
 		danglingEventsTimeouts: danglingEventsTimeouts,
 	}
 }
@@ -153,6 +157,9 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err = r.reconcileOpenTelemetryCollector(ctx, nil, &logger); err != nil {
 			return ctrl.Result{}, err
 		}
+		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, &logger); err != nil {
+			return ctrl.Result{}, err
+		}
 
 		return ctrl.Result{}, nil
 	} else if checkResourceResult.StopReconcile {
@@ -205,6 +212,9 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if r.reconcileOpenTelemetryCollector(ctx, monitoringResource, &logger) != nil {
 			return ctrl.Result{}, err
 		}
+		if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
+			return ctrl.Result{}, err
+		}
 		// The Dash0 monitoring resource is slated for deletion, the finalizer has already been removed in the last
 		// reconcile cycle (which also means all cleanup actions have been processed last time), no further
 		// reconciliation is necessary.
@@ -236,6 +246,10 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if r.reconcileOpenTelemetryCollector(ctx, monitoringResource, &logger) != nil {
+		return ctrl.Result{}, err
+	}
+
+	if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -324,6 +338,11 @@ func (r *MonitoringReconciler) runCleanupActions(
 
 	if err := r.reconcileOpenTelemetryCollector(ctx, monitoringResource, logger); err != nil {
 		// err has been logged in r.reconcileOpenTelemetryCollector already
+		return err
+	}
+
+	if err := r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
+		// err has been logged in r.reconcileOpenTelemetryTargetAllocator already
 		return err
 	}
 
@@ -433,6 +452,23 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
+		return err
+	}
+	return nil
+}
+
+func (r *MonitoringReconciler) reconcileOpenTelemetryTargetAllocator(
+	ctx context.Context,
+	logger *logr.Logger,
+) error {
+	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
+	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
+	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.
+	if _, err := r.targetAllocatorManager.ReconcileTargetAllocator(
+		ctx,
+		targetallocator.TriggeredByDash0ResourceReconcile,
+	); err != nil {
+		logger.Error(err, "Failed to reconcile the OpenTelemetry target-allocator, requeuing reconcile request.")
 		return err
 	}
 	return nil

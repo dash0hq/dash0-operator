@@ -28,12 +28,11 @@ import (
 
 type CollectorManager struct {
 	client.Client
-	clientset                          *kubernetes.Clientset
-	oTelColResourceManager             *otelcolresources.OTelColResourceManager
-	extraConfig                        atomic.Pointer[util.ExtraConfig]
-	developmentMode                    bool
-	updateInProgress                   atomic.Bool
-	resourcesHaveBeenDeletedByOperator atomic.Bool
+	clientset              *kubernetes.Clientset
+	oTelColResourceManager *otelcolresources.OTelColResourceManager
+	extraConfig            atomic.Pointer[util.ExtraConfig]
+	developmentMode        bool
+	updateInProgress       atomic.Bool
 }
 
 type CollectorReconcileTrigger string
@@ -94,20 +93,6 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	trigger CollectorReconcileTrigger,
 ) (bool, error) {
 	logger := log.FromContext(ctx)
-	if m.resourcesHaveBeenDeletedByOperator.Load() {
-		switch trigger {
-		case TriggeredByWatchEvent:
-			if m.developmentMode {
-				logger.Info("OpenTelemetry collector resources have already been deleted, ignoring reconciliation request.")
-			}
-			return false, nil
-		case TriggeredByDash0ResourceReconcile:
-			if m.developmentMode {
-				logger.Info("resetting resourcesHaveBeenDeletedByOperator")
-			}
-			m.resourcesHaveBeenDeletedByOperator.Store(false)
-		}
-	}
 	if m.updateInProgress.Load() {
 		if m.developmentMode {
 			logger.Info("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +

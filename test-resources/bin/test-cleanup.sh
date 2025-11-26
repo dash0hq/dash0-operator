@@ -59,6 +59,8 @@ if [[ "$wait_for_third_party_resource_deletion" = "true" ]]; then
   sleep 2
 fi
 
+helm uninstall --namespace "$target_namespace" prometheus-crds --ignore-not-found || true
+
 kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true

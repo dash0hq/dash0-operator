@@ -16,6 +16,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -75,6 +76,8 @@ type collectorConfigurationTemplateValues struct {
 	SendBatchMaxSize                                 *uint32
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
+	PrometheusCrdSupportEnabled                      bool
+	TargetAllocatorServiceName                       string
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	IsGkeAutopilot                                   bool
@@ -201,12 +204,16 @@ func assembleCollectorConfigMap(
 				config.SelfMonitoringConfiguration,
 			)
 
+		targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
+
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
 				Exporters:        exporters,
 				SendBatchMaxSize: config.SendBatchMaxSize,
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
+				PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
+				TargetAllocatorServiceName:                       targetAllocatorServiceName,
 				KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
 				IsGkeAutopilot:                                   config.IsGkeAutopilot,

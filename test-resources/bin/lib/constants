@@ -29,3 +29,7 @@ default_target_ns="test-namespace"
 default_workload_kind="deployment"
 default_runtime="nodejs"
 default_operator_webhook_service_name=dash0-operator-webhook-service
+
+# nodejs paths
+nodejs_values_with_service_monitor="test-resources/node.js/express/test-values/with_service_monitor.yaml"
+nodejs_values_with_pod_monitor="test-resources/node.js/express/test-values/with_pod_monitor.yaml"

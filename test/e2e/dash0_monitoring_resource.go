@@ -28,6 +28,7 @@ type dash0MonitoringValues struct {
 	Token                            string
 	Filter                           string
 	Transform                        string
+	PrometheusScrapingEnabled        string
 }
 
 const (
@@ -51,6 +52,11 @@ var (
 		InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
 		Endpoint:                defaultEndpoint,
 		Token:                   defaultToken,
+	}
+
+	dash0MonitoringWithScrapingDisabled = dash0MonitoringValues{
+		InstrumentWorkloadsMode:   dash0common.InstrumentWorkloadsModeAll,
+		PrometheusScrapingEnabled: "false",
 	}
 )
 

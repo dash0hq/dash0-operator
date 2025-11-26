@@ -25,6 +25,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -109,9 +111,10 @@ var _ = BeforeSuite(func() {
 		k8sClient.Scheme(),
 		OperatorManagerDeployment,
 		util.CollectorConfig{
-			Images:                  TestImages,
-			OperatorNamespace:       OperatorNamespace,
-			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+			Images:                    TestImages,
+			OperatorNamespace:         OperatorNamespace,
+			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
+			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 		},
 	)
 	collectorManager := collectors.NewCollectorManager(
@@ -121,11 +124,29 @@ var _ = BeforeSuite(func() {
 		false,
 		oTelColResourceManager,
 	)
+	targetAllocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
+		k8sClient,
+		k8sClient.Scheme(),
+		OperatorManagerDeployment,
+		util.TargetAllocatorConfig{
+			Images:                    TestImages,
+			OperatorNamespace:         OperatorNamespace,
+			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
+		},
+	)
+	targetAllocatorManager := targetallocator.NewTargetAllocatorManager(
+		k8sClient,
+		clientset,
+		false,
+		targetAllocatorResourceManager,
+	)
 	reconciler = controller.NewMonitoringReconciler(
 		k8sClient,
 		clientset,
 		instrumenter,
 		collectorManager,
+		targetAllocatorManager,
 		&DanglingEventsTimeoutsTest,
 	)
 })

@@ -570,6 +570,9 @@ run_helm() {
     if [[ "${KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED:-}" = "false" ]]; then
       helm_install_command+=" --set operator.kubernetesInfrastructureMetricsCollectionEnabled=false"
     fi
+    if [[ "${PROMETHEUS_CRD_SUPPORT_ENABLED:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.prometheusCrdSupportEnabled=true"
+    fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
@@ -630,7 +633,8 @@ deploy_application_under_monitoring() {
     return
   fi
 
-  runtime_under_test="${1:-nodejs}"
+  local runtime_under_test="${1:-nodejs}"
+  local extraValues="${2:-}"
   echo "STEP $step_counter: deploy application under monitoring ($runtime_under_test)"
   if [[ "${runtime_under_test:-}" = "nodejs" ]]; then
     build_test_application test-app-image-nodejs
@@ -642,7 +646,8 @@ deploy_application_under_monitoring() {
       "$kind" \
       "$test_app_nodejs_image_repository" \
       "$test_app_nodejs_image_tag" \
-      "$test_app_nodejs_image_pull_policy"
+      "$test_app_nodejs_image_pull_policy" \
+      "$extraValues"
     if [[ "$additional_namespaces" = true ]]; then
       helm_install_test_application \
         test-resources/node.js/express/dash0-operator-test-app-nodejs \
@@ -651,7 +656,8 @@ deploy_application_under_monitoring() {
         daemonset \
         "$test_app_nodejs_image_repository" \
         "$test_app_nodejs_image_tag" \
-        "$test_app_nodejs_image_pull_policy"
+        "$test_app_nodejs_image_pull_policy" \
+        "$extraValues"
       helm_install_test_application \
         test-resources/node.js/express/dash0-operator-test-app-nodejs \
         test-app-nodejs-3 \
@@ -659,7 +665,8 @@ deploy_application_under_monitoring() {
         statefulset \
         "$test_app_nodejs_image_repository" \
         "$test_app_nodejs_image_tag" \
-        "$test_app_nodejs_image_pull_policy"
+        "$test_app_nodejs_image_pull_policy" \
+        "$extraValues"
     fi
   elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
     build_test_application test-app-image-jvm
@@ -671,7 +678,8 @@ deploy_application_under_monitoring() {
       "${kind}" \
       "$test_app_jvm_image_repository" \
       "$test_app_jvm_image_tag" \
-      "$test_app_jvm_image_pull_policy"
+      "$test_app_jvm_image_pull_policy" \
+      "$extraValues"
     if [[ "$additional_namespaces" = true ]]; then
       helm_install_test_application \
         "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
@@ -680,7 +688,8 @@ deploy_application_under_monitoring() {
         "daemonset"
         "$test_app_jvm_image_repository" \
         "$test_app_jvm_image_tag" \
-        "$test_app_jvm_image_pull_policy"
+        "$test_app_jvm_image_pull_policy" \
+        "$extraValues"
       helm_install_test_application \
         "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
         "test-app-jvm-ns3" \
@@ -688,7 +697,8 @@ deploy_application_under_monitoring() {
         "statefulset" \
         "$test_app_jvm_image_repository" \
         "$test_app_jvm_image_tag" \
-        "$test_app_jvm_image_pull_policy"
+        "$test_app_jvm_image_pull_policy" \
+        "$extraValues"
     fi
   elif [[ "${runtime_under_test:-}" = "dotnet" ]]; then
     build_test_application test-app-image-dotnet
@@ -700,7 +710,8 @@ deploy_application_under_monitoring() {
       "${kind}" \
       "$test_app_dotnet_image_repository" \
       "$test_app_dotnet_image_tag" \
-      "$test_app_dotnet_image_pull_policy"
+      "$test_app_dotnet_image_pull_policy" \
+      "$extraValues"
     if [[ "$additional_namespaces" = true ]]; then
       helm_install_test_application \
         "test-resources/dotnet/dash0-operator-test-app-dotnet" \
@@ -709,7 +720,8 @@ deploy_application_under_monitoring() {
         "daemonset" \
         "$test_app_dotnet_image_repository" \
         "$test_app_dotnet_image_tag" \
-        "$test_app_dotnet_image_pull_policy"
+        "$test_app_dotnet_image_pull_policy" \
+        "$extraValues"
       helm_install_test_application \
         "test-resources/dotnet/dash0-operator-test-app-dotnet" \
         "test-app-dotnet-ns3" \
@@ -717,7 +729,8 @@ deploy_application_under_monitoring() {
         "statefulset" \
         "$test_app_dotnet_image_repository" \
         "$test_app_dotnet_image_tag" \
-        "$test_app_dotnet_image_pull_policy"
+        "$test_app_dotnet_image_pull_policy" \
+        "$extraValues"
     fi
   elif [[ "${runtime_under_test:-}" = "python" ]]; then
     build_test_application test-app-image-python
@@ -729,7 +742,8 @@ deploy_application_under_monitoring() {
       "${kind}" \
       "$test_app_python_image_repository" \
       "$test_app_python_image_tag" \
-      "$test_app_python_image_pull_policy"
+      "$test_app_python_image_pull_policy" \
+      "$extraValues"
     if [[ "$additional_namespaces" = true ]]; then
       helm_install_test_application \
         "test-resources/python/flask/dash0-operator-test-app-python" \
@@ -738,7 +752,8 @@ deploy_application_under_monitoring() {
         "daemonset" \
         "$test_app_python_image_repository" \
         "$test_app_python_image_tag" \
-        "$test_app_python_image_pull_policy"
+        "$test_app_python_image_pull_policy" \
+        "$extraValues"
       helm_install_test_application \
         "test-resources/python/flask/dash0-operator-test-app-python" \
         "test-app-python-ns3" \
@@ -746,7 +761,8 @@ deploy_application_under_monitoring() {
         "statefulset" \
         "$test_app_python_image_repository" \
         "$test_app_python_image_tag" \
-        "$test_app_python_image_pull_policy"
+        "$test_app_python_image_pull_policy" \
+        "$extraValues"
     fi
   else
     echo "Error: unknown runtime: $runtime_under_test"
@@ -794,8 +810,12 @@ helm_install_test_application() {
   local image_repository="$5"
   local image_tag="$6"
   local image_pull_policy="$7"
+  local extraValues="${8:-}"
 
   local helm_install_command="helm install --namespace $namespace --wait"
+  if [ -n "$extraValues" ]; then
+  helm_install_command+=" --values ${extraValues}"
+  fi
   helm_install_command+=" --set ${workload_type}.enabled=true"
   helm_install_command+=" --set image.repository=$image_repository"
   helm_install_command+=" --set image.tag=$image_tag"
@@ -810,6 +830,20 @@ helm_install_test_application() {
 install_third_party_crds() {
   kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.2.0/config/crd/bases/perses.dev_persesdashboards.yaml
   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.86.2/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+  install_prometheus_crds
+}
+
+install_prometheus_crds() {
+  helm upgrade --install \
+    --namespace "$target_namespace" \
+    --set crds.alertmanagerconfigs.enabled=false \
+    --set crds.alertmanagers.enabled=false \
+    --set crds.prometheusagents.enabled=false \
+    --set crds.prometheuses.enabled=false \
+    --set crds.thanosrulers.enabled=false \
+    --set crds.prometheusrules.enabled=false \
+    prometheus-crds \
+    prometheus-community/prometheus-operator-crds
 }
 
 deploy_dash0_api_sync_resources() {

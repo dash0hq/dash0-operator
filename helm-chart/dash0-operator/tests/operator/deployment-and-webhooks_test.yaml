@@ -21,73 +21,73 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/dash0hq/operator-controller:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[4].name
+          path: spec.template.spec.containers[0].env[5].name
           value: DASH0_OPERATOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[4].value
+          path: spec.template.spec.containers[0].env[5].value
           value: ghcr.io/dash0hq/operator-controller:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[5].name
+          path: spec.template.spec.containers[0].env[6].name
           value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[5].value
+          path: spec.template.spec.containers[0].env[6].value
           value: ghcr.io/dash0hq/instrumentation:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[6].name
+          path: spec.template.spec.containers[0].env[7].name
           value: DASH0_COLLECTOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[6].value
+          path: spec.template.spec.containers[0].env[7].value
           value: ghcr.io/dash0hq/collector:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[7].name
+          path: spec.template.spec.containers[0].env[9].name
           value: DASH0_CONFIGURATION_RELOADER_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[7].value
+          path: spec.template.spec.containers[0].env[9].value
           value: ghcr.io/dash0hq/configuration-reloader:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[8].name
+          path: spec.template.spec.containers[0].env[10].name
           value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[8].value
+          path: spec.template.spec.containers[0].env[10].value
           value: ghcr.io/dash0hq/filelog-offset-sync:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[9].name
+          path: spec.template.spec.containers[0].env[11].name
           value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[9].value
+          path: spec.template.spec.containers[0].env[11].value
           value: ghcr.io/dash0hq/filelog-offset-volume-ownership:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[10].name
+          path: spec.template.spec.containers[0].env[12].name
           value: K8S_POD_UID
       - equal:
-          path: spec.template.spec.containers[0].env[10].valueFrom.fieldRef.fieldPath
+          path: spec.template.spec.containers[0].env[12].valueFrom.fieldRef.fieldPath
           value: metadata.uid
       - equal:
-          path: spec.template.spec.containers[0].env[11].name
+          path: spec.template.spec.containers[0].env[13].name
           value: K8S_NODE_IP
       - equal:
-          path: spec.template.spec.containers[0].env[11].valueFrom.fieldRef.fieldPath
+          path: spec.template.spec.containers[0].env[13].valueFrom.fieldRef.fieldPath
           value: status.hostIP
       - equal:
-          path: spec.template.spec.containers[0].env[12].name
+          path: spec.template.spec.containers[0].env[14].name
           value: K8S_NODE_NAME
       - equal:
-          path: spec.template.spec.containers[0].env[12].valueFrom.fieldRef.fieldPath
+          path: spec.template.spec.containers[0].env[14].valueFrom.fieldRef.fieldPath
           value: spec.nodeName
       - equal:
-          path: spec.template.spec.containers[0].env[13].name
+          path: spec.template.spec.containers[0].env[15].name
           value: K8S_POD_IP
       - equal:
-          path: spec.template.spec.containers[0].env[13].valueFrom.fieldRef.fieldPath
+          path: spec.template.spec.containers[0].env[15].valueFrom.fieldRef.fieldPath
           value: status.podIP
       - equal:
-          path: spec.template.spec.containers[0].env[14].name
+          path: spec.template.spec.containers[0].env[16].name
           value: K8S_POD_NAME
       - equal:
-          path: spec.template.spec.containers[0].env[14].valueFrom.fieldRef.fieldPath
+          path: spec.template.spec.containers[0].env[16].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[15].name
+          path: spec.template.spec.containers[0].env[17].name
 
   - it: secret should contain ca and cert
     documentSelector:
@@ -180,6 +180,10 @@ tests:
         collectorImage:
           repository: custom-collector-image
           tag: "7.8.9"
+          pullPolicy: Never
+        targetAllocatorImage:
+          repository: custom-ta-image
+          tag: "8.9.10"
           pullPolicy: Never
         configurationReloaderImage:
           repository: custom-configuration-reloader-image
@@ -313,126 +317,144 @@ tests:
           value: RELEASE-NAME
       - equal:
           path: spec.template.spec.containers[0].env[4].name
-          value: DASH0_OPERATOR_IMAGE
+          value: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
       - equal:
           path: spec.template.spec.containers[0].env[4].value
-          value: custom-operator-image:1.2.3
+          value: RELEASE-NAME
       - equal:
           path: spec.template.spec.containers[0].env[5].name
-          value: DASH0_INIT_CONTAINER_IMAGE
+          value: DASH0_OPERATOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[5].value
-          value: custom-init-container-image:4.5.6
+          value: custom-operator-image:1.2.3
       - equal:
           path: spec.template.spec.containers[0].env[6].name
-          value: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
+          value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[6].value
-          value: Always
+          value: custom-init-container-image:4.5.6
       - equal:
           path: spec.template.spec.containers[0].env[7].name
-          value: DASH0_COLLECTOR_IMAGE
+          value: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[7].value
-          value: custom-collector-image:7.8.9
+          value: Always
       - equal:
           path: spec.template.spec.containers[0].env[8].name
-          value: DASH0_COLLECTOR_IMAGE_PULL_POLICY
+          value: DASH0_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[8].value
-          value: Never
+          value: custom-collector-image:7.8.9
       - equal:
           path: spec.template.spec.containers[0].env[9].name
-          value: DASH0_CONFIGURATION_RELOADER_IMAGE
+          value: DASH0_COLLECTOR_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[9].value
-          value: custom-configuration-reloader-image:10.11.12
-      - equal:
-          path: spec.template.spec.containers[0].env[10].name
-          value: DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY
-      - equal:
-          path: spec.template.spec.containers[0].env[10].value
-          value: Always
-      - equal:
-          path: spec.template.spec.containers[0].env[11].name
-          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
-      - equal:
-          path: spec.template.spec.containers[0].env[11].value
-          value: custom-filelog-offset-sync-image:13.14.15
-      - equal:
-          path: spec.template.spec.containers[0].env[12].name
-          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY
-      - equal:
-          path: spec.template.spec.containers[0].env[12].value
           value: Never
       - equal:
+          path: spec.template.spec.containers[0].env[10].name
+          value: DASH0_TARGET_ALLOCATOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[10].value
+          value: custom-ta-image:8.9.10
+      - equal:
+          path: spec.template.spec.containers[0].env[11].name
+          value: DASH0_TARGET_ALLOCATOR_IMAGE_PULL_POLICY
+      - equal:
+          path: spec.template.spec.containers[0].env[11].value
+          value: Never
+      - equal:
+          path: spec.template.spec.containers[0].env[12].name
+          value: DASH0_CONFIGURATION_RELOADER_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[12].value
+          value: custom-configuration-reloader-image:10.11.12
+      - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
+          value: DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: custom-filelog-offset-volume-ownership-image:16.17.18
-      - equal:
-          path: spec.template.spec.containers[0].env[14].name
-          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY
-      - equal:
-          path: spec.template.spec.containers[0].env[14].value
           value: Always
       - equal:
+          path: spec.template.spec.containers[0].env[14].name
+          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[14].value
+          value: custom-filelog-offset-sync-image:13.14.15
+      - equal:
           path: spec.template.spec.containers[0].env[15].name
-          value: DASH0_DEVELOPMENT_MODE
+          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[15].value
-          value: "true"
+          value: Never
       - equal:
           path: spec.template.spec.containers[0].env[16].name
-          value: DASH0_INSTRUMENTATION_DEBUG
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[16].value
-          value: "true"
+          value: custom-filelog-offset-volume-ownership-image:16.17.18
       - equal:
           path: spec.template.spec.containers[0].env[17].name
-          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[17].value
-          value: "true"
+          value: Always
       - equal:
           path: spec.template.spec.containers[0].env[18].name
-          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
+          value: DASH0_DEVELOPMENT_MODE
       - equal:
           path: spec.template.spec.containers[0].env[18].value
-          value: "32768"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_POD_UID
+          value: DASH0_INSTRUMENTATION_DEBUG
       - equal:
-          path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[19].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_NODE_IP
+          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
       - equal:
-          path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[20].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[21].name
-          value: K8S_NODE_NAME
+          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
       - equal:
-          path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          path: spec.template.spec.containers[0].env[21].value
+          value: "32768"
       - equal:
           path: spec.template.spec.containers[0].env[22].name
-          value: K8S_POD_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[23].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
+          value: status.hostIP
+      - equal:
+          path: spec.template.spec.containers[0].env[24].name
+          value: K8S_NODE_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[24].valueFrom.fieldRef.fieldPath
+          value: spec.nodeName
+      - equal:
+          path: spec.template.spec.containers[0].env[25].name
+          value: K8S_POD_IP
+      - equal:
+          path: spec.template.spec.containers[0].env[25].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[26].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[26].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[24].name
+          path: spec.template.spec.containers[0].env[27].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -503,6 +525,9 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-prometheus-crd-support-enabled=false
 
   - it: should add args for creating an operator configuration resource with a custom dataset to the deployment
     documentSelector:
@@ -537,6 +562,9 @@ tests:
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-prometheus-crd-support-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-dataset=test-dataset
 
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
@@ -572,6 +600,9 @@ tests:
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-prometheus-crd-support-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-cluster-name=cluster-name
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
@@ -611,6 +642,9 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[9]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
+          value: --operator-configuration-prometheus-crd-support-enabled=false
 
   - it: should disable self-monitoring & Kubernetes infrastructure metrics collection
     documentSelector:
@@ -660,6 +694,24 @@ tests:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=false
 
+  - it: should enable support for prometheus crds
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        selfMonitoringEnabled: false
+        prometheusCrdSupportEnabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-prometheus-crd-support-enabled=true
+
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:
       path: metadata.name
@@ -696,6 +748,8 @@ tests:
           digest: sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
         collectorImage:
           digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
+        targetAllocatorImage:
+          digest: sha256:f3ec1cd500980f4fe5491a102b4a73a9eb3c5bd21bd3ef986c74f97de35a35dc
         configurationReloaderImage:
           digest: sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
         filelogOffsetSyncImage:
@@ -709,73 +763,79 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].imagePullPolicy
       - equal:
-          path: spec.template.spec.containers[0].env[4].name
+          path: spec.template.spec.containers[0].env[5].name
           value: DASH0_OPERATOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[4].value
+          path: spec.template.spec.containers[0].env[5].value
           value: ghcr.io/dash0hq/operator-controller@sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
       - equal:
-          path: spec.template.spec.containers[0].env[5].name
+          path: spec.template.spec.containers[0].env[6].name
           value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[5].value
+          path: spec.template.spec.containers[0].env[6].value
           value: ghcr.io/dash0hq/instrumentation@sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
       - equal:
-          path: spec.template.spec.containers[0].env[6].name
+          path: spec.template.spec.containers[0].env[7].name
           value: DASH0_COLLECTOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[6].value
+          path: spec.template.spec.containers[0].env[7].value
           value: ghcr.io/dash0hq/collector@sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
       - equal:
-          path: spec.template.spec.containers[0].env[7].name
-          value: DASH0_CONFIGURATION_RELOADER_IMAGE
-      - equal:
-          path: spec.template.spec.containers[0].env[7].value
-          value: ghcr.io/dash0hq/configuration-reloader@sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
-      - equal:
           path: spec.template.spec.containers[0].env[8].name
-          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
+          value: DASH0_TARGET_ALLOCATOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[8].value
-          value: ghcr.io/dash0hq/filelog-offset-sync@sha256:5e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda05
+          value: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator@sha256:f3ec1cd500980f4fe5491a102b4a73a9eb3c5bd21bd3ef986c74f97de35a35dc
       - equal:
           path: spec.template.spec.containers[0].env[9].name
-          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
+          value: DASH0_CONFIGURATION_RELOADER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[9].value
-          value: ghcr.io/dash0hq/filelog-offset-volume-ownership@sha256:6e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda06
+          value: ghcr.io/dash0hq/configuration-reloader@sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: K8S_POD_UID
+          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[10].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[10].value
+          value: ghcr.io/dash0hq/filelog-offset-sync@sha256:5e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda05
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: K8S_NODE_IP
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[11].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[11].value
+          value: ghcr.io/dash0hq/filelog-offset-volume-ownership@sha256:6e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda06
       - equal:
           path: spec.template.spec.containers[0].env[12].name
-          value: K8S_NODE_NAME
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[12].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: K8S_POD_IP
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[13].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[14].valueFrom.fieldRef.fieldPath
+          value: spec.nodeName
+      - equal:
+          path: spec.template.spec.containers[0].env[15].name
+          value: K8S_POD_IP
+      - equal:
+          path: spec.template.spec.containers[0].env[15].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[16].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[16].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[15].name
+          path: spec.template.spec.containers[0].env[17].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -792,6 +852,9 @@ tests:
           repository: customrepo.io/repo/custom-instrumentation
         collectorImage:
           repository: customrepo.io/repo/custom-collector
+        targetAllocatorImage:
+          repository: customrepo.io/repo/custom-target-allocator
+          tag: "latest"
         configurationReloaderImage:
           repository: customrepo.io/repo/custom-configuration-reloader
         filelogOffsetSyncImage:
@@ -805,73 +868,79 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].imagePullPolicy
       - equal:
-          path: spec.template.spec.containers[0].env[4].name
+          path: spec.template.spec.containers[0].env[5].name
           value: DASH0_OPERATOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[4].value
+          path: spec.template.spec.containers[0].env[5].value
           value: customrepo.io/repo/custom-operator-controller:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[5].name
+          path: spec.template.spec.containers[0].env[6].name
           value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[5].value
+          path: spec.template.spec.containers[0].env[6].value
           value: customrepo.io/repo/custom-instrumentation:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[6].name
+          path: spec.template.spec.containers[0].env[7].name
           value: DASH0_COLLECTOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[6].value
+          path: spec.template.spec.containers[0].env[7].value
           value: customrepo.io/repo/custom-collector:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[7].name
-          value: DASH0_CONFIGURATION_RELOADER_IMAGE
-      - equal:
-          path: spec.template.spec.containers[0].env[7].value
-          value: customrepo.io/repo/custom-configuration-reloader:99.100.101
-      - equal:
           path: spec.template.spec.containers[0].env[8].name
-          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
+          value: DASH0_TARGET_ALLOCATOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[8].value
-          value: customrepo.io/repo/custom-filelog-offset-sync:99.100.101
+          value: customrepo.io/repo/custom-target-allocator:latest
       - equal:
           path: spec.template.spec.containers[0].env[9].name
-          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
+          value: DASH0_CONFIGURATION_RELOADER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[9].value
-          value: customrepo.io/repo/custom-filelog-offset-volume-ownership:99.100.101
+          value: customrepo.io/repo/custom-configuration-reloader:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: K8S_POD_UID
+          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[10].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[10].value
+          value: customrepo.io/repo/custom-filelog-offset-sync:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: K8S_NODE_IP
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[11].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[11].value
+          value: customrepo.io/repo/custom-filelog-offset-volume-ownership:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[12].name
-          value: K8S_NODE_NAME
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[12].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: K8S_POD_IP
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[13].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[14].valueFrom.fieldRef.fieldPath
+          value: spec.nodeName
+      - equal:
+          path: spec.template.spec.containers[0].env[15].name
+          value: K8S_POD_IP
+      - equal:
+          path: spec.template.spec.containers[0].env[15].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[16].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[16].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[15].name
+          path: spec.template.spec.containers[0].env[17].name
 
   - it: mutating webhook should have caBundle set
     documentSelector:

@@ -82,6 +82,15 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:validation:Optional
 	CollectPodLabelsAndAnnotations CollectPodLabelsAndAnnotations `json:"collectPodLabelsAndAnnotations,omitempty"`
 
+	// Settings for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig).
+	// This setting is optional and opt-in, by default the operator will not consider Prometheus CRDs when configuring
+	// the Prometheus receiver in the OpenTelemetry collectors.
+	// It is a validation error to set`telemetryCollection.enabled=false` and `prometheusCrdSupport.enabled=true` at
+	// the same time.
+	//
+	// +kubebuilder:validation:Optional
+	PrometheusCrdSupport PrometheusCrdSupport `json:"prometheusCrdSupport,omitempty"`
+
 	// If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
 	// optional. By default, k8s.cluster.name will not be added to telemetry.
 	//
@@ -110,6 +119,16 @@ type KubernetesInfrastructureMetricsCollection struct {
 	// `kubernetesInfrastructureMetricsCollection.enabled` defaults to `false` as well. It is a validation error to set
 	// `telemetryCollection.enabled=false` and `kubernetesInfrastructureMetricsCollection.enabled=true` at the same
 	// time.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled"`
+}
+
+type PrometheusCrdSupport struct {
+	// If enabled, the operator will add support for Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig) by
+	// deploying the OpenTelemetry target-allocator.
+	// It is a validation error to set`telemetryCollection.enabled=false` and `prometheusCrdSupport.enabled=true` at
+	// the same time.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled"`

@@ -18,6 +18,11 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
+	"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+	"Please either set telemetryCollection.enabled=true or " +
+	"prometheusCrdSupport.enabled=false."
+
 const ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure = "The provided Dash0 operator configuration resource has both insecure and insecureSkipVerify " +
 	"explicitly enabled for the GRPC export. This is an invalid combination. " +
 	"Please set at most one of these two flags to true."
@@ -103,6 +108,9 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 					"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 					"Please either set telemetryCollection.enabled=true or " +
 					"collectPodLabelsAndAnnotations.enabled=false.")
+		}
+		if util.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
+			return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		}
 	}
 

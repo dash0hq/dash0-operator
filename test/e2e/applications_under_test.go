@@ -105,6 +105,7 @@ func installNodeJsDaemonSet(namespace string) error {
 		namespace,
 		"",
 		nil,
+		nil,
 	)
 }
 
@@ -124,6 +125,7 @@ func installNodeJsDaemonSetWithExtraLabels(namespace string, extraLabels map[str
 		namespace,
 		"",
 		extraLabels,
+		nil,
 	)
 }
 
@@ -135,6 +137,35 @@ func installNodeJsDeployment(namespace string) error {
 		namespace,
 		"",
 		nil,
+		nil,
+	)
+}
+
+func installNodeJsDeploymentWithServiceMonitor(namespace string) error {
+	return installTestAppWorkload(
+		runtimeTypeNodeJs,
+		workloadTypeDeployment,
+		namespace,
+		"",
+		nil,
+		map[string]string{
+			"deployment.prometheus.annotations.enabled":    "false",
+			"deployment.prometheus.serviceMonitor.enabled": "true",
+		},
+	)
+}
+
+func installNodeJsDeploymentWithPodMonitor(namespace string) error {
+	return installTestAppWorkload(
+		runtimeTypeNodeJs,
+		workloadTypeDeployment,
+		namespace,
+		"",
+		nil,
+		map[string]string{
+			"deployment.prometheus.annotations.enabled": "false",
+			"deployment.prometheus.podMonitor.enabled":  "true",
+		},
 	)
 }
 
@@ -144,6 +175,7 @@ func installNodeJsJob(namespace string, testId string) error {
 		workloadTypeJob,
 		namespace,
 		testId,
+		nil,
 		nil,
 	)
 }
@@ -155,6 +187,7 @@ func installNodeJsPod(namespace string) error {
 		namespace,
 		"",
 		nil,
+		nil,
 	)
 }
 
@@ -164,6 +197,7 @@ func installNodeJsStatefulSet(namespace string) error {
 		workloadTypeStatefulSet,
 		namespace,
 		"",
+		nil,
 		nil,
 	)
 }
@@ -176,6 +210,7 @@ func installTestAppWorkload(
 	namespace string,
 	testId string,
 	extraLabels map[string]string,
+	extraParams map[string]string,
 ) error {
 	helmSetParams := compileWorkloadTypeSetParams(workloadType)
 	helmSetParams = addTestAppImageSetParams(runtime, helmSetParams)
@@ -192,6 +227,10 @@ func installTestAppWorkload(
 			"--set-json",
 			fmt.Sprintf("%s.labels=%s", workloadType.workloadTypeString, string(labelsJson)),
 		)
+	}
+
+	for k, v := range extraParams {
+		helmSetParams = append(helmSetParams, "--set", fmt.Sprintf("%s=%s", k, v))
 	}
 
 	return runTestAppHelmInstall(

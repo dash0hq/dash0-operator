@@ -64,12 +64,16 @@ deployment should match snapshot (default values):
                   value: dash0-operator-webhook-service
                 - name: OTEL_COLLECTOR_NAME_PREFIX
                   value: RELEASE-NAME
+                - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+                  value: RELEASE-NAME
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: DASH0_INIT_CONTAINER_IMAGE
                   value: ghcr.io/dash0hq/instrumentation:0.0.0
                 - name: DASH0_COLLECTOR_IMAGE
                   value: ghcr.io/dash0hq/collector:0.0.0
+                - name: DASH0_TARGET_ALLOCATOR_IMAGE
+                  value: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.140.0
                 - name: DASH0_CONFIGURATION_RELOADER_IMAGE
                   value: ghcr.io/dash0hq/configuration-reloader:0.0.0
                 - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE
@@ -218,12 +222,16 @@ deployment should match snapshot when using cert-manager:
                   value: dash0-operator-webhook-service
                 - name: OTEL_COLLECTOR_NAME_PREFIX
                   value: RELEASE-NAME
+                - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
+                  value: RELEASE-NAME
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: DASH0_INIT_CONTAINER_IMAGE
                   value: ghcr.io/dash0hq/instrumentation:0.0.0
                 - name: DASH0_COLLECTOR_IMAGE
                   value: ghcr.io/dash0hq/collector:0.0.0
+                - name: DASH0_TARGET_ALLOCATOR_IMAGE
+                  value: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.140.0
                 - name: DASH0_CONFIGURATION_RELOADER_IMAGE
                   value: ghcr.io/dash0hq/configuration-reloader:0.0.0
                 - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE

@@ -35,6 +35,13 @@ deployment:
   targetPort: 1207
   selector: dash0-operator-nodejs-20-express-test-deployment-app
   ingressPath: /deployment/node.js(/|$)(.*)
+  prometheus:
+    annotations:
+      enabled: true
+    serviceMonitor: # note: should not be enabled together with podMonitor
+      enabled: false
+    podMonitor: # note: should not be enabled together with serviceMonitor
+      enabled: false
 
 job:
   enabled: false

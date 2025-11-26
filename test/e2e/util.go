@@ -55,6 +55,7 @@ type neccessaryCleanupSteps struct {
 	removeTestApplicationNamespace bool
 	removeOtlpSink                 bool
 	removeThirdPartyCrds           bool
+	removePrometheusCrds           bool
 	removeIngressNginx             bool
 	stopOOMDetection               bool
 	removeTestApplications         bool

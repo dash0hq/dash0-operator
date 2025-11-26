@@ -27,6 +27,7 @@ const (
 	TestNamespaceName           = "test-namespace"
 	OperatorNamespace           = "test-operator-namespace"
 	OTelCollectorNamePrefixTest = "unit-test"
+	TargetAllocatorPrefixTest   = "unit-test"
 
 	CronJobNamePrefix     = "cronjob"
 	DaemonSetNamePrefix   = "daemonset"

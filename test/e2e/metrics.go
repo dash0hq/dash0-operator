@@ -94,6 +94,18 @@ func verifyPrometheusMetrics(g Gomega, timestampLowerBound time.Time) {
 	)
 }
 
+func verifyPrometheusMetricsIgnoreNamespaceChecks(g Gomega, timestampLowerBound time.Time) {
+	askTelemetryMatcherForMatchingMetrics(
+		g,
+		shared.ExpectAtLeastOne,
+		shared.MetricsMatchModeWorkload,
+		deploymentMetricsMatchConfig,
+		namespaceChecks{},
+		timestampLowerBound,
+		shared.PrometheusReceiverMetricNameList,
+	)
+}
+
 func verifyNonNamespaceScopedKubeletStatsMetricsOnly(g Gomega, timestampLowerBound time.Time) {
 	askTelemetryMatcherForMatchingMetrics(
 		g,
