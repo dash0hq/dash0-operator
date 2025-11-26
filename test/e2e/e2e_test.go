@@ -36,7 +36,7 @@ var (
 	cleanupSteps = neccessaryCleanupSteps{}
 )
 
-var _ = Describe("Dash0 Operator", Ordered, func() {
+var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 	BeforeAll(func() {
 		By("running BeforeAll hook of test suite root")
@@ -1903,7 +1903,6 @@ trace_statements:
 			})
 		})
 	})
-
 })
 
 type runtimeWorkloadTestConfig struct {
