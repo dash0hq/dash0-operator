@@ -120,8 +120,8 @@ run_test_case() {
 
   cd "$working_dir"
   full_command="LD_PRELOAD=""$injector_binary"" DASH0_NAMESPACE_NAME=my-namespace DASH0_POD_NAME=my-pod DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff DASH0_CONTAINER_NAME=test-app"
-  if [ "${DASH0_INJECTOR_DEBUG:-}" = "true" ]; then
-    full_command="$full_command DASH0_INJECTOR_DEBUG=true"
+  if [ -n "${DASH0_INJECTOR_LOG_LEVEL:-}" ]; then
+    full_command="$full_command DASH0_INJECTOR_LOG_LEVEL=$DASH0_INJECTOR_LOG_LEVEL"
   fi
   if [ "$env_vars" != "" ]; then
     full_command=" $full_command $env_vars"

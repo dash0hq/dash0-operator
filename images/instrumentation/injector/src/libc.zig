@@ -359,14 +359,14 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(
     var in_stream = buf_reader.reader();
     var buf: [1024]u8 = undefined;
 
-    // On a lot of modern distributions, the name returned by getLibCNameAndFlavor (e.g. "libc.so.6"), and it will
-    // appear verbatim in /proc/self/maps. But on other (older) distributions (Debian Bullseye for example), libc.so.6
+    // On a lot of modern distributions, the name returned by getLibCNameAndFlavor (e.g. "libc.so.6") will appear
+    // verbatim in /proc/self/maps. But on other (older) distributions (Debian Bullseye for example), libc.so.6
     // is a symbolic link to the actual file, i.e. a link to libc-2.31.so or similar; and /proc/self/maps has no entry
     // for "libc.so.6", only one for libc-2.31.so. The linker has resolved the symbolic link libc.so.6 by finding that
     // file system entry in its standard libary search paths before /proc/self/maps is provided. To avoid having to
     // reimplement the library search path logic of the linker, we will first try to find a /proc/self/maps entry for
     // the exact name (e.g. libc.so.6) and look for dlsym in the associcated memory range. If that fails, we will try
-    // to find dlsym in all memory ranges referenced by and /proc/self/maps entry that has the correct permissions.
+    // to find dlsym in all memory ranges referenced by an /proc/self/maps entry that has the correct permissions.
     //
     // First pass/fast path: look for an entry in /proc/self/maps that matches the libc name.
     while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {

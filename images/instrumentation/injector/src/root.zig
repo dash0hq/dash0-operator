@@ -31,6 +31,10 @@ const InjectorError = error{
 };
 
 fn initEnviron() callconv(.C) void {
+    print.initLogLevelFromProcSelfEnviron() catch |err| {
+        print.printError("failed to read log level from environment: {}", .{err});
+        print.printError("using default log level {}", .{print.getLogLevel()});
+    };
     const libc_info = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
             print.printError("no libc found: {}", .{err});
@@ -47,7 +51,6 @@ fn initEnviron() callconv(.C) void {
         print.printError("initEnviron(): cannot update std.os.environ: {}; ", .{err});
         return;
     };
-    print.initLogLevel();
 
     print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_info.flavor) {
         types.LibCFlavor.GNU => "GNU",

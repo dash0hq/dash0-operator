@@ -19,6 +19,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 if zig build --prominent-compile-errors --summary none; then
   echo "$(date) build successful"
   echo
+  # run the injector with an arbitrary executable
+  LD_PRELOAD=./dash0_injector.so date
 else
   echo "$(date) build failed"
   echo

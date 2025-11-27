@@ -50,7 +50,7 @@ const (
 	envVarDash0ServiceNamespace             = "DASH0_SERVICE_NAMESPACE"
 	envVarDash0ServiceVersionName           = "DASH0_SERVICE_VERSION"
 	envVarDash0ResourceAttributesName       = "DASH0_RESOURCE_ATTRIBUTES"
-	dash0InjectorDebugEnvVarName            = "DASH0_INJECTOR_DEBUG"
+	dash0InjectorLogLevelEnvVarName         = "DASH0_INJECTOR_LOG_LEVEL"
 
 	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
 
@@ -686,8 +686,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
-				Name:  dash0InjectorDebugEnvVarName,
-				Value: "true",
+				Name:  dash0InjectorLogLevelEnvVarName,
+				Value: "debug",
 			},
 		)
 	}
@@ -1087,7 +1087,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	removeEnvironmentVariable(container, envVarDash0ServiceName)
 	removeEnvironmentVariable(container, envVarDash0ServiceVersionName)
 	removeEnvironmentVariable(container, envVarDash0ResourceAttributesName)
-	removeEnvironmentVariable(container, dash0InjectorDebugEnvVarName)
+	removeEnvironmentVariable(container, dash0InjectorLogLevelEnvVarName)
 }
 
 func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
@@ -1167,6 +1167,7 @@ func removeEnvironmentVariable(container *corev1.Container, name string) {
 func (m *ResourceModifier) removeLegacyEnvironmentVariables(container *corev1.Container) {
 	m.removeLegacyEnvVarNodeOptions(container)
 	removeEnvironmentVariable(container, "DASH0_SERVICE_INSTANCE_ID")
+	removeEnvironmentVariable(container, "DASH0_INJECTOR_DEBUG")
 }
 
 func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Container) {
