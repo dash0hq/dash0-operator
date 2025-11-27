@@ -104,7 +104,7 @@ docker run \
   --env TEST_CASES_CONTAINING="$TEST_CASES_CONTAINING" \
   --env USES_EMULATION="$uses_emulation" \
   --env VERBOSE="${VERBOSE:-}" \
-  --env DASH0_INJECTOR_DEBUG="${DASH0_INJECTOR_DEBUG:-}" \
+  --env DASH0_INJECTOR_LOG_LEVEL="${DASH0_INJECTOR_LOG_LEVEL:-}" \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null

@@ -48,14 +48,6 @@ pub fn setStdCEnviron(env_vars: []const []const u8) anyerror![*:null]?[*:0]u8 {
     return original_environ;
 }
 
-/// Resets std.c.environ to the given value and print.log_level to its default. This function is meant to be used after
-/// doing clearStdCEnviron or setStdCEnviron earlier, to restore the original environment after the test is done; and to
-/// restore global variables that might have been changed, e.g. when the test calls print.initLogLevel().
-pub fn reset(original_environ: [*:null]?[*:0]u8) void {
-    resetStdCEnviron(original_environ);
-    _print.resetLogLevel();
-}
-
 /// Resets std.c.environ to the given value. This function is meant to be used after doing clearStdCEnviron or
 /// setStdCEnviron earlier, to restore the original environment after the test is done.
 pub fn resetStdCEnviron(original_environ: [*:null]?[*:0]u8) void {
