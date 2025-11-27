@@ -140,6 +140,13 @@ If you would like to enable support for Prometheus CRDs
 Alternatively, if you are creating the operator configuration resource manually, refer to the [Configuration](#configuration)
 section below.
 
+The operator supports the following CRDs
+- `ServiceMonitor`
+- `PodMonitor`
+- `ScrapeConfig` with `kubernetesSDConfigs`
+
+The scraping of endpoints requiring authorization is currently not supported, but will be added in an upcoming release.
+
 ## Configuration
 
 ### Configuring the Dash0 Backend Connection
@@ -478,6 +485,10 @@ The Dash0 monitoring resource supports additional configuration settings:
   It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and set
   filters in any monitoring resource at the same time.
 
+  Note that although `error_mode` can be specified per namespace, the filter conditions will be aggregated into one
+  single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
+  specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+
 * <a href="#monitoringresource.spec.transform"><span id="monitoringresource.spec.transform">`spec.transform`</span></a>:
   An optional custom transformation configuration that will be applied to the collected telemetry before sending it to
   the configured telemetry backend.
@@ -508,6 +519,10 @@ The Dash0 monitoring resource supports additional configuration settings:
   This setting is optional, by default, no transformations are applied.
   It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and set
   transforms in any monitoring resource at the same time.
+
+  Note that although `error_mode` can be specified per namespace, the transform statements will be aggregated into one
+  single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
+  specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
 
 * <a href="#monitoringresource.spec.synchronizePersesDashboards"><span id="monitoringresource.spec.synchronizePersesDashboards">`spec.synchronizePersesDashboards`</span></a>:
   A namespace-wide opt-out for synchronizing Perses dashboard resources found in the target namespace.
