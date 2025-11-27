@@ -19,7 +19,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
-	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -500,14 +499,16 @@ func (m *ResourceModifier) addEnvironmentVariables(
 ) {
 	m.removeLegacyEnvironmentVariables(container)
 
-	m.handleLdPreloadEnvVar(container, perContainerLogger)
-
 	// The DASH0_NODE_IP environment variable is required to resolve the collector base URL, in case it uses the
 	// node-local/host port address. The collectorBaseUrl will be "http://$(DASH0_NODE_IP):40318" in this setup.
-	addOrReplaceEnvironmentVariable(
-		container,
+	// We also enforce DASH0_NODE_IP to be listed first in the container's env array, since env vars that are referenced
+	// by other env vars need to come before the env vars referencing them.
+	removeEnvironmentVariable(container, util.EnvVarDash0NodeIp)
+	container.Env = slices.Insert(
+		container.Env,
+		0,
 		corev1.EnvVar{
-			Name: otelcolresources.EnvVarDash0NodeIp,
+			Name: util.EnvVarDash0NodeIp,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: "status.hostIP",
@@ -538,6 +539,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 			Value: common.ProtocolHttpProtobuf,
 		},
 	)
+
+	m.handleLdPreloadEnvVar(container, perContainerLogger)
 
 	m.handleOTelPropagatorsEnvVar(container)
 
@@ -1074,7 +1077,7 @@ func (m *ResourceModifier) removeMount(container *corev1.Container) {
 func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Container) {
 	m.removeLegacyEnvironmentVariables(container)
 	m.removeLdPreload(container)
-	removeEnvironmentVariable(container, otelcolresources.EnvVarDash0NodeIp)
+	removeEnvironmentVariable(container, util.EnvVarDash0NodeIp)
 	removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
 	removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
 	removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)

@@ -6,6 +6,8 @@ package util
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -79,9 +81,6 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 			VolumeMounts:        1,
 			Dash0VolumeMountIdx: 0,
 			EnvVars: map[string]*EnvVarExpectation{
-				"LD_PRELOAD": {
-					Value: "/__dash0__/dash0_injector.so",
-				},
 				"DASH0_NODE_IP": {
 					ValueFrom: "status.hostIP",
 				},
@@ -93,6 +92,9 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 				},
 				"OTEL_EXPORTER_OTLP_PROTOCOL": {
 					Value: common.ProtocolHttpProtobuf,
+				},
+				"LD_PRELOAD": {
+					Value: "/__dash0__/dash0_injector.so",
 				},
 				"DASH0_NAMESPACE_NAME": {
 					ValueFrom: "metadata.namespace",
@@ -357,6 +359,13 @@ func verifyEnvironmentVariables(container corev1.Container, expectations Contain
 	Expect(container.Env).To(HaveLen(len(expectedEnvVars)), containerName)
 	for envVarName, envVarExpectation := range expectedEnvVars {
 		VerifyEnvVarOrUnset(envVarExpectation, actualEnvVars, envVarName, containerName)
+	}
+
+	// if DASH0_NODE_IP is in the env vars, it should be the very first env var
+	if slices.Contains(slices.Collect(maps.Keys(expectedEnvVars)), util.EnvVarDash0NodeIp) {
+		Expect(slices.IndexFunc(container.Env, func(envVar corev1.EnvVar) bool {
+			return envVar.Name == util.EnvVarDash0NodeIp
+		})).To(Equal(0), "DASH0_NODE_IP needs to be listed as the first environment variable")
 	}
 }
 

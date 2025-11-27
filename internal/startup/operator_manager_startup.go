@@ -1133,7 +1133,7 @@ func determineCollectorBaseUrl(forceOTelCollectorServiceUrl bool, isIPv6Cluster 
 			envVars.operatorNamespace)
 	oTelCollectorNodeLocalBaseUrl := fmt.Sprintf(
 		oTelCollectorNodeLocalBaseUrlPattern,
-		otelcolresources.EnvVarDash0NodeIp,
+		util.EnvVarDash0NodeIp,
 		otelcolresources.OtlpHttpHostPort,
 	)
 

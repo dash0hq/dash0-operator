@@ -73,8 +73,6 @@ type NamespacedTransform struct {
 }
 
 const (
-	EnvVarDash0NodeIp = "DASH0_NODE_IP"
-
 	OtlpGrpcHostPort = 40317
 	OtlpHttpHostPort = 40318
 	// ^ We deliberately do not use the default grpc/http ports as host ports. If there is another OTel collector

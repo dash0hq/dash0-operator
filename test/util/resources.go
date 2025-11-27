@@ -955,10 +955,6 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 	}}
 	container.Env = []corev1.EnvVar{
 		{
-			Name:  "LD_PRELOAD",
-			Value: "/__dash0__/dash0_injector.so",
-		},
-		{
 			Name:      "DASH0_NODE_IP",
 			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"}},
 		},
@@ -973,6 +969,10 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		{
 			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
 			Value: common.ProtocolHttpProtobuf,
+		},
+		{
+			Name:  "LD_PRELOAD",
+			Value: "/__dash0__/dash0_injector.so",
 		},
 		{
 			Name: "DASH0_NAMESPACE_NAME",
