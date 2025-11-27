@@ -32,6 +32,7 @@ const InjectorError = error{
 
 fn initEnviron() callconv(.C) void {
     print.initLogLevelFromProcSelfEnviron() catch |err| {
+        // If we fail to read the log level, we continue processing, using the default log level.
         print.printError("failed to read log level from environment: {}", .{err});
         print.printError("using default log level {}", .{print.getLogLevel()});
     };

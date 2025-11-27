@@ -38,10 +38,12 @@ pub fn initLogLevelFromEnvironFile(self_environ_path: []const u8) !void {
     defer environ_file.close();
     var buf_reader = std.io.bufferedReader(environ_file.reader());
     var in_stream = buf_reader.reader();
-    var buf: [2048]u8 = undefined;
+    var buf: [256]u8 = undefined;
     while (true) {
         const l = in_stream.readUntilDelimiterOrEof(&buf, 0) catch {
-            // skip lines that are too long for the buffer
+            // Ignore lines that are too long for the buffer; advance the the read positon to the next delimiter to
+            // avoid stream corruption.
+            in_stream.skipUntilDelimiterOrEof(0) catch {};
             continue;
         };
         if (l) |line| {
@@ -135,6 +137,17 @@ test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=none" {
     const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
     defer allocator.free(cwd_path);
     const absolute_path_to_environ_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-environ-log-level-none" });
+    defer allocator.free(absolute_path_to_environ_file);
+    try initLogLevelFromEnvironFile(absolute_path_to_environ_file);
+    try testing.expectEqual(.None, getLogLevel());
+}
+
+test "initLogLevel: DASH0_INJECTOR_LOG_LEVEL=none with overly long environment variable" {
+    defer resetLogLevel();
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_environ_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-environ-log-level-none-overly-long-env-var" });
     defer allocator.free(absolute_path_to_environ_file);
     try initLogLevelFromEnvironFile(absolute_path_to_environ_file);
     try testing.expectEqual(.None, getLogLevel());
