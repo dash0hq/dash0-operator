@@ -116,36 +116,36 @@ func verifyCollectorHasOwnerReference(operatorNamespace string, operatorHelmChar
 	Expect(output).To(Equal(controllerDeploymentName))
 }
 
-func verifyThatCollectorHasBeenRemoved(operatorNamespace string) {
-	verifyThatCollectorIsNotDeployed(operatorNamespace)
+// verifyThatCollectorIsRemovedEventually assumes that the collector definitely has been deployed before this function
+// is called, otherwise the way the verification is implemented is not valid.
+func verifyThatCollectorIsRemovedEventually() {
+	By("validating that the OpenTelemetry collector is removed eventually")
+	Eventually(verifyCollectorDaemonSetIsNotPresent, 60*time.Second, time.Second).Should(Succeed())
+	Eventually(verifyCollectorDeploymentIsNotPresent, 60*time.Second, time.Second).Should(Succeed())
 }
 
-func verifyThatCollectorIsNotDeployed(operatorNamespace string) {
-	By("validating that the OpenTelemetry collector has been removed")
-	verifyCollectorDaemonSetIsGone := func(g Gomega) {
-		g.Expect(runAndIgnoreOutput(
-			exec.Command(
-				"kubectl",
-				"get",
-				"daemonset",
-				"--namespace",
-				operatorNamespace,
-				collectorDaemonSetName,
-			))).ToNot(Succeed())
-	}
-	Eventually(verifyCollectorDaemonSetIsGone, 60*time.Second, time.Second).Should(Succeed())
-	verifyCollectorDeploymentIsGone := func(g Gomega) {
-		g.Expect(runAndIgnoreOutput(
-			exec.Command(
-				"kubectl",
-				"get",
-				"deployment",
-				"--namespace",
-				operatorNamespace,
-				collectorDeploymentName,
-			))).ToNot(Succeed())
-	}
-	Eventually(verifyCollectorDeploymentIsGone, 60*time.Second, time.Second).Should(Succeed())
+func verifyCollectorDaemonSetIsNotPresent(g Gomega) {
+	g.Expect(runAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"get",
+			"daemonset",
+			"--namespace",
+			operatorNamespace,
+			collectorDaemonSetName,
+		))).ToNot(Succeed())
+}
+
+func verifyCollectorDeploymentIsNotPresent(g Gomega) {
+	g.Expect(runAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"get",
+			"deployment",
+			"--namespace",
+			operatorNamespace,
+			collectorDeploymentName,
+		))).ToNot(Succeed())
 }
 
 func verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace string, s string) {

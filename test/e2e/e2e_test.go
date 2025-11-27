@@ -1411,8 +1411,12 @@ trace_statements:
 				By("verifying that no metrics are collected")
 				Consistently(func(g Gomega) {
 					verifyNoMetricsAtAll(g, timestampLowerBound)
+					// Here we want to verify that the collector is never even deployed, hence we deliberately do not
+					// use verifyThatCollectorIsRemovedEventually, but instead verify that the collector is not present
+					// in a Consistently block (instead of Eventually).
+					verifyCollectorDaemonSetIsNotPresent(g)
+					verifyCollectorDeploymentIsNotPresent(g)
 				}, 10*time.Second, pollingInterval).Should(Succeed())
-				verifyThatCollectorIsNotDeployed(operatorNamespace)
 			})
 		})
 
@@ -1657,7 +1661,7 @@ trace_statements:
 
 				undeployDash0OperatorConfigurationResource()
 
-				verifyThatCollectorHasBeenRemoved(operatorNamespace)
+				verifyThatCollectorIsRemovedEventually()
 			})
 		})
 
@@ -1798,7 +1802,7 @@ trace_statements:
 						verifyDash0OperatorReleaseIsNotInstalled(g, operatorNamespace)
 					}).Should(Succeed())
 
-					verifyThatCollectorHasBeenRemoved(operatorNamespace)
+					verifyThatCollectorIsRemovedEventually()
 				})
 			})
 		})
