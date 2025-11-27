@@ -28,6 +28,8 @@ const (
 	AppKubernetesIoManagedByLabel = "app.kubernetes.io/managed-by"
 	AppKubernetesIoVersionLabel   = "app.kubernetes.io/version"
 	KubernetesIoOs                = "kubernetes.io/os"
+
+	EnvVarDash0NodeIp = "DASH0_NODE_IP"
 )
 
 func RenderAuthorizationHeader(authToken string) string {

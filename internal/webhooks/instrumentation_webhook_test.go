@@ -5,6 +5,7 @@ package webhooks
 
 import (
 	"context"
+	"slices"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -462,6 +463,86 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				)
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 			})
+		})
+
+		It("should enforce the correct order of DASH0_NODE_IP and env vars the depend on it (like OTEL_EXPORTER_OTLP_ENDPOINT)", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			workload := BasicDeployment(TestNamespaceName, name)
+			workload.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{{
+				Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
+				Value: "http://will-be-replaced.tld:4317",
+			}}
+			workload = CreateWorkload(ctx, k8sClient, workload).(*appsv1.Deployment)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+			podSpec := workload.Spec.Template.Spec
+			Expect(podSpec.Containers).To(HaveLen(1))
+			env := podSpec.Containers[0].Env
+
+			// Verify that env vars are in the correct order. Anything that contains a reference to another env var
+			// (i.e. OTEL_EXPORTER_OTLP_ENDPOINT="http://$(DASH0_NODE_IP):40318") needs to come _after_ the referenced
+			// env var.
+			dash0NodeIpIdx := slices.IndexFunc(env, func(c corev1.EnvVar) bool {
+				return c.Name == "DASH0_NODE_IP"
+			})
+			dash0OtelCollectorBaseUrlIdx := slices.IndexFunc(env, func(c corev1.EnvVar) bool {
+				return c.Name == "DASH0_OTEL_COLLECTOR_BASE_URL"
+			})
+			otelExporterOtlpEndpointIdx := slices.IndexFunc(env, func(c corev1.EnvVar) bool {
+				return c.Name == "OTEL_EXPORTER_OTLP_ENDPOINT"
+			})
+			Expect(dash0NodeIpIdx).To(
+				BeNumerically("<", dash0OtelCollectorBaseUrlIdx),
+				"DASH0_NODE_IP needs to come before DASH0_OTEL_COLLECTOR_BASE_URL",
+			)
+			Expect(dash0NodeIpIdx).To(
+				BeNumerically("<", otelExporterOtlpEndpointIdx),
+				"DASH0_NODE_IP needs to come before OTEL_EXPORTER_OTLP_ENDPOINT",
+			)
+		})
+
+		It("should move DASH0_NODE_IP to the start of the array if it is already present", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			workload := BasicDeployment(TestNamespaceName, name)
+			workload.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
+				{
+					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
+					Value: "http://will-be-replaced.tld:4317",
+				},
+				{
+					Name:  util.EnvVarDash0NodeIp,
+					Value: "http://will-be-replaced.tld:4317",
+				},
+			}
+			workload = CreateWorkload(ctx, k8sClient, workload).(*appsv1.Deployment)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+			podSpec := workload.Spec.Template.Spec
+			Expect(podSpec.Containers).To(HaveLen(1))
+			env := podSpec.Containers[0].Env
+
+			// Verify that env vars are in the correct order. Anything that contains a reference to another env var
+			// (i.e. OTEL_EXPORTER_OTLP_ENDPOINT="http://$(DASH0_NODE_IP):40318") needs to come _after_ the referenced
+			// env var.
+			dash0NodeIpIdx := slices.IndexFunc(env, func(c corev1.EnvVar) bool {
+				return c.Name == "DASH0_NODE_IP"
+			})
+			dash0OtelCollectorBaseUrlIdx := slices.IndexFunc(env, func(c corev1.EnvVar) bool {
+				return c.Name == "DASH0_OTEL_COLLECTOR_BASE_URL"
+			})
+			otelExporterOtlpEndpointIdx := slices.IndexFunc(env, func(c corev1.EnvVar) bool {
+				return c.Name == "OTEL_EXPORTER_OTLP_ENDPOINT"
+			})
+			Expect(dash0NodeIpIdx).To(
+				BeNumerically("<", dash0OtelCollectorBaseUrlIdx),
+				"DASH0_NODE_IP needs to come before DASH0_OTEL_COLLECTOR_BASE_URL",
+			)
+			Expect(dash0NodeIpIdx).To(
+				BeNumerically("<", otelExporterOtlpEndpointIdx),
+				"DASH0_NODE_IP needs to come before OTEL_EXPORTER_OTLP_ENDPOINT",
+			)
 		})
 
 		DescribeTable("when the opt-out label is added to an already instrumented workload", func(config WorkloadTestConfig) {
