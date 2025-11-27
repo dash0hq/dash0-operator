@@ -434,7 +434,7 @@ and also not remove them once the suite is finished.
 
 Execute the following commands to speed up the e2e test suite a bit:
 ```
-kubectl apply -k test-resources/nginx
+test-resources/bin/deploy-ingress-nginx.sh
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ &&
 helm upgrade --install --set args={--kubelet-insecure-tls} metrics-server metrics-server/metrics-server --namespace kube-system
 test-resources/cert-manager/deploy.sh
@@ -442,12 +442,48 @@ test-resources/cert-manager/deploy.sh
 
 ### Running End-to-End Tests against a Remote Cluster
 
-TODO: Add instructions for running the e2e tests against a remote cluster.
-Currently, this involves some local ad hoc modifications, like
-* pushing the test image to the remote registry,
-* changing`test-resources/node.js/express/deployment.yaml` and friends
-    * to set the container image `ghcr.io/dash0hq/dash0-operator-nodejs-20-express-test-app:latest"`, and
-    * removing `imagePullPolicy: Never`
+Running end-to-end tests with a remote cluster requires network access from the machine running the end-to-end tests
+to a load balancer in the cluster.
+Setting up the load balancer in the cluster might depend on the specific cloud that is being used (for example, GKE
+Autopilot will not allow deploying a regular ingress-nginx with port 80).
+The script `test-resources/bin/deploy-ingress-nginx.sh` and the manifest `test-resources/nginx/kustomization.yaml` can
+serve as a starting point, but YMMV.
+
+Once a load balancer has been set up, it needs to be made accessible from the machine running the tests.
+For the ingress-nginx mentioned above, this could be achieved with port-forwarding:
+```
+# start this in a separate shell, leave the kubectl port-forward command running while the test suite is running
+kubectl --namespace ingress-nginx port-forward $(kubectl get pods --namespace ingress-nginx -l app.kubernetes.io/component=controller -o jsonpath="{.items[0].metadata.name}") 8080:80
+```
+
+Note: The commands below assume that the remote cluster uses nodes with CPU architecture AMD64 (hence
+`IMAGE_PLATFORMS=linux/amd64`), otherwise `IMAGE_PLATFORMS` might need to be set differently (in particular when the CPU
+architecture of the machine running `make build-all-push-all-test-e2e` and the cluster nodes differ).
+
+Assuming worloads in the cluster can be reached, running the end-to-end tests can be done as follows:
+
+**With locally build images and the local Helm chart:**
+
+These require a remote registry that you can push to, which is network-reachable from the test cluster.
+If the registry requires authentication, additional steps are necessary.
+
+```
+E2E_KUBECTX=$kubectx_for_your_test_cluster \
+  IMAGE_PLATFORMS=linux/amd64 \
+  IMAGE_REPOSITORY_PREFIX="your-container-image-registry.com/base/path/to/repositories/" \
+  make build-all-push-all-test-e2e
+```
+
+**With a published Helm chart and officially released images:**
+
+```
+E2E_KUBECTX=dash0-operator-test-bk \
+  OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+  OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
+  IMAGE_PLATFORMS=linux/amd64 \
+  TEST_IMAGE_REPOSITORY_PREFIX="your-container-image-registry.com/base/path/to/repositories/" \
+  make all-auxiliary-images push-all-auxiliary-images test-e2e
+```
 
 ## Migration Strategy When Updating Instrumentation Values
 
