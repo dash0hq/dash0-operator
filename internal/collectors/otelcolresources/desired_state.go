@@ -233,6 +233,7 @@ func assembleDesiredStateForUpsert(
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithLogCollection := make([]string, 0, len(allMonitoringResources))
+	namespacesWithEventCollection := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	filters := make([]NamespacedFilter, 0, len(allMonitoringResources))
 	transforms := make([]NamespacedTransform, 0, len(allMonitoringResources))
@@ -246,6 +247,9 @@ func assembleDesiredStateForUpsert(
 			// create a feedback cycle.
 			namespace != config.OperatorNamespace {
 			namespacesWithLogCollection = append(namespacesWithLogCollection, namespace)
+		}
+		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
+			namespacesWithEventCollection = append(namespacesWithEventCollection, namespace)
 		}
 		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
@@ -270,6 +274,7 @@ func assembleDesiredStateForUpsert(
 		config,
 		monitoredNamespaces,
 		namespacesWithLogCollection,
+		namespacesWithEventCollection,
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -289,6 +294,7 @@ func assembleDesiredStateForDelete(
 		nil,
 		nil,
 		nil,
+		nil,
 		extraConfig,
 		true,
 	)
@@ -298,6 +304,7 @@ func assembleDesiredState(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithLogCollection []string,
+	namespacesWithEventCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -308,6 +315,7 @@ func assembleDesiredState(
 	// sort order of the input slices.
 	slices.Sort(monitoredNamespaces)
 	slices.Sort(namespacesWithLogCollection)
+	slices.Sort(namespacesWithEventCollection)
 	slices.Sort(namespacesWithPrometheusScraping)
 	slices.SortFunc(filters, func(ns1 NamespacedFilter, ns2 NamespacedFilter) int {
 		return strings.Compare(ns1.Namespace, ns2.Namespace)
@@ -345,13 +353,14 @@ func assembleDesiredState(
 	}
 	desiredState = append(desiredState, addCommonMetadata(collectorDaemonSet))
 
-	if config.KubernetesInfrastructureMetricsCollectionEnabled {
+	if config.KubernetesInfrastructureMetricsCollectionEnabled || len(namespacesWithEventCollection) > 0 {
 		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
 		deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(
 			config,
 			monitoredNamespaces,
+			namespacesWithEventCollection,
 			filters,
 			transforms,
 			forDeletion,
