@@ -257,6 +257,14 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertCronJob(cronJob)
 		return h.postProcessUninstrumentation(request, cronJob, modificationResult, logger)
+	} else if workloads.InstrumentationIsUpToDate(
+		&cronJob.ObjectMeta,
+		cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyCronJob(cronJob)
 		return h.postProcessInstrumentation(request, cronJob, modificationResult, false, logger)
@@ -293,6 +301,14 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertDaemonSet(daemonSet)
 		return h.postProcessUninstrumentation(request, daemonSet, modificationResult, logger)
+	} else if workloads.InstrumentationIsUpToDate(
+		&daemonSet.ObjectMeta,
+		daemonSet.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyDaemonSet(daemonSet)
 		return h.postProcessInstrumentation(request, daemonSet, modificationResult, false, logger)
@@ -329,6 +345,14 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertDeployment(deployment)
 		return h.postProcessUninstrumentation(request, deployment, modificationResult, logger)
+	} else if workloads.InstrumentationIsUpToDate(
+		&deployment.ObjectMeta,
+		deployment.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyDeployment(deployment)
 		return h.postProcessInstrumentation(request, deployment, modificationResult, false, logger)
@@ -367,6 +391,14 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		// not listening to updates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
 		// job has been already instrumented, since jobs are immutable.
 		return h.postProcessUninstrumentation(request, job, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
+	} else if workloads.InstrumentationIsUpToDate(
+		&job.ObjectMeta,
+		job.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
+		// This should not happen either.
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyJob(job)
 		return h.postProcessInstrumentation(request, job, modificationResult, false, logger)
@@ -406,6 +438,14 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		// after the pod has been already instrumented, since we cannot restart ownerless pods, which makes them
 		// effectively immutable.
 		return h.postProcessUninstrumentation(request, pod, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
+	} else if workloads.InstrumentationIsUpToDate(
+		&pod.ObjectMeta,
+		pod.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
+		// This should not happen either.
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyPod(pod)
 		return h.postProcessInstrumentation(request, pod, modificationResult, true, logger)
@@ -442,6 +482,14 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertReplicaSet(replicaSet)
 		return h.postProcessUninstrumentation(request, replicaSet, modificationResult, logger)
+	} else if workloads.InstrumentationIsUpToDate(
+		&replicaSet.ObjectMeta,
+		replicaSet.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyReplicaSet(replicaSet)
 		return h.postProcessInstrumentation(request, replicaSet, modificationResult, false, logger)
@@ -478,6 +526,14 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertStatefulSet(statefulSet)
 		return h.postProcessUninstrumentation(request, statefulSet, modificationResult, logger)
+	} else if workloads.InstrumentationIsUpToDate(
+		&statefulSet.ObjectMeta,
+		statefulSet.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyStatefulSet(statefulSet)
 		return h.postProcessInstrumentation(request, statefulSet, modificationResult, false, logger)
