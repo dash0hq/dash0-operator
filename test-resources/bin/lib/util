@@ -619,12 +619,17 @@ install_monitoring_resource() {
   if [[ "$additional_namespaces" = "true" ]]; then
     kubectl apply -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring-2.yaml
     kubectl apply -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring-3.yaml
+    # TODO remove later
+    kubectl apply -n routed-namespace -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
   fi
 
   echo "waiting for the monitoring resource to become available"
   kubectl wait --namespace ${target_namespace} dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
   if [[ "$additional_namespaces" = "true" ]]; then
     kubectl wait --namespace test-namespace-2 dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
+    kubectl wait --namespace test-namespace-3 dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
+    # TODO remove later
+    kubectl wait --namespace routed-namespace dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
   fi
 }
 
@@ -667,6 +672,16 @@ deploy_application_under_monitoring() {
         "$test_app_nodejs_image_tag" \
         "$test_app_nodejs_image_pull_policy" \
         "$extraValues"
+      # TODO remove later
+      helm_install_test_application \
+        test-resources/node.js/express/dash0-operator-test-app-nodejs \
+        test-app-nodejs-routed \
+        routed-namespace \
+        replicaset \
+        "$test_app_nodejs_image_repository" \
+        "$test_app_nodejs_image_tag" \
+        "$test_app_nodejs_image_pull_policy" \
+        "$extraValues"
     fi
   elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
     build_test_application test-app-image-jvm
@@ -695,6 +710,16 @@ deploy_application_under_monitoring() {
         "test-app-jvm-ns3" \
         "test-namespace-3" \
         "statefulset" \
+        "$test_app_jvm_image_repository" \
+        "$test_app_jvm_image_tag" \
+        "$test_app_jvm_image_pull_policy" \
+        "$extraValues"
+      # TODO remove later
+      helm_install_test_application \
+        "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
+        "test-app-jvm-routed" \
+        "routed-namespace" \
+        "replicaset" \
         "$test_app_jvm_image_repository" \
         "$test_app_jvm_image_tag" \
         "$test_app_jvm_image_pull_policy" \
@@ -731,6 +756,16 @@ deploy_application_under_monitoring() {
         "$test_app_dotnet_image_tag" \
         "$test_app_dotnet_image_pull_policy" \
         "$extraValues"
+      # TODO remove later
+      helm_install_test_application \
+        "test-resources/dotnet/dash0-operator-test-app-dotnet" \
+        "test-app-dotnet-routed" \
+        "routed-namespace" \
+        "replicaset" \
+        "$test_app_dotnet_image_repository" \
+        "$test_app_dotnet_image_tag" \
+        "$test_app_dotnet_image_pull_policy" \
+        "$extraValues"
     fi
   elif [[ "${runtime_under_test:-}" = "python" ]]; then
     build_test_application test-app-image-python
@@ -759,6 +794,16 @@ deploy_application_under_monitoring() {
         "test-app-python-ns3" \
         "test-namespace-3" \
         "statefulset" \
+        "$test_app_python_image_repository" \
+        "$test_app_python_image_tag" \
+        "$test_app_python_image_pull_policy" \
+        "$extraValues"
+      # TODO remove later
+      helm_install_test_application \
+        "test-resources/python/flask/dash0-operator-test-app-python" \
+        "test-app-python-routed" \
+        "routed-namespace" \
+        "replicaset" \
         "$test_app_python_image_repository" \
         "$test_app_python_image_tag" \
         "$test_app_python_image_pull_policy" \
