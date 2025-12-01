@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image_build=golang:1.25-alpine3.22
+ARG base_image_build=golang:1.25.4-alpine3.22
 ARG base_image_run=scratch
 
 FROM ${instrumentation_image} AS init
