@@ -8,7 +8,23 @@ data:
       health_check:
         endpoint: ${env:K8S_POD_IP}:13100
 
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: ${env:K8S_POD_IP}:4317
+            max_recv_msg_size_mib: 64
+          http:
+            endpoint: ${env:K8S_POD_IP}:4318
+            max_request_body_size: 20971520
+
     exporters:
+    {{- if .Values.discardData }}
+      debug/discard:
+        verbosity: basic
+        sampling_initial: 0
+        sampling_thereafter: 0
+    {{- else }}
       debug:
         verbosity: detailed
       file/traces:
@@ -20,16 +36,8 @@ data:
       file/logs:
         path: /telemetry/logs.jsonl
         flush_interval: 100ms
+    {{- end }}
 
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: ${env:K8S_POD_IP}:4317
-            max_recv_msg_size_mib: 64
-          http:
-            endpoint: ${env:K8S_POD_IP}:4318
-            max_request_body_size: 20971520
     service:
       extensions:
         - health_check
@@ -38,17 +46,29 @@ data:
           receivers:
             - otlp
           exporters:
+            {{- if .Values.discardData }}
+            - debug/discard
+            {{- else }}
             - debug
             - file/traces
+            {{- end }}
         metrics:
           receivers:
             - otlp
           exporters:
+            {{- if .Values.discardData }}
+            - debug/discard
+            {{- else }}
             - debug
             - file/metrics
+            {{- end }}
         logs:
           receivers:
             - otlp
           exporters:
+            {{- if .Values.discardData }}
+            - debug/discard
+            {{- else }}
             - debug
             - file/logs
+            {{- end }}

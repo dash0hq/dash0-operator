@@ -43,9 +43,11 @@ spec:
             - name: otelcol-config
               mountPath: /etc/otelcol/config
               readOnly: true
+            {{- if not .Values.discardData }}
             - name: {{ .Values.telemetryFilesVolume.name }}
               mountPath: /telemetry
               readOnly: false
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /
@@ -74,6 +76,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+
+        {{- if not .Values.discardData }}
         - name: telemetry-matcher
           image: "{{ .Values.telemetryMatcher.image.repository }}:{{ .Values.telemetryMatcher.image.tag }}"
           {{- if .Values.telemetryMatcher.image.pullPolicy }}
@@ -113,6 +117,7 @@ spec:
             capabilities:
               drop:
                 - ALL
+        {{- end }}
       volumes:
         - name: otelcol-config
           configMap:
@@ -121,7 +126,9 @@ spec:
               - key: config.yaml
                 path: config.yaml
 
+        {{- if not .Values.discardData }}
         - {{- .Values.telemetryFilesVolume | toYaml | nindent 10 }}
+        {{- end }}
 
       automountServiceAccountToken: false
       securityContext:

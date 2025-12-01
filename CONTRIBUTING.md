@@ -257,6 +257,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE`: Set the `send_batch_max_size parameter` of the batch processor of the
       collectors managed by the operator. There is usually no need to configure this. The value must be greater than or
       equal to 8192, which is the default value for `send_batch_size`.
+    * `OTLP_SINK_DISCARD_DATA`: Set this to "true" to have otlp-sink discard all data it receives immediately instead of
+      writing it to jsonl files. Will be ignored unless `USE_OTLP_SINK=true`.
+      This defaults to "false".
     * `PROMETHEUS_SCRAPING_ENABLED`: Set this to "false" to disable Prometheus scraping in the test namespace via the
       monitoring resource.
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+{{- if not .Values.discardData }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -15,3 +16,4 @@ spec:
     - port: {{ .Values.telemetryMatcher.port }}
       targetPort: {{ .Values.telemetryMatcher.port }}
   type: ClusterIP
+{{- end }}

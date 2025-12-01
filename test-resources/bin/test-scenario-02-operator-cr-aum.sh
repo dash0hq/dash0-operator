@@ -66,6 +66,8 @@ finish_step
 
 deploy_filelog_offsets_pvc
 
+deploy_otlp_sink_if_requested
+
 echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
 finish_step

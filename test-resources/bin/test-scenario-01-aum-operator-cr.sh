@@ -68,6 +68,8 @@ finish_step
 
 deploy_filelog_offsets_pvc
 
+deploy_otlp_sink_if_requested
+
 deploy_application_under_monitoring "$runtime_under_test"
 
 echo "STEP $step_counter: deploy the Dash0 operator using helm"

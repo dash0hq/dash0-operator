@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+# Note: The telemetryFilesVolume will not be use if discardData is true.
 telemetryFilesVolume:
   name: telemetry-files
   # We could also use an emptyDir volume by default, but using a hostPath volume gives you a chance to look into the
@@ -11,14 +12,17 @@ telemetryFilesVolume:
     path: /tmp/dash0-operator-e2e-test-captured-telemetry
     type: DirectoryOrCreate
 
+discardData: false
+
 collector:
   image:
     repository: otel/opentelemetry-collector-contrib
-    tag: 0.139.0
+    tag: 0.140.0
 
   grpcPort: 4317
   httpPort: 4318
 
+# Note: The telemetryMatcher will not be deployed if discardData is true.
 telemetryMatcher:
   image:
     repository: telemetry-matcher
