@@ -111,7 +111,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	configMapTypeDefinitions := []configMapTypeDefinition{
 		{
 			cmType:                    configMapTypeDaemonSet,
-			assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces,
+			assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapForTest,
 			exporterPipelineNames: []string{
 				"traces/downstream",
 				"metrics/downstream",
@@ -141,6 +141,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Export:            dash0common.Export{},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(HaveOccurred())
 		}, daemonSetAndDeployment)
@@ -156,6 +157,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(
 				MatchError(
@@ -169,6 +171,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Export:            *Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -207,6 +210,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -244,6 +248,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -276,7 +281,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Export:            *Dash0ExportWithEndpointAndToken(),
-				DevelopmentMode:   true,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				DevelopmentMode: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -309,9 +315,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 		DescribeTable("should render a debug exporter with verbosity: detailed when requested", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:      OperatorNamespace,
-				NamePrefix:             namePrefix,
-				Export:                 *Dash0ExportWithEndpointAndToken(),
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export:            *Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				DevelopmentMode:        false,
 				DebugVerbosityDetailed: true,
 			}, monitoredNamespaces, nil, nil, false)
@@ -344,6 +351,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(
 				MatchError(
@@ -371,6 +379,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -405,6 +414,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Endpoint: "http://example.com:1234",
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -437,6 +447,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Endpoint: "example.com:1234",
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -469,6 +480,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Insecure: ptr.To(true),
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -502,6 +514,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						InsecureSkipVerify: ptr.To(true),
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -535,6 +548,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						InsecureSkipVerify: ptr.To(true),
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -571,6 +585,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0common.Proto,
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(
 				MatchError(
@@ -591,6 +606,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(
 				MatchError(
@@ -619,6 +635,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0common.Json,
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -665,6 +682,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0common.Json,
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -713,6 +731,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0common.Json,
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -758,6 +777,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -813,6 +833,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0common.Proto,
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -869,6 +890,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0common.Proto,
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -932,6 +954,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0common.Json,
 					},
 				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				DevelopmentMode: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -996,7 +1019,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
-			SendBatchMaxSize:  nil,
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			SendBatchMaxSize: nil,
 		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -1012,7 +1036,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
-			SendBatchMaxSize:  ptr.To(uint32(16384)),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			SendBatchMaxSize: ptr.To(uint32(16384)),
 		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -1029,7 +1054,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Export: *Dash0ExportWithEndpointAndToken(),
 		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -1044,7 +1070,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
-			ClusterName:       "cluster-name",
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			ClusterName: "cluster-name",
 		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -1187,10 +1214,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	Describe("should enable/disable collecting labels and annotations", func() {
 		DescribeTable("should not render the label/annotation collection snippet if disabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:                     OperatorNamespace,
-				NamePrefix:                            namePrefix,
-				Export:                                *Dash0ExportWithEndpointAndToken(),
-				CollectPodLabelsAndAnnotationsEnabled: false,
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export:            *Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				CollectPodLabelsAndAnnotationsEnabled:            false,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1205,10 +1233,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 		DescribeTable("should collect labels and annotation if enabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:                     OperatorNamespace,
-				NamePrefix:                            namePrefix,
-				Export:                                *Dash0ExportWithEndpointAndToken(),
-				CollectPodLabelsAndAnnotationsEnabled: true,
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export:            *Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				CollectPodLabelsAndAnnotationsEnabled:            true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1266,6 +1295,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Export:            *Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -1392,6 +1422,137 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(downstreamLogsReceivers).ToNot(BeNil())
 			Expect(downstreamLogsReceivers).To(ContainElement("forward/logs"))
 		})
+	})
+
+	Describe("Kubernetes infrastructure metrics collection", func() {
+		It("should not render the k8s_cluster receiver and the associated pipeline if Kubernetes infrastructure metrics collection is disabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Export:            *Dash0ExportWithEndpointAndToken(),
+					KubernetesInfrastructureMetricsCollectionEnabled: false,
+				},
+				[]string{
+					"namespace",
+				},
+				[]string{
+					"namespace",
+				},
+				nil,
+				nil,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(readFromMap(collectorConfig, []string{"receivers", "k8s_cluster"})).To(BeNil())
+			Expect(readFromMap(collectorConfig, []string{
+				"processors",
+				"filter/metrics/only_monitored_namespaces",
+			})).To(BeNil())
+			Expect(readFromMap(collectorConfig, []string{
+				"processors",
+				"filter/drop-replicaset-metrics-zero-value",
+			})).To(BeNil())
+			pipelines := readPipelines(collectorConfig)
+			Expect(pipelines["metrics/downstream"]).To(BeNil())
+		})
+
+		DescribeTable("should render the k8s_cluster receiver and the associated pipeline if Kubernetes infrastructure metrics collection is enabled",
+			func(k8sEventCollectionEnabledForAtLeastOneNamespace bool) {
+				var namespacesWithEventCollection []string
+				if k8sEventCollectionEnabledForAtLeastOneNamespace {
+					namespacesWithEventCollection = []string{"namespace-1"}
+				}
+				configMap, err := assembleDeploymentCollectorConfigMap(
+					&oTelColConfig{
+						OperatorNamespace: OperatorNamespace,
+						NamePrefix:        namePrefix,
+						Export:            *Dash0ExportWithEndpointAndToken(),
+						KubernetesInfrastructureMetricsCollectionEnabled: true,
+					},
+					[]string{"namespace-1"},
+					namespacesWithEventCollection,
+					nil,
+					nil,
+					false,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				Expect(readFromMap(collectorConfig, []string{"receivers", "k8s_cluster"})).ToNot(BeNil())
+				Expect(readFromMap(collectorConfig, []string{
+					"processors",
+					"filter/metrics/only_monitored_namespaces",
+				})).ToNot(BeNil())
+				Expect(readFromMap(collectorConfig, []string{
+					"processors",
+					"filter/drop-replicaset-metrics-zero-value",
+				})).ToNot(BeNil())
+				pipelines := readPipelines(collectorConfig)
+				Expect(pipelines["metrics/downstream"]).NotTo(BeNil())
+			},
+			Entry("without K8s event collection", false),
+			Entry("together with K8s event collection", true),
+		)
+	})
+
+	Describe("event collection", func() {
+		It("should not render the k8s_event receiver if no namespace has event collection enabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Export:            *Dash0ExportWithEndpointAndToken(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+				},
+				[]string{},
+				[]string{},
+				nil,
+				nil,
+				false,
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(readFromMap(collectorConfig, []string{"receivers", "k8s_events"})).To(BeNil())
+			Expect(readFromMap(collectorConfig, []string{"processors", "transform/k8s_events"})).To(BeNil())
+			pipelines := readPipelines(collectorConfig)
+			Expect(pipelines["logs/k8sevents"]).To(BeNil())
+		})
+
+		DescribeTable("should render the k8s_events receiver with all namespaces for which event collection is enabled",
+			func(kubernetesInfrastructureMetricsCollectionEnabled bool) {
+				configMap, err := assembleDeploymentCollectorConfigMap(
+					&oTelColConfig{
+						OperatorNamespace: OperatorNamespace,
+						NamePrefix:        namePrefix,
+						Export:            *Dash0ExportWithEndpointAndToken(),
+						KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
+					},
+					[]string{"namespace-1", "namespace-2", "namespace-3"},
+					[]string{"namespace-1", "namespace-2"},
+					nil,
+					nil,
+					false,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				k8sEventsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "k8s_events"})
+				Expect(k8sEventsReceiverRaw).ToNot(BeNil())
+				k8sEventsReceiver := k8sEventsReceiverRaw.(map[string]interface{})
+				namespaces := k8sEventsReceiver["namespaces"].([]interface{})
+				Expect(namespaces).To(HaveLen(2))
+				Expect(namespaces).To(ContainElement("namespace-1"))
+				Expect(namespaces).To(ContainElement("namespace-2"))
+
+				Expect(readFromMap(collectorConfig, []string{"processors", "transform/k8s_events"})).ToNot(BeNil())
+
+				pipelines := readPipelines(collectorConfig)
+				Expect(pipelines["logs/k8sevents"]).NotTo(BeNil())
+			},
+			Entry("without Kubernetes infra metrics collection", false),
+			Entry("together with Kubernetes infra metrics collection", true),
+		)
 	})
 
 	Describe("configurable filtering of telemetry per namespace", func() {
@@ -1724,6 +1885,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
 					Export:            *Dash0ExportWithEndpointAndToken(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
 				},
 				monitoredNamespaces,
 				testConfig.filters,
@@ -2167,6 +2329,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
 					Export:            *Dash0ExportWithEndpointAndToken(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
 				},
 				monitoredNamespaces,
 				nil,
@@ -2326,7 +2489,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(grpcOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4317", expected)))
 			Expect(httpOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4318", expected)))
 
-			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, nil, false)
+			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig = parseConfigMapContent(configMap)
 			healthCheckEndpoint = readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
@@ -2350,6 +2513,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Export:            *Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: false,
 				},
@@ -2364,6 +2528,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Export:            *Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
 					Export:                dash0common.Export{},
@@ -2380,6 +2545,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Export:            export,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
 					Export:                export,
@@ -2424,6 +2590,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            export,
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                export,
@@ -2467,6 +2634,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            export,
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                export,
@@ -2505,7 +2673,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	}, daemonSetAndDeployment)
 })
 
-func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
+func assembleDaemonSetCollectorConfigMapForTest(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	filters []NamespacedFilter,
@@ -2533,6 +2701,7 @@ func assembleDeploymentCollectorConfigMapForTest(
 	return assembleDeploymentCollectorConfigMap(
 		config,
 		monitoredNamespaces,
+		nil,
 		filters,
 		transforms,
 		forDeletion,

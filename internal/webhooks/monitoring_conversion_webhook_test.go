@@ -24,6 +24,9 @@ import (
 
 var _ = Describe("The conversion webhook for the monitoring resource", Ordered, func() {
 
+	// Maintenance note: The actual conversion logic is tested in more detail (and in isolation) in
+	// api/operator/v1alpha1/dash0monitoring_types_test.go.
+
 	BeforeAll(func() {
 		operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 			ctx,
@@ -102,6 +105,9 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 					Mode:          dash0common.InstrumentWorkloadsModeAll,
 				},
 				LogCollection: dash0common.LogCollection{
+					Enabled: ptr.To(true),
+				},
+				EventCollection: dash0common.EventCollection{
 					Enabled: ptr.To(true),
 				},
 				PrometheusScraping: dash0common.PrometheusScraping{
@@ -186,8 +192,9 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 	)
 
 	type convertFromTestCase struct {
-		srcSpec         dash0v1beta1.Dash0MonitoringSpec
-		expectedDstSpec dash0v1alpha1.Dash0MonitoringSpec
+		srcSpec                     dash0v1beta1.Dash0MonitoringSpec
+		expectedDstSpec             dash0v1alpha1.Dash0MonitoringSpec
+		expectedDstExtraAnnotations map[string]string
 	}
 
 	DescribeTable("should convert from hub version to v1alpha1 when requested", func(testConfig convertFromTestCase) {
@@ -211,8 +218,11 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 		Expect(legacyResource.Name).To(Equal(MonitoringResourceName))
 		Expect(legacyResource.Labels).To(HaveLen(1))
 		Expect(legacyResource.Labels["test-label"]).To(Equal("test-value"))
-		Expect(legacyResource.Annotations).To(HaveLen(1))
+		Expect(legacyResource.Annotations).To(HaveLen(len(testConfig.expectedDstExtraAnnotations) + 1))
 		Expect(legacyResource.Annotations["test-annotation"]).To(Equal("test-value"))
+		for k, v := range testConfig.expectedDstExtraAnnotations {
+			Expect(legacyResource.Annotations[k]).To(Equal(v))
+		}
 
 		Expect(legacyResource.Spec.InstrumentWorkloads).To(Equal(testConfig.expectedDstSpec.InstrumentWorkloads))
 		Expect(legacyResource.Spec.LogCollection).To(Equal(testConfig.expectedDstSpec.LogCollection))
@@ -244,6 +254,9 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 				SynchronizePersesDashboards: ptr.To(true),
 				SynchronizePrometheusRules:  ptr.To(true),
 			},
+			expectedDstExtraAnnotations: map[string]string{
+				"dash0.com/spec.eventCollection.enabled": "true",
+			},
 		}),
 		Entry("full spec", convertFromTestCase{
 			srcSpec: dash0v1beta1.Dash0MonitoringSpec{
@@ -273,6 +286,9 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 				Transform:                   testTransform(),
 				SynchronizePersesDashboards: ptr.To(false),
 				SynchronizePrometheusRules:  ptr.To(false),
+			},
+			expectedDstExtraAnnotations: map[string]string{
+				"dash0.com/spec.eventCollection.enabled": "true",
 			},
 		}),
 	)
