@@ -8,68 +8,67 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 const (
-	collectedLogsDir = "test-resources/e2e/logs"
+	collectedLogsBaseDir = "test-resources/e2e/logs"
 )
 
 func createDirAndDeleteOldCollectedLogs() {
 	By("deleting old collected Kubernetes logs")
-	_ = os.RemoveAll(collectedLogsDir)
-	_ = os.MkdirAll(collectedLogsDir, 0755)
+	_ = os.RemoveAll(collectedLogsBaseDir)
+	_ = os.MkdirAll(collectedLogsBaseDir, 0755)
 }
 
-func collectPodInfoAndLogsFailWrapper(message string, callerSkip ...int) {
-	// Reset the fail handler to its default, so failures in collectPodInfoAndLogs() do not trigger
-	// collectPodInfoAndLogs again.
-	RegisterFailHandler(Fail)
-	if len(callerSkip) == 1 {
-		callerSkip[0]++
-	}
-
-	// When we call Fail below, the message is also printed. But collecting logs etc. may take a bit. So we print the
-	// failure message here right away for the impatient developer, accepting that it is printed twice in the full
-	// e2e test log.
-	e2ePrint("\n%s\n\n", message)
-
-	collectPodInfoAndLogs()
-	Fail(message, callerSkip...)
-}
-
-func collectPodInfoAndLogs() {
+func collectPodInfoAndLogs(specReport SpecReport) {
+	allTestNodeTexts := append(specReport.ContainerHierarchyTexts, specReport.LeafNodeText)
+	fullyQualifiedTestName := strings.Join(allTestNodeTexts, " - ")
+	outputPath := path.Join(collectedLogsBaseDir, fullyQualifiedTestName)
 	By(
 		fmt.Sprintf(
-			"!! A failure has occurred. Collecting information about pods and their logs in %s",
-			collectedLogsDir,
+			"!! A failure has occurred. Collecting information about pods and their logs in \"%s\"",
+			outputPath,
 		))
+	if err := os.MkdirAll(outputPath, 0755); err != nil {
+		e2ePrint(
+			"Error in collectPodInfoAndLogs, cannot create directory \"%s\": %s\n",
+			outputPath,
+			err.Error(),
+		)
+		return
+	}
+
+	writeToFile([]byte(specReport.Failure.Message), outputPath, "_failure-message.txt")
+	serializeToFile(specReport.Failure.Location, outputPath, "_failure-location.txt")
+	serializeToFile(specReport.Failure.FailureNodeLocation, outputPath, "_failure-node-location.txt")
+
 	for _, namespace := range []string{operatorNamespace,
 		applicationUnderTestNamespace,
 		"otlp-sink",
 		"dash0-api",
 	} {
-		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get pods", namespace))
-		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s describe pods", namespace))
-		getPodLogs(namespace)
-		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get configmaps", namespace))
-		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s describe configmaps", namespace))
+		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get pods", namespace), outputPath)
+		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s describe pods", namespace), outputPath)
+		getPodLogs(namespace, outputPath)
+		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get configmaps", namespace), outputPath)
+		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s describe configmaps", namespace), outputPath)
 	}
-	executeCommandAndStoreOutput("kubectl get --all-namespaces dash0monitorings.operator.dash0.com")
-	executeCommandAndStoreOutput("kubectl describe --all-namespaces dash0monitorings.operator.dash0.com")
-	executeCommandAndStoreOutput("kubectl get dash0operatorconfigurations.operator.dash0.com")
-	executeCommandAndStoreOutput("kubectl describe dash0operatorconfigurations.operator.dash0.com")
+	executeCommandAndStoreOutput("kubectl get --all-namespaces dash0monitorings.operator.dash0.com", outputPath)
+	executeCommandAndStoreOutput("kubectl describe --all-namespaces dash0monitorings.operator.dash0.com", outputPath)
+	executeCommandAndStoreOutput("kubectl get dash0operatorconfigurations.operator.dash0.com", outputPath)
+	executeCommandAndStoreOutput("kubectl describe dash0operatorconfigurations.operator.dash0.com", outputPath)
 	By(fmt.Sprintf(
-		"!! Information about pods and their logs have been collected in %s\n",
-		collectedLogsDir,
+		"!! Information about pods and their logs have been collected in \"%s\"\n",
+		outputPath,
 	))
 }
 
-func getPodLogs(namespace string) {
+func getPodLogs(namespace string, outputPath string) {
 	podNames := getPodNames(namespace)
 	for _, podName := range podNames {
 		executeCommandAndStoreOutput(
@@ -78,6 +77,7 @@ func getPodLogs(namespace string) {
 				namespace,
 				podName,
 			),
+			outputPath,
 		)
 	}
 }
@@ -86,7 +86,7 @@ func getPodNames(namespace string) []string {
 	podsJson, err := run(exec.Command("kubectl", "-n", namespace, "get", "pods", "--output=json"))
 	if err != nil {
 		e2ePrint(
-			"Error in collectPodInfoAndLogsFailWrapper when running kubectl get pods to fetch pod names: %s\n",
+			"Error in collectPodInfoAndLogs when running kubectl get pods to fetch pod names: %s\n",
 			err.Error(),
 		)
 		return nil
@@ -94,7 +94,7 @@ func getPodNames(namespace string) []string {
 	var parsedOutput map[string]interface{}
 	if err = json.Unmarshal([]byte(podsJson), &parsedOutput); err != nil {
 		e2ePrint(
-			"Error in collectPodInfoAndLogsFailWrapper when parsing the output of kubectl get pods to fetch pod names: %s\n",
+			"Error in collectPodInfoAndLogs when parsing the output of kubectl get pods to fetch pod names: %s\n",
 			err.Error(),
 		)
 		return nil
@@ -151,13 +151,13 @@ func getPodNames(namespace string) []string {
 	return podNames
 }
 
-func executeCommandAndStoreOutput(fullCommandLine string) {
+func executeCommandAndStoreOutput(fullCommandLine string, outputPath string) {
 	commandParts := strings.Split(fullCommandLine, " ")
 	fileName := strings.Join(commandParts, "_")
-	fullFileName := fmt.Sprintf("%s/%s", collectedLogsDir, fileName)
+
 	output, err := run(exec.Command(commandParts[0], commandParts[1:]...), false)
 	if err != nil {
-		e2ePrint("Error in collectPodInfoAndLogsFailWrapper for command: %s: %s\n", fullCommandLine, err.Error())
+		e2ePrint("Error in collectPodInfoAndLogs for command: \"%s\": %s\n", fullCommandLine, err.Error())
 		return
 	}
 
@@ -165,12 +165,28 @@ func executeCommandAndStoreOutput(fullCommandLine string) {
 		[]byte(fmt.Sprintf("output of command \"%s\":\n\n", fullCommandLine)),
 		[]byte(output),
 	)
-	if err = os.WriteFile(fullFileName, content, 0644); err != nil {
+	writeToFile(content, outputPath, fileName)
+}
+
+func serializeToFile(value any, outputPath string, filename string) {
+	if content, err := json.Marshal(value); err != nil {
 		e2ePrint(
-			"Error in collectPodInfoAndLogsFailWrapper when writing command output to file \"%s\": %s\n%s",
-			fullCommandLine,
+			"Error in collectPodInfoAndLogs when serializing content for file \"%s\": %s",
+			filename,
 			err.Error(),
-			output,
+		)
+	} else {
+		writeToFile(content, outputPath, filename)
+	}
+}
+
+func writeToFile(content []byte, outputPath string, filename string) {
+	fullFileName := path.Join(outputPath, filename)
+	if err := os.WriteFile(fullFileName, content, 0644); err != nil {
+		e2ePrint(
+			"Error in collectPodInfoAndLogs when writing to file \"%s\": %s",
+			fullFileName,
+			err.Error(),
 		)
 	}
 }
