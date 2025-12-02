@@ -54,6 +54,9 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 		} else {
 			e2ePrint("%s not found, assuming required environment variables are set via other means\n", dotEnvFile)
 		}
+
+		createDirAndDeleteOldCollectedLogs()
+
 		e2eKubernetesContext = os.Getenv("E2E_KUBECTX")
 		verboseHttp = strings.ToLower(os.Getenv("E2E_VERBOSE_HTTP")) == "true"
 		if e2eKubernetesContext == "" {
@@ -118,9 +121,11 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 		By("finished AfterAll hook of test suite root")
 	})
 
-	BeforeEach(func() {
-		By("running BeforeEach hook of test suite root")
-		createDirAndDeleteOldCollectedLogs()
+	JustAfterEach(func() {
+		currentSpecReport := CurrentSpecReport()
+		if currentSpecReport.Failed() {
+			collectPodInfoAndLogs(currentSpecReport)
+		}
 	})
 
 	AfterEach(func() {
