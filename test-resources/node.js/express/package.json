@@ -10,7 +10,7 @@
   "author": "Bastian Krol <bastian.krol@dash0.com>",
   "license": "Apache-2.0",
   "dependencies": {
-    "express": "^5.1.0",
+    "express": "^5.2.1",
     "prom-client": "^15.1.3"
   }
 }
