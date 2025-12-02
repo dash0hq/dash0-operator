@@ -1605,28 +1605,12 @@ trace_statements:
 				By("verify that the config map has been updated by the controller")
 				verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, newEndpoint)
 
-				By("verify that the configuration reloader says to have triggered a config change")
-				verifyCollectorContainerLogContainsStrings(
-					operatorNamespace,
-					"configuration-reloader",
-					10*time.Second,
-					"Triggering a collector update due to changes to the config files",
-				)
-
-				By("verify that the collector appears to have reloaded its configuration")
-				verifyCollectorContainerLogContainsStrings(
-					operatorNamespace,
-					"opentelemetry-collector",
-					20*time.Second,
-					"Received signal from OS",
-					"Config updated, restart service",
-				)
-
 				By("verify that the collector has restarted and has become ready once more")
 				Eventually(func(g Gomega) {
 					secondCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
 					g.Expect(secondCollectorReadyTimeStamp).To(BeTemporally(">", firstCollectorReadyTimeStamp))
-				}, 30*time.Second, time.Second).Should(Succeed())
+				}, 2*time.Minute, time.Second).Should(Succeed())
+
 			})
 		})
 

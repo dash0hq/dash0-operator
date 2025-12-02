@@ -196,19 +196,6 @@ func verifyConfigMapDoesNotContainStrings(operatorNamespace string, configMapNam
 	)
 }
 
-func verifyCollectorContainerLogContainsStrings(
-	operatorNamespace string,
-	containerName string,
-	timeout time.Duration,
-	needles ...string,
-) {
-	verifyCommandOutputContainsStrings(
-		getLogsViaKubectl(operatorNamespace, collectorDaemonSetNameQualified, containerName),
-		timeout,
-		needles...,
-	)
-}
-
 func findMostRecentCollectorReadyLogLine(g Gomega) time.Time {
 	allCollectorReadyLogLines := getMatchingLogLinesFomCollectorContainerLog(
 		g,
