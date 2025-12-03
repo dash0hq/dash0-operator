@@ -197,9 +197,9 @@ for arch in "${all_architectures[@]}"; do
       fi
     fi
     if [[ "$libc_flavor" = "glibc" ]]; then
-      no_environ_base_image="golang:1.25.4-trixie"
+      no_environ_base_image="golang:1.25.5-trixie"
     elif [[ "$libc_flavor" = "musl" ]]; then
-      no_environ_base_image="golang:1.25.4-alpine3.22"
+      no_environ_base_image="golang:1.25.5-alpine3.22"
     fi
     echo "building the no_environ_symbol test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $no_environ_base_image)"
     ARCH="$arch" \
