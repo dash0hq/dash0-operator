@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG base_image="golang:1.25.4-trixie"
+ARG base_image="golang:1.25.5-trixie"
 FROM --platform=${BUILDPLATFORM} ${base_image}
 
 WORKDIR /workspace
