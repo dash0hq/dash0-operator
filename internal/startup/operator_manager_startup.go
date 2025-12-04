@@ -78,6 +78,7 @@ type environmentVariables struct {
 	sendBatchMaxSize                            *uint32
 	instrumentationDebug                        bool
 	debugVerbosityDetailed                      bool
+	disableCollectorResourceWatches             bool
 }
 
 type commandLineArguments struct {
@@ -131,10 +132,11 @@ const (
 	oTelCollectorServiceBaseUrlPattern   = "http://%s-opentelemetry-collector-service.%s.svc.cluster.local:4318"
 	oTelCollectorNodeLocalBaseUrlPattern = "http://$(%s):%d"
 
-	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
-	instrumentationDebugEnvVarName   = "DASH0_INSTRUMENTATION_DEBUG"
-	debugVerbosityDetailedEnvVarName = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
-	sendBatchMaxSizeEnvVarName       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
+	developmentModeEnvVarName                 = "DASH0_DEVELOPMENT_MODE"
+	instrumentationDebugEnvVarName            = "DASH0_INSTRUMENTATION_DEBUG"
+	disableCollectorResourceWatchesEnvVarName = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
+	debugVerbosityDetailedEnvVarName          = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
+	sendBatchMaxSizeEnvVarName                = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
@@ -588,6 +590,9 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	debugVerbosityDetailedRaw, isSet := os.LookupEnv(debugVerbosityDetailedEnvVarName)
 	debugVerbosityDetailed := isSet && strings.ToLower(debugVerbosityDetailedRaw) == envVarValueTrue
 
+	disableCollectorResourceWatchesRaw, isSet := os.LookupEnv(disableCollectorResourceWatchesEnvVarName)
+	disableCollectorResourceWatches := isSet && strings.ToLower(disableCollectorResourceWatchesRaw) == envVarValueTrue
+
 	var sendBatchMaxSize *uint32
 	sendBatchMaxSizeRaw, isSet := os.LookupEnv(sendBatchMaxSizeEnvVarName)
 	if isSet {
@@ -618,12 +623,13 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		filelogOffsetSyncImagePullPolicy:            filelogOffsetSyncImagePullPolicy,
 		filelogOffsetVolumeOwnershipImage:           filelogOffsetVolumeOwnershipImage,
 		filelogOffsetVolumeOwnershipImagePullPolicy: filelogOffsetVolumeOwnershipImagePullPolicy,
-		nodeIp:                 nodeIp,
-		nodeName:               nodeName,
-		podIp:                  podIp,
-		sendBatchMaxSize:       sendBatchMaxSize,
-		instrumentationDebug:   instrumentationDebug,
-		debugVerbosityDetailed: debugVerbosityDetailed,
+		nodeIp:                          nodeIp,
+		nodeName:                        nodeName,
+		podIp:                           podIp,
+		sendBatchMaxSize:                sendBatchMaxSize,
+		instrumentationDebug:            instrumentationDebug,
+		debugVerbosityDetailed:          debugVerbosityDetailed,
+		disableCollectorResourceWatches: disableCollectorResourceWatches,
 	}
 
 	return nil
@@ -772,6 +778,8 @@ func startOperatorManager(
 		envVars.debugVerbosityDetailed,
 		"instrumentation debug",
 		envVars.instrumentationDebug,
+		"watch collector resources",
+		!envVars.disableCollectorResourceWatches,
 	)
 
 	err = startDash0Controllers(
@@ -921,14 +929,22 @@ func startDash0Controllers(
 	// reconciliation of the collectors. This makes sure changed resource settings, filelog offset volumes or toleration
 	// taints are applied more or less immediately. (Noticing the changed config map can take a minute or a bit more.)
 	extraConfigMapWatcher.AddClient(collectorManager)
-	collectorReconciler := collectors.NewCollectorReconciler(
-		k8sClient,
-		collectorManager,
-		envVars.operatorNamespace,
-		envVars.oTelCollectorNamePrefix,
-	)
-	if err := collectorReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the collector reconciler: %w", err)
+
+	if !envVars.disableCollectorResourceWatches {
+		collectorReconciler := collectors.NewCollectorReconciler(
+			k8sClient,
+			collectorManager,
+			envVars.operatorNamespace,
+			envVars.oTelCollectorNamePrefix,
+		)
+		if err := collectorReconciler.SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to set up the collector reconciler: %w", err)
+		}
+	} else {
+		setupLog.Info(
+			"Warning: The setting operator.disableCollectorResourceWatches is true, collector resources will not be " +
+				"watched. This setting is intended for troubleshooting the OpenTelemetry collector setup.",
+		)
 	}
 
 	targetAllocatorConfig := util.TargetAllocatorConfig{

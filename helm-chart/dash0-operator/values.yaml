@@ -372,6 +372,18 @@ operator:
     # If set to true, it enables verbose output from the init container and the injector.
     debug: false
 
+  # If set to true, the operator manager will not watch the resources of the OpenTelemetry collectors it manages. By
+  # default, the operator watches all collector resources (config maps, deployment, daemonset etc.) and reconciles them
+  # if they are changed or deleted externally. This is generally the expected behavior of an operator in relation to the
+  # resources it manages. For troubleshooting purposes, this can be disabled temporarily, allowing quick one-off edits
+  # of the collector config maps.
+  # Note that even if the watches are disabled, other events will still trigger a reconciliation of the collector
+  # resources (for example changing the operator configuration resource, changing, adding or deleting monitoring
+  # resources, and updating the operator to a new version).
+  # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override after
+  # the collector troubleshooting is finished.
+  disableCollectorResourceWatches: false
+
   # Settings related to the collectors managed by the operator.
   collectors:
     # If set to true, adds a debug exporter with "verbosity: detailed" to the collectors managed by the operator.
