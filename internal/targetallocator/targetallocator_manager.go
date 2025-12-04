@@ -13,7 +13,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	taresources "github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
@@ -140,7 +139,6 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 		)
 		err = m.createOrUpdateTargetAllocator(
 			ctx,
-			operatorConfigurationResource,
 			namespacesWithPrometheusScraping,
 			&logger,
 		)
@@ -150,14 +148,12 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 
 func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 	ctx context.Context,
-	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	namespacesWithPrometheusScraping []string,
 	logger *logr.Logger,
 ) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.targetAllocatorResourceManager.CreateOrUpdateTargetAllocatorResources(
 			ctx,
-			operatorConfigurationResource,
 			namespacesWithPrometheusScraping,
 			logger)
 

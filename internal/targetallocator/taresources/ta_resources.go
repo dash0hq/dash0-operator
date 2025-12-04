@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
@@ -43,7 +42,6 @@ func NewTargetAllocatorResourceManager(
 
 func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 	ctx context.Context,
-	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	namespacesWithPrometheusScraping []string,
 	logger *logr.Logger,
 ) (bool, bool, error) {
@@ -58,8 +56,6 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 	if err != nil {
 		return false, false, err
 	}
-
-	logger.Info("target-allocator desired state", "desired_state", desiredState)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -101,6 +102,8 @@ func assembleDesiredStateForDelete(
 }
 
 func assembleDesiredState(config *targetAllocatorConfig, namespacesWithPrometheusScraping []string, forDeletion bool) ([]clientObject, error) {
+	// sort namespaces so we don't re-trigger reconciliation because of unstable ordering
+	slices.Sort(namespacesWithPrometheusScraping)
 	var desiredState []clientObject
 	cm, err := assembleConfigMap(config, namespacesWithPrometheusScraping, forDeletion)
 	if err != nil {
