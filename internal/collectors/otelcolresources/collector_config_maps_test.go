@@ -1081,10 +1081,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(hostmetricsReceiver).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/default")
 			Expect(metricsReceivers).ToNot(BeNil())
+			Expect(metricsReceivers).To(ContainElement("otlp"))
 			Expect(metricsReceivers).ToNot(ContainElement("kubeletstats"))
 			Expect(metricsReceivers).ToNot(ContainElement("hostmetrics"))
+			defaultMetricsExporters := readPipelineExporters(pipelines, "metrics/default")
+			Expect(defaultMetricsExporters).To(ContainElement("forward/metrics"))
+
+			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			Expect(downstreamMetricsReceivers).ToNot(BeNil())
+			Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics"))
 		})
 
 		type kubeletStatsReceiverConfigTestWanted struct {
@@ -1129,10 +1136,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(hostmetricsReceiver).ToNot(BeNil())
 
 				pipelines := readPipelines(collectorConfig)
-				metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+				metricsReceivers := readPipelineReceivers(pipelines, "metrics/default")
 				Expect(metricsReceivers).ToNot(BeNil())
+				Expect(metricsReceivers).To(ContainElement("otlp"))
 				Expect(metricsReceivers).To(ContainElement("kubeletstats"))
 				Expect(metricsReceivers).To(ContainElement("hostmetrics"))
+				defaultMetricsExporters := readPipelineExporters(pipelines, "metrics/default")
+				Expect(defaultMetricsExporters).To(ContainElement("forward/metrics"))
+
+				downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+				Expect(downstreamMetricsReceivers).ToNot(BeNil())
+				Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics"))
 			},
 
 			Entry("should use node name as endpoint", kubeletStatsReceiverConfigTest{
@@ -1298,9 +1312,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readFromMap(collectorConfig, []string{"receivers", "prometheus"})).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
-			Expect(metricsReceivers).ToNot(BeNil())
-			Expect(metricsReceivers).ToNot(ContainElement("prometheus"))
+			Expect(pipelines["metrics/prometheus"]).To(BeNil())
 		})
 
 		It("should render the prometheus scraping config with all namespaces for which scraping is enabled", func() {
@@ -1332,11 +1344,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(prometheusMetricsProcessors).To(ContainElement("transform/metrics/prometheus_service_attributes"))
 			prometheusMetricsExporters := readPipelineExporters(pipelines, "metrics/prometheus")
 			Expect(prometheusMetricsExporters).ToNot(BeNil())
-			Expect(prometheusMetricsExporters).To(ContainElement("forward/metrics/prometheus"))
+			Expect(prometheusMetricsExporters).To(ContainElement("forward/metrics"))
 
 			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
 			Expect(downstreamMetricsReceivers).ToNot(BeNil())
-			Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics/prometheus"))
+			Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics"))
 		})
 	})
 

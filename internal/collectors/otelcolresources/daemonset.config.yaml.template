@@ -25,7 +25,7 @@ extensions:
 
 
 connectors:
-  forward/metrics/prometheus: {}
+  forward/metrics: {}
   forward/logs: {}
 
 
@@ -687,30 +687,35 @@ service:
       - {{ $exporter.Name }}
       {{- end }}
 
+    metrics/default:
+      receivers:
+      - otlp
+      {{- if .KubeletStatsReceiverConfig.Enabled }}
+      - kubeletstats
+      {{- end }}
+      {{- if .UseHostMetricsReceiver }}
+      - hostmetrics
+      {{- end }}
+      processors:
+      - memory_limiter
+      exporters:
+      - forward/metrics
+
 {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
     metrics/prometheus:
       receivers:
       - prometheus
       processors:
+      - memory_limiter
       - transform/metrics/prometheus_service_attributes
       exporters:
-      - forward/metrics/prometheus
+      - forward/metrics
 {{- end }}
 
     metrics/downstream:
       receivers:
-      - otlp
-{{- if .KubeletStatsReceiverConfig.Enabled }}
-      - kubeletstats
-{{- end }}
-{{- if .UseHostMetricsReceiver }}
-      - hostmetrics
-{{- end }}
-{{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
-      - forward/metrics/prometheus
-{{- end }}
+      - forward/metrics
       processors:
-      - memory_limiter
       - resourcedetection
       - k8sattributes
       {{- if .ClusterName }}
