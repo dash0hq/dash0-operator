@@ -404,6 +404,11 @@ operator:
     # Implies forceUseServiceUrl: true.
     disableHostPorts: false
 
+    # If set to true, the pprof extension will be enabled for both collectors.
+    # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
+    # after the collector troubleshooting is finished.
+    enablePprofExtension: false
+
     # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
     # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
     # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in

@@ -164,6 +164,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		IsGkeAutopilot:         m.collectorConfig.IsGkeAutopilot,
 		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
+		EnableProfExtension:    m.collectorConfig.EnableProfExtension,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
@@ -366,6 +367,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		IsGkeAutopilot:                                   m.collectorConfig.IsGkeAutopilot,
 		DevelopmentMode:                                  m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed:                           m.collectorConfig.DebugVerbosityDetailed,
+		EnableProfExtension:                              m.collectorConfig.EnableProfExtension,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume

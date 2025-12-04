@@ -94,6 +94,7 @@ type collectorConfigurationTemplateValues struct {
 	SelfMonitoringLogsConfig                         string
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
+	EnableProfExtension                              bool
 }
 
 type OtlpExporter struct {
@@ -230,6 +231,7 @@ func assembleCollectorConfigMap(
 				SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
 				DevelopmentMode:                                  config.DevelopmentMode,
 				DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
+				EnableProfExtension:                              config.EnableProfExtension,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)

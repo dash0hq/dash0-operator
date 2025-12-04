@@ -235,6 +235,10 @@ spec:
         - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
           value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
         {{- end }}
+        {{- if .Values.operator.collectors.enablePprofExtension }}
+        - name: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
+          value: {{ .Values.operator.collectors.enablePprofExtension | toString | quote }}
+        {{- end }}
         - name: K8S_POD_UID
           valueFrom:
             fieldRef:

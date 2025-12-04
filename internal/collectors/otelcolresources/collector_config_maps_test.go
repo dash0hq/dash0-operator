@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -330,6 +331,46 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(debugExporter["verbosity"]).To(Equal("detailed"))
 
 			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "debug", "otlp/dash0")
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should not render the pprof extension when not requested", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace:   OperatorNamespace,
+				NamePrefix:          namePrefix,
+				Export:              *Dash0ExportWithEndpointAndToken(),
+				EnableProfExtension: false,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			extensionsRaw := collectorConfig["extensions"]
+			Expect(extensionsRaw).ToNot(BeNil())
+			extensions := extensionsRaw.(map[string]interface{})
+			Expect(maps.Keys(extensions)).ToNot(ContainElement("pprof"))
+
+			serviceExtensions := readFromMap(collectorConfig, []string{"service", "extensions"})
+			Expect(serviceExtensions).To(Not(BeNil()))
+			Expect(serviceExtensions).ToNot(ContainElement("pprof"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render the pprof extension when requested", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace:   OperatorNamespace,
+				NamePrefix:          namePrefix,
+				Export:              *Dash0ExportWithEndpointAndToken(),
+				EnableProfExtension: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			extensionsRaw := collectorConfig["extensions"]
+			Expect(extensionsRaw).ToNot(BeNil())
+			extensions := extensionsRaw.(map[string]interface{})
+			Expect(maps.Keys(extensions)).To(ContainElement("pprof"))
+
+			serviceExtensions := readFromMap(collectorConfig, []string{"service", "extensions"})
+			Expect(serviceExtensions).To(Not(BeNil()))
+			Expect(serviceExtensions).To(ContainElement("pprof"))
 		}, daemonSetAndDeployment)
 
 		DescribeTable("should fail to render a gRPC exporter when no endpoint is provided", func(cmTypeDef configMapTypeDefinition) {

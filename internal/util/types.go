@@ -53,6 +53,7 @@ type CollectorConfig struct {
 	IsGkeAutopilot            bool
 	DevelopmentMode           bool
 	DebugVerbosityDetailed    bool
+	EnableProfExtension       bool
 }
 
 type TargetAllocatorConfig struct {

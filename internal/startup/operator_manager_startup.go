@@ -79,6 +79,7 @@ type environmentVariables struct {
 	instrumentationDebug                        bool
 	debugVerbosityDetailed                      bool
 	disableCollectorResourceWatches             bool
+	enablePprofExtension                        bool
 }
 
 type commandLineArguments struct {
@@ -137,6 +138,7 @@ const (
 	disableCollectorResourceWatchesEnvVarName = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName          = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchMaxSizeEnvVarName                = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
+	enablePprofExtensionEnvVarName            = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
@@ -604,6 +606,9 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		}
 	}
 
+	enablePprofExtensionRaw, isSet := os.LookupEnv(enablePprofExtensionEnvVarName)
+	enablePprofExtension := isSet && strings.ToLower(enablePprofExtensionRaw) == envVarValueTrue
+
 	envVars = environmentVariables{
 		operatorNamespace:                           operatorNamespace,
 		deploymentName:                              deploymentName,
@@ -630,6 +635,7 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		instrumentationDebug:            instrumentationDebug,
 		debugVerbosityDetailed:          debugVerbosityDetailed,
 		disableCollectorResourceWatches: disableCollectorResourceWatches,
+		enablePprofExtension:            enablePprofExtension,
 	}
 
 	return nil
@@ -776,6 +782,8 @@ func startOperatorManager(
 		developmentMode,
 		"verbosity detailed",
 		envVars.debugVerbosityDetailed,
+		"enable pprof extension",
+		envVars.enablePprofExtension,
 		"instrumentation debug",
 		envVars.instrumentationDebug,
 		"watch collector resources",
@@ -911,6 +919,7 @@ func startDash0Controllers(
 		IsGkeAutopilot:            cliArgs.isGkeAutopilot,
 		DevelopmentMode:           developmentMode,
 		DebugVerbosityDetailed:    envVars.debugVerbosityDetailed,
+		EnableProfExtension:       envVars.enablePprofExtension,
 	}
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,

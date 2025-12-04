@@ -218,6 +218,7 @@ tests:
           sendBatchMaxSize: 32768
           forceUseServiceUrl: true
           disableHostPorts: true
+          enablePprofExtension: true
 
     asserts:
       - equal:
@@ -432,36 +433,42 @@ tests:
           value: "32768"
       - equal:
           path: spec.template.spec.containers[0].env[23].name
-          value: K8S_POD_UID
+          value: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
       - equal:
-          path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[23].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[24].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[24].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[25].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[25].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[26].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[26].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[27].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[27].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[28].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[28].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[28].name
+          path: spec.template.spec.containers[0].env[29].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
