@@ -152,7 +152,7 @@ processors:
 {{- end }}
 
   memory_limiter:
-    check_interval: 5s
+    check_interval: 1s
     limit_percentage: 80
     spike_limit_percentage: 25
 
@@ -196,6 +196,7 @@ service:
       receivers:
       - k8s_cluster
       processors:
+      - memory_limiter
       - k8sattributes
       {{- if .ClusterName }}
       - resource/clustername
@@ -207,12 +208,11 @@ service:
       {{- if .CustomFilters.HasMetricFilters }}
       - filter/metrics/custom_telemetry_filter
       {{- end }}
+      - batch
       {{- if .CustomTransforms.HasMetricTransforms }}
       - transform/metrics/custom_telemetry_transform
       {{- end }}
       - transform/resources
-      - memory_limiter
-      - batch
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug

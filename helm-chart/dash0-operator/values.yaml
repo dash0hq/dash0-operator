@@ -430,6 +430,8 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
+      # The GOMEMLIMIT environment variable value for the collector container, the recommended value is 80% of
+      # daemonSetCollectorContainerResources.limits.memory.
       gomemlimit: 400MiB
       requests:
         # cpu: (no cpu request by default)
@@ -443,6 +445,8 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 24Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
+      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
+      # of daemonSetConfigurationReloaderContainerResources.limits.memory.
       gomemlimit: 18MiB
       requests:
         # cpu: (no cpu request by default)
@@ -456,6 +460,8 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 32Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
+      # The GOMEMLIMIT environment variable value for the filelog offset sync container, the recommended value is 80%
+      # of daemonSetFileLogOffsetSyncContainerResources.limits.memory.
       gomemlimit: 24MiB
       requests:
         # cpu: (no cpu request by default)
@@ -489,6 +495,8 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
+      # The GOMEMLIMIT environment variable value for the collector container, the recommended value is 80% of
+      # deploymentCollectorContainerResources.limits.memory.
       gomemlimit: 400MiB
       requests:
         # cpu: (no cpu request by default)
@@ -502,6 +510,8 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 24Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
+      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
+      # of deploymentConfigurationReloaderContainerResources.limits.memory.
       gomemlimit: 18MiB
       requests:
         # cpu: (no cpu request by default)

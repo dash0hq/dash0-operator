@@ -622,7 +622,7 @@ processors:
 {{- end }}
 
   memory_limiter:
-    check_interval: 5s
+    check_interval: 1s
     limit_percentage: 80
     spike_limit_percentage: 25
 
@@ -665,6 +665,7 @@ service:
       receivers:
       - otlp
       processors:
+      - memory_limiter
       - resourcedetection
       - k8sattributes
       {{- if .ClusterName }}
@@ -673,12 +674,11 @@ service:
       {{- if .CustomFilters.HasTraceFilters }}
       - filter/traces/custom_telemetry_filter
       {{- end }}
+      - batch
       {{- if .CustomTransforms.HasTraceTransforms }}
       - transform/traces/custom_telemetry_transform
       {{- end }}
       - transform/resources
-      - memory_limiter
-      - batch
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
@@ -710,6 +710,7 @@ service:
       - forward/metrics/prometheus
 {{- end }}
       processors:
+      - memory_limiter
       - resourcedetection
       - k8sattributes
       {{- if .ClusterName }}
@@ -721,12 +722,11 @@ service:
       {{- if .CustomFilters.HasMetricFilters }}
       - filter/metrics/custom_telemetry_filter
       {{- end }}
+      - batch
       {{- if .CustomTransforms.HasMetricTransforms }}
       - transform/metrics/custom_telemetry_transform
       {{- end }}
       - transform/resources
-      - memory_limiter
-      - batch
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
@@ -739,6 +739,7 @@ service:
       receivers:
       - otlp
       processors:
+      - memory_limiter
       - k8sattributes
       exporters:
       - forward/logs
@@ -748,6 +749,7 @@ service:
       receivers:
       - filelog
       processors:
+      - memory_limiter
       - k8sattributes
       - transform/logs/filelog_service_attributes
       exporters:
@@ -765,12 +767,11 @@ service:
       {{- if .CustomFilters.HasLogFilters }}
       - filter/logs/custom_telemetry_filter
       {{- end }}
+      - batch
       {{- if .CustomTransforms.HasLogTransforms }}
       - transform/logs/custom_telemetry_transform
       {{- end }}
       - transform/resources
-      - memory_limiter
-      - batch
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
