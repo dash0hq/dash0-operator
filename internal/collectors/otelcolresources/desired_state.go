@@ -51,6 +51,7 @@ type oTelColConfig struct {
 	OffsetStorageVolume                              *corev1.Volume
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
+	EnableProfExtension                              bool
 }
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {

@@ -22,6 +22,9 @@ extensions:
   file_storage/filelogreceiver_offsets:
     directory: /var/otelcol/filelogreceiver_offsets
     timeout: 1s
+  {{- if .EnableProfExtension }}
+  pprof: {}
+  {{- end }}
 
 
 connectors:
@@ -660,6 +663,9 @@ service:
   extensions:
   - health_check
   - file_storage/filelogreceiver_offsets
+  {{- if .EnableProfExtension }}
+  - pprof
+  {{- end }}
   pipelines:
     traces/downstream:
       receivers:

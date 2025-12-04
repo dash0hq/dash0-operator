@@ -1,6 +1,9 @@
 extensions:
   health_check:
     endpoint: "{{ .SelfIpReference }}:13133"
+  {{- if .EnableProfExtension }}
+  pprof: {}
+  {{- end }}
 
 
 receivers:
@@ -189,6 +192,9 @@ exporters:
 service:
   extensions:
   - health_check
+  {{- if .EnableProfExtension }}
+  - pprof
+  {{- end }}
 
   pipelines:
 
