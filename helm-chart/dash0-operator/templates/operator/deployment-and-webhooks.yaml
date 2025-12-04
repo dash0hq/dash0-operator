@@ -221,7 +221,11 @@ spec:
         {{- end }}
         {{- if .Values.operator.instrumentation.debug }}
         - name: DASH0_INSTRUMENTATION_DEBUG
-          value: {{ .Values.operator.instrumentation.debug  | toString | quote }}
+          value: {{ .Values.operator.instrumentation.debug | toString | quote }}
+        {{- end }}
+        {{- if .Values.operator.disableCollectorResourceWatches }}
+        - name: DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES
+          value: {{ .Values.operator.disableCollectorResourceWatches | toString | quote }}
         {{- end }}
         {{- if .Values.operator.collectors.debugVerbosityDetailed }}
         - name: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
