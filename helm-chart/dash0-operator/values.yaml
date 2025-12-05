@@ -149,6 +149,21 @@ operator:
   #     effect: "NoSchedule"
   tolerations: []
 
+  # The nodeAffinity for the operator manager deployment. This can be used to constrain which nodes the manager
+  # pods will be scheduled on.
+  #
+  # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: "dash0.com/enable"
+              operator: "NotIn"
+              values: ["false"]
+            - key: "kubernetes.io/os"
+              operator: "In"
+              values: ["linux"]
+
   # Settings for using cert-manager instead of auto-generating TLS certificates.
   #
   # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#using-cert-manager
@@ -498,6 +513,21 @@ operator:
     #     effect: "NoSchedule"
     daemonSetTolerations: []
 
+    # The nodeAffinity for the collector DaemonSet pods managed by the operator. This can be used to constrain which
+    # nodes the collector pods will be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    daemonSetNodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
     # The priority class name for the DaemonSet collector pods. If set, these manager pods will be scheduled with
     # the specified priority class.
     # This is useful if you want to make sure that the collector pods are scheduled with a higher priority than other
@@ -552,3 +582,58 @@ operator:
     #     operator: "Exists"
     #     effect: "NoSchedule"
     deploymentTolerations: []
+
+    # The nodeAffinity for the collector Deployment pod (cluster-metrics-collector) managed by the operator. This can
+    # be used to constrain which nodes the collector pod will be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    deploymentNodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+  # Settings related to the target-allocator managed by the operator.
+  targetAllocator:
+    # Resource settings for the target-allocator container of the target-allocator deployment managed by the operator.
+    containerResources:
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      requests:
+        cpu: 200m
+        memory: 128Mi
+
+    # An array of tolerations for the target-allocator deployment pods managed by the operator.
+    # This can be used to make sure that target-allocator pod can be scheduled on nodes where it would not be scheduled
+    # otherwise due to Kubernetes taints.
+    # Example:
+    # deploymentTolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    #   - key: "key2"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    tolerations: []
+
+    # The nodeAffinity for the target-allocator deployment managed by the operator. This can be used to constrain which
+    # nodes the target-allocator pod will be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]

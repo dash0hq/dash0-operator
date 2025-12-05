@@ -42,6 +42,7 @@ func NewTargetAllocatorResourceManager(
 
 func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	namespacesWithPrometheusScraping []string,
 	logger *logr.Logger,
 ) (bool, bool, error) {
@@ -52,7 +53,7 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 		Images:             m.targetAllocatorConfig.Images,
 	}
 
-	desiredState, err := assembleDesiredStateForUpsert(config, namespacesWithPrometheusScraping)
+	desiredState, err := assembleDesiredStateForUpsert(config, namespacesWithPrometheusScraping, extraConfig)
 	if err != nil {
 		return false, false, err
 	}
@@ -178,6 +179,7 @@ func (m *TargetAllocatorResourceManager) updateResource(
 
 func (m *TargetAllocatorResourceManager) DeleteResources(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	logger *logr.Logger,
 ) (bool, error) {
 	logger.Info(
@@ -189,7 +191,7 @@ func (m *TargetAllocatorResourceManager) DeleteResources(
 		OperatorNamespace: m.targetAllocatorConfig.OperatorNamespace,
 		NamePrefix:        m.targetAllocatorConfig.TargetAllocatorNamePrefix,
 	}
-	desiredResources, err := assembleDesiredStateForDelete(config)
+	desiredResources, err := assembleDesiredStateForDelete(config, extraConfig)
 	if err != nil {
 		return false, err
 	}

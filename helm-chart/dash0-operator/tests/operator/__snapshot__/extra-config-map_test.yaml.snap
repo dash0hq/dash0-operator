@@ -25,6 +25,18 @@ extra config map should match snapshot:
             memory: 32Mi
         daemonSetTolerations:
           []
+        daemonSetNodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dash0.com/enable
+                operator: NotIn
+                values:
+                - "false"
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
         collectorDeploymentCollectorContainerResources:
           gomemlimit: 400MiB
           limits:
@@ -39,6 +51,39 @@ extra config map should match snapshot:
             memory: 12Mi
         deploymentTolerations:
           []
+        deploymentNodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dash0.com/enable
+                operator: NotIn
+                values:
+                - "false"
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+        targetAllocatorContainerResources:
+          limits:
+            cpu: 200m
+            memory: 500Mi
+          requests:
+            cpu: 200m
+            memory: 128Mi
+        targetAllocatorTolerations:
+          []
+        targetAllocatorNodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dash0.com/enable
+                operator: NotIn
+                values:
+                - "false"
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
     kind: ConfigMap
     metadata:
       labels:

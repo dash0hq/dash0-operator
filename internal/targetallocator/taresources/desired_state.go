@@ -91,17 +91,24 @@ prometheus_cr:
 func assembleDesiredStateForUpsert(
 	config *targetAllocatorConfig,
 	namespacesWithPrometheusScraping []string,
+	extraConfig util.ExtraConfig,
 ) ([]clientObject, error) {
-	return assembleDesiredState(config, namespacesWithPrometheusScraping, false)
+	return assembleDesiredState(config, namespacesWithPrometheusScraping, extraConfig, false)
 }
 
 func assembleDesiredStateForDelete(
 	config *targetAllocatorConfig,
+	extraConfig util.ExtraConfig,
 ) ([]clientObject, error) {
-	return assembleDesiredState(config, nil, true)
+	return assembleDesiredState(config, nil, extraConfig, true)
 }
 
-func assembleDesiredState(config *targetAllocatorConfig, namespacesWithPrometheusScraping []string, forDeletion bool) ([]clientObject, error) {
+func assembleDesiredState(
+	config *targetAllocatorConfig,
+	namespacesWithPrometheusScraping []string,
+	extraConfig util.ExtraConfig,
+	forDeletion bool,
+) ([]clientObject, error) {
 	// sort namespaces so we don't re-trigger reconciliation because of unstable ordering
 	slices.Sort(namespacesWithPrometheusScraping)
 	var desiredState []clientObject
@@ -109,7 +116,7 @@ func assembleDesiredState(config *targetAllocatorConfig, namespacesWithPrometheu
 	if err != nil {
 		return desiredState, err
 	}
-	deployment, err := assembleDeployment(config, cm)
+	deployment, err := assembleDeployment(config, cm, extraConfig)
 	if err != nil {
 		return desiredState, err
 	}
@@ -291,7 +298,7 @@ func assembleService(c *targetAllocatorConfig) *corev1.Service {
 	}
 }
 
-func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap) (*appsv1.Deployment, error) {
+func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap, extraConfig util.ExtraConfig) (*appsv1.Deployment, error) {
 	replicas := int32(1)
 	defaultMode := int32(0444)
 	cmSha, err := getSHAfromConfigmap(taConfigMap)
@@ -348,10 +355,79 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap)
 			InitialDelaySeconds: 5,
 			PeriodSeconds:       10,
 		},
+		Resources: extraConfig.TargetAllocatorContainerResources,
 	}
 
 	if c.Images.TargetAllocatorPullPolicy != "" {
 		taContainer.ImagePullPolicy = c.Images.TargetAllocatorPullPolicy
+	}
+
+	taPodSpec := corev1.PodSpec{
+		ServiceAccountName:           ServiceAccountName(c.NamePrefix),
+		AutomountServiceAccountToken: ptr.To(false),
+		Tolerations:                  extraConfig.TargetAllocatorTolerations,
+		Containers: []corev1.Container{
+			taContainer,
+		},
+		Volumes: []corev1.Volume{
+			{
+				Name: "config-volume",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: ConfigMapName(c.NamePrefix),
+						},
+					},
+				},
+			},
+			{
+				Name: "serviceaccount-token",
+				VolumeSource: corev1.VolumeSource{
+					Projected: &corev1.ProjectedVolumeSource{
+						DefaultMode: &defaultMode,
+						Sources: []corev1.VolumeProjection{
+							{
+								ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+									Path: "token",
+								},
+							},
+							{
+								ConfigMap: &corev1.ConfigMapProjection{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "kube-root-ca.crt",
+									},
+									Items: []corev1.KeyToPath{
+										{
+											Key:  "ca.crt",
+											Path: "ca.crt",
+										},
+									},
+								},
+							},
+							{
+								DownwardAPI: &corev1.DownwardAPIProjection{
+									Items: []corev1.DownwardAPIVolumeFile{
+										{
+											Path: "namespace",
+											FieldRef: &corev1.ObjectFieldSelector{
+												APIVersion: "v1",
+												FieldPath:  "metadata.namespace",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if extraConfig.TargetAllocatorNodeAffinity != nil {
+		taPodSpec.Affinity = &corev1.Affinity{
+			NodeAffinity: extraConfig.TargetAllocatorNodeAffinity,
+		}
 	}
 
 	return &appsv1.Deployment{
@@ -373,66 +449,7 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap)
 					Labels:      labels(),
 					Annotations: podTemplateAnnotations,
 				},
-				Spec: corev1.PodSpec{
-					ServiceAccountName:           ServiceAccountName(c.NamePrefix),
-					AutomountServiceAccountToken: ptr.To(false),
-					Containers: []corev1.Container{
-						taContainer,
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "config-volume",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: ConfigMapName(c.NamePrefix),
-									},
-								},
-							},
-						},
-						{
-							Name: "serviceaccount-token",
-							VolumeSource: corev1.VolumeSource{
-								Projected: &corev1.ProjectedVolumeSource{
-									DefaultMode: &defaultMode,
-									Sources: []corev1.VolumeProjection{
-										{
-											ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-												Path: "token",
-											},
-										},
-										{
-											ConfigMap: &corev1.ConfigMapProjection{
-												LocalObjectReference: corev1.LocalObjectReference{
-													Name: "kube-root-ca.crt",
-												},
-												Items: []corev1.KeyToPath{
-													{
-														Key:  "ca.crt",
-														Path: "ca.crt",
-													},
-												},
-											},
-										},
-										{
-											DownwardAPI: &corev1.DownwardAPIProjection{
-												Items: []corev1.DownwardAPIVolumeFile{
-													{
-														Path: "namespace",
-														FieldRef: &corev1.ObjectFieldSelector{
-															APIVersion: "v1",
-															FieldPath:  "metadata.namespace",
-														},
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
+				Spec: taPodSpec,
 			},
 		},
 	}, nil

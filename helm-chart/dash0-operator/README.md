@@ -1000,8 +1000,8 @@ operator:
 ```
 
 In the same fashion, tolerations can also be configured for the Dash0 operator manager (Helm value
-`operator.tolerations`) and the OpenTelemetry collector deployment for collecting cluster metrics
-(Helm value `operator.collectors.deploymentTolerations`).
+`operator.tolerations`), the OpenTelemetry collector deployment for collecting cluster metrics
+(Helm value `operator.collectors.deploymentTolerations`) and the OpenTelemetry target-allocator deployment (Helm value `operator.targetAllocator.tolerations`).
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
 similar to take effect.
@@ -1029,6 +1029,28 @@ spec:
           - key: "dash0.com/enable"
             operator: "NotIn"
             values: ["false"]
+```
+
+#### Custom Node Affinity
+
+The node affinity for all pods deployed by the operator can be customized by setting the `nodeAffinity` field for the respective component.
+
+```yaml
+operator:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: "a-custom-label"
+              operator: "In"
+              values: ["custom_value"]
+
+  collectors:
+    daemonSetNodeAffinity: <custom_node_affinity>
+    deploymentNodeAffinity: <custom_node_affinity>
+
+  targetAllocator:
+    nodeAffinity: <custom_node_affinity>
 ```
 
 ### Disabling Auto-Instrumentation for Specific Workloads

@@ -88,17 +88,11 @@ spec:
         cloud.google.com/matching-allowlist: dash0-operator-manager-v1.0.0
         {{- end }}
     spec:
+{{- if .Values.operator.nodeAffinity }}
       affinity:
         nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: "dash0.com/enable"
-                operator: "NotIn"
-                values: ["false"]
-              - key: "kubernetes.io/os"
-                operator: "In"
-                values: ["linux"]
+          {{- toYaml .Values.operator.nodeAffinity | nindent 10 }}
+{{- end }}
 {{- if .Values.operator.tolerations }}
       tolerations:
         {{- toYaml .Values.operator.tolerations | nindent 8 }}

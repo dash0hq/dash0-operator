@@ -53,6 +53,8 @@ data:
           ) | nindent 6 }}
     daemonSetTolerations:
       {{- toYaml .Values.operator.collectors.daemonSetTolerations | nindent 6 }}
+    daemonSetNodeAffinity:
+      {{- toYaml .Values.operator.collectors.daemonSetNodeAffinity | nindent 6 }}
 {{- if .Values.operator.collectors.daemonSetPriorityClassName }}
     collectorDaemonSetPriorityClassName: {{ .Values.operator.collectors.daemonSetPriorityClassName }}
 {{- end }}
@@ -70,6 +72,14 @@ data:
           ) | nindent 6 }}
     deploymentTolerations:
       {{- toYaml .Values.operator.collectors.deploymentTolerations | nindent 6 }}
+    deploymentNodeAffinity:
+      {{- toYaml .Values.operator.collectors.deploymentNodeAffinity | nindent 6 }}
 {{- if .Values.operator.collectors.deploymentPriorityClassName }}
     collectorDeploymentPriorityClassName: {{ .Values.operator.collectors.deploymentPriorityClassName }}
 {{- end }}
+    targetAllocatorContainerResources:
+      {{- toYaml .Values.operator.targetAllocator.containerResources | nindent 6 }}
+    targetAllocatorTolerations:
+      {{- toYaml .Values.operator.targetAllocator.tolerations | nindent 6 }}
+    targetAllocatorNodeAffinity:
+      {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}

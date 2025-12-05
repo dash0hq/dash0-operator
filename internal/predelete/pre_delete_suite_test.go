@@ -138,6 +138,7 @@ var _ = BeforeSuite(func() {
 	targetAllocatorManager := targetallocator.NewTargetAllocatorManager(
 		k8sClient,
 		clientset,
+		util.ExtraConfigDefaults,
 		false,
 		targetAllocatorResourceManager,
 	)

@@ -84,6 +84,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 		targetAllocatorManager := targetallocator.NewTargetAllocatorManager(
 			k8sClient,
 			clientset,
+			util.ExtraConfigDefaults,
 			false,
 			targetAllocatorResourceManager,
 		)
