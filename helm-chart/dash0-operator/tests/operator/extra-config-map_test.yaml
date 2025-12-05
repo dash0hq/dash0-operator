@@ -61,6 +61,23 @@ tests:
             - key: key2
               operator: Exists
               effect: NoSchedule
+          daemonSetNodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-01
+                      operator: In
+                      values:
+                        - value-01
+                        - value-02
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 1
+                preference:
+                  matchExpressions:
+                    - key: node-label-key-02
+                      operator: In
+                      values:
+                        - value-03
           daemonSetPriorityClassName: collector-daemonset-priority-class
           deploymentCollectorContainerResources:
             limits:
@@ -90,7 +107,56 @@ tests:
             - key: key4
               operator: Exists
               effect: NoSchedule
+          deploymentNodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-03
+                      operator: In
+                      values:
+                        - value-04
+                        - value-05
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 1
+                preference:
+                  matchExpressions:
+                    - key: node-label-key-04
+                      operator: In
+                      values:
+                        - value-06
           deploymentPriorityClassName: collector-deployment-priority-class
+        targetAllocator:
+          containerResources:
+            limits:
+              memory: 2Gi
+              cpu: 500m
+              ephemeral-storage: 1Gi
+            requests:
+              memory: 500Mi
+              cpu: 200m
+              ephemeral-storage: 700Mi
+          tolerations:
+            - key: key4
+              operator: Equal
+              value: value4
+              effect: NoSchedule
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-05
+                      operator: In
+                      values:
+                        - value-07
+                        - value-08
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 1
+                preference:
+                  matchExpressions:
+                    - key: node-label-key-06
+                      operator: In
+                      values:
+                        - value-09
     asserts:
       - equal:
           path: data['extra.yaml']
@@ -146,6 +212,23 @@ tests:
               - effect: NoSchedule
                 key: key2
                 operator: Exists
+            daemonSetNodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - preference:
+                  matchExpressions:
+                  - key: node-label-key-02
+                    operator: In
+                    values:
+                    - value-03
+                weight: 1
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-01
+                    operator: In
+                    values:
+                    - value-01
+                    - value-02
             collectorDaemonSetPriorityClassName: collector-daemonset-priority-class
             collectorDeploymentCollectorContainerResources:
               gomemlimit: 404MiB
@@ -175,7 +258,55 @@ tests:
               - effect: NoSchedule
                 key: key4
                 operator: Exists
+            deploymentNodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - preference:
+                  matchExpressions:
+                  - key: node-label-key-04
+                    operator: In
+                    values:
+                    - value-06
+                weight: 1
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-03
+                    operator: In
+                    values:
+                    - value-04
+                    - value-05
             collectorDeploymentPriorityClassName: collector-deployment-priority-class
+            targetAllocatorContainerResources:
+              limits:
+                cpu: 500m
+                ephemeral-storage: 1Gi
+                memory: 2Gi
+              requests:
+                cpu: 200m
+                ephemeral-storage: 700Mi
+                memory: 500Mi
+            targetAllocatorTolerations:
+              - effect: NoSchedule
+                key: key4
+                operator: Equal
+                value: value4
+            targetAllocatorNodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - preference:
+                  matchExpressions:
+                  - key: node-label-key-06
+                    operator: In
+                    values:
+                    - value-09
+                weight: 1
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-05
+                    operator: In
+                    values:
+                    - value-07
+                    - value-08
 
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
@@ -254,6 +385,18 @@ tests:
                 memory: 403Mi
             daemonSetTolerations:
               []
+            daemonSetNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
             collectorDeploymentCollectorContainerResources:
               gomemlimit: 304MiB
               limits:
@@ -272,6 +415,39 @@ tests:
                 memory: 405Mi
             deploymentTolerations:
               []
+            deploymentNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+            targetAllocatorContainerResources:
+              limits:
+                cpu: 200m
+                memory: 500Mi
+              requests:
+                cpu: 200m
+                memory: 128Mi
+            targetAllocatorTolerations:
+              []
+            targetAllocatorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
 
   - it: should set defaults for initContainerResources if gke.autopilot is true
     set:

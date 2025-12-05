@@ -727,7 +727,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 		})
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
-		k8sClient, clientset, false, targetallocatorResourceManager,
+		k8sClient, clientset, util.ExtraConfigDefaults, false, targetallocatorResourceManager,
 	)
 	delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
 	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)

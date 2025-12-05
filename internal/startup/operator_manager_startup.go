@@ -964,8 +964,11 @@ func startDash0Controllers(
 	}
 	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(k8sClient, mgr.GetScheme(), operatorDeploymentSelfReference, targetAllocatorConfig)
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
-		k8sClient, clientset, developmentMode, targetallocatorResourceManager,
+		k8sClient, clientset, extraConfig, developmentMode, targetallocatorResourceManager,
 	)
+	// We update the extra config map in the targetallocatorManager when the extra config map changes, and also trigger a
+	// reconciliation of the target-allocator.
+	extraConfigMapWatcher.AddClient(targetallocatorManager)
 	targetAllocatorReconciler := targetallocator.NewTargetAllocatorReconciler(k8sClient, targetallocatorManager, envVars.operatorNamespace, envVars.targetAllocatorNamePrefix)
 	if err := targetAllocatorReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)

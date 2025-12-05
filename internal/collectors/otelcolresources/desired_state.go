@@ -581,30 +581,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		return nil, err
 	}
 
-	matchExpressions := []corev1.NodeSelectorRequirement{
-		{
-			Key:      dash0OptOutLabelKey,
-			Operator: corev1.NodeSelectorOpNotIn,
-			Values:   []string{"false"},
-		},
-		{
-			Key:      util.KubernetesIoOs,
-			Operator: corev1.NodeSelectorOpIn,
-			Values:   []string{"linux"},
-		},
-	}
 	podSpec := corev1.PodSpec{
-		Affinity: &corev1.Affinity{
-			NodeAffinity: &corev1.NodeAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-					NodeSelectorTerms: []corev1.NodeSelectorTerm{
-						{
-							MatchExpressions: matchExpressions,
-						},
-					},
-				},
-			},
-		},
 		Tolerations:        extraConfig.DaemonSetTolerations,
 		ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
 		SecurityContext: &corev1.PodSecurityContext{
@@ -656,6 +633,12 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 				extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
 			),
 		)
+	}
+
+	if extraConfig.DaemonSetNodeAffinity != nil {
+		podSpec.Affinity = &corev1.Affinity{
+			NodeAffinity: extraConfig.DaemonSetNodeAffinity,
+		}
 	}
 
 	priorityClassName := strings.TrimSpace(extraConfig.CollectorDaemonSetPriorityClassName)
@@ -1296,30 +1279,7 @@ func assembleCollectorDeployment(
 		return nil, err
 	}
 
-	matchExpressions := []corev1.NodeSelectorRequirement{
-		{
-			Key:      dash0OptOutLabelKey,
-			Operator: corev1.NodeSelectorOpNotIn,
-			Values:   []string{"false"},
-		},
-		{
-			Key:      util.KubernetesIoOs,
-			Operator: corev1.NodeSelectorOpIn,
-			Values:   []string{"linux"},
-		},
-	}
 	podSpec := corev1.PodSpec{
-		Affinity: &corev1.Affinity{
-			NodeAffinity: &corev1.NodeAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-					NodeSelectorTerms: []corev1.NodeSelectorTerm{
-						{
-							MatchExpressions: matchExpressions,
-						},
-					},
-				},
-			},
-		},
 		Tolerations:        extraConfig.DeploymentTolerations,
 		ServiceAccountName: deploymentServiceAccountName(config.NamePrefix),
 		SecurityContext: &corev1.PodSecurityContext{
@@ -1341,6 +1301,12 @@ func assembleCollectorDeployment(
 		},
 		Volumes:     assembleCollectorDeploymentVolumes(config, configMapItems),
 		HostNetwork: false,
+	}
+
+	if extraConfig.DeploymentNodeAffinity != nil {
+		podSpec.Affinity = &corev1.Affinity{
+			NodeAffinity: extraConfig.DeploymentNodeAffinity,
+		}
 	}
 
 	priorityClassName := strings.TrimSpace(extraConfig.CollectorDeploymentPriorityClassName)

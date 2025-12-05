@@ -390,6 +390,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.DaemonSetTolerations).To(HaveLen(0))
+					Expect(extraConfig.DaemonSetNodeAffinity).To(BeNil())
 
 					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal(""))
 
@@ -410,8 +411,15 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.DeploymentTolerations).To(HaveLen(0))
+					Expect(extraConfig.DeploymentNodeAffinity).To(BeNil())
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
+
+					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(BeNil())
+					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
+					Expect(extraConfig.TargetAllocatorContainerResources.Claims).To(BeNil())
+					Expect(extraConfig.TargetAllocatorTolerations).To(HaveLen(0))
+					Expect(extraConfig.TargetAllocatorNodeAffinity).To(BeNil())
 				})
 
 				It("should parse the config map content with all values set", func() {
@@ -489,6 +497,18 @@ daemonSetTolerations:
   - key: key2
     operator: Exists
     effect: NoSchedule
+daemonSetNodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+    - matchExpressions:
+      - key: dash0.com/enable-one
+        operator: NotIn
+        values:
+        - "false"
+      - key: kubernetes.io/os
+        operator: In
+        values:
+        - linux
 collectorDeploymentPriorityClassName: deployment-priority
 deploymentTolerations:
   - key: key3
@@ -498,6 +518,49 @@ deploymentTolerations:
   - key: key4
     operator: Exists
     effect: NoSchedule
+deploymentNodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+    - matchExpressions:
+      - key: dash0.com/enable-two
+        operator: NotIn
+        values:
+        - "false"
+      - key: kubernetes.io/os
+        operator: In
+        values:
+        - linux
+targetAllocatorContainerResources:
+  limits:
+    cpu: 500m
+    ephemeral-storage: 306Mi
+    memory: 806Mi
+  requests:
+    cpu: 200m
+    ephemeral-storage: 106Mi
+    memory: 506Mi
+targetAllocatorTolerations:
+  - effect: NoSchedule
+    key: key4
+    operator: Equal
+    value: value4
+targetAllocatorNodeAffinity:
+  preferredDuringSchedulingIgnoredDuringExecution:
+  - preference:
+      matchExpressions:
+      - key: node-label-key-06
+        operator: In
+        values:
+        - value-09
+    weight: 1
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+    - matchExpressions:
+      - key: node-label-key-05
+        operator: In
+        values:
+        - value-07
+        - value-08
 `)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -573,6 +636,19 @@ deploymentTolerations:
 					Expect(extraConfig.DaemonSetTolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
 					Expect(extraConfig.DaemonSetTolerations[1].TolerationSeconds).To(BeNil())
 
+					Expect(extraConfig.DaemonSetNodeAffinity).To(Not(BeNil()))
+					daemonSetAffinityNodeSelectorReqTerms := extraConfig.DaemonSetNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+					Expect(daemonSetAffinityNodeSelectorReqTerms).To(HaveLen(1))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions).To(HaveLen(2))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[0].Key).To(Equal("dash0.com/enable-one"))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[0].Operator).To(Equal(corev1.NodeSelectorOpNotIn))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[0].Values).To(HaveLen(1))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[0].Values[0]).To(Equal("false"))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Key).To(Equal("kubernetes.io/os"))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Operator).To(Equal(corev1.NodeSelectorOpIn))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values).To(HaveLen(1))
+					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values[0]).To(Equal("linux"))
+
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal("deployment-priority"))
 
 					Expect(extraConfig.DeploymentTolerations).To(HaveLen(2))
@@ -586,6 +662,50 @@ deploymentTolerations:
 					Expect(extraConfig.DeploymentTolerations[1].Value).To(BeEmpty())
 					Expect(extraConfig.DeploymentTolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
 					Expect(extraConfig.DeploymentTolerations[1].TolerationSeconds).To(BeNil())
+
+					Expect(extraConfig.DeploymentNodeAffinity).To(Not(BeNil()))
+					deploymentAffinityNodeSelectorReqTerms := extraConfig.DeploymentNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+					Expect(deploymentAffinityNodeSelectorReqTerms).To(HaveLen(1))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions).To(HaveLen(2))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[0].Key).To(Equal("dash0.com/enable-two"))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[0].Operator).To(Equal(corev1.NodeSelectorOpNotIn))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[0].Values).To(HaveLen(1))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[0].Values[0]).To(Equal("false"))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Key).To(Equal("kubernetes.io/os"))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Operator).To(Equal(corev1.NodeSelectorOpIn))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values).To(HaveLen(1))
+					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values[0]).To(Equal("linux"))
+
+					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("500m"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("806Mi"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Limits.StorageEphemeral().String()).To(Equal("306Mi"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Cpu().String()).To(Equal("200m"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Memory().String()).To(Equal("506Mi"))
+					Expect(extraConfig.TargetAllocatorContainerResources.Requests.StorageEphemeral().String()).To(Equal("106Mi"))
+
+					Expect(extraConfig.TargetAllocatorTolerations).To(HaveLen(1))
+					Expect(extraConfig.TargetAllocatorTolerations[0].Key).To(Equal("key4"))
+					Expect(extraConfig.TargetAllocatorTolerations[0].Operator).To(Equal(corev1.TolerationOpEqual))
+					Expect(extraConfig.TargetAllocatorTolerations[0].Value).To(Equal("value4"))
+					Expect(extraConfig.TargetAllocatorTolerations[0].Effect).To(Equal(corev1.TaintEffectNoSchedule))
+					Expect(extraConfig.TargetAllocatorTolerations[0].TolerationSeconds).To(BeNil())
+
+					Expect(extraConfig.TargetAllocatorNodeAffinity).To(Not(BeNil()))
+					targetAllocatorAffinityReq := extraConfig.TargetAllocatorNodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+					Expect(targetAllocatorAffinityReq).To(HaveLen(1))
+					Expect(targetAllocatorAffinityReq[0].MatchExpressions).To(HaveLen(1))
+					Expect(targetAllocatorAffinityReq[0].MatchExpressions[0].Key).To(Equal("node-label-key-05"))
+					Expect(targetAllocatorAffinityReq[0].MatchExpressions[0].Operator).To(Equal(corev1.NodeSelectorOpIn))
+					Expect(targetAllocatorAffinityReq[0].MatchExpressions[0].Values).To(HaveLen(2))
+					Expect(targetAllocatorAffinityReq[0].MatchExpressions[0].Values[0]).To(Equal("value-07"))
+					Expect(targetAllocatorAffinityReq[0].MatchExpressions[0].Values[1]).To(Equal("value-08"))
+					targetAllocatorAffinityPref := extraConfig.TargetAllocatorNodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+					Expect(targetAllocatorAffinityPref).To(HaveLen(1))
+					Expect(targetAllocatorAffinityPref[0].Preference.MatchExpressions).To(HaveLen(1))
+					Expect(targetAllocatorAffinityPref[0].Preference.MatchExpressions[0].Key).To(Equal("node-label-key-06"))
+					Expect(targetAllocatorAffinityPref[0].Preference.MatchExpressions[0].Operator).To(Equal(corev1.NodeSelectorOpIn))
+					Expect(targetAllocatorAffinityPref[0].Preference.MatchExpressions[0].Values).To(HaveLen(1))
+					Expect(targetAllocatorAffinityPref[0].Preference.MatchExpressions[0].Values[0]).To(Equal("value-09"))
 				})
 
 				It("should merge partial config and defaults", func() {

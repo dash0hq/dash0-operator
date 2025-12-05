@@ -36,16 +36,22 @@ type ExtraConfig struct {
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources,omitempty"`
 	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources,omitempty"`
 
-	DaemonSetTolerations []corev1.Toleration `json:"daemonSetTolerations,omitempty"`
+	DaemonSetTolerations  []corev1.Toleration  `json:"daemonSetTolerations,omitempty"`
+	DaemonSetNodeAffinity *corev1.NodeAffinity `json:"daemonSetNodeAffinity,omitempty"`
 
 	CollectorDaemonSetPriorityClassName string `json:"collectorDaemonSetPriorityClassName,omitempty"`
 
 	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources,omitempty"`
 	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources,omitempty"`
 
-	DeploymentTolerations []corev1.Toleration `json:"deploymentTolerations,omitempty"`
+	DeploymentTolerations  []corev1.Toleration  `json:"deploymentTolerations,omitempty"`
+	DeploymentNodeAffinity *corev1.NodeAffinity `json:"deploymentNodeAffinity,omitempty"`
 
 	CollectorDeploymentPriorityClassName string `json:"collectorDeploymentPriorityClassName,omitempty"`
+
+	TargetAllocatorContainerResources corev1.ResourceRequirements `json:"targetAllocatorContainerResources,omitempty"`
+	TargetAllocatorTolerations        []corev1.Toleration         `json:"targetAllocatorTolerations,omitempty"`
+	TargetAllocatorNodeAffinity       *corev1.NodeAffinity        `json:"targetAllocatorNodeAffinity,omitempty"`
 }
 
 type ExtraConfigClient interface {

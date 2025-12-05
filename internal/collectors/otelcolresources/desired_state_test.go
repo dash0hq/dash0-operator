@@ -163,6 +163,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetFileLogOffsetSyncContainer.Resources.Requests.Memory().String()).To(Equal("32Mi"))
 
 		Expect(daemonSetPodSpec.Tolerations).To(HaveLen(0))
+		Expect(daemonSetPodSpec.Affinity).To(BeNil())
 
 		deployment := getDeployment(desiredState)
 		Expect(deployment).NotTo(BeNil())
@@ -480,7 +481,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		verifyAbsentSelfMonitoringSettings(daemonSet)
 	})
 
-	It("should render custom tolerations and priority classes", func() {
+	It("should render custom tolerations, node affinity, and priority classes", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -502,6 +503,26 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
+			DaemonSetNodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{
+						{
+							MatchExpressions: []corev1.NodeSelectorRequirement{
+								{
+									Key:      "affinity-key1",
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{"affinity-key1-value1", "affinity-key1-value2"},
+								},
+								{
+									Key:      "affinity-key2",
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{"affinity-key2-value1"},
+								},
+							},
+						},
+					},
+				},
+			},
 			CollectorDaemonSetPriorityClassName: "daemonset-prio",
 			DeploymentTolerations: []corev1.Toleration{
 				{
@@ -514,6 +535,34 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Key:      "key4",
 					Operator: corev1.TolerationOpExists,
 					Effect:   corev1.TaintEffectNoSchedule,
+				},
+			},
+			DeploymentNodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{
+						{
+							MatchExpressions: []corev1.NodeSelectorRequirement{
+								{
+									Key:      "affinity-key1",
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{"affinity-key1-value1"},
+								},
+							},
+						},
+					},
+				},
+				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
+					{
+						Preference: corev1.NodeSelectorTerm{
+							MatchExpressions: []corev1.NodeSelectorRequirement{
+								{
+									Key:      "affinity-key2",
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{"affinity-key2-value1", "affinity-key2-value2"},
+								},
+							},
+						},
+					},
 				},
 			},
 			CollectorDeploymentPriorityClassName: "deployment-prio",
@@ -534,6 +583,18 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetPodSpec.Tolerations[1].Value).To(BeEmpty())
 		Expect(daemonSetPodSpec.Tolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
 		Expect(daemonSetPodSpec.Tolerations[1].TolerationSeconds).To(BeNil())
+		daemonSetAffinityReq := daemonSetPodSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+		Expect(daemonSetAffinityReq).To(HaveLen(1))
+		Expect(daemonSetAffinityReq[0].MatchExpressions).To(HaveLen(2))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[0].Key).To(Equal("affinity-key1"))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[0].Operator).To(Equal(corev1.NodeSelectorOpIn))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[0].Values).To(HaveLen(2))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[0].Values[0]).To(Equal("affinity-key1-value1"))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[0].Values[1]).To(Equal("affinity-key1-value2"))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[1].Key).To(Equal("affinity-key2"))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[1].Operator).To(Equal(corev1.NodeSelectorOpIn))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[1].Values).To(HaveLen(1))
+		Expect(daemonSetAffinityReq[0].MatchExpressions[1].Values[0]).To(Equal("affinity-key2-value1"))
 		Expect(daemonSetPodSpec.PriorityClassName).To(Equal("daemonset-prio"))
 
 		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
@@ -549,6 +610,22 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentPodSpec.Tolerations[1].Value).To(BeEmpty())
 		Expect(deploymentPodSpec.Tolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
 		Expect(deploymentPodSpec.Tolerations[1].TolerationSeconds).To(BeNil())
+		deploymentAffinityReq := deploymentPodSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+		Expect(deploymentAffinityReq).To(HaveLen(1))
+		Expect(deploymentAffinityReq[0].MatchExpressions).To(HaveLen(1))
+		Expect(deploymentAffinityReq[0].MatchExpressions[0].Key).To(Equal("affinity-key1"))
+		Expect(deploymentAffinityReq[0].MatchExpressions[0].Operator).To(Equal(corev1.NodeSelectorOpIn))
+		Expect(deploymentAffinityReq[0].MatchExpressions[0].Values).To(HaveLen(1))
+		Expect(deploymentAffinityReq[0].MatchExpressions[0].Values[0]).To(Equal("affinity-key1-value1"))
+		deploymentAffinityPref := deploymentPodSpec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+		Expect(deploymentAffinityPref).To(HaveLen(1))
+		Expect(deploymentAffinityPref[0].Preference.MatchExpressions).To(HaveLen(1))
+		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Key).To(Equal("affinity-key2"))
+		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Operator).To(Equal(corev1.NodeSelectorOpIn))
+		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Values).To(HaveLen(2))
+		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Values[0]).To(Equal("affinity-key2-value1"))
+		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Values[1]).To(Equal("affinity-key2-value2"))
+
 		Expect(deploymentPodSpec.PriorityClassName).To(Equal("deployment-prio"))
 	})
 

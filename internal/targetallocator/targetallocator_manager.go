@@ -6,6 +6,7 @@ package targetallocator
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync/atomic"
 
 	"github.com/go-logr/logr"
@@ -22,6 +23,7 @@ type TargetAllocatorManager struct {
 	client.Client
 	clientset                      *kubernetes.Clientset
 	targetAllocatorResourceManager *taresources.TargetAllocatorResourceManager
+	extraConfig                    atomic.Pointer[util.ExtraConfig]
 	developmentMode                bool
 	updateInProgress               atomic.Bool
 }
@@ -36,6 +38,7 @@ const (
 func NewTargetAllocatorManager(
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
+	extraConfig util.ExtraConfig,
 	developmentMode bool,
 	targetAllocatorResourceManager *taresources.TargetAllocatorResourceManager,
 ) *TargetAllocatorManager {
@@ -45,7 +48,23 @@ func NewTargetAllocatorManager(
 		developmentMode:                developmentMode,
 		targetAllocatorResourceManager: targetAllocatorResourceManager,
 	}
+	m.extraConfig.Store(&extraConfig)
 	return m
+}
+
+func (m *TargetAllocatorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger *logr.Logger) {
+	previousConfig := m.extraConfig.Swap(&newConfig)
+	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
+		hasBeenReconciled, err := m.ReconcileTargetAllocator(ctx, TriggeredByWatchEvent)
+		if err != nil {
+			logger.Error(err, "Failed to create/update collector resources after extra config map update.")
+		}
+		if hasBeenReconciled {
+			logger.Info("successfully reconciled collector resources after extra config map update")
+		}
+	} else {
+		logger.Info("ignoring extra config map update, both the new and the old extra config map have the same content")
+	}
 }
 
 // ReconcileTargetAllocator can be triggered by a
@@ -94,12 +113,17 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 	}
 	hasPrometheusScrapingEnabledForAtLeastOneNamespace := len(namespacesWithPrometheusScraping) > 0
 
+	extraConfig := m.extraConfig.Load()
+	if extraConfig == nil {
+		return false, fmt.Errorf("extra config is nil in TargetAllocatorManager#ReconcileTargetAllocator")
+	}
+
 	if operatorConfigurationResource == nil {
 		logger.Info("The Dash0Configuration resource is missing or has been deleted, no Dash0 OpenTelemetry " +
 			"target-allocator will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will " +
 			"be removed.",
 		)
-		err = m.removeTargetAllocator(ctx, &logger)
+		err = m.removeTargetAllocator(ctx, *extraConfig, &logger)
 		return err == nil, err
 	}
 
@@ -110,7 +134,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 				"will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will be removed.",
 				operatorConfigurationResource.Name),
 		)
-		err = m.removeTargetAllocator(ctx, &logger)
+		err = m.removeTargetAllocator(ctx, *extraConfig, &logger)
 		return err == nil, err
 	} else if !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled, false) {
 		logger.Info(
@@ -119,7 +143,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 				"will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will be removed.",
 				operatorConfigurationResource.Name),
 		)
-		err = m.removeTargetAllocator(ctx, &logger)
+		err = m.removeTargetAllocator(ctx, *extraConfig, &logger)
 		return err == nil, err
 	} else if !hasPrometheusScrapingEnabledForAtLeastOneNamespace {
 		logger.Info(
@@ -129,7 +153,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 				"will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will be removed.",
 				operatorConfigurationResource.Name),
 		)
-		err = m.removeTargetAllocator(ctx, &logger)
+		err = m.removeTargetAllocator(ctx, *extraConfig, &logger)
 		return err == nil, err
 	} else {
 		logger.Info(
@@ -140,6 +164,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 		err = m.createOrUpdateTargetAllocator(
 			ctx,
 			namespacesWithPrometheusScraping,
+			*extraConfig,
 			&logger,
 		)
 		return err == nil, err
@@ -149,11 +174,13 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 	ctx context.Context,
 	namespacesWithPrometheusScraping []string,
+	extraConfig util.ExtraConfig,
 	logger *logr.Logger,
 ) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.targetAllocatorResourceManager.CreateOrUpdateTargetAllocatorResources(
 			ctx,
+			extraConfig,
 			namespacesWithPrometheusScraping,
 			logger)
 
@@ -179,10 +206,12 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 
 func (m *TargetAllocatorManager) removeTargetAllocator(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	logger *logr.Logger,
 ) error {
 	resourcesHaveBeenDeleted, err := m.targetAllocatorResourceManager.DeleteResources(
 		ctx,
+		extraConfig,
 		logger,
 	)
 	if err != nil {
