@@ -6,9 +6,20 @@
 # build the LD_PRELOAD injector binary
 
 FROM alpine:3.23.0 AS build-injector
-COPY injector/zig-version /dash0-init-container/zig-version
-RUN source /dash0-init-container/zig-version && \
-  apk add zig="$ZIG_VERSION"
+
+RUN mkdir -p /opt/zig
+WORKDIR /opt/zig
+COPY injector/zig-version .
+RUN . /opt/zig/zig-version && \
+  case $(uname -m) in \
+    x86_64)  export zig_architecture="x86_64" ;; \
+    aarch64) export zig_architecture="aarch64" ;; \
+    *)       echo "build architecture unsupported: $(uname -m)" && exit 1 ;; \
+  esac && \
+  wget -q -O /tmp/zig.tar.gz https://ziglang.org/download/${ZIG_VERSION%-*}/zig-${zig_architecture}-linux-${ZIG_VERSION%-*}.tar.xz && \
+  tar --strip-components=1 -xf /tmp/zig.tar.gz
+ENV PATH="$PATH:/opt/zig"
+
 COPY injector /dash0-init-container
 WORKDIR /dash0-init-container
 ARG TARGETARCH
