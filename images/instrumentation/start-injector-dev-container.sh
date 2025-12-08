@@ -24,7 +24,7 @@ fi
 # Debian/Ubuntu and Alpine base images are supported, for example:
 # - BASE_IMAGE=ubuntu:noble
 # - BASE_IMAGE=debian:11-slim
-# - BASE_IMAGE=alpine:3.22.1
+# - BASE_IMAGE=alpine:3.23.0
 base_image="${BASE_IMAGE:-ubuntu:noble}"
 base_image_for_image_name="${base_image//:/-}"
 base_image_for_image_name="${base_image_for_image_name//./-}"
