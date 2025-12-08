@@ -48,7 +48,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-fund=true
 
 # download .NET auto instrumentation
-FROM alpine:3.23.0 AS build-dotnet
+FROM alpine:3.22.2 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
 		unzip
