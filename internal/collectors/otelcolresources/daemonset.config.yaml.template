@@ -775,7 +775,9 @@ service:
       processors:
       - resourcedetection
       - k8sattributes
+      {{- if .NamespacesWithLogCollection }}
       - transform/logs/filelog_service_attributes
+      {{- end }}
       {{- if .ClusterName }}
       - resource/clustername
       {{- end }}
