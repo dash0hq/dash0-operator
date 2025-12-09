@@ -69,7 +69,7 @@ jobs:
           # keep in sync with images/instrumentation/injector/zig-version, if possible
           version: 0.14.1
 
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
         with:
           node-version: '24.x'
           cache: 'npm'
