@@ -78,6 +78,7 @@ type environmentVariables struct {
 	nodeName                                    string
 	podIp                                       string
 	sendBatchMaxSize                            *uint32
+	disableReplicasetInformer                   bool
 	instrumentationDebug                        bool
 	debugVerbosityDetailed                      bool
 	disableCollectorResourceWatches             bool
@@ -141,6 +142,7 @@ const (
 	disableCollectorResourceWatchesEnvVarName = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName          = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchMaxSizeEnvVarName                = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
+	disableReplicasetInformerEnvVarName       = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
 	enablePprofExtensionEnvVarName            = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
 
 	//nolint
@@ -623,6 +625,9 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		}
 	}
 
+	disableReplicasetInformerRaw, isSet := os.LookupEnv(disableReplicasetInformerEnvVarName)
+	disableReplicasetInformer := isSet && strings.ToLower(disableReplicasetInformerRaw) == envVarValueTrue
+
 	enablePprofExtensionRaw, isSet := os.LookupEnv(enablePprofExtensionEnvVarName)
 	enablePprofExtension := isSet && strings.ToLower(enablePprofExtensionRaw) == envVarValueTrue
 
@@ -649,6 +654,7 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		nodeName:                        nodeName,
 		podIp:                           podIp,
 		sendBatchMaxSize:                sendBatchMaxSize,
+		disableReplicasetInformer:       disableReplicasetInformer,
 		instrumentationDebug:            instrumentationDebug,
 		debugVerbosityDetailed:          debugVerbosityDetailed,
 		disableCollectorResourceWatches: disableCollectorResourceWatches,
@@ -927,6 +933,7 @@ func startDash0Controllers(
 		OTelCollectorNamePrefix:   envVars.oTelCollectorNamePrefix,
 		TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
 		SendBatchMaxSize:          envVars.sendBatchMaxSize,
+		DisableReplicasetInformer: envVars.disableReplicasetInformer,
 		NodeIp:                    envVars.nodeIp,
 		NodeName:                  envVars.nodeName,
 		PseudoClusterUid:          pseudoClusterUid,

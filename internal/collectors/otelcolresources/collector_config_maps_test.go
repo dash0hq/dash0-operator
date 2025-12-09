@@ -1239,6 +1239,50 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		)
 	})
 
+	Describe("should enable/disable the replicaset informer", func() {
+		DescribeTable("should configure the k8sattributes processor to not start the replicaset informer if disabled", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace:         OperatorNamespace,
+				NamePrefix:                namePrefix,
+				Export:                    *Dash0ExportWithEndpointAndToken(),
+				DisableReplicasetInformer: true,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttributesProcessorRaw := readFromMap(collectorConfig, []string{"processors", "k8sattributes"})
+			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			deploymentNameFromReplicasetRaw := readFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
+			Expect(deploymentNameFromReplicasetRaw).ToNot(BeNil())
+			deploymentNameFromReplicaset := deploymentNameFromReplicasetRaw.(bool)
+			Expect(deploymentNameFromReplicaset).To(BeTrue())
+			metadataListRaw := readFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
+			Expect(metadataListRaw).ToNot(BeNil())
+			metadataList := metadataListRaw.([]interface{})
+			Expect(metadataList).ToNot(ContainElement("k8s.deployment.uid"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should configure the k8sattributes processor to use the replicaset informer by default", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace:         OperatorNamespace,
+				NamePrefix:                namePrefix,
+				Export:                    *Dash0ExportWithEndpointAndToken(),
+				DisableReplicasetInformer: false,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttributesProcessorRaw := readFromMap(collectorConfig, []string{"processors", "k8sattributes"})
+			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			deploymentNameFromReplicasetRaw := readFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
+			Expect(deploymentNameFromReplicasetRaw).To(BeNil())
+			metadataListRaw := readFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
+			Expect(metadataListRaw).ToNot(BeNil())
+			metadataList := metadataListRaw.([]interface{})
+			Expect(metadataList).To(ContainElement("k8s.deployment.uid"))
+		}, daemonSetAndDeployment)
+	})
+
 	Describe("should enable/disable collecting labels and annotations", func() {
 		DescribeTable("should not render the label/annotation collection snippet if disabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{

@@ -44,6 +44,7 @@ type CollectorConfig struct {
 	// config of the prometheus_receiver
 	TargetAllocatorNamePrefix string
 	SendBatchMaxSize          *uint32
+	DisableReplicasetInformer bool
 	NodeIp                    string
 	NodeName                  string
 	PseudoClusterUid          types.UID
