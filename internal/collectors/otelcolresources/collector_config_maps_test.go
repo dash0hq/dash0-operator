@@ -1451,8 +1451,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			Expect(readFromMap(collectorConfig, []string{"receivers", "filelog"})).To(BeNil())
 
+			filelogServiceAttributeProcessor :=
+				readFromMap(collectorConfig, []string{"processors", "transform/logs/filelog_service_attributes"})
+			Expect(filelogServiceAttributeProcessor).To(BeNil())
+
 			pipelines := readPipelines(collectorConfig)
 			Expect(pipelines["logs/filelog"]).To(BeNil())
+			downstreamLogsProcessors := readPipelineProcessors(pipelines, "logs/downstream")
+			Expect(downstreamLogsProcessors).ToNot(BeNil())
+			Expect(downstreamLogsProcessors).ToNot(ContainElement("transform/logs/filelog_service_attributes"))
 		})
 
 		It("should render the filelog config with all namespaces for which log collection is enabled", func() {
@@ -1475,6 +1482,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(filePatterns).To(ContainElement("/var/log/pods/namespace-1_*/*/*.log"))
 			Expect(filePatterns).To(ContainElement("/var/log/pods/namespace-2_*/*/*.log"))
 
+			filelogServiceAttributeProcessor :=
+				readFromMap(collectorConfig, []string{"processors", "transform/logs/filelog_service_attributes"})
+			Expect(filelogServiceAttributeProcessor).ToNot(BeNil())
+
 			pipelines := readPipelines(collectorConfig)
 			logsFilelogReceivers := readPipelineReceivers(pipelines, "logs/filelog")
 			Expect(logsFilelogReceivers).ToNot(BeNil())
@@ -1488,6 +1499,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			downstreamLogsReceivers := readPipelineReceivers(pipelines, "logs/downstream")
 			Expect(downstreamLogsReceivers).ToNot(BeNil())
 			Expect(downstreamLogsReceivers).To(ContainElement("forward/logs"))
+			downstreamLogsProcessors := readPipelineProcessors(pipelines, "logs/downstream")
+			Expect(downstreamLogsProcessors).ToNot(BeNil())
+			Expect(downstreamLogsProcessors).To(ContainElement("transform/logs/filelog_service_attributes"))
 		})
 	})
 
