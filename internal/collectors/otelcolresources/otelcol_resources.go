@@ -145,6 +145,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
+		DisableReplicasetInformer:                        m.collectorConfig.DisableReplicasetInformer,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
@@ -360,6 +361,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
+		DisableReplicasetInformer:                        m.collectorConfig.DisableReplicasetInformer,
 		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,        // irrelevant for deletion
 		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts, // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,

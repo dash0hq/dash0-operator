@@ -38,6 +38,7 @@ type oTelColConfig struct {
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
+	DisableReplicasetInformer                        bool
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorNamePrefix                        string
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig

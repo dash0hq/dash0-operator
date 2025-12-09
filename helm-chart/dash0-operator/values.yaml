@@ -417,6 +417,11 @@ operator:
     # 8192, which is the default value for send_batch_size.
     sendBatchMaxSize: 0
 
+    # Disables the replicaset informer for the k8sattributes processor. This will lead to not collecting the resource
+    # attribute k8s.deployment.uid, and might lead to wrong values k8s.deployment.name in some edge cases.
+    # The default is false, do not override this unless explicitly instructed by Dash0 support.
+    disableReplicasetInformer: false
+
     # If set to true, instrumented workloads will be instructed to use the service URL of the OpenTelemetry collector
     # DaemonSet, instead of sending telemetry via a node-local route to the node's IP address and the collector's host
     # port. This can be useful if you employ mechanisms that block host ports, like certain Istio configurations.

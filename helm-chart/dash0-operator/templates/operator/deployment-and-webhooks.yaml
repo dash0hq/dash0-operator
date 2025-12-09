@@ -233,6 +233,10 @@ spec:
         - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
           value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
         {{- end }}
+        {{- if .Values.operator.collectors.disableReplicasetInformer }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
+          value: {{ .Values.operator.collectors.disableReplicasetInformer | toString | quote }}
+        {{- end }}
         {{- if .Values.operator.collectors.enablePprofExtension }}
         - name: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
           value: {{ .Values.operator.collectors.enablePprofExtension | toString | quote }}
