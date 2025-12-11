@@ -93,7 +93,6 @@ updates:
   - package-ecosystem: "npm"
     directories:
       - "test-resources/node.js/express"
-      - "test-resources/util/otlp-resource-analyzer"
     schedule:
       interval: "weekly"
       day: "tuesday"
