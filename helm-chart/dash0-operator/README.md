@@ -2281,11 +2281,11 @@ The `hostmetrics` receiver will be disabled when using Docker as the container r
 
 ## Troubleshooting
 
-### Create Heap Dumps
+### Create Heap Profiles
 
 The instructions in this section are mainly meant to be used in a shared troubleshooting session with Dash0 support.
 
-_To get a heap dump from the operator manager container:_
+_To get a heap profile from the operator manager container:_
 1. Deploy the operator manager with the additional Helm value `operator.pprofPort=1777`.
 2. Take note of the namespace the operator is deployed in (default: `dash0-system`).
 3. Run `kubectl get pod -n <operator-namespace> -l app.kubernetes.io/component=controller` to get the name of the
@@ -2304,7 +2304,7 @@ _To get a heap dump from the operator manager container:_
 7. Exit the `kubectl debug` shell.
 8. Redeploy the operator without the Helm setting `operator.pprofPort=1777`.
 
-_To get a heap dump from a OpenTelemetry collector daemonset container:_
+_To get a heap profile from a OpenTelemetry collector daemonset container:_
 1. Deploy the operator manager with the additional Helm value `operator.collectors.enablePprofExtension=true`.
 2. Take note of the namespace the operator is deployed in (default: `dash0-system`).
 3. Run `kubectl top pod -n <operator-namespace> -l app.kubernetes.io/component=agent-collector` to get the name of a
@@ -2323,6 +2323,6 @@ _To get a heap dump from a OpenTelemetry collector daemonset container:_
 7. Exit the `kubectl debug` shell.
 8. Redeploy the operator without the Helm setting `operator.collectors.enablePprofExtension=true`.
 
-_To get a heap dump from a OpenTelemetry collector deployment container:_
+_To get a heap profile from a OpenTelemetry collector deployment container:_
 * Follow the same steps as for the collector daemonset, but use
   `-l app.kubernetes.io/component=cluster-metrics-collector` in step (3.).

@@ -64,6 +64,10 @@ jobs:
         run: |
           go version
 
+      - name: shellcheck version
+        run: |
+          shellcheck --version
+
       - uses: mlugg/setup-zig@fa65c4058643678a4e4a9a60513944a7d8d35440
         with:
           # keep in sync with images/instrumentation/injector/zig-version, if possible

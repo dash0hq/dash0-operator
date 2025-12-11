@@ -178,7 +178,7 @@ ifdef GINKGO_FOCUS
 else
 	go run github.com/onsi/ginkgo/v2/ginkgo -v test/e2e
 endif
-	
+
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.5.0
 golangci-lint-install:
