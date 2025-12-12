@@ -452,6 +452,9 @@ run_helm() {
   if [[ "${USE_CERT_MANAGER:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/cert-manager/helm-values.yaml"
   fi
+  if [[ "${TA_MTLS_ENABLED:-}" = "true" ]]; then
+    helm_install_command+=" --values test-resources/cert-manager/ta-mtls-values.yaml"
+  fi
   helm_install_command+=" --set operator.developmentMode=true"
   if [[ "${OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.collectors.debugVerbosityDetailed=true"

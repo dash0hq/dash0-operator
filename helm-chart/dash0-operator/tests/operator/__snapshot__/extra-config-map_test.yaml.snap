@@ -63,6 +63,9 @@ extra config map should match snapshot:
                 operator: In
                 values:
                 - linux
+        targetAllocatorMtlsEnabled: false
+        targetAllocatorMtlsServerCertSecretName: ""
+        targetAllocatorMtlsClientCertSecretName: ""
         targetAllocatorContainerResources:
           limits:
             cpu: 200m

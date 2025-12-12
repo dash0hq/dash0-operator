@@ -126,6 +126,10 @@ tests:
                         - value-06
           deploymentPriorityClassName: collector-deployment-priority-class
         targetAllocator:
+          mTls:
+            enabled: true
+            serverCertSecretName: ta-mtls-server-cert
+            clientCertSecretName: ta-mtls-client-cert
           containerResources:
             limits:
               memory: 2Gi
@@ -276,6 +280,9 @@ tests:
                     - value-04
                     - value-05
             collectorDeploymentPriorityClassName: collector-deployment-priority-class
+            targetAllocatorMtlsEnabled: true
+            targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
+            targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
             targetAllocatorContainerResources:
               limits:
                 cpu: 500m
@@ -427,6 +434,9 @@ tests:
                     operator: In
                     values:
                     - linux
+            targetAllocatorMtlsEnabled: false
+            targetAllocatorMtlsServerCertSecretName: ""
+            targetAllocatorMtlsClientCertSecretName: ""
             targetAllocatorContainerResources:
               limits:
                 cpu: 200m

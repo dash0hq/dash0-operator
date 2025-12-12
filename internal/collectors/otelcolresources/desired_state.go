@@ -74,6 +74,11 @@ type NamespacedTransform struct {
 	Transform dash0common.NormalizedTransformSpec
 }
 
+type TargetAllocatorMtlsConfig struct {
+	Enabled              bool
+	ClientCertSecretName string
+}
+
 const (
 	OtlpGrpcHostPort = 40317
 	OtlpHttpHostPort = 40318
@@ -123,6 +128,9 @@ const (
 	gkeAutopilotAllowlistLabelKey             = "cloud.google.com/matching-allowlist"
 	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.0"
 	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.0"
+
+	targetAllocatorCertsVolumeName = "ta-mtls-certs"
+	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
 )
 
 var (
@@ -326,6 +334,11 @@ func assembleDesiredState(
 		return strings.Compare(ns1.Namespace, ns2.Namespace)
 	})
 
+	targetAllocatorMtlsConfig := TargetAllocatorMtlsConfig{
+		Enabled:              extraConfig.TargetAllocatorMtlsEnabled,
+		ClientCertSecretName: extraConfig.TargetAllocatorMtlsClientCertSecretName,
+	}
+
 	var desiredState []clientObject
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(
@@ -335,6 +348,7 @@ func assembleDesiredState(
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
+		targetAllocatorMtlsConfig,
 		forDeletion,
 	)
 	if err != nil {
@@ -580,12 +594,18 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		Value: daemonSetName,
 	}
 
-	volumes, filelogOffsetsVolume := assembleCollectorDaemonSetVolumes(config, configMapItems)
+	targetAllocatorMtlsConfig := TargetAllocatorMtlsConfig{
+		Enabled:              extraConfig.TargetAllocatorMtlsEnabled,
+		ClientCertSecretName: extraConfig.TargetAllocatorMtlsClientCertSecretName,
+	}
+
+	volumes, filelogOffsetsVolume := assembleCollectorDaemonSetVolumes(config, configMapItems, targetAllocatorMtlsConfig)
 	collectorContainer, err := assembleDaemonSetCollectorContainer(
 		config,
 		workloadNameEnvVar,
 		filelogOffsetsVolume,
 		extraConfig.CollectorDaemonSetCollectorContainerResources,
+		targetAllocatorMtlsConfig,
 	)
 	if err != nil {
 		return nil, err
@@ -762,6 +782,7 @@ func assembleFileLogOffsetSyncContainer(
 func assembleCollectorDaemonSetVolumes(
 	config *oTelColConfig,
 	configMapItems []corev1.KeyToPath,
+	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
 ) ([]corev1.Volume, corev1.Volume) {
 	var filelogOffsetsVolume corev1.Volume
 	if config.usesOffsetStorageVolume() {
@@ -835,12 +856,25 @@ func assembleCollectorDaemonSetVolumes(
 			},
 		})
 	}
+
+	if targetAllocatorMtlsConfig.Enabled {
+		volumes = append(volumes, corev1.Volume{
+			Name: targetAllocatorCertsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: targetAllocatorMtlsConfig.ClientCertSecretName,
+				},
+			},
+		})
+	}
+
 	return volumes, filelogOffsetsVolume
 }
 
 func assembleCollectorDaemonSetVolumeMounts(
 	config *oTelColConfig,
 	filelogOffsetsVolume corev1.Volume,
+	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
 ) []corev1.VolumeMount {
 	var filelogOffsetVolumeMount corev1.VolumeMount
 	if config.usesOffsetStorageVolume() {
@@ -878,6 +912,14 @@ func assembleCollectorDaemonSetVolumeMounts(
 			MountPropagation: ptr.To(corev1.MountPropagationHostToContainer),
 		})
 	}
+
+	if targetAllocatorMtlsConfig.Enabled {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      targetAllocatorCertsVolumeName,
+			MountPath: targetAllocatorCertsVolumeDir,
+		})
+	}
+
 	return volumeMounts
 }
 
@@ -939,8 +981,9 @@ func assembleDaemonSetCollectorContainer(
 	workloadNameEnvVar corev1.EnvVar,
 	filelogOffsetsVolume corev1.Volume,
 	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
+	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
 ) (corev1.Container, error) {
-	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config, filelogOffsetsVolume)
+	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config, filelogOffsetsVolume, targetAllocatorMtlsConfig)
 	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
 	if err != nil {
 		return corev1.Container{}, err
