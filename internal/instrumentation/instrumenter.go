@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/pager"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,6 +49,8 @@ const (
 
 	updateStatusFailedMessage = "Failed to update Dash0 monitoring status conditions, requeuing reconcile request."
 	actor                     = util.ActorController
+
+	apiListRequestPageSize = 250
 )
 
 var (
@@ -244,28 +247,33 @@ func (i *Instrumenter) findAndInstrumentCronJobs(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.BatchV1().CronJobs(namespace).List(ctx, util.EmptyListOptions)
-	if err != nil {
-		return fmt.Errorf("error when querying cron jobs: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentCronJob(ctx, resource, namespaceInstrumentationConfig, logger)
-		i.pauseAfterEachWorkload()
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.BatchV1().
+				CronJobs(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{},
+		func(resource runtime.Object) error {
+			i.instrumentCronJob(ctx, resource.(*batchv1.CronJob), namespaceInstrumentationConfig, logger)
+			i.pauseAfterEachWorkload()
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) instrumentCronJob(
 	ctx context.Context,
-	cronJob batchv1.CronJob,
+	cronJob *batchv1.CronJob,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	i.instrumentWorkload(
 		ctx,
 		&cronJobWorkload{
-			cronJob: &cronJob,
+			cronJob: cronJob,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger)
@@ -277,28 +285,33 @@ func (i *Instrumenter) findAndInstrumentyDaemonSets(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.AppsV1().DaemonSets(namespace).List(ctx, util.EmptyListOptions)
-	if err != nil {
-		return fmt.Errorf("error when querying daemon sets: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentDaemonSet(ctx, resource, namespaceInstrumentationConfig, logger)
-		i.pauseAfterEachWorkload()
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.AppsV1().
+				DaemonSets(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{},
+		func(resource runtime.Object) error {
+			i.instrumentDaemonSet(ctx, resource.(*appsv1.DaemonSet), namespaceInstrumentationConfig, logger)
+			i.pauseAfterEachWorkload()
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) instrumentDaemonSet(
 	ctx context.Context,
-	daemonSet appsv1.DaemonSet,
+	daemonSet *appsv1.DaemonSet,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	i.instrumentWorkload(
 		ctx,
 		&daemonSetWorkload{
-			daemonSet: &daemonSet,
+			daemonSet: daemonSet,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -311,27 +324,32 @@ func (i *Instrumenter) findAndInstrumentDeployments(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.AppsV1().Deployments(namespace).List(ctx, util.EmptyListOptions)
-	if err != nil {
-		return fmt.Errorf("error when querying deployments: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentDeployment(ctx, resource, namespaceInstrumentationConfig, logger)
-		i.pauseAfterEachWorkload()
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.AppsV1().
+				Deployments(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{},
+		func(resource runtime.Object) error {
+			i.instrumentDeployment(ctx, resource.(*appsv1.Deployment), namespaceInstrumentationConfig, logger)
+			i.pauseAfterEachWorkload()
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) instrumentDeployment(
 	ctx context.Context,
-	deployment appsv1.Deployment,
+	deployment *appsv1.Deployment,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	i.instrumentWorkload(
 		ctx, &deploymentWorkload{
-			deployment: &deployment,
+			deployment: deployment,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -344,22 +362,26 @@ func (i *Instrumenter) findAndAddLabelsToImmutableJobsOnInstrumentation(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.BatchV1().Jobs(namespace).List(ctx, util.EmptyListOptions)
-	if err != nil {
-		return fmt.Errorf("error when querying jobs: %w", err)
-	}
-
-	for _, job := range matchingWorkloadsInNamespace.Items {
-		i.handleJobOnInstrumentation(ctx, job, namespaceInstrumentationConfig, logger)
-		i.pauseAfterEachWorkload()
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.BatchV1().
+				Jobs(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{},
+		func(resource runtime.Object) error {
+			i.handleJobOnInstrumentation(ctx, resource.(*batchv1.Job), namespaceInstrumentationConfig, logger)
+			i.pauseAfterEachWorkload()
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) handleJobOnInstrumentation(
 	ctx context.Context,
-	job batchv1.Job,
+	job *batchv1.Job,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
@@ -424,7 +446,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
-		}, &job); err != nil {
+		}, job); err != nil {
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
 
@@ -436,7 +458,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 					namespaceInstrumentationConfig,
 					&logger,
 				).
-					AddLabelsToImmutableJob(&job)
+					AddLabelsToImmutableJob(job)
 		case util.ModificationModeUninstrumentation:
 			modificationResult =
 				newWorkloadModifier(
@@ -444,11 +466,11 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 					namespaceInstrumentationConfig,
 					&logger,
 				).
-					RemoveLabelsFromImmutableJob(&job)
+					RemoveLabelsFromImmutableJob(job)
 		}
 
 		if modificationResult.HasBeenModified {
-			return i.Update(ctx, &job, &client.UpdateOptions{FieldManager: util.FieldManager})
+			return i.Update(ctx, job, &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil
 		}
@@ -459,18 +481,18 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 		postProcess = i.postProcessUninstrumentation
 	}
 	if retryErr != nil {
-		postProcess(&job, workloads.NewNotModifiedDueToErrorResult(), retryErr, &logger)
+		postProcess(job, workloads.NewNotModifiedDueToErrorResult(), retryErr, &logger)
 	} else if createImmutableWorkloadsError {
 		// One way or another we are in a situation were we would have wanted to instrument/uninstrument the job, but
 		// could not. Passing an ImmutableWorkloadError to postProcess will make sure we write a corresponding log
 		// message and create a corresponding event.
-		postProcess(&job, workloads.NewNotModifiedImmutableWorkloadCannotBeInstrumentedResult(), ImmutableWorkloadError{
+		postProcess(job, workloads.NewNotModifiedImmutableWorkloadCannotBeInstrumentedResult(), ImmutableWorkloadError{
 			workloadType:     "job",
 			workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
 			modificationMode: requiredAction,
 		}, &logger)
 	} else {
-		postProcess(&job, modificationResult, nil, &logger)
+		postProcess(job, modificationResult, nil, &logger)
 	}
 }
 
@@ -480,28 +502,33 @@ func (i *Instrumenter) findAndInstrumentReplicaSets(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.AppsV1().ReplicaSets(namespace).List(ctx, util.EmptyListOptions)
-	if err != nil {
-		return fmt.Errorf("error when querying replica sets: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentReplicaSet(ctx, resource, namespaceInstrumentationConfig, logger)
-		i.pauseAfterEachWorkload()
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.AppsV1().
+				ReplicaSets(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{},
+		func(resource runtime.Object) error {
+			i.instrumentReplicaSet(ctx, resource.(*appsv1.ReplicaSet), namespaceInstrumentationConfig, logger)
+			i.pauseAfterEachWorkload()
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) instrumentReplicaSet(
 	ctx context.Context,
-	replicaSet appsv1.ReplicaSet,
+	replicaSet *appsv1.ReplicaSet,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	hasBeenUpdated := i.instrumentWorkload(
 		ctx,
 		&replicaSetWorkload{
-			replicaSet: &replicaSet,
+			replicaSet: replicaSet,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -518,26 +545,32 @@ func (i *Instrumenter) findAndInstrumentStatefulSets(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err := i.Clientset.AppsV1().StatefulSets(namespace).List(ctx, util.EmptyListOptions)
-	if err != nil {
-		return fmt.Errorf("error when querying stateful sets: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentStatefulSet(ctx, resource, namespaceInstrumentationConfig, logger)
-		i.pauseAfterEachWorkload()
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.AppsV1().
+				StatefulSets(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{},
+		func(resource runtime.Object) error {
+			i.instrumentStatefulSet(ctx, resource.(*appsv1.StatefulSet), namespaceInstrumentationConfig, logger)
+			i.pauseAfterEachWorkload()
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) instrumentStatefulSet(
 	ctx context.Context,
-	statefulSet appsv1.StatefulSet,
+	statefulSet *appsv1.StatefulSet,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	i.instrumentWorkload(
 		ctx, &statefulSetWorkload{
-			statefulSet: &statefulSet,
+			statefulSet: statefulSet,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -743,27 +776,32 @@ func (i *Instrumenter) findAndUninstrumentCronJobs(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.BatchV1().CronJobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
-	if err != nil {
-		return fmt.Errorf("error when querying instrumented cron jobs: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentCronJob(ctx, resource, namespaceInstrumentationConfig, logger)
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.BatchV1().
+				CronJobs(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{LabelSelector: util.InstrumentedLabelKey},
+		func(resource runtime.Object) error {
+			i.uninstrumentCronJob(ctx, resource.(*batchv1.CronJob), namespaceInstrumentationConfig, logger)
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) uninstrumentCronJob(
 	ctx context.Context,
-	cronJob batchv1.CronJob,
+	cronJob *batchv1.CronJob,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	i.revertWorkloadInstrumentation(
 		ctx,
 		&cronJobWorkload{
-			cronJob: &cronJob,
+			cronJob: cronJob,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -776,27 +814,32 @@ func (i *Instrumenter) findAndUninstrumentDaemonSets(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.AppsV1().DaemonSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
-	if err != nil {
-		return fmt.Errorf("error when querying instrumented daemon sets: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentDaemonSet(ctx, resource, namespaceInstrumentationConfig, logger)
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.AppsV1().
+				DaemonSets(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{LabelSelector: util.InstrumentedLabelKey},
+		func(resource runtime.Object) error {
+			i.uninstrumentDaemonSet(ctx, resource.(*appsv1.DaemonSet), namespaceInstrumentationConfig, logger)
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) uninstrumentDaemonSet(
 	ctx context.Context,
-	daemonSet appsv1.DaemonSet,
+	daemonSet *appsv1.DaemonSet,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	i.revertWorkloadInstrumentation(
 		ctx,
 		&daemonSetWorkload{
-			daemonSet: &daemonSet,
+			daemonSet: daemonSet,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -809,27 +852,32 @@ func (i *Instrumenter) findAndUninstrumentDeployments(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.AppsV1().Deployments(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
-	if err != nil {
-		return fmt.Errorf("error when querying instrumented deployments: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentDeployment(ctx, resource, namespaceInstrumentationConfig, logger)
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.AppsV1().
+				Deployments(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{LabelSelector: util.InstrumentedLabelKey},
+		func(resource runtime.Object) error {
+			i.uninstrumentDeployment(ctx, resource.(*appsv1.Deployment), namespaceInstrumentationConfig, logger)
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) uninstrumentDeployment(
 	ctx context.Context,
-	deployment appsv1.Deployment,
+	deployment *appsv1.Deployment,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	i.revertWorkloadInstrumentation(
 		ctx,
 		&deploymentWorkload{
-			deployment: &deployment,
+			deployment: deployment,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -842,20 +890,25 @@ func (i *Instrumenter) findAndHandleJobOnUninstrumentation(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err := i.Clientset.BatchV1().Jobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
-	if err != nil {
-		return fmt.Errorf("error when querying instrumented jobs: %w", err)
-	}
-
-	for _, job := range matchingWorkloadsInNamespace.Items {
-		i.handleJobOnUninstrumentation(ctx, job, namespaceInstrumentationConfig, logger)
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.BatchV1().
+				Jobs(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{LabelSelector: util.InstrumentedLabelKey},
+		func(resource runtime.Object) error {
+			i.handleJobOnUninstrumentation(ctx, resource.(*batchv1.Job), namespaceInstrumentationConfig, logger)
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) handleJobOnUninstrumentation(
 	ctx context.Context,
-	job batchv1.Job,
+	job *batchv1.Job,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
@@ -885,7 +938,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
-		}, &job); err != nil {
+		}, job); err != nil {
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
 		if util.HasBeenInstrumentedSuccessfully(&job.ObjectMeta) {
@@ -906,11 +959,11 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 					namespaceInstrumentationConfig,
 					&logger,
 				).
-					RemoveLabelsFromImmutableJob(&job)
+					RemoveLabelsFromImmutableJob(job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
 			// labels does not trigger a new admission request.
-			return i.Update(ctx, &job, &client.UpdateOptions{FieldManager: util.FieldManager})
+			return i.Update(ctx, job, &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			// No dash0.com/instrumented label is present, do nothing.
 			modificationResult = workloads.NewNotModifiedNoChangesResult()
@@ -922,10 +975,10 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 		// For the case that the job was instrumented, and we could not uninstrument it, we create a
 		// ImmutableWorkloadError inside the retry loop. This error is then handled in the postProcessUninstrumentation.
 		// The same is true for any other error types (for example errors in `i.ClientUpdate).
-		i.postProcessUninstrumentation(&job, workloads.NewNotModifiedDueToErrorResult(), retryErr, &logger)
+		i.postProcessUninstrumentation(job, workloads.NewNotModifiedDueToErrorResult(), retryErr, &logger)
 	} else if createImmutableWorkloadsError {
 		i.postProcessUninstrumentation(
-			&job,
+			job,
 			workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(),
 			ImmutableWorkloadError{
 				workloadType:     "job",
@@ -934,7 +987,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 			}, &logger,
 		)
 	} else {
-		i.postProcessUninstrumentation(&job, modificationResult, nil, &logger)
+		i.postProcessUninstrumentation(job, modificationResult, nil, &logger)
 	}
 }
 
@@ -944,27 +997,32 @@ func (i *Instrumenter) findAndUninstrumentReplicaSets(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.AppsV1().ReplicaSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
-	if err != nil {
-		return fmt.Errorf("error when querying instrumented replica sets: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentReplicaSet(ctx, resource, namespaceInstrumentationConfig, logger)
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.AppsV1().
+				ReplicaSets(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{LabelSelector: util.InstrumentedLabelKey},
+		func(resource runtime.Object) error {
+			i.uninstrumentReplicaSet(ctx, resource.(*appsv1.ReplicaSet), namespaceInstrumentationConfig, logger)
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) uninstrumentReplicaSet(
 	ctx context.Context,
-	replicaSet appsv1.ReplicaSet,
+	replicaSet *appsv1.ReplicaSet,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	hasBeenUpdated := i.revertWorkloadInstrumentation(
 		ctx,
 		&replicaSetWorkload{
-			replicaSet: &replicaSet,
+			replicaSet: replicaSet,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -981,27 +1039,32 @@ func (i *Instrumenter) findAndUninstrumentStatefulSets(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err :=
-		i.Clientset.AppsV1().StatefulSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
-	if err != nil {
-		return fmt.Errorf("error when querying instrumented stateful sets: %w", err)
-	}
-	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentStatefulSet(ctx, resource, namespaceInstrumentationConfig, logger)
-	}
-	return nil
+	pgr := pager.New(pager.SimplePageFunc(
+		func(opts metav1.ListOptions) (runtime.Object, error) {
+			return i.Clientset.AppsV1().
+				StatefulSets(namespace).
+				List(ctx, opts)
+		},
+	))
+	pgr.PageSize = apiListRequestPageSize
+	return pgr.EachListItem(ctx, metav1.ListOptions{LabelSelector: util.InstrumentedLabelKey},
+		func(resource runtime.Object) error {
+			i.uninstrumentStatefulSet(ctx, resource.(*appsv1.StatefulSet), namespaceInstrumentationConfig, logger)
+			return nil
+		},
+	)
 }
 
 func (i *Instrumenter) uninstrumentStatefulSet(
 	ctx context.Context,
-	statefulSet appsv1.StatefulSet,
+	statefulSet *appsv1.StatefulSet,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	i.revertWorkloadInstrumentation(
 		ctx,
 		&statefulSetWorkload{
-			statefulSet: &statefulSet,
+			statefulSet: statefulSet,
 		},
 		namespaceInstrumentationConfig,
 		reconcileLogger,
@@ -1112,7 +1175,7 @@ func newWorkloadModifier(
 
 func (i *Instrumenter) restartPodsOfReplicaSet(
 	ctx context.Context,
-	replicaSet appsv1.ReplicaSet,
+	replicaSet *appsv1.ReplicaSet,
 	logger *logr.Logger,
 ) {
 	// Note: ReplicaSet pods are not restarted automatically by Kubernetes when their spec is changed (for other

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	instrumentedLabelKey = "dash0.com/instrumented"
+	InstrumentedLabelKey = "dash0.com/instrumented"
 
 	// instrumentedLabelValueSuccessful os written by the operator when then instrumentation attempt has been
 	// successful.
@@ -33,13 +33,6 @@ const (
 	webhookIgnoreOnceLabelKey  = "dash0.com/webhook-ignore-once"
 )
 
-var (
-	EmptyListOptions                          = metav1.ListOptions{}
-	WorkloadsWithDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: instrumentedLabelKey,
-	}
-)
-
 type instrumentedState string
 
 func AddInstrumentationLabels(
@@ -49,9 +42,9 @@ func AddInstrumentationLabels(
 	actor WorkloadModifierActor,
 ) {
 	if instrumentationSuccess {
-		addLabel(objectMeta, instrumentedLabelKey, string(instrumentedLabelValueSuccessful))
+		addLabel(objectMeta, InstrumentedLabelKey, string(instrumentedLabelValueSuccessful))
 	} else {
-		addLabel(objectMeta, instrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
+		addLabel(objectMeta, InstrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
 	}
 	addLabel(objectMeta, operatorImageLabelKey, ImageRefToLabel(clusterInstrumentationConfig.OperatorImage))
 	addLabel(objectMeta, initContainerImageLabelKey, ImageRefToLabel(clusterInstrumentationConfig.InitContainerImage))
@@ -70,7 +63,7 @@ func addLabel(objectMeta *metav1.ObjectMeta, key string, value string) {
 }
 
 func RemoveInstrumentationLabels(objectMeta *metav1.ObjectMeta) {
-	removeLabel(objectMeta, instrumentedLabelKey)
+	removeLabel(objectMeta, InstrumentedLabelKey)
 	removeLabel(objectMeta, operatorImageLabelKey)
 	removeLabel(objectMeta, initContainerImageLabelKey)
 	removeLabel(objectMeta, instrumentedByLabelKey)
@@ -106,7 +99,7 @@ func InstrumentationAttemptHasFailed(objectMeta *metav1.ObjectMeta) bool {
 }
 
 func readInstrumentationState(objectMeta *metav1.ObjectMeta) instrumentedState {
-	instrumented, isSet := readLabel(objectMeta, instrumentedLabelKey)
+	instrumented, isSet := readLabel(objectMeta, InstrumentedLabelKey)
 	if !isSet {
 		return instrumentedLabelValueUnknown
 	}
