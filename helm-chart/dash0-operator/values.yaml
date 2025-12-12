@@ -243,6 +243,10 @@ operator:
       cpu: 500m
       memory: 256Mi
       ephemeral-storage: 500Mi
+    # The GOMEMLIMIT environment variable value for the operator manager container, the recommended value is 80% of
+    # managerContainerResources.limits.memory. Note that valid units are different from Kubernetes resources, use
+    # MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+    gomemlimit: 205MiB
     requests:
       cpu: 50m
       memory: 128Mi
@@ -475,7 +479,8 @@ operator:
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
       # The GOMEMLIMIT environment variable value for the collector container, the recommended value is 80% of
-      # daemonSetCollectorContainerResources.limits.memory.
+      # daemonSetCollectorContainerResources.limits.memory. Note that valid units are different from Kubernetes
+      # resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
       gomemlimit: 400MiB
       requests:
         # cpu: (no cpu request by default)
@@ -490,7 +495,8 @@ operator:
         memory: 24Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
       # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
-      # of daemonSetConfigurationReloaderContainerResources.limits.memory.
+      # of daemonSetConfigurationReloaderContainerResources.limits.memory. Note that valid units are different from
+      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
       gomemlimit: 18MiB
       requests:
         # cpu: (no cpu request by default)
@@ -505,7 +511,8 @@ operator:
         memory: 32Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
       # The GOMEMLIMIT environment variable value for the filelog offset sync container, the recommended value is 80%
-      # of daemonSetFileLogOffsetSyncContainerResources.limits.memory.
+      # of daemonSetFileLogOffsetSyncContainerResources.limits.memory. Note that valid units are different from
+      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
       gomemlimit: 24MiB
       requests:
         # cpu: (no cpu request by default)
@@ -555,7 +562,8 @@ operator:
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
       # The GOMEMLIMIT environment variable value for the collector container, the recommended value is 80% of
-      # deploymentCollectorContainerResources.limits.memory.
+      # deploymentCollectorContainerResources.limits.memory. Note that valid units are different from Kubernetes
+      # resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
       gomemlimit: 400MiB
       requests:
         # cpu: (no cpu request by default)
@@ -570,7 +578,8 @@ operator:
         memory: 24Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
       # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
-      # of deploymentConfigurationReloaderContainerResources.limits.memory.
+      # of deploymentConfigurationReloaderContainerResources.limits.memory. Note that valid units are different from
+      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
       gomemlimit: 18MiB
       requests:
         # cpu: (no cpu request by default)

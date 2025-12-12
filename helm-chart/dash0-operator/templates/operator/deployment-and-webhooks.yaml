@@ -159,6 +159,8 @@ spec:
         - --instrumentation-delay-after-each-namespace-millis={{ default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis }}
 {{- end }}
         env:
+        - name: GOMEMLIMIT
+          value: {{ .Values.operator.managerContainerResources.gomemlimit | quote }}
         - name: DASH0_OPERATOR_NAMESPACE
           valueFrom:
             fieldRef:
@@ -266,7 +268,7 @@ spec:
           name: webhook-server
           protocol: TCP
         resources:
-          {{- toYaml .Values.operator.managerContainerResources | nindent 10 }}
+          {{- unset (.Values.operator.managerContainerResources | mustDeepCopy) "gomemlimit" | toYaml | nindent 10 }}
         {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 8 }}
         volumeMounts:
         - name: certificates

@@ -47,6 +47,9 @@ post-install hook job should match snapshot:
                 - --auto-operator-configuration-resource-available-check
               command:
                 - /manager
+              env:
+                - name: GOMEMLIMIT
+                  value: 205MiB
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               imagePullPolicy: null
               name: post-install-job

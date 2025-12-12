@@ -47,6 +47,9 @@ pre-delete hook job should match snapshot:
                 - --uninstrument-all
               command:
                 - /manager
+              env:
+                - name: GOMEMLIMIT
+                  value: 205MiB
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               imagePullPolicy: null
               name: pre-delete-job
