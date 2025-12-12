@@ -415,6 +415,9 @@ var _ = Describe("extra config map", func() {
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
 
+					Expect(extraConfig.TargetAllocatorMtlsEnabled).To(BeFalse())
+					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal(""))
+					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(BeNil())
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
 					Expect(extraConfig.TargetAllocatorContainerResources.Claims).To(BeNil())
@@ -530,6 +533,9 @@ deploymentNodeAffinity:
         operator: In
         values:
         - linux
+targetAllocatorMtlsEnabled: true
+targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
+targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
 targetAllocatorContainerResources:
   limits:
     cpu: 500m
@@ -675,6 +681,10 @@ targetAllocatorNodeAffinity:
 					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Operator).To(Equal(corev1.NodeSelectorOpIn))
 					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values).To(HaveLen(1))
 					Expect(deploymentAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values[0]).To(Equal("linux"))
+
+					Expect(extraConfig.TargetAllocatorMtlsEnabled).To(BeTrue())
+					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal("ta-mtls-server-cert"))
+					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal("ta-mtls-client-cert"))
 
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("500m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("806Mi"))

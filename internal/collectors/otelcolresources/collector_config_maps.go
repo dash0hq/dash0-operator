@@ -79,6 +79,8 @@ type collectorConfigurationTemplateValues struct {
 	DisableReplicasetInformer                        bool
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorServiceName                       string
+	TargetAllocatorMtlsEnabled                       bool
+	TargetAllocatorMtlsClientCertsDir                string
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	IsGkeAutopilot                                   bool
@@ -136,6 +138,7 @@ func assembleDaemonSetCollectorConfigMap(
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
+	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
@@ -148,6 +151,7 @@ func assembleDaemonSetCollectorConfigMap(
 		transforms,
 		daemonSetCollectorConfigurationTemplate,
 		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
+		targetAllocatorMtlsConfig,
 		forDeletion,
 	)
 }
@@ -170,6 +174,7 @@ func assembleDeploymentCollectorConfigMap(
 		transforms,
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
+		TargetAllocatorMtlsConfig{}, // target-allocator mTLS config is not used when rendering the deployment config map
 		forDeletion,
 	)
 }
@@ -184,6 +189,7 @@ func assembleCollectorConfigMap(
 	transforms []NamespacedTransform,
 	template *template.Template,
 	configMapName string,
+	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	var configMapData map[string]string
@@ -222,6 +228,8 @@ func assembleCollectorConfigMap(
 				DisableReplicasetInformer:                        config.DisableReplicasetInformer,
 				PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
 				TargetAllocatorServiceName:                       targetAllocatorServiceName,
+				TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
+				TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
 				KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
 				IsGkeAutopilot:                                   config.IsGkeAutopilot,

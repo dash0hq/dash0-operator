@@ -29,6 +29,9 @@ const (
 	targetAllocator                     = "opentelemetry-target-allocator"
 	targetAllocatorDeploymentNameSuffix = "opentelemetry-target-allocator"
 
+	targetAllocatorCertsVolumeName = "mtls-certs"
+	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-server"
+
 	// label values
 	appKubernetesIoNameValue      = targetAllocator
 	appKubernetesIoInstanceValue  = "dash0-operator"
@@ -64,6 +67,9 @@ type ConfigMapParams struct {
 	CollectorNamespace               string
 	CollectorComponent               string
 	NamespacesWithPrometheusScraping []string
+
+	MtlsEnabled bool
+	CertsDir    string
 }
 
 const targetAllocatorTemplate = `allocation_strategy: per-node
@@ -74,6 +80,13 @@ collector_selector:
 config:
   scrape_configs: []
 filter_strategy: relabel-config
+{{- if .MtlsEnabled }}
+https:
+  enabled: true
+  ca_file_path: {{ .CertsDir }}/ca.crt
+  tls_cert_file_path: {{ .CertsDir }}/tls.crt
+  tls_key_file_path: {{ .CertsDir }}/tls.key
+{{- end}}
 prometheus_cr:
   enabled: true
   {{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
@@ -112,7 +125,7 @@ func assembleDesiredState(
 	// sort namespaces so we don't re-trigger reconciliation because of unstable ordering
 	slices.Sort(namespacesWithPrometheusScraping)
 	var desiredState []clientObject
-	cm, err := assembleConfigMap(config, namespacesWithPrometheusScraping, forDeletion)
+	cm, err := assembleConfigMap(config, namespacesWithPrometheusScraping, extraConfig.TargetAllocatorMtlsEnabled, forDeletion)
 	if err != nil {
 		return desiredState, err
 	}
@@ -124,12 +137,12 @@ func assembleDesiredState(
 	desiredState = append(desiredState, addCommonMetadata(cm))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBinding(config)))
-	desiredState = append(desiredState, addCommonMetadata(assembleService(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleService(config, extraConfig)))
 	desiredState = append(desiredState, addCommonMetadata(deployment))
 	return desiredState, nil
 }
 
-func assembleConfigMap(c *targetAllocatorConfig, namespacesWithPrometheusScraping []string, forDeletion bool) (*corev1.ConfigMap, error) {
+func assembleConfigMap(c *targetAllocatorConfig, namespacesWithPrometheusScraping []string, mTlsEnabled bool, forDeletion bool) (*corev1.ConfigMap, error) {
 	var configMapData map[string]string
 
 	if forDeletion {
@@ -145,6 +158,8 @@ func assembleConfigMap(c *targetAllocatorConfig, namespacesWithPrometheusScrapin
 			CollectorNamespace:               c.OperatorNamespace,
 			CollectorComponent:               c.CollectorComponent,
 			NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
+			MtlsEnabled:                      mTlsEnabled,
+			CertsDir:                         targetAllocatorCertsVolumeDir,
 		}
 
 		var buf bytes.Buffer
@@ -186,7 +201,6 @@ func assembleServiceAccount(c *targetAllocatorConfig) *corev1.ServiceAccount {
 	}
 }
 
-// todo: will need additional permissions to support auth
 func assembleClusterRole(c *targetAllocatorConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
@@ -223,6 +237,7 @@ func assembleClusterRole(c *targetAllocatorConfig) *rbacv1.ClusterRole {
 					"services",
 					"endpoints",
 					"pods",
+					"secrets",
 				},
 				Verbs: []string{"get", "list", "watch"},
 			},
@@ -274,8 +289,25 @@ func assembleClusterRoleBinding(c *targetAllocatorConfig) *rbacv1.ClusterRoleBin
 	}
 }
 
-func assembleService(c *targetAllocatorConfig) *corev1.Service {
-	return &corev1.Service{
+func assembleService(c *targetAllocatorConfig, extraConfig util.ExtraConfig) *corev1.Service {
+	ports := []corev1.ServicePort{
+		{
+			Name:       "http",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       80,
+			TargetPort: intstr.FromString("http"),
+		},
+	}
+
+	if extraConfig.TargetAllocatorMtlsEnabled {
+		ports = append(ports, corev1.ServicePort{
+			Name:       "https",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       443,
+			TargetPort: intstr.FromString("https")})
+	}
+
+	service := corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: util.K8sApiVersionCoreV1,
 			Kind:       "Service",
@@ -286,16 +318,11 @@ func assembleService(c *targetAllocatorConfig) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: deploymentMatchLabels,
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "http-port",
-					Protocol:   corev1.ProtocolTCP,
-					Port:       80,
-					TargetPort: intstr.FromString("http-port"),
-				},
-			},
+			Ports:    ports,
 		},
 	}
+
+	return &service
 }
 
 func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap, extraConfig util.ExtraConfig) (*appsv1.Deployment, error) {
@@ -305,30 +332,47 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 	if err != nil {
 		return nil, err
 	}
+
 	podTemplateAnnotations := map[string]string{
 		"ta-config-sha": cmSha,
 	}
 
+	ports := []corev1.ContainerPort{
+		{
+			ContainerPort: 8080,
+			Name:          "http",
+		},
+	}
+
+	volumeMounts := []corev1.VolumeMount{
+		{
+			Name:      "config-volume",
+			MountPath: "/conf/",
+		},
+		{
+			Name:      "serviceaccount-token",
+			MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
+			ReadOnly:  true,
+		},
+	}
+
+	if extraConfig.TargetAllocatorMtlsEnabled {
+		ports = append(ports, corev1.ContainerPort{
+			Name:          "https",
+			ContainerPort: 8443,
+			Protocol:      corev1.ProtocolTCP,
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      targetAllocatorCertsVolumeName,
+			MountPath: targetAllocatorCertsVolumeDir,
+		})
+	}
+
 	taContainer := corev1.Container{
-		Name:  "targetallocator",
-		Image: c.Images.TargetAllocatorImage,
-		Ports: []corev1.ContainerPort{
-			{
-				ContainerPort: 8080,
-				Name:          "http-port",
-			},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      "config-volume",
-				MountPath: "/conf/",
-			},
-			{
-				Name:      "serviceaccount-token",
-				MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
-				ReadOnly:  true,
-			},
-		},
+		Name:         "targetallocator",
+		Image:        c.Images.TargetAllocatorImage,
+		Ports:        ports,
+		VolumeMounts: volumeMounts,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "OTELCOL_NAMESPACE",
@@ -362,6 +406,71 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		taContainer.ImagePullPolicy = c.Images.TargetAllocatorPullPolicy
 	}
 
+	podVolumes := []corev1.Volume{
+		{
+			Name: "config-volume",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: ConfigMapName(c.NamePrefix),
+					},
+				},
+			},
+		},
+		{
+			Name: "serviceaccount-token",
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					DefaultMode: &defaultMode,
+					Sources: []corev1.VolumeProjection{
+						{
+							ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+								Path: "token",
+							},
+						},
+						{
+							ConfigMap: &corev1.ConfigMapProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "kube-root-ca.crt",
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  "ca.crt",
+										Path: "ca.crt",
+									},
+								},
+							},
+						},
+						{
+							DownwardAPI: &corev1.DownwardAPIProjection{
+								Items: []corev1.DownwardAPIVolumeFile{
+									{
+										Path: "namespace",
+										FieldRef: &corev1.ObjectFieldSelector{
+											APIVersion: "v1",
+											FieldPath:  "metadata.namespace",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if extraConfig.TargetAllocatorMtlsEnabled {
+		podVolumes = append(podVolumes, corev1.Volume{
+			Name: targetAllocatorCertsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: extraConfig.TargetAllocatorMtlsServerCertSecretName,
+				},
+			},
+		})
+	}
+
 	taPodSpec := corev1.PodSpec{
 		ServiceAccountName:           ServiceAccountName(c.NamePrefix),
 		AutomountServiceAccountToken: ptr.To(false),
@@ -369,59 +478,7 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		Containers: []corev1.Container{
 			taContainer,
 		},
-		Volumes: []corev1.Volume{
-			{
-				Name: "config-volume",
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: ConfigMapName(c.NamePrefix),
-						},
-					},
-				},
-			},
-			{
-				Name: "serviceaccount-token",
-				VolumeSource: corev1.VolumeSource{
-					Projected: &corev1.ProjectedVolumeSource{
-						DefaultMode: &defaultMode,
-						Sources: []corev1.VolumeProjection{
-							{
-								ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-									Path: "token",
-								},
-							},
-							{
-								ConfigMap: &corev1.ConfigMapProjection{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "kube-root-ca.crt",
-									},
-									Items: []corev1.KeyToPath{
-										{
-											Key:  "ca.crt",
-											Path: "ca.crt",
-										},
-									},
-								},
-							},
-							{
-								DownwardAPI: &corev1.DownwardAPIProjection{
-									Items: []corev1.DownwardAPIVolumeFile{
-										{
-											Path: "namespace",
-											FieldRef: &corev1.ObjectFieldSelector{
-												APIVersion: "v1",
-												FieldPath:  "metadata.namespace",
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+		Volumes: podVolumes,
 	}
 
 	if extraConfig.TargetAllocatorNodeAffinity != nil {

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+###############################################################################
+# Functions related to working with certificates.
+###############################################################################
+
+# this file is intended to be sourced by other scripts, so we disable `unused` warnings
+# shellcheck disable=SC2034,SC2154,SC2317
+
+deploy_ta_issuers_and_certs() {
+  local ns="${1:-}"
+  kubectl -n "$ns" apply -f test-resources/cert-manager/ta-issuers-and-cert.yaml
+}

@@ -77,6 +77,12 @@ data:
 {{- if .Values.operator.collectors.deploymentPriorityClassName }}
     collectorDeploymentPriorityClassName: {{ .Values.operator.collectors.deploymentPriorityClassName }}
 {{- end }}
+{{- if and .Values.operator.targetAllocator.mTls.enabled (or (not .Values.operator.targetAllocator.mTls.serverCertSecretName) (not .Values.operator.targetAllocator.mTls.clientCertSecretName)) }}
+  {{- fail "targetAllocatorMtlsEnabled is set to 'true' but one or both certificate secret names are not provided. Please set both operator.targetAllocator.mTls.serverCertSecretName and operator.targetAllocator.mTls.clientCertSecretName." }}
+{{- end }}
+    targetAllocatorMtlsEnabled: {{ .Values.operator.targetAllocator.mTls.enabled }}
+    targetAllocatorMtlsServerCertSecretName: {{ .Values.operator.targetAllocator.mTls.serverCertSecretName | quote }}
+    targetAllocatorMtlsClientCertSecretName: {{ .Values.operator.targetAllocator.mTls.clientCertSecretName | quote }}
     targetAllocatorContainerResources:
       {{- toYaml .Values.operator.targetAllocator.containerResources | nindent 6 }}
     targetAllocatorTolerations:

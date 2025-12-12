@@ -101,10 +101,11 @@ const (
 )
 
 var (
-	bearerWithAuthToken     = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
-	sequenceOfMappingsRegex = regexp.MustCompile(`^([\w-]+)=([\w-]+)$`)
-	sequenceIndexRegex      = regexp.MustCompile(`^(\d+)$`)
-	monitoredNamespaces     = []string{namespace1, namespace2}
+	bearerWithAuthToken            = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
+	sequenceOfMappingsRegex        = regexp.MustCompile(`^([\w-]+)=([\w-]+)$`)
+	sequenceIndexRegex             = regexp.MustCompile(`^(\d+)$`)
+	monitoredNamespaces            = []string{namespace1, namespace2}
+	emptyTargetAllocatorMtlsConfig = TargetAllocatorMtlsConfig{}
 )
 
 var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
@@ -1140,7 +1141,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
 				KubeletStatsReceiverConfig:                       KubeletStatsReceiverConfig{Enabled: false},
 				UseHostMetricsReceiver:                           false,
-			}, nil, nil, nil, nil, nil, false)
+			}, nil, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			kubeletstatsReceiver := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
@@ -1182,7 +1183,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
 					KubeletStatsReceiverConfig:                       testConfig.kubeletStatsReceiverConfig,
 					UseHostMetricsReceiver:                           true,
-				}, nil, nil, nil, nil, nil, false)
+				}, nil, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 				Expect(err).ToNot(HaveOccurred())
 				collectorConfig := parseConfigMapContent(configMap)
 				kubeletstatsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
@@ -1420,7 +1421,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		It("should not render the prometheus scraping config if no namespace has scraping enabled", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1438,6 +1439,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				[]string{"namespace-1", "namespace-2"},
 				nil,
 				nil,
+				emptyTargetAllocatorMtlsConfig,
 				false,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -1475,7 +1477,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		It("should not render the filelog receiver if no namespace has log collection enabled", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1500,6 +1502,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				nil,
 				nil,
 				nil,
+				emptyTargetAllocatorMtlsConfig,
 				false,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -2590,7 +2593,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 
 			expected := testConfig.expected
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, nil, nil, nil, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			healthCheckEndpoint := readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
@@ -2798,6 +2801,7 @@ func assembleDaemonSetCollectorConfigMapForTest(
 		nil,
 		filters,
 		transforms,
+		emptyTargetAllocatorMtlsConfig,
 		forDeletion,
 	)
 }
