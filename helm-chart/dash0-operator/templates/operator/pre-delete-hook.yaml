@@ -53,8 +53,11 @@ spec:
           args:
             - "--uninstrument-all"
           {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 10 }}
+          env:
+            - name: GOMEMLIMIT
+              value: {{ .Values.operator.managerContainerResources.gomemlimit }}
           resources:
-            {{- toYaml .Values.operator.managerContainerResources | nindent 12 }}
+            {{- unset (.Values.operator.managerContainerResources | mustDeepCopy) "gomemlimit" | toYaml | nindent 12 }}
       {{- with .Values.operator.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

@@ -54,6 +54,8 @@ deployment should match snapshot (default values):
               command:
                 - /manager
               env:
+                - name: GOMEMLIMIT
+                  value: 205MiB
                 - name: DASH0_OPERATOR_NAMESPACE
                   valueFrom:
                     fieldRef:
@@ -212,6 +214,8 @@ deployment should match snapshot when using cert-manager:
               command:
                 - /manager
               env:
+                - name: GOMEMLIMIT
+                  value: 205MiB
                 - name: DASH0_OPERATOR_NAMESPACE
                   valueFrom:
                     fieldRef:
