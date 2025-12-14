@@ -430,6 +430,11 @@ deploy_additional_cert_manager_resources() {
   fi
 }
 
+deploy_ta_issuers_and_certs() {
+  local ns="${1:-}"
+  kubectl -n "$ns" apply -f test-resources/cert-manager/ta-issuers-and-cert.yaml
+}
+
 deploy_via_helm() {
   run_helm install
 }

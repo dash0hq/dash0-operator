@@ -16,8 +16,6 @@ source "$scripts_lib/constants"
 source "$scripts_lib/kind"
 # shellcheck source=./lib/registry
 source "$scripts_lib/registry"
-# shellcheck source=./lib/certs
-source "$scripts_lib/certs"
 
 operator_namespace="${OPERATOR_NAMESPACE:-$default_operator_ns}"
 target_namespace="${1:-$default_target_ns}"
