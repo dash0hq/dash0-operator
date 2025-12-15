@@ -767,7 +767,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		configMap := getDaemonSetCollectorConfigMap(desiredState)
 		collectorConfig := parseConfigMapContent(configMap)
-		namespaces := readFromMap(collectorConfig, []string{
+		namespaces := ReadFromMap(collectorConfig, []string{
 			"receivers",
 			"prometheus",
 			"config",
@@ -781,6 +781,36 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(namespaces).To(HaveLen(2))
 		Expect(namespaces).To(ContainElement("default-to-true"))
 		Expect(namespaces).To(ContainElement("explicitly-set"))
+	})
+
+	It("should mount the secret containing the client TLS certs when mTLS is enabled for the target-allocator", func() {
+		const certSecretName = "ta-mtls-client-cert-secret"
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfig{
+			TargetAllocatorMtlsEnabled:              true,
+			TargetAllocatorMtlsClientCertSecretName: certSecretName,
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(daemonSetPodSpec.Volumes).To(ContainElement(MatchVolume(
+			targetAllocatorCertsVolumeName,
+			"secret", map[string]string{
+				"secretName": certSecretName,
+			},
+		)))
+
+		Expect(daemonSetPodSpec.Containers[0].VolumeMounts).To(ContainElement(MatchVolumeMount(
+			targetAllocatorCertsVolumeName,
+			targetAllocatorCertsVolumeDir,
+		)))
 	})
 
 	It("should omit the filelog offset container but add the volume ownership container if a PVC volume is provided for filelog offset storage", func() {

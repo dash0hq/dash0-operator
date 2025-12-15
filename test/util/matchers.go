@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -212,5 +213,81 @@ func (matcher *MatchEventMatcher) message() string {
 }
 
 func (matcher *MatchEventMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
+}
+
+func MatchServicePort(name string, port int32, targetPort intstr.IntOrString) gomega.OmegaMatcher {
+	return &MatchServicePortMatcher{
+		Name:       name,
+		Port:       port,
+		TargetPort: targetPort,
+	}
+}
+
+type MatchServicePortMatcher struct {
+	Name       string
+	Port       int32
+	TargetPort intstr.IntOrString
+}
+
+func (matcher *MatchServicePortMatcher) Match(actual interface{}) (success bool, err error) {
+	servicePort, ok := actual.(corev1.ServicePort)
+	if !ok {
+		return false, fmt.Errorf(
+			"MatchServicePort matcher requires a corev1.ServicePort. Got:\n%s",
+			format.Object(actual, 1))
+	}
+	return matcher.Name == servicePort.Name &&
+		matcher.Port == servicePort.Port &&
+		matcher.TargetPort == servicePort.TargetPort, nil
+}
+
+func (matcher *MatchServicePortMatcher) FailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, matcher.message())
+}
+
+func (matcher *MatchServicePortMatcher) message() string {
+	return fmt.Sprintf(
+		"to contain service port name %s, port %d and targetPort %v",
+		matcher.Name, matcher.Port, matcher.TargetPort)
+}
+
+func (matcher *MatchServicePortMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
+}
+
+func MatchContainerPort(name string, port int32) gomega.OmegaMatcher {
+	return &MatchContainerPortMatcher{
+		Name: name,
+		Port: port,
+	}
+}
+
+type MatchContainerPortMatcher struct {
+	Name string
+	Port int32
+}
+
+func (matcher *MatchContainerPortMatcher) Match(actual interface{}) (success bool, err error) {
+	containerPort, ok := actual.(corev1.ContainerPort)
+	if !ok {
+		return false, fmt.Errorf(
+			"MatchContainerPort matcher requires a corev1.ContainerPort. Got:\n%s",
+			format.Object(actual, 1))
+	}
+	return matcher.Name == containerPort.Name && matcher.Port == containerPort.ContainerPort, nil
+}
+
+func (matcher *MatchContainerPortMatcher) FailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, matcher.message())
+}
+
+func (matcher *MatchContainerPortMatcher) message() string {
+	return fmt.Sprintf(
+		"to contain container port name %s with port %d",
+		matcher.Name, matcher.Port)
+}
+
+func (matcher *MatchContainerPortMatcher) NegatedFailureMessage(actual interface{}) (message string) {
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }

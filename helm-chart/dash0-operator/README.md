@@ -145,7 +145,32 @@ The operator supports the following CRDs
 - `PodMonitor`
 - `ScrapeConfig` with `kubernetesSDConfigs`
 
-The scraping of endpoints requiring authorization is currently not supported, but will be added in an upcoming release.
+#### Authorization
+
+If the scraped endpoints require authorization, it is mandatory to configure mTLS for the communication between the
+OpenTelemetry Target Allocator and the collectors, so the credentials can be transfered in a secure manner.
+
+We recommend to use [cert-manager](https://cert-manager.io/) for the creation of the certificates/secrets, but any
+secrets following the [kubernetes.io/tls](https://kubernetes.io/docs/concepts/configuration/secret/#tls-secrets) secret
+type and providing `ca.crt`, `tls.crt`, and `tls.key` should be compatible.
+Note that the server and client certificates need to be signed by the same CA to be trusted (i.e. two random self-signed
+certificates won't work).
+
+You can find an example of minimal issuers and certificates for cert-manager in
+[test-resources/cert-manager/ta-issuers-and-cert.yaml.template](test-resources/cert-manager/ta-issuers-and-cert.yaml.template).
+
+The secrets must be created in the Dash0 operator namespace.
+
+Once you have created the required secrets holding the certificates, you can enable mTLS and set the secret names
+via the Helm chart:
+
+```yaml
+  targetAllocator:
+    mTls:
+      enabled: true
+      serverCertSecretName: "ta-mtls-server-cert-secret"
+      clientCertSecretName: "ta-mtls-client-cert-secret"
+```
 
 ## Configuration
 

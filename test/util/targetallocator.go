@@ -8,4 +8,8 @@ import (
 )
 
 //nolint:lll
-var ExpectedTargetAllocatorDeploymentName = fmt.Sprintf("%s-opentelemetry-target-allocator-deployment", TargetAllocatorPrefixTest)
+var (
+	ExpectedTargetAllocatorConfigMapName  = fmt.Sprintf("%s-opentelemetry-target-allocator-cm", TargetAllocatorPrefixTest)
+	ExpectedTargetAllocatorDeploymentName = fmt.Sprintf("%s-opentelemetry-target-allocator-deployment", TargetAllocatorPrefixTest)
+	ExpectedTargetAllocatorServiceName    = fmt.Sprintf("%s-opentelemetry-target-allocator-service", TargetAllocatorPrefixTest)
+)

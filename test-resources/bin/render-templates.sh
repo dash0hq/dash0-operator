@@ -113,6 +113,12 @@ cat \
   test-resources/cert-manager/certificate-and-issuer.yaml
 # shellcheck disable=SC2002
 cat \
+  test-resources/cert-manager/ta-issuers-and-cert.yaml.template | \
+  OPERATOR_NAMESPACE="$operator_namespace" \
+  envsubst > \
+  test-resources/cert-manager/ta-issuers-and-cert.yaml
+# shellcheck disable=SC2002
+cat \
   test-resources/cert-manager/helm-values.yaml.template | \
   OPERATOR_NAMESPACE="$operator_namespace" \
   envsubst > \

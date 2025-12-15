@@ -4,9 +4,12 @@
 package taresources
 
 import (
+	"fmt"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -118,11 +121,77 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Values[0]).To(Equal("affinity-key2-value1"))
 		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Values[1]).To(Equal("affinity-key2-value2"))
 	})
+
+	When("mTLS is enabled", Ordered, func() {
+		const certSecretName = "ta-mtls-server-cert-secret"
+		var desiredState []clientObject
+
+		BeforeAll(func() {
+			var err error
+			desiredState, err = assembleDesiredStateForUpsert(&targetAllocatorConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        TargetAllocatorPrefixTest,
+				Images:            TestImages,
+			}, nil, util.ExtraConfig{
+				TargetAllocatorMtlsEnabled:              true,
+				TargetAllocatorMtlsServerCertSecretName: certSecretName,
+			})
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should mount the TLS certs and configure additional ports when mTLS is enabled", func() {
+			podSpec := getDeployment(desiredState).Spec.Template.Spec
+			service := getService(desiredState)
+
+			Expect(podSpec).ToNot(BeNil())
+			Expect(podSpec.Volumes).To(ContainElement(MatchVolume(
+				targetAllocatorCertsVolumeName,
+				"secret", map[string]string{
+					"secretName": certSecretName,
+				},
+			)))
+			Expect(podSpec.Containers[0].VolumeMounts).To(ContainElement(MatchVolumeMount(
+				targetAllocatorCertsVolumeName,
+				targetAllocatorCertsVolumeDir,
+			)))
+			Expect(podSpec.Containers[0].Ports).To(ContainElement(MatchContainerPort("https", 8443)))
+
+			Expect(service).ToNot(BeNil())
+			Expect(service.Spec.Ports).To(ContainElement(MatchServicePort("https", 443, intstr.FromString("https"))))
+		})
+
+		It("should add config for mTLS to the ConfigMap", func() {
+			configMap := getConfigMap(desiredState)
+
+			Expect(configMap).ToNot(BeNil())
+			taConfig := parseConfigMapContent(configMap)
+			httpsConfig, ok := ReadFromMap(taConfig, []string{"https"}).(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(httpsConfig["enabled"]).To(Equal(true))
+			Expect(httpsConfig["ca_file_path"]).To(Equal(fmt.Sprintf("%s/ca.crt", targetAllocatorCertsVolumeDir)))
+			Expect(httpsConfig["tls_cert_file_path"]).To(Equal(fmt.Sprintf("%s/tls.crt", targetAllocatorCertsVolumeDir)))
+			Expect(httpsConfig["tls_key_file_path"]).To(Equal(fmt.Sprintf("%s/tls.key", targetAllocatorCertsVolumeDir)))
+		})
+	})
 })
+
+func getConfigMap(desiredState []clientObject) *corev1.ConfigMap {
+	if cm := findObjectByName(desiredState, ExpectedTargetAllocatorConfigMapName); cm != nil {
+		return cm.(*corev1.ConfigMap)
+	}
+	return nil
+}
 
 func getDeployment(desiredState []clientObject) *appsv1.Deployment {
 	if deployment := findObjectByName(desiredState, ExpectedTargetAllocatorDeploymentName); deployment != nil {
 		return deployment.(*appsv1.Deployment)
+	}
+	return nil
+}
+
+func getService(desiredState []clientObject) *corev1.Service {
+	if service := findObjectByName(desiredState, ExpectedTargetAllocatorServiceName); service != nil {
+		return service.(*corev1.Service)
 	}
 	return nil
 }
@@ -134,4 +203,8 @@ func findObjectByName(desiredState []clientObject, name string) client.Object {
 		}
 	}
 	return nil
+}
+
+func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]interface{} {
+	return ParseConfigMapContent(configMap, "targetallocator.yaml")
 }

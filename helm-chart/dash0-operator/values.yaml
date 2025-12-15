@@ -176,12 +176,12 @@ operator:
     # settings, additionally it is recommended to set webhookService.name.
     useCertManager: false
 
-    # The name of the secret used by cert-manager for the certificate.
+    # The name of the secret used by cert-manager for the webhook certificate.
     # The provided name must match the `secretName` in the `cert-manager.io/v1.Certificate` resource's spec.
     # Note: This secret is created by cert-manager, you do not need to create it manually.
     secretName: null
 
-    # A map of additional annotations that are added to all Kubernetes resources that need the certificate.
+    # A map of additional annotations that are added to all Kubernetes resources that need the webhook certificate.
     # Usually this will be a single `cert-manager.io/inject-ca-from` annotation with the namespace and name of the
     # Certificate resource, but other annotations are possible, see https://cert-manager.io/docs/reference/annotations/.
     certManagerAnnotations: {}
@@ -621,6 +621,17 @@ operator:
 
   # Settings related to the target-allocator managed by the operator.
   targetAllocator:
+    mTls:
+      # Whether to enable mTLS for the communication between the target-allocator and the collectors.
+      # If your metrics endpoints require authorization, enabling mTLS is required, so the credentials can be provided
+      # to the collectors securily.
+      # Enabling mTLS without providing the required secrets will result in a validation error.
+      enabled: false
+      # Name of the secret containing the server certificate.
+      serverCertSecretName: ""
+      # Name of the secret containing the client (collector) certificate.
+      clientCertSecretName: ""
+
     # Resource settings for the target-allocator container of the target-allocator deployment managed by the operator.
     containerResources:
       limits:

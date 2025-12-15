@@ -1,0 +1,56 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: ta-selfsigned-issuer
+spec:
+  selfSigned: {}
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ta-mtls-ca
+spec:
+  isCA: true
+  commonName: dash0-operator-opentelemetry-target-allocator
+  secretName: ta-mtls-ca-secret
+  issuerRef:
+    name: ta-selfsigned-issuer
+    kind: Issuer
+
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: ta-mtls-ca-issuer
+spec:
+  ca:
+    secretName: ta-mtls-ca-secret
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ta-server-cert
+spec:
+  dnsNames:
+    - dash0-operator-opentelemetry-target-allocator-service
+    - dash0-operator-opentelemetry-target-allocator-service.$OPERATOR_NAMESPACE.svc
+    - dash0-operator-opentelemetry-target-allocator-service.$OPERATOR_NAMESPACE.svc.cluster.local
+  secretName: ta-server-cert-secret
+  issuerRef:
+    name: ta-mtls-ca-issuer
+    kind: Issuer
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ta-client-cert
+spec:
+  commonName: ta-client
+  secretName: ta-client-cert-secret
+  issuerRef:
+    name: ta-mtls-ca-issuer
+    kind: Issuer

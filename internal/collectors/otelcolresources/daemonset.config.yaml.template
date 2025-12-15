@@ -181,9 +181,19 @@ receivers:
   prometheus:
 {{- if .PrometheusCrdSupportEnabled }}
     target_allocator:
+      {{- if .TargetAllocatorMtlsEnabled }}
+      endpoint: https://{{ .TargetAllocatorServiceName }}:443
+      {{- else }}
       endpoint: http://{{ .TargetAllocatorServiceName }}
+      {{- end }}
       interval: 30s
       collector_id: ${env:K8S_POD_NAME}
+      {{- if .TargetAllocatorMtlsEnabled }}
+      tls:
+        ca_file: {{ .TargetAllocatorMtlsClientCertsDir }}/ca.crt
+        cert_file: {{ .TargetAllocatorMtlsClientCertsDir }}/tls.crt
+        key_file: {{ .TargetAllocatorMtlsClientCertsDir }}/tls.key
+      {{- end }}
 {{- end }}
     config:
 {{- /*
