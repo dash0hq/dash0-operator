@@ -47,7 +47,20 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 	serializeToFile(specReport.Failure.Location, outputPath, "_failure-location.txt")
 	serializeToFile(specReport.Failure.FailureNodeLocation, outputPath, "_failure-node-location.txt")
 
-	for _, namespace := range []string{operatorNamespace,
+	executeCommandAndStoreOutput(
+		fmt.Sprintf("kubectl -n %s describe deployment dash0-operator-controller",
+			operatorNamespace), outputPath)
+	executeCommandAndStoreOutput(
+		fmt.Sprintf("kubectl -n %s describe daemonset e2e-tests-operator-hr-opentelemetry-collector-agent-daemonset",
+			operatorNamespace), outputPath)
+	executeCommandAndStoreOutput(
+		fmt.Sprintf("kubectl -n %s describe deployment e2e-tests-operator-hr-cluster-metrics-collector-deployment",
+			operatorNamespace), outputPath)
+	executeCommandAndStoreOutput(
+		fmt.Sprintf("kubectl -n %s describe deployment e2e-tests-operator-hr-opentelemetry-target-allocator-deployment",
+			operatorNamespace), outputPath)
+	for _, namespace := range []string{
+		operatorNamespace,
 		applicationUnderTestNamespace,
 		"otlp-sink",
 		"dash0-api",
