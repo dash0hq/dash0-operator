@@ -2782,14 +2782,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	}, daemonSetAndDeployment)
 
 	Describe("target-allocator config", func() {
-		config := &oTelColConfig{
-			OperatorNamespace:           OperatorNamespace,
-			NamePrefix:                  namePrefix,
-			Export:                      *Dash0ExportWithEndpointAndToken(),
-			TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
-			PrometheusCrdSupportEnabled: true,
-		}
-
 		taMtlsConfig := TargetAllocatorMtlsConfig{
 			Enabled:              true,
 			ClientCertSecretName: "ta-mtls-client-cert-secret",
@@ -2797,7 +2789,30 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 		nsWithPrometheusScraping := []string{"ns1", "ns2", "ns3"}
 
+		It("should not render the target-allocator config if prometheusCrdSupport is not enabled", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Export:                      *Dash0ExportWithEndpointAndToken(),
+				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
+				PrometheusCrdSupportEnabled: false,
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			taConfig := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "target_allocator"})
+			Expect(taConfig).To(BeNil())
+		})
+
 		It("should use the target-allocator HTTPS endpoint and configure TLS if mTLS is enabled", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Export:                      *Dash0ExportWithEndpointAndToken(),
+				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
+				PrometheusCrdSupportEnabled: true,
+			}
 			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -2814,6 +2829,29 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(tlsConfig["ca_file"]).To(Equal(fmt.Sprintf("%s/ca.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["cert_file"]).To(Equal(fmt.Sprintf("%s/tls.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["key_file"]).To(Equal(fmt.Sprintf("%s/tls.key", targetAllocatorCertsVolumeDir)))
+		})
+
+		It("should use the target-allocator HTTP endpoint if mTLS is disabled", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Export:                      *Dash0ExportWithEndpointAndToken(),
+				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
+				PrometheusCrdSupportEnabled: true,
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			taConfig := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "target_allocator"})
+			Expect(taConfig).ToNot(BeNil())
+
+			endpoint, ok := ReadFromMap(taConfig, []string{"endpoint"}).(string)
+			Expect(ok).To(BeTrue())
+			Expect(endpoint).To(HavePrefix("http://"))
+
+			tlsConfig := ReadFromMap(taConfig, []string{"tls"})
+			Expect(tlsConfig).To(BeNil())
 		})
 	})
 })

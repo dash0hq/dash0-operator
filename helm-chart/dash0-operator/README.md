@@ -148,7 +148,7 @@ The operator supports the following CRDs
 #### Authorization
 
 If the scraped endpoints require authorization, it is mandatory to configure mTLS for the communication between the
-OpenTelemetry TargetAllocator and the collectors.
+OpenTelemetry Target Allocator and the collectors, so the credentials can be transfered in a secure manner.
 
 We recommend to use [cert-manager](https://cert-manager.io/) for the creation of the certificates/secrets, but any
 secrets following the [kubernetes.io/tls](https://kubernetes.io/docs/concepts/configuration/secret/#tls-secrets) secret
