@@ -821,7 +821,7 @@ tests:
           value: DASH0_TARGET_ALLOCATOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[9].value
-          value: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator@sha256:f3ec1cd500980f4fe5491a102b4a73a9eb3c5bd21bd3ef986c74f97de35a35dc
+          value: ghcr.io/dash0hq/target-allocator@sha256:f3ec1cd500980f4fe5491a102b4a73a9eb3c5bd21bd3ef986c74f97de35a35dc
       - equal:
           path: spec.template.spec.containers[0].env[10].name
           value: DASH0_CONFIGURATION_RELOADER_IMAGE

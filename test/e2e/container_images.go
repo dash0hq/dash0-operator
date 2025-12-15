@@ -22,6 +22,7 @@ type Images struct {
 	configurationReloader        ImageSpec
 	fileLogOffsetSync            ImageSpec
 	fileLogOffsetVolumeOwnership ImageSpec
+	targetAllocator              ImageSpec
 }
 
 const (
@@ -31,6 +32,7 @@ const (
 	configurationReloaderImageName        = "configuration-reloader"
 	filelogOffsetSyncImageName            = "filelog-offset-sync"
 	filelogOffsetVolumeOwnershipImageName = "filelog-offset-volume-ownership"
+	targetAllocatorImageName              = "target-allocator"
 
 	tagLatest  = "latest"
 	tagMainDev = "main-dev"
@@ -69,6 +71,11 @@ var (
 			pullPolicy: "",
 		},
 		fileLogOffsetVolumeOwnership: ImageSpec{
+			repository: "",
+			tag:        "",
+			pullPolicy: "",
+		},
+		targetAllocator: ImageSpec{
 			repository: "",
 			tag:        "",
 			pullPolicy: "",
@@ -142,6 +149,14 @@ func determineContainerImages() {
 			imageTag,
 			pullPolicy,
 		)
+	images.targetAllocator =
+		determineContainerImage(
+			"TARGET_ALLOCATOR",
+			repositoryPrefix,
+			targetAllocatorImageName,
+			imageTag,
+			pullPolicy,
+		)
 }
 
 func determineContainerImage(
@@ -193,6 +208,10 @@ func deriveAlternativeImagesForUpdateTest(images Images) Images {
 		fileLogOffsetVolumeOwnership: deriveAlternativeImageForUpdateTest(
 			images.fileLogOffsetVolumeOwnership,
 			filelogOffsetVolumeOwnershipImageName,
+		),
+		targetAllocator: deriveAlternativeImageForUpdateTest(
+			images.targetAllocator,
+			targetAllocatorImageName,
 		),
 	}
 }

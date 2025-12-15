@@ -163,6 +163,10 @@ determine_container_images() {
   filelog_offset_volume_ownership_image_tag="$image_tag"
   filelog_offset_volume_ownership_image_digest=""
   filelog_offset_volume_ownership_image_pull_policy="$pull_policy"
+  target_allocator_image_repository="${image_repository_prefix}target-allocator"
+  target_allocator_image_tag="$image_tag"
+  target_allocator_image_digest=""
+  target_allocator_image_pull_policy="$pull_policy"
 
   operator_helm_chart=${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}
 
@@ -189,6 +193,9 @@ determine_container_images() {
     filelog_offset_volume_ownership_image_repository=""
     filelog_offset_volume_ownership_image_tag=""
     filelog_offset_volume_ownership_image_pull_policy=""
+    target_allocator_image_repository=""
+    target_allocator_image_tag=""
+    target_allocator_image_pull_policy=""
   fi
 
   if [[ -n "${CONTROLLER_IMAGE_REPOSITORY:-}" ]]; then
@@ -269,6 +276,19 @@ determine_container_images() {
     filelog_offset_volume_ownership_image_pull_policy="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY"
   fi
 
+  if [[ -n "${TARGET_ALLOCATOR_IMAGE_REPOSITORY:-}" ]]; then
+    target_allocator_image_repository="$TARGET_ALLOCATOR_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${TARGET_ALLOCATOR_IMAGE_TAG:-}" ]]; then
+    target_allocator_image_tag="$TARGET_ALLOCATOR_IMAGE_TAG"
+  fi
+  if [[ -n "${TARGET_ALLOCATOR_IMAGE_DIGEST:-}" ]]; then
+    target_allocator_image_digest="$TARGET_ALLOCATOR_IMAGE_DIGEST"
+  fi
+  if [[ -n "${TARGET_ALLOCATOR_IMAGE_PULL_POLICY:-}" ]]; then
+    target_allocator_image_pull_policy="$TARGET_ALLOCATOR_IMAGE_PULL_POLICY"
+  fi
+
   if [[ "$is_local_helm_chart" = "true" ]]; then
     # support using the local helm chart with remote images
     controller_image_pull_policy=$(determine_pull_policy "$controller_image_repository" "$controller_image_pull_policy")
@@ -277,6 +297,7 @@ determine_container_images() {
     configuration_reloader_image_pull_policy=$(determine_pull_policy "$configuration_reloader_image_repository" "$configuration_reloader_image_pull_policy")
     filelog_offset_sync_image_pull_policy=$(determine_pull_policy "$filelog_offset_sync_image_repository" "$filelog_offset_sync_image_pull_policy")
     filelog_offset_volume_ownership_image_pull_policy=$(determine_pull_policy "$filelog_offset_volume_ownership_image_repository" "$filelog_offset_volume_ownership_image_pull_policy")
+    target_allocator_image_pull_policy=$(determine_pull_policy "$target_allocator_image_repository" "$target_allocator_image_pull_policy")
   fi
 }
 
@@ -359,12 +380,15 @@ build_all_images() {
     INSTRUMENTATION_IMAGE_REPOSITORY="$instrumentation_image_repository" \
     INSTRUMENTATION_IMAGE_TAG="$instrumentation_image_tag" \
     COLLECTOR_IMAGE_REPOSITORY="$collector_image_repository" \
+    COLLECTOR_IMAGE_TAG="$collector_image_tag" \
     CONFIGURATION_RELOADER_IMAGE_REPOSITORY="$configuration_reloader_image_repository" \
     CONFIGURATION_RELOADER_IMAGE_TAG="$configuration_reloader_image_tag" \
     FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY=$filelog_offset_sync_image_repository \
     FILELOG_OFFSET_SYNC_IMAGE_TAG="$filelog_offset_sync_image_tag" \
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY=$filelog_offset_volume_ownership_image_repository \
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG="$filelog_offset_volume_ownership_image_tag" \
+    TARGET_ALLOCATOR_IMAGE_REPOSITORY="$target_allocator_image_repository" \
+    TARGET_ALLOCATOR_IMAGE_TAG="$target_allocator_image_tag" \
     make images
 }
 
@@ -384,6 +408,8 @@ push_all_images() {
     FILELOG_OFFSET_SYNC_IMAGE_TAG="$filelog_offset_sync_image_tag" \
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY=$filelog_offset_volume_ownership_image_repository \
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG="$filelog_offset_volume_ownership_image_tag" \
+    TARGET_ALLOCATOR_IMAGE_REPOSITORY="$target_allocator_image_repository" \
+    TARGET_ALLOCATOR_IMAGE_TAG="$target_allocator_image_tag" \
     make push-images
 }
 
@@ -555,6 +581,19 @@ run_helm() {
   fi
   if [[ -n "$filelog_offset_volume_ownership_image_pull_policy" ]]; then
     helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$filelog_offset_volume_ownership_image_pull_policy"
+  fi
+
+  if [[ -n "$target_allocator_image_repository" ]]; then
+    helm_install_command+=" --set operator.targetAllocatorImage.repository=$target_allocator_image_repository"
+  fi
+  if [[ -n "$target_allocator_image_tag" ]]; then
+    helm_install_command+=" --set operator.targetAllocatorImage.tag=$target_allocator_image_tag"
+  fi
+  if [[ -n "$target_allocator_image_digest" ]]; then
+    helm_install_command+=" --set operator.targetAllocatorImage.digest=$target_allocator_image_digest"
+  fi
+  if [[ -n "$target_allocator_image_pull_policy" ]]; then
+    helm_install_command+=" --set operator.targetAllocatorImage.pullPolicy=$target_allocator_image_pull_policy"
   fi
 
   # Deploy an operator configuration right away.
