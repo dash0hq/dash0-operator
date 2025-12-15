@@ -319,9 +319,9 @@ operator:
 
   # the container image to use for the target-allocator component (there should usually be no reason to override this)
   targetAllocatorImage:
-    repository: "ghcr.io/open-telemetry/opentelemetry-operator/target-allocator"
+    repository: "ghcr.io/dash0hq/target-allocator"
     # overrides the image tag, which defaults to the chart appVersion.
-    tag: "0.140.0"
+    tag:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy

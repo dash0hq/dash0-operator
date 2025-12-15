@@ -75,7 +75,7 @@ deployment should match snapshot (default values):
                 - name: DASH0_COLLECTOR_IMAGE
                   value: ghcr.io/dash0hq/collector:0.0.0
                 - name: DASH0_TARGET_ALLOCATOR_IMAGE
-                  value: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.140.0
+                  value: ghcr.io/dash0hq/target-allocator:0.0.0
                 - name: DASH0_CONFIGURATION_RELOADER_IMAGE
                   value: ghcr.io/dash0hq/configuration-reloader:0.0.0
                 - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE
@@ -235,7 +235,7 @@ deployment should match snapshot when using cert-manager:
                 - name: DASH0_COLLECTOR_IMAGE
                   value: ghcr.io/dash0hq/collector:0.0.0
                 - name: DASH0_TARGET_ALLOCATOR_IMAGE
-                  value: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.140.0
+                  value: ghcr.io/dash0hq/target-allocator:0.0.0
                 - name: DASH0_CONFIGURATION_RELOADER_IMAGE
                   value: ghcr.io/dash0hq/configuration-reloader:0.0.0
                 - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE

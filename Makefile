@@ -51,6 +51,11 @@ FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG ?= $(IMAGE_TAG)
 FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE ?= $(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY):$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG)
 FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
+TARGET_ALLOCATOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)target-allocator
+TARGET_ALLOCATOR_IMAGE_TAG ?= $(IMAGE_TAG)
+TARGET_ALLOCATOR_IMAGE ?= $(TARGET_ALLOCATOR_IMAGE_REPOSITORY):$(TARGET_ALLOCATOR_IMAGE_TAG)
+TARGET_ALLOCATOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
 # Variables for test application container images:
 
 TEST_IMAGE_REPOSITORY_PREFIX ?= $(IMAGE_REPOSITORY_PREFIX)
@@ -378,7 +383,8 @@ images: \
   image-collector \
   image-config-reloader \
   image-filelog-offset-sync \
-  image-filelog-offset-volume-ownership ## Build all container images used by the operator. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+  image-filelog-offset-volume-ownership \
+  image-target-allocator ## Build all container images used by the operator. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -422,6 +428,10 @@ image-filelog-offset-sync: ## Build the filelog offset sync container image.
 image-filelog-offset-volume-ownership: ## Build the filelog offset volume ownership container image.
 	@$(call build_container_image,$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY),$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG),images,images/filelogoffsetvolumeownership/Dockerfile)
 
+.PHONY: image-target-allocator
+image-target-allocator: ## Build the OpenTelemetry target-allocator container image.
+	@$(call build_container_image,$(TARGET_ALLOCATOR_IMAGE_REPOSITORY),$(TARGET_ALLOCATOR_IMAGE_TAG),images/target-allocator)
+
 .PHONY: push-images
 push-images: \
 	push-image-controller \
@@ -429,7 +439,8 @@ push-images: \
 	push-image-collector \
 	push-image-config-reloader \
 	push-image-filelog-offset-sync \
-	push-image-filelog-offset-volume-ownership ## Push all container images using the full image reference.
+	push-image-filelog-offset-volume-ownership \
+	push-image-target-allocator ## Push all container images using the full image reference.
 
 define push_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -464,6 +475,10 @@ push-image-filelog-offset-sync: ## Push the filelog offset sync container image.
 push-image-filelog-offset-volume-ownership: ## Push the filelog offset volume ownership container image.
 	@$(call push_container_image,$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY),$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG))
 
+.PHONY: push-image-target-allocator
+push-image-target-allocator: ## Push the OpenTelemetry target-allocator container image.
+	@$(call push_container_image,$(TARGET_ALLOCATOR_IMAGE_REPOSITORY),$(TARGET_ALLOCATOR_IMAGE_TAG))
+
 .PHONY: deploy
 deploy: ## Deploy the controller via helm to the current kubectl context.
 	test-resources/bin/render-templates.sh
@@ -488,6 +503,9 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 		--set operator.filelogOffsetVolumeOwnershipImage.repository=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY) \
 		--set operator.filelogOffsetVolumeOwnershipImage.tag=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG) \
 		--set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY) \
+		--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
+		--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
+		--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
