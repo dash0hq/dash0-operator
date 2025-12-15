@@ -220,11 +220,7 @@ processors:
           # Move k8s.object.resource_version from resource attributes to attributes
           - set(attributes["k8s.object.resource_version"], resource.attributes["k8s.object.resource_version"]) where resource.attributes["k8s.object.resource_version"] != nil
           - delete_key(resource.attributes, "k8s.object.resource_version")
-
-          # Set timestamp to k8s.event.start_time if available
-          - set(log.cache["event_start_time"], UnixNano(Time(log.attributes["k8s.event.start_time"], "%Y-%m-%dT%H:%M:%SZ"))) where log.attributes["k8s.event.start_time"] != nil
-          - set(log.time_unix_nano, log.cache["event_start_time"]) where cache["event_start_time"] > 0
-
+    
           ## Cleanup ##
           # Remove k8s.object.kind and k8s.object.api_version from resource attributes
           - delete_key(resource.attributes, "k8s.object.kind")
