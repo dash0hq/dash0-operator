@@ -479,6 +479,13 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 			Labels: labels(false),
 		},
 		Rules: []rbacv1.PolicyRule{
+			// See the following links for more information on required permissions:
+			// - https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/kubeletstatsreceiver/README.md#role-based-access-control
+			// - https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/k8sattributesprocessor/README.md#cluster-scoped-rbac
+			// - The prometheusreceiver
+			//   (https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/prometheusreceiver/README.md)
+			//   also requires permissions (depending on the configured scrape_configs) but has no dedicated
+			//   documentation on that.
 			{
 				APIGroups: []string{""},
 				Resources: []string{
@@ -486,8 +493,6 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 					"namespaces",
 					"nodes",
 					"configmaps",
-					// required for Kubelet Metrics/Kubeletstats receiver
-					"nodes/stats",
 					"persistentvolumes",
 					"persistentvolumeclaims",
 					// required for Prometheus receiver
@@ -495,6 +500,14 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 					"services",
 				},
 				Verbs: []string{"get", "watch", "list"},
+			},
+			{
+				APIGroups: []string{""},
+				Resources: []string{
+					// required for Kubelet Metrics/Kubeletstats receiver
+					"nodes/stats",
+				},
+				Verbs: []string{"get"},
 			},
 			{
 				APIGroups: []string{""},
@@ -507,7 +520,12 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 			},
 			{
 				APIGroups: []string{"apps"},
-				Resources: []string{"replicasets"},
+				Resources: []string{"daemonsets", "deployments", "replicasets", "statefulsets"},
+				Verbs:     []string{"get", "watch", "list"},
+			},
+			{
+				APIGroups: []string{"batch"},
+				Resources: []string{"jobs"},
 				Verbs:     []string{"get", "watch", "list"},
 			},
 			{
@@ -1206,6 +1224,10 @@ func assembleServiceAccountForDeployment(config *oTelColConfig) *corev1.ServiceA
 }
 
 func assembleClusterRoleForDeployment(config *oTelColConfig) *rbacv1.ClusterRole {
+	// See the following links for more information on required permissions:
+	// - https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/README.md#rbac
+	// - https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8seventsreceiver/README.md#rbac
+	// - https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/k8sattributesprocessor/README.md#cluster-scoped-rbac
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRole",
