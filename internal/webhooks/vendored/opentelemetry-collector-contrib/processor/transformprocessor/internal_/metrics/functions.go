@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/metrics/functions.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/metrics/functions.go
 
 package metrics
 
 import (
+	"maps"
+
 	"go.opentelemetry.io/collector/featuregate"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
@@ -22,23 +24,22 @@ var UseConvertBetweenSumAndGaugeMetricContext = featuregate.GlobalRegistry().Mus
 	featuregate.WithRegisterToVersion("v0.114.0"),
 )
 
-func DataPointFunctions() map[string]ottl.Factory[ottldatapoint.TransformContext] {
-	functions := ottlfuncs.StandardFuncs[ottldatapoint.TransformContext]()
+func DataPointFunctions() map[string]ottl.Factory[*ottldatapoint.TransformContext] {
+	functions := ottlfuncs.StandardFuncs[*ottldatapoint.TransformContext]()
 
-	datapointFunctions := ottl.CreateFactoryMap[ottldatapoint.TransformContext](
+	datapointFunctions := ottl.CreateFactoryMap(
 		newConvertSummarySumValToSumFactory(),
 		newConvertSummaryCountValToSumFactory(),
+		newMergeHistogramBucketsFactory(),
 	)
 
-	for k, v := range datapointFunctions {
-		functions[k] = v
-	}
+	maps.Copy(functions, datapointFunctions)
 
 	return functions
 }
 
-func MetricFunctions() map[string]ottl.Factory[ottlmetric.TransformContext] {
-	functions := ottlfuncs.StandardFuncs[ottlmetric.TransformContext]()
+func MetricFunctions() map[string]ottl.Factory[*ottlmetric.TransformContext] {
+	functions := ottlfuncs.StandardFuncs[*ottlmetric.TransformContext]()
 
 	metricFunctions := ottl.CreateFactoryMap(
 		newExtractSumMetricFactory(),
@@ -50,11 +51,10 @@ func MetricFunctions() map[string]ottl.Factory[ottlmetric.TransformContext] {
 		newAggregateOnAttributesFactory(),
 		newconvertExponentialHistToExplicitHistFactory(),
 		newAggregateOnAttributeValueFactory(),
+		newConvertSummaryQuantileValToGaugeFactory(),
 	)
 
-	for k, v := range metricFunctions {
-		functions[k] = v
-	}
+	maps.Copy(functions, metricFunctions)
 
 	return functions
 }

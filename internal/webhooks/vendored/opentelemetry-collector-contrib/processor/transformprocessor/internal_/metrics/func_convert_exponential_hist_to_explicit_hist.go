@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/metrics/func_convert_exponential_hist_to_explicit_hist.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/metrics/func_convert_exponential_hist_to_explicit_hist.go
 
 package metrics
 
@@ -32,19 +32,19 @@ var distributionFnMap = map[string]distAlgorithm{
 	"uniform":  uniformAlgorithm,
 }
 
-func newconvertExponentialHistToExplicitHistFactory() ottl.Factory[ottlmetric.TransformContext] {
+func newconvertExponentialHistToExplicitHistFactory() ottl.Factory[*ottlmetric.TransformContext] {
 	return ottl.NewFactory("convert_exponential_histogram_to_histogram",
 		&convertExponentialHistToExplicitHistArguments{}, createconvertExponentialHistToExplicitHistFunction)
 }
 
-func createconvertExponentialHistToExplicitHistFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
+func createconvertExponentialHistToExplicitHistFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
 	args, ok := oArgs.(*convertExponentialHistToExplicitHistArguments)
 
 	if !ok {
 		return nil, errors.New("convertExponentialHistToExplicitHistFactory args must be of type *convertExponentialHistToExplicitHistArguments")
 	}
 
-	if len(args.DistributionFn) == 0 {
+	if args.DistributionFn == "" {
 		args.DistributionFn = "random"
 	}
 
@@ -56,7 +56,7 @@ func createconvertExponentialHistToExplicitHistFunction(_ ottl.FunctionContext, 
 }
 
 // convertExponentialHistToExplicitHist converts an exponential histogram to a bucketed histogram
-func convertExponentialHistToExplicitHist(distributionFn string, explicitBounds []float64) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
+func convertExponentialHistToExplicitHist(distributionFn string, explicitBounds []float64) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
 	if len(explicitBounds) == 0 {
 		return nil, fmt.Errorf("explicit bounds cannot be empty: %v", explicitBounds)
 	}
@@ -66,7 +66,7 @@ func convertExponentialHistToExplicitHist(distributionFn string, explicitBounds 
 		return nil, fmt.Errorf("invalid distribution algorithm: %s, must be one of [upper, midpoint, random, uniform]", distributionFn)
 	}
 
-	return func(_ context.Context, tCtx ottlmetric.TransformContext) (any, error) {
+	return func(_ context.Context, tCtx *ottlmetric.TransformContext) (any, error) {
 		metric := tCtx.GetMetric()
 
 		// only execute on exponential histograms

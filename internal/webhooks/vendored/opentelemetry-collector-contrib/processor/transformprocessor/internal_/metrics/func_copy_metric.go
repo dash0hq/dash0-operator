@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/metrics/func_copy_metric.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/metrics/func_copy_metric.go
 
 package metrics
 
@@ -15,16 +15,16 @@ import (
 )
 
 type copyMetricArguments struct {
-	Name        ottl.Optional[ottl.StringGetter[ottlmetric.TransformContext]]
-	Description ottl.Optional[ottl.StringGetter[ottlmetric.TransformContext]]
-	Unit        ottl.Optional[ottl.StringGetter[ottlmetric.TransformContext]]
+	Name        ottl.Optional[ottl.StringGetter[*ottlmetric.TransformContext]]
+	Description ottl.Optional[ottl.StringGetter[*ottlmetric.TransformContext]]
+	Unit        ottl.Optional[ottl.StringGetter[*ottlmetric.TransformContext]]
 }
 
-func newCopyMetricFactory() ottl.Factory[ottlmetric.TransformContext] {
+func newCopyMetricFactory() ottl.Factory[*ottlmetric.TransformContext] {
 	return ottl.NewFactory("copy_metric", &copyMetricArguments{}, createCopyMetricFunction)
 }
 
-func createCopyMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
+func createCopyMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
 	args, ok := oArgs.(*copyMetricArguments)
 
 	if !ok {
@@ -34,8 +34,8 @@ func createCopyMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ott
 	return copyMetric(args.Name, args.Description, args.Unit)
 }
 
-func copyMetric(name ottl.Optional[ottl.StringGetter[ottlmetric.TransformContext]], desc ottl.Optional[ottl.StringGetter[ottlmetric.TransformContext]], unit ottl.Optional[ottl.StringGetter[ottlmetric.TransformContext]]) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
-	return func(ctx context.Context, tCtx ottlmetric.TransformContext) (any, error) {
+func copyMetric(name, desc, unit ottl.Optional[ottl.StringGetter[*ottlmetric.TransformContext]]) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
+	return func(ctx context.Context, tCtx *ottlmetric.TransformContext) (any, error) {
 		cur := tCtx.GetMetric()
 		metrics := tCtx.GetMetrics()
 		newMetric := metrics.AppendEmpty()

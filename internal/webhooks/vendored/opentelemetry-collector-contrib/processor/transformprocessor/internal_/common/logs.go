@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/common/logs.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/common/logs.go
 
 package common
 
@@ -24,11 +24,11 @@ type LogsConsumer interface {
 }
 
 type logStatements struct {
-	ottl.StatementSequence[ottllog.TransformContext]
-	expr.BoolExpr[ottllog.TransformContext]
+	ottl.StatementSequence[*ottllog.TransformContext]
+	expr.BoolExpr[*ottllog.TransformContext]
 }
 
-func (l logStatements) Context() ContextID {
+func (logStatements) Context() ContextID {
 	return Log
 }
 
@@ -39,17 +39,20 @@ func (l logStatements) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 			slogs := rlogs.ScopeLogs().At(j)
 			logs := slogs.LogRecords()
 			for k := 0; k < logs.Len(); k++ {
-				tCtx := ottllog.NewTransformContext(logs.At(k), slogs.Scope(), rlogs.Resource(), slogs, rlogs)
+				tCtx := ottllog.NewTransformContextPtr(rlogs, slogs, logs.At(k))
 				condition, err := l.Eval(ctx, tCtx)
 				if err != nil {
+					tCtx.Close()
 					return err
 				}
 				if condition {
-					err := l.Execute(ctx, tCtx)
+					err = l.Execute(ctx, tCtx)
 					if err != nil {
+						tCtx.Close()
 						return err
 					}
 				}
+				tCtx.Close()
 			}
 		}
 	}
@@ -60,7 +63,7 @@ type LogParserCollection ottl.ParserCollection[LogsConsumer]
 
 type LogParserCollectionOption ottl.ParserCollectionOption[LogsConsumer]
 
-func WithLogParser(functions map[string]ottl.Factory[ottllog.TransformContext]) LogParserCollectionOption {
+func WithLogParser(functions map[string]ottl.Factory[*ottllog.TransformContext]) LogParserCollectionOption {
 	return func(pc *ottl.ParserCollection[LogsConsumer]) error {
 		logParser, err := ottllog.NewParser(functions, pc.Settings, ottllog.EnablePathContextNames())
 		if err != nil {
@@ -93,7 +96,7 @@ func NewLogParserCollection(settings component.TelemetrySettings, options ...Log
 	return &lpc, nil
 }
 
-func convertLogStatements(pc *ottl.ParserCollection[LogsConsumer], statements ottl.StatementsGetter, parsedStatements []*ottl.Statement[ottllog.TransformContext]) (LogsConsumer, error) {
+func convertLogStatements(pc *ottl.ParserCollection[LogsConsumer], statements ottl.StatementsGetter, parsedStatements []*ottl.Statement[*ottllog.TransformContext]) (LogsConsumer, error) {
 	contextStatements, err := toContextStatements(statements)
 	if err != nil {
 		return nil, err
@@ -102,7 +105,7 @@ func convertLogStatements(pc *ottl.ParserCollection[LogsConsumer], statements ot
 	if contextStatements.ErrorMode != "" {
 		errorMode = contextStatements.ErrorMode
 	}
-	var parserOptions []ottl.Option[ottllog.TransformContext]
+	var parserOptions []ottl.Option[*ottllog.TransformContext]
 	if contextStatements.Context == "" {
 		parserOptions = append(parserOptions, ottllog.EnablePathContextNames())
 	}
