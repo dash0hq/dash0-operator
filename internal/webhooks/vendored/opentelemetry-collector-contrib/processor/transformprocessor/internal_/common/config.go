@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/common/config.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/common/config.go
 
 package common
 
@@ -25,12 +25,13 @@ const (
 	Metric    ContextID = "metric"
 	DataPoint ContextID = "datapoint"
 	Log       ContextID = "log"
+	Profile   ContextID = "profile"
 )
 
 func (c *ContextID) UnmarshalText(text []byte) error {
 	str := ContextID(strings.ToLower(string(text)))
 	switch str {
-	case Resource, Scope, Span, SpanEvent, Metric, DataPoint, Log:
+	case Resource, Scope, Span, SpanEvent, Metric, DataPoint, Log, Profile:
 		*c = str
 		return nil
 	default:

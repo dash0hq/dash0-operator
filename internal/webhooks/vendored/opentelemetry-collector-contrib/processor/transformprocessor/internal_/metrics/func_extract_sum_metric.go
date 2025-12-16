@@ -1,10 +1,10 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package metrics
-
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/metrics/func_extract_sum_metric.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/metrics/func_extract_sum_metric.go
+
+package metrics
 
 import (
 	"context"
@@ -22,20 +22,21 @@ const sumFuncName = "extract_sum_metric"
 
 type extractSumMetricArguments struct {
 	Monotonic bool
+	Suffix    ottl.Optional[string]
 }
 
-func newExtractSumMetricFactory() ottl.Factory[ottlmetric.TransformContext] {
+func newExtractSumMetricFactory() ottl.Factory[*ottlmetric.TransformContext] {
 	return ottl.NewFactory(sumFuncName, &extractSumMetricArguments{}, createExtractSumMetricFunction)
 }
 
-func createExtractSumMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
+func createExtractSumMetricFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
 	args, ok := oArgs.(*extractSumMetricArguments)
 
 	if !ok {
 		return nil, errors.New("extractSumMetricFactory args must be of type *extractSumMetricArguments")
 	}
 
-	return extractSumMetric(args.Monotonic)
+	return extractSumMetric(args.Monotonic, args.Suffix)
 }
 
 // SumCountDataPoint interface helps unify the logic for extracting data from different histogram types
@@ -48,8 +49,12 @@ type SumCountDataPoint interface {
 	Timestamp() pcommon.Timestamp
 }
 
-func extractSumMetric(monotonic bool) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
-	return func(_ context.Context, tCtx ottlmetric.TransformContext) (any, error) {
+func extractSumMetric(monotonic bool, suffix ottl.Optional[string]) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
+	metricNameSuffix := "_sum"
+	if !suffix.IsEmpty() {
+		metricNameSuffix = suffix.Get()
+	}
+	return func(_ context.Context, tCtx *ottlmetric.TransformContext) (any, error) {
 		metric := tCtx.GetMetric()
 		aggTemp := getAggregationTemporality(metric)
 		if aggTemp == pmetric.AggregationTemporalityUnspecified {
@@ -58,7 +63,7 @@ func extractSumMetric(monotonic bool) (ottl.ExprFunc[ottlmetric.TransformContext
 
 		sumMetric := pmetric.NewMetric()
 		sumMetric.SetDescription(metric.Description())
-		sumMetric.SetName(metric.Name() + "_sum")
+		sumMetric.SetName(metric.Name() + metricNameSuffix)
 		sumMetric.SetUnit(metric.Unit())
 		sumMetric.SetEmptySum().SetAggregationTemporality(aggTemp)
 		sumMetric.Sum().SetIsMonotonic(monotonic)

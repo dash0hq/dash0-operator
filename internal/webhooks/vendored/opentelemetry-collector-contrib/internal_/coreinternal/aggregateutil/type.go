@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/internal/coreinternal/aggregateutil/type.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/internal/coreinternal/aggregateutil/type.go
 
 package aggregateutil
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -39,13 +40,7 @@ const (
 var AggregationTypes = []AggregationType{Sum, Mean, Min, Max, Median, Count}
 
 func (at AggregationType) IsValid() bool {
-	for _, aggregationType := range AggregationTypes {
-		if at == aggregationType {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(AggregationTypes, at)
 }
 
 func GetSupportedAggregationFunctionsList() string {

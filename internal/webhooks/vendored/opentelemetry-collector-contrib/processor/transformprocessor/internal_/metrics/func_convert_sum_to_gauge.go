@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/metrics/func_convert_sum_to_gauge.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/metrics/func_convert_sum_to_gauge.go
 
 package metrics
 
@@ -15,16 +15,16 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottlmetric"
 )
 
-func newConvertSumToGaugeFactory() ottl.Factory[ottlmetric.TransformContext] {
+func newConvertSumToGaugeFactory() ottl.Factory[*ottlmetric.TransformContext] {
 	return ottl.NewFactory("convert_sum_to_gauge", nil, createConvertSumToGaugeFunction)
 }
 
-func createConvertSumToGaugeFunction(_ ottl.FunctionContext, _ ottl.Arguments) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
+func createConvertSumToGaugeFunction(_ ottl.FunctionContext, _ ottl.Arguments) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
 	return convertSumToGauge()
 }
 
-func convertSumToGauge() (ottl.ExprFunc[ottlmetric.TransformContext], error) {
-	return func(_ context.Context, tCtx ottlmetric.TransformContext) (any, error) {
+func convertSumToGauge() (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
+	return func(_ context.Context, tCtx *ottlmetric.TransformContext) (any, error) {
 		metric := tCtx.GetMetric()
 		if metric.Type() != pmetric.MetricTypeSum {
 			return nil, nil

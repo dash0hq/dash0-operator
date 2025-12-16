@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/internal/filter/filterottl/filter.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/internal/filter/expr/matcher.go
 
 package expr
 
@@ -30,7 +30,7 @@ func Not[K any](matcher BoolExpr[K]) BoolExpr[K] {
 
 type alwaysTrueMatcher[K any] struct{}
 
-func (alm alwaysTrueMatcher[K]) Eval(_ context.Context, _ K) (bool, error) {
+func (alwaysTrueMatcher[K]) Eval(context.Context, K) (bool, error) {
 	return true, nil
 }
 

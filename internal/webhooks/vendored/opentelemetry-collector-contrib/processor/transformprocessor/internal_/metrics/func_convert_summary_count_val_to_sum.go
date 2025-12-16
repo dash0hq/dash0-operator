@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/metrics/func_convert_summary_count_val_to_sum.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/metrics/func_convert_summary_count_val_to_sum.go
 
 package metrics
 
@@ -20,23 +20,28 @@ import (
 type convertSummaryCountValToSumArguments struct {
 	StringAggTemp string
 	Monotonic     bool
+	Suffix        ottl.Optional[string]
 }
 
-func newConvertSummaryCountValToSumFactory() ottl.Factory[ottldatapoint.TransformContext] {
+func newConvertSummaryCountValToSumFactory() ottl.Factory[*ottldatapoint.TransformContext] {
 	return ottl.NewFactory("convert_summary_count_val_to_sum", &convertSummaryCountValToSumArguments{}, createConvertSummaryCountValToSumFunction)
 }
 
-func createConvertSummaryCountValToSumFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottldatapoint.TransformContext], error) {
+func createConvertSummaryCountValToSumFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottldatapoint.TransformContext], error) {
 	args, ok := oArgs.(*convertSummaryCountValToSumArguments)
 
 	if !ok {
 		return nil, errors.New("convertSummaryCountValToSumFactory args must be of type *convertSummaryCountValToSumArguments")
 	}
 
-	return convertSummaryCountValToSum(args.StringAggTemp, args.Monotonic)
+	return convertSummaryCountValToSum(args.StringAggTemp, args.Monotonic, args.Suffix)
 }
 
-func convertSummaryCountValToSum(stringAggTemp string, monotonic bool) (ottl.ExprFunc[ottldatapoint.TransformContext], error) {
+func convertSummaryCountValToSum(stringAggTemp string, monotonic bool, suffix ottl.Optional[string]) (ottl.ExprFunc[*ottldatapoint.TransformContext], error) {
+	metricNameSuffix := "_count"
+	if !suffix.IsEmpty() {
+		metricNameSuffix = suffix.Get()
+	}
 	var aggTemp pmetric.AggregationTemporality
 	switch stringAggTemp {
 	case "delta":
@@ -46,7 +51,7 @@ func convertSummaryCountValToSum(stringAggTemp string, monotonic bool) (ottl.Exp
 	default:
 		return nil, fmt.Errorf("unknown aggregation temporality: %s", stringAggTemp)
 	}
-	return func(_ context.Context, tCtx ottldatapoint.TransformContext) (any, error) {
+	return func(_ context.Context, tCtx *ottldatapoint.TransformContext) (any, error) {
 		metric := tCtx.GetMetric()
 		if metric.Type() != pmetric.MetricTypeSummary {
 			return nil, nil
@@ -54,7 +59,7 @@ func convertSummaryCountValToSum(stringAggTemp string, monotonic bool) (ottl.Exp
 
 		sumMetric := tCtx.GetMetrics().AppendEmpty()
 		sumMetric.SetDescription(metric.Description())
-		sumMetric.SetName(metric.Name() + "_count")
+		sumMetric.SetName(metric.Name() + metricNameSuffix)
 		sumMetric.SetUnit(metric.Unit())
 		sumMetric.SetEmptySum().SetAggregationTemporality(aggTemp)
 		sumMetric.Sum().SetIsMonotonic(monotonic)

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/internal/metrics/func_aggregate_on_attributes_metrics.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/metrics/func_aggregate_on_attributes_metrics.go
 
 package metrics
 
@@ -23,11 +23,11 @@ type aggregateOnAttributesArguments struct {
 	Attributes          ottl.Optional[[]string]
 }
 
-func newAggregateOnAttributesFactory() ottl.Factory[ottlmetric.TransformContext] {
+func newAggregateOnAttributesFactory() ottl.Factory[*ottlmetric.TransformContext] {
 	return ottl.NewFactory("aggregate_on_attributes", &aggregateOnAttributesArguments{}, createAggregateOnAttributesFunction)
 }
 
-func createAggregateOnAttributesFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
+func createAggregateOnAttributesFunction(_ ottl.FunctionContext, oArgs ottl.Arguments) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
 	args, ok := oArgs.(*aggregateOnAttributesArguments)
 
 	if !ok {
@@ -42,8 +42,8 @@ func createAggregateOnAttributesFunction(_ ottl.FunctionContext, oArgs ottl.Argu
 	return AggregateOnAttributes(t, args.Attributes)
 }
 
-func AggregateOnAttributes(aggregationFunction aggregateutil.AggregationType, attributes ottl.Optional[[]string]) (ottl.ExprFunc[ottlmetric.TransformContext], error) {
-	return func(_ context.Context, tCtx ottlmetric.TransformContext) (any, error) {
+func AggregateOnAttributes(aggregationFunction aggregateutil.AggregationType, attributes ottl.Optional[[]string]) (ottl.ExprFunc[*ottlmetric.TransformContext], error) {
+	return func(_ context.Context, tCtx *ottlmetric.TransformContext) (any, error) {
 		metric := tCtx.GetMetric()
 
 		if metric.Type() == pmetric.MetricTypeSummary {
