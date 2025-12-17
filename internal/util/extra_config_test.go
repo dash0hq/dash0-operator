@@ -420,7 +420,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(BeNil())
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
-					Expect(extraConfig.TargetAllocatorContainerResources.Claims).To(BeNil())
+					Expect(extraConfig.TargetAllocatorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.TargetAllocatorTolerations).To(HaveLen(0))
 					Expect(extraConfig.TargetAllocatorNodeAffinity).To(BeNil())
 				})
@@ -541,6 +541,7 @@ targetAllocatorContainerResources:
     cpu: 500m
     ephemeral-storage: 306Mi
     memory: 806Mi
+  gomemlimit: 700MiB
   requests:
     cpu: 200m
     ephemeral-storage: 106Mi
@@ -689,6 +690,7 @@ targetAllocatorNodeAffinity:
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("500m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("806Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.StorageEphemeral().String()).To(Equal("306Mi"))
+					Expect(extraConfig.TargetAllocatorContainerResources.GoMemLimit).To(Equal("700MiB"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Cpu().String()).To(Equal("200m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests.Memory().String()).To(Equal("506Mi"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests.StorageEphemeral().String()).To(Equal("106Mi"))

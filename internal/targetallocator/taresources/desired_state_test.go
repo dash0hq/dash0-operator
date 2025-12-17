@@ -27,12 +27,13 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 			NamePrefix:        TargetAllocatorPrefixTest,
 			Images:            TestImages,
 		}, nil, util.ExtraConfig{
-			TargetAllocatorContainerResources: corev1.ResourceRequirements{
+			TargetAllocatorContainerResources: util.ResourceRequirementsWithGoMemLimit{
 				Limits: corev1.ResourceList{
 					corev1.ResourceCPU:              resource.MustParse("500m"),
 					corev1.ResourceMemory:           resource.MustParse("1Gi"),
 					corev1.ResourceEphemeralStorage: resource.MustParse("5Gi"),
 				},
+				GoMemLimit: "800MiB",
 				Requests: corev1.ResourceList{
 					corev1.ResourceCPU:              resource.MustParse("200m"),
 					corev1.ResourceMemory:           resource.MustParse("500Mi"),
@@ -92,6 +93,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 		Expect(deploymentPodSpec.Containers[0].Resources.Requests.Cpu().String()).To(Equal("200m"))
 		Expect(deploymentPodSpec.Containers[0].Resources.Requests.Memory().String()).To(Equal("500Mi"))
 		Expect(deploymentPodSpec.Containers[0].Resources.Requests.StorageEphemeral().String()).To(Equal("2Gi"))
+		Expect(deploymentPodSpec.Containers[0].Env).To(ContainElement(MatchEnvVar(util.EnvVarGoMemLimit, "800MiB")))
 
 		Expect(deploymentPodSpec.Tolerations).To(HaveLen(2))
 		Expect(deploymentPodSpec.Tolerations[0].Key).To(Equal("key3"))

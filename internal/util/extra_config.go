@@ -49,12 +49,12 @@ type ExtraConfig struct {
 
 	CollectorDeploymentPriorityClassName string `json:"collectorDeploymentPriorityClassName,omitempty"`
 
-	TargetAllocatorMtlsEnabled              bool                        `json:"targetAllocatorMtlsEnabled,omitempty"`
-	TargetAllocatorMtlsServerCertSecretName string                      `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
-	TargetAllocatorMtlsClientCertSecretName string                      `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
-	TargetAllocatorContainerResources       corev1.ResourceRequirements `json:"targetAllocatorContainerResources,omitempty"`
-	TargetAllocatorTolerations              []corev1.Toleration         `json:"targetAllocatorTolerations,omitempty"`
-	TargetAllocatorNodeAffinity             *corev1.NodeAffinity        `json:"targetAllocatorNodeAffinity,omitempty"`
+	TargetAllocatorMtlsEnabled              bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
+	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
+	TargetAllocatorMtlsClientCertSecretName string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
+	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources,omitempty"`
+	TargetAllocatorTolerations              []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
+	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 }
 
 type ExtraConfigClient interface {
