@@ -67,6 +67,7 @@ extra config map should match snapshot:
         targetAllocatorMtlsServerCertSecretName: ""
         targetAllocatorMtlsClientCertSecretName: ""
         targetAllocatorContainerResources:
+          gomemlimit: 400MiB
           limits:
             cpu: 200m
             memory: 500Mi

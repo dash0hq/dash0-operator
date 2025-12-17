@@ -135,6 +135,7 @@ tests:
               memory: 2Gi
               cpu: 500m
               ephemeral-storage: 1Gi
+            gomemlimit: 1500MiB
             requests:
               memory: 500Mi
               cpu: 200m
@@ -284,6 +285,7 @@ tests:
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
             targetAllocatorContainerResources:
+              gomemlimit: 1500MiB
               limits:
                 cpu: 500m
                 ephemeral-storage: 1Gi
@@ -438,6 +440,7 @@ tests:
             targetAllocatorMtlsServerCertSecretName: ""
             targetAllocatorMtlsClientCertSecretName: ""
             targetAllocatorContainerResources:
+              gomemlimit: 400MiB
               limits:
                 cpu: 200m
                 memory: 500Mi

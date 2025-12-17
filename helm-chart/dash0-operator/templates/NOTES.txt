@@ -1,6 +1,9 @@
 {{- if and (eq .Values.operator.managerContainerResources.gomemlimit "205MiB") (ne .Values.operator.managerContainerResources.limits.memory "256Mi") }}
 WARNING: You have set a custom memory limit for the operator manager (operator.managerContainerResources.limits.memory: {{ .Values.operator.managerContainerResources.limits.memory }}), but you have not set the container's GOMEMLIMIT (operator.managerContainerResources.gomemlimit: {{ .Values.operator.managerContainerResources.gomemlimit }}). This is probably a configuration error. The recommended setting for operator.managerContainerResources.gomemlimit is 80% of operator.managerContainerResources.limits.memory.
 {{- end }}
+{{- if and (eq .Values.operator.targetAllocator.containerResources.gomemlimit "400MiB") (ne .Values.operator.targetAllocator.containerResources.limits.memory "500Mi") }}
+WARNING: You have set a custom memory limit for the target-allocator (operator.targetAllocator.containerResources.limits.memory: {{ .Values.operator.targetAllocator.containerResources.limits.memory }}), but you have not set the container's GOMEMLIMIT (operator.targetAllocator.containerResources.gomemlimit: {{ .Values.operator.targetAllocator.containerResources.gomemlimit }}). This is probably a configuration error. The recommended setting for operator.targetAllocator.containerResources.gomemlimit is 80% of operator.targetAllocator.containerResources.limits.memory.
+{{- end }}
 {{- if .Release.IsInstall }}
 The Dash0 operator has been installed successfully from the chart {{ .Chart.Name }}.
 {{- else }}

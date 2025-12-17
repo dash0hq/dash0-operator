@@ -375,6 +375,10 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		VolumeMounts: volumeMounts,
 		Env: []corev1.EnvVar{
 			{
+				Name:  util.EnvVarGoMemLimit,
+				Value: extraConfig.TargetAllocatorContainerResources.GoMemLimit,
+			},
+			{
 				Name:  "OTELCOL_NAMESPACE",
 				Value: c.OperatorNamespace,
 			},
@@ -383,7 +387,7 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Path: "/livez",
-					Port: intstr.FromInt(8080),
+					Port: intstr.FromInt32(8080),
 				},
 			},
 			InitialDelaySeconds: 15,
@@ -393,13 +397,13 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Path: "/readyz",
-					Port: intstr.FromInt(8080),
+					Port: intstr.FromInt32(8080),
 				},
 			},
 			InitialDelaySeconds: 5,
 			PeriodSeconds:       10,
 		},
-		Resources: extraConfig.TargetAllocatorContainerResources,
+		Resources: extraConfig.TargetAllocatorContainerResources.ToResourceRequirements(),
 	}
 
 	if c.Images.TargetAllocatorPullPolicy != "" {

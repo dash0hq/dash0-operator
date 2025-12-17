@@ -1060,7 +1060,7 @@ func assembleConfigurationReloaderContainer(
 		Image: config.Images.ConfigurationReloaderImage,
 		Env: []corev1.EnvVar{
 			{
-				Name:  "GOMEMLIMIT",
+				Name:  util.EnvVarGoMemLimit,
 				Value: resourceRequirements.GoMemLimit,
 			},
 			{
@@ -1108,7 +1108,7 @@ func assembleFileLogOffsetSyncInitContainer(
 		Image: config.Images.FilelogOffsetSyncImage,
 		Env: []corev1.EnvVar{
 			{
-				Name:  "GOMEMLIMIT",
+				Name:  util.EnvVarGoMemLimit,
 				Value: resourceRequirements.GoMemLimit,
 			},
 			{

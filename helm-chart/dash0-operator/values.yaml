@@ -637,6 +637,7 @@ operator:
       limits:
         cpu: 200m
         memory: 500Mi
+      gomemlimit: 400MiB
       requests:
         cpu: 200m
         memory: 128Mi
