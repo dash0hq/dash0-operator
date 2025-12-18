@@ -1,9 +1,10 @@
 {{- /*
-Note: Subtle formatting issues will cause the edit mode in k9s to be thwarted because the actual configmap content will
-be displayed as a single long quoted string with literal \n characters, instead of being properly formatted as yaml. In
-particular, having one or multiple space characters appear directly before a line break will cause this.
+Note: Subtle formatting issues will cause kubectl edit (and by extension also the edit feature in tools like k9s) to
+become unusable, because the actual configmap content will be displayed as a single long quoted string with literal
+\n characters, instead of being properly formatted as yaml. In particular, having one or multiple space characters
+appear directly before a line break will cause this.
 See https://github.com/kubernetes/kubernetes/issues/36222#issuecomment-2006988070. This does not affect the collector,
-as it can still parse the config map perfectly fine, but it makes troubleshooting in k9s inconvenient.
+as it can still parse the config map perfectly fine, but it makes troubleshooting with kubectl/k9s/... inconvenient.
 
 Therefore, for text/template pipelines that might result in no output (in particular comments and `if` conditions),
 avoid starting the pipeline with "{{" if it is indented (i.e. there are space characters before "{{"). This would leave
@@ -12,6 +13,8 @@ Instead, either
 1. start the pipeline with "{{-" (to consume leading whitespace), or
 2. start the pipeline with "{{" but omit indentation, i.e. start the pipeline directly at the start of the line without
    leading space characters.
+Obviously, empty lines (which are not part of any text/template logic) with just whitespace (e.g. space characters) in
+them also have to be avoided.
 
 Note that the first option will also consume _all_ preceding line breaks, so if a line break is desired in the output,
 use option 2.

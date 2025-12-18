@@ -642,10 +642,10 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			})
 
 			//nolint:lll
-			It("config maps should not contain empty lines with space characters (that is, config maps should render nicely in k9s edit view)", func() {
+			It("config maps should not contain empty lines with space characters (that is, config maps should render correctly via kubectl edit)", func() {
 				// See comment at the top of internal/collectors/otelcolresources/daemonset.config.yaml.template
-				// This test looks for the problematic pattern (space character before line break) in the rendered
-				// config maps.
+				// This test looks for the problematic pattern which breaks "kubectl edit configmap" (space character
+				// before line break) in the rendered config maps.
 				verifyDaemonSetCollectorConfigMapDoesNotContainStrings(operatorNamespace, " \n")
 				verifyDeploymentCollectorConfigMapDoesNotContainStrings(operatorNamespace, " \n")
 			})

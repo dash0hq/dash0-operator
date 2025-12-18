@@ -77,6 +77,10 @@ func verifyCommandOutputDoesNotContainStrings(command *exec.Cmd, needles ...stri
 	haystack, err := run(exec.Command(command.Args[0], command.Args[1:]...), false)
 	Expect(err).ToNot(HaveOccurred())
 	for _, needle := range needles {
-		Expect(haystack).ToNot(ContainSubstring(needle))
+		needleIdx := strings.Index(haystack, needle)
+		Expect(haystack).ToNot(
+			ContainSubstring(needle),
+			fmt.Sprintf("offending substring found at index %d", needleIdx),
+		)
 	}
 }
