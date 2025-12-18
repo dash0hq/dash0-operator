@@ -574,19 +574,19 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				k8sNamespace: TestNamespaceName,
 				resource:     dashboard,
 			}
-			itemsTotal, httpRequests, originsInResource, validationIssues, synchronizationErrors :=
+			resourceToRequestsResult :=
 				persesDashboardReconciler.MapResourceToHttpRequests(
 					preconditionValidationResult,
 					upsertAction,
 					&logger,
 				)
-			Expect(itemsTotal).To(Equal(1))
-			Expect(originsInResource).To(BeNil())
-			Expect(validationIssues).To(BeNil())
-			Expect(synchronizationErrors).To(BeNil())
+			Expect(resourceToRequestsResult.ItemsTotal).To(Equal(1))
+			Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
+			Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
+			Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
 
-			Expect(httpRequests).To(HaveLen(1))
-			reqWithName := httpRequests[0]
+			Expect(resourceToRequestsResult.HttpRequests).To(HaveLen(1))
+			reqWithName := resourceToRequestsResult.HttpRequests[0]
 			Expect(reqWithName.ItemName).To(Equal("perses-dashboard"))
 			req := reqWithName.Request
 			defer func() {

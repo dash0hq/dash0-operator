@@ -441,7 +441,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	action apiAction,
 	logger *logr.Logger,
-) (int, []HttpRequestWithItemName, []string, map[string][]string, map[string]string) {
+) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
 	dashboardUrl := r.renderDashboardUrl(preconditionChecksResult)
 
@@ -459,13 +459,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		display, ok := displayRaw.(map[string]interface{})
 		if !ok {
 			logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
-			return 1,
-				nil,
-				nil,
-				map[string][]string{
-					itemName: {"spec.display is not a map"},
-				},
-				nil
+			return NewResourceToRequestsResultSingleItemValidationIssue(itemName, "spec.display is not a map")
 		}
 		r.setDisplayNameIfMissing(preconditionChecksResult, display)
 
@@ -488,7 +482,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
-		return 1, nil, nil, nil, map[string]string{itemName: unknownActionErr.Error()}
+		return NewResourceToRequestsResultSingleItemError(itemName, unknownActionErr.Error())
 	}
 
 	if err != nil {
@@ -499,7 +493,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 			err,
 		)
 		logger.Error(httpError, "error creating http request")
-		return 1, nil, nil, nil, map[string]string{itemName: httpError.Error()}
+		return NewResourceToRequestsResultSingleItemError(itemName, httpError.Error())
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult)
@@ -507,10 +501,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return 1, []HttpRequestWithItemName{{
-		ItemName: itemName,
-		Request:  req,
-	}}, nil, nil, nil
+	return NewResourceToRequestsResultSingleItemSuccess(itemName, req)
 }
 
 func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[string]interface{}) map[string]interface{} {
@@ -604,10 +595,8 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,
-	_ int,
+	resourceToRequestsResult *ResourceToRequestsResult,
 	successfullySynchronized []SuccessfulSynchronizationResult,
-	synchronizationErrors map[string]string,
-	validationIssuesMap map[string][]string,
 ) interface{} {
 	previousResults := monitoringResource.Status.PersesDashboardSynchronizationResults
 	if previousResults == nil {
@@ -621,13 +610,13 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 		SynchronizedAt:        metav1.Time{Time: time.Now()},
 		SynchronizationStatus: status,
 	}
-	if len(synchronizationErrors) > 0 {
+	if len(resourceToRequestsResult.SynchronizationErrors) > 0 {
 		// there can only be at most one synchronization error for a Perses dashboard resource
-		result.SynchronizationError = slices.Collect(maps.Values(synchronizationErrors))[0]
+		result.SynchronizationError = slices.Collect(maps.Values(resourceToRequestsResult.SynchronizationErrors))[0]
 	}
-	if len(validationIssuesMap) > 0 {
+	if len(resourceToRequestsResult.ValidationIssues) > 0 {
 		// there can only be at most one list of validation issues for a Perses dashboard resource
-		result.ValidationIssues = slices.Collect(maps.Values(validationIssuesMap))[0]
+		result.ValidationIssues = slices.Collect(maps.Values(resourceToRequestsResult.ValidationIssues))[0]
 	}
 	if len(successfullySynchronized) > 0 {
 		// there can only be at most one successfullySynchronized object for a Perses dashboard resource

@@ -291,7 +291,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	action apiAction,
 	logger *logr.Logger,
-) (int, []HttpRequestWithItemName, []string, map[string][]string, map[string]string) {
+) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
 	syntheticCheckUrl := r.renderSyntheticCheckUrl(preconditionChecksResult)
 
@@ -327,7 +327,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
-		return 1, nil, nil, nil, map[string]string{itemName: unknownActionErr.Error()}
+		return NewResourceToRequestsResultSingleItemError(itemName, unknownActionErr.Error())
 	}
 
 	if err != nil {
@@ -338,7 +338,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 			err,
 		)
 		logger.Error(httpError, "error creating http request")
-		return 1, nil, nil, nil, map[string]string{itemName: httpError.Error()}
+		return NewResourceToRequestsResultSingleItemError(itemName, httpError.Error())
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult)
@@ -346,10 +346,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return 1, []HttpRequestWithItemName{{
-		ItemName: itemName,
-		Request:  req,
-	}}, nil, nil, nil
+	return NewResourceToRequestsResultSingleItemSuccess(itemName, req)
 }
 
 func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksResult *preconditionValidationResult) string {
