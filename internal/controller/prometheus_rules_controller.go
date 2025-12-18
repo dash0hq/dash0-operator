@@ -468,17 +468,17 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	action apiAction,
 	logger *logr.Logger,
-) (int, []HttpRequestWithItemName, []string, map[string][]string, map[string]string) {
+) *ResourceToRequestsResult {
 	specRaw := preconditionChecksResult.dash0ApiResourceSpec
 	specAsYaml, err := yaml.Marshal(specRaw)
 	if err != nil {
 		logger.Error(err, "unable to marshal the Prometheus rule spec")
-		return 0, nil, nil, nil, map[string]string{"*": err.Error()}
+		return NewResourceToRequestsResultPreconditionError(err.Error())
 	}
 	ruleSpec := prometheusv1.PrometheusRuleSpec{}
 	if err = yaml.Unmarshal(specAsYaml, &ruleSpec); err != nil {
 		logger.Error(err, "unable to unmarshal the Prometheus rule spec")
-		return 0, nil, nil, nil, map[string]string{"*": err.Error()}
+		return NewResourceToRequestsResultPreconditionError(err.Error())
 	}
 
 	var originsInResource []string
@@ -534,11 +534,13 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 		}
 	}
 
-	return len(requests) + len(allValidationIssues) + len(allSynchronizationErrors),
+	return NewResourceToRequestsResult(
+		len(requests)+len(allValidationIssues)+len(allSynchronizationErrors),
 		requests,
 		originsInResource,
 		allValidationIssues,
-		allSynchronizationErrors
+		allSynchronizationErrors,
+	)
 }
 
 // renderCheckRuleListUrl renders the URL to fetch the list of existing check rule IDs from the Dash0 API.
@@ -894,10 +896,8 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,
-	itemsTotal int,
+	resourceToRequestsResult *ResourceToRequestsResult,
 	successfullySynchronized []SuccessfulSynchronizationResult,
-	synchronizationErrorsPerItem map[string]string,
-	validationIssuesPerItem map[string][]string,
 ) interface{} {
 	previousResults := monitoringResource.Status.PrometheusRuleSynchronizationResults
 	if previousResults == nil {
@@ -917,13 +917,13 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 	result := dash0common.PrometheusRuleSynchronizationResult{
 		SynchronizationStatus:       status,
 		SynchronizedAt:              metav1.Time{Time: time.Now()},
-		AlertingRulesTotal:          itemsTotal,
+		AlertingRulesTotal:          resourceToRequestsResult.ItemsTotal,
 		SynchronizedRulesTotal:      len(successfullySynchronized),
 		SynchronizedRulesAttributes: synchronizedRuleAttributes,
-		SynchronizationErrorsTotal:  len(synchronizationErrorsPerItem),
-		SynchronizationErrors:       synchronizationErrorsPerItem,
-		InvalidRulesTotal:           len(validationIssuesPerItem),
-		InvalidRules:                validationIssuesPerItem,
+		SynchronizationErrorsTotal:  len(resourceToRequestsResult.SynchronizationErrors),
+		SynchronizationErrors:       resourceToRequestsResult.SynchronizationErrors,
+		InvalidRulesTotal:           len(resourceToRequestsResult.ValidationIssues),
+		InvalidRules:                resourceToRequestsResult.ValidationIssues,
 	}
 	previousResults[qualifiedName] = result
 	return result

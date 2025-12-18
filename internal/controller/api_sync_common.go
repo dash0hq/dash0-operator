@@ -35,6 +35,87 @@ type ApiClient interface {
 	RemoveApiEndpointAndDataset(context.Context, *logr.Logger)
 }
 
+type ResourceToRequestsResult struct {
+	// the total number of eligible items in the Kubernetes resource
+	ItemsTotal int
+	// the request objects for which the conversion was successful
+	HttpRequests []HttpRequestWithItemName
+	// only set for resource types with a one-to-many relationship between Kubernetes resources and Dash0 entities,
+	// contains a list of all Dash0 origins produced by this Kubernetes resource
+	OriginsInResource []string
+	// validation issues for items that were invalid and
+	ValidationIssues map[string][]string
+	// synchronization errors that occurred during the conversion - if there is a synchronization error for a resource,
+	// HttpRequests must not contain a request for the associated resource
+	SynchronizationErrors map[string]string
+}
+
+func NewResourceToRequestsResult(
+	itemsTotal int,
+	httpRequests []HttpRequestWithItemName,
+	originsInResource []string,
+	validationIssues map[string][]string,
+	synchronizationErrors map[string]string,
+) *ResourceToRequestsResult {
+	return &ResourceToRequestsResult{
+		ItemsTotal:            itemsTotal,
+		HttpRequests:          httpRequests,
+		OriginsInResource:     originsInResource,
+		ValidationIssues:      validationIssues,
+		SynchronizationErrors: synchronizationErrors,
+	}
+}
+
+func NewResourceToRequestsResultSingleItemSuccess(itemName string, request *http.Request) *ResourceToRequestsResult {
+	return NewResourceToRequestsResult(
+		1,
+		[]HttpRequestWithItemName{{
+			ItemName: itemName,
+			Request:  request,
+		}},
+		nil,
+		nil,
+		nil,
+	)
+}
+
+func NewResourceToRequestsResultSingleItemValidationIssue(itemName string, issue string) *ResourceToRequestsResult {
+	return NewResourceToRequestsResult(1,
+		nil,
+		nil,
+		map[string][]string{
+			itemName: {issue},
+		},
+		nil,
+	)
+}
+
+func NewResourceToRequestsResultSingleItemError(itemName string, errorMessage string) *ResourceToRequestsResult {
+	return NewResourceToRequestsResult(1, nil, nil, nil, map[string]string{itemName: errorMessage})
+}
+
+func NewResourceToRequestsResultPreconditionError(errorMessage string) *ResourceToRequestsResult {
+	return NewResourceToRequestsResult(
+		// There might actually be eligible items in the Kubernetes resource, but at this point we do not
+		// know yet, so return 0.
+		0,
+		nil,
+		nil,
+		nil,
+		map[string]string{"*": errorMessage},
+	)
+}
+
+func (m *ResourceToRequestsResult) IsNoOp() bool {
+	return len(m.HttpRequests) == 0 &&
+		len(m.ValidationIssues) == 0 &&
+		len(m.SynchronizationErrors) == 0
+}
+
+func (m *ResourceToRequestsResult) HasNoErrorsAndNoIssues() bool {
+	return len(m.ValidationIssues) == 0 && len(m.SynchronizationErrors) == 0
+}
+
 // ApiSyncReconciler is the common interface for reconcilers that synchonize their Kubernetes resources to the Dash0
 // API. This can either be resource types owned by the Dash0 operator (like Dash0SyntheticCheck), which then also
 // implement the OwnedResourceReconciler interface, or third-party resource types (like PrometheusRule or
@@ -59,13 +140,7 @@ type ApiSyncReconciler interface {
 		*preconditionValidationResult,
 		apiAction,
 		*logr.Logger,
-	) (
-		int,
-		[]HttpRequestWithItemName,
-		[]string,
-		map[string][]string,
-		map[string]string,
-	)
+	) *ResourceToRequestsResult
 
 	ExtractIdOriginAndLinkFromResponseBody(
 		responseBytes []byte,
@@ -210,18 +285,16 @@ func synchronizeViaApiAndUpdateStatus(
 		var err error
 		existingOriginsFromApi, err = fetchExistingOrigins(apiSyncReconciler, preconditionChecksResult, logger)
 		if err != nil {
-			// the error has already been logged in fetchExistingOrigins, but we need to record the failure in the status of
-			// the monitoring resource
+			// the error has already been logged in fetchExistingOrigins, but we need to record the failure in the
+			// status of the monitoring resource
 			writeSynchronizationResult(
 				ctx,
 				apiSyncReconciler,
 				preconditionChecksResult.monitoringResource,
 				dash0ApiResource,
 				ownedResource,
-				0,
+				NewResourceToRequestsResultPreconditionError(err.Error()),
 				nil,
-				map[string][]string{},
-				map[string]string{"*": err.Error()},
 				false,
 				logger,
 			)
@@ -229,21 +302,17 @@ func synchronizeViaApiAndUpdateStatus(
 		}
 	}
 
-	itemsTotal, httpRequests, originsInResource, validationIssues, synchronizationErrors :=
-		apiSyncReconciler.MapResourceToHttpRequests(preconditionChecksResult, action, logger)
+	resourceToRequestsResult := apiSyncReconciler.MapResourceToHttpRequests(preconditionChecksResult, action, logger)
 	if action != deleteAction {
-		itemsTotal, httpRequests = addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
+		addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 			apiSyncReconciler,
 			preconditionChecksResult,
 			existingOriginsFromApi,
-			originsInResource,
-			httpRequests,
-			itemsTotal,
-			synchronizationErrors,
+			resourceToRequestsResult,
 			logger,
 		)
 	}
-	if len(httpRequests) == 0 && len(validationIssues) == 0 && len(synchronizationErrors) == 0 {
+	if resourceToRequestsResult.IsNoOp() {
 		logger.Info(
 			fmt.Sprintf(
 				"%s %s/%s did not contain any %s, skipping.",
@@ -256,26 +325,26 @@ func synchronizeViaApiAndUpdateStatus(
 
 	var successfullySynchronized []SuccessfulSynchronizationResult
 	var httpErrors map[string]string
-	if len(httpRequests) > 0 {
+	if len(resourceToRequestsResult.HttpRequests) > 0 {
 		successfullySynchronized, httpErrors =
-			executeAllHttpRequests(apiSyncReconciler, httpRequests, logger)
+			executeAllHttpRequests(apiSyncReconciler, resourceToRequestsResult.HttpRequests, logger)
 	}
 	if len(httpErrors) > 0 {
-		if synchronizationErrors == nil {
-			synchronizationErrors = make(map[string]string)
+		if resourceToRequestsResult.SynchronizationErrors == nil {
+			resourceToRequestsResult.SynchronizationErrors = make(map[string]string)
 		}
 		// In theory, the following map merge could overwrite synchronization errors from the MapResourceToHttpRequests
 		// stage with errors occurring in executeAllHttpRequests, but items that have an error in
 		// MapResourceToHttpRequests are never converted to requests, so the two maps are disjoint.
-		maps.Copy(synchronizationErrors, httpErrors)
+		maps.Copy(resourceToRequestsResult.SynchronizationErrors, httpErrors)
 	}
-	if len(validationIssues) == 0 && len(synchronizationErrors) == 0 {
+	if resourceToRequestsResult.HasNoErrorsAndNoIssues() {
 		logger.Info(
 			fmt.Sprintf("%s %s/%s: %d %s(s), %d successfully synchronized",
 				apiSyncReconciler.KindDisplayName(),
 				dash0ApiResource.GetNamespace(),
 				dash0ApiResource.GetName(),
-				itemsTotal,
+				resourceToRequestsResult.ItemsTotal,
 				apiSyncReconciler.ShortName(),
 				len(successfullySynchronized),
 			))
@@ -286,11 +355,11 @@ func synchronizeViaApiAndUpdateStatus(
 				apiSyncReconciler.KindDisplayName(),
 				dash0ApiResource.GetNamespace(),
 				dash0ApiResource.GetName(),
-				itemsTotal,
+				resourceToRequestsResult.ItemsTotal,
 				apiSyncReconciler.ShortName(),
 				len(successfullySynchronized),
-				validationIssues,
-				synchronizationErrors,
+				resourceToRequestsResult.ValidationIssues,
+				resourceToRequestsResult.SynchronizationErrors,
 			))
 	}
 	writeSynchronizationResult(
@@ -299,10 +368,8 @@ func synchronizeViaApiAndUpdateStatus(
 		preconditionChecksResult.monitoringResource,
 		dash0ApiResource,
 		ownedResource,
-		itemsTotal,
+		resourceToRequestsResult,
 		successfullySynchronized,
-		validationIssues,
-		synchronizationErrors,
 		resourceHasBeenDeleted,
 		logger,
 	)
@@ -571,29 +638,25 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	apiSyncReconciler ApiSyncReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	existingOriginsFromApi []string,
-	originsInResource []string,
-	httpRequests []HttpRequestWithItemName,
-	itemsTotal int,
-	synchronizationErrors map[string]string,
+	resourceToRequestsResult *ResourceToRequestsResult,
 	logger *logr.Logger,
-) (int, []HttpRequestWithItemName) {
+) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
 		// This resource reconciler synchronizes a resource type owned by the Dash0 operator, deleting existing objects
 		// on upsert is not supported nor necessary since there is a one-to-one relationship between K8s resources and
 		// Dash0 API objects.
-		return itemsTotal, httpRequests
+		return
 	}
 	deleteHttpRequests, deleteSynchronizationErrors := thirdPartyResourceReconciler.CreateDeleteRequests(
 		preconditionChecksResult,
 		existingOriginsFromApi,
-		originsInResource,
+		resourceToRequestsResult.OriginsInResource,
 		logger,
 	)
-	itemsTotal += len(deleteHttpRequests)
-	maps.Copy(synchronizationErrors, deleteSynchronizationErrors)
-	httpRequests = slices.Concat(httpRequests, deleteHttpRequests)
-	return itemsTotal, httpRequests
+	resourceToRequestsResult.ItemsTotal += len(deleteHttpRequests)
+	maps.Copy(resourceToRequestsResult.SynchronizationErrors, deleteSynchronizationErrors)
+	resourceToRequestsResult.HttpRequests = slices.Concat(resourceToRequestsResult.HttpRequests, deleteHttpRequests)
 }
 
 // structToMap converts any struct to an unstructured.Unstructured object.
@@ -774,10 +837,8 @@ func writeSynchronizationResult(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	dash0ApiResource *unstructured.Unstructured,
 	ownedResource client.Object,
-	itemsTotal int,
+	resourceToRequestsResult *ResourceToRequestsResult,
 	successfullySynchronized []SuccessfulSynchronizationResult,
-	validationIssuesPerItem map[string][]string,
-	synchronizationErrorsPerItem map[string]string,
 	resourceHasBeenDeleted bool,
 	logger *logr.Logger,
 
@@ -793,8 +854,7 @@ func writeSynchronizationResult(
 			ownedResourceReconciler,
 			ownedResource,
 			successfullySynchronized,
-			validationIssuesPerItem,
-			synchronizationErrorsPerItem,
+			resourceToRequestsResult,
 			logger,
 		)
 		return
@@ -806,10 +866,8 @@ func writeSynchronizationResult(
 			thirdPartyResourceReconciler,
 			monitoringResource,
 			dash0ApiResource,
-			itemsTotal,
+			resourceToRequestsResult,
 			successfullySynchronized,
-			validationIssuesPerItem,
-			synchronizationErrorsPerItem,
 			logger,
 		)
 		return
@@ -830,12 +888,11 @@ func convertAndWriteSynchronizationResultForOwnedResource(
 	ownedResourceReconciler OwnedResourceReconciler,
 	ownedResource client.Object,
 	successfullySynchronized []SuccessfulSynchronizationResult,
-	validationIssuesPerItem map[string][]string,
-	synchronizationErrorsPerItem map[string]string,
+	resourceToRequestsResult *ResourceToRequestsResult,
 	logger *logr.Logger,
 ) {
 	status := dash0common.Dash0ApiResourceSynchronizationStatusFailed
-	if len(successfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
+	if len(successfullySynchronized) > 0 && resourceToRequestsResult.HasNoErrorsAndNoIssues() {
 		// successfullySynchronized can always only be 0 or 1
 		status = dash0common.Dash0ApiResourceSynchronizationStatusSuccessful
 	}
@@ -846,18 +903,18 @@ func convertAndWriteSynchronizationResultForOwnedResource(
 	}
 
 	synchronizationError := ""
-	if len(synchronizationErrorsPerItem) > 0 {
+	if len(resourceToRequestsResult.SynchronizationErrors) > 0 {
 		// synchronizationErrorsPerItem can only have at most one entry
-		synchronizationError = slices.Collect(maps.Values(synchronizationErrorsPerItem))[0]
+		synchronizationError = slices.Collect(maps.Values(resourceToRequestsResult.SynchronizationErrors))[0]
 	} else {
 		// clear out errors from previous synchronization attempts
 		synchronizationError = ""
 	}
 
 	var validationIssues []string
-	if len(validationIssuesPerItem) > 0 {
+	if len(resourceToRequestsResult.ValidationIssues) > 0 {
 		// there can only be at most one list of validation issues for a Perses dashboard resource
-		validationIssues = slices.Collect(maps.Values(validationIssuesPerItem))[0]
+		validationIssues = slices.Collect(maps.Values(resourceToRequestsResult.ValidationIssues))[0]
 	} else {
 		// clear out validation issues from previous synchronization attempts
 		validationIssues = make([]string, 0)

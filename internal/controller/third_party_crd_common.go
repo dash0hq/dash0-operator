@@ -95,10 +95,8 @@ type ThirdPartyResourceReconciler interface {
 		monitoringResource *dash0v1beta1.Dash0Monitoring,
 		qualifiedName string,
 		status dash0common.ThirdPartySynchronizationStatus,
-		itemsTotal int,
-		successfullySynchronizedAttributes []SuccessfulSynchronizationResult,
-		synchronizationErrorsPerItem map[string]string,
-		validationIssuesPerItem map[string][]string,
+		resourceToRequestsResult *ResourceToRequestsResult,
+		successfullySynchronizedItems []SuccessfulSynchronizationResult,
 	) interface{}
 }
 
@@ -484,16 +482,14 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	thirdPartyResource *unstructured.Unstructured,
-	itemsTotal int,
+	resourceToRequestsResult *ResourceToRequestsResult,
 	successfullySynchronized []SuccessfulSynchronizationResult,
-	validationIssuesPerItem map[string][]string,
-	synchronizationErrorsPerItem map[string]string,
 	logger *logr.Logger,
 ) {
 	qualifiedName := fmt.Sprintf("%s/%s", thirdPartyResource.GetNamespace(), thirdPartyResource.GetName())
 
 	result := dash0common.ThirdPartySynchronizationStatusFailed
-	if len(successfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
+	if len(successfullySynchronized) > 0 && resourceToRequestsResult.HasNoErrorsAndNoIssues() {
 		result = dash0common.ThirdPartySynchronizationStatusSuccessful
 	} else if len(successfullySynchronized) > 0 {
 		result = dash0common.ThirdPartySynchronizationStatusPartiallySuccessful
@@ -531,10 +527,10 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 						monitoringResource.GetName(),
 						thirdPartyResourceReconciler.ShortName(),
 						qualifiedName,
-						itemsTotal,
+						resourceToRequestsResult.ItemsTotal,
 						successfullySynchronizedNames,
-						validationIssuesPerItem,
-						synchronizationErrorsPerItem,
+						resourceToRequestsResult.ValidationIssues,
+						resourceToRequestsResult.SynchronizationErrors,
 						err,
 					))
 				return err
@@ -543,10 +539,8 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 				monitoringResource,
 				qualifiedName,
 				result,
-				itemsTotal,
+				resourceToRequestsResult,
 				successfullySynchronized,
-				synchronizationErrorsPerItem,
-				validationIssuesPerItem,
 			)
 			if err := thirdPartyResourceReconciler.K8sClient().Status().Update(ctx, monitoringResource); err != nil {
 				logger.Info(
@@ -584,10 +578,10 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 				monitoringResource.GetName(),
 				thirdPartyResourceReconciler.ShortName(),
 				qualifiedName,
-				itemsTotal,
+				resourceToRequestsResult.ItemsTotal,
 				successfullySynchronizedNames,
-				validationIssuesPerItem,
-				synchronizationErrorsPerItem,
+				resourceToRequestsResult.ValidationIssues,
+				resourceToRequestsResult.SynchronizationErrors,
 			))
 	}
 }
