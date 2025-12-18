@@ -220,7 +220,7 @@ processors:
           # Move k8s.object.resource_version from resource attributes to attributes
           - set(attributes["k8s.object.resource_version"], resource.attributes["k8s.object.resource_version"]) where resource.attributes["k8s.object.resource_version"] != nil
           - delete_key(resource.attributes, "k8s.object.resource_version")
-    
+
           ## Cleanup ##
           # Remove k8s.object.kind and k8s.object.api_version from resource attributes
           - delete_key(resource.attributes, "k8s.object.kind")

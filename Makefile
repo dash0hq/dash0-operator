@@ -201,6 +201,17 @@ golangci-lint: golangci-lint-install ## Run static code analysis for Go code.
 golangci-lint-fix: golangci-lint-install ## Run static code analysis for Go code and fix issues automatically.
 	@find . -type f -maxdepth 5 -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run --fix; popd > /dev/null'
 
+.PHONY: internal-config-map-lint
+internal-config-map-lint: ## Verify config map templates for resources managed by the collector.
+	@if grep -ne '[[:space:]]$$' internal/collectors/otelcolresources/daemonset.config.yaml.template; then \
+	  echo "error: internal/collectors/otelcolresources/daemonset.config.yaml.template contains whitespace followed by a new line in the line printed above. Remove the offending characters."; \
+	  exit 1; \
+	fi
+	@if grep -ne '[[:space:]]$$' internal/collectors/otelcolresources/deployment.config.yaml.template; then \
+	  echo "error: internal/collectors/otelcolresources/deployment.config.yaml.template contains whitespace followed by a new line in the line printed above. Remove the offending characters."; \
+	  exit 1; \
+	fi
+
 define lint_helm_chart
 $(eval HELM_LINT_OUTPUT=$(shell helm lint --quiet $(1)))
 if [ -n "$(HELM_LINT_OUTPUT)" ]; then \
@@ -279,7 +290,7 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: golangci-lint helm-chart-lint shellcheck-lint zig-fmt-check instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, Zig, etc.).
+lint: golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint zig-fmt-check instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, Zig, etc.).
 
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix zig-fmt
