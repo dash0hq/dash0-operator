@@ -877,7 +877,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					Record: "record",
 					Alert:  "alert",
 				},
-				upsert,
+				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
 				&logger,
@@ -891,7 +891,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("should treat an empty rule as invalid", func() {
 			rule, validationIssues, ok := convertRuleToCheckRule(
 				prometheusv1.Rule{},
-				upsert,
+				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
 				&logger,
@@ -910,7 +910,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					For:           ptr.To(prometheusv1.Duration("10s")),
 					KeepFiringFor: ptr.To(prometheusv1.NonEmptyDuration("10s")),
 				},
-				upsert,
+				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
 				&logger,
@@ -927,7 +927,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				prometheusv1.Rule{
 					Alert: "alert",
 				},
-				upsert,
+				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
 				&logger,
@@ -959,7 +959,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 						"label2": "label value 2",
 					},
 				},
-				upsert,
+				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
 				&logger,
@@ -985,7 +985,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					Alert: "alert",
 					Expr:  intstr.FromInt32(123),
 				},
-				upsert,
+				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
 				&logger,
@@ -1011,7 +1011,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 						Expr:        intstr.FromString("foobar $__threshold baz"),
 						Annotations: config.annotations,
 					},
-					upsert,
+					upsertAction,
 					"group",
 					ptr.To(prometheusv1.Duration("10m")),
 					&logger,
@@ -1141,7 +1141,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("should ignore/skip a record rule", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
 				"https://api.dash0.com/alerting/check-rules/rule-origin",
-				upsert,
+				upsertAction,
 				prometheusv1.Rule{
 					Record: "record",
 					Alert:  "alert",
@@ -1161,7 +1161,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("should treat an empty rule as invalid", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
 				"https://api.dash0.com/alerting/check-rules/rule-origin",
-				upsert,
+				upsertAction,
 				prometheusv1.Rule{},
 				&preconditionValidationResult{},
 				"group",
@@ -1179,7 +1179,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("should treat a rule without alert or record as invalid", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
 				"https://api.dash0.com/alerting/check-rules/rule-origin",
-				upsert,
+				upsertAction,
 				prometheusv1.Rule{
 					Expr:          intstr.FromString("expr"),
 					For:           ptr.To(prometheusv1.Duration("10s")),
@@ -1201,7 +1201,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("should treat a rule with empty expression as invalid", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
 				"https://api.dash0.com/alerting/check-rules/rule-origin",
-				upsert,
+				upsertAction,
 				prometheusv1.Rule{
 					Alert: "alert",
 					Expr:  intstr.FromString(""),
@@ -1222,7 +1222,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("should convert an almost empty rule", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
 				"https://api.dash0.com/alerting/check-rules/rule-origin",
-				upsert,
+				upsertAction,
 				prometheusv1.Rule{
 					Alert: "alert",
 				},
@@ -1242,7 +1242,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("should convert a rule with all attributes", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
 				"https://api.dash0.com/alerting/check-rules/rule-origin",
-				upsert,
+				upsertAction,
 				prometheusv1.Rule{
 					Alert:         "alert",
 					Expr:          intstr.FromString("expr"),

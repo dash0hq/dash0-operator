@@ -235,11 +235,11 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for a view resource", "name", qualifiedName)
 
-	action := upsert
+	action := upsertAction
 	viewResource := &dash0v1alpha1.Dash0View{}
 	if err := r.Get(ctx, req.NamespacedName, viewResource); err != nil {
 		if apierrors.IsNotFound(err) {
-			action = delete
+			action = deleteAction
 			logger.Info("reconciling the deletion of the view resource", "name", qualifiedName)
 			viewResource = &dash0v1alpha1.Dash0View{
 				ObjectMeta: metav1.ObjectMeta{
@@ -261,7 +261,7 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 	if err != nil {
 		msg := "cannot serialize the view resource"
 		logger.Error(err, msg)
-		if action != delete {
+		if action != deleteAction {
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				viewResource,
@@ -300,7 +300,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	var err error
 
 	switch action {
-	case upsert:
+	case upsertAction:
 		spec := preconditionChecksResult.dash0ApiResourceSpec
 
 		// Remove all unnecessary metadata (labels & annotations), we basically only need the view spec.
@@ -317,7 +317,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 			viewUrl,
 			requestPayload,
 		)
-	case delete:
+	case deleteAction:
 		method = http.MethodDelete
 		req, err = http.NewRequest(
 			method,
@@ -342,7 +342,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult)
-	if action == upsert {
+	if action == upsertAction {
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 

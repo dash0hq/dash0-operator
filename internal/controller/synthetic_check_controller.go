@@ -235,11 +235,11 @@ func (r *SyntheticCheckReconciler) Reconcile(ctx context.Context, req reconcile.
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for a synthetic check resource", "name", qualifiedName)
 
-	action := upsert
+	action := upsertAction
 	syntheticCheckResource := &dash0v1alpha1.Dash0SyntheticCheck{}
 	if err := r.Get(ctx, req.NamespacedName, syntheticCheckResource); err != nil {
 		if apierrors.IsNotFound(err) {
-			action = delete
+			action = deleteAction
 			logger.Info("reconciling the deletion of the synthetic check resource", "name", qualifiedName)
 			syntheticCheckResource = &dash0v1alpha1.Dash0SyntheticCheck{
 				ObjectMeta: metav1.ObjectMeta{
@@ -261,7 +261,7 @@ func (r *SyntheticCheckReconciler) Reconcile(ctx context.Context, req reconcile.
 	if err != nil {
 		msg := "cannot serialize the synthetic check resource"
 		logger.Error(err, msg)
-		if action != delete {
+		if action != deleteAction {
 			r.WriteSynchronizationResultToSynchronizedResource(
 				ctx,
 				syntheticCheckResource,
@@ -300,7 +300,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 	var err error
 
 	switch action {
-	case upsert:
+	case upsertAction:
 		spec := preconditionChecksResult.dash0ApiResourceSpec
 
 		// Remove all unnecessary metadata (labels & annotations), we basically only need the synthetic check spec.
@@ -317,7 +317,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 			syntheticCheckUrl,
 			requestPayload,
 		)
-	case delete:
+	case deleteAction:
 		method = http.MethodDelete
 		req, err = http.NewRequest(
 			method,
@@ -342,7 +342,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult)
-	if action == upsert {
+	if action == upsertAction {
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 

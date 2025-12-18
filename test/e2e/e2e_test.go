@@ -457,6 +457,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
 					Expect(*req.Body).To(ContainSubstring("This is a test synthetic check."))
+					Expect(*req.Body).ToNot(ContainSubstring("kubectl.kubernetes.io/last-applied-configuration"))
 
 					setOptOutLabelInSyntheticCheck(applicationUnderTestNamespace, "false")
 					By("verifying the synthetic check has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
@@ -471,6 +472,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("This is a test synthetic check."))
+					Expect(*req.Body).ToNot(ContainSubstring("kubectl.kubernetes.io/last-applied-configuration"))
 
 					removeSyntheticCheckResource(applicationUnderTestNamespace)
 					By("verifying the synthetic check has been deleted via the Dash0 API (after removing the resource)")
@@ -495,6 +497,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
 					Expect(*req.Body).To(ContainSubstring("\"name\":\"E2E test view\""))
+					Expect(*req.Body).ToNot(ContainSubstring("kubectl.kubernetes.io/last-applied-configuration"))
 
 					setOptOutLabelInView(applicationUnderTestNamespace, "false")
 					By("verifying the view has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
@@ -509,6 +512,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("\"name\":\"E2E test view\""))
+					Expect(*req.Body).ToNot(ContainSubstring("kubectl.kubernetes.io/last-applied-configuration"))
 
 					removeViewResource(applicationUnderTestNamespace)
 					By("verifying the view has been deleted via the Dash0 API (after removing the resource)")
@@ -533,6 +537,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(req.Body).ToNot(BeNil())
 					Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
+					Expect(*req.Body).ToNot(ContainSubstring("kubectl.kubernetes.io/last-applied-configuration"))
 
 					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, "false")
 					By("verifying the dashboard has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
@@ -546,6 +551,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 					Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
+					Expect(*req.Body).ToNot(ContainSubstring("kubectl.kubernetes.io/last-applied-configuration"))
 
 					removePersesDashboardResource(applicationUnderTestNamespace)
 					By("verifying the dashboard has been deleted via the Dash0 API (after removing the resource)")
@@ -587,6 +593,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						regexIdx++
 						Expect(req.Body).ToNot(BeNil())
 						Expect(*req.Body).To(ContainSubstring(substrings[substringIdx]))
+						Expect(*req.Body).ToNot(ContainSubstring("kubectl.kubernetes.io/last-applied-configuration"))
 						substringIdx++
 					}
 
@@ -616,6 +623,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
 						regexIdx++
 						Expect(*req.Body).To(ContainSubstring(substrings[substringIdx]))
+						Expect(*req.Body).ToNot(ContainSubstring("kubectl.kubernetes.io/last-applied-configuration"))
 						substringIdx++
 					}
 

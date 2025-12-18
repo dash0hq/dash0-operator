@@ -451,23 +451,11 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 
 	//nolint:ineffassign
 	switch action {
-	case upsert:
-		specOrConfig := preconditionChecksResult.dash0ApiResourceSpec
-
-		configRaw := specOrConfig["config"]
-		if configRaw != nil {
-			// See https://github.com/perses/perses-operator/pull/128, the CRD spec has been changed, a new wrapper
-			// object "config" has been added around the dashboard spec.
-			if config, ok := configRaw.(map[string]interface{}); ok {
-				specOrConfig = config
-			}
-		}
-
+	case upsertAction:
+		dashboard := preconditionChecksResult.resource
+		specOrConfig := r.normalizeV1Alpha1V1Alpha2(dashboard)
 		displayRaw := specOrConfig["display"]
-		if displayRaw == nil {
-			specOrConfig["display"] = map[string]interface{}{}
-			displayRaw = specOrConfig["display"]
-		}
+		displayRaw = r.addDisplaySectionIfMissing(displayRaw, specOrConfig)
 		display, ok := displayRaw.(map[string]interface{})
 		if !ok {
 			logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
@@ -479,18 +467,9 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 				},
 				nil
 		}
-		displayName, ok := display["name"]
-		if !ok || displayName == "" {
-			// Let the dashboard name default to the perses dashboard resource's namespace + name, if unset.
-			display["name"] = fmt.Sprintf("%s/%s", preconditionChecksResult.k8sNamespace, preconditionChecksResult.k8sName)
-		}
+		r.setDisplayNameIfMissing(preconditionChecksResult, display)
 
-		// Remove all unnecessary metadata (labels & annotations), we basically only need the dashboard spec.
-		serializedDashboard, _ := json.Marshal(
-			map[string]interface{}{
-				"kind": "PersesDashboard",
-				"spec": specOrConfig,
-			})
+		serializedDashboard, _ := json.Marshal(dashboard)
 		requestPayload := bytes.NewBuffer(serializedDashboard)
 
 		method = http.MethodPut
@@ -499,7 +478,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 			dashboardUrl,
 			requestPayload,
 		)
-	case delete:
+	case deleteAction:
 		method = http.MethodDelete
 		req, err = http.NewRequest(
 			method,
@@ -524,7 +503,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult)
-	if action == upsert {
+	if action == upsertAction {
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
@@ -532,6 +511,41 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		ItemName: itemName,
 		Request:  req,
 	}}, nil, nil, nil
+}
+
+func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[string]interface{}) map[string]interface{} {
+	specOrConfig := (dashboard["spec"]).(map[string]interface{})
+	configRaw := specOrConfig["config"]
+	if configRaw != nil {
+		// See https://github.com/perses/perses-operator/pull/128, the CRD spec has been changed, a new wrapper
+		// object "config" has been added around the dashboard spec. This has later been reverted for version
+		// v1alpha1 and added as a new CRD version v1alpha2, see
+		// https://github.com/perses/perses-operator/blob/main/api/v1alpha2.
+		if config, ok := configRaw.(map[string]interface{}); ok {
+			specOrConfig = config
+			dashboard["spec"] = specOrConfig
+		}
+	}
+	return specOrConfig
+}
+
+func (r *PersesDashboardReconciler) addDisplaySectionIfMissing(
+	displayRaw interface{},
+	specOrConfig map[string]interface{},
+) interface{} {
+	if displayRaw == nil {
+		specOrConfig["display"] = map[string]interface{}{}
+		displayRaw = specOrConfig["display"]
+	}
+	return displayRaw
+}
+
+func (r *PersesDashboardReconciler) setDisplayNameIfMissing(preconditionChecksResult *preconditionValidationResult, display map[string]interface{}) {
+	displayName, ok := display["name"]
+	if !ok || displayName == "" {
+		// Let the dashboard name default to the perses dashboard resource's namespace + name, if unset.
+		display["name"] = fmt.Sprintf("%s/%s", preconditionChecksResult.k8sNamespace, preconditionChecksResult.k8sName)
+	}
 }
 
 func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult *preconditionValidationResult) string {
