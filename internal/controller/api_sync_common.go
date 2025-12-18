@@ -136,8 +136,8 @@ type SuccessfulSynchronizationResult struct {
 type apiAction int
 
 const (
-	upsert apiAction = iota
-	delete
+	upsertAction apiAction = iota
+	deleteAction
 )
 
 type preconditionValidationResult struct {
@@ -151,7 +151,10 @@ type preconditionValidationResult struct {
 	// is added after the fact, we need to delete the object in Dash0 to get back into a consistent state)
 	syncDisabledViaLabel bool
 
-	// dash0ApiResourceSpec is the parsed spec of the resource that we are reconciling, as a map
+	// resource is the full resource that is being reconciled, as a map
+	resource map[string]interface{}
+
+	// dash0ApiResourceSpec is spec part of the resource that is being reconciled, as a map
 	dash0ApiResourceSpec map[string]interface{}
 
 	// monitoringResource is the Dash0 monitoring resource that was found in the same namespace as the resource
@@ -191,7 +194,7 @@ func synchronizeViaApiAndUpdateStatus(
 		return
 	}
 
-	resourceHasBeenDeleted := action == delete
+	resourceHasBeenDeleted := action == deleteAction
 
 	if preconditionChecksResult.syncDisabledViaLabel {
 		// The resource has the label dash0.com/enable=false set; thus we override the API action unconditionally with
@@ -199,11 +202,11 @@ func synchronizeViaApiAndUpdateStatus(
 		// be enough to ignore resources with that label entirely and issue no HTTP requests, but when a resource has
 		// been synchronized earlier, and then the dash0.com/enable=false is added after the fact, we need to delete the
 		// object in Dash0 to get back into a consistent state.
-		action = delete
+		action = deleteAction
 	}
 
 	var existingOriginsFromApi []string
-	if action != delete {
+	if action != deleteAction {
 		var err error
 		existingOriginsFromApi, err = fetchExistingOrigins(apiSyncReconciler, preconditionChecksResult, logger)
 		if err != nil {
@@ -228,7 +231,7 @@ func synchronizeViaApiAndUpdateStatus(
 
 	itemsTotal, httpRequests, originsInResource, validationIssues, synchronizationErrors :=
 		apiSyncReconciler.MapResourceToHttpRequests(preconditionChecksResult, action, logger)
-	if action != delete {
+	if action != deleteAction {
 		itemsTotal, httpRequests = addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 			apiSyncReconciler,
 			preconditionChecksResult,
@@ -421,6 +424,8 @@ func validatePreconditions(
 
 	syncDisabledViaLabel := isSyncDisabledViaLabel(dash0ApiResourceObject)
 
+	cleanUpMetadata(dash0ApiResourceObject)
+
 	specRaw := dash0ApiResourceObject["spec"]
 	if specRaw == nil {
 		logger.Info(
@@ -458,6 +463,10 @@ func validatePreconditions(
 	return &preconditionValidationResult{
 		synchronizeResource:  true,
 		syncDisabledViaLabel: syncDisabledViaLabel,
+		resource:             dash0ApiResourceObject,
+		// TODO remove dash0ApiResourceSpec from struct once all controllers have been migrated to work with the full
+		// resource, and no controller uses dash0ApiResourceSpec.
+		// (See perses_dashboard_controller.go#MapResourceToHttpRequests.)
 		dash0ApiResourceSpec: spec,
 		monitoringResource:   monitoringResource,
 		authToken:            authToken,
@@ -481,6 +490,26 @@ func isSyncDisabledViaLabel(dash0ApiResourceObject map[string]interface{}) bool 
 		}
 	}
 	return false
+}
+
+// cleanUpMetadata removes fields from the resource that are somewhat large and not relevant for synchronizing a
+// resource with the Dash0 API, to reduce the payload size of the request sent to the API (e.g. metadata.managedFields,
+// metadata.annotations.kubectl.kubernetes.io/last-applied-configuration).
+func cleanUpMetadata(resource map[string]interface{}) {
+	metadataRaw := resource["metadata"]
+	if metadataRaw != nil {
+		metadata, ok := metadataRaw.(map[string]interface{})
+		delete(metadata, "managedFields")
+		if ok {
+			annotationsRaw := metadata["annotations"]
+			if annotationsRaw != nil {
+				annotations, ok := annotationsRaw.(map[string]interface{})
+				if ok {
+					delete(annotations, "kubectl.kubernetes.io/last-applied-configuration")
+				}
+			}
+		}
+	}
 }
 
 func fetchExistingOrigins(

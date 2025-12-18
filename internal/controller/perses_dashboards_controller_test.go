@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 
@@ -547,6 +549,208 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
+	})
+
+	Describe("mapping dashboard resources to http requests", func() {
+
+		type dashboardToRequestTestConfig struct {
+			dashboard           string
+			expectedName        string
+			expectedDescription *string
+			expectedAnnotations map[string]string
+		}
+
+		var persesDashboardReconciler *PersesDashboardReconciler
+
+		BeforeEach(func() {
+			persesDashboardReconciler = &PersesDashboardReconciler{}
+		})
+
+		DescribeTable("maps both CRD versions", func(testConfig dashboardToRequestTestConfig) {
+			dashboard := map[string]interface{}{}
+			Expect(yaml.Unmarshal([]byte(testConfig.dashboard), &dashboard)).To(Succeed())
+			preconditionValidationResult := &preconditionValidationResult{
+				k8sName:      "perses-dashboard",
+				k8sNamespace: TestNamespaceName,
+				resource:     dashboard,
+			}
+			itemsTotal, httpRequests, originsInResource, validationIssues, synchronizationErrors :=
+				persesDashboardReconciler.MapResourceToHttpRequests(
+					preconditionValidationResult,
+					upsertAction,
+					&logger,
+				)
+			Expect(itemsTotal).To(Equal(1))
+			Expect(originsInResource).To(BeNil())
+			Expect(validationIssues).To(BeNil())
+			Expect(synchronizationErrors).To(BeNil())
+
+			Expect(httpRequests).To(HaveLen(1))
+			reqWithName := httpRequests[0]
+			Expect(reqWithName.ItemName).To(Equal("perses-dashboard"))
+			req := reqWithName.Request
+			defer func() {
+				_ = req.Body.Close()
+			}()
+			body, err := io.ReadAll(req.Body)
+			Expect(err).ToNot(HaveOccurred())
+			resultingDashboardInRequest := map[string]interface{}{}
+			Expect(json.Unmarshal(body, &resultingDashboardInRequest)).To(Succeed())
+			Expect(ReadFromMap(resultingDashboardInRequest, []string{"spec", "display", "name"})).To(Equal(testConfig.expectedName))
+			if testConfig.expectedDescription != nil {
+				Expect(ReadFromMap(resultingDashboardInRequest, []string{"spec", "display", "description"})).To(Equal(*testConfig.expectedDescription))
+			} else {
+				Expect(ReadFromMap(resultingDashboardInRequest, []string{"spec", "display", "description"})).To(BeNil())
+			}
+
+			Expect(resultingDashboardInRequest["metadata"]).ToNot(BeNil())
+			Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "name"})).To(Equal("perses-dashboard"))
+
+			if testConfig.expectedAnnotations != nil {
+				annotationsRaw := ReadFromMap(resultingDashboardInRequest, []string{"metadata", "annotations"})
+				Expect(annotationsRaw).ToNot(BeNil())
+				annotations := annotationsRaw.(map[string]interface{})
+				Expect(annotations).To(HaveLen(len(testConfig.expectedAnnotations)))
+				for expectedKey, expectedValue := range testConfig.expectedAnnotations {
+					value, ok := annotations[expectedKey]
+					Expect(ok).To(BeTrue())
+					Expect(value).To(Equal(expectedValue))
+				}
+			} else {
+				Expect(ReadFromMap(resultingDashboardInRequest, []string{"metadata", "annotations"})).To(BeNil())
+			}
+		},
+			Entry("should map v1alpha1", dashboardToRequestTestConfig{
+				dashboard: `
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+spec:
+  display:
+    name: Perses Dashboard Example
+    description: This is an example dashboard.
+  duration: 5m
+`,
+				expectedName:        "Perses Dashboard Example",
+				expectedDescription: ptr.To("This is an example dashboard."),
+			}),
+			Entry("should map v1alpha2", dashboardToRequestTestConfig{
+				dashboard: `
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+spec:
+  config:
+    display:
+      name: Perses Dashboard Example
+      description: This is an example dashboard.
+    duration: 5m
+`,
+				expectedName:        "Perses Dashboard Example",
+				expectedDescription: ptr.To("This is an example dashboard."),
+			}),
+			Entry("should add name to v1alpha1 with display but without name", dashboardToRequestTestConfig{
+				dashboard: `
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+spec:
+  display:
+    description: This is an example dashboard.
+  duration: 5m
+`,
+				expectedName:        fmt.Sprintf("%s/perses-dashboard", TestNamespaceName),
+				expectedDescription: ptr.To("This is an example dashboard."),
+			}),
+			Entry("should add name to v1alpha2 with display but without name", dashboardToRequestTestConfig{
+				dashboard: `
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+spec:
+  config:
+    display:
+      description: This is an example dashboard.
+    duration: 5m
+`,
+				expectedName:        fmt.Sprintf("%s/perses-dashboard", TestNamespaceName),
+				expectedDescription: ptr.To("This is an example dashboard."),
+			}),
+			Entry("should add name to v1alpha1 without display", dashboardToRequestTestConfig{
+				dashboard: `
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+spec:
+  duration: 5m
+`,
+				expectedName:        fmt.Sprintf("%s/perses-dashboard", TestNamespaceName),
+				expectedDescription: nil,
+			}),
+			Entry("should add name to v1alpha2 without display", dashboardToRequestTestConfig{
+				dashboard: `
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+spec:
+  config:
+    duration: 5m
+`,
+				expectedName:        fmt.Sprintf("%s/perses-dashboard", TestNamespaceName),
+				expectedDescription: nil,
+			}),
+			Entry("should send annotations with v1alpha1", dashboardToRequestTestConfig{
+				dashboard: `
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+  annotations:
+    dash0com/annotation1: value1
+    dash0com/annotation2: value2
+spec:
+  display:
+    name: Perses Dashboard Example
+    description: This is an example dashboard.
+  duration: 5m
+`,
+				expectedName:        "Perses Dashboard Example",
+				expectedDescription: ptr.To("This is an example dashboard."),
+				expectedAnnotations: map[string]string{
+					"dash0com/annotation1": "value1",
+					"dash0com/annotation2": "value2",
+				},
+			}),
+			Entry("should send annotations with v1alpha2", dashboardToRequestTestConfig{
+				dashboard: `
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard
+  annotations:
+    dash0com/annotation1: value1
+    dash0com/annotation2: value2
+spec:
+  config:
+    display:
+      name: Perses Dashboard Example
+      description: This is an example dashboard.
+    duration: 5m
+`,
+				expectedName:        "Perses Dashboard Example",
+				expectedDescription: ptr.To("This is an example dashboard."),
+				expectedAnnotations: map[string]string{
+					"dash0com/annotation1": "value1",
+					"dash0com/annotation2": "value2",
+				},
+			}),
+		)
 	})
 })
 

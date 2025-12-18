@@ -645,7 +645,7 @@ func convertRuleToRequest(
 
 	//nolint:ineffassign
 	switch action {
-	case upsert:
+	case upsertAction:
 		serializedCheckRule, _ := json.Marshal(checkRule)
 		requestPayload := bytes.NewBuffer(serializedCheckRule)
 		method = http.MethodPut
@@ -654,7 +654,7 @@ func convertRuleToRequest(
 			checkRuleUrl,
 			requestPayload,
 		)
-	case delete:
+	case deleteAction:
 		method = http.MethodDelete
 		req, err = http.NewRequest(
 			method,
@@ -679,7 +679,7 @@ func convertRuleToRequest(
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult)
-	if action == upsert {
+	if action == upsertAction {
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
@@ -708,7 +708,7 @@ func convertRuleToCheckRule(
 		return nil, []string{"rule has neither the alert nor the record attribute"}, false
 	}
 
-	if action == delete {
+	if action == deleteAction {
 		// When deleting a rule, we do not need an actual payload, but do need to skip rules with rule.Record or without
 		// rule.Alert (that is why we still call convertRuleToCheckRule for deletions).
 		return &CheckRule{}, nil, true

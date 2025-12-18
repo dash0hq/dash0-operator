@@ -410,7 +410,7 @@ func upsertViaApi(
 		ThirdPartyResourceSyncJob{
 			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
 			dash0ApiResource:             dash0ApiResource,
-			action:                       upsert,
+			action:                       upsertAction,
 		},
 	)
 }
@@ -424,7 +424,7 @@ func deleteViaApi(
 		ThirdPartyResourceSyncJob{
 			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
 			dash0ApiResource:             dash0ApiResource,
-			action:                       delete,
+			action:                       deleteAction,
 		},
 	)
 }
