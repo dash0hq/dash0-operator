@@ -63,6 +63,7 @@ updates:
   - package-ecosystem: "docker"
     directories:
       - "/test/e2e/otlp-sink/telemetrymatcher"
+      - "/test/e2e/dash0-api-mock"
     schedule:
       interval: "daily"
       time: "07:18"
