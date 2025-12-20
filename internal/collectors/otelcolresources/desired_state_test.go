@@ -128,8 +128,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
 		Expect(daemonSetCollectorContainer.Resources.Limits.Memory().String()).To(Equal("500Mi"))
 		Expect(daemonSetCollectorContainer.Resources.Requests.Memory().String()).To(Equal("500Mi"))
-		Expect(daemonSetCollectorContainerArgs).To(HaveLen(1))
+		Expect(daemonSetCollectorContainerArgs).To(HaveLen(2))
 		Expect(daemonSetCollectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(daemonSetCollectorContainerArgs[1]).To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
 		Expect(daemonSetCollectorContainer.VolumeMounts).To(HaveLen(6))
 		Expect(daemonSetCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
