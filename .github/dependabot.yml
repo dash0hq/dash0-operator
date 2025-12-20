@@ -55,12 +55,21 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
-      development-dependencies:
-        dependency-type: "development"
 
   # -----------------------
   # -- Test applications --
   # -----------------------
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/test/e2e/otlp-sink/telemetrymatcher"
+    schedule:
+      interval: "daily"
+      time: "07:18"
+      timezone: "Europe/Berlin"
+    groups:
+      development-dependencies:
+        dependency-type: "development"
 
   - package-ecosystem: "gomod"
     directory: "test/e2e/dash0-api-mock"
