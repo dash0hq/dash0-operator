@@ -493,6 +493,8 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 					"namespaces",
 					"nodes",
 					"configmaps",
+					// required for Kubelet Metrics/Kubeletstats receiver and resourcedetection processor
+					"nodes/stats",
 					"persistentvolumes",
 					"persistentvolumeclaims",
 					// required for Prometheus receiver
@@ -500,14 +502,6 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 					"services",
 				},
 				Verbs: []string{"get", "watch", "list"},
-			},
-			{
-				APIGroups: []string{""},
-				Resources: []string{
-					// required for Kubelet Metrics/Kubeletstats receiver
-					"nodes/stats",
-				},
-				Verbs: []string{"get"},
 			},
 			{
 				APIGroups: []string{""},
