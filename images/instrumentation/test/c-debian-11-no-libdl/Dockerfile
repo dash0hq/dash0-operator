@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image=alpine:3.23.0
+ARG base_image=alpine:3.23.2
 
 FROM ${instrumentation_image} AS init
 

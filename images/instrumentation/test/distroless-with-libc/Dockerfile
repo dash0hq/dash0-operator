@@ -8,7 +8,7 @@ ARG base_image_run=gcr.io/distroless/cc-debian12
 FROM ${instrumentation_image} AS init
 
 FROM ${base_image_build} AS builder
-ARG base_image_build=alpine:3.23.0
+ARG base_image_build=alpine:3.23.2
 
 RUN case ${base_image_build} in \
   *alpine*) apk update && apk upgrade --no-cache && apk add --no-cache build-base ;; \
