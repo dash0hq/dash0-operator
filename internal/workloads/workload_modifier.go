@@ -51,6 +51,8 @@ const (
 	envVarDash0ResourceAttributesName       = "DASH0_RESOURCE_ATTRIBUTES"
 	dash0InjectorLogLevelEnvVarName         = "DASH0_INJECTOR_LOG_LEVEL"
 
+	defaultOtelExporterOtlpProtocol = common.ProtocolHttpProtobuf
+
 	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
 
 	// legacy environment variables
@@ -64,6 +66,13 @@ var (
 	initContainerAllowPrivilegeEscalation       = false
 	initContainerPrivileged                     = false
 	initContainerReadOnlyRootFilesystem         = true
+
+	otelExporterOtlpNoOverwriteMsg = fmt.Sprintf(
+		"Dash0 will not set %s/%s since the container already has at least one of those environment "+
+			"variables set. This container will not be instrumented to send telemetry to Dash0.",
+		envVarOtelExporterOtlpEndpointName,
+		envVarOtelExporterOtlpProtocolName,
+	)
 )
 
 var (
@@ -497,25 +506,13 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	podMeta *metav1.ObjectMeta,
 	perContainerLogger logr.Logger,
 ) {
+	if container.Env == nil {
+		container.Env = make([]corev1.EnvVar, 0)
+	}
+
 	m.removeLegacyEnvironmentVariables(container)
 
-	// The DASH0_NODE_IP environment variable is required to resolve the collector base URL, in case it uses the
-	// node-local/host port address. The collectorBaseUrl will be "http://$(DASH0_NODE_IP):40318" in this setup.
-	// We also enforce DASH0_NODE_IP to be listed first in the container's env array, since env vars that are referenced
-	// by other env vars need to come before the env vars referencing them.
-	removeEnvironmentVariable(container, util.EnvVarDash0NodeIp)
-	container.Env = slices.Insert(
-		container.Env,
-		0,
-		corev1.EnvVar{
-			Name: util.EnvVarDash0NodeIp,
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "status.hostIP",
-				},
-			},
-		},
-	)
+	m.prependDash0NodeIp(container)
 
 	collectorBaseUrl := m.clusterInstrumentationConfig.OTelCollectorBaseUrl
 	addOrReplaceEnvironmentVariable(
@@ -525,24 +522,12 @@ func (m *ResourceModifier) addEnvironmentVariables(
 			Value: collectorBaseUrl,
 		},
 	)
-	addOrReplaceEnvironmentVariable(
-		container,
-		corev1.EnvVar{
-			Name:  envVarOtelExporterOtlpEndpointName,
-			Value: collectorBaseUrl,
-		},
-	)
-	addOrReplaceEnvironmentVariable(
-		container,
-		corev1.EnvVar{
-			Name:  envVarOtelExporterOtlpProtocolName,
-			Value: common.ProtocolHttpProtobuf,
-		},
-	)
 
-	m.handleLdPreloadEnvVar(container, perContainerLogger)
+	m.addOtelExporterOtlpEnvVars(container, collectorBaseUrl, perContainerLogger)
 
-	m.handleOTelPropagatorsEnvVar(container)
+	m.addOrAppendToLdPreloadEnvVar(container, perContainerLogger)
+
+	m.addOTelPropagatorsEnvVar(container)
 
 	addOrReplaceEnvironmentVariable(
 		container,
@@ -696,17 +681,98 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	}
 }
 
-func (m *ResourceModifier) handleLdPreloadEnvVar(
+func (m *ResourceModifier) prependDash0NodeIp(container *corev1.Container) {
+	// The DASH0_NODE_IP environment variable is required to resolve the collector base URL, in case it uses the
+	// node-local/host port address. The collectorBaseUrl will be "http://$(DASH0_NODE_IP):40318" in this setup.
+	// We also enforce DASH0_NODE_IP to be listed first in the container's env array, since env vars that are referenced
+	// by other env vars need to come before the env vars referencing them.
+	removeEnvironmentVariable(container, util.EnvVarDash0NodeIp)
+	container.Env = slices.Insert(
+		container.Env,
+		0,
+		corev1.EnvVar{
+			Name: util.EnvVarDash0NodeIp,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "status.hostIP",
+				},
+			},
+		},
+	)
+}
+
+func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
+	container *corev1.Container,
+	otelExporterOtlpEndpointValue string,
+	perContainerLogger logr.Logger,
+) {
+	otelExporterOtlpEndpointIsSet, otelExporterOtlpEndpointIdx :=
+		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpEndpointName)
+	otelExporterOtlpProtocolIsSet, otelExporterOtlpProtocolIdx :=
+		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpProtocolName)
+
+	if otelExporterOtlpEndpointIsSet &&
+		envVarHasValue(container, otelExporterOtlpEndpointIdx, otelExporterOtlpEndpointValue) &&
+		otelExporterOtlpProtocolIsSet &&
+		envVarHasValue(container, otelExporterOtlpProtocolIdx, defaultOtelExporterOtlpProtocol) {
+		// Both env vars are already set and have the value that we would set anyway. No action required, we also do not
+		// create a telemetry collection warning.
+		return
+	}
+
+	if otelExporterOtlpEndpointIsSet &&
+		envVarHasValue(container, otelExporterOtlpEndpointIdx, otelExporterOtlpEndpointValue) &&
+		!otelExporterOtlpProtocolIsSet {
+		// The container only has OTEL_EXPORTER_OTLP_ENDPOINT=http://$(DASH0_NODE_IP):40318 set, but
+		// OTEL_EXPORTER_OTLP_PROTOCOL is missing. It is safe to add OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf.
+		// Note: In the reverse case (only OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf, but no
+		// OTEL_EXPORTER_OTLP_ENDPOINT), we will not assume that it is safe to instrument this container.
+		addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name:  envVarOtelExporterOtlpProtocolName,
+				Value: defaultOtelExporterOtlpProtocol,
+			},
+		)
+		return
+	}
+
+	if !otelExporterOtlpEndpointIsSet && !otelExporterOtlpProtocolIsSet {
+		// Both env vars are either not set or are set to an empty value. We can set/overwrite them.
+		addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name:  envVarOtelExporterOtlpEndpointName,
+				Value: otelExporterOtlpEndpointValue,
+			},
+		)
+		addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name:  envVarOtelExporterOtlpProtocolName,
+				Value: defaultOtelExporterOtlpProtocol,
+			},
+		)
+		return
+	}
+
+	// The two OTEL_EXPORTER_OTLP_* (or at least one of them) are set to values that are different from what we would
+	// set. Replacing/overwriting them could lead to breaking the telemetry export of a container that is configured
+	// manually. For example:
+	// * If a Go workload uses otlptracegrpc.New(context.Background()), this will respect OTEL_EXPORTER_OTLP_ENDPOINT
+	//   but not OTEL_EXPORTER_OTLP_PROTOCOL, and with us overriding the endpoint to an HTTP endpoint, the workload
+	//   would send GRPC traffic to an endpoint expecting HTTP traffic. This can also occur in other scenarios where
+	//   an OTel SDK is set up manually in the workload's code.
+	// * It will also break for OTel SDKs that only support the GRPC exporter, but not HTTP (Python & nginx for
+	//   example).
+	perContainerLogger.Info(otelExporterOtlpNoOverwriteMsg)
+}
+
+func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 	container *corev1.Container,
 	perContainerLogger logr.Logger,
 ) {
-	if container.Env == nil {
-		container.Env = make([]corev1.EnvVar, 0)
-	}
-	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == envVarLdPreloadName
-	})
-
+	idx := findEnvVarIdx(container, envVarLdPreloadName)
 	if idx < 0 {
 		container.Env = append(container.Env, corev1.EnvVar{
 			Name:  envVarLdPreloadName,
@@ -734,16 +800,7 @@ func (m *ResourceModifier) handleLdPreloadEnvVar(
 	}
 }
 
-func otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers []corev1.Container, namespaceInstrumentationConfig util.NamespaceInstrumentationConfig) bool {
-	for _, container := range containers {
-		if otelPropagatorsCanBeUpdatedForContainer(ptr.To(container), namespaceInstrumentationConfig) {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *ResourceModifier) handleOTelPropagatorsEnvVar(container *corev1.Container) {
+func (m *ResourceModifier) addOTelPropagatorsEnvVar(container *corev1.Container) {
 	if otelPropagatorsCanBeUpdatedForContainer(container, m.namespaceInstrumentationConfig) {
 		if util.IsEmpty(m.namespaceInstrumentationConfig.TraceContextPropagators) {
 			removeEnvironmentVariable(container, util.OtelPropagatorsEnvVarName)
@@ -757,6 +814,15 @@ func (m *ResourceModifier) handleOTelPropagatorsEnvVar(container *corev1.Contain
 			)
 		}
 	}
+}
+
+func otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers []corev1.Container, namespaceInstrumentationConfig util.NamespaceInstrumentationConfig) bool {
+	for _, container := range containers {
+		if otelPropagatorsCanBeUpdatedForContainer(ptr.To(container), namespaceInstrumentationConfig) {
+			return true
+		}
+	}
+	return false
 }
 
 func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namespaceInstrumentationConfig util.NamespaceInstrumentationConfig) bool {
@@ -877,16 +943,17 @@ func (m *ResourceModifier) checkContainerForServiceAttributes(container *corev1.
 }
 
 func addOrReplaceEnvironmentVariable(container *corev1.Container, envVar corev1.EnvVar) {
-	if container.Env == nil {
-		container.Env = make([]corev1.EnvVar, 0)
-	}
-	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == envVar.Name
-	})
-
+	idx := findEnvVarIdx(container, envVar.Name)
 	if idx < 0 {
 		container.Env = append(container.Env, envVar)
-	} else if envVar.Value != "" {
+	} else {
+		replaceExistingEnvironmentVariable(container, idx, envVar)
+	}
+
+}
+
+func replaceExistingEnvironmentVariable(container *corev1.Container, idx int, envVar corev1.EnvVar) {
+	if envVar.Value != "" {
 		container.Env[idx].ValueFrom = nil
 		container.Env[idx].Value = envVar.Value
 	} else {
@@ -922,6 +989,24 @@ func (m *ResourceModifier) addEnvVarFromLabelFieldSelector(
 			},
 		},
 	)
+}
+
+func findEnvVarIdx(container *corev1.Container, envVarName string) int {
+	return slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
+		return c.Name == envVarName
+	})
+}
+
+func envVarIsSetAndNotEmpty(container *corev1.Container, name string) (bool, int) {
+	idx := findEnvVarIdx(container, name)
+	if idx < 0 {
+		return false, idx
+	}
+	return container.Env[idx].ValueFrom != nil || strings.TrimSpace(container.Env[idx].Value) != "", idx
+}
+
+func envVarHasValue(container *corev1.Container, idx int, value string) bool {
+	return container.Env[idx].ValueFrom == nil && strings.TrimSpace(container.Env[idx].Value) == value
 }
 
 func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) ModificationResult {
@@ -1075,13 +1160,17 @@ func (m *ResourceModifier) removeMount(container *corev1.Container) {
 }
 
 func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Container) {
+	if container.Env == nil {
+		return
+	}
+	removeEnvironmentVariable(container, util.EnvVarDash0NodeIp)
 	m.removeLegacyEnvironmentVariables(container)
 	m.removeLdPreload(container)
-	removeEnvironmentVariable(container, util.EnvVarDash0NodeIp)
 	removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
-	removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
-	removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)
+
+	m.removeOtelExporterOtlpEnvVarsIfCurrentValueMatchesConfig(container)
 	m.removeOtelPropagatorsIfCurrentValueMatchesConfig(container)
+
 	removeEnvironmentVariable(container, envVarDash0NamespaceName)
 	removeEnvironmentVariable(container, envVarDash0PodName)
 	removeEnvironmentVariable(container, envVarDash0PodUidName)
@@ -1094,13 +1183,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 }
 
 func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
-	if container.Env == nil {
-		return
-	}
-	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == envVarLdPreloadName
-	})
-
+	idx := findEnvVarIdx(container, envVarLdPreloadName)
 	if idx < 0 {
 		return
 	}
@@ -1134,12 +1217,28 @@ func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
 	container.Env[idx].Value = strings.Join(libraries, separator)
 }
 
+func (m *ResourceModifier) removeOtelExporterOtlpEnvVarsIfCurrentValueMatchesConfig(container *corev1.Container) {
+	otelExporterOtlpEndpointIsSet, otelExporterOtlpEndpointIdx :=
+		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpEndpointName)
+	otelExporterOtlpProtocolIsSet, otelExporterOtlpProtocolIdx :=
+		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpProtocolName)
+	if !otelExporterOtlpEndpointIsSet || !otelExporterOtlpProtocolIsSet {
+		return
+	}
+
+	if !envVarHasValue(container, otelExporterOtlpEndpointIdx, m.clusterInstrumentationConfig.OTelCollectorBaseUrl) ||
+		!envVarHasValue(container, otelExporterOtlpProtocolIdx, defaultOtelExporterOtlpProtocol) {
+		return
+	}
+
+	removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
+	removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)
+}
+
 func (m *ResourceModifier) removeOtelPropagatorsIfCurrentValueMatchesConfig(container *corev1.Container) {
 	if m.namespaceInstrumentationConfig.TraceContextPropagators != nil &&
 		strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators) != "" {
-		idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-			return c.Name == util.OtelPropagatorsEnvVarName
-		})
+		idx := findEnvVarIdx(container, util.OtelPropagatorsEnvVarName)
 		if idx < 0 {
 			// env var is not set, nothing to do
 			return
@@ -1156,9 +1255,6 @@ func (m *ResourceModifier) removeOtelPropagatorsIfCurrentValueMatchesConfig(cont
 }
 
 func removeEnvironmentVariable(container *corev1.Container, name string) {
-	if container.Env == nil {
-		return
-	}
 	container.Env = slices.DeleteFunc(container.Env, func(c corev1.EnvVar) bool {
 		return c.Name == name
 	})
@@ -1174,13 +1270,7 @@ func (m *ResourceModifier) removeLegacyEnvironmentVariables(container *corev1.Co
 }
 
 func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Container) {
-	if container.Env == nil {
-		return
-	}
-	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == legacyEnvVarNodeOptionsName
-	})
-
+	idx := findEnvVarIdx(container, legacyEnvVarNodeOptionsName)
 	if idx < 0 {
 		return
 	}
