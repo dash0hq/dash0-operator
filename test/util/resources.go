@@ -794,11 +794,6 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 					Name:      "DASH0_OTEL_COLLECTOR_BASE_URL",
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 				},
-				{
-					// this ValueFrom will be removed and replaced by a simple Value
-					Name:      "OTEL_EXPORTER_OTLP_ENDPOINT",
-					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
-				},
 			},
 		},
 		{
@@ -821,10 +816,6 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 			Env: []corev1.EnvVar{
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-					Value: "base url will be replaced",
-				},
-				{
-					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
 					Value: "base url will be replaced",
 				},
 				{
@@ -937,6 +928,10 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
 					Value: OTelCollectorNodeLocalBaseUrlTest,
 				},
+				{
+					Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
+					Value: common.ProtocolHttpProtobuf,
+				},
 			},
 		},
 		{
@@ -976,6 +971,10 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				{
 					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
 					Value: OTelCollectorNodeLocalBaseUrlTest,
+				},
+				{
+					Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
+					Value: common.ProtocolHttpProtobuf,
 				},
 			},
 		},

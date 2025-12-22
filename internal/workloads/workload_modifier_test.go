@@ -547,7 +547,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedDeployment(workload)
 		})
 
-		It("should remove Dash0 from a instrumented deployment that has multiple containers, and already has volumes and init containers previous to being instrumented", func() {
+		It("should remove Dash0 from an instrumented deployment that has multiple containers, and already has volumes and init containers previous to being instrumented", func() {
 			workload := InstrumentedDeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentNamePrefix)
 			modificationResult := workloadModifier.RevertDeployment(workload)
 
@@ -887,7 +887,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					)
 				}
 
-				workloadModifier.handleLdPreloadEnvVar(container, logger)
+				workloadModifier.addOrAppendToLdPreloadEnvVar(container, logger)
 
 				VerifyEnvVar(testConfig.expectation, container.Env, envVarLdPreloadName, "")
 			},
@@ -1209,6 +1209,271 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				},
 				expectations: map[string]*EnvVarExpectation{
 					"OTHER": {Value: "value"},
+				},
+			}),
+		)
+
+		type nodeIpEnvVarTest struct {
+			existingEnvVars     []corev1.EnvVar
+			expectedEnvVarCount int
+		}
+
+		DescribeTable("should prepend DASH0_NODE_IP",
+			func(testConfig nodeIpEnvVarTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				workloadModifier.prependDash0NodeIp(container)
+
+				envVars := container.Env
+				Expect(len(envVars)).To(Equal(testConfig.expectedEnvVarCount))
+				nodeIpEnvVar := envVars[0]
+				Expect(nodeIpEnvVar.Name).To(Equal(util.EnvVarDash0NodeIp))
+				Expect(nodeIpEnvVar.Value).To(BeEmpty())
+				Expect(nodeIpEnvVar.ValueFrom.FieldRef.FieldPath).To(Equal("status.hostIP"))
+				if len(envVars) > 1 {
+					for _, envVar := range envVars[1:] {
+						Expect(envVar.Name).ToNot(Equal(util.EnvVarDash0NodeIp))
+					}
+				}
+			},
+			Entry("should add DASH0_NODE_IP to container without environment variables", nodeIpEnvVarTest{
+				existingEnvVars:     nil,
+				expectedEnvVarCount: 1,
+			}),
+			Entry("should prepend DASH0_NODE_IP to container with environment variables", nodeIpEnvVarTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  "ENV_VAR_1",
+					Value: "VALUE 1",
+				}, {
+					Name:  "ENV_VAR_2",
+					Value: "VALUE 2",
+				}},
+				expectedEnvVarCount: 3,
+			}),
+			Entry("should move DASH0_NODE_IP to first entry", nodeIpEnvVarTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  "ENV_VAR_1",
+					Value: "VALUE 1",
+				}, {
+					Name:  "ENV_VAR_2",
+					Value: "VALUE 2",
+				}, {
+					Name: util.EnvVarDash0NodeIp,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "status.hostIP",
+						},
+					},
+				}},
+				expectedEnvVarCount: 3,
+			}),
+			Entry("should move DASH0_NODE_IP to first entry and remove value", nodeIpEnvVarTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  "ENV_VAR_1",
+					Value: "VALUE 1",
+				}, {
+					Name:  "ENV_VAR_2",
+					Value: "VALUE 2",
+				}, {
+					Name:  util.EnvVarDash0NodeIp,
+					Value: "whatever",
+				}},
+				expectedEnvVarCount: 3,
+			}),
+		)
+
+		type otelExporterEnvVarsTest struct {
+			existingEnvVars    []corev1.EnvVar
+			expectedEnvVars    map[string]*EnvVarExpectation
+			expectedLogMessage string
+		}
+
+		DescribeTable("should add (but not replace) OTEL_EXPORTER_OTLP_ENDPOINT/OTEL_EXPORTER_OTLP_PROTOCOL",
+			func(testConfig otelExporterEnvVarsTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				capturingLogger, capturingLogSink := NewCapturingLogger()
+				workloadModifier.addEnvironmentVariables(
+					container,
+					&metav1.ObjectMeta{},
+					&metav1.ObjectMeta{},
+					capturingLogger,
+				)
+
+				envVars := container.Env
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
+				if testConfig.expectedLogMessage == "" {
+					capturingLogSink.HasNoLogMessages(Default)
+				} else {
+					capturingLogSink.HasLogMessage(Default, testConfig.expectedLogMessage)
+				}
+			},
+			Entry("should add OTEL_EXPORTER_OTLP_* to container without environment variables", otelExporterEnvVarsTest{
+				existingEnvVars: nil,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+			}),
+			Entry("should add OTEL_EXPORTER_OTLP_* to container with existing environment variables", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  "ENV_VAR_1",
+					Value: "VALUE 1",
+				}, {
+					Name:  "ENV_VAR_2",
+					Value: "VALUE 2",
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+			}),
+			Entry("should not overwrite OTEL_EXPORTER_OTLP_* when OTEL_EXPORTER_OTLP_ENDPOINT is already set", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelExporterOtlpEndpointName,
+					Value: "http://some-endpoint.tld",
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: "http://some-endpoint.tld"},
+					envVarOtelExporterOtlpProtocolName: nil,
+				},
+				expectedLogMessage: otelExporterOtlpNoOverwriteMsg,
+			}),
+			Entry("should not overwrite OTEL_EXPORTER_OTLP_* when OTEL_EXPORTER_OTLP_PROTOCOL is already set", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelExporterOtlpProtocolName,
+					Value: common.ProtocolGrpc,
+				}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: nil,
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolGrpc},
+				},
+				expectedLogMessage: otelExporterOtlpNoOverwriteMsg,
+			}),
+			Entry("should not overwrite OTEL_EXPORTER_OTLP_* when both OTEL_EXPORTER_OTLP_* variables are already set", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: "http://some-endpoint.tld",
+					},
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolGrpc,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: "http://some-endpoint.tld"},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolGrpc},
+				},
+				expectedLogMessage: otelExporterOtlpNoOverwriteMsg,
+			}),
+			Entry("should not log an issue if both OTEL_EXPORTER_OTLP_* variables are already set correctly", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: OTelCollectorNodeLocalBaseUrlTest,
+					},
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolHttpProtobuf,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+			}),
+			Entry("should add OTEL_EXPORTER_OTLP_PROTOCOL if only OTEL_EXPORTER_OTLP_ENDPOINT is set correctly", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: OTelCollectorNodeLocalBaseUrlTest,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+			}),
+			Entry("should not add OTEL_EXPORTER_OTLP_ENDPOINT but log an issue if only OTEL_EXPORTER_OTLP_PROTOCOL is set correctly", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolHttpProtobuf,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: nil,
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+				expectedLogMessage: otelExporterOtlpNoOverwriteMsg,
+			}),
+		)
+
+		DescribeTable("should remove OTEL_EXPORTER_OTLP_ENDPOINT/OTEL_EXPORTER_OTLP_PROTOCOL",
+			func(testConfig otelExporterEnvVarsTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				workloadModifier.removeEnvironmentVariables(container)
+
+				envVars := container.Env
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
+			},
+			Entry("should remove OTEL_EXPORTER_OTLP_* when values match config", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: OTelCollectorNodeLocalBaseUrlTest,
+					},
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolHttpProtobuf,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: nil,
+					envVarOtelExporterOtlpProtocolName: nil,
+				},
+			}),
+			Entry("should leave OTEL_EXPORTER_OTLP_* in place when values do not match config", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: "some-endpoint.tld",
+					},
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolGrpc,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: "some-endpoint.tld"},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolGrpc},
+				},
+			}),
+			Entry("should leave OTEL_EXPORTER_OTLP_* in place when only endpoint is set", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: OTelCollectorNodeLocalBaseUrlTest,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: nil,
+				},
+			}),
+			Entry("should leave OTEL_EXPORTER_OTLP_* in place when only protocol is set", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolHttpProtobuf,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: nil,
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
 				},
 			}),
 		)

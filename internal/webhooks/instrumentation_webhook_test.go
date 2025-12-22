@@ -470,7 +470,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			workload := BasicDeployment(TestNamespaceName, name)
 			workload.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{{
 				Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-				Value: "http://will-be-replaced.tld:4317",
+				Value: "http://$(DASH0_NODE_IP):40318",
 			}}
 			workload = CreateWorkload(ctx, k8sClient, workload).(*appsv1.Deployment)
 			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
@@ -508,7 +508,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			workload.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
 				{
 					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-					Value: "http://will-be-replaced.tld:4317",
+					Value: "http://$(DASH0_NODE_IP):40318",
 				},
 				{
 					Name:  util.EnvVarDash0NodeIp,
