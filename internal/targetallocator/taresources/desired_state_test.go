@@ -18,6 +18,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
+	tatest "github.com/dash0hq/dash0-operator/test/util/targetallocator"
 )
 
 var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resources", func() {
@@ -178,21 +179,21 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 })
 
 func getConfigMap(desiredState []clientObject) *corev1.ConfigMap {
-	if cm := findObjectByName(desiredState, ExpectedTargetAllocatorConfigMapName); cm != nil {
+	if cm := findObjectByName(desiredState, tatest.ExpectedTargetAllocatorConfigMapName); cm != nil {
 		return cm.(*corev1.ConfigMap)
 	}
 	return nil
 }
 
 func getDeployment(desiredState []clientObject) *appsv1.Deployment {
-	if deployment := findObjectByName(desiredState, ExpectedTargetAllocatorDeploymentName); deployment != nil {
+	if deployment := findObjectByName(desiredState, tatest.ExpectedTargetAllocatorDeploymentName); deployment != nil {
 		return deployment.(*appsv1.Deployment)
 	}
 	return nil
 }
 
 func getService(desiredState []clientObject) *corev1.Service {
-	if service := findObjectByName(desiredState, ExpectedTargetAllocatorServiceName); service != nil {
+	if service := findObjectByName(desiredState, tatest.ExpectedTargetAllocatorServiceName); service != nil {
 		return service.(*corev1.Service)
 	}
 	return nil

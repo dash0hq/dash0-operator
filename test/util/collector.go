@@ -11,11 +11,9 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
-
 	. "github.com/onsi/gomega"
 )
 
@@ -236,29 +234,6 @@ func VerifyCollectorDeployment(
 	Expect(ports).To(HaveLen(0))
 }
 
-func VerifyExpectedResourceExists(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespace string,
-	expectedResource expectedResource,
-) client.Object {
-	return VerifyResourceExists(ctx, k8sClient, namespace, expectedResource.name, expectedResource.receiver)
-}
-
-func VerifyResourceExists(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespace string,
-	expectedName string,
-	receiver client.Object,
-) client.Object {
-	key := client.ObjectKey{Name: expectedName, Namespace: namespace}
-	err := k8sClient.Get(ctx, key, receiver)
-	Expect(err).ToNot(HaveOccurred())
-	Expect(receiver).NotTo(BeNil())
-	return receiver
-}
-
 func GetOTelColDaemonSetConfigMap(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -336,38 +311,6 @@ func VerifyCollectorResourcesDoNotExist(
 			expectedRes,
 		)
 	}
-}
-
-func VerifyExpectedResourceDoesNotExist(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespace string,
-	expectedResource expectedResource,
-) {
-	VerifyResourceDoesNotExist(
-		ctx,
-		k8sClient,
-		namespace,
-		expectedResource.name,
-		expectedResource.receiver,
-	)
-}
-
-func VerifyResourceDoesNotExist(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespace string,
-	expectedName string,
-	receiver client.Object,
-) {
-	key := client.ObjectKey{Name: expectedName, Namespace: namespace}
-	err := k8sClient.Get(ctx, key, receiver)
-	Expect(err).To(
-		HaveOccurred(),
-		fmt.Sprintf("the resource %s still exists although it should have been deleted", expectedName),
-	)
-	Expect(apierrors.IsNotFound(err)).To(BeTrue(),
-		fmt.Sprintf("attempting to load the resource %s failed with an unexpected error: %v", expectedName, err))
 }
 
 func verifyOwnerReference(object client.Object) {
