@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -105,6 +106,61 @@ func EnsureKubernetesObjectExists(
 		Expect(err).ToNot(HaveOccurred())
 		return nil
 	}
+}
+
+func VerifyExpectedResourceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	expectedResource expectedResource,
+) client.Object {
+	return VerifyResourceExists(ctx, k8sClient, namespace, expectedResource.name, expectedResource.receiver)
+}
+
+func VerifyResourceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	expectedName string,
+	receiver client.Object,
+) client.Object {
+	key := client.ObjectKey{Name: expectedName, Namespace: namespace}
+	err := k8sClient.Get(ctx, key, receiver)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(receiver).NotTo(BeNil())
+	return receiver
+}
+
+func VerifyExpectedResourceDoesNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	expectedResource expectedResource,
+) {
+	VerifyResourceDoesNotExist(
+		ctx,
+		k8sClient,
+		namespace,
+		expectedResource.name,
+		expectedResource.receiver,
+	)
+}
+
+func VerifyResourceDoesNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	expectedName string,
+	receiver client.Object,
+) {
+	key := client.ObjectKey{Name: expectedName, Namespace: namespace}
+	err := k8sClient.Get(ctx, key, receiver)
+	Expect(err).To(
+		HaveOccurred(),
+		fmt.Sprintf("the resource %s still exists although it should have been deleted", expectedName),
+	)
+	Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+		fmt.Sprintf("attempting to load the resource %s failed with an unexpected error: %v", expectedName, err))
 }
 
 func UniqueName(prefix string) string {

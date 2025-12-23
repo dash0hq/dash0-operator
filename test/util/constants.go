@@ -41,6 +41,7 @@ const (
 	OperatorImageTest                     = "some-registry.com:1234/dash0hq/operator-controller:1.2.3"
 	InitContainerImageTest                = "some-registry.com:1234/dash0hq/instrumentation:4.5.6"
 	CollectorImageTest                    = "some-registry.com:1234/dash0hq/collector:7.8.9"
+	TargetAllocatorImageTest              = "some-registry.com:1234/dash0hq/target-allocator:8.9.10"
 	ConfigurationReloaderImageTest        = "some-registry.com:1234/dash0hq/configuration-reloader:10.11.12"
 	FilelogOffsetSyncImageTest            = "some-registry.com:1234/dash0hq/filelog-offset-sync:13.14.15"
 	FilelogOffsetVolumeOwnershipImageTest = "some-registry.com:1234/dash0hq/filelog-offset-volume-ownership:16.17.18"
@@ -80,6 +81,8 @@ var (
 		InitContainerImagePullPolicy:                corev1.PullAlways,
 		CollectorImage:                              CollectorImageTest,
 		CollectorImagePullPolicy:                    corev1.PullAlways,
+		TargetAllocatorImage:                        TargetAllocatorImageTest,
+		TargetAllocatorPullPolicy:                   corev1.PullAlways,
 		ConfigurationReloaderImage:                  ConfigurationReloaderImageTest,
 		ConfigurationReloaderImagePullPolicy:        corev1.PullAlways,
 		FilelogOffsetSyncImage:                      FilelogOffsetSyncImageTest,
