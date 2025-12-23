@@ -185,7 +185,7 @@ else
 endif
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.7.2
 golangci-lint-install:
 	@[ -f $(GOLANGCI_LINT) ] || { \
 	set -e ;\
@@ -195,11 +195,11 @@ golangci-lint-install:
 .PHONY: golangci-lint
 golangci-lint: golangci-lint-install ## Run static code analysis for Go code.
 	@echo "-------------------------------- (linting Go code)"
-	@find . -type f -maxdepth 5 -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run; popd > /dev/null'
+	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run; popd > /dev/null'
 
 .PHONY: golangci-lint-fix
 golangci-lint-fix: golangci-lint-install ## Run static code analysis for Go code and fix issues automatically.
-	@find . -type f -maxdepth 5 -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run --fix; popd > /dev/null'
+	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run --fix; popd > /dev/null'
 
 .PHONY: internal-config-map-lint
 internal-config-map-lint: ## Verify config map templates for resources managed by the collector.
