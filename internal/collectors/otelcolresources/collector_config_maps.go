@@ -59,6 +59,13 @@ type customTransformGroup struct {
 	Statements []string
 }
 
+// LogCollectionConfig groups namespaces that share the same log collection configuration.
+// This is used to generate separate filelog receivers for different multiline patterns.
+type LogCollectionConfig struct {
+	Namespaces []string
+	Multiline  *dash0common.MultilineConfig
+}
+
 func (ct *customTransforms) HasTraceTransforms() bool {
 	return len(ct.TraceGroups) > 0
 }
@@ -86,7 +93,7 @@ type collectorConfigurationTemplateValues struct {
 	IsGkeAutopilot                                   bool
 	PseudoClusterUid                                 string
 	ClusterName                                      string
-	NamespacesWithLogCollection                      []string
+	LogCollectionConfigs                             []LogCollectionConfig
 	NamespacesWithEventCollection                    []string
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
@@ -118,15 +125,23 @@ type KubeletStatsReceiverConfig struct {
 }
 
 var (
+	// Template functions for collector configuration templates
+	templateFuncs = template.FuncMap{
+		// escapeOttlRegex escapes backslashes in regex patterns for OTTL expressions
+		"escapeOttlRegex": func(s string) string {
+			return strings.ReplaceAll(s, `\`, `\\`)
+		},
+	}
+
 	//go:embed daemonset.config.yaml.template
 	daemonSetCollectorConfigurationTemplateSource string
 	daemonSetCollectorConfigurationTemplate       = template.Must(
-		template.New("daemonset-collector-configuration").Parse(daemonSetCollectorConfigurationTemplateSource))
+		template.New("daemonset-collector-configuration").Funcs(templateFuncs).Parse(daemonSetCollectorConfigurationTemplateSource))
 
 	//go:embed deployment.config.yaml.template
 	deploymentCollectorConfigurationTemplateSource string
 	deploymentCollectorConfigurationTemplate       = template.Must(
-		template.New("deployment-collector-configuration").Parse(deploymentCollectorConfigurationTemplateSource))
+		template.New("deployment-collector-configuration").Funcs(templateFuncs).Parse(deploymentCollectorConfigurationTemplateSource))
 
 	authHeaderValue = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
 )
@@ -134,7 +149,7 @@ var (
 func assembleDaemonSetCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
-	namespacesWithLogCollection []string,
+	logCollectionConfigs []LogCollectionConfig,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -144,7 +159,7 @@ func assembleDaemonSetCollectorConfigMap(
 	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
-		namespacesWithLogCollection,
+		logCollectionConfigs,
 		nil, // namespacesWithEventCollection is not used when rendering the daemonset config map
 		namespacesWithPrometheusScraping,
 		filters,
@@ -167,7 +182,7 @@ func assembleDeploymentCollectorConfigMap(
 	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
-		nil, // namespacesWithLogCollection is not used when rendering the deployment config map
+		nil, // logCollectionConfigs is not used when rendering the deployment config map
 		namespacesWithEventCollection,
 		nil, // namespacesWithPrometheusScraping is not used when rendering the deployment config map
 		filters,
@@ -182,7 +197,7 @@ func assembleDeploymentCollectorConfigMap(
 func assembleCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
-	namespacesWithLogCollection []string,
+	logCollectionConfigs []LogCollectionConfig,
 	namespacesWithEventCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
@@ -235,7 +250,7 @@ func assembleCollectorConfigMap(
 				IsGkeAutopilot:                                   config.IsGkeAutopilot,
 				PseudoClusterUid:                                 string(config.PseudoClusterUid),
 				ClusterName:                                      config.ClusterName,
-				NamespacesWithLogCollection:                      namespacesWithLogCollection,
+				LogCollectionConfigs:                             logCollectionConfigs,
 				NamespacesWithEventCollection:                    namespacesWithEventCollection,
 				NamespaceOttlFilter:                              namespaceOttlFilter,
 				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,

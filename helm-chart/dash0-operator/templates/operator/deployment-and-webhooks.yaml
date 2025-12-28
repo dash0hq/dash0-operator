@@ -1135,6 +1135,31 @@ spec:
                       to set `telemetryCollection.enabled=false` in the operator configuration resource and
                       `logCollection.enabled=true` in any monitoring resource at the same time.
                     type: boolean
+                  multiline:
+                    description: |-
+                      Multiline configures how multi-line log entries (such as stack traces) are handled. When configured, log lines
+                      that do not match the specified pattern will be combined with the previous log entry. This is useful for
+                      applications that produce multi-line logs, such as Java stack traces.
+                    properties:
+                      lineEndPattern:
+                        description: |-
+                          LineEndPattern is a regex pattern that matches the end of a log entry. Use this when it's easier to identify
+                          the end of a log entry than the start. Only one of lineStartPattern or lineEndPattern may be set.
+                        type: string
+                      lineStartPattern:
+                        description: |-
+                          LineStartPattern is a regex pattern that matches the beginning of a new log entry. Log lines that do NOT match
+                          this pattern will be combined with the previous log entry. This is useful for stack traces and other multi-line
+                          logs where continuation lines don't have timestamps.
+
+                          Common patterns:
+                          - ISO timestamps: "^\\d{4}-\\d{2}-\\d{2}"
+                          - Spring Boot: "^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}"
+                          - With log level: "^\\d{4}-\\d{2}-\\d{2}.*?(INFO|WARN|ERROR|DEBUG|TRACE)"
+
+                          Only one of lineStartPattern or lineEndPattern may be set.
+                        type: string
+                    type: object
                 type: object
               prometheusScraping:
                 description: |-
@@ -1934,6 +1959,31 @@ spec:
                       to set `telemetryCollection.enabled=false` in the operator configuration resource and
                       `logCollection.enabled=true` in any monitoring resource at the same time.
                     type: boolean
+                  multiline:
+                    description: |-
+                      Multiline configures how multi-line log entries (such as stack traces) are handled. When configured, log lines
+                      that do not match the specified pattern will be combined with the previous log entry. This is useful for
+                      applications that produce multi-line logs, such as Java stack traces.
+                    properties:
+                      lineEndPattern:
+                        description: |-
+                          LineEndPattern is a regex pattern that matches the end of a log entry. Use this when it's easier to identify
+                          the end of a log entry than the start. Only one of lineStartPattern or lineEndPattern may be set.
+                        type: string
+                      lineStartPattern:
+                        description: |-
+                          LineStartPattern is a regex pattern that matches the beginning of a new log entry. Log lines that do NOT match
+                          this pattern will be combined with the previous log entry. This is useful for stack traces and other multi-line
+                          logs where continuation lines don't have timestamps.
+
+                          Common patterns:
+                          - ISO timestamps: "^\\d{4}-\\d{2}-\\d{2}"
+                          - Spring Boot: "^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}"
+                          - With log level: "^\\d{4}-\\d{2}-\\d{2}.*?(INFO|WARN|ERROR|DEBUG|TRACE)"
+
+                          Only one of lineStartPattern or lineEndPattern may be set.
+                        type: string
+                    type: object
                 type: object
               prometheusScraping:
                 description: |-

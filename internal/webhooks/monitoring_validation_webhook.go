@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -124,6 +125,10 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admissionResponse
 	}
 	admissionResponse, done = h.validateOttl(monitoringResource)
+	if done {
+		return admissionResponse
+	}
+	admissionResponse, done = h.validateLogCollectionMultiline(monitoringResource)
 	if done {
 		return admissionResponse
 	}
@@ -398,4 +403,42 @@ func toContextStatements(transformGroup dash0common.NormalizedTransformGroup) co
 		Statements: transformGroup.Statements,
 		ErrorMode:  errorMode,
 	}
+}
+
+func (h *MonitoringValidationWebhookHandler) validateLogCollectionMultiline(
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+) (admission.Response, bool) {
+	multiline := monitoringResource.Spec.LogCollection.Multiline
+	if multiline == nil {
+		return admission.Response{}, false
+	}
+
+	// Validate mutual exclusivity: only one of lineStartPattern or lineEndPattern may be set
+	if multiline.LineStartPattern != nil && multiline.LineEndPattern != nil {
+		return admission.Denied(
+			"Only one of logCollection.multiline.lineStartPattern or logCollection.multiline.lineEndPattern may be " +
+				"set, not both."), true
+	}
+
+	// At least one pattern must be set if multiline is specified
+	if multiline.LineStartPattern == nil && multiline.LineEndPattern == nil {
+		return admission.Denied(
+			"When logCollection.multiline is specified, either lineStartPattern or lineEndPattern must be provided."), true
+	}
+
+	// Validate regex patterns compile
+	if multiline.LineStartPattern != nil {
+		if _, err := regexp.Compile(*multiline.LineStartPattern); err != nil {
+			return admission.Denied(fmt.Sprintf(
+				"Invalid regex pattern for logCollection.multiline.lineStartPattern: %v", err)), true
+		}
+	}
+	if multiline.LineEndPattern != nil {
+		if _, err := regexp.Compile(*multiline.LineEndPattern); err != nil {
+			return admission.Denied(fmt.Sprintf(
+				"Invalid regex pattern for logCollection.multiline.lineEndPattern: %v", err)), true
+		}
+	}
+
+	return admission.Response{}, false
 }

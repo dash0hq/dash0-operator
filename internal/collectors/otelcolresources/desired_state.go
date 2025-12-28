@@ -242,11 +242,14 @@ func assembleDesiredStateForUpsert(
 	extraConfig util.ExtraConfig,
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
-	namespacesWithLogCollection := make([]string, 0, len(allMonitoringResources))
 	namespacesWithEventCollection := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	filters := make([]NamespacedFilter, 0, len(allMonitoringResources))
 	transforms := make([]NamespacedTransform, 0, len(allMonitoringResources))
+
+	// Group namespaces by their log collection configuration (multiline pattern)
+	logCollectionByConfig := make(map[string]*LogCollectionConfig)
+
 	for _, monitoringResource := range allMonitoringResources {
 		namespace := monitoringResource.Namespace
 		monitoredNamespaces = append(monitoredNamespaces, namespace)
@@ -256,7 +259,17 @@ func assembleDesiredStateForUpsert(
 			// pipeline, and there was a log parsing error that is being logged into the collector log, this might
 			// create a feedback cycle.
 			namespace != config.OperatorNamespace {
-			namespacesWithLogCollection = append(namespacesWithLogCollection, namespace)
+			// Group namespaces by their multiline configuration
+			multilineConfig := monitoringResource.Spec.LogCollection.Multiline
+			configKey := serializeMultilineConfig(multilineConfig)
+			if existing, ok := logCollectionByConfig[configKey]; ok {
+				existing.Namespaces = append(existing.Namespaces, namespace)
+			} else {
+				logCollectionByConfig[configKey] = &LogCollectionConfig{
+					Namespaces: []string{namespace},
+					Multiline:  multilineConfig,
+				}
+			}
 		}
 		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
 			namespacesWithEventCollection = append(namespacesWithEventCollection, namespace)
@@ -280,10 +293,14 @@ func assembleDesiredStateForUpsert(
 			})
 		}
 	}
+
+	// Convert map to sorted slice (nil multiline first, then by pattern)
+	logCollectionConfigs := convertLogCollectionMapToSortedSlice(logCollectionByConfig)
+
 	return assembleDesiredState(
 		config,
 		monitoredNamespaces,
-		namespacesWithLogCollection,
+		logCollectionConfigs,
 		namespacesWithEventCollection,
 		namespacesWithPrometheusScraping,
 		filters,
@@ -291,6 +308,46 @@ func assembleDesiredStateForUpsert(
 		extraConfig,
 		false,
 	)
+}
+
+// serializeMultilineConfig creates a string key for grouping namespaces by multiline config.
+// nil configs serialize to empty string, ensuring namespaces without multiline are grouped together.
+func serializeMultilineConfig(config *dash0common.MultilineConfig) string {
+	if config == nil {
+		return ""
+	}
+	var parts []string
+	if config.LineStartPattern != nil {
+		parts = append(parts, "start:"+*config.LineStartPattern)
+	}
+	if config.LineEndPattern != nil {
+		parts = append(parts, "end:"+*config.LineEndPattern)
+	}
+	return strings.Join(parts, "|")
+}
+
+// convertLogCollectionMapToSortedSlice converts the log collection map to a sorted slice.
+// Default config (no multiline) comes first, then multiline configs sorted by pattern.
+func convertLogCollectionMapToSortedSlice(configMap map[string]*LogCollectionConfig) []LogCollectionConfig {
+	if len(configMap) == 0 {
+		return nil
+	}
+
+	// Extract keys and sort them (empty string = no multiline comes first)
+	keys := make([]string, 0, len(configMap))
+	for k := range configMap {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	// Build result slice, sorting namespaces within each config for stable output
+	result := make([]LogCollectionConfig, 0, len(configMap))
+	for _, key := range keys {
+		config := configMap[key]
+		slices.Sort(config.Namespaces)
+		result = append(result, *config)
+	}
+	return result
 }
 
 func assembleDesiredStateForDelete(
@@ -313,7 +370,7 @@ func assembleDesiredStateForDelete(
 func assembleDesiredState(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
-	namespacesWithLogCollection []string,
+	logCollectionConfigs []LogCollectionConfig,
 	namespacesWithEventCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
@@ -324,7 +381,7 @@ func assembleDesiredState(
 	// Make sure the resulting objects (in particular the config maps) do not depend on the (potentially non-stable)
 	// sort order of the input slices.
 	slices.Sort(monitoredNamespaces)
-	slices.Sort(namespacesWithLogCollection)
+	// logCollectionConfigs is already sorted by convertLogCollectionMapToSortedSlice
 	slices.Sort(namespacesWithEventCollection)
 	slices.Sort(namespacesWithPrometheusScraping)
 	slices.SortFunc(filters, func(ns1 NamespacedFilter, ns2 NamespacedFilter) int {
@@ -344,7 +401,7 @@ func assembleDesiredState(
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(
 		config,
 		monitoredNamespaces,
-		namespacesWithLogCollection,
+		logCollectionConfigs,
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,

@@ -1416,7 +1416,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		It("should not render the prometheus scraping config if no namespace has scraping enabled", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, nil, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1472,7 +1472,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		It("should not render the filelog receiver if no namespace has log collection enabled", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, nil, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1493,7 +1493,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(
 				config,
 				[]string{"namespace-1", "namespace-2", "namespace-3"},
-				[]string{"namespace-1", "namespace-2"},
+				[]LogCollectionConfig{{Namespaces: []string{"namespace-1", "namespace-2"}}},
 				nil,
 				nil,
 				nil,
@@ -2797,7 +2797,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: false,
 			}
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, nil, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2813,7 +2813,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: true,
 			}
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, nil, nsWithPrometheusScraping, nil, nil, taMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2839,7 +2839,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: true,
 			}
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, nsWithPrometheusScraping, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, nil, nsWithPrometheusScraping, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)

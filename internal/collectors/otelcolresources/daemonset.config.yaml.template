@@ -346,12 +346,14 @@ to be compatible with the well-known configuration via annotations.
             target_label: node
 {{- end }}
 
-{{- if .NamespacesWithLogCollection }}
-  filelog:
+{{- if .LogCollectionConfigs }}
+{{- range $i, $config := .LogCollectionConfigs }}
+  filelog{{ if gt $i 0 }}/{{ $i }}{{ end }}:
+    # Namespaces: {{ range $j, $ns := $config.Namespaces }}{{ if gt $j 0 }}, {{ end }}{{ $ns }}{{ end }}
     include:
-{{- range $i, $namespace := .NamespacesWithLogCollection }}
+{{- range $j, $namespace := $config.Namespaces }}
     - /var/log/pods/{{ $namespace }}_*/*/*.log
-{{- end}}
+{{- end }}
     storage: file_storage/filelogreceiver_offsets
     include_file_path: true
     include_file_name: false
@@ -360,7 +362,21 @@ to be compatible with the well-known configuration via annotations.
     - id: container-parser
       max_log_size: 102400
       type: container
-{{- end}}
+{{- if $config.Multiline }}
+    - id: recombine-multiline
+      type: recombine
+      combine_field: body
+      source_identifier: attributes["log.file.path"]
+{{- if $config.Multiline.LineStartPattern }}
+      is_first_entry: body matches '{{ escapeOttlRegex $config.Multiline.LineStartPattern }}'
+{{- else if $config.Multiline.LineEndPattern }}
+      is_last_entry: body matches '{{ escapeOttlRegex $config.Multiline.LineEndPattern }}'
+{{- end }}
+      combine_with: "\n"
+      max_log_size: 1048576
+{{- end }}
+{{- end }}
+{{- end }}
 
 processors:
 {{- if .SendBatchMaxSize }}
@@ -491,7 +507,7 @@ processors:
       - delete_key(resource.attributes, "service.name")        where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
   {{- end }}
 
-  {{- if .NamespacesWithLogCollection }}
+  {{- if .LogCollectionConfigs }}
   transform/logs/filelog_service_attributes:
     error_mode: ignore
     log_statements:
@@ -772,10 +788,12 @@ service:
       exporters:
       - forward/logs
 
-{{- if .NamespacesWithLogCollection }}
+{{- if .LogCollectionConfigs }}
     logs/filelog:
       receivers:
-      - filelog
+{{- range $i, $_ := .LogCollectionConfigs }}
+      - filelog{{ if gt $i 0 }}/{{ $i }}{{ end }}
+{{- end }}
       processors:
       - memory_limiter
       exporters:
@@ -788,7 +806,7 @@ service:
       processors:
       - resourcedetection
       - k8sattributes
-      {{- if .NamespacesWithLogCollection }}
+      {{- if .LogCollectionConfigs }}
       - transform/logs/filelog_service_attributes
       {{- end }}
       {{- if .ClusterName }}

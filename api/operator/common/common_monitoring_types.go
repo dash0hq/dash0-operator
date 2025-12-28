@@ -52,6 +52,36 @@ type LogCollection struct {
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled"`
+
+	// Multiline configures how multi-line log entries (such as stack traces) are handled. When configured, log lines
+	// that do not match the specified pattern will be combined with the previous log entry. This is useful for
+	// applications that produce multi-line logs, such as Java stack traces.
+	//
+	// +kubebuilder:validation:Optional
+	Multiline *MultilineConfig `json:"multiline,omitempty"`
+}
+
+// MultilineConfig configures multi-line log parsing for the filelog receiver.
+type MultilineConfig struct {
+	// LineStartPattern is a regex pattern that matches the beginning of a new log entry. Log lines that do NOT match
+	// this pattern will be combined with the previous log entry. This is useful for stack traces and other multi-line
+	// logs where continuation lines don't have timestamps.
+	//
+	// Common patterns:
+	// - ISO timestamps: "^\\d{4}-\\d{2}-\\d{2}"
+	// - Spring Boot: "^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}"
+	// - With log level: "^\\d{4}-\\d{2}-\\d{2}.*?(INFO|WARN|ERROR|DEBUG|TRACE)"
+	//
+	// Only one of lineStartPattern or lineEndPattern may be set.
+	//
+	// +kubebuilder:validation:Optional
+	LineStartPattern *string `json:"lineStartPattern,omitempty"`
+
+	// LineEndPattern is a regex pattern that matches the end of a log entry. Use this when it's easier to identify
+	// the end of a log entry than the start. Only one of lineStartPattern or lineEndPattern may be set.
+	//
+	// +kubebuilder:validation:Optional
+	LineEndPattern *string `json:"lineEndPattern,omitempty"`
 }
 
 type EventCollection struct {
