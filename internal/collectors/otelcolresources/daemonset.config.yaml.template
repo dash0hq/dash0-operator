@@ -382,6 +382,10 @@ processors:
     - aks
     - k8snode
     timeout: 2s
+    eks:
+      node_from_env_var: K8S_NODE_NAME
+    k8snode:
+      node_from_env_var: K8S_NODE_NAME
     system:
       resource_attributes:
         host.name:
