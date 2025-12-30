@@ -1617,8 +1617,8 @@ The modifications that are performed for workloads are the following:
 * add an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) named
   `dash0-instrumentation` that will copy the OpenTelemetry SDKs and distributions for supported runtimes to the
   `dash0-instrumentation` volume mount, so they are available in the target container's file system
-* add or modifying environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `LD_PRELOAD`,
-  and several Dash0-specific variables prefixed with `DASH0_`) to all containers of the pod
+* add environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `LD_PRELOAD`, and several
+  Dash0-specific variables prefixed with `DASH0_`) to all containers of the pod
 * add the Dash0 injector (see below for details) as a startup hook (via the `LD_PRELOAD` environment variable) to all
   containers of the pod
 * add the following labels to the workload metadata:
@@ -1640,7 +1640,10 @@ The modifications that are performed for workloads are the following:
    Kubernetes level.
    The more important reason is that runtimes that are not (yet) supported for auto-instrumentation still benefit from
    the improved OpenTelemetry resource attribute detection.
-2. The operator operates sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(NODE_IP):40318`, that is, it tells the workload to
+2. The operator will add neither `OTEL_EXPORTER_OTLP_ENDPOINT` nor `OTEL_EXPORTER_OTLP_PROTOCOL` to containers that
+   already have at least one of those environment variables set.
+   A Kubernetes event of type `Warning` is created for workloads with affected containers.
+3. The operator operates sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(NODE_IP):40318`, that is, it tells the workload to
    send OTLP traffic to the HTTP port of the OpenTelemetry collector pod on the same host, which belongs to the
    OpenTelemetry collector DaemonSet managed by the operator.
    It also sets the protocol accordingly by setting `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`.
@@ -1654,8 +1657,19 @@ The modifications that are performed for workloads are the following:
    connection to the collector's HTTP endpoint, that is, the SDK will not be able to emit telemetry.
    SDKs without support for `http/protobuf` are rather rare, but one prominent example is the Kubernetes
    [ingress-nginx](https://kubernetes.github.io/ingress-nginx/user-guide/third-party-addons/opentelemetry/).
-   The recommended approach is to disable workload instrumentation by the Dash0 operator for these workloads; for
-   example by opting out of auto-instrumentation via a workload label (i.e. `dash0.com/enable: "false"`, see
+   The recommended approach is to either set `OTEL_EXPORTER_OTLP_ENDPOINT` manually to the gRPC port or to disable
+   workload instrumentation by the Dash0 operator for these workloads.
+   To set `OTEL_EXPORTER_OTLP_ENDPOINT` manually, you can add the following entries to the container's `env` section:
+   ```
+   - name: MY_NODE_IP
+     valueFrom:
+       fieldRef:
+         fieldPath: status.hostIP
+   - name: OTEL_EXPORTER_OTLP_ENDPOINT
+     value: http://$(MY_NODE_IP):40317
+   ```
+   To disable workload instrumentation for a workload, you can opt out of auto-instrumentation via a workload label
+   (i.e. `dash0.com/enable: "false"`, see
    [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)),
    or by not installing a Dash0 monitoring resource in the namespace where these workloads are located.
    The workloads can then be monitored by following the setup described in
