@@ -69,7 +69,7 @@ var (
 
 	otelExporterOtlpNoOverwriteMsg = fmt.Sprintf(
 		"Dash0 will not set %s/%s since the container already has at least one of those environment "+
-			"variables set. This container will not be instrumented to send telemetry to Dash0.",
+			"variables set, this container's telemetry will be routed according to the existing settings.",
 		envVarOtelExporterOtlpEndpointName,
 		envVarOtelExporterOtlpProtocolName,
 	)
@@ -102,16 +102,20 @@ var (
 type NoModificationReasonMessage func(actor util.WorkloadModifierActor) string
 
 type ModificationResult struct {
-	HasBeenModified     bool
-	RenderReasonMessage NoModificationReasonMessage
-	SkipLogging         bool
-	IgnoredOnce         bool
-	ImmutableWorkload   bool
+	HasBeenModified                   bool
+	RenderReasonMessage               NoModificationReasonMessage
+	ContainersTotal                   int
+	InstrumentationIssuesPerContainer map[string][]string
+	SkipLogging                       bool
+	IgnoredOnce                       bool
+	ImmutableWorkload                 bool
 }
 
-func NewHasBeenModifiedResult() ModificationResult {
+func NewHasBeenModifiedResult(containersTotal int, instrumentationIssuesPerContainer map[string][]string) ModificationResult {
 	return ModificationResult{
-		HasBeenModified: true,
+		HasBeenModified:                   true,
+		ContainersTotal:                   containersTotal,
+		InstrumentationIssuesPerContainer: instrumentationIssuesPerContainer,
 	}
 }
 
@@ -180,6 +184,11 @@ func newNotModifiedSkipLoggingResult(
 		RenderReasonMessage: reason,
 		SkipLogging:         true,
 	}
+}
+
+type modifyPodSpecResult struct {
+	hasBeenModified                   bool
+	instrumentationIssuesPerContainer map[string][]string
 }
 
 func InstrumentationIsUpToDate(
@@ -263,7 +272,7 @@ func (m *ResourceModifier) ModifyJob(job *batchv1.Job) ModificationResult {
 func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) ModificationResult {
 	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.clusterInstrumentationConfig, m.actor)
 	// adding labels always works and is a modification that requires an update
-	return NewHasBeenModifiedResult()
+	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
 
 func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
@@ -279,11 +288,12 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	if isIneligibleForModificationResult := m.checkEligibleForModification(&pod.Spec); isIneligibleForModificationResult != nil {
 		return *isIneligibleForModificationResult
 	}
-	if hasBeenModified := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta, &pod.ObjectMeta); !hasBeenModified {
+	podSpecResult := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta, &pod.ObjectMeta)
+	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
 	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
-	return NewHasBeenModifiedResult()
+	return NewHasBeenModifiedResult(len(pod.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
 }
 
 func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet) ModificationResult {
@@ -305,29 +315,36 @@ func (m *ResourceModifier) modifyResource(
 	if isIneligibleForModificationResult := m.checkEligibleForModification(&podTemplateSpec.Spec); isIneligibleForModificationResult != nil {
 		return *isIneligibleForModificationResult
 	}
-	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec, workloadMeta, podMeta); !hasBeenModified {
+	podSpecResult := m.modifyPodSpec(&podTemplateSpec.Spec, workloadMeta, podMeta)
+	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
 	util.AddInstrumentationLabels(workloadMeta, true, m.clusterInstrumentationConfig, m.actor)
 	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
-	return NewHasBeenModifiedResult()
+	return NewHasBeenModifiedResult(len(podTemplateSpec.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
 }
 
 func (m *ResourceModifier) modifyPodSpec(
 	podSpec *corev1.PodSpec,
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
-) bool {
+) modifyPodSpecResult {
 	originalSpec := podSpec.DeepCopy()
 	m.addInstrumentationVolume(podSpec)
 	m.addSafeToEvictLocalVolumesAnnotation(podMeta)
 	m.addInitContainer(podSpec)
+	instrumentationIssuesPerContainer := map[string][]string{}
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
-		m.instrumentContainer(container, workloadMeta, podMeta)
+		if issuesForContainer := m.instrumentContainer(container, workloadMeta, podMeta); len(issuesForContainer) > 0 {
+			instrumentationIssuesPerContainer[container.Name] = issuesForContainer
+		}
 	}
 
-	return !reflect.DeepEqual(originalSpec, podSpec)
+	return modifyPodSpecResult{
+		hasBeenModified:                   !reflect.DeepEqual(originalSpec, podSpec),
+		instrumentationIssuesPerContainer: instrumentationIssuesPerContainer,
+	}
 }
 
 func (m *ResourceModifier) addInstrumentationVolume(podSpec *corev1.PodSpec) {
@@ -475,10 +492,10 @@ func (m *ResourceModifier) instrumentContainer(
 	container *corev1.Container,
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
-) {
+) []string {
 	perContainerLogger := m.logger.WithValues("container", container.Name)
 	m.addMount(container)
-	m.addEnvironmentVariables(container, workloadMeta, podMeta, perContainerLogger)
+	return m.addEnvironmentVariables(container, workloadMeta, podMeta, perContainerLogger)
 }
 
 func (m *ResourceModifier) addMount(container *corev1.Container) {
@@ -505,7 +522,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
 	perContainerLogger logr.Logger,
-) {
+) []string {
+	var instrumentationIssues []string
 	if container.Env == nil {
 		container.Env = make([]corev1.EnvVar, 0)
 	}
@@ -523,9 +541,26 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
-	m.addOtelExporterOtlpEnvVars(container, collectorBaseUrl, perContainerLogger)
+	// We currently attempt all environment variable modifications that can potentially fail (OTEL_EXPORTER_OTLP_*,
+	// LD_PRELOAD) sequentially. Another reasonable approach might be to check whether all modifications are possible
+	// ahead of time, and only apply them if all are possible. In practice, the current approach has a few advantages:
+	// - There is a use case for having the operator set DASH0_POD_NAME etc. even if we cannot set OTEL_EXPORTER_OTLP_*,
+	//   for workloads that require a GRPC export (which can be set manually), like nginx, but still want to benefit to
+	//   use the provided DASH0_* variables to derive resource attributes, so it makes sense to set them, independent
+	//   of our ability to set OTEL_EXPORTER_OTLP_*.
+	// - The same goes for setting LD_PRELOAD if OTEL_EXPORTER_OTLP_* cannot be set; this allows routing the telemetry
+	//   to a different local collector, but still have the injector take care of attaching the OTel SDK.
+	// - Finally, setting OTEL_EXPORTER_OTLP_* if LD_PRELOAD cannot be modified is probably not very useful, but it also
+	//   should not have any detrimental effects. Plus, the only reason for not being able to modfiy LD_PRELOAD would be
+	//   if it is set via valueFrom, which probably never happens in practice anyway.
+	instrumentationIssues = m.addOtelExporterOtlpEnvVars(
+		container,
+		collectorBaseUrl,
+		instrumentationIssues,
+		perContainerLogger,
+	)
 
-	m.addOrAppendToLdPreloadEnvVar(container, perContainerLogger)
+	instrumentationIssues = m.addOrAppendToLdPreloadEnvVar(container, instrumentationIssues, perContainerLogger)
 
 	m.addOTelPropagatorsEnvVar(container)
 
@@ -679,6 +714,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 			},
 		)
 	}
+
+	return instrumentationIssues
 }
 
 func (m *ResourceModifier) prependDash0NodeIp(container *corev1.Container) {
@@ -704,8 +741,9 @@ func (m *ResourceModifier) prependDash0NodeIp(container *corev1.Container) {
 func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 	container *corev1.Container,
 	otelExporterOtlpEndpointValue string,
+	instrumentationIssues []string,
 	perContainerLogger logr.Logger,
-) {
+) []string {
 	otelExporterOtlpEndpointIsSet, otelExporterOtlpEndpointIdx :=
 		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpEndpointName)
 	otelExporterOtlpProtocolIsSet, otelExporterOtlpProtocolIdx :=
@@ -715,9 +753,8 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 		envVarHasValue(container, otelExporterOtlpEndpointIdx, otelExporterOtlpEndpointValue) &&
 		otelExporterOtlpProtocolIsSet &&
 		envVarHasValue(container, otelExporterOtlpProtocolIdx, defaultOtelExporterOtlpProtocol) {
-		// Both env vars are already set and have the value that we would set anyway. No action required, we also do not
-		// create a telemetry collection warning.
-		return
+		// Both env vars are already set and have the value that we would set anyway. No action required.
+		return instrumentationIssues
 	}
 
 	if otelExporterOtlpEndpointIsSet &&
@@ -725,8 +762,10 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 		!otelExporterOtlpProtocolIsSet {
 		// The container only has OTEL_EXPORTER_OTLP_ENDPOINT=http://$(DASH0_NODE_IP):40318 set, but
 		// OTEL_EXPORTER_OTLP_PROTOCOL is missing. It is safe to add OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf.
-		// Note: In the reverse case (only OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf, but no
-		// OTEL_EXPORTER_OTLP_ENDPOINT), we will not assume that it is safe to instrument this container.
+		// Note: In the reverse case (only OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf set, but no
+		// OTEL_EXPORTER_OTLP_ENDPOINT), we will not assume that it is safe to instrument this container. This would be
+		// a very unusual scenario (why would you set OTEL_EXPORTER_OTLP_PROTOCOL without _ENDPOINT?), and sine we don't
+		// know what is going in, we leave this container alone.
 		addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
@@ -734,7 +773,7 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 				Value: defaultOtelExporterOtlpProtocol,
 			},
 		)
-		return
+		return instrumentationIssues
 	}
 
 	if !otelExporterOtlpEndpointIsSet && !otelExporterOtlpProtocolIsSet {
@@ -753,7 +792,7 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 				Value: defaultOtelExporterOtlpProtocol,
 			},
 		)
-		return
+		return instrumentationIssues
 	}
 
 	// The two OTEL_EXPORTER_OTLP_* (or at least one of them) are set to values that are different from what we would
@@ -766,12 +805,15 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 	// * It will also break for OTel SDKs that only support the GRPC exporter, but not HTTP (Python & nginx for
 	//   example).
 	perContainerLogger.Info(otelExporterOtlpNoOverwriteMsg)
+	instrumentationIssues = append(instrumentationIssues, otelExporterOtlpNoOverwriteMsg)
+	return instrumentationIssues
 }
 
 func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 	container *corev1.Container,
+	instrumentationIssues []string,
 	perContainerLogger logr.Logger,
-) {
+) []string {
 	idx := findEnvVarIdx(container, envVarLdPreloadName)
 	if idx < 0 {
 		container.Env = append(container.Env, corev1.EnvVar{
@@ -782,12 +824,13 @@ func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 		// Note: This needs to be a pointer to the env var, otherwise updates would only be local to this function.
 		envVar := &container.Env[idx]
 		if envVar.Value == "" && envVar.ValueFrom != nil {
-			perContainerLogger.Info(
-				fmt.Sprintf(
-					"Dash0 cannot prepend anything to the environment variable %s as it is specified via "+
-						"ValueFrom. This container will not be instrumented.",
-					envVarLdPreloadName))
-			return
+			msg := fmt.Sprintf(
+				"Dash0 cannot prepend anything to the environment variable %s as it is specified via "+
+					"ValueFrom, this container will not be instrumented to send telemetry to Dash0.",
+				envVarLdPreloadName)
+			perContainerLogger.Info(msg)
+			instrumentationIssues = append(instrumentationIssues, msg)
+			return instrumentationIssues
 		}
 
 		if !strings.Contains(envVar.Value, envVarLdPreloadValue) {
@@ -798,6 +841,8 @@ func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 			}
 		}
 	}
+
+	return instrumentationIssues
 }
 
 func (m *ResourceModifier) addOTelPropagatorsEnvVar(container *corev1.Container) {
@@ -1036,7 +1081,7 @@ func (m *ResourceModifier) RevertDeployment(deployment *appsv1.Deployment) Modif
 func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) ModificationResult {
 	util.RemoveInstrumentationLabels(&job.ObjectMeta)
 	// removing labels always works and is a modification that requires an update
-	return NewHasBeenModifiedResult()
+	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
 
 func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) ModificationResult {
@@ -1067,17 +1112,18 @@ func (m *ResourceModifier) revertResource(
 		// workload has never been instrumented successfully, only remove labels
 		util.RemoveInstrumentationLabels(workloadMeta)
 		util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
-		return NewHasBeenModifiedResult()
+		return NewHasBeenModifiedResult(len(podTemplateSpec.Spec.Containers), nil)
 	}
-	if hasBeenModified := m.revertPodSpec(&podTemplateSpec.Spec, podMeta); !hasBeenModified {
+	podSpecResult := m.revertPodSpec(&podTemplateSpec.Spec, podMeta)
+	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
 	util.RemoveInstrumentationLabels(workloadMeta)
 	util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
-	return NewHasBeenModifiedResult()
+	return NewHasBeenModifiedResult(len(podTemplateSpec.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
 }
 
-func (m *ResourceModifier) revertPodSpec(podSpec *corev1.PodSpec, podMeta *metav1.ObjectMeta) bool {
+func (m *ResourceModifier) revertPodSpec(podSpec *corev1.PodSpec, podMeta *metav1.ObjectMeta) modifyPodSpecResult {
 	originalSpec := podSpec.DeepCopy()
 	m.removeInstrumentationVolume(podSpec)
 	m.removeSafeToEvictLocalVolumesAnnotation(podMeta)
@@ -1087,7 +1133,11 @@ func (m *ResourceModifier) revertPodSpec(podSpec *corev1.PodSpec, podMeta *metav
 		m.uninstrumentContainer(container)
 	}
 
-	return !reflect.DeepEqual(originalSpec, podSpec)
+	return modifyPodSpecResult{
+		hasBeenModified: !reflect.DeepEqual(originalSpec, podSpec),
+		// reverting a container can currently not create any instrumentation issues
+		instrumentationIssuesPerContainer: nil,
+	}
 }
 
 func (m *ResourceModifier) removeInstrumentationVolume(podSpec *corev1.PodSpec) {

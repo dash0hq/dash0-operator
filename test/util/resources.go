@@ -1185,7 +1185,7 @@ func addInstrumentationLabels(meta *metav1.ObjectMeta, successful bool) {
 }
 
 func addPodAnnotations(meta *metav1.ObjectMeta) {
-	AddAnnotation(meta, safeToEviceLocalVolumesAnnotationName, "dash0-instrumentation")
+	AddAnnotation(meta, safeToEvictLocalVolumesAnnotationName, "dash0-instrumentation")
 }
 
 func AddOptOutLabel(meta *metav1.ObjectMeta) {

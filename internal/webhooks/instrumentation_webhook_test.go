@@ -390,8 +390,11 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									Value: "value",
 								},
 								"LD_PRELOAD": {
-									// The operator does not support injecting into containers that already have LD_PRELOAD set via a
-									// ValueFrom clause, thus this env var will not be modified.
+									// The operator does not support injecting into containers that already have
+									// LD_PRELOAD set via a ValueFrom clause, thus this env var will not be modified;
+									// instead this will trigger an instrumentation issue for this container.
+									// However, this is _very_ unlikely, since none of the available downstream API
+									// snippets would provide a reasonable LD_PRELOAD variable.
 									ValueFrom: "metadata.namespace",
 								},
 								"DASH0_NODE_IP": {
@@ -461,7 +464,18 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				},
 					VerifyNoManagedFields,
 				)
-				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+
+				VerifyEvent(
+					ctx,
+					clientset,
+					TestNamespaceName,
+					name,
+					util.ReasonPartiallyUnsuccessfulInstrumentation,
+					"Dash0 instrumentation of this workload by the webhook has been partially unsuccessful, 1 out of "+
+						"2 containers have instrumentation issues. test-container-0: Dash0 cannot prepend anything to "+
+						"the environment variable LD_PRELOAD as it is specified via ValueFrom, this container will "+
+						"not be instrumented to send telemetry to Dash0.",
+				)
 			})
 		})
 

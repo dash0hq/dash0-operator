@@ -860,9 +860,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		)
 
 		type addLdPreloadTest struct {
-			value       string
-			valueFrom   string
-			expectation EnvVarExpectation
+			value                         string
+			valueFrom                     string
+			ldPreloadExpectation          EnvVarExpectation
+			expectedInstrumentationIssues []string
 		}
 
 		DescribeTable("should add the Dash0 injector to LD_PRELOAD",
@@ -887,61 +888,66 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					)
 				}
 
-				workloadModifier.addOrAppendToLdPreloadEnvVar(container, logger)
+				instrumentationIssues := workloadModifier.addOrAppendToLdPreloadEnvVar(container, nil, logger)
 
-				VerifyEnvVar(testConfig.expectation, container.Env, envVarLdPreloadName, "")
+				VerifyEnvVar(testConfig.ldPreloadExpectation, container.Env, envVarLdPreloadName, "")
+				Expect(instrumentationIssues).To(Equal(testConfig.expectedInstrumentationIssues))
 			},
 			Entry("should add LD_PRELOAD with only the Dash0 injector if it does not exist", addLdPreloadTest{
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue,
 				},
 			}),
 			Entry("should add LD_PRELOAD with only the Dash0 injector the env var exists but is empty", addLdPreloadTest{
 				value: "",
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue,
 				},
 			}),
 			Entry("should add LD_PRELOAD with only the Dash0 injector the env var exists but is only whitespace", addLdPreloadTest{
 				value: "   ",
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue,
 				},
 			}),
 			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector as its only element", addLdPreloadTest{
 				value: envVarLdPreloadValue,
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue,
 				},
 			}),
 			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector as its first element", addLdPreloadTest{
 				value: envVarLdPreloadValue + " one.so two.so",
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue + " one.so two.so",
 				},
 			}),
 			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector in the middle", addLdPreloadTest{
 				value: "one.so " + envVarLdPreloadValue + " two.so",
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					Value: "one.so " + envVarLdPreloadValue + " two.so",
 				},
 			}),
 			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector at the end", addLdPreloadTest{
 				value: "one.so two.so " + envVarLdPreloadValue,
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					Value: "one.so two.so " + envVarLdPreloadValue,
 				},
 			}),
 			Entry("should prepend the Dash0 injector to LD_PRELOAD if there are other libraries", addLdPreloadTest{
 				value: "one.so",
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue + " one.so",
 				},
 			}),
-			Entry("should do nothing if LD_PRELOAD exists with ValueFrom", addLdPreloadTest{
+			Entry("should create an instrumentation issue if LD_PRELOAD exists with ValueFrom", addLdPreloadTest{
 				valueFrom: "whatever",
-				expectation: EnvVarExpectation{
+				ldPreloadExpectation: EnvVarExpectation{
 					ValueFrom: "whatever",
+				},
+				expectedInstrumentationIssues: []string{
+					"Dash0 cannot prepend anything to the environment variable LD_PRELOAD as it is specified via " +
+						"ValueFrom, this container will not be instrumented to send telemetry to Dash0.",
 				},
 			}),
 		)
@@ -1286,9 +1292,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		)
 
 		type otelExporterEnvVarsTest struct {
-			existingEnvVars    []corev1.EnvVar
-			expectedEnvVars    map[string]*EnvVarExpectation
-			expectedLogMessage string
+			existingEnvVars              []corev1.EnvVar
+			expectedEnvVars              map[string]*EnvVarExpectation
+			expectedInstrumentationIssue string
+			expectedLogMessage           string
 		}
 
 		DescribeTable("should add (but not replace) OTEL_EXPORTER_OTLP_ENDPOINT/OTEL_EXPORTER_OTLP_PROTOCOL",
@@ -1299,7 +1306,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}
 
 				capturingLogger, capturingLogSink := NewCapturingLogger()
-				workloadModifier.addEnvironmentVariables(
+				instrumentationIssues := workloadModifier.addEnvironmentVariables(
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
@@ -1308,6 +1315,13 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 				envVars := container.Env
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
+				if testConfig.expectedInstrumentationIssue == "" {
+					Expect(instrumentationIssues).To(BeNil())
+				} else {
+					Expect(instrumentationIssues).To(HaveLen(1))
+					Expect(instrumentationIssues).To(ContainElement(testConfig.expectedInstrumentationIssue))
+				}
+
 				if testConfig.expectedLogMessage == "" {
 					capturingLogSink.HasNoLogMessages(Default)
 				} else {
@@ -1343,7 +1357,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelExporterOtlpEndpointName: {Value: "http://some-endpoint.tld"},
 					envVarOtelExporterOtlpProtocolName: nil,
 				},
-				expectedLogMessage: otelExporterOtlpNoOverwriteMsg,
+				expectedInstrumentationIssue: otelExporterOtlpNoOverwriteMsg,
+				expectedLogMessage:           otelExporterOtlpNoOverwriteMsg,
 			}),
 			Entry("should not overwrite OTEL_EXPORTER_OTLP_* when OTEL_EXPORTER_OTLP_PROTOCOL is already set", otelExporterEnvVarsTest{
 				existingEnvVars: []corev1.EnvVar{{
@@ -1354,7 +1369,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelExporterOtlpEndpointName: nil,
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolGrpc},
 				},
-				expectedLogMessage: otelExporterOtlpNoOverwriteMsg,
+				expectedInstrumentationIssue: otelExporterOtlpNoOverwriteMsg,
+				expectedLogMessage:           otelExporterOtlpNoOverwriteMsg,
 			}),
 			Entry("should not overwrite OTEL_EXPORTER_OTLP_* when both OTEL_EXPORTER_OTLP_* variables are already set", otelExporterEnvVarsTest{
 				existingEnvVars: []corev1.EnvVar{
@@ -1370,7 +1386,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelExporterOtlpEndpointName: {Value: "http://some-endpoint.tld"},
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolGrpc},
 				},
-				expectedLogMessage: otelExporterOtlpNoOverwriteMsg,
+				expectedInstrumentationIssue: otelExporterOtlpNoOverwriteMsg,
+				expectedLogMessage:           otelExporterOtlpNoOverwriteMsg,
 			}),
 			Entry("should not log an issue if both OTEL_EXPORTER_OTLP_* variables are already set correctly", otelExporterEnvVarsTest{
 				existingEnvVars: []corev1.EnvVar{
@@ -1398,6 +1415,23 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
 				},
 			}),
+			Entry("should not add OTEL_EXPORTER_OTLP_ENDPOINT but log an issue if only OTEL_EXPORTER_OTLP_PROTOCOL is set correctly (endpoint empty)", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: " ",
+					},
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolHttpProtobuf,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: " "},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+				expectedInstrumentationIssue: otelExporterOtlpNoOverwriteMsg,
+				expectedLogMessage:           otelExporterOtlpNoOverwriteMsg,
+			}),
 			Entry("should not add OTEL_EXPORTER_OTLP_ENDPOINT but log an issue if only OTEL_EXPORTER_OTLP_PROTOCOL is set correctly", otelExporterEnvVarsTest{
 				existingEnvVars: []corev1.EnvVar{
 					{
@@ -1408,7 +1442,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelExporterOtlpEndpointName: nil,
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
 				},
-				expectedLogMessage: otelExporterOtlpNoOverwriteMsg,
+				expectedInstrumentationIssue: otelExporterOtlpNoOverwriteMsg,
+				expectedLogMessage:           otelExporterOtlpNoOverwriteMsg,
 			}),
 		)
 
@@ -1810,9 +1845,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container.Env = testConfig.existingEnvVars
 				}
 
-				// addEnvironmentVariables/handleOTelPropagatorsEnvVar and
-				// otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer are called at different points in time,
-				// but they deliberately share the exact same logic. We opportunistically test both methods here.
+				// addEnvironmentVariables/addOTelPropagatorsEnvVar and
+				// otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer are called at different points in time, but
+				// they deliberately share the exact same logic. We opportunistically test both methods here.
 				preInstrumentationCheckResult := otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer([]corev1.Container{
 					*container,
 				}, testConfig.namespaceInstrumentationConfig)

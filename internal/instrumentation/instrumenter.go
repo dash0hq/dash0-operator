@@ -690,8 +690,14 @@ func (i *Instrumenter) postProcessInstrumentation(
 		util.QueueNoInstrumentationNecessaryEvent(i.Recorder, resource, modificationResult.RenderReasonMessage(actor))
 		return false
 	} else {
-		logger.Info("The controller has added Dash0 instrumentation to the workload.")
-		util.QueueSuccessfulInstrumentationEvent(i.Recorder, resource, actor)
+		util.HandlePotentiallySuccessfulInstrumentationEvent(
+			i.Recorder,
+			resource,
+			actor,
+			modificationResult.ContainersTotal,
+			modificationResult.InstrumentationIssuesPerContainer,
+			logger,
+		)
 		return true
 	}
 }
@@ -738,7 +744,7 @@ func (i *Instrumenter) UninstrumentWorkloadsIfAvailable(
 		}
 	} else {
 		logger.Info("Removing the Dash0 monitoring resource and running finalizers, but Dash0 is not marked as available." +
-			" Dash0 Instrumentation will not be removed from workloads..")
+			" Dash0 instrumentation will not be removed from workloads.")
 	}
 	return nil
 }
