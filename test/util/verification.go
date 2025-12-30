@@ -53,7 +53,7 @@ type VerifyOpts struct {
 const (
 	eventTimeout = 1 * time.Second
 
-	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
+	safeToEvictLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
 )
 
 var (
@@ -405,7 +405,7 @@ func verifyLabelsAfterSuccessfulModification(meta metav1.ObjectMeta) {
 }
 
 func verifyPodAnnotationsAfterSuccessfulModification(podMeta metav1.ObjectMeta) {
-	Expect(podMeta.Annotations[safeToEviceLocalVolumesAnnotationName]).To(Equal("dash0-instrumentation"))
+	Expect(podMeta.Annotations[safeToEvictLocalVolumesAnnotationName]).To(Equal("dash0-instrumentation"))
 }
 
 func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
@@ -434,7 +434,7 @@ func verifyNoDash0PodAnnotations(podMeta metav1.ObjectMeta) {
 }
 
 func verifyNoDash0PodAnnotationsEventually(g Gomega, podMeta metav1.ObjectMeta) {
-	g.Expect(podMeta.Annotations[safeToEviceLocalVolumesAnnotationName]).
+	g.Expect(podMeta.Annotations[safeToEvictLocalVolumesAnnotationName]).
 		NotTo(ContainSubstring("dash0-instrumentation"))
 }
 
@@ -506,7 +506,7 @@ func VerifySuccessfulInstrumentationEvent(
 	resourceName string,
 	eventSource string,
 ) *corev1.Event {
-	return verifyEvent(
+	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -523,7 +523,7 @@ func VerifyInstrumentationViaHigherOrderWorkloadEvent(
 	resourceName string,
 	eventSource string,
 ) *corev1.Event {
-	return verifyEvent(
+	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -543,7 +543,7 @@ func VerifyFailedInstrumentationEvent(
 	resourceName string,
 	message string,
 ) *corev1.Event {
-	return verifyEvent(
+	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -560,7 +560,7 @@ func VerifySuccessfulUninstrumentationEvent(
 	resourceName string,
 	eventSource string,
 ) *corev1.Event {
-	return verifyEvent(
+	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -596,7 +596,7 @@ func VerifyFailedUninstrumentationEvent(
 	resourceName string,
 	message string,
 ) *corev1.Event {
-	return verifyEvent(
+	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -606,7 +606,7 @@ func VerifyFailedUninstrumentationEvent(
 	)
 }
 
-func verifyEvent(
+func VerifyEvent(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
 	namespace string,

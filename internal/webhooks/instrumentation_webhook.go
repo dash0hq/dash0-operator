@@ -548,7 +548,7 @@ func (h *InstrumentationWebhookHandler) preProcess(
 ) (admission.Response, bool) {
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, resource); err != nil {
 		wrappedErr := fmt.Errorf("cannot parse resource into a %s: %w", gvkLabel, err)
-		util.QueueFailedInstrumentationEvent(h.Recorder, resource, "webhook", wrappedErr)
+		util.QueueFailedInstrumentationEvent(h.Recorder, resource, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger), true
 	}
 	return admission.Response{}, false
@@ -575,7 +575,7 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	marshalled, err := json.Marshal(resource)
 	if err != nil {
 		wrappedErr := fmt.Errorf("error when marshalling modfied resource to JSON: %w", err)
-		util.QueueFailedInstrumentationEvent(h.Recorder, resource, "webhook", wrappedErr)
+		util.QueueFailedInstrumentationEvent(h.Recorder, resource, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 
@@ -587,8 +587,14 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 		return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 	}
 
-	logger.Info("The webhook has added Dash0 instrumentation to the workload.")
-	util.QueueSuccessfulInstrumentationEvent(h.Recorder, resource, "webhook")
+	util.HandlePotentiallySuccessfulInstrumentationEvent(
+		h.Recorder,
+		resource,
+		actor,
+		modificationResult.ContainersTotal,
+		modificationResult.InstrumentationIssuesPerContainer,
+		logger,
+	)
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 

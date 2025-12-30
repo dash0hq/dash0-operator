@@ -1,2 +1,3 @@
 certificate-and-issuer.yaml
 helm-values.yaml
+ta-issuers-and-cert.yaml
