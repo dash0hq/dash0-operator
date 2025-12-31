@@ -104,14 +104,14 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				namespace string,
 				name string,
 			) *corev1.Pod {
-				pod := CreateBasicPod(ctx, k8sClient, namespace, name)
+				pod := BasicPod(namespace, name)
 				pod.ObjectMeta.OwnerReferences = []metav1.OwnerReference{{
 					Name:       "strimzi-podset-name",
 					APIVersion: "core.strimzi.io/v1beta2",
 					Kind:       "StrimziPodSet",
 					UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
 				}}
-				UpdateWorkload(ctx, k8sClient, pod)
+				CreateWorkload(ctx, k8sClient, pod)
 				return pod
 			}),
 			GetFn: WrapPodFnAsTestableWorkload(GetPod),
@@ -131,14 +131,14 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				k8sClient client.Client,
 				namespace string,
 				name string) *appsv1.ReplicaSet {
-				rs := CreateBasicReplicaSet(ctx, k8sClient, namespace, name)
+				rs := BasicReplicaSet(namespace, name)
 				rs.OwnerReferences = []metav1.OwnerReference{{
 					Name:       "owner-name",
 					APIVersion: "api/v1beta2",
 					Kind:       "Kind",
 					UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
 				}}
-				UpdateWorkload(ctx, k8sClient, rs)
+				CreateWorkload(ctx, k8sClient, rs)
 				return rs
 			}),
 			GetFn: WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
@@ -390,8 +390,11 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									Value: "value",
 								},
 								"LD_PRELOAD": {
-									// The operator does not support injecting into containers that already have LD_PRELOAD set via a
-									// ValueFrom clause, thus this env var will not be modified.
+									// The operator does not support injecting into containers that already have
+									// LD_PRELOAD set via a ValueFrom clause, thus this env var will not be modified;
+									// instead this will trigger an instrumentation issue for this container.
+									// However, this is _very_ unlikely, since none of the available downstream API
+									// snippets would provide a reasonable LD_PRELOAD variable.
 									ValueFrom: "metadata.namespace",
 								},
 								"DASH0_NODE_IP": {
@@ -461,7 +464,18 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				},
 					VerifyNoManagedFields,
 				)
-				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+
+				VerifyEvent(
+					ctx,
+					clientset,
+					TestNamespaceName,
+					name,
+					util.ReasonPartiallyUnsuccessfulInstrumentation,
+					"Dash0 instrumentation of this workload by the webhook has been partially unsuccessful, 1 out of "+
+						"2 containers have instrumentation issues. test-container-0: Dash0 cannot prepend anything to "+
+						"the environment variable LD_PRELOAD as it is specified via ValueFrom, this container will "+
+						"not be instrumented to send telemetry to Dash0.",
+				)
 			})
 		})
 
@@ -470,7 +484,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			workload := BasicDeployment(TestNamespaceName, name)
 			workload.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{{
 				Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-				Value: "http://will-be-replaced.tld:4317",
+				Value: "http://$(DASH0_NODE_IP):40318",
 			}}
 			workload = CreateWorkload(ctx, k8sClient, workload).(*appsv1.Deployment)
 			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
@@ -508,7 +522,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			workload.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
 				{
 					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-					Value: "http://will-be-replaced.tld:4317",
+					Value: "http://$(DASH0_NODE_IP):40318",
 				},
 				{
 					Name:  util.EnvVarDash0NodeIp,

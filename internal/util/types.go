@@ -16,19 +16,23 @@ import (
 type Reason string
 
 const (
-	ReasonSuccessfulInstrumentation    Reason = "SuccessfulInstrumentation"
-	ReasonNoInstrumentationNecessary   Reason = "AlreadyInstrumented"
-	ReasonFailedInstrumentation        Reason = "FailedInstrumentation"
-	ReasonSuccessfulUninstrumentation  Reason = "SuccessfulUninstrumentation"
-	ReasonNoUninstrumentationNecessary Reason = "AlreadyNotInstrumented"
-	ReasonFailedUninstrumentation      Reason = "FailedUninstrumentation"
+	ReasonSuccessfulInstrumentation              Reason = "SuccessfulInstrumentation"
+	ReasonPartiallyUnsuccessfulInstrumentation   Reason = "PartiallyUnsuccessfulInstrumentation"
+	ReasonNoInstrumentationNecessary             Reason = "AlreadyInstrumented"
+	ReasonFailedInstrumentation                  Reason = "FailedInstrumentation"
+	ReasonSuccessfulUninstrumentation            Reason = "SuccessfulUninstrumentation"
+	ReasonPartiallyUnsuccessfulUninstrumentation Reason = "PartiallyUnsuccessfulUninstrumentation"
+	ReasonNoUninstrumentationNecessary           Reason = "AlreadyNotInstrumented"
+	ReasonFailedUninstrumentation                Reason = "FailedUninstrumentation"
 )
 
 var AllEvents = []Reason{
 	ReasonSuccessfulInstrumentation,
+	ReasonPartiallyUnsuccessfulInstrumentation,
 	ReasonNoInstrumentationNecessary,
 	ReasonFailedInstrumentation,
 	ReasonSuccessfulUninstrumentation,
+	ReasonPartiallyUnsuccessfulUninstrumentation,
 	ReasonNoUninstrumentationNecessary,
 	ReasonFailedUninstrumentation,
 }

@@ -280,6 +280,52 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						true,
 					)
 				})
+
+				It("should revert/repair invalid workload changes", func() {
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+					// Verify that it is stil possible to make changes to the workload that would (as a side effect)
+					// make the workload invalid in combination with our workload modifications. This ensures that we
+					// are not blocking legitimate modifications accidentally.
+					By("attempt to remove the dash0-instrumentation volume")
+					jsonPatch := `
+[{
+  "op": "replace",
+  "path": "/spec/template/spec/volumes",
+  "value": null
+}]
+`
+					Expect(
+						runAndIgnoreOutput(
+							exec.Command(
+								"kubectl",
+								"patch",
+								"--namespace",
+								applicationUnderTestNamespace,
+								workloadTypeDeployment.workloadTypeString,
+								workloadName(runtimeTypeNodeJs, workloadTypeDeployment),
+								"--type=json",
+								"-p",
+								jsonPatch,
+							))).To(Succeed())
+
+					// Verify the dash0-instrumentation volume is actually still there, that is, that the webhook brings
+					// the workload back into a valid state by applying the (otherwise idempotent) workload
+					// modifications again.
+					volumeName, err := run(
+						exec.Command(
+							"kubectl",
+							"get",
+							"--namespace",
+							applicationUnderTestNamespace,
+							workloadTypeDeployment.workloadTypeString,
+							workloadName(runtimeTypeNodeJs, workloadTypeDeployment),
+							"-o=jsonpath='{.spec.template.spec.volumes[0].name}'",
+						))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(volumeName).To(Equal("'dash0-instrumentation'"))
+				})
 			})
 
 			Describe("self-monitoring log collection", func() {
