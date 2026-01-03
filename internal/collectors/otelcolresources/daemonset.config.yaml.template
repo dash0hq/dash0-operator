@@ -34,6 +34,34 @@ connectors:
   forward/metrics: {}
   forward/logs: {}
 
+  routing/traces:
+{{- if .ExportersDefault }}
+    default_pipelines: [traces/export/_default]
+{{- end }}
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "routed-namespace"
+        pipelines: [traces/export/routed-namespace]
+  routing/metrics:
+{{- if .ExportersDefault }}
+    default_pipelines: [metrics/export/_default]
+{{- end }}
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "routed-namespace"
+        pipelines: [metrics/export/routed-namespace]
+  routing/logs:
+{{- if .ExportersDefault }}
+    default_pipelines: [logs/export/_default]
+{{- end }}
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "routed-namespace"
+        pipelines: [logs/export/routed-namespace]
+
 
 receivers:
   otlp:
@@ -659,7 +687,24 @@ exporters:
 {{ else if .DevelopmentMode }}
   debug: {}
 {{- end }}
-{{- range $i, $exporter := .Exporters }}
+{{- range $i, $exporter := .ExportersDefault }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+{{- if $exporter.Insecure }}
+    tls:
+      insecure: true
+{{ end }}
+{{- if $exporter.Headers }}
+    headers:
+{{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
+{{- end }}
+{{- end }}
+{{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
+{{- end }}
+{{- end }}
+{{- range $i, $exporter := .ExportersRouted }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
 {{- if $exporter.Insecure }}
@@ -689,7 +734,8 @@ service:
   - pprof
   {{- end }}
   pipelines:
-    traces/downstream:
+
+    traces:
       receivers:
       - otlp
       processors:
@@ -708,10 +754,29 @@ service:
       {{- end }}
       - transform/resources
       exporters:
+      - routing/traces
+
+    {{- if .ExportersDefault }}
+    traces/export/_default:
+      receivers:
+       - routing/traces
+      exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
       {{- end }}
-      {{- range $i, $exporter := .Exporters }}
+      {{- range $i, $exporter := .ExportersDefault }}
+      - {{ $exporter.Name }}
+      {{- end }}
+    {{- end }}
+
+    traces/export/routed-namespace:
+      receivers:
+       - routing/traces
+      exporters:
+      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+      - debug
+      {{- end }}
+      {{- range $i, $exporter := .ExportersRouted }}
       - {{ $exporter.Name }}
       {{- end }}
 
@@ -740,7 +805,7 @@ service:
       - forward/metrics
 {{- end }}
 
-    metrics/downstream:
+    metrics:
       receivers:
       - forward/metrics
       processors:
@@ -761,10 +826,29 @@ service:
       {{- end }}
       - transform/resources
       exporters:
+      - routing/metrics
+
+    {{- if .ExportersDefault }}
+    metrics/export/_default:
+      receivers:
+       - routing/metrics
+      exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
       {{- end }}
-      {{- range $i, $exporter := .Exporters }}
+      {{- range $i, $exporter := .ExportersDefault }}
+      - {{ $exporter.Name }}
+      {{- end }}
+    {{- end }}
+
+    metrics/export/routed-namespace:
+      receivers:
+       - routing/metrics
+      exporters:
+      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+      - debug
+      {{- end }}
+      {{- range $i, $exporter := .ExportersRouted }}
       - {{ $exporter.Name }}
       {{- end }}
 
@@ -786,7 +870,7 @@ service:
       - forward/logs
 {{- end }}
 
-    logs/downstream:
+    logs:
       receivers:
       - forward/logs
       processors:
@@ -807,10 +891,29 @@ service:
       {{- end }}
       - transform/resources
       exporters:
+      - routing/logs
+
+    {{- if .ExportersDefault }}
+    logs/export/_default:
+      receivers:
+       - routing/logs
+      exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
       {{- end }}
-      {{- range $i, $exporter := .Exporters }}
+      {{- range $i, $exporter := .ExportersDefault }}
+      - {{ $exporter.Name }}
+      {{- end }}
+    {{- end }}
+
+    logs/export/routed-namespace:
+      receivers:
+       - routing/logs
+      exporters:
+      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+      - debug
+      {{- end }}
+      {{- range $i, $exporter := .ExportersRouted }}
       - {{ $exporter.Name }}
       {{- end }}
 

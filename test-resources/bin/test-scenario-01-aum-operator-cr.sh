@@ -38,6 +38,7 @@ ensure_namespace_exists "${target_namespace}"
 if [[ "$additional_namespaces" = "true" ]]; then
   ensure_namespace_exists test-namespace-2
   ensure_namespace_exists test-namespace-3
+  ensure_namespace_exists routed-namespace
 fi
 finish_step
 
