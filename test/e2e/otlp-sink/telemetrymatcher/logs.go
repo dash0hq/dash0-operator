@@ -6,6 +6,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -89,10 +90,6 @@ func extractMatchingLogRecords(
 			scopeLogRecord := resourceLogRecord.ScopeLogs().At(j)
 			for k := 0; k < scopeLogRecord.LogRecords().Len(); k++ {
 				logRecord := scopeLogRecord.LogRecords().At(k)
-				if !logRecord.Timestamp().AsTime().After(timestampLowerBound) {
-					// This log record is too old, it is probably from a previously running test case, ignore it.
-					continue
-				}
 				logRecordMatchResult := newObjectMatchResult[plog.ResourceLogs, plog.LogRecord](
 					logRecord.Body().AsString(),
 					resourceLogRecord,
@@ -100,6 +97,19 @@ func extractMatchingLogRecords(
 					logRecord,
 				)
 				logRecordMatchFn(logRecord, &logRecordMatchResult)
+				if logRecord.Timestamp().AsTime().Before(timestampLowerBound) {
+					if logRecordMatchResult.isMatch() {
+						log.Printf(
+							"Ignoring matching log record because of timestamp: lower bound: %s (%d) vs. log record: %s (%d)",
+							timestampLowerBound.String(),
+							timestampLowerBound.UnixNano(),
+							logRecord.Timestamp().String(),
+							logRecord.Timestamp().AsTime().UnixNano(),
+						)
+					}
+					// This log record is too old, it is probably from a previously running test case, ignore it.
+					continue
+				}
 				allMatchResults.addResultForObject(logRecordMatchResult)
 			}
 		}
@@ -335,7 +345,7 @@ func logBodyEqualsMatcher(
 		} else {
 			matchResult.addFailedAssertion(
 				logBodyKey,
-				fmt.Sprintf("expected %s but it was %s", expectedLogBody, logBody),
+				fmt.Sprintf("expected \"%s\" but it was \"%s\"", expectedLogBody, logBody),
 			)
 		}
 	}
@@ -350,7 +360,11 @@ func logBodyContainsMatcher(
 		} else {
 			matchResult.addFailedAssertion(
 				logBodyKey,
-				fmt.Sprintf("expected a string containing %s but it was %s", expectedLogBodyPart, logRecord.Body().AsString()),
+				fmt.Sprintf(
+					"expected a string containing \"%s\" but it was \"%s\"",
+					expectedLogBodyPart,
+					logRecord.Body().AsString(),
+				),
 			)
 		}
 	}
@@ -367,7 +381,11 @@ func kubernetesEventsMatcher(
 		} else {
 			matchResult.addFailedAssertion(
 				logBodyKey,
-				fmt.Sprintf("expected a string containing %s but it was %s", expectedLogBodyPart, logRecord.Body().AsString()),
+				fmt.Sprintf(
+					"expected a string containing \"%s\" but it was \"%s\"",
+					expectedLogBodyPart,
+					logRecord.Body().AsString(),
+				),
 			)
 		}
 		eventReason, hasReason := logRecord.Attributes().Get(eventReasonKey)
@@ -377,14 +395,14 @@ func kubernetesEventsMatcher(
 			} else {
 				matchResult.addFailedAssertion(
 					eventReasonKey,
-					fmt.Sprintf("expected %s but it was %s", expectedEventReason, eventReason.Str()),
+					fmt.Sprintf("expected \"%s\" but it was \"%s\"", expectedEventReason, eventReason.Str()),
 				)
 			}
 		} else {
 			matchResult.addFailedAssertion(
 				eventReasonKey,
 				fmt.Sprintf(
-					"expected %s but the log record had no such atttribute",
+					"expected \"%s\" but the log record had no such atttribute",
 					expectedEventReason,
 				),
 			)
@@ -397,14 +415,14 @@ func kubernetesEventsMatcher(
 			} else {
 				matchResult.addFailedAssertion(
 					eventNameKey,
-					fmt.Sprintf("expected a string containing %s but it was %s", expectedEventNameContains, eventName.Str()),
+					fmt.Sprintf("expected a string containing \"%s\" but it was \"%s\"", expectedEventNameContains, eventName.Str()),
 				)
 			}
 		} else {
 			matchResult.addFailedAssertion(
 				eventNameKey,
 				fmt.Sprintf(
-					"expected a string containing %s but the log record had no such atttribute",
+					"expected a string containing \"%s\" but the log record had no such atttribute",
 					expectedEventNameContains,
 				),
 			)

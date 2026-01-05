@@ -6,6 +6,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -89,10 +90,6 @@ func extractMatchingSpans(
 			scopeSpan := resourceSpan.ScopeSpans().At(j)
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
 				span := scopeSpan.Spans().At(k)
-				if !span.StartTimestamp().AsTime().After(timestampLowerBound) {
-					// This span is too old, it is probably from a previously running test case, ignore it.
-					continue
-				}
 				spanMatchResult := newObjectMatchResult[ptrace.ResourceSpans, ptrace.Span](
 					span.Name(),
 					resourceSpan,
@@ -100,6 +97,19 @@ func extractMatchingSpans(
 					span,
 				)
 				spanMatchFn(span, &spanMatchResult)
+				if span.StartTimestamp().AsTime().Before(timestampLowerBound) {
+					if spanMatchResult.isMatch() {
+						log.Printf(
+							"Ignoring matching span because of timestamp: lower bound: %s (%d) vs. span: %s (%d)",
+							timestampLowerBound.String(),
+							timestampLowerBound.UnixNano(),
+							span.StartTimestamp().String(),
+							span.StartTimestamp().AsTime().UnixNano(),
+						)
+					}
+					// This span is too old, it is probably from a previously running test case, ignore it.
+					continue
+				}
 				allMatchResults.addResultForObject(spanMatchResult)
 			}
 		}

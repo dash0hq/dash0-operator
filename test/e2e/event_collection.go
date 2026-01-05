@@ -64,7 +64,7 @@ func compileTelemetryMatcherUrlForEvents(
 	params.Add(shared.QueryParamClusterName, e2eKubernetesContext)
 	params.Add(shared.QueryParamNamespace, applicationUnderTestNamespace)
 	params.Add(shared.QueryParamOperatorNamespace, operatorNamespace)
-	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
+	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixNano(), 10))
 	params.Add(shared.QueryParamLogBodyContains, logBodyContains)
 	params.Add(shared.QueryParamEventReason, eventReason)
 	params.Add(shared.QueryParamEventNameContains, eventNameContains)

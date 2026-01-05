@@ -214,7 +214,7 @@ func compileTelemetryMatcherUrlForMetrics(
 	// operator configuration resource.
 	params.Add(shared.QueryParamClusterName, e2eKubernetesContext)
 	params.Add(shared.QueryParamOperatorNamespace, operatorNamespace)
-	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
+	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixNano(), 10))
 	if metricNameList != "" {
 		params.Add(shared.QueryParamMetricNameList, string(metricNameList))
 	}
