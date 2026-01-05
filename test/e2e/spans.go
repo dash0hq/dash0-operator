@@ -140,7 +140,7 @@ func compileTelemetryMatcherUrlForSpans(
 	} else {
 		params.Add(shared.QueryParamTarget, target)
 	}
-	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixMilli(), 10))
+	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixNano(), 10))
 	params.Add(shared.QueryParamCheckResourceAttributes, strconv.FormatBool(checkResourceAttributes))
 	if expectClusterName {
 		// Note: Using the name of the Kubernetes context as the cluster name match parameter works because we set this

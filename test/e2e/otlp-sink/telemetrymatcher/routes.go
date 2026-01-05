@@ -337,7 +337,7 @@ func readCommonQueryParams(c *gin.Context) (commonQueryParams, bool) {
 		return commonQueryParams{}, false
 	}
 	timestampLowerBoundStr := c.Query(shared.QueryParamTimestampLowerBoundStr)
-	timestampLowerBoundUnixMillis, err := strconv.ParseInt(timestampLowerBoundStr, 10, 64)
+	timestampLowerBoundUnixNanos, err := strconv.ParseInt(timestampLowerBoundStr, 10, 64)
 	if err != nil {
 		c.JSON(400, shared.ExpectationResult{
 			Success: false,
@@ -349,7 +349,7 @@ func readCommonQueryParams(c *gin.Context) (commonQueryParams, bool) {
 		})
 		return commonQueryParams{}, false
 	}
-	timestampLowerBound := time.UnixMilli(timestampLowerBoundUnixMillis)
+	timestampLowerBound := time.Unix(0, timestampLowerBoundUnixNanos)
 
 	return commonQueryParams{
 		mode:                shared.ExpectationMode(mode),
