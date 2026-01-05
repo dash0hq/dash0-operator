@@ -313,9 +313,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			})
 
 			Describe("log collection", func() {
-				It("collects logs, but does not collect the same logs twice from a file when the collector pod churns", func() {
-					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
-
+				It("collects pod logs, but does not collect the same logs twice when the collector pod is restarted", func() {
 					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
 					By("verifying that the Node.js deployment has been instrumented by the controller")
@@ -333,22 +331,48 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 					By("waiting for the application under test to become ready")
 					Eventually(func(g Gomega) {
-						// Make sure the application under test is up and can serve requests, before sending the actual request
-						// to trigger the unique log message is sent.
 						sendReadyProbe(g, runtimeTypeNodeJs, workloadTypeDeployment)
 					}, 30*time.Second, 300*time.Millisecond).Should(Succeed())
 
-					By("sending a request to the Node.js deployment that will generate a log with a predictable body")
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 					timestampLowerBound := time.Now()
+					expectedLogMessagePart := fmt.Sprintf("processing request %s", testId)
+					By(
+						fmt.Sprintf(
+							"waiting for a log message with body \"%s\" to appear after min timestamp %v",
+							expectedLogMessagePart,
+							timestampLowerBound,
+						))
+					// Repeatedly send a request that will trigger writing a log message, then verify that the log
+					// record has been collected.
+					Eventually(func(g Gomega) {
+						verifyWorkloadLogRecords(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testEndpoint,
+							fmt.Sprintf("id=%s", testId),
+							timestampLowerBound,
+							"",
+							expectedLogMessagePart,
+						)
+					}, 30*time.Second, 300*time.Millisecond).Should(Succeed())
+
+					// The preceding steps verify that log collection works in general. The rest of the test verifies
+					// that log records are not duplicated when the collector pod is restarted. This could be a separate
+					// test case, but it requires the same setup and initial steps, so we might as well verify it in
+					// this test case.
+					logRecordUniquenessTestId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+					timestampLowerBound = time.Now()
 					sendRequest(
 						Default,
 						runtimeTypeNodeJs,
 						workloadTypeDeployment,
 						testEndpoint,
-						fmt.Sprintf("id=%s", testId),
+						fmt.Sprintf("id=%s", logRecordUniquenessTestId),
 					)
 
-					expectedLogMessagePart := fmt.Sprintf("processing request %s", testId)
+					expectedLogMessagePart = fmt.Sprintf("processing request %s", logRecordUniquenessTestId)
 					By(
 						fmt.Sprintf(
 							"waiting for a log message with body \"%s\" to appear after min timestamp %v",
@@ -364,7 +388,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 							"",
 							expectedLogMessagePart,
 						)
-					}, 1*time.Minute, pollingInterval).Should(Succeed())
+					}, 30*time.Second, pollingInterval).Should(Succeed())
 
 					By("churning collector pods")
 					Expect(
