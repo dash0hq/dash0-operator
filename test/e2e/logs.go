@@ -16,6 +16,43 @@ import (
 	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
 )
 
+// verifyWorkloadLogRecords is meant to be polled in a gomega Eventually loop; it will send an HTTP request to the
+// workload each time and then check whether a matching log record has been produced. This assumes that the application
+// logs a specific message for each incoming HTTP request.
+//
+// For workload types do not expose an external HTTP endpoint (like cronjob or job), the HTTP request to trigger the
+// span is omitted, for these workload types we rely on the workload to periodically log a message on its own	.
+//
+// Since we send an HTTP request each time verifyWorkloadLogRecords is called, the workload might in fact produce a
+// number of log records; the log record that is found by the telemetry-matcher might not be from the HTTP request from
+// the same invocation. However, since the query always includes a unique test ID, it is guaranteed that the span has
+// been triggered by the same test case.
+func verifyWorkloadLogRecords(
+	g Gomega,
+	runtime runtimeType,
+	workloadType workloadType,
+	route string,
+	query string,
+	timestampLowerBound time.Time,
+	logBodyEquals string,
+	logBodyContains string,
+) {
+	if !workloadType.isBatch {
+		sendRequest(g, runtime, workloadType, route, query)
+	}
+	askTelemetryMatcherForMatchingLogRecords(
+		g,
+		shared.ExpectAtLeastOne,
+		shared.LogResourceMatcherWorkload,
+		ptr.To(runtime),
+		ptr.To(workloadType),
+		"",
+		timestampLowerBound,
+		logBodyEquals,
+		logBodyContains,
+	)
+}
+
 func verifyAtLeastOneSelfMonitoringLogRecord(
 	g Gomega,
 	resourceMatcherMode shared.LogResourceMatcherMode,
