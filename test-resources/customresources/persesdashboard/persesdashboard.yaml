@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/part-of: perses-operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: perses-operator
+  annotations:
+    dash0.com/folder-path: "/test/folder"
 spec:
   duration: 5m
   datasources:

@@ -469,7 +469,10 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	action apiAction,
 	logger *logr.Logger,
 ) *ResourceToRequestsResult {
-	specRaw := preconditionChecksResult.dash0ApiResourceSpec
+	specRaw := preconditionChecksResult.resource["spec"]
+
+	// convert the untyped spec to a value of type prometheusv1.PrometheusRuleSpec by marshalling and then unmarshalling
+	//it
 	specAsYaml, err := yaml.Marshal(specRaw)
 	if err != nil {
 		logger.Error(err, "unable to marshal the Prometheus rule spec")

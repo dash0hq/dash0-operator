@@ -226,11 +226,8 @@ type preconditionValidationResult struct {
 	// is added after the fact, we need to delete the object in Dash0 to get back into a consistent state)
 	syncDisabledViaLabel bool
 
-	// resource is the full resource that is being reconciled, as a map
+	// resource is the Kubernetes resource that is being reconciled, as a map
 	resource map[string]interface{}
-
-	// dash0ApiResourceSpec is spec part of the resource that is being reconciled, as a map
-	dash0ApiResourceSpec map[string]interface{}
 
 	// monitoringResource is the Dash0 monitoring resource that was found in the same namespace as the resource
 	monitoringResource *dash0v1beta1.Dash0Monitoring
@@ -493,25 +490,10 @@ func validatePreconditions(
 
 	cleanUpMetadata(dash0ApiResourceObject)
 
-	specRaw := dash0ApiResourceObject["spec"]
-	if specRaw == nil {
+	if dash0ApiResourceObject["spec"] == nil {
 		logger.Info(
 			fmt.Sprintf(
 				"%s %s/%s has no spec, the %s(s) from will not be updated in Dash0.",
-				apiSyncReconciler.KindDisplayName(),
-				namespace,
-				name,
-				apiSyncReconciler.ShortName(),
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-	spec, ok := specRaw.(map[string]interface{})
-	if !ok {
-		logger.Info(
-			fmt.Sprintf(
-				"The %s spec in %s/%s is not a map, the %s(s) will not be updated in Dash0.",
 				apiSyncReconciler.KindDisplayName(),
 				namespace,
 				name,
@@ -531,10 +513,6 @@ func validatePreconditions(
 		synchronizeResource:  true,
 		syncDisabledViaLabel: syncDisabledViaLabel,
 		resource:             dash0ApiResourceObject,
-		// TODO remove dash0ApiResourceSpec from struct once all controllers have been migrated to work with the full
-		// resource, and no controller uses dash0ApiResourceSpec.
-		// (See perses_dashboard_controller.go#MapResourceToHttpRequests.)
-		dash0ApiResourceSpec: spec,
 		monitoringResource:   monitoringResource,
 		authToken:            authToken,
 		apiEndpoint:          apiEndpoint,
