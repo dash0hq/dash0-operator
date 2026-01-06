@@ -108,7 +108,7 @@ func InitOTelSdkFromEnvVars(
 				sdkmetric.NewPeriodicReader(
 					metricExporter,
 					sdkmetric.WithTimeout(10*time.Second),
-					sdkmetric.WithInterval(15*time.Second),
+					sdkmetric.WithInterval(30*time.Second),
 				)),
 		)
 		sdkLoggerProvider := sdklog.NewLoggerProvider(
@@ -221,7 +221,7 @@ func InitOTelSdkWithConfig(
 				sdkmetric.NewPeriodicReader(
 					metricExporter,
 					sdkmetric.WithTimeout(10*time.Second),
-					sdkmetric.WithInterval(15*time.Second),
+					sdkmetric.WithInterval(30*time.Second),
 				)),
 		)
 		sdkLoggerProvider := sdklog.NewLoggerProvider(

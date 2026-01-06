@@ -55,6 +55,8 @@ var (
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:`
 	collectorLogsSelfMonitoringPrelude = `

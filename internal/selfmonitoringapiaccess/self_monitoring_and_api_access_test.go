@@ -417,6 +417,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:
                 protocol: grpc
@@ -429,6 +431,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:
                 protocol: grpc
@@ -515,6 +519,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:
                 protocol: grpc
@@ -538,6 +544,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:
                 protocol: grpc
@@ -574,6 +582,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:
                 protocol: grpc
@@ -598,6 +608,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:
                 protocol: grpc
@@ -636,6 +648,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:
                 protocol: http/protobuf
@@ -677,6 +691,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
     metrics:
       readers:
         - periodic:
+            interval: 30000
+            timeout: 10000
             exporter:
               otlp:
                 protocol: http/json
