@@ -301,16 +301,9 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 
 	switch action {
 	case upsertAction:
-		spec := preconditionChecksResult.dash0ApiResourceSpec
-
-		// Remove all unnecessary metadata (labels & annotations), we basically only need the synthetic check spec.
-		serializedSyntheticCheck, _ := json.Marshal(
-			map[string]interface{}{
-				"kind": "SyntheticCheck",
-				"spec": spec,
-			})
+		syntheticCheck := preconditionChecksResult.resource
+		serializedSyntheticCheck, _ := json.Marshal(syntheticCheck)
 		requestPayload := bytes.NewBuffer(serializedSyntheticCheck)
-
 		method = http.MethodPut
 		req, err = http.NewRequest(
 			method,

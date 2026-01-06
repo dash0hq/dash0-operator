@@ -5,7 +5,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -500,6 +503,102 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 					// gock only expects two PUT requests, so if we would synchronize twice, the test would fail
 					syntheticCheckReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
 					syntheticCheckReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+				},
+			}),
+		)
+	})
+
+	Describe("mapping synthetic check resources to http requests", func() {
+
+		type syntheticCheckToRequestTestConfig struct {
+			syntheticCheck      string
+			expectedAnnotations map[string]string
+		}
+
+		var syntheticCheckReconciler *SyntheticCheckReconciler
+
+		BeforeEach(func() {
+			syntheticCheckReconciler = &SyntheticCheckReconciler{}
+		})
+
+		DescribeTable("maps synthetic checks", func(testConfig syntheticCheckToRequestTestConfig) {
+			syntheticCheck := map[string]interface{}{}
+			Expect(yaml.Unmarshal([]byte(testConfig.syntheticCheck), &syntheticCheck)).To(Succeed())
+			preconditionValidationResult := &preconditionValidationResult{
+				k8sName:      "dash0-synthetic-check",
+				k8sNamespace: TestNamespaceName,
+				resource:     syntheticCheck,
+			}
+			resourceToRequestsResult :=
+				syntheticCheckReconciler.MapResourceToHttpRequests(
+					preconditionValidationResult,
+					upsertAction,
+					&logger,
+				)
+			Expect(resourceToRequestsResult.ItemsTotal).To(Equal(1))
+			Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
+			Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
+			Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
+
+			Expect(resourceToRequestsResult.HttpRequests).To(HaveLen(1))
+			reqWithName := resourceToRequestsResult.HttpRequests[0]
+			Expect(reqWithName.ItemName).To(Equal("dash0-synthetic-check"))
+			req := reqWithName.Request
+			defer func() {
+				_ = req.Body.Close()
+			}()
+			body, err := io.ReadAll(req.Body)
+			Expect(err).ToNot(HaveOccurred())
+			resultingSyntheticCheckInRequest := map[string]interface{}{}
+			Expect(json.Unmarshal(body, &resultingSyntheticCheckInRequest)).To(Succeed())
+			Expect(resultingSyntheticCheckInRequest["spec"]).ToNot(BeNil())
+
+			Expect(resultingSyntheticCheckInRequest["metadata"]).ToNot(BeNil())
+			Expect(ReadFromMap(resultingSyntheticCheckInRequest, []string{"metadata", "name"})).To(Equal("dash0-synthetic-check"))
+
+			if testConfig.expectedAnnotations != nil {
+				annotationsRaw := ReadFromMap(resultingSyntheticCheckInRequest, []string{"metadata", "annotations"})
+				Expect(annotationsRaw).ToNot(BeNil())
+				annotations := annotationsRaw.(map[string]interface{})
+				Expect(annotations).To(HaveLen(len(testConfig.expectedAnnotations)))
+				for expectedKey, expectedValue := range testConfig.expectedAnnotations {
+					value, ok := annotations[expectedKey]
+					Expect(ok).To(BeTrue())
+					Expect(value).To(Equal(expectedValue))
+				}
+			} else {
+				Expect(ReadFromMap(resultingSyntheticCheckInRequest, []string{"metadata", "annotations"})).To(BeNil())
+			}
+		},
+			Entry("should map synthetic check", syntheticCheckToRequestTestConfig{
+				syntheticCheck: `
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: dash0-synthetic-check
+spec:
+  enabled: true
+  notifications:
+    channels: []
+`,
+			}),
+			Entry("should send annotations", syntheticCheckToRequestTestConfig{
+				syntheticCheck: `
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: dash0-synthetic-check
+  annotations:
+    dash0com/annotation1: value1
+    dash0com/annotation2: value2
+spec:
+  enabled: true
+  notifications:
+    channels: []
+`,
+				expectedAnnotations: map[string]string{
+					"dash0com/annotation1": "value1",
+					"dash0com/annotation2": "value2",
 				},
 			}),
 		)
