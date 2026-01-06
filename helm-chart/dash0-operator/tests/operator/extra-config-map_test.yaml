@@ -79,6 +79,22 @@ tests:
                       values:
                         - value-03
           daemonSetPriorityClassName: collector-daemonset-priority-class
+          daemonSetProbes:
+            liveness:
+              failureThreshold: 5
+              initialDelaySeconds: 6
+              periodSeconds: 7
+              timeoutSeconds: 8
+            readiness:
+              failureThreshold: 9
+              initialDelaySeconds: 10
+              periodSeconds: 11
+              timeoutSeconds: 12
+            startup:
+              failureThreshold: 13
+              initialDelaySeconds: 14
+              periodSeconds: 15
+              timeoutSeconds: 16
           deploymentCollectorContainerResources:
             limits:
               memory: 104Mi
@@ -125,6 +141,22 @@ tests:
                       values:
                         - value-06
           deploymentPriorityClassName: collector-deployment-priority-class
+          deploymentProbes:
+            liveness:
+              failureThreshold: 16
+              initialDelaySeconds: 15
+              periodSeconds: 14
+              timeoutSeconds: 13
+            readiness:
+              failureThreshold: 12
+              initialDelaySeconds: 11
+              periodSeconds: 10
+              timeoutSeconds: 9
+            startup:
+              failureThreshold: 8
+              initialDelaySeconds: 7
+              periodSeconds: 6
+              timeoutSeconds: 5
         targetAllocator:
           mTls:
             enabled: true
@@ -235,6 +267,22 @@ tests:
                     - value-01
                     - value-02
             collectorDaemonSetPriorityClassName: collector-daemonset-priority-class
+            daemonSetProbes:
+              liveness:
+                failureThreshold: 5
+                initialDelaySeconds: 6
+                periodSeconds: 7
+                timeoutSeconds: 8
+              readiness:
+                failureThreshold: 9
+                initialDelaySeconds: 10
+                periodSeconds: 11
+                timeoutSeconds: 12
+              startup:
+                failureThreshold: 13
+                initialDelaySeconds: 14
+                periodSeconds: 15
+                timeoutSeconds: 16
             collectorDeploymentCollectorContainerResources:
               gomemlimit: 404MiB
               limits:
@@ -281,6 +329,22 @@ tests:
                     - value-04
                     - value-05
             collectorDeploymentPriorityClassName: collector-deployment-priority-class
+            deploymentProbes:
+              liveness:
+                failureThreshold: 16
+                initialDelaySeconds: 15
+                periodSeconds: 14
+                timeoutSeconds: 13
+              readiness:
+                failureThreshold: 12
+                initialDelaySeconds: 11
+                periodSeconds: 10
+                timeoutSeconds: 9
+              startup:
+                failureThreshold: 8
+                initialDelaySeconds: 7
+                periodSeconds: 6
+                timeoutSeconds: 5
             targetAllocatorMtlsEnabled: true
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
@@ -406,6 +470,22 @@ tests:
                     operator: In
                     values:
                     - linux
+            daemonSetProbes:
+              liveness:
+                failureThreshold: 3
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+              readiness:
+                failureThreshold: 3
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+              startup:
+                failureThreshold: 30
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
             collectorDeploymentCollectorContainerResources:
               gomemlimit: 304MiB
               limits:
@@ -436,6 +516,22 @@ tests:
                     operator: In
                     values:
                     - linux
+            deploymentProbes:
+              liveness:
+                failureThreshold: 3
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+              readiness:
+                failureThreshold: 3
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+              startup:
+                failureThreshold: 30
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
             targetAllocatorMtlsEnabled: false
             targetAllocatorMtlsServerCertSecretName: ""
             targetAllocatorMtlsClientCertSecretName: ""

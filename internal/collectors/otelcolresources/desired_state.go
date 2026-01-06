@@ -214,22 +214,10 @@ var (
 		ReadOnly:  false,
 	}
 
-	collectorProbe = corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			HTTPGet: &corev1.HTTPGetAction{
-				Path: "/",
-				Port: intstr.FromInt32(probesHttpPort),
-			},
-		},
-	}
-	collectorStartupProbe = corev1.Probe{
-		PeriodSeconds:    2,
-		FailureThreshold: 30,
-		ProbeHandler: corev1.ProbeHandler{
-			HTTPGet: &corev1.HTTPGetAction{
-				Path: "/",
-				Port: intstr.FromInt32(probesHttpPort),
-			},
+	probeHandler = corev1.ProbeHandler{
+		HTTPGet: &corev1.HTTPGetAction{
+			Path: "/",
+			Port: intstr.FromInt32(probesHttpPort),
 		},
 	}
 
@@ -618,6 +606,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		filelogOffsetsVolume,
 		extraConfig.CollectorDaemonSetCollectorContainerResources,
 		targetAllocatorMtlsConfig,
+		extraConfig.DaemonSetProbes,
 	)
 	if err != nil {
 		return nil, err
@@ -994,6 +983,7 @@ func assembleDaemonSetCollectorContainer(
 	filelogOffsetsVolume corev1.Volume,
 	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
+	probes util.CollectorProbes,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config, filelogOffsetsVolume, targetAllocatorMtlsConfig)
 	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
@@ -1036,9 +1026,9 @@ func assembleDaemonSetCollectorContainer(
 		Image:          config.Images.CollectorImage,
 		Ports:          []corev1.ContainerPort{otlpPort, httpPort},
 		Env:            collectorEnv,
-		LivenessProbe:  &collectorProbe,
-		StartupProbe:   &collectorStartupProbe,
-		ReadinessProbe: &collectorProbe,
+		LivenessProbe:  WithProbeHandler(probes.Liveness),
+		StartupProbe:   WithProbeHandler(probes.Startup),
+		ReadinessProbe: WithProbeHandler(probes.Readiness),
 		Resources:      resourceRequirements.ToResourceRequirements(),
 		VolumeMounts:   collectorVolumeMounts,
 	}
@@ -1346,6 +1336,7 @@ func assembleCollectorDeployment(
 		config,
 		workloadNameEnvVar,
 		extraConfig.CollectorDeploymentCollectorContainerResources,
+		extraConfig.DeploymentProbes,
 	)
 	if err != nil {
 		return nil, err
@@ -1458,6 +1449,7 @@ func assembleDeploymentCollectorContainer(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
 	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
+	probes util.CollectorProbes,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := []corev1.VolumeMount{
 		collectorConfigVolume,
@@ -1484,9 +1476,9 @@ func assembleDeploymentCollectorContainer(
 		},
 		Image:          config.Images.CollectorImage,
 		Env:            collectorEnv,
-		LivenessProbe:  &collectorProbe,
-		StartupProbe:   &collectorStartupProbe,
-		ReadinessProbe: &collectorProbe,
+		LivenessProbe:  WithProbeHandler(probes.Liveness),
+		StartupProbe:   WithProbeHandler(probes.Startup),
+		ReadinessProbe: WithProbeHandler(probes.Readiness),
 		Resources:      resourceRequirements.ToResourceRequirements(),
 		VolumeMounts:   collectorVolumeMounts,
 	}
@@ -1611,6 +1603,11 @@ func addGkeAutopilotAllowListMatchLabel(
 	}
 	modifiedLabels[gkeAutopilotAllowlistLabelKey] = gkeAutopilotAllowlistLabelValue
 	return modifiedLabels
+}
+
+func WithProbeHandler(probe corev1.Probe) *corev1.Probe {
+	probe.ProbeHandler = probeHandler
+	return &probe
 }
 
 func compileObsoleteResources(namespace string, namePrefix string) []client.Object {

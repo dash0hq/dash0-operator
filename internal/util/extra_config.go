@@ -24,6 +24,12 @@ type ResourceRequirementsWithGoMemLimit struct {
 	GoMemLimit string              `json:"gomemlimit,omitempty"`
 }
 
+type CollectorProbes struct {
+	Liveness  corev1.Probe `json:"liveness,omitempty"`
+	Readiness corev1.Probe `json:"readiness,omitempty"`
+	Startup   corev1.Probe `json:"startup,omitempty"`
+}
+
 // ExtraConfig holds the additional configuration values for the operator, which the operator reads from
 // /etc/config/extra.yaml at startup, mostly Kubernetes-related settings like resource requests, resource limits, the
 // filelog offset volume and tolerations for the collector daemonset.
@@ -41,6 +47,8 @@ type ExtraConfig struct {
 
 	CollectorDaemonSetPriorityClassName string `json:"collectorDaemonSetPriorityClassName,omitempty"`
 
+	DaemonSetProbes CollectorProbes `json:"daemonSetProbes"`
+
 	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources,omitempty"`
 	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources,omitempty"`
 
@@ -48,6 +56,8 @@ type ExtraConfig struct {
 	DeploymentNodeAffinity *corev1.NodeAffinity `json:"deploymentNodeAffinity,omitempty"`
 
 	CollectorDeploymentPriorityClassName string `json:"collectorDeploymentPriorityClassName,omitempty"`
+
+	DeploymentProbes CollectorProbes `json:"deploymentProbes"`
 
 	TargetAllocatorMtlsEnabled              bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
 	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
@@ -160,6 +170,7 @@ func readExtraConfigurationFromFile(configurationFile string) (ExtraConfig, erro
 		&extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
 		&ExtraConfigDefaults.CollectorDeploymentConfigurationReloaderContainerResources,
 	)
+
 	return *extraConfig, nil
 }
 
