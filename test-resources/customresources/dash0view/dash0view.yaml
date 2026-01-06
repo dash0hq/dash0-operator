@@ -2,6 +2,8 @@ apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0View
 metadata:
   name: operator-test-view
+  annotations:
+    dash0.com/folder-path: "/test/folder"
 spec:
   type: resources
   display:
