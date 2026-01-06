@@ -18,13 +18,13 @@ spec:
           - kind: timing
             spec:
               type: response
-              operator: lt
+              operator: lte
               value: 5000ms
         degradedAssertions:
           - kind: timing
             spec:
               type: response
-              operator: lt
+              operator: lte
               value: 2000ms
       request:
         headers: []
