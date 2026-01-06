@@ -5,7 +5,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -497,6 +500,112 @@ var _ = Describe("The View controller", Ordered, func() {
 					// gock only expects two PUT requests, so if we would synchronize twice, the test would fail
 					viewReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
 					viewReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+				},
+			}),
+		)
+	})
+
+	Describe("mapping view resources to http requests", func() {
+
+		type viewToRequestTestConfig struct {
+			view                string
+			expectedAnnotations map[string]string
+		}
+
+		var viewReconciler *ViewReconciler
+
+		BeforeEach(func() {
+			viewReconciler = &ViewReconciler{}
+		})
+
+		DescribeTable("maps views", func(testConfig viewToRequestTestConfig) {
+			view := map[string]interface{}{}
+			Expect(yaml.Unmarshal([]byte(testConfig.view), &view)).To(Succeed())
+			preconditionValidationResult := &preconditionValidationResult{
+				k8sName:      "dash0-view",
+				k8sNamespace: TestNamespaceName,
+				resource:     view,
+			}
+			resourceToRequestsResult :=
+				viewReconciler.MapResourceToHttpRequests(
+					preconditionValidationResult,
+					upsertAction,
+					&logger,
+				)
+			Expect(resourceToRequestsResult.ItemsTotal).To(Equal(1))
+			Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
+			Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
+			Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
+
+			Expect(resourceToRequestsResult.HttpRequests).To(HaveLen(1))
+			reqWithName := resourceToRequestsResult.HttpRequests[0]
+			Expect(reqWithName.ItemName).To(Equal("dash0-view"))
+			req := reqWithName.Request
+			defer func() {
+				_ = req.Body.Close()
+			}()
+			body, err := io.ReadAll(req.Body)
+			Expect(err).ToNot(HaveOccurred())
+			resultingViewInRequest := map[string]interface{}{}
+			Expect(json.Unmarshal(body, &resultingViewInRequest)).To(Succeed())
+			Expect(resultingViewInRequest["spec"]).ToNot(BeNil())
+
+			Expect(resultingViewInRequest["metadata"]).ToNot(BeNil())
+			Expect(ReadFromMap(resultingViewInRequest, []string{"metadata", "name"})).To(Equal("dash0-view"))
+
+			if testConfig.expectedAnnotations != nil {
+				annotationsRaw := ReadFromMap(resultingViewInRequest, []string{"metadata", "annotations"})
+				Expect(annotationsRaw).ToNot(BeNil())
+				annotations := annotationsRaw.(map[string]interface{})
+				Expect(annotations).To(HaveLen(len(testConfig.expectedAnnotations)))
+				for expectedKey, expectedValue := range testConfig.expectedAnnotations {
+					value, ok := annotations[expectedKey]
+					Expect(ok).To(BeTrue())
+					Expect(value).To(Equal(expectedValue))
+				}
+			} else {
+				Expect(ReadFromMap(resultingViewInRequest, []string{"metadata", "annotations"})).To(BeNil())
+			}
+		},
+			Entry("should map view", viewToRequestTestConfig{
+				view: `
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0View
+metadata:
+  name: dash0-view
+spec:
+  display:
+    name: Dash0 View Example
+    description: This is an example view.
+  filter:
+    - key: http.status_code
+      operator: gte
+      value:
+        stringValue: "200"
+`,
+			}),
+			Entry("should send annotations", viewToRequestTestConfig{
+				view: `
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0View
+metadata:
+  name: dash0-view
+  annotations:
+    dash0com/annotation1: value1
+    dash0com/annotation2: value2
+spec:
+  display:
+    name: Dash0 View Example
+    description: This is an example view.
+  filter:
+    - key: http.status_code
+      operator: gte
+      value:
+        stringValue: "200"
+`,
+				expectedAnnotations: map[string]string{
+					"dash0com/annotation1": "value1",
+					"dash0com/annotation2": "value2",
 				},
 			}),
 		)

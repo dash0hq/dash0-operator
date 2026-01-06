@@ -301,16 +301,9 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 
 	switch action {
 	case upsertAction:
-		spec := preconditionChecksResult.dash0ApiResourceSpec
-
-		// Remove all unnecessary metadata (labels & annotations), we basically only need the view spec.
-		serializedView, _ := json.Marshal(
-			map[string]interface{}{
-				"kind": "View",
-				"spec": spec,
-			})
+		view := preconditionChecksResult.resource
+		serializedView, _ := json.Marshal(view)
 		requestPayload := bytes.NewBuffer(serializedView)
-
 		method = http.MethodPut
 		req, err = http.NewRequest(
 			method,
