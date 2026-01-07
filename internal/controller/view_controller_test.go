@@ -675,9 +675,7 @@ func createViewResourceWithEnableLabel(namespace string, name string, dash0Enabl
 				{
 					Key:      "service.name",
 					Operator: "is",
-					Value: &dash0v1alpha1.AnyValue{
-						StringValue: &[]string{"test-service"}[0],
-					},
+					Value:    "test-service",
 				},
 			},
 			Table: &dash0v1alpha1.Dash0ViewTable{
