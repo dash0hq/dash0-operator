@@ -429,11 +429,11 @@ custom resource definition for views should match snapshot:
                         properties:
                           actions:
                             description: Outlines possible actions that matching views can take with this view.
-                            enum:
-                              - views:read
-                              - views:write
-                              - views:delete
                             items:
+                              enum:
+                                - views:read
+                                - views:write
+                                - views:delete
                               type: string
                             type: array
                           role:

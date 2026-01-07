@@ -459,12 +459,12 @@ spec:
                     actions:
                       description: Outlines possible actions that matching views can
                         take with this view.
-                      enum:
-                      - views:read
-                      - views:write
-                      - views:delete
                       items:
                         type: string
+                        enum:
+                        - views:read
+                        - views:write
+                        - views:delete
                       type: array
                     role:
                       description: Use role identifiers such as `admin` and `basic_member`
