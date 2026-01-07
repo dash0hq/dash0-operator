@@ -4,8 +4,6 @@
 package v1alpha1
 
 import (
-	"encoding/json"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -111,13 +109,11 @@ type Dash0ViewFilter struct {
 	Operator Dash0ViewFilterOperator `json:"operator"`
 
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:pruning:PreserveUnknownFields
-	Value *AnyValue `json:"value,omitempty"`
+	Value string `json:"value,omitempty"`
 
 	// List of values to match against. This parameter is mandatory for the is_one_of and is_not_one_of operators.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:pruning:PreserveUnknownFields
-	Values []AnyValue `json:"values,omitempty"`
+	Values []string `json:"values,omitempty"`
 }
 
 // Dash0ViewFilterOperator defines the operator for a filter in a view.
@@ -127,65 +123,6 @@ type Dash0ViewFilterOperator string
 // Dash0ViewAction defines the possible actions that matching users can take with this view.
 // +kubebuilder:validation:Enum="views:read";"views:write";"views:delete"
 type Dash0ViewAction string
-
-// AnyValue represents a value that can be a string or a structured object
-// +kubebuilder:pruning:PreserveUnknownFields
-// +kubebuilder:validation:MinProperties=1
-// +kubebuilder:validation:MaxProperties=1
-type AnyValue struct {
-	// +kubebuilder:validation:Optional
-	StringValue *string `json:"stringValue,omitempty"`
-
-	// +kubebuilder:validation:Optional
-	BoolValue *bool `json:"boolValue,omitempty"`
-
-	// +kubebuilder:validation:Optional
-	IntValue *string `json:"intValue,omitempty"`
-
-	// +kubebuilder:validation:Optional
-	DoubleValue *string `json:"doubleValue,omitempty"`
-
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:pruning:PreserveUnknownFields
-	ArrayValue *ArrayValue `json:"arrayValue,omitempty"`
-
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:pruning:PreserveUnknownFields
-	KvlistValue *KvlistValue `json:"kvlistValue,omitempty"`
-
-	// +kubebuilder:validation:Optional
-	BytesValue *string `json:"bytesValue,omitempty"`
-}
-
-// ArrayValue represents an array of AnyValue messages
-// +kubebuilder:pruning:PreserveUnknownFields
-type ArrayValue struct {
-	// Array of values. The array may be empty (contain 0 elements).
-	// +kubebuilder:validation:Required
-	// +kubebuilder:pruning:PreserveUnknownFields
-	Values []json.RawMessage `json:"values"`
-}
-
-// KvlistValue represents a list of KeyValue messages
-// +kubebuilder:pruning:PreserveUnknownFields
-type KvlistValue struct {
-	// A collection of key/value pairs of key-value pairs. The list may be empty (may contain 0 elements).
-	// The keys MUST be unique (it is not allowed to have more than one value with the same key).
-	// +kubebuilder:validation:Required
-	// +kubebuilder:pruning:PreserveUnknownFields
-	Values []KeyValue `json:"values"`
-}
-
-// KeyValue represents a key-value pair that is used to store Span attributes, Link attributes, etc.
-// +kubebuilder:pruning:PreserveUnknownFields
-type KeyValue struct {
-	// +kubebuilder:validation:Required
-	Key string `json:"key"`
-
-	// +kubebuilder:validation:Required
-	// +kubebuilder:pruning:PreserveUnknownFields
-	Value json.RawMessage `json:"value"`
-}
 
 // Dash0ViewTable defines table configuration
 type Dash0ViewTable struct {

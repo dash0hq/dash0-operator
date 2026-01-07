@@ -3,36 +3,41 @@ kind: Dash0View
 metadata:
   name: operator-test-view
   annotations:
-    dash0.com/folder-path: "/test/folder"
+    dash0.com/folder-path: "/test-folder"
 spec:
-  type: resources
+  type: logs
   display:
     name: Test View
     description: A test view for testing the operator's synchronization of view resources.
-    folder: ["Test", "Operator"]
   filter:
     - key: service.name
-      operator: is
-      value:
-        stringValue: test-service
-    - key: http.status_code
+      operator: is_one_of
+      values:
+        - operator-manager
+        - dash0-operator-collector
+    - key: otel.log.severity.number
       operator: gte
-      value:
-        stringValue: "200"
+      value: "13"
   groupBy:
-    - service.name
-    - deployment.environment
+    - otel.log.severity.range
   table:
     columns:
-      - key: service.name
-        label: Service
-        colSize: "150px"
-      - key: http.status_code
-        label: Status Code
+      - colSize: min-content
+        key: otel.log.severity.range
+        label: Severity
+      - colSize: min-content
+        key: otel.log.time
+        label: Time
+      - key: dash0.resource.id
+        label: Resource
+      - key: otel.log.body
+        label: Body
+      - colSize: min-content
+        key: dash0.trace.context
     sort:
-      - key: service.name
-        direction: ascending
+      - direction: descending
+        key: otel.log.time
   visualizations:
-    - renderers:
-        - resources/services/red
+    - metric: logs_total
+      renderers: []
       yAxisScale: linear
