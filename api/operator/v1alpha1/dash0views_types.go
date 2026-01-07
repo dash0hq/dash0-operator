@@ -95,10 +95,9 @@ type Dash0ViewPermission struct {
 	// +kubebuilder:validation:Optional
 	Role string `json:"role,omitempty"`
 
-	// Outlines possible actions that matching views can take with this view.
+	// Outlines possible actions that matching users can take with this view.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum="views:read";"views:write";"views:delete"
-	Actions []string `json:"actions"`
+	Actions []Dash0ViewAction `json:"actions"`
 }
 
 // Dash0ViewFilter defines a filter condition
@@ -124,6 +123,10 @@ type Dash0ViewFilter struct {
 // Dash0ViewFilterOperator defines the operator for a filter in a view.
 // +kubebuilder:validation:Enum=is;is_not;is_set;is_not_set;is_one_of;is_not_one_of;gt;lt;gte;lte;matches;does_not_match;contains;does_not_contain;starts_with;does_not_start_with;ends_with;does_not_end_with;is_any
 type Dash0ViewFilterOperator string
+
+// Dash0ViewAction defines the possible actions that matching users can take with this view.
+// +kubebuilder:validation:Enum="views:read";"views:write";"views:delete"
+type Dash0ViewAction string
 
 // AnyValue represents a value that can be a string or a structured object
 // +kubebuilder:pruning:PreserveUnknownFields

@@ -53,7 +53,6 @@ custom resource definition for views should match snapshot:
                             The name of the folder in which the view is located. For example, if
                             the view is located in the root folder, this field will be an empty array.
 
-
                             A view can only be located within a single folder. However, it can be nested.
                             Meaning, a value such as `["Shop", "Checkout"]` describes that the view is
                             residing within a folder called `Checkout` and that folder is within a folder called
@@ -428,8 +427,9 @@ custom resource definition for views should match snapshot:
                         description: Dash0ViewPermission defines permission settings for a view
                         properties:
                           actions:
-                            description: Outlines possible actions that matching views can take with this view.
+                            description: Outlines possible actions that matching users can take with this view.
                             items:
+                              description: Dash0ViewAction defines the possible actions that matching users can take with this view.
                               enum:
                                 - views:read
                                 - views:write

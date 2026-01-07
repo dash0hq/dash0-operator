@@ -948,7 +948,7 @@ func (in *Dash0ViewPermission) DeepCopyInto(out *Dash0ViewPermission) {
 	*out = *in
 	if in.Actions != nil {
 		in, out := &in.Actions, &out.Actions
-		*out = make([]string, len(*in))
+		*out = make([]Dash0ViewAction, len(*in))
 		copy(*out, *in)
 	}
 }
