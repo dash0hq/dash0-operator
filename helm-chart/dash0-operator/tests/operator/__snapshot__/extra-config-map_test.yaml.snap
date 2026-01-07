@@ -37,6 +37,22 @@ extra config map should match snapshot:
                 operator: In
                 values:
                 - linux
+        daemonSetProbes:
+          liveness:
+            failureThreshold: 3
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
+          readiness:
+            failureThreshold: 3
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
+          startup:
+            failureThreshold: 30
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
         collectorDeploymentCollectorContainerResources:
           gomemlimit: 400MiB
           limits:
@@ -63,6 +79,22 @@ extra config map should match snapshot:
                 operator: In
                 values:
                 - linux
+        deploymentProbes:
+          liveness:
+            failureThreshold: 3
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
+          readiness:
+            failureThreshold: 3
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
+          startup:
+            failureThreshold: 30
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
         targetAllocatorMtlsEnabled: false
         targetAllocatorMtlsServerCertSecretName: ""
         targetAllocatorMtlsClientCertSecretName: ""

@@ -58,6 +58,8 @@ data:
 {{- if .Values.operator.collectors.daemonSetPriorityClassName }}
     collectorDaemonSetPriorityClassName: {{ .Values.operator.collectors.daemonSetPriorityClassName }}
 {{- end }}
+    daemonSetProbes:
+      {{- .Values.operator.collectors.daemonSetProbes | toYaml | nindent 6 }}
     collectorDeploymentCollectorContainerResources:
       {{- toYaml (
             default
@@ -77,6 +79,8 @@ data:
 {{- if .Values.operator.collectors.deploymentPriorityClassName }}
     collectorDeploymentPriorityClassName: {{ .Values.operator.collectors.deploymentPriorityClassName }}
 {{- end }}
+    deploymentProbes:
+      {{- .Values.operator.collectors.deploymentProbes | toYaml | nindent 6 }}
 {{- if and .Values.operator.targetAllocator.mTls.enabled (or (not .Values.operator.targetAllocator.mTls.serverCertSecretName) (not .Values.operator.targetAllocator.mTls.clientCertSecretName)) }}
   {{- fail "targetAllocatorMtlsEnabled is set to 'true' but one or both certificate secret names are not provided. Please set both operator.targetAllocator.mTls.serverCertSecretName and operator.targetAllocator.mTls.clientCertSecretName." }}
 {{- end }}

@@ -554,6 +554,25 @@ operator:
     # See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
     # daemonSetPriorityClassName:
 
+    # Parameters for the liveness, readiness and startup probes of the DaemonSet collectors.
+    # See https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+    daemonSetProbes:
+      liveness:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 3
+      readiness:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 3
+      startup:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 30
+
     # Resource settings for the collector container of the Deployment collector pod (cluster-metrics-collector) managed
     # by the operator. There should usually be no reason to override this.
     deploymentCollectorContainerResources:
@@ -618,6 +637,25 @@ operator:
               - key: "kubernetes.io/os"
                 operator: "In"
                 values: ["linux"]
+
+    # Parameters for the liveness, readiness and startup probes of the collector Deployment (cluster-metrics-collector).
+    # See https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+    deploymentProbes:
+      liveness:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 3
+      readiness:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 3
+      startup:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 30
 
   # Settings related to the target-allocator managed by the operator.
   targetAllocator:

@@ -28,6 +28,8 @@ var _ = Describe("extra config map", func() {
 		expected *ResourceRequirementsWithGoMemLimit
 	}
 
+	emptyProbes := CollectorProbes{}
+
 	Describe("reading the config map", func() {
 		DescribeTable("should apply defaults resources to requirements", func(testConfig applyDefaultsTest) {
 			applyDefaults(testConfig.input, testConfig.defaults)
@@ -394,6 +396,8 @@ var _ = Describe("extra config map", func() {
 
 					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal(""))
 
+					Expect(extraConfig.DaemonSetProbes).To(Equal(emptyProbes))
+
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
@@ -414,6 +418,8 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.DeploymentNodeAffinity).To(BeNil())
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
+
+					Expect(extraConfig.DeploymentProbes).To(Equal(emptyProbes))
 
 					Expect(extraConfig.TargetAllocatorMtlsEnabled).To(BeFalse())
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal(""))
@@ -472,6 +478,22 @@ collectorFilelogOffsetStorageVolume:
     path: /data/dash0-operator/offset-storage
     type: DirectoryOrCreate
 collectorDaemonSetPriorityClassName: daemon-set-priority
+daemonSetProbes:
+  liveness:
+    failureThreshold: 5
+    initialDelaySeconds: 6
+    periodSeconds: 7
+    timeoutSeconds: 8
+  readiness:
+    failureThreshold: 9
+    initialDelaySeconds: 10
+    periodSeconds: 11
+    timeoutSeconds: 12
+  startup:
+    failureThreshold: 13
+    initialDelaySeconds: 14
+    periodSeconds: 15
+    timeoutSeconds: 16
 collectorDeploymentCollectorContainerResources:
   limits:
     cpu: 100m
@@ -513,6 +535,22 @@ daemonSetNodeAffinity:
         values:
         - linux
 collectorDeploymentPriorityClassName: deployment-priority
+deploymentProbes:
+  liveness:
+    failureThreshold: 16
+    initialDelaySeconds: 15
+    periodSeconds: 14
+    timeoutSeconds: 13
+  readiness:
+    failureThreshold: 12
+    initialDelaySeconds: 11
+    periodSeconds: 10
+    timeoutSeconds: 9
+  startup:
+    failureThreshold: 8
+    initialDelaySeconds: 7
+    periodSeconds: 6
+    timeoutSeconds: 5
 deploymentTolerations:
   - key: key3
     operator: Equal
@@ -615,6 +653,19 @@ targetAllocatorNodeAffinity:
 
 					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal("daemon-set-priority"))
 
+					Expect(extraConfig.DaemonSetProbes.Liveness.FailureThreshold).To(Equal(int32(5)))
+					Expect(extraConfig.DaemonSetProbes.Liveness.InitialDelaySeconds).To(Equal(int32(6)))
+					Expect(extraConfig.DaemonSetProbes.Liveness.PeriodSeconds).To(Equal(int32(7)))
+					Expect(extraConfig.DaemonSetProbes.Liveness.TimeoutSeconds).To(Equal(int32(8)))
+					Expect(extraConfig.DaemonSetProbes.Readiness.FailureThreshold).To(Equal(int32(9)))
+					Expect(extraConfig.DaemonSetProbes.Readiness.InitialDelaySeconds).To(Equal(int32(10)))
+					Expect(extraConfig.DaemonSetProbes.Readiness.PeriodSeconds).To(Equal(int32(11)))
+					Expect(extraConfig.DaemonSetProbes.Readiness.TimeoutSeconds).To(Equal(int32(12)))
+					Expect(extraConfig.DaemonSetProbes.Startup.FailureThreshold).To(Equal(int32(13)))
+					Expect(extraConfig.DaemonSetProbes.Startup.InitialDelaySeconds).To(Equal(int32(14)))
+					Expect(extraConfig.DaemonSetProbes.Startup.PeriodSeconds).To(Equal(int32(15)))
+					Expect(extraConfig.DaemonSetProbes.Startup.TimeoutSeconds).To(Equal(int32(16)))
+
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().String()).To(Equal("100m"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("600Mi"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.StorageEphemeral().String()).To(Equal("4Gi"))
@@ -657,6 +708,19 @@ targetAllocatorNodeAffinity:
 					Expect(daemonSetAffinityNodeSelectorReqTerms[0].MatchExpressions[1].Values[0]).To(Equal("linux"))
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal("deployment-priority"))
+
+					Expect(extraConfig.DeploymentProbes.Liveness.FailureThreshold).To(Equal(int32(16)))
+					Expect(extraConfig.DeploymentProbes.Liveness.InitialDelaySeconds).To(Equal(int32(15)))
+					Expect(extraConfig.DeploymentProbes.Liveness.PeriodSeconds).To(Equal(int32(14)))
+					Expect(extraConfig.DeploymentProbes.Liveness.TimeoutSeconds).To(Equal(int32(13)))
+					Expect(extraConfig.DeploymentProbes.Readiness.FailureThreshold).To(Equal(int32(12)))
+					Expect(extraConfig.DeploymentProbes.Readiness.InitialDelaySeconds).To(Equal(int32(11)))
+					Expect(extraConfig.DeploymentProbes.Readiness.PeriodSeconds).To(Equal(int32(10)))
+					Expect(extraConfig.DeploymentProbes.Readiness.TimeoutSeconds).To(Equal(int32(9)))
+					Expect(extraConfig.DeploymentProbes.Startup.FailureThreshold).To(Equal(int32(8)))
+					Expect(extraConfig.DeploymentProbes.Startup.InitialDelaySeconds).To(Equal(int32(7)))
+					Expect(extraConfig.DeploymentProbes.Startup.PeriodSeconds).To(Equal(int32(6)))
+					Expect(extraConfig.DeploymentProbes.Startup.TimeoutSeconds).To(Equal(int32(5)))
 
 					Expect(extraConfig.DeploymentTolerations).To(HaveLen(2))
 					Expect(extraConfig.DeploymentTolerations[0].Key).To(Equal("key3"))
@@ -777,6 +841,8 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 
 					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal("daemon-set-priority"))
 
+					Expect(extraConfig.DaemonSetProbes).To(Equal(emptyProbes))
+
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
@@ -794,6 +860,8 @@ collectorDaemonSetPriorityClassName: daemon-set-priority
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
+
+					Expect(extraConfig.DeploymentProbes).To(Equal(emptyProbes))
 				})
 			})
 

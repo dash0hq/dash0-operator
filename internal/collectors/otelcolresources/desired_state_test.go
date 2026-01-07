@@ -630,6 +630,94 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentPodSpec.PriorityClassName).To(Equal("deployment-prio"))
 	})
 
+	It("should render custom probe values", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfig{
+			DaemonSetProbes: util.CollectorProbes{
+				Liveness: corev1.Probe{
+					InitialDelaySeconds: 1,
+					TimeoutSeconds:      2,
+					PeriodSeconds:       3,
+					FailureThreshold:    15,
+				},
+				Readiness: corev1.Probe{
+					InitialDelaySeconds: 4,
+					TimeoutSeconds:      5,
+					PeriodSeconds:       6,
+					FailureThreshold:    16,
+				},
+				Startup: corev1.Probe{
+					InitialDelaySeconds: 7,
+					TimeoutSeconds:      8,
+					PeriodSeconds:       9,
+					FailureThreshold:    17,
+				},
+			},
+			DeploymentProbes: util.CollectorProbes{
+				Liveness: corev1.Probe{
+					InitialDelaySeconds: 2,
+					TimeoutSeconds:      3,
+					PeriodSeconds:       4,
+					FailureThreshold:    18,
+				},
+				Readiness: corev1.Probe{
+					InitialDelaySeconds: 5,
+					TimeoutSeconds:      6,
+					PeriodSeconds:       7,
+					FailureThreshold:    19,
+				},
+				Startup: corev1.Probe{
+					InitialDelaySeconds: 8,
+					TimeoutSeconds:      9,
+					PeriodSeconds:       10,
+					FailureThreshold:    20,
+				},
+			},
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		daemonSetLivenessProbe := daemonSetPodSpec.Containers[0].LivenessProbe
+		daemonSetReadinessProbe := daemonSetPodSpec.Containers[0].ReadinessProbe
+		daemonSetStartupProbe := daemonSetPodSpec.Containers[0].StartupProbe
+		Expect(daemonSetLivenessProbe.InitialDelaySeconds).To(Equal(int32(1)))
+		Expect(daemonSetLivenessProbe.TimeoutSeconds).To(Equal(int32(2)))
+		Expect(daemonSetLivenessProbe.PeriodSeconds).To(Equal(int32(3)))
+		Expect(daemonSetLivenessProbe.FailureThreshold).To(Equal(int32(15)))
+		Expect(daemonSetReadinessProbe.InitialDelaySeconds).To(Equal(int32(4)))
+		Expect(daemonSetReadinessProbe.TimeoutSeconds).To(Equal(int32(5)))
+		Expect(daemonSetReadinessProbe.PeriodSeconds).To(Equal(int32(6)))
+		Expect(daemonSetReadinessProbe.FailureThreshold).To(Equal(int32(16)))
+		Expect(daemonSetStartupProbe.InitialDelaySeconds).To(Equal(int32(7)))
+		Expect(daemonSetStartupProbe.TimeoutSeconds).To(Equal(int32(8)))
+		Expect(daemonSetStartupProbe.PeriodSeconds).To(Equal(int32(9)))
+		Expect(daemonSetStartupProbe.FailureThreshold).To(Equal(int32(17)))
+
+		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
+		deploymentLivenessProbe := deploymentPodSpec.Containers[0].LivenessProbe
+		deploymentReadinessProbe := deploymentPodSpec.Containers[0].ReadinessProbe
+		deploymentStartupProbe := deploymentPodSpec.Containers[0].StartupProbe
+		Expect(deploymentLivenessProbe.InitialDelaySeconds).To(Equal(int32(2)))
+		Expect(deploymentLivenessProbe.TimeoutSeconds).To(Equal(int32(3)))
+		Expect(deploymentLivenessProbe.PeriodSeconds).To(Equal(int32(4)))
+		Expect(deploymentLivenessProbe.FailureThreshold).To(Equal(int32(18)))
+		Expect(deploymentReadinessProbe.InitialDelaySeconds).To(Equal(int32(5)))
+		Expect(deploymentReadinessProbe.TimeoutSeconds).To(Equal(int32(6)))
+		Expect(deploymentReadinessProbe.PeriodSeconds).To(Equal(int32(7)))
+		Expect(deploymentReadinessProbe.FailureThreshold).To(Equal(int32(19)))
+		Expect(deploymentStartupProbe.InitialDelaySeconds).To(Equal(int32(8)))
+		Expect(deploymentStartupProbe.TimeoutSeconds).To(Equal(int32(9)))
+		Expect(deploymentStartupProbe.PeriodSeconds).To(Equal(int32(10)))
+		Expect(deploymentStartupProbe.FailureThreshold).To(Equal(int32(20)))
+	})
+
 	It("should collect logs from namespaces, but not from the operator namespace", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
