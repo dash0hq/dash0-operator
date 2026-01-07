@@ -41,11 +41,10 @@ func main() {
 	router.PUT("/api/views/:origin", handleViewRequest)
 	router.DELETE("/api/views/:origin", handleViewRequest)
 
-	router.GET("/api/alerting/check-rules", handleGetCheckRuleOriginsRequest)
-
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
 	router.DELETE("/api/dashboards/:origin", handleDashboardRequest)
 
+	router.GET("/api/alerting/check-rules", handleGetCheckRuleOriginsRequest)
 	router.PUT("/api/alerting/check-rules/:origin", handlePutCheckRuleRequest)
 	router.DELETE("/api/alerting/check-rules/:origin", handleDeleteCheckRuleRequest)
 

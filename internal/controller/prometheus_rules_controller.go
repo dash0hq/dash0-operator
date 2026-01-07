@@ -490,6 +490,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	allSynchronizationErrors := make(map[string]string)
 
 	for _, group := range ruleSpec.Groups {
+		duplicateOrigins := make(map[string]int, len(group.Rules))
 		for ruleIdx, rule := range group.Rules {
 			itemNameSuffix := rule.Alert
 			if itemNameSuffix == "" {
@@ -497,7 +498,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 			}
 			checkRuleName := fmt.Sprintf("%s - %s", group.Name, itemNameSuffix)
 			checkRuleOriginNotUrlEncoded, checkRuleOriginUrlEncoded :=
-				r.renderCheckRuleOrigin(preconditionChecksResult, group, ruleIdx)
+				r.renderCheckRuleOrigin(preconditionChecksResult, duplicateOrigins, group.Name, rule.Alert)
 			checkRuleUrl := r.renderCheckRuleUrl(preconditionChecksResult, checkRuleOriginUrlEncoded)
 			request, validationIssues, syncError, ok := convertRuleToRequest(
 				checkRuleUrl,
@@ -576,30 +577,62 @@ func (r *PrometheusRuleReconciler) renderCheckRuleUrl(
 }
 
 // renderCheckRuleOrigin renders the origin of a single Dash0 check rule.
+// The origin has the pattern
+// "dash0-operator_${clusterUid}_${dataset}_${namespace}_${prometheusrule_resource_name}_${group.name}_${alert}".
 func (r *PrometheusRuleReconciler) renderCheckRuleOrigin(
 	preconditionChecksResult *preconditionValidationResult,
-	group prometheusv1.RuleGroup,
-	checkIdx int,
+	duplicateOrigins map[string]int,
+	groupName string,
+	alertName string,
 ) (string, string) {
 	// For now the Dash0 backend treats %2F the same as "/", so we need to replace forward slashes with
 	// something other than %2F.
 	// See
 	// https://stackoverflow.com/questions/71581828/gin-problem-accessing-url-encoded-path-param-containing-forward-slash
-	groupNameNotUrlEncoded := strings.ReplaceAll(group.Name, "/", "|")
+	groupNameNotUrlEncoded := strings.ReplaceAll(groupName, "/", "|")
 	groupNameUrlEncoded := url.PathEscape(groupNameNotUrlEncoded)
+	if alertName == "" {
+		// Rules without an alert name will not actually be sent to the Dash0 API, since they are deemed invalid by
+		// convertRuleToCheckRule ("rule has neither the alert nor the record attribute").
+		alertName = "unamed rule"
+	}
+	alertNameNotUrlEncoded := strings.ReplaceAll(alertName, "/", "|")
+	alertNameUrlEncoded := url.PathEscape(alertNameNotUrlEncoded)
+
 	checkOriginNotUrlEncoded := fmt.Sprintf(
-		"%s%s_%d",
+		"%s%s_%s",
 		r.renderCheckRuleOriginPrefix(preconditionChecksResult, preconditionChecksResult.dataset),
 		groupNameNotUrlEncoded,
-		checkIdx,
+		alertNameNotUrlEncoded,
 	)
 	checkOriginUrlEncoded := fmt.Sprintf(
-		"%s%s_%d",
+		"%s%s_%s",
 		// dataset can only contain letters, numbers, underscores, and hyphens, so we do not need to replace "/" -> "|".
 		r.renderCheckRuleOriginPrefix(preconditionChecksResult, url.PathEscape(preconditionChecksResult.dataset)),
 		groupNameUrlEncoded,
-		checkIdx,
+		alertNameUrlEncoded,
 	)
+
+	// About duplicate origins: Origins must be unique within a dataset, and they need to be stable against reordering
+	// of rules within a group or deletion of individual rules from a group. We derive the origin from the group name
+	// and the name of the individual alert rule. The group name is guaranteed to be unique within a PrometheusRule
+	// resource, due to a "x-kubernetes-list-type: map" plus "x-kubernetes-list-map-keys: [name]" annotation in the CRD.
+	// The rule.alert field has no such guarantee, duplicate alert names within a group are possible.
+	// We keep track of all produced origins within a group in the duplicateOrigins map[string]int. Once an origin
+	// string has been produced for the first time, we set the value for this origin to 1. The counter is increased
+	// each time the origin is produced again. Starting with the second time we see the same origin (i.e. the first
+	// duplicate), the counter is also appended to the origin to ensure unique origins.
+	// (One downside of this approach is that _within a set of rules with identical group & alert name_, reordering
+	// rules or deleting one of the rules can lead to one rule taking over the origin of another rule, which we
+	// generally avoid for rules without duplicate alert names. Duplicate alert names should be fairly uncommon in
+	// practice, they can be considered a configuration error, so this downside is acceptable.)
+	if duplicationIndexForThisOrigin, isDuplicate := duplicateOrigins[checkOriginNotUrlEncoded]; isDuplicate {
+		duplicateOrigins[checkOriginNotUrlEncoded]++
+		checkOriginNotUrlEncoded = checkOriginNotUrlEncoded + "_" + strconv.Itoa(duplicationIndexForThisOrigin)
+		checkOriginUrlEncoded = checkOriginNotUrlEncoded + "_" + strconv.Itoa(duplicationIndexForThisOrigin)
+	} else {
+		duplicateOrigins[checkOriginNotUrlEncoded] = 1
+	}
 	return checkOriginNotUrlEncoded, checkOriginUrlEncoded
 }
 

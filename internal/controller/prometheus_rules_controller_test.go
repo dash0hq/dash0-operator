@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -57,10 +59,10 @@ var (
 		AlertingRulesTotal:     4,
 		SynchronizedRulesTotal: 4,
 		SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
-			"dash0/group_2 - rule_2_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-			"dash0/group_2 - rule_2_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-			"dash0/group_1 - rule_1_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-			"dash0/group_1 - rule_1_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+			"dash0/group-2 - rule-2-1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+			"dash0/group-2 - rule-2-2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+			"dash0/group-1 - rule-1-1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+			"dash0/group-1 - rule-1-2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
 		},
 		SynchronizationErrorsTotal: 0,
 		SynchronizationErrors:      nil,
@@ -73,10 +75,10 @@ var (
 		AlertingRulesTotal:     4,
 		SynchronizedRulesTotal: 4,
 		SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
-			"dash0/group_2 - rule_2_1": {Dash0Origin: "", Dash0Dataset: ""},
-			"dash0/group_2 - rule_2_2": {Dash0Origin: "", Dash0Dataset: ""},
-			"dash0/group_1 - rule_1_1": {Dash0Origin: "", Dash0Dataset: ""},
-			"dash0/group_1 - rule_1_2": {Dash0Origin: "", Dash0Dataset: ""},
+			"dash0/group-2 - rule-2-1": {Dash0Origin: "", Dash0Dataset: ""},
+			"dash0/group-2 - rule-2-2": {Dash0Origin: "", Dash0Dataset: ""},
+			"dash0/group-1 - rule-1-1": {Dash0Origin: "", Dash0Dataset: ""},
+			"dash0/group-1 - rule-1-2": {Dash0Origin: "", Dash0Dataset: ""},
 		},
 		SynchronizationErrorsTotal: 0,
 		SynchronizationErrors:      nil,
@@ -493,14 +495,14 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
 				[]string{
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_0"),
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2"),
 				},
 			)
 			expectRuleDeleteRequests(
 				[]string{
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2"),
 				})
 			defer gock.Off()
 
@@ -523,10 +525,10 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					AlertingRulesTotal:     4,
 					SynchronizedRulesTotal: 4,
 					SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
-						"dash0/group_1 - rule_1_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"dash0/group_2 - rule_2_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"dash0/group_2 - rule_2_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0/group-1 - rule-1-1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0/group-2 - rule-2-1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0/group-2 - rule-2-2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
 					},
 					SynchronizationErrorsTotal: 0,
 					SynchronizationErrors:      nil,
@@ -543,14 +545,14 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
 				[]string{
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2"),
 				},
 			)
 			expectRuleDeleteRequests(
 				[]string{
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_0"),
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2"),
 				})
 			defer gock.Off()
 
@@ -573,10 +575,10 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					AlertingRulesTotal:     4,
 					SynchronizedRulesTotal: 4,
 					SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
-						"dash0/group_1 - rule_1_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"dash0/group_1 - rule_1_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_0 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0/group-1 - rule-1-1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0/group-1 - rule-1-2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
 					},
 					SynchronizationErrorsTotal: 0,
 					SynchronizationErrors:      nil,
@@ -593,16 +595,16 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
 				[]string{
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1"),
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_renamed_0"),
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_renamed_1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_renamed_rule-2-1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_renamed_rule-2-2"),
 				},
 			)
 			expectRuleDeleteRequests(
 				[]string{
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_0"),
-					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2"),
 				})
 			defer gock.Off()
 
@@ -625,12 +627,12 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					AlertingRulesTotal:     6,
 					SynchronizedRulesTotal: 6,
 					SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
-						"dash0/group_1 - rule_1_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"dash0/group_1 - rule_1_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"renamed - rule_2_1":       {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"renamed - rule_2_2":       {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_0 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0/group-1 - rule-1-1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0/group-1 - rule-1-2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"renamed - rule-2-1":       {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"renamed - rule-2-2":       {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
 					},
 					SynchronizationErrorsTotal: 0,
 					SynchronizationErrors:      nil,
@@ -671,8 +673,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 			// successful requests (HTTP 200)
 			for _, pathRegex := range []string{
-				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group_1_2", clusterId),
-				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group_2_0", clusterId),
+				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group-1_rule-1-3", clusterId),
+				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group-2_rule-2-1", clusterId),
 			} {
 				gock.New(ApiEndpointTest).
 					Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, pathRegex)).
@@ -683,8 +685,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			}
 			// failed requests (HTTP 401)
 			for _, pathRegex := range []string{
-				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group_1_1", clusterId),
-				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group_2_2", clusterId),
+				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group-1_rule-1-2", clusterId),
+				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group-2_rule-2-3", clusterId),
 			} {
 				gock.New(ApiEndpointTest).
 					Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, pathRegex)).
@@ -699,18 +701,18 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				prometheusv1.PrometheusRuleSpec{
 					Groups: []prometheusv1.RuleGroup{
 						{
-							Name: "dash0/group_1",
+							Name: "dash0/group-1",
 							Rules: []prometheusv1.Rule{
 								{
-									Alert: "rule_1_1", // invalid due to missing threshold annotations
+									Alert: "rule-1-1", // invalid due to missing threshold annotations
 									Expr:  intstr.FromString("something something $__threshold something"),
 								},
 								{
-									Alert: "rule_1_2", // PUT requests will receive HTTP 401
+									Alert: "rule-1-2", // PUT requests will receive HTTP 401
 									Expr:  intstr.FromString("vector(1)"),
 								},
 								{
-									Alert: "rule_1_3", // should be synchronized successfully
+									Alert: "rule-1-3", // should be synchronized successfully
 									Expr:  intstr.FromString("vector(1)"),
 								},
 								{
@@ -724,18 +726,18 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 							},
 						},
 						{
-							Name: "dash0/group_2",
+							Name: "dash0/group-2",
 							Rules: []prometheusv1.Rule{
 								{
-									Alert: "rule_2_1", // should be synchronized successfully
+									Alert: "rule-2-1", // should be synchronized successfully
 									Expr:  intstr.FromString("vector(1)"),
 								},
 								{
-									Alert: "rule_2_2", // invalid due to missing threshold annotations
+									Alert: "rule-2-2", // invalid due to missing threshold annotations
 									Expr:  intstr.FromString("something something $__threshold something"),
 								},
 								{
-									Alert: "rule_2_3", // PUT requests will receive HTTP 401
+									Alert: "rule-2-3", // PUT requests will receive HTTP 401
 									Expr:  intstr.FromString("vector(1)"),
 								},
 							},
@@ -758,19 +760,19 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					AlertingRulesTotal:     7,
 					SynchronizedRulesTotal: 2,
 					SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
-						"dash0/group_1 - rule_1_3": {Dash0Origin: "", Dash0Dataset: ""},
-						"dash0/group_2 - rule_2_1": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0/group-1 - rule-1-3": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0/group-2 - rule-2-1": {Dash0Origin: "", Dash0Dataset: ""},
 					},
 					SynchronizationErrorsTotal: 2,
 					SynchronizationErrors: map[string]string{
-						"dash0/group_1 - rule_1_2": "^unexpected status code 401 when synchronizing the rule \"dash0/group_1 - rule_1_2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1\\?dataset=test-dataset, response body is {}\n$",
-						"dash0/group_2 - rule_2_3": "^unexpected status code 401 when synchronizing the rule \"dash0/group_2 - rule_2_3\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_2\\?dataset=test-dataset, response body is {}\n$",
+						"dash0/group-1 - rule-1-2": "^unexpected status code 401 when synchronizing the rule \"dash0/group-1 - rule-1-2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2\\?dataset=test-dataset, response body is {}\n$",
+						"dash0/group-2 - rule-2-3": "^unexpected status code 401 when synchronizing the rule \"dash0/group-2 - rule-2-3\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-3\\?dataset=test-dataset, response body is {}\n$",
 					},
 					InvalidRulesTotal: 3,
 					InvalidRules: map[string][]string{
-						"dash0/group_1 - rule_1_1": {thresholdAnnotationsMissingMessage()},
-						"dash0/group_1 - 4":        {"rule has neither the alert nor the record attribute"},
-						"dash0/group_2 - rule_2_2": {thresholdAnnotationsMissingMessage()},
+						"dash0/group-1 - rule-1-1": {thresholdAnnotationsMissingMessage()},
+						"dash0/group-1 - 4":        {"rule has neither the alert nor the record attribute"},
+						"dash0/group-2 - rule-2-2": {thresholdAnnotationsMissingMessage()},
 					},
 				},
 			)
@@ -784,14 +786,14 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 			// failed request, HTTP 401, no retry
 			gock.New(ApiEndpointTest).
-				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1")).
+				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2")).
 				MatchParam("dataset", DatasetCustomTest).
 				Times(1).
 				Reply(401).
 				JSON(map[string]string{})
 			// failed request, HTTP 500, will be retried 3 times
 			gock.New(ApiEndpointTest).
-				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1")).
+				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2")).
 				MatchParam("dataset", DatasetCustomTest).
 				Times(3).
 				Reply(500).
@@ -802,18 +804,18 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				prometheusv1.PrometheusRuleSpec{
 					Groups: []prometheusv1.RuleGroup{
 						{
-							Name: "dash0/group_1",
+							Name: "dash0/group-1",
 							Rules: []prometheusv1.Rule{
 								{
-									Alert: "rule_1_1", // invalid due to missing threshold annotations
+									Alert: "rule-1-1", // invalid due to missing threshold annotations
 									Expr:  intstr.FromString("something something $__threshold something"),
 								},
 								{
-									Alert: "rule_1_2", // PUT requests will receive HTTP 401
+									Alert: "rule-1-2", // PUT requests will receive HTTP 401
 									Expr:  intstr.FromString("vector(1)"),
 								},
 								{
-									Record: "rule_1_3", // will be ignored as it is a record rule
+									Record: "rule-1-3", // will be ignored as it is a record rule
 									Expr:   intstr.FromString("vector(1)"),
 								},
 								{
@@ -823,14 +825,14 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 							},
 						},
 						{
-							Name: "dash0/group_2",
+							Name: "dash0/group-2",
 							Rules: []prometheusv1.Rule{
 								{
-									Alert: "rule_2_1", // invalid due to missing threshold annotations
+									Alert: "rule-2-1", // invalid due to missing threshold annotations
 									Expr:  intstr.FromString("something something $__threshold something"),
 								},
 								{
-									Alert: "rule_2_2", // PUT requests will receive HTTP 500
+									Alert: "rule-2-2", // PUT requests will receive HTTP 500
 									Expr:  intstr.FromString("vector(1)"),
 								},
 							},
@@ -855,14 +857,14 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					SynchronizedRulesAttributes: nil,
 					SynchronizationErrorsTotal:  2,
 					SynchronizationErrors: map[string]string{
-						"dash0/group_1 - rule_1_2": "^unexpected status code 401 when synchronizing the rule \"dash0/group_1 - rule_1_2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1\\?dataset=test-dataset, response body is {}\n$",
-						"dash0/group_2 - rule_2_2": "^unexpected status code 500 when synchronizing the rule \"dash0/group_2 - rule_2_2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1\\?dataset=test-dataset, response body is {}\n$",
+						"dash0/group-1 - rule-1-2": "^unexpected status code 401 when synchronizing the rule \"dash0/group-1 - rule-1-2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2\\?dataset=test-dataset, response body is {}\n$",
+						"dash0/group-2 - rule-2-2": "^unexpected status code 500 when synchronizing the rule \"dash0/group-2 - rule-2-2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2\\?dataset=test-dataset, response body is {}\n$",
 					},
 					InvalidRulesTotal: 3,
 					InvalidRules: map[string][]string{
-						"dash0/group_1 - rule_1_1": {thresholdAnnotationsMissingMessage()},
-						"dash0/group_1 - 3":        {"rule has neither the alert nor the record attribute"},
-						"dash0/group_2 - rule_2_1": {thresholdAnnotationsMissingMessage()},
+						"dash0/group-1 - rule-1-1": {thresholdAnnotationsMissingMessage()},
+						"dash0/group-1 - 3":        {"rule has neither the alert nor the record attribute"},
+						"dash0/group-2 - rule-2-1": {thresholdAnnotationsMissingMessage()},
 					},
 				},
 			)
@@ -1137,7 +1139,111 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		)
 	})
 
-	Describe("converting Prometheus rule resources to http requests", func() {
+	Describe("converting a PrometheusRule resource to multiple http requests", func() {
+		var prometheusRuleReconciler *PrometheusRuleReconciler
+
+		BeforeEach(func() {
+			prometheusRuleReconciler = &PrometheusRuleReconciler{}
+		})
+
+		It("should create unique origins even if alert names are not unique", func() {
+			prometheusRule := map[string]interface{}{}
+			prometheusRuleYaml := `
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: prometheus-rule
+spec:
+  groups:
+  - name: group-1
+    interval: 5m
+    rules:
+    - alert: alert-1
+      expr: "expression 1"
+    - alert: alert-2
+      expr: "expression 2"
+    - alert: alert-1
+      expr: "expression 3"
+    - alert: alert-1
+      expr: "expression 4"
+    - record: alert-2
+      expr: "expression 5"
+  - name: group-2
+    interval: 10m
+    rules:
+    - alert: alert-1
+      expr: "expression 6"
+`
+			Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
+			preconditionValidationResult := &preconditionValidationResult{
+				k8sName:      "prometheus-rule",
+				k8sNamespace: TestNamespaceName,
+				resource:     prometheusRule,
+			}
+			resourceToRequestsResult :=
+				prometheusRuleReconciler.MapResourceToHttpRequests(
+					preconditionValidationResult,
+					upsertAction,
+					&logger,
+				)
+			Expect(resourceToRequestsResult.ItemsTotal).To(Equal(5))
+			Expect(resourceToRequestsResult.OriginsInResource).To(HaveLen(5))
+
+			// verify uniqueness of origins
+			origins := make(map[string]bool, len(resourceToRequestsResult.OriginsInResource))
+			for _, origin := range resourceToRequestsResult.OriginsInResource {
+				if origins[origin] {
+					Fail("Duplicate origin string: " + origin)
+				}
+				origins[origin] = true
+			}
+			Expect(resourceToRequestsResult.OriginsInResource).To(ContainElements(
+				"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1",
+				"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2",
+				"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1",
+				"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2",
+				"dash0-operator___test-namespace_prometheus-rule_group-2_alert-1",
+			))
+
+			Expect(resourceToRequestsResult.ValidationIssues).To(BeEmpty())
+			Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
+			Expect(resourceToRequestsResult.HttpRequests).To(HaveLen(5))
+
+			verifyCheckRuleRequest(
+				resourceToRequestsResult.HttpRequests[0],
+				"group-1 - alert-1",
+				"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-1",
+				"expression 1",
+			)
+			verifyCheckRuleRequest(
+				resourceToRequestsResult.HttpRequests[1],
+				"group-1 - alert-2",
+				"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-2",
+				"expression 2",
+			)
+			verifyCheckRuleRequest(
+				resourceToRequestsResult.HttpRequests[2],
+				"group-1 - alert-1",
+				"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1",
+				"expression 3",
+			)
+			verifyCheckRuleRequest(
+				resourceToRequestsResult.HttpRequests[3],
+				"group-1 - alert-1",
+				"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2",
+				"expression 4",
+			)
+			verifyCheckRuleRequest(
+				resourceToRequestsResult.HttpRequests[4],
+				"group-2 - alert-1",
+				"/dash0-operator___test-namespace_prometheus-rule_group-2_alert-1",
+				"expression 6",
+			)
+		})
+	})
+
+	Describe("converting a single Prometheus rule to an http request", func() {
+
 		It("should ignore/skip a record rule", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
 				"https://api.dash0.com/alerting/check-rules/rule-origin",
@@ -1296,16 +1402,16 @@ func expectFetchOriginsGetRequest(clusterId string) {
 		Reply(200).
 		JSON([]map[string]string{
 			{
-				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_1_0", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-1", clusterId),
 			},
 			{
-				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_1_1", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2", clusterId),
 			},
 			{
-				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_2_0", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1", clusterId),
 			},
 			{
-				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_2_1", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2", clusterId),
 			},
 		})
 }
@@ -1377,31 +1483,31 @@ func createDefaultSpec() prometheusv1.PrometheusRuleSpec {
 	return prometheusv1.PrometheusRuleSpec{
 		Groups: []prometheusv1.RuleGroup{
 			{
-				Name: "dash0/group_1",
+				Name: "dash0/group-1",
 				Rules: []prometheusv1.Rule{
 					{
-						Alert: "rule_1_1",
+						Alert: "rule-1-1",
 						Expr:  intstr.FromString("vector(1)"),
 					},
 					{
-						Alert: "rule_1_2",
+						Alert: "rule-1-2",
 						Expr:  intstr.FromString("vector(1)"),
 					},
 					{
-						Record: "rule_1_3",
+						Record: "rule-1-3",
 						Expr:   intstr.FromString("vector(1)"),
 					},
 				},
 			},
 			{
-				Name: "dash0/group_2",
+				Name: "dash0/group-2",
 				Rules: []prometheusv1.Rule{
 					{
-						Alert: "rule_2_1",
+						Alert: "rule-2-1",
 						Expr:  intstr.FromString("vector(1)"),
 					},
 					{
-						Alert: "rule_2_2",
+						Alert: "rule-2-2",
 						Expr:  intstr.FromString("vector(1)"),
 					},
 				},
@@ -1447,11 +1553,27 @@ func isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler *PrometheusRu
 
 func defaultExpectedPathsCheckRules(clusterId string) []string {
 	return []string{
-		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
-		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1"),
-		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_0"),
-		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1"),
+		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-1"),
+		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2"),
+		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1"),
+		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2"),
 	}
+}
+
+func verifyCheckRuleRequest(reqWithName HttpRequestWithItemName, itemName string, origin string, expression string) {
+	Expect(reqWithName.ItemName).To(Equal(itemName))
+	req := reqWithName.Request
+	Expect(req.URL.Path).To(ContainSubstring(origin))
+	verifyRequestBodyContains(req, expression)
+}
+
+func verifyRequestBodyContains(req *http.Request, substring string) {
+	defer func() {
+		_ = req.Body.Close()
+	}()
+	body, err := io.ReadAll(req.Body)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(string(body)).To(ContainSubstring(substring))
 }
 
 func verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
