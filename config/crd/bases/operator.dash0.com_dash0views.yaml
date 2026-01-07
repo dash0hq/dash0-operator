@@ -451,13 +451,15 @@ spec:
                     a view
                   properties:
                     actions:
-                      description: Outlines possible actions that matching views can
+                      description: Outlines possible actions that matching users can
                         take with this view.
-                      enum:
-                      - views:read
-                      - views:write
-                      - views:delete
                       items:
+                        description: Dash0ViewAction defines the possible actions
+                          that matching users can take with this view.
+                        enum:
+                        - views:read
+                        - views:write
+                        - views:delete
                         type: string
                       type: array
                     role:
