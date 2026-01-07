@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000
-	github.com/samber/slog-multi v1.6.0
+	github.com/samber/slog-multi v1.7.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.14.0
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/metric v1.39.0
