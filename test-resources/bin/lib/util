@@ -78,7 +78,7 @@ ensure_namespace_exists() {
   local target_namespace=${1:-test-namespace}
 
   if [[ "${target_namespace}" = default  ]]; then
-    exit 0
+    return
   fi
 
   if ! kubectl get ns "$target_namespace" &> /dev/null; then

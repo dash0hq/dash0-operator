@@ -94,18 +94,21 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 					Value: common.ProtocolHttpProtobuf,
 				},
 				"LD_PRELOAD": {
-					Value: "/__dash0__/dash0_injector.so",
+					Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 				},
-				"DASH0_NAMESPACE_NAME": {
+				"OTEL_INJECTOR_CONFIG_FILE": {
+					Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+				},
+				"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 					ValueFrom: "metadata.namespace",
 				},
-				"DASH0_POD_NAME": {
+				"OTEL_INJECTOR_K8S_POD_NAME": {
 					ValueFrom: "metadata.name",
 				},
-				"DASH0_POD_UID": {
+				"OTEL_INJECTOR_K8S_POD_UID": {
 					ValueFrom: "metadata.uid",
 				},
-				"DASH0_CONTAINER_NAME": {
+				"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 					Value: "test-container-0",
 				},
 			},
@@ -321,10 +324,12 @@ func verifyDash0InitContainer(initContainer corev1.Container) {
 	Expect(initContainer.Image).To(Equal(InitContainerImageTest))
 	Expect(initContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
 	Expect(initContainer.Env).To(HaveLen(1))
-	Expect(initContainer.Env).To(ContainElement(MatchEnvVar("DASH0_INSTRUMENTATION_FOLDER_DESTINATION", "/__dash0__")))
+	Expect(initContainer.Env).To(
+		ContainElement(MatchEnvVar("DASH0_INSTRUMENTATION_FOLDER_DESTINATION", "/__otel_auto_instrumentation")))
 	Expect(initContainer.SecurityContext).NotTo(BeNil())
 	Expect(initContainer.VolumeMounts).To(HaveLen(1))
-	Expect(initContainer.VolumeMounts).To(ContainElement(MatchVolumeMount("dash0-instrumentation", "/__dash0__")))
+	Expect(initContainer.VolumeMounts).To(
+		ContainElement(MatchVolumeMount("dash0-instrumentation", "/__otel_auto_instrumentation")))
 }
 
 func verifyContainers(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
@@ -345,7 +350,7 @@ func verifyVolumeMounts(container corev1.Container, expectations ContainerExpect
 	for j, volumeMount := range container.VolumeMounts {
 		if j == expectations.Dash0VolumeMountIdx {
 			Expect(volumeMount.Name).To(Equal("dash0-instrumentation"))
-			Expect(volumeMount.MountPath).To(Equal("/__dash0__"))
+			Expect(volumeMount.MountPath).To(Equal("/__otel_auto_instrumentation"))
 		} else {
 			Expect(volumeMount.Name).To(Equal(fmt.Sprintf("test-volume-%d", j)))
 		}

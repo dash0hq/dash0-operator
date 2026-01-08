@@ -56,8 +56,8 @@ class App
             return 1;
         }
 
-        string prefixLibcArch = String.Format("/__dash0__/instrumentation/dotnet/{0}/{1}", libcFlavor, cpuArch);
-        string prefixLibc = String.Format("/__dash0__/instrumentation/dotnet/{0}", libcFlavor);
+        string prefixLibcArch = String.Format("/__otel_auto_instrumentation/agents/dotnet/{0}/{1}", libcFlavor, cpuArch);
+        string prefixLibc = String.Format("/__otel_auto_instrumentation/agents/dotnet/{0}", libcFlavor);
 
         try
         {

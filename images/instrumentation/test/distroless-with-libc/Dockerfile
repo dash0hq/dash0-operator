@@ -27,6 +27,6 @@ USER 65532:65532
 
 # The following lines emulate the behavior of running the instrumentation image as a Kubernetes init container and
 # setting the LD_PRELOAD environment variable via the operator.
-COPY --from=init /dash0-init-container/*.so /__dash0__/
-COPY --from=init /dash0-init-container/instrumentation /__dash0__/instrumentation
-ENV LD_PRELOAD=/__dash0__/dash0_injector.so
+COPY --from=init /dash0-init-container /__otel_auto_instrumentation
+ENV LD_PRELOAD=/__otel_auto_instrumentation/injector/libotelinject.so
+ENV OTEL_INJECTOR_CONFIG_FILE=/__otel_auto_instrumentation/injector/otelinject.conf

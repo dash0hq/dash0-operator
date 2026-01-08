@@ -1,4 +1,4 @@
-name: Injector and Instrumentation Tests
+name: Instrumentation Image Tests
 
 on:
   workflow_call:
@@ -38,9 +38,8 @@ jobs:
           # usually main).
           main-branch-name: ${{ steps.branch-name.outputs.base_ref_branch }}
 
-      # We use the changed-files action to potentially skip the injector & instrumentation tests on PRs that contain no
-      # changes for the instrumentation image. This is because running the tests requires to build the instrumentation
-      # image for both arm64 and X86_64, and the cross-platform build is very slow (takes up to 15 minutes). We do
+      # We use the changed-files action to potentially skip the instrumentation tests on PRs that contain no changes for
+      # the instrumentation image. This is because running the instrumentation image tests are somewhat slow. We do
       # always run these steps when building the main branch or a tag though. By default, changed-files would compare
       # against the last non-merge commit on the target branch for pull request events (which is used in PR builds), but
       # together with the nrwl/nx-set-shas step from above we compare against the SHA from the last _successful_ CI
@@ -61,7 +60,7 @@ jobs:
           fi
 
           # Get all changed instrumentation files (|| true to prevent grep from returning non-zero exit code)
-          INSTRUMENTATION_FILES=$(git diff --name-only --diff-filter=ACMRTUXB "$BASE_SHA" "$GITHUB_SHA" | grep -E "^images/instrumentation/|.github/workflows/injector-and-instrumentation-tests.yaml" || true)
+          INSTRUMENTATION_FILES=$(git diff --name-only --diff-filter=ACMRTUXB "$BASE_SHA" "$GITHUB_SHA" | grep -E "^images/instrumentation/|.github/workflows/instrumentation-image-tests.yaml" || true)
 
           # Determine if any instrumentation files changed
           if [ -z "$INSTRUMENTATION_FILES" ]; then
@@ -132,63 +131,10 @@ jobs:
           cache-to: type=gha,mode=max,scope=instrumentation
           push: true
 
-  run_injector_tests_x86_64:
-    name: Run Injector Binary Tests (x86_64)
-    needs: build_instrumentation_image
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          fetch-depth: 0
-
-      - name: set up qemu
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
-        if: |
-          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
-          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
-
-      - name: injector binary tests (x86_64)
-        if: |
-          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
-          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
-        env:
-          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
-          ARCHITECTURES: 'x86_64'
-        run: |
-          images/instrumentation/injector/test/scripts/test-all.sh
-
-  run_injector_tests_arm64:
-    name: Run Injector Binary Tests (arm64)
-    needs: build_instrumentation_image
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          fetch-depth: 0
-
-      - name: set up qemu
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
-        if: |
-          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
-          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
-
-      - name: injector binary tests (arm64)
-        if: |
-          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
-          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
-        env:
-          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
-          ARCHITECTURES: 'arm64'
-        run: |
-          images/instrumentation/injector/test/scripts/test-all.sh
-
   run_instrumentation_image_tests_x86_64:
     name: Run Instrumentation Image Tests (x86_64)
     needs:
     - build_instrumentation_image
-    - run_injector_tests_x86_64
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -219,7 +165,6 @@ jobs:
     name: Run Instrumentation Image Tests (arm64)
     needs:
     - build_instrumentation_image
-    - run_injector_tests_arm64
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
 

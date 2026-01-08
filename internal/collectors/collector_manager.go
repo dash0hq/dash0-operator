@@ -88,7 +88,7 @@ func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util
 //  4. a file change event picked up by the extra config map watcher
 //
 // Returns a boolean flag indicating whether the reconciliation has been performed (true) or has been cancelled, due
-// to another reconcliation already being in progress or because the resource has been deleted by the operator.
+// to another reconciliation already being in progress or because the resource has been deleted by the operator.
 // A return value of (nil, true) does not necessarily indicate that any collector resource has been created, updated, or
 // deleted; it only indicates that the reconciliation has been performed.
 func (m *CollectorManager) ReconcileOpenTelemetryCollector(

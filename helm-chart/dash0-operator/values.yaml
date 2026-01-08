@@ -395,7 +395,7 @@ operator:
     # processed, before starting with the next namespace.
     delayAfterEachNamespaceMillis: 0
 
-    # If set to true, it enables verbose output from the init container and the injector.
+    # If set to true, it enables verbose output from the Dash0 init container and the OpenTelemetry injector.
     debug: false
 
   # If set to true, the operator manager will not watch the resources of the OpenTelemetry collectors it manages. By

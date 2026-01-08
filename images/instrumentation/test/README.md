@@ -2,15 +2,7 @@ Instumentation Image Integration Tests
 ======================================
 
 This directory contains integration tests for the instrumentation image.
-The difference to images/instrumentation/injector/test is that the latter tests the ld-preload injector in isolation
-while the tests in this directory test the complete instrumentation image.
-The tests in this directory also cover a wider variety of runtimes and base images.
-
-Another subtle yet very important difference is that for the injector integration tests in
-images/instrumentation/injector/test, the injector is set via LD_PRELOAD for the executable under test directly.
-In contrast, for the instrumentation image tests in this folder, LD_PRELOAD is set for the container as a whole,
-and that usually means that the entrypoint (which might be a shell) is already instrumented by the injector, and the
-actual executable under test inherits the already-instrumented environment.
+The tests in this directory cover a variety of runtimes and base images.
 
 The general flow for the tests is:
 * Build the instrumentation image locally, as a multi-platform image.

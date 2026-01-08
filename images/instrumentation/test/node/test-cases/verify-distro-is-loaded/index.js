@@ -6,9 +6,11 @@ const process = require('node:process');
 const loadedModules = Object.keys(require.cache);
 if (
   !loadedModules.includes(
-    '/__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry/dist/src/1.x/init.js',
+    '/__otel_auto_instrumentation/agents/node.js/node_modules/@dash0/opentelemetry/dist/src/1.x/init.js',
   ) &&
-  !loadedModules.includes('/__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry/dist/src/2.x/init.js')
+  !loadedModules.includes(
+    '/__otel_auto_instrumentation/agents/node.js/node_modules/@dash0/opentelemetry/dist/src/2.x/init.js',
+  )
 ) {
   console.error(`It looks like the Dash0 Node.js OpenTelemetry distribution has not been loaded.`);
   process.exit(1);

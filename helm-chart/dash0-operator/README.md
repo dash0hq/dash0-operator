@@ -1652,8 +1652,8 @@ The modifications that are performed for workloads are the following:
   `dash0-instrumentation` volume mount, so they are available in the target container's file system
 * add environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `LD_PRELOAD`, and several
   Dash0-specific variables prefixed with `DASH0_`) to all containers of the pod
-* add the Dash0 injector (see below for details) as a startup hook (via the `LD_PRELOAD` environment variable) to all
-  containers of the pod
+* add the [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) (see below for details) as
+  a startup hook (via the `LD_PRELOAD` environment variable) to all containers of the pod
 * add the following labels to the workload metadata:
     * `dash0.com/instrumented`: `true` or `false` depending on whether the workload has been successfully instrumented
       or not
@@ -1723,9 +1723,9 @@ You can safely skip this section if you are not interested in the technical deta
 1. The Dash0 operator adds the `dash0-instrumentation` init container with the
    [Dash0 instrumentation image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation) to the pod
    spec template of workloads.
-   The instrumentation image contains OpenTelemetry SDKs and distributions for all supported runtimes and the Dash0
-   injector binary.
-2. When the init container starts, it copies the OpenTelemetry distributions and distributions and the injector binary
+   The instrumentation image contains OpenTelemetry SDKs and distributions for all supported runtimes and the
+   [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) binary.
+2. When the init container starts, it copies the OpenTelemetry distributions and the OpenTelemetry injector binary
    to a dedicated shared volume mount that has been added by the operator, so they are available in the target
    container's file system.
    When it has copied all files, the init container exits.
@@ -1737,32 +1737,32 @@ You can safely skip this section if you are not interested in the technical deta
    `LD_PRELOAD` is an environment variable that is evaluated by the
    [dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts.
    In general, it specifies a list of additional shared objects to be loaded before the actual code of the executable.
-   In this specific case, the Dash0 injector binary is added to the `LD_PRELOAD` list.
-4. At process startup, the Dash0 injector adds additional environment variables to the running process by hooking into
-   the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify
-   environment variables (like `OTEL_RESOURCES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS`).
+   In this specific case, the OpenTelemetry injector binary is added to the `LD_PRELOAD` list.
+4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by
+   hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to
+   add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and
+   others).
    The reason for doing that at process startup and not when modifying the pod spec (where environment variables can
    also be added and modified) is that the original environment variables are not necessarily fully known at that time.
    Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment
    variables are only available at process runtime.
-   For example, the Dash0 injector sets (or appends to) `NODE_OPTIONS` to activate the
+   For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the
    [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect
    tracing data from all Node.js workloads.
    For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely
    adding a `-javaagent`).
-5. Additionally, the Dash0 injector automatically improves Kubernetes-related resource attributes as follows:
-   The operator sets the environment variables `DASH0_NAMESPACE_NAME`, `DASH0_POD_NAME`, `DASH0_POD_UID` and
-   `DASH0_CONTAINER_NAME` on workloads.
-   The Dash0 injector binary picks these values up and uses them to populate the resource attributes
+   For .NET or other CLR-based workloads, the `CORECLR_PROFILER` mechanism is used to add the OpenTelemetry .NET
+   instrumentation.
+5. Additionally, the OpenTelemetry injector automatically improves Kubernetes-related resource attributes as follows:
+   The operator sets the environment variables `OTEL_INJECTOR_K8S_NAMESPACE_NAME`, `OTEL_INJECTOR_K8S_POD_NAME`,
+   `OTEL_INJECTOR_K8S_POD_UID` and `OTEL_INJECTOR_K8S_CONTAINER_NAME` on workloads.
+   The OpenTelemetry injector binary picks these values up and uses them to populate the resource attributes
    `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES`
    environment variable.
    If `OTEL_RESOURCE_ATTRIBUTES` is already set on the process, the key-value pairs for these attributes are appended to
    the existing value of `OTEL_RESOURCE_ATTRIBUTES`.
-   If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the Dash0 injector will add `OTEL_RESOURCE_ATTRIBUTES` as
-   a new environment variable.
-
-If you are curious, the source code for the injector is open source and can be found
-[here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector).
+   If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the OpenTelemetry injector will add
+   `OTEL_RESOURCE_ATTRIBUTES` as a new environment variable.
 
 ## Scraping Prometheus Endpoints
 
@@ -2244,14 +2244,14 @@ To avoid conflicts, it is recommended to not define the following environment va
 * `LD_PRELOAD`
 * `DASH0_NODE_IP`
 * `DASH0_OTEL_COLLECTOR_BASE_URL`
-* `DASH0_NAMESPACE_NAME`
-* `DASH0_POD_NAME`
-* `DASH0_POD_UID`
-* `DASH0_CONTAINER_NAME`
-* `DASH0_SERVICE_NAME`
-* `DASH0_SERVICE_NAMESPACE`
-* `DASH0_SERVICE_VERSION`
-* `DASH0_RESOURCE_ATTRIBUTES`
+* `OTEL_INJECTOR_K8S_NAMESPACE_NAME`
+* `OTEL_INJECTOR_K8S_POD_NAME`
+* `OTEL_INJECTOR_K8S_POD_UID`
+* `OTEL_INJECTOR_K8S_CONTAINER_NAME`
+* `OTEL_INJECTOR_SERVICE_NAME`
+* `OTEL_INJECTOR_SERVICE_NAMESPACE`
+* `OTEL_INJECTOR_SERVICE_VERSION`
+* `OTEL_INJECTOR_RESOURCE_ATTRIBUTES`
 
 This recommendation does not apply to workloads that are
 [excluded from workload instrumentation](#disabling-auto-instrumentation-for-specific-workloads) or workloads in
@@ -2333,11 +2333,11 @@ When running a single-architecture `amd64` image (as opposed to a single-archite
 the operator will prevent the container from starting.
 
 The reason for this is the interaction between Rosetta emulation and how the operator works. The Dash0 instrumentation
-image (which is added as an init container and contains the auto-tracing injector) is a multi-platform image, supporting
-both `amd64` and `arm64`. When this image is pulled from an Apple Silicon machine, it automatically pulls the `arm64`
-variant. That is, the injector binary that is added via the init container is compiled for `arm64`. Now, when the
-application from your `amd64` application image is started, the injector and the application will be incompatible, as
-they have been built for two different CPU architectures.
+image (which is added as an init container and contains the OpenTelemetry injector) is a multi-platform image,
+supporting both `amd64` and `arm64`. When this image is pulled from an Apple Silicon machine, it automatically pulls the
+`arm64` variant. That is, the injector binary that is added via the init container is compiled for `arm64`. Now, when
+the application from your `amd64` application image is started, the injector and the application will be incompatible,
+as they have been built for two different CPU architectures.
 
 Under normal circumstances, an `amd64` image would not work on an `arm64` Kubernetes node anyway, but in the case of
 Docker Desktop on MacOS, this combination is enabled due to Docker Desktop automatically running `amd64` images via
