@@ -2,40 +2,51 @@ apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0View
 metadata:
   name: view-e2e-test
+  annotations:
+    dash0.com/folder-path: "/test-folder"
   labels:
     app.kubernetes.io/name: view-e2e-test
 {{- if .Dash0ComEnabled }}
     dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
 {{- end }}
+    dash0.com/dataset: default
+    dash0.com/id: 14cdf74a-3b1c-48a3-ab6a-b97910853760
+    dash0.com/source: userdefined
+    dash0.com/version: "1"
 spec:
-  type: resources
+  type: logs
   display:
     name: E2E test view
     description: A test view for the e2e-test for synchronizing views with the Dash0 Operator.
-    folder: ["Test", "Operator"]
   filter:
     - key: service.name
-      operator: is
-      value:
-        stringValue: test-service
-    - key: http.status_code
+      operator: is_one_of
+      values:
+        - operator-manager
+        - dash0-operator-collector
+    - key: otel.log.severity.number
       operator: gte
-      value:
-        stringValue: "200"
+      value: "13"
   groupBy:
-    - service.name
-    - deployment.environment
+    - otel.log.severity.range
   table:
     columns:
-      - key: service.name
-        label: Service
-        colSize: "150px"
-      - key: http.status_code
-        label: Status Code
+      - colSize: min-content
+        key: otel.log.severity.range
+        label: Severity
+      - colSize: min-content
+        key: otel.log.time
+        label: Time
+      - key: dash0.resource.id
+        label: Resource
+      - key: otel.log.body
+        label: Body
+      - colSize: min-content
+        key: dash0.trace.context
     sort:
-      - key: service.name
-        direction: ascending
+      - direction: descending
+        key: otel.log.time
   visualizations:
-    - renderers:
-        - resources/services/red
+    - metric: logs_total
+      renderers: []
       yAxisScale: linear

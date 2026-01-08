@@ -5,6 +5,10 @@ metadata:
   labels:
     prometheus: example
     role: alert-rules
+    dash0.com/dataset: default
+    dash0.com/id: 14cdf74a-3b1c-48a3-ab6a-b97910853760
+    dash0.com/source: userdefined
+    dash0.com/version: "1"
 spec:
   groups:
     - name: dash0/k8s
