@@ -161,7 +161,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 		Describe("with a deployed Dash0 monitoring resource", func() {
 			BeforeAll(func() {
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesDefault,
 					operatorNamespace,
@@ -745,7 +745,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 					deployWorkloadsForMultipleRuntimesInParallel(workloadTestConfigs, testIds)
 
-					deployDash0MonitoringResource(
+					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
 						operatorNamespace,
@@ -807,7 +807,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeJob)
 					By("installing the Node.js job")
 					Expect(installNodeJsJob(applicationUnderTestNamespace, testId)).To(Succeed())
-					deployDash0MonitoringResource(
+					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
 						operatorNamespace,
@@ -839,7 +839,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should ignore existing pods", func() {
 					By("installing the Node.js pod")
 					Expect(installNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
-					deployDash0MonitoringResource(
+					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
 						operatorNamespace,
@@ -858,7 +858,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				// its effects here separately.
 
 				BeforeAll(func() {
-					deployDash0MonitoringResource(
+					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
 						operatorNamespace,
@@ -910,7 +910,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			Describe("when updating the Dash0Monitoring resource", func() {
 				It("should instrument workloads when the Dash0Monitoring resource is switched from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", func() { //nolint
 					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeStatefulSet)
-					deployDash0MonitoringResource(
+					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
 							Endpoint:                defaultEndpoint,
@@ -947,7 +947,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 				It("should revert an instrumented workload when the Dash0Monitoring resource is switched from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", func() { //nolint
 					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
-					deployDash0MonitoringResource(
+					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
 						operatorNamespace,
@@ -985,7 +985,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			Describe("with a custom auto-instrumentation label selector", func() {
 
 				BeforeAll(func() {
-					deployDash0MonitoringResource(
+					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
 							InstrumentWorkloadsLabelSelector: "instrument-with-dash0=yes",
@@ -1036,7 +1036,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					// Deploying the Dash0 monitoring resource  will trigger a metric data point for
 					// dash0.operator.manager.monitoring.reconcile_requests to be produced.
 					timestampLowerBound := time.Now()
-					deployDash0MonitoringResource(
+					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
 						operatorNamespace,
@@ -1059,7 +1059,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
 					By("deploying the v1alpha1 Dash0 monitoring resource")
-					deployDash0MonitoringResourceV1Alpha1(
+					deployDash0MonitoringResourceV1Alpha1WithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
 						operatorNamespace,
@@ -1121,7 +1121,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 		Describe("using the monitoring resource's connection settings", func() {
 			BeforeAll(func() {
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesWithExport,
 					operatorNamespace,
@@ -1164,7 +1164,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			// by skipping the operator configuration resource.
 
 			BeforeAll(func() {
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesWithExport,
 					operatorNamespace,
@@ -1271,7 +1271,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			})
 
 			It("emits health check spans without filter", func() {
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesWithExport,
 					operatorNamespace,
@@ -1317,7 +1317,7 @@ traces:
   - 'attributes["http.route"] == "/ready"'
 `
 				// minTimestampCollectorRestart := time.Now()
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
 						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
@@ -1414,7 +1414,7 @@ trace_statements:
 - truncate_all(span.attributes, 10)
 `
 				// minTimestampCollectorRestart := time.Now()
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
 						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
@@ -1493,7 +1493,7 @@ trace_statements:
 					nil,
 				)
 				By("create an operator configuration resource with telemetryCollection.enabled=false")
-				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:      false,
 					Endpoint:                   defaultEndpoint,
 					Token:                      defaultToken,
@@ -1502,7 +1502,7 @@ trace_statements:
 					TelemetryCollectionEnabled: false,
 				}, operatorNamespace, operatorHelmChart)
 				time.Sleep(5 * time.Second)
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
 						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
@@ -1552,7 +1552,7 @@ trace_statements:
 						"operator.webhookService.name": "e2e-webhook-service-name",
 					},
 				)
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesDefault,
 					operatorNamespace,
@@ -1619,7 +1619,7 @@ trace_statements:
 					true,
 					nil,
 				)
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesDefault,
 					operatorNamespace,
@@ -1684,7 +1684,7 @@ trace_statements:
 
 			//nolint:lll
 			It("should update the daemon set collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
-				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:      false,
 					Endpoint:                   defaultEndpoint,
 					Token:                      defaultToken,
@@ -1692,7 +1692,7 @@ trace_statements:
 					ClusterName:                e2eKubernetesContext,
 					TelemetryCollectionEnabled: true,
 				}, operatorNamespace, operatorHelmChart)
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
 						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
@@ -1744,7 +1744,7 @@ trace_statements:
 
 			//nolint:lll
 			It("should remove the OpenTelemetry collector", func() {
-				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:      false,
 					Endpoint:                   defaultEndpoint,
 					Token:                      defaultToken,
@@ -1854,7 +1854,7 @@ trace_statements:
 						nil,
 					)
 					runInParallel(configs, func(config removalTestNamespaceConfig) {
-						deployDash0MonitoringResource(
+						deployDash0MonitoringResourceWithRetry(
 							config.namespace,
 							dash0MonitoringValuesDefault,
 							operatorNamespace,
@@ -1931,7 +1931,7 @@ trace_statements:
 
 		Describe("with a deployed Dash0 monitoring resource but prometheusScraping.enabled=false", func() {
 			BeforeAll(func() {
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringWithScrapingDisabled,
 					operatorNamespace,
@@ -1949,7 +1949,7 @@ trace_statements:
 
 		Describe("with a deployed Dash0 monitoring resource and prometheusScraping.enabled=true", func() {
 			BeforeAll(func() {
-				deployDash0MonitoringResource(
+				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesDefault,
 					operatorNamespace,

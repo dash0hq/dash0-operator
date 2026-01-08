@@ -9,6 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"text/template"
+	"time"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -59,31 +65,79 @@ func renderDash0OperatorConfigurationResourceTemplate(
 	)
 }
 
-func deployDash0OperatorConfigurationResource(
+func deployDash0OperatorConfigurationResourceWithRetry(
 	dash0OperatorConfigurationValues dash0OperatorConfigurationValues,
 	operatorNamespace string,
 	operatorHelmChart string,
 ) {
 	renderedResourceFileName := renderDash0OperatorConfigurationResourceTemplate(dash0OperatorConfigurationValues)
+	deployRenderedOperatorConfigurationResourceWithRetry(
+		dash0OperatorConfigurationValues,
+		operatorNamespace,
+		operatorHelmChart,
+		renderedResourceFileName,
+	)
+}
+
+func deployRenderedOperatorConfigurationResourceWithRetry(
+	dash0OperatorConfigurationValues dash0OperatorConfigurationValues,
+	operatorNamespace string,
+	operatorHelmChart string,
+	renderedResourceFileName string,
+) {
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
-
 	By(fmt.Sprintf(
 		"deploying the Dash0 operator configuration resource with values %v", dash0OperatorConfigurationValues))
-	Expect(
-		runAndIgnoreOutput(exec.Command(
+	retryLogger := zap.New()
+	err := util.RetryWithCustomBackoff("deploying the Dash0 operator configuration resource", func() error {
+		return runAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"apply",
 			"-f",
 			renderedResourceFileName,
-		))).To(Succeed())
+		))
+	},
+		wait.Backoff{
+			Duration: 10 * time.Second,
+			Steps:    3,
+		},
+		true,
+		true,
+		&retryLogger,
+	)
+	Expect(err).ToNot(HaveOccurred())
+
+	waitForOperatorConfigurationResourceToBecomeAvailable()
 
 	if dash0OperatorConfigurationValues.TelemetryCollectionEnabled && dash0OperatorConfigurationValues.Endpoint != "" {
 		// Deploying the Dash0 operator configuration resource with an export will trigger creating the default
 		// OpenTelemetry collector instance.
 		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 	}
+}
+
+func waitForOperatorConfigurationResourceToBecomeAvailable() {
+	By("waiting for the Dash0 operator configuration resource to become available")
+	Eventually(func(g Gomega) {
+		g.Expect(
+			runAndIgnoreOutput(exec.Command(
+				"kubectl",
+				"get",
+				"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource-e2e",
+			))).To(Succeed())
+	}, 60*time.Second, 1*time.Second).Should(Succeed())
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"wait",
+			"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource-e2e",
+			"--for",
+			"condition=Available",
+			"--timeout",
+			"30s",
+		))).To(Succeed())
 }
 
 func updateEndpointOfDash0OperatorConfigurationResource(

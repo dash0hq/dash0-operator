@@ -80,13 +80,13 @@ func renderDash0MonitoringResourceTemplateV1Alpha1(dash0MonitoringValues dash0Mo
 	return renderResourceTemplate(dash0MonitoringResourceTemplate, dash0MonitoringValues, "dash0monitoring-v1alpha1")
 }
 
-func deployDash0MonitoringResource(
+func deployDash0MonitoringResourceWithRetry(
 	namespace string,
 	dash0MonitoringValues dash0MonitoringValues,
 	operatorNamespace string,
 ) {
 	renderedResourceFileName := renderDash0MonitoringResourceTemplate(dash0MonitoringValues)
-	deployRenderedMonitoringResource(
+	deployRenderedMonitoringResourceWithRetry(
 		namespace,
 		dash0MonitoringValues,
 		operatorNamespace,
@@ -94,13 +94,13 @@ func deployDash0MonitoringResource(
 	)
 }
 
-func deployDash0MonitoringResourceV1Alpha1(
+func deployDash0MonitoringResourceV1Alpha1WithRetry(
 	namespace string,
 	dash0MonitoringValues dash0MonitoringValues,
 	operatorNamespace string,
 ) {
 	renderedResourceFileName := renderDash0MonitoringResourceTemplateV1Alpha1(dash0MonitoringValues)
-	deployRenderedMonitoringResource(
+	deployRenderedMonitoringResourceWithRetry(
 		namespace,
 		dash0MonitoringValues,
 		operatorNamespace,
@@ -108,7 +108,7 @@ func deployDash0MonitoringResourceV1Alpha1(
 	)
 }
 
-func deployRenderedMonitoringResource(
+func deployRenderedMonitoringResourceWithRetry(
 	namespace string,
 	dash0MonitoringValues dash0MonitoringValues,
 	operatorNamespace string,
@@ -117,10 +117,10 @@ func deployRenderedMonitoringResource(
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
-	retryLogger := zap.New()
 	By(fmt.Sprintf(
 		"deploying the Dash0 monitoring resource to namespace %s with values %v from file %s, operator namespace is %s",
 		namespace, dash0MonitoringValues, renderedResourceFileName, operatorNamespace))
+	retryLogger := zap.New()
 	err := util.RetryWithCustomBackoff("deploying the Dash0 monitoring resource to namespace", func() error {
 		return runAndIgnoreOutput(exec.Command(
 			"kubectl",
