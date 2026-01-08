@@ -256,7 +256,7 @@ func synchronizeViaApiAndUpdateStatus(
 	action apiAction,
 	logger *logr.Logger,
 ) {
-	preconditionChecksResult := validatePreconditions(
+	preconditionChecksResult := validatePreconditionsAndPreprocess(
 		ctx,
 		apiSyncReconciler,
 		dash0ApiResource,
@@ -372,7 +372,25 @@ func synchronizeViaApiAndUpdateStatus(
 	)
 }
 
-func validatePreconditions(
+// validatePreconditionsAndPreprocess checks whether a resource can be synchronized to the Dash0 API and applies common
+// preprocessing steps to the resource payload.
+//
+// Validation checks:
+// - Is there a monitoring resource in the namespace?
+// - Is synchronization enabled for the resource type in the namespace?
+// - Is synchronization disabled for this resource specifically via the dash0.com/enable label?
+// - Are a Dash0 API endpoint and a Dash0 auth token available?
+//
+// Preprocessing steps:
+// - Remove irrelevant metadata like metadata.managedFields and the kubectl.kubernetes.io/last-applied-configuration
+// annotation.
+// - Remove well-known dash0.com labels that were part of the YAML download in the Dash0 UI for a while, but should not
+// be sent to the API:
+//   - dash0.com/dataset
+//   - dash0.com/id
+//   - dash0.com/source
+//   - dash0.com/version
+func validatePreconditionsAndPreprocess(
 	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
 	dash0ApiResource *unstructured.Unstructured,
@@ -544,13 +562,23 @@ func cleanUpMetadata(resource map[string]interface{}) {
 	metadataRaw := resource["metadata"]
 	if metadataRaw != nil {
 		metadata, ok := metadataRaw.(map[string]interface{})
-		delete(metadata, "managedFields")
 		if ok {
+			delete(metadata, "managedFields")
 			annotationsRaw := metadata["annotations"]
 			if annotationsRaw != nil {
 				annotations, ok := annotationsRaw.(map[string]interface{})
 				if ok {
 					delete(annotations, "kubectl.kubernetes.io/last-applied-configuration")
+				}
+			}
+			labelsRaw := metadata["labels"]
+			if labelsRaw != nil {
+				labels, ok := labelsRaw.(map[string]interface{})
+				if ok {
+					delete(labels, "dash0.com/dataset")
+					delete(labels, "dash0.com/id")
+					delete(labels, "dash0.com/source")
+					delete(labels, "dash0.com/version")
 				}
 			}
 		}
