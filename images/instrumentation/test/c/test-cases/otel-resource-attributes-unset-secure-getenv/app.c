@@ -34,7 +34,7 @@ int main() {
   // Also check NODE_OPTIONS, since that actually depends on the getenv/secure_getenv override.
   name = "NODE_OPTIONS";
   actual = secure_getenv(name);
-  expected = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry";
+  expected = "--require /__otel_auto_instrumentation/agents/node.js/node_modules/@dash0/opentelemetry";
   if (actual == NULL) {
     fprintf(stderr, "Unexpected value for the environment variable %s --\nexpected: %s\n     was: null\n", name, expected);
     return 1;

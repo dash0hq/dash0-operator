@@ -40,7 +40,7 @@ var (
 		ImagePullPolicy: corev1.PullAlways,
 		Env: []corev1.EnvVar{{
 			Name:  "DASH0_INSTRUMENTATION_FOLDER_DESTINATION",
-			Value: "/__dash0__",
+			Value: "/__otel_auto_instrumentation",
 		}},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: ptr.To(false),
@@ -53,7 +53,7 @@ var (
 		VolumeMounts: []corev1.VolumeMount{{
 			Name:      "dash0-instrumentation",
 			ReadOnly:  false,
-			MountPath: "/__dash0__",
+			MountPath: "/__otel_auto_instrumentation",
 		}},
 	}
 )
@@ -899,7 +899,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:      "dash0-instrumentation",
-					MountPath: "/__dash0__",
+					MountPath: "/__otel_auto_instrumentation",
 				},
 			},
 			Env: []corev1.EnvVar{
@@ -914,7 +914,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "LD_PRELOAD",
-					Value: "/some/preload.so /__dash0__/dash0_injector.so /another/preload.so",
+					Value: "/some/preload.so /__otel_auto_instrumentation/injector/libotelinject.so /another/preload.so",
 				},
 				{
 					Name:      "DASH0_NODE_IP",
@@ -948,7 +948,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:      "dash0-instrumentation",
-					MountPath: "/__dash0__",
+					MountPath: "/__otel_auto_instrumentation",
 				},
 			},
 			Env: []corev1.EnvVar{
@@ -962,7 +962,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "LD_PRELOAD",
-					Value: "/__dash0__/dash0_injector.so",
+					Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
@@ -1006,7 +1006,7 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 	container := &podSpec.Containers[0]
 	container.VolumeMounts = []corev1.VolumeMount{{
 		Name:      "dash0-instrumentation",
-		MountPath: "/__dash0__",
+		MountPath: "/__otel_auto_instrumentation",
 	}}
 	container.Env = []corev1.EnvVar{
 		{
@@ -1027,10 +1027,14 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		},
 		{
 			Name:  "LD_PRELOAD",
-			Value: "/__dash0__/dash0_injector.so",
+			Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 		},
 		{
-			Name: "DASH0_NAMESPACE_NAME",
+			Name:  "OTEL_INJECTOR_CONFIG_FILE",
+			Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+		},
+		{
+			Name: "OTEL_INJECTOR_K8S_NAMESPACE_NAME",
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: "metadata.namespace",
@@ -1038,7 +1042,7 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 			},
 		},
 		{
-			Name: "DASH0_POD_NAME",
+			Name: "OTEL_INJECTOR_K8S_POD_NAME",
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: "metadata.name",
@@ -1046,7 +1050,7 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 			},
 		},
 		{
-			Name: "DASH0_POD_UID",
+			Name: "OTEL_INJECTOR_K8S_POD_UID",
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: "metadata.uid",
@@ -1054,7 +1058,7 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 			},
 		},
 		{
-			Name:  "DASH0_CONTAINER_NAME",
+			Name:  "OTEL_INJECTOR_K8S_CONTAINER_NAME",
 			Value: "test-container-0",
 		},
 	}
@@ -1226,7 +1230,7 @@ func AddManagedFields(meta *metav1.ObjectMeta) {
 		FieldsType: "FieldsV1",
 		FieldsV1: &metav1.FieldsV1{
 			//nolint:lll
-			Raw: []byte(`{\"f:metadata\":{\"f:labels\":{\".\":{},\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:template\":{\"f:metadata\":{\"f:labels\":{\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:containers\":{\"k:{\\\"name\\\":\\\"test-container-0\\\"}\":{\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_NODE_IP\\\"}\":{\".\":{},\"f:name\":{},\"f:valueFrom\":{\".\":{},\"f:fieldRef\":{}}},\"k:{\\\"name\\\":\\\"DASH0_OTEL_COLLECTOR_BASE_URL\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}},\"k:{\\\"name\\\":\\\"OTEL_EXPORTER_OTLP_ENDPOINT\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}},\"k:{\\\"name\\\":\\\"LD_PRELOAD\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:initContainers\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_INSTRUMENTATION_FOLDER_DESTINATION\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:image\":{},\"f:imagePullPolicy\":{},\"f:name\":{},\"f:resources\":{},\"f:securityContext\":{\".\":{},\"f:allowPrivilegeEscalation\":{},\"f:privileged\":{},\"f:readOnlyRootFilesystem\":{},\"f:runAsGroup\":{},\"f:runAsUser\":{}},\"f:terminationMessagePath\":{},\"f:terminationMessagePolicy\":{},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:volumes\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:emptyDir\":{\".\":{},\"f:sizeLimit\":{}},\"f:name\":{}}}}}}}`),
+			Raw: []byte(`{\"f:metadata\":{\"f:labels\":{\".\":{},\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:template\":{\"f:metadata\":{\"f:labels\":{\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:containers\":{\"k:{\\\"name\\\":\\\"test-container-0\\\"}\":{\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_NODE_IP\\\"}\":{\".\":{},\"f:name\":{},\"f:valueFrom\":{\".\":{},\"f:fieldRef\":{}}},\"k:{\\\"name\\\":\\\"DASH0_OTEL_COLLECTOR_BASE_URL\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}},\"k:{\\\"name\\\":\\\"OTEL_EXPORTER_OTLP_ENDPOINT\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}},\"k:{\\\"name\\\":\\\"LD_PRELOAD\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:initContainers\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_INSTRUMENTATION_FOLDER_DESTINATION\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:image\":{},\"f:imagePullPolicy\":{},\"f:name\":{},\"f:resources\":{},\"f:securityContext\":{\".\":{},\"f:allowPrivilegeEscalation\":{},\"f:privileged\":{},\"f:readOnlyRootFilesystem\":{},\"f:runAsGroup\":{},\"f:runAsUser\":{}},\"f:terminationMessagePath\":{},\"f:terminationMessagePolicy\":{},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__otel_auto_instrumentation\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:volumes\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:emptyDir\":{\".\":{},\"f:sizeLimit\":{}},\"f:name\":{}}}}}}}`),
 		},
 	})
 }

@@ -251,14 +251,17 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 							VolumeMounts:        2,
 							Dash0VolumeMountIdx: 1,
 							EnvVars: map[string]*EnvVarExpectation{
+								"DASH0_NODE_IP": {
+									ValueFrom: "status.hostIP",
+								},
 								"TEST0": {
 									Value: "value",
 								},
 								"LD_PRELOAD": {
-									Value: "/__dash0__/dash0_injector.so",
+									Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 								},
-								"DASH0_NODE_IP": {
-									ValueFrom: "status.hostIP",
+								"OTEL_INJECTOR_CONFIG_FILE": {
+									Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -269,28 +272,28 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
 								},
-								"DASH0_NAMESPACE_NAME": {
+								"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 									ValueFrom: "metadata.namespace",
 								},
-								"DASH0_POD_NAME": {
+								"OTEL_INJECTOR_K8S_POD_NAME": {
 									ValueFrom: "metadata.name",
 								},
-								"DASH0_POD_UID": {
+								"OTEL_INJECTOR_K8S_POD_UID": {
 									ValueFrom: "metadata.uid",
 								},
-								"DASH0_CONTAINER_NAME": {
+								"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 									Value: "test-container-0",
 								},
-								"DASH0_SERVICE_NAME": {
+								"OTEL_INJECTOR_SERVICE_NAME": {
 									ValueFrom: "metadata.labels['app.kubernetes.io/name']",
 								},
-								"DASH0_SERVICE_NAMESPACE": {
+								"OTEL_INJECTOR_SERVICE_NAMESPACE": {
 									ValueFrom: "metadata.labels['app.kubernetes.io/part-of']",
 								},
-								"DASH0_SERVICE_VERSION": {
+								"OTEL_INJECTOR_SERVICE_VERSION": {
 									ValueFrom: "metadata.labels['app.kubernetes.io/version']",
 								},
-								"DASH0_RESOURCE_ATTRIBUTES": {
+								"OTEL_INJECTOR_RESOURCE_ATTRIBUTES": {
 									UnorderedCommaSeparatedValues: []string{
 										"workload.only.1=workload-value-1",
 										"workload.only.2=workload-value-2",
@@ -306,6 +309,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 							VolumeMounts:        3,
 							Dash0VolumeMountIdx: 2,
 							EnvVars: map[string]*EnvVarExpectation{
+								"DASH0_NODE_IP": {
+									ValueFrom: "status.hostIP",
+								},
 								"TEST0": {
 									Value: "value",
 								},
@@ -313,10 +319,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									ValueFrom: "metadata.namespace",
 								},
 								"LD_PRELOAD": {
-									Value: "/__dash0__/dash0_injector.so",
+									Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 								},
-								"DASH0_NODE_IP": {
-									ValueFrom: "status.hostIP",
+								"OTEL_INJECTOR_CONFIG_FILE": {
+									Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -327,28 +333,28 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
 								},
-								"DASH0_NAMESPACE_NAME": {
+								"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 									ValueFrom: "metadata.namespace",
 								},
-								"DASH0_POD_NAME": {
+								"OTEL_INJECTOR_K8S_POD_NAME": {
 									ValueFrom: "metadata.name",
 								},
-								"DASH0_POD_UID": {
+								"OTEL_INJECTOR_K8S_POD_UID": {
 									ValueFrom: "metadata.uid",
 								},
-								"DASH0_CONTAINER_NAME": {
+								"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 									Value: "test-container-1",
 								},
-								"DASH0_SERVICE_NAME": {
+								"OTEL_INJECTOR_SERVICE_NAME": {
 									ValueFrom: "metadata.labels['app.kubernetes.io/name']",
 								},
-								"DASH0_SERVICE_NAMESPACE": {
+								"OTEL_INJECTOR_SERVICE_NAMESPACE": {
 									ValueFrom: "metadata.labels['app.kubernetes.io/part-of']",
 								},
-								"DASH0_SERVICE_VERSION": {
+								"OTEL_INJECTOR_SERVICE_VERSION": {
 									ValueFrom: "metadata.labels['app.kubernetes.io/version']",
 								},
-								"DASH0_RESOURCE_ATTRIBUTES": {
+								"OTEL_INJECTOR_RESOURCE_ATTRIBUTES": {
 									UnorderedCommaSeparatedValues: []string{
 										"workload.only.1=workload-value-1",
 										"workload.only.2=workload-value-2",
@@ -386,6 +392,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 							VolumeMounts:        2,
 							Dash0VolumeMountIdx: 1,
 							EnvVars: map[string]*EnvVarExpectation{
+								"DASH0_NODE_IP": {
+									ValueFrom: "status.hostIP",
+								},
 								"TEST0": {
 									Value: "value",
 								},
@@ -397,8 +406,8 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									// snippets would provide a reasonable LD_PRELOAD variable.
 									ValueFrom: "metadata.namespace",
 								},
-								"DASH0_NODE_IP": {
-									ValueFrom: "status.hostIP",
+								"OTEL_INJECTOR_CONFIG_FILE": {
+									Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -409,16 +418,16 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
 								},
-								"DASH0_NAMESPACE_NAME": {
+								"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 									ValueFrom: "metadata.namespace",
 								},
-								"DASH0_POD_NAME": {
+								"OTEL_INJECTOR_K8S_POD_NAME": {
 									ValueFrom: "metadata.name",
 								},
-								"DASH0_POD_UID": {
+								"OTEL_INJECTOR_K8S_POD_UID": {
 									ValueFrom: "metadata.uid",
 								},
-								"DASH0_CONTAINER_NAME": {
+								"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 									Value: "test-container-0",
 								},
 							},
@@ -429,7 +438,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 							Dash0VolumeMountIdx: 1,
 							EnvVars: map[string]*EnvVarExpectation{
 								"LD_PRELOAD": {
-									Value: "/__dash0__/dash0_injector.so third_party_preload.so another_third_party_preload.so",
+									Value: "/__otel_auto_instrumentation/injector/libotelinject.so third_party_preload.so another_third_party_preload.so",
+								},
+								"OTEL_INJECTOR_CONFIG_FILE": {
+									Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
 								},
 								"DASH0_NODE_IP": {
 									ValueFrom: "status.hostIP",
@@ -443,16 +455,16 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
 								},
-								"DASH0_NAMESPACE_NAME": {
+								"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 									ValueFrom: "metadata.namespace",
 								},
-								"DASH0_POD_NAME": {
+								"OTEL_INJECTOR_K8S_POD_NAME": {
 									ValueFrom: "metadata.name",
 								},
-								"DASH0_POD_UID": {
+								"OTEL_INJECTOR_K8S_POD_UID": {
 									ValueFrom: "metadata.uid",
 								},
-								"DASH0_CONTAINER_NAME": {
+								"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 									Value: "test-container-1",
 								},
 								"TEST4": {

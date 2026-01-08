@@ -145,7 +145,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: go-unit-tests injector-unit-tests helm-unit-tests ## Run all unit tests (Go, Zig/injector & Helm chart unit tests).
+test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
 go-unit-tests: common-package-unit-tests operator-manager-unit-tests ## Run the Go unit tests for all packages.
@@ -157,10 +157,6 @@ operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go un
 .PHONY: common-package-unit-tests
 common-package-unit-tests: ## Run the Go unit tests for the common package (code shared between operator manager and other images, i.e. config-reloader, filelogoffsetsync).
 	go test github.com/dash0hq/dash0-operator/images/pkg/common
-
-.PHONY: injector-unit-tests
-injector-unit-tests: zig-installed ## Run the Zig unit tests for the Dash0 injector binary.
-	cd images/instrumentation/injector && zig build test
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -245,27 +241,6 @@ shellcheck-lint: shellcheck-check-installed ## Run static code analysis for all 
 	@echo "-------------------------------- (linting shell scripts)"
 	find . -name \*.sh | xargs shellcheck -x
 
-.PHONY: zig-installed
-zig-installed:
-	@set +x
-	@if ! zig version > /dev/null; then \
-		echo "error: zig is not installed. Run 'brew install zig' or similar."; \
-		exit 1; \
-	fi
-
-.PHONY: zig-fmt-check
-zig-fmt-check: zig-installed ## Run formatting checks for the Zig code.
-ifeq ("${CI}","true")
-	@echo "CI: skip linting Zig source files via make lint, will run as separate Github action job step"
-else
-	@echo "-------------------------------- (linting Zig source files)"
-	zig fmt --check images/instrumentation/injector/src
-endif
-
-.PHONY: zig-fmt
-zig-fmt: zig-installed ## Fix Zig code formatting.
-	zig fmt images/instrumentation/injector/src
-
 .PHONY: npm-installed
 npm-installed:
 	@set +x
@@ -290,10 +265,10 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint zig-fmt-check instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, Zig, etc.).
+lint: golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
 
 .PHONY: lint-fix
-lint-fix: golangci-lint-fix zig-fmt
+lint-fix: golangci-lint-fix
 
 ##@ Building/Pushing Test App and Auxiliary Images
 

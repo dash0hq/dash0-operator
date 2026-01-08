@@ -68,11 +68,6 @@ jobs:
         run: |
           shellcheck --version
 
-      - uses: mlugg/setup-zig@fa65c4058643678a4e4a9a60513944a7d8d35440
-        with:
-          # keep in sync with images/instrumentation/injector/zig-version, if possible
-          version: 0.14.1
-
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
         with:
           node-version: '24.x'
@@ -94,10 +89,6 @@ jobs:
         run: |
           make lint
 
-      - name: verify that zig sources are properly formatted
-        run: |
-          zig fmt --check images/instrumentation/injector/src
-
       - name: install Helm unittest plugin
         shell: bash
         # Pinning to version 0.7.2, version 0.8.0 has a bug with snapshot testing, looks like values from previous tests
@@ -105,13 +96,13 @@ jobs:
         run: |
           helm plugin install https://github.com/helm-unittest/helm-unittest.git --version=0.7.2
 
-      - name: run operator manager, injector and Helm chart unit tests
+      - name: run operator manager and Helm chart unit tests
         run: |
           make test
 
-  injector_binary_and_instrumentation_image_tests:
-    name: Injector Binary & Instrumentation Image Tests
-    uses: ./.github/workflows/injector-and-instrumentation-tests.yaml
+  instrumentation_image_tests:
+    name: Instrumentation Image Tests
+    uses: ./.github/workflows/instrumentation-image-tests.yaml
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
     needs: check_for_successful_builds_for_same_commit
@@ -128,11 +119,11 @@ jobs:
     runs-on: 8core_32gb
     needs:
       - verify
-      - injector_binary_and_instrumentation_image_tests
+      - instrumentation_image_tests
     if: |
       always() &&
       (needs.verify.result == 'skipped' || needs.verify.result == 'success') &&
-      (needs.injector_binary_and_instrumentation_image_tests.result == 'skipped' || needs.injector_binary_and_instrumentation_image_tests.result == 'success')
+      (needs.instrumentation_image_tests.result == 'skipped' || needs.instrumentation_image_tests.result == 'success')
 
     # Building all container images across architectures via qemu can take _really_ long, especially if the build cache
     # is empty.

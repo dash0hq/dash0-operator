@@ -1,0 +1,61 @@
+name: Check for OpenTelemetry Injector Updates
+
+on:
+  schedule:
+    - cron: "30 09 * * MON"
+
+  workflow_dispatch:
+
+jobs:
+  check-and-update:
+    name: check for new opentelemetry-injector release and update version file
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: check if open PR already exists
+        id: open_pr_exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr list --json title | grep "chore(deps): update opentelemetry-injector" || true
+          if gh pr list --json title | grep "chore(deps): update opentelemetry-injector"; then
+            echo pr_exists=true >> $GITHUB_OUTPUT
+            echo "There is already an open pull request to update the opentelemetry-injector, remaining steps will be skipped."
+          else
+            echo pr_exists=false >> $GITHUB_OUTPUT
+            echo "No open pull request to update the opentelemetry-injector exists, continuing with the workflow."
+          fi
+
+      - name: update opentelemetry-injector version and create PR
+        if: steps.open_pr_exists.outputs.pr_exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch_name="update-opentelemetry-injector"
+          git checkout -b $branch_name
+
+          images/instrumentation/opentelemetry-injector/update.sh
+
+          # git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
+          if git diff-files --quiet images/instrumentation/opentelemetry-injector/version; then
+            echo "There are no changes, everything up to date."
+          else
+            echo "There are changes, creating a pull request."
+            new_version=$(cat images/instrumentation/opentelemetry-injector/version)
+            git add images/instrumentation/opentelemetry-injector/version
+            git commit --message "chore(deps): update opentelemetry-injector to ${new_version}"
+
+            git push -u origin "$branch_name"
+            gh pr create \
+              -B main \
+              -H $branch_name \
+              --title "chore(deps): update opentelemetry-injector to ${new_version}" \
+              --body "This PR updates the opentelemetry-injector version to ${new_version}."
+          fi

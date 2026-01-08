@@ -31,8 +31,8 @@ The directory `test-resources` contains a collection of scripts for running semi
 Build, lint and test tasks in this repository are performed via the Makefile in the root of the repository.
 
 - make build: build the Go code
-- make lint: run all static code analysis checks (Go, Helm, shell scripts, Zig).
-- make test: run all unit tests (Go, Zig, Helm chart unit tests)
+- make lint: run all static code analysis checks (Go, Helm, shell scripts).
+- make test: run all unit tests (Go, Helm chart unit tests)
 - make images: build all container images used by the operator.
 
 ## Common Workflows
@@ -41,7 +41,6 @@ Build, lint and test tasks in this repository are performed via the Makefile in 
 
 After changing Go code, run `make golangci-lint`.
 After changing the Helm chart, run `make helm-chart-lint`.
-After changing Zig code, run `make zig-fmt-check`.
 After changing or creating bash scripts, run `make shellcheck-lint` to verify they have no issues.
 
 ### Changing the Kubernetes Custom Resource Definitions

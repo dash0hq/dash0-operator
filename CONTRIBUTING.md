@@ -9,8 +9,6 @@ Contributing
 - Access to a Kubernetes v1.11.3+ cluster.
 - [helm](https://helm.sh/docs/intro/install/)
 - [helm unittest plug-in](https://github.com/helm-unittest/helm-unittest/tree/main)
-- Zig (with the version referenced in the [zig-version file](images/instrumentation/injector/zig-version), see
-  [Zig download](https://ziglang.org/download/) or [Zig installation instructions](https://github.com/ziglang/zig/wiki/Install-Zig-from-a-Package-Manager).
 
 ## Make Targets
 

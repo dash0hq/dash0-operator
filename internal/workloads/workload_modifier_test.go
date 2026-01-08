@@ -122,14 +122,17 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						VolumeMounts:        2,
 						Dash0VolumeMountIdx: 1,
 						EnvVars: map[string]*EnvVarExpectation{
+							"DASH0_NODE_IP": {
+								ValueFrom: "status.hostIP",
+							},
 							"TEST0": {
 								Value: "value",
 							},
 							"LD_PRELOAD": {
-								Value: "/__dash0__/dash0_injector.so",
+								Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 							},
-							"DASH0_NODE_IP": {
-								ValueFrom: "status.hostIP",
+							"OTEL_INJECTOR_CONFIG_FILE": {
+								Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -140,28 +143,28 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
 							},
-							"DASH0_NAMESPACE_NAME": {
+							"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
 							},
-							"DASH0_POD_NAME": {
+							"OTEL_INJECTOR_K8S_POD_NAME": {
 								ValueFrom: "metadata.name",
 							},
-							"DASH0_POD_UID": {
+							"OTEL_INJECTOR_K8S_POD_UID": {
 								ValueFrom: "metadata.uid",
 							},
-							"DASH0_CONTAINER_NAME": {
+							"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 								Value: "test-container-0",
 							},
-							"DASH0_SERVICE_NAME": {
+							"OTEL_INJECTOR_SERVICE_NAME": {
 								ValueFrom: "metadata.labels['app.kubernetes.io/name']",
 							},
-							"DASH0_SERVICE_NAMESPACE": {
+							"OTEL_INJECTOR_SERVICE_NAMESPACE": {
 								ValueFrom: "metadata.labels['app.kubernetes.io/part-of']",
 							},
-							"DASH0_SERVICE_VERSION": {
+							"OTEL_INJECTOR_SERVICE_VERSION": {
 								ValueFrom: "metadata.labels['app.kubernetes.io/version']",
 							},
-							"DASH0_RESOURCE_ATTRIBUTES": {
+							"OTEL_INJECTOR_RESOURCE_ATTRIBUTES": {
 								UnorderedCommaSeparatedValues: []string{
 									"workload.only.1=workload-value-1",
 									"workload.only.2=workload-value-2",
@@ -177,6 +180,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						VolumeMounts:        3,
 						Dash0VolumeMountIdx: 2,
 						EnvVars: map[string]*EnvVarExpectation{
+							"DASH0_NODE_IP": {
+								ValueFrom: "status.hostIP",
+							},
 							"TEST0": {
 								Value: "value",
 							},
@@ -184,10 +190,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								ValueFrom: "metadata.namespace",
 							},
 							"LD_PRELOAD": {
-								Value: "/__dash0__/dash0_injector.so",
+								Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 							},
-							"DASH0_NODE_IP": {
-								ValueFrom: "status.hostIP",
+							"OTEL_INJECTOR_CONFIG_FILE": {
+								Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -198,28 +204,28 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
 							},
-							"DASH0_NAMESPACE_NAME": {
+							"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
 							},
-							"DASH0_POD_NAME": {
+							"OTEL_INJECTOR_K8S_POD_NAME": {
 								ValueFrom: "metadata.name",
 							},
-							"DASH0_POD_UID": {
+							"OTEL_INJECTOR_K8S_POD_UID": {
 								ValueFrom: "metadata.uid",
 							},
-							"DASH0_CONTAINER_NAME": {
+							"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 								Value: "test-container-1",
 							},
-							"DASH0_SERVICE_NAME": {
+							"OTEL_INJECTOR_SERVICE_NAME": {
 								ValueFrom: "metadata.labels['app.kubernetes.io/name']",
 							},
-							"DASH0_SERVICE_NAMESPACE": {
+							"OTEL_INJECTOR_SERVICE_NAMESPACE": {
 								ValueFrom: "metadata.labels['app.kubernetes.io/part-of']",
 							},
-							"DASH0_SERVICE_VERSION": {
+							"OTEL_INJECTOR_SERVICE_VERSION": {
 								ValueFrom: "metadata.labels['app.kubernetes.io/version']",
 							},
-							"DASH0_RESOURCE_ATTRIBUTES": {
+							"OTEL_INJECTOR_RESOURCE_ATTRIBUTES": {
 								UnorderedCommaSeparatedValues: []string{
 									"workload.only.1=workload-value-1",
 									"workload.only.2=workload-value-2",
@@ -252,6 +258,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						VolumeMounts:        2,
 						Dash0VolumeMountIdx: 1,
 						EnvVars: map[string]*EnvVarExpectation{
+							"DASH0_NODE_IP": {
+								ValueFrom: "status.hostIP",
+							},
 							"TEST0": {
 								Value: "value",
 							},
@@ -260,8 +269,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								// ValueFrom clause, thus this env var will not be modified.
 								ValueFrom: "metadata.namespace",
 							},
-							"DASH0_NODE_IP": {
-								ValueFrom: "status.hostIP",
+							"OTEL_INJECTOR_CONFIG_FILE": {
+								Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -272,16 +281,16 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
 							},
-							"DASH0_NAMESPACE_NAME": {
+							"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
 							},
-							"DASH0_POD_NAME": {
+							"OTEL_INJECTOR_K8S_POD_NAME": {
 								ValueFrom: "metadata.name",
 							},
-							"DASH0_POD_UID": {
+							"OTEL_INJECTOR_K8S_POD_UID": {
 								ValueFrom: "metadata.uid",
 							},
-							"DASH0_CONTAINER_NAME": {
+							"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 								Value: "test-container-0",
 							},
 						},
@@ -291,11 +300,14 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						VolumeMounts:        3,
 						Dash0VolumeMountIdx: 1,
 						EnvVars: map[string]*EnvVarExpectation{
-							"LD_PRELOAD": {
-								Value: "/__dash0__/dash0_injector.so third_party_preload.so another_third_party_preload.so",
-							},
 							"DASH0_NODE_IP": {
 								ValueFrom: "status.hostIP",
+							},
+							"LD_PRELOAD": {
+								Value: "/__otel_auto_instrumentation/injector/libotelinject.so third_party_preload.so another_third_party_preload.so",
+							},
+							"OTEL_INJECTOR_CONFIG_FILE": {
+								Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -306,16 +318,16 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
 							},
-							"DASH0_NAMESPACE_NAME": {
+							"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
 							},
-							"DASH0_POD_NAME": {
+							"OTEL_INJECTOR_K8S_POD_NAME": {
 								ValueFrom: "metadata.name",
 							},
-							"DASH0_POD_UID": {
+							"OTEL_INJECTOR_K8S_POD_UID": {
 								ValueFrom: "metadata.uid",
 							},
-							"DASH0_CONTAINER_NAME": {
+							"OTEL_INJECTOR_K8S_CONTAINER_NAME": {
 								Value: "test-container-1",
 							},
 							"TEST4": {
@@ -866,7 +878,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			expectedInstrumentationIssues []string
 		}
 
-		DescribeTable("should add the Dash0 injector to LD_PRELOAD",
+		DescribeTable("should add the OpenTelemetry injector to LD_PRELOAD",
 			func(testConfig addLdPreloadTest) {
 				container := &corev1.Container{Env: []corev1.EnvVar{}}
 				if testConfig.value != "" {
@@ -893,48 +905,48 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				VerifyEnvVar(testConfig.ldPreloadExpectation, container.Env, envVarLdPreloadName, "")
 				Expect(instrumentationIssues).To(Equal(testConfig.expectedInstrumentationIssues))
 			},
-			Entry("should add LD_PRELOAD with only the Dash0 injector if it does not exist", addLdPreloadTest{
+			Entry("should add LD_PRELOAD with only the OpenTelemetry injector if it does not exist", addLdPreloadTest{
 				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue,
 				},
 			}),
-			Entry("should add LD_PRELOAD with only the Dash0 injector the env var exists but is empty", addLdPreloadTest{
+			Entry("should add LD_PRELOAD with only the OpenTelemetry injector the env var exists but is empty", addLdPreloadTest{
 				value: "",
 				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue,
 				},
 			}),
-			Entry("should add LD_PRELOAD with only the Dash0 injector the env var exists but is only whitespace", addLdPreloadTest{
+			Entry("should add LD_PRELOAD with only the OpenTelemetry injector the env var exists but is only whitespace", addLdPreloadTest{
 				value: "   ",
 				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue,
 				},
 			}),
-			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector as its only element", addLdPreloadTest{
+			Entry("should do nothing if LD_PRELOAD already has the OpenTelemetry injector as its only element", addLdPreloadTest{
 				value: envVarLdPreloadValue,
 				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue,
 				},
 			}),
-			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector as its first element", addLdPreloadTest{
+			Entry("should do nothing if LD_PRELOAD already has the OpenTelemetry injector as its first element", addLdPreloadTest{
 				value: envVarLdPreloadValue + " one.so two.so",
 				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue + " one.so two.so",
 				},
 			}),
-			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector in the middle", addLdPreloadTest{
+			Entry("should do nothing if LD_PRELOAD already has the OpenTelemetry injector in the middle", addLdPreloadTest{
 				value: "one.so " + envVarLdPreloadValue + " two.so",
 				ldPreloadExpectation: EnvVarExpectation{
 					Value: "one.so " + envVarLdPreloadValue + " two.so",
 				},
 			}),
-			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector at the end", addLdPreloadTest{
+			Entry("should do nothing if LD_PRELOAD already has the OpenTelemetry injector at the end", addLdPreloadTest{
 				value: "one.so two.so " + envVarLdPreloadValue,
 				ldPreloadExpectation: EnvVarExpectation{
 					Value: "one.so two.so " + envVarLdPreloadValue,
 				},
 			}),
-			Entry("should prepend the Dash0 injector to LD_PRELOAD if there are other libraries", addLdPreloadTest{
+			Entry("should prepend the OpenTelemetry injector to LD_PRELOAD if there are other libraries", addLdPreloadTest{
 				value: "one.so",
 				ldPreloadExpectation: EnvVarExpectation{
 					Value: envVarLdPreloadValue + " one.so",
@@ -952,7 +964,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 		)
 
-		DescribeTable("should remove the Dash0 injector from LD_PRELOAD",
+		DescribeTable("should remove the OpenTelemetry injector from LD_PRELOAD",
 			func(testConfig envVarModificationTest) {
 				container := &corev1.Container{Env: testConfig.envVars}
 				workloadModifier.removeLdPreload(container)
@@ -974,7 +986,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER": {Value: "value"},
 				},
 			}),
-			Entry("should do nothing if LD_PRELOAD does not list the Dash0 injector", envVarModificationTest{
+			Entry("should do nothing if LD_PRELOAD does not list the OpenTelemetry injector", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so  two.so"},
@@ -1001,7 +1013,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER":             {Value: "value"},
 				},
 			}),
-			Entry("should remove LD_PRELOAD if the Dash0 injector is the only library", envVarModificationTest{
+			Entry("should remove LD_PRELOAD if the OpenTelemetry injector is the only library", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue},
@@ -1010,7 +1022,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER": {Value: "value"},
 				},
 			}),
-			Entry("should remove LD_PRELOAD if the Dash0 injector is the only library and has surrounding whitespace", envVarModificationTest{
+			Entry("should remove LD_PRELOAD if the OpenTelemetry injector is the only library and has surrounding whitespace", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "  " + envVarLdPreloadValue + "   "},
@@ -1019,7 +1031,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER": {Value: "value"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD at the start (space separated)", envVarModificationTest{
+			Entry("should remove the OpenTelemetry injector from LD_PRELOAD at the start (space separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue + " one.so two.so"},
@@ -1029,7 +1041,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD in the middle (space separated)", envVarModificationTest{
+			Entry("should remove the OpenTelemetry injector from LD_PRELOAD in the middle (space separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so " + envVarLdPreloadValue + " two.so"},
@@ -1039,7 +1051,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD with extraneous whitespace (space separated)", envVarModificationTest{
+			Entry("should remove the OpenTelemetry injector from LD_PRELOAD with extraneous whitespace (space separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "  one.so    " + envVarLdPreloadValue + "   two.so  "},
@@ -1049,7 +1061,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD at the end (space separated)", envVarModificationTest{
+			Entry("should remove the OpenTelemetry injector from LD_PRELOAD at the end (space separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so two.so " + envVarLdPreloadValue},
@@ -1059,7 +1071,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD at the start (colon separated)", envVarModificationTest{
+			Entry("should remove the OpenTelemetry injector from LD_PRELOAD at the start (colon separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue + ":one.so:two.so"},
@@ -1069,7 +1081,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so:two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD in the middle (colon separated)", envVarModificationTest{
+			Entry("should remove the OpenTelemetry injector from LD_PRELOAD in the middle (colon separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so:" + envVarLdPreloadValue + ":two.so"},
@@ -1079,7 +1091,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so:two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD with extraneous whitespace (colon separated)", envVarModificationTest{
+			Entry("should remove the OpenTelemetry injector from LD_PRELOAD with extraneous whitespace (colon separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "  one.so  :  " + envVarLdPreloadValue + " :  two.so  "},
@@ -1089,7 +1101,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so:two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD at the end (colon separated)", envVarModificationTest{
+			Entry("should remove the OpenTelemetry injector from LD_PRELOAD at the end (colon separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so:two.so:" + envVarLdPreloadValue},
@@ -1212,6 +1224,22 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: "DASH0_SERVICE_INSTANCE_ID", Value: "foobar"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should remove legacy DASH0_* injector resource attribute variables", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: "DASH0_NAMESPACE_NAME", Value: "legacy value"},
+					{Name: "DASH0_POD_NAME", Value: "legacy value"},
+					{Name: "DASH0_POD_UID", Value: "legacy value"},
+					{Name: "DASH0_CONTAINER_NAME", Value: "legacy value"},
+					{Name: "DASH0_SERVICE_NAME", Value: "legacy value"},
+					{Name: "DASH0_SERVICE_NAMESPACE", Value: "legacy value"},
+					{Name: "DASH0_SERVICE_VERSION", Value: "legacy value"},
+					{Name: "DASH0_RESOURCE_ATTRIBUTES", Value: "legacy value"},
 				},
 				expectations: map[string]*EnvVarExpectation{
 					"OTHER": {Value: "value"},
@@ -1554,7 +1582,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
 
 				expectedResourceAttributes := testConfig.expectedResourceAttributeEnvVar
-				actualResourceAttributes := FindEnvVarByName(envVars, envVarDash0ResourceAttributesName)
+				actualResourceAttributes := FindEnvVarByName(envVars, envVarOTelInjectorResourceAttributesName)
 				if expectedResourceAttributes != nil {
 					Expect(actualResourceAttributes).ToNot(BeNil())
 					actualKeyValuePairs := strings.Split(actualResourceAttributes.Value, ",")
@@ -1568,9 +1596,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			},
 			Entry("should not add env vars if there is no metadata", objectMetaResourceAttributesTest{
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 			}),
 			Entry("should not add env vars if metadata is empty", objectMetaResourceAttributesTest{
@@ -1579,9 +1607,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				podLabels:           map[string]string{},
 				podAnnotations:      map[string]string{},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 			}),
 			Entry("should not add env vars if metadata is unrelated", objectMetaResourceAttributesTest{
@@ -1590,9 +1618,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				podLabels:           map[string]string{"a": "b"},
 				podAnnotations:      map[string]string{"a": "b"},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 			}),
 			Entry("should derive env vars from workload labels", objectMetaResourceAttributesTest{
@@ -1602,9 +1630,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoVersionLabel: "workload-version",
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        {Value: "workload-name"},
-					envVarDash0ServiceNamespace:   {Value: "workload-part-of"},
-					envVarDash0ServiceVersionName: {Value: "workload-version"},
+					envVarOTelInjectorServiceName:        {Value: "workload-name"},
+					envVarOTelInjectorServiceNamespace:   {Value: "workload-part-of"},
+					envVarOTelInjectorServiceVersionName: {Value: "workload-version"},
 				},
 			}),
 			Entry("should not derive service name from workload labels if OTEL_SERVICE_NAME is set", objectMetaResourceAttributesTest{
@@ -1617,9 +1645,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{Name: "OTEL_SERVICE_NAME", Value: "service-name"},
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   {Value: "workload-part-of"},
-					envVarDash0ServiceVersionName: {Value: "workload-version"},
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   {Value: "workload-part-of"},
+					envVarOTelInjectorServiceVersionName: {Value: "workload-version"},
 				},
 			}),
 			Entry("should not derive service name from workload labels if service.name is set in OTEL_RESOURCE_ATTRIBUTES", objectMetaResourceAttributesTest{
@@ -1632,9 +1660,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "something=else,service.name=service-name,foo=bar"},
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   {Value: "workload-part-of"},
-					envVarDash0ServiceVersionName: {Value: "workload-version"},
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   {Value: "workload-part-of"},
+					envVarOTelInjectorServiceVersionName: {Value: "workload-version"},
 				},
 			}),
 			Entry("should not derive service namespace from workload labels if service.namespace is set in OTEL_RESOURCE_ATTRIBUTES", objectMetaResourceAttributesTest{
@@ -1647,9 +1675,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "service.namespace=service-name,something=else,foo=bar"},
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        {Value: "workload-name"},
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: {Value: "workload-version"},
+					envVarOTelInjectorServiceName:        {Value: "workload-name"},
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: {Value: "workload-version"},
 				},
 			}),
 			Entry("should not derive service version from workload labels if service.version is set in OTEL_RESOURCE_ATTRIBUTES", objectMetaResourceAttributesTest{
@@ -1662,9 +1690,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "service.version=1.2.3"},
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        {Value: "workload-name"},
-					envVarDash0ServiceNamespace:   {Value: "workload-part-of"},
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        {Value: "workload-name"},
+					envVarOTelInjectorServiceNamespace:   {Value: "workload-part-of"},
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 			}),
 			Entry("should ignore workload labels if name is not set", objectMetaResourceAttributesTest{
@@ -1673,9 +1701,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoVersionLabel: "workload-version",
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 			}),
 			Entry("should derive env vars from pod labels", objectMetaResourceAttributesTest{
@@ -1685,9 +1713,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoVersionLabel: "pod-version",
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
-					envVarDash0ServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
-					envVarDash0ServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+					envVarOTelInjectorServiceName:        {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
+					envVarOTelInjectorServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarOTelInjectorServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
 				},
 			}),
 			Entry("should not derive service name from pod labels vif OTEL_SERVICE_NAME is set", objectMetaResourceAttributesTest{
@@ -1700,9 +1728,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{Name: "OTEL_SERVICE_NAME", Value: "service-name"},
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
-					envVarDash0ServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarOTelInjectorServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
 				},
 			}),
 			Entry("should not derive service name from pod labels if service.name is set in OTEL_RESOURCE_ATTRIBUTES", objectMetaResourceAttributesTest{
@@ -1715,9 +1743,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: ",something=else , foo = bar  , service.name = service-name,"},
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
-					envVarDash0ServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarOTelInjectorServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
 				},
 			}),
 			Entry("should not derive service namespace from pod labels if service.namespace is set in OTEL_RESOURCE_ATTRIBUTES", objectMetaResourceAttributesTest{
@@ -1730,9 +1758,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "   service.namespace   =  service-namespace  "},
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+					envVarOTelInjectorServiceName:        {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
 				},
 			}),
 			Entry("should not derive service version from pod labels if service.version is set in OTEL_RESOURCE_ATTRIBUTES", objectMetaResourceAttributesTest{
@@ -1745,9 +1773,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{Name: "OTEL_RESOURCE_ATTRIBUTES", Value: "service.version=1.2.3"},
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
-					envVarDash0ServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
+					envVarOTelInjectorServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 			}),
 			Entry("should ignore pod labels if name is not set", objectMetaResourceAttributesTest{
@@ -1756,9 +1784,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoVersionLabel: "pod-version",
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 			}),
 			Entry("pod labels should override workload labels", objectMetaResourceAttributesTest{
@@ -1773,9 +1801,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoVersionLabel: "pod-version",
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
-					envVarDash0ServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
-					envVarDash0ServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+					envVarOTelInjectorServiceName:        {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
+					envVarOTelInjectorServiceNamespace:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarOTelInjectorServiceVersionName: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
 				},
 			}),
 			Entry("should derive resource attributes from workload annotations", objectMetaResourceAttributesTest{
@@ -1784,9 +1812,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"resource.opentelemetry.io/workload.ra.2": "workload-value-2",
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 				expectedResourceAttributeEnvVar: []string{
 					"workload.ra.1=workload-value-1",
@@ -1799,9 +1827,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"resource.opentelemetry.io/pod.ra.2": "pod-value-2",
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 				expectedResourceAttributeEnvVar: []string{"pod.ra.1=pod-value-1", "pod.ra.2=pod-value-2"},
 			}),
@@ -1817,9 +1845,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"resource.opentelemetry.io/occurs-in-both": "pod-value",
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
-					envVarDash0ServiceName:        nil,
-					envVarDash0ServiceNamespace:   nil,
-					envVarDash0ServiceVersionName: nil,
+					envVarOTelInjectorServiceName:        nil,
+					envVarOTelInjectorServiceNamespace:   nil,
+					envVarOTelInjectorServiceVersionName: nil,
 				},
 				expectedResourceAttributeEnvVar: []string{
 					"workload.ra.1=workload-value-1",
@@ -1879,8 +1907,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 			// Verify that the value of DASH0_RESOURCE_ATTRIBUTES is independent of the order in which annotations
 			// are returned by the Kubernetes API:
-			dash0ResourceAttributesValue1 := FindEnvVarByName(container1.Env, envVarDash0ResourceAttributesName).Value
-			dash0ResourceAttributesValue2 := FindEnvVarByName(container2.Env, envVarDash0ResourceAttributesName).Value
+			dash0ResourceAttributesValue1 := FindEnvVarByName(container1.Env, envVarOTelInjectorResourceAttributesName).Value
+			dash0ResourceAttributesValue2 := FindEnvVarByName(container2.Env, envVarOTelInjectorResourceAttributesName).Value
 			Expect(dash0ResourceAttributesValue1).To(Equal(dash0ResourceAttributesValue2))
 		})
 
@@ -2158,6 +2186,36 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: nil,
+				},
+			}),
+		)
+
+		DescribeTable("migrate the legacy Dash0 injector log level",
+			func(testConfig envVarModificationTest) {
+				container := &corev1.Container{Env: testConfig.envVars}
+				workloadModifier.migrateLegacyInjectorLogLevel(container)
+				Expect(container.Env).To(HaveLen(len(testConfig.expectations)))
+				VerifyEnvVarsFromMap(
+					testConfig.expectations,
+					container.Env,
+				)
+			},
+			Entry("should migrate the legacy Dash0 injector log level", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "DASH0_INJECTOR_LOG_LEVEL", Value: "none"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTEL_INJECTOR_LOG_LEVEL": {Value: "none"},
+				},
+			}),
+			Entry("should not migrate the legacy Dash0 injector log level if OTEL_INJECTOR_LOG_LEVEL is already set", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "DASH0_INJECTOR_LOG_LEVEL", Value: "none"},
+					{Name: "OTEL_INJECTOR_LOG_LEVEL", Value: "info"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"DASH0_INJECTOR_LOG_LEVEL": {Value: "none"},
+					"OTEL_INJECTOR_LOG_LEVEL":  {Value: "info"},
 				},
 			}),
 		)

@@ -814,7 +814,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			initContainerEnv := podSpec.InitContainers[0].Env
 			Expect(initContainerEnv).To(ContainElement(MatchEnvVar("DASH0_COPY_INSTRUMENTATION_DEBUG", "true")))
 			workloadEnv := podSpec.Containers[0].Env
-			Expect(workloadEnv).To(ContainElement(MatchEnvVar("DASH0_INJECTOR_LOG_LEVEL", "debug")))
+			Expect(workloadEnv).To(ContainElement(MatchEnvVar("OTEL_INJECTOR_LOG_LEVEL", "debug")))
 		})
 	})
 

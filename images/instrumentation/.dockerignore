@@ -1,21 +1,7 @@
-# Note that these ignore instructions need to be valid for a couple of images with different purposes, like the main
-# instrumentation image, but also the injector builder image used in injector/test. This is mostly about speeding up
-# builds by not invalidating Docker layer caching unnecessarily. The files ending up in the main instrumentation image
-# are not controlled by this .dockerignore file, they are carefully controlled by the last stage of the multi-stage
-# Dockerfile, which only copies the relevant final artifacts from the various build stages.
-injector/test/scripts/*
-!injector/test/scripts/run-tests-within-container.sh
-!injector/test/scripts/*.tests
-injector/.zig-cache
-injector/README.md
-injector/test/.container_images_to_be_deleted_at_end
-injector/test/.containers_to_be_deleted_at_end
-injector/test/README.md
-injector/test/docker
-injector/test/no_environ_symbol
-injector/unit-test-assets
-injector/zig-*.sh
-injector/zig-out
+# This is mostly about speeding up builds by not invalidating Docker layer caching unnecessarily. The files ending up in
+# the main instrumentation image are not controlled by this .dockerignore file, they are carefully controlled by the
+# last stage of the multi-stage Dockerfile, which only copies the relevant final artifacts from the various build
+# stages.
 test/
 **/*.o
 **/*.javac
