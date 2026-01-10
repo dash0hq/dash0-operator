@@ -136,8 +136,6 @@ func (r *CollectorReconciler) Reconcile(
 
 	hasBeenReconciled, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
-		nil,
-		TriggeredByWatchEvent,
 	)
 	if err != nil {
 		logger.Error(err, "Failed to create/update collector resources.")

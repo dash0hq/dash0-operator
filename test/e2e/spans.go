@@ -27,7 +27,7 @@ func verifySpans(
 	g Gomega,
 	runtime runtimeType,
 	workloadType workloadType,
-	route string,
+	route string, //nolint:unparam
 	query string,
 	timestampLowerBound time.Time,
 	expectClusterName bool,

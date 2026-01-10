@@ -194,7 +194,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 							testId,
 							images,
 							"webhook",
-							true,
 						)
 					},
 					Entry("should instrument new Node.js daemon sets", workloadTypeDaemonSet, runtimeTypeNodeJs),
@@ -228,7 +227,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						testId,
 						images,
 						"webhook",
-						true,
 					)
 
 					By("adding the opt-out label to the deployment")
@@ -277,7 +275,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						testId,
 						images,
 						"webhook",
-						true,
 					)
 				})
 
@@ -725,6 +722,39 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
 			})
 
+			Describe("metrics collection", func() {
+				var timestampLowerBound time.Time
+
+				BeforeAll(func() {
+					timestampLowerBound = time.Now()
+				})
+
+				BeforeEach(func() {
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				It("should produce node-based metrics via the kubeletstats receiver", func() {
+					By("waiting for kubeletstats receiver metrics")
+					Eventually(func(g Gomega) {
+						verifyKubeletStatsMetrics(g, timestampLowerBound)
+					}, 120*time.Second, time.Second).Should(Succeed())
+				})
+
+				It("should produce cluster metrics via the k8s_cluster receiver", func() {
+					By("waiting for k8s_cluster receiver metrics")
+					Eventually(func(g Gomega) {
+						verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
+					}, 120*time.Second, time.Second).Should(Succeed())
+				})
+
+				It("should produce Prometheus metrics via the prometheus receiver", func() {
+					By("waiting for prometheus receiver metrics")
+					Eventually(func(g Gomega) {
+						verifyPrometheusMetrics(g, timestampLowerBound)
+					}, 120*time.Second, time.Second).Should(Succeed())
+				})
+			})
+
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
 		// Dash0 monitoring resource"
 
@@ -776,7 +806,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 							getTestIdFromMap(testIds, c.runtime, c.workloadType),
 							images,
 							"controller",
-							true,
 						)
 					})
 					By("all workloads have been instrumented")
@@ -880,7 +909,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						testId,
 						images,
 						"webhook",
-						true,
 					)
 
 					By("verifying that removing the Dash0 monitoring resource attempts to uninstruments the job")
@@ -941,7 +969,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						testId,
 						images,
 						"controller",
-						true,
 					)
 				})
 
@@ -963,7 +990,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						testId,
 						images,
 						"webhook",
-						true,
 					)
 
 					By("updating the Dash0Monitoring resource to instrumentWorkloads.mode=none")
@@ -1016,7 +1042,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						testId,
 						images,
 						"webhook",
-						true,
 					)
 				})
 
@@ -1073,7 +1098,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						testId,
 						images,
 						"controller",
-						true,
 					)
 					By("removing the Dash0 monitoring resource")
 					undeployDash0MonitoringResource(applicationUnderTestNamespace)
@@ -1098,6 +1122,197 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 			})
 
+			Describe("telemetry filtering", func() {
+
+				BeforeEach(func() {
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				AfterEach(func() {
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				})
+
+				It("emits health check spans without filter", func() {
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesWithExport,
+						operatorNamespace,
+					)
+
+					testId := uuid.New().String()
+					timestampLowerBound := time.Now()
+					By("verifying that the Node.js deployment emits spans")
+					Eventually(func(g Gomega) {
+						verifySpans(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testEndpoint,
+							fmt.Sprintf("id=%s", testId),
+							timestampLowerBound,
+							false,
+						)
+					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+					By("Node.js deployment: matching spans have been received")
+					By("now searching collected spans for health checks...")
+					askTelemetryMatcherForMatchingSpans(
+						Default,
+						shared.ExpectAtLeastOne,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						false,
+						false,
+						timestampLowerBound,
+						"/ready",
+						"", // health check spans have no query parameter
+						"",
+					)
+				})
+
+				It("does not emit health check spans when filter is active", func() {
+					filter :=
+						`
+traces:
+  span:
+  - 'attributes["http.route"] == "/ready"'
+`
+					// minTimestampCollectorRestart := time.Now()
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValues{
+							InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							Filter:                  filter,
+						},
+						operatorNamespace,
+					)
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						// nolint:lll
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace" and (attributes["http.route"] == "/ready")'`,
+					)
+					// TODO reactivate this once we move these tests to the suite
+					// "with an existing operator deployment and operation configuration resource::without deployed Dash0
+					//  monitoring resource"
+					// (waits for https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 to be merged and
+					// released)
+					// By("verify that the collector has restarted after the config change")
+					// Eventually(func(g Gomega) {
+					// 	mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+					// 	g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
+					// }, 30*time.Second, time.Second).Should(Succeed())
+
+					testId := uuid.New().String()
+					timestampLowerBound := time.Now()
+					By("verifying that the Node.js deployment emits spans")
+					Eventually(func(g Gomega) {
+						verifySpans(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testEndpoint,
+							fmt.Sprintf("id=%s", testId),
+							timestampLowerBound,
+							false,
+						)
+					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+					By("Node.js deployment: matching spans have been received")
+					By("now searching collected spans for health checks...")
+					askTelemetryMatcherForMatchingSpans(
+						Default,
+						shared.ExpectNoMatches,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						false,
+						false,
+						timestampLowerBound,
+						"/ready",
+						"", // health check spans have no query parameter
+						"",
+					)
+				})
+			})
+
+			Describe("telemetry transformation", func() {
+
+				BeforeEach(func() {
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				AfterEach(func() {
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				})
+
+				It("truncates attributes when the transform is active", func() {
+					transform :=
+						`
+trace_statements:
+- truncate_all(span.attributes, 10)
+`
+					// minTimestampCollectorRestart := time.Now()
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValues{
+							InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							Transform:               transform,
+						},
+						operatorNamespace,
+					)
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'truncate_all(span.attributes, 10)'`,
+					)
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace"'`,
+					)
+					// TODO reactivate this once we move these tests to the suite
+					// "with an existing operator deployment and operation configuration resource::without deployed Dash0
+					//  monitoring resource"
+					// (waits for https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 to be merged and
+					// released)
+					// By("verify that the collector has restarted after the config change")
+					// Eventually(func(g Gomega) {
+					//	 mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+					//	 g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
+					// }, 30*time.Second, time.Second).Should(Succeed())
+
+					testId := uuid.New().String()
+					timestampLowerBound := time.Now()
+					By("verifying that span attributes have been transformed")
+					Eventually(func(g Gomega) {
+						route := testEndpoint
+						query := fmt.Sprintf("id=%s", testId)
+
+						// send an HTTP request using the full URL and query
+						sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, route, query)
+
+						// check whether the produced span has been truncated according to the transformation rules which
+						// have been configured above
+						truncatedRoute := route[0:10]
+						truncatedQuery := query[0:10]
+						askTelemetryMatcherForMatchingSpans(
+							g,
+							shared.ExpectAtLeastOne,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							false,
+							false,
+							timestampLowerBound,
+							truncatedRoute,
+							truncatedQuery,
+							// This is the expected http.target attribute. Since the route "/dash0-k8s-operator-test" is
+							// already > 10 chars, so the target (which is route + query) will only contain the truncated
+							// route.
+							truncatedRoute,
+						)
+					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+				})
+			})
+
 		}) // end of suite "with an existing operator deployment and operation configuration resource::without a
 		// deployed Dash0 monitoring resource"
 
@@ -1116,92 +1331,20 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 		})
 
 		AfterAll(func() {
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			undeployOperator(operatorNamespace)
 		})
 
-		Describe("using the monitoring resource's connection settings", func() {
-			BeforeAll(func() {
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValuesWithExport,
-					operatorNamespace,
-				)
-			})
+		It("should not deploy the collectors even if there's a monitoring resource", func() {
 
-			AfterAll(func() {
-				undeployDash0MonitoringResource(applicationUnderTestNamespace)
-			})
+			deployDash0MonitoringResourceWithRetry(
+				applicationUnderTestNamespace,
+				dash0MonitoringValuesWithExport,
+				operatorNamespace,
+			)
 
-			It("should instrument workloads and send telemetry to the endpoint configured in the monitoring resource", func() {
-				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
-				By("installing the Node.js deployment")
-				Expect(
-					installTestAppWorkload(runtimeTypeNodeJs, workloadTypeDeployment, applicationUnderTestNamespace, testId, nil, nil),
-				).To(Succeed())
-				By("verifying that the Node.js deployment has been instrumented by the webhook")
-				verifyThatWorkloadHasBeenInstrumented(
-					applicationUnderTestNamespace,
-					runtimeTypeNodeJs,
-					workloadTypeDeployment,
-					testId,
-					images,
-					"webhook",
-					false,
-				)
-			})
+			verifyThatCollectorIsNotPresentConsistently()
 		})
-
-		Describe("metrics collection", func() {
-			var timestampLowerBound time.Time
-
-			// Note: This test case deliberately works without an operator configuration resource, instead only using a
-			// monitoring resource to enable the namespace for metrics monitoring _and_ the export. If we deployed an
-			// operator configuration resource first, that would create a collector config map with the filter
-			// discarding metrics from unmonitored namespaces set to allow only non-namepace scoped metrics (because
-			// no namespace is monitored), and start the collector. Then, when we deploy the monitoring resource, the
-			// config map would be updated, but then it takes a bit until the collector reloads its configuration via
-			// the configuration reloader container. We can avoid that config change and the config reloading wait time
-			// by skipping the operator configuration resource.
-
-			BeforeAll(func() {
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValuesWithExport,
-					operatorNamespace,
-				)
-				timestampLowerBound = time.Now()
-			})
-
-			AfterAll(func() {
-				undeployDash0MonitoringResource(applicationUnderTestNamespace)
-			})
-
-			BeforeEach(func() {
-				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-			})
-
-			It("should produce node-based metrics via the kubeletstats receiver", func() {
-				By("waiting for kubeletstats receiver metrics")
-				Eventually(func(g Gomega) {
-					verifyKubeletStatsMetrics(g, timestampLowerBound)
-				}, 50*time.Second, time.Second).Should(Succeed())
-			})
-
-			It("should produce cluster metrics via the k8s_cluster receiver", func() {
-				By("waiting for k8s_cluster receiver metrics")
-				Eventually(func(g Gomega) {
-					verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
-				}, 50*time.Second, time.Second).Should(Succeed())
-			})
-
-			It("should produce Prometheus metrics via the prometheus receiver", func() {
-				By("waiting for prometheus receiver metrics")
-				Eventually(func(g Gomega) {
-					verifyPrometheusMetrics(g, timestampLowerBound)
-				}, 90*time.Second, time.Second).Should(Succeed())
-			})
-		})
-
 	}) // end of suite "with an existing operator deployment without an operation configuration resource"
 
 	Describe("without an existing operator deployment", func() {
@@ -1237,245 +1380,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				Eventually(func(g Gomega) {
 					verifyNonNamespaceScopedKubeletStatsMetricsOnly(g, timestampLowerBound)
 				}, 50*time.Second, time.Second).Should(Succeed())
-			})
-		})
-
-		Describe("telemetry filtering", func() {
-			// Note: This test case deliberately works without an operator configuration resource, instead only using a
-			// monitoring resource to configure the namespace telemetry filter _and_ the export. If we deployed an
-			// operator configuration resource first, that would create a collector config map without any custom
-			// filters, and start the collector. Then, when we deploy the monitoring resource, the config map would be
-			// updated, but then it takes a bit until the collector is actually restarted due to the issue fixed in
-			// https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 (which is not merged at the time of
-			// writing), because the restart is blocked/delayed by the collector not being able to offload its
-			// self-monitoring logs. We can avoid that config change and the config reloading wait time by skipping the
-			// operator configuration resource.
-			// We should be able to move this suite to the suite
-			// "with an existing operator deployment and operation configuration resource::without deployed Dash0
-			//  monitoring resource"
-			// after https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 has been merged and released.
-
-			BeforeEach(func() {
-				deployOperatorWithoutAutoOperationConfiguration(
-					operatorNamespace,
-					operatorHelmChart,
-					operatorHelmChartUrl,
-					images,
-					nil,
-				)
-			})
-
-			AfterEach(func() {
-				undeployDash0MonitoringResource(applicationUnderTestNamespace)
-				undeployOperator(operatorNamespace)
-			})
-
-			It("emits health check spans without filter", func() {
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValuesWithExport,
-					operatorNamespace,
-				)
-				By("installing the Node.js deployment")
-				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-
-				testId := uuid.New().String()
-				timestampLowerBound := time.Now()
-				By("verifying that the Node.js deployment emits spans")
-				Eventually(func(g Gomega) {
-					verifySpans(
-						g,
-						runtimeTypeNodeJs,
-						workloadTypeDeployment,
-						testEndpoint,
-						fmt.Sprintf("id=%s", testId),
-						timestampLowerBound,
-						false,
-					)
-				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
-				By("Node.js deployment: matching spans have been received")
-				By("now searching collected spans for health checks...")
-				askTelemetryMatcherForMatchingSpans(
-					Default,
-					shared.ExpectAtLeastOne,
-					runtimeTypeNodeJs,
-					workloadTypeDeployment,
-					false,
-					false,
-					timestampLowerBound,
-					"/ready",
-					"", // health check spans have no query parameter
-					"",
-				)
-			})
-
-			It("does not emit health check spans when filter is active", func() {
-				filter :=
-					`
-traces:
-  span:
-  - 'attributes["http.route"] == "/ready"'
-`
-				// minTimestampCollectorRestart := time.Now()
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValues{
-						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
-						Endpoint:                defaultEndpoint,
-						Token:                   defaultToken,
-						Filter:                  filter,
-					},
-					operatorNamespace,
-				)
-				verifyDaemonSetCollectorConfigMapContainsString(
-					operatorNamespace,
-					// nolint:lll
-					`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace" and (attributes["http.route"] == "/ready")'`,
-				)
-				// TODO reactivate this once we move these tests to the suite
-				// "with an existing operator deployment and operation configuration resource::without deployed Dash0
-				//  monitoring resource"
-				// (waits for https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 to be merged and
-				// released)
-				// By("verify that the collector has restarted after the config change")
-				// Eventually(func(g Gomega) {
-				// 	mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
-				// 	g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-				// }, 30*time.Second, time.Second).Should(Succeed())
-
-				By("installing the Node.js deployment")
-				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-
-				testId := uuid.New().String()
-				timestampLowerBound := time.Now()
-				By("verifying that the Node.js deployment emits spans")
-				Eventually(func(g Gomega) {
-					verifySpans(
-						g,
-						runtimeTypeNodeJs,
-						workloadTypeDeployment,
-						testEndpoint,
-						fmt.Sprintf("id=%s", testId),
-						timestampLowerBound,
-						false,
-					)
-				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
-				By("Node.js deployment: matching spans have been received")
-				By("now searching collected spans for health checks...")
-				askTelemetryMatcherForMatchingSpans(
-					Default,
-					shared.ExpectNoMatches,
-					runtimeTypeNodeJs,
-					workloadTypeDeployment,
-					false,
-					false,
-					timestampLowerBound,
-					"/ready",
-					"", // health check spans have no query parameter
-					"",
-				)
-			})
-		})
-
-		Describe("telemetry transformation", func() {
-			// Note: This test case deliberately works without an operator configuration resource, instead only using a
-			// monitoring resource to configure the namespace telemetry filter _and_ the export. If we deployed an
-			// operator configuration resource first, that would create a collector config map without any custom
-			// filters, and start the collector. Then, when we deploy the monitoring resource, the config map would be
-			// updated, but then it takes a bit until the collector is actually restarted due to the issue fixed in
-			// https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 (which is not merged at the time of
-			// writing), because the restart is blocked/delayed by the collector not being able to offload its
-			// self-monitoring logs. We can avoid that config change and the config reloading wait time by skipping the
-			// operator configuration resource.
-			// We should be able to move this suite to the suite
-			// "with an existing operator deployment and operation configuration resource::without deployed Dash0
-			//  monitoring resource"
-			// after https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 has been merged and released.
-
-			BeforeEach(func() {
-				deployOperatorWithoutAutoOperationConfiguration(
-					operatorNamespace,
-					operatorHelmChart,
-					operatorHelmChartUrl,
-					images,
-					nil,
-				)
-			})
-
-			AfterEach(func() {
-				undeployDash0MonitoringResource(applicationUnderTestNamespace)
-				undeployOperator(operatorNamespace)
-			})
-
-			It("truncates attributes when the transform is active", func() {
-				transform :=
-					`
-trace_statements:
-- truncate_all(span.attributes, 10)
-`
-				// minTimestampCollectorRestart := time.Now()
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValues{
-						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
-						Endpoint:                defaultEndpoint,
-						Token:                   defaultToken,
-						Transform:               transform,
-					},
-					operatorNamespace,
-				)
-				verifyDaemonSetCollectorConfigMapContainsString(
-					operatorNamespace,
-					`- 'truncate_all(span.attributes, 10)'`,
-				)
-				verifyDaemonSetCollectorConfigMapContainsString(
-					operatorNamespace,
-					`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace"'`,
-				)
-				// TODO reactivate this once we move these tests to the suite
-				// "with an existing operator deployment and operation configuration resource::without deployed Dash0
-				//  monitoring resource"
-				// (waits for https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 to be merged and
-				// released)
-				// By("verify that the collector has restarted after the config change")
-				// Eventually(func(g Gomega) {
-				//	 mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
-				//	 g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-				// }, 30*time.Second, time.Second).Should(Succeed())
-
-				By("installing the Node.js deployment")
-				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-
-				testId := uuid.New().String()
-				timestampLowerBound := time.Now()
-				By("verifying that span attributes have been transformed")
-				Eventually(func(g Gomega) {
-					route := testEndpoint
-					query := fmt.Sprintf("id=%s", testId)
-
-					// send an HTTP request using the full URL and query
-					sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, route, query)
-
-					// check whether the produced span has been truncated according to the transformation rules which
-					// have been configured above
-					truncatedRoute := route[0:10]
-					truncatedQuery := query[0:10]
-					askTelemetryMatcherForMatchingSpans(
-						g,
-						shared.ExpectAtLeastOne,
-						runtimeTypeNodeJs,
-						workloadTypeDeployment,
-						false,
-						false,
-						timestampLowerBound,
-						truncatedRoute,
-						truncatedQuery,
-						// This is the expected http.target attribute. Since the route "/dash0-k8s-operator-test" is
-						// already > 10 chars, so the target (which is route + query) will only contain the truncated
-						// route.
-						truncatedRoute,
-					)
-				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
 			})
 		})
 
@@ -1580,7 +1484,6 @@ trace_statements:
 					testId,
 					images,
 					"webhook",
-					true,
 				)
 
 				By("removing the Dash0 monitoring resource")
@@ -1633,7 +1536,6 @@ trace_statements:
 					testId,
 					initialAlternativeImages,
 					"controller",
-					true,
 				)
 
 				// Now update the operator with the actual image names that are used throughout the whole test suite.
@@ -1655,7 +1557,6 @@ trace_statements:
 					// check that the new image tags have been applied to the workload
 					images,
 					"controller",
-					true,
 				)
 			})
 		})
@@ -1873,7 +1774,6 @@ trace_statements:
 							testIds[config.workloadType.workloadTypeString],
 							images,
 							"controller",
-							true,
 						)
 					})
 

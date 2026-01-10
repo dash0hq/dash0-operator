@@ -124,6 +124,12 @@ func verifyThatCollectorIsRemovedEventually() {
 	Eventually(verifyCollectorDeploymentIsNotPresent, 60*time.Second, time.Second).Should(Succeed())
 }
 
+func verifyThatCollectorIsNotPresentConsistently() {
+	By("validating that the OpenTelemetry collector is not present consistently")
+	Consistently(verifyCollectorDaemonSetIsNotPresent, 30*time.Second, time.Second).Should(Succeed())
+	Consistently(verifyCollectorDeploymentIsNotPresent, 30*time.Second, time.Second).Should(Succeed())
+}
+
 func verifyCollectorDaemonSetIsNotPresent(g Gomega) {
 	g.Expect(runAndIgnoreOutput(
 		exec.Command(

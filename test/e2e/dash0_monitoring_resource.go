@@ -142,12 +142,6 @@ func deployRenderedMonitoringResourceWithRetry(
 	Expect(err).ToNot(HaveOccurred())
 
 	waitForMonitoringResourceToBecomeAvailable(namespace)
-
-	if dash0MonitoringValues.Endpoint != "" {
-		// Deploying the Dash0 monitoring with an export will trigger creating the OpenTelemetry collector resources,
-		// assuming there is no operator configuration resource with an export.
-		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
-	}
 }
 
 func waitForMonitoringResourceToBecomeAvailable(namespace string) {

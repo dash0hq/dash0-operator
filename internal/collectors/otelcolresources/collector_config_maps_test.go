@@ -42,7 +42,6 @@ const (
 type configMapTypeDefinition struct {
 	cmType                    configMapType
 	assembleConfigMapFunction func(*oTelColConfig, []string, []NamespacedFilter, []NamespacedTransform, bool) (*corev1.ConfigMap, error)
-	exporterPipelineNames     []string
 }
 
 type conditionExpectationsPerObjectType map[signalType]map[objectType][]string
@@ -89,19 +88,140 @@ type transformTestConfig struct {
 }
 
 const (
-	GrpcEndpointTest         = "example.com:4317"
-	HttpEndpointTest         = "https://example.com:4318"
-	HttpInsecureEndpointTest = "http://example.com:1234"
+	grpcEndpointTest         = "example.com:4317"
+	httpInsecureEndpointTest = "http://example.com:1234"
 	namespace1               = "namespace-1"
 	namespace2               = "namespace-2"
 	namespace3               = "namespace-3"
 )
 
 var (
-	bearerWithAuthToken            = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
+	bearerWithAuthToken            = fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault)
 	monitoredNamespaces            = []string{namespace1, namespace2}
 	emptyTargetAllocatorMtlsConfig = TargetAllocatorMtlsConfig{}
 )
+
+func cmTestSingleDefaultOtlpExporter() otlpExporters {
+	exporter, _ := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	return otlpExporters{
+		Default:    []otlpExporter{*exporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestSingleDefaultOtlpExporterWithCustomDs() otlpExporters {
+	exporter, _ := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointTokenAndCustomDataset().Dash0, "default", authEnvVarNameDefault)
+	return otlpExporters{
+		Default:    []otlpExporter{*exporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestDash0AndGrpcExporters() otlpExporters {
+	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	Expect(err).ToNot(HaveOccurred())
+	grpcExporter, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*dash0Exporter, *grpcExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestDash0AndHttpExporters() otlpExporters {
+	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	Expect(err).ToNot(HaveOccurred())
+	httpExporter, err := convertHttpExporterToOtlpExporter(HttpExportTest().Http, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*dash0Exporter, *httpExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestDash0GrpcAndHttpExporters() otlpExporters {
+	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	Expect(err).ToNot(HaveOccurred())
+	grpcExporter, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "default")
+	Expect(err).ToNot(HaveOccurred())
+	httpExporter, err := convertHttpExporterToOtlpExporter(HttpExportTest().Http, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*dash0Exporter, *grpcExporter, *httpExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestGrpcExporterWithInsecure() otlpExporters {
+	grpcExporter, err := convertGrpcExporterToOtlpExporter(&dash0common.GrpcConfiguration{
+		Endpoint: grpcEndpointTest,
+		Insecure: ptr.To(true),
+		Headers: []dash0common.Header{{
+			Name:  "Key",
+			Value: "Value",
+		}},
+	}, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*grpcExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestHttpExporterWithInsecure() otlpExporters {
+	httpExporter, err := convertHttpExporterToOtlpExporter(&dash0common.HttpConfiguration{
+		Endpoint: httpInsecureEndpointTest,
+		Encoding: dash0common.Proto,
+		Headers: []dash0common.Header{{
+			Name:  "Key",
+			Value: "Value",
+		}},
+	}, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*httpExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestNamespacedOtlpExporters() otlpExporters {
+	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	Expect(err).ToNot(HaveOccurred())
+	grpcExporterNs1, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "ns/"+namespace1)
+	Expect(err).ToNot(HaveOccurred())
+	httpExporterNs2, err := convertHttpExporterToOtlpExporter(HttpExportTest().Http, "ns/"+namespace2)
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default: []otlpExporter{*dash0ExporterDefault},
+		Namespaced: map[string][]otlpExporter{
+			namespace1: {*grpcExporterNs1},
+			namespace2: {*httpExporterNs2},
+		},
+	}
+}
+
+func cmTestMultipleNamespacedOtlpExporters() otlpExporters {
+	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	Expect(err).ToNot(HaveOccurred())
+	grpcExporterNs1, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "ns/"+namespace1)
+	Expect(err).ToNot(HaveOccurred())
+	httpExporterNs1, err := convertHttpExporterToOtlpExporter(HttpExportTest().Http, "ns/"+namespace1)
+	Expect(err).ToNot(HaveOccurred())
+	dash0ExporterNs2, err := convertDash0ExporterToOtlpExporter(&dash0common.Dash0Configuration{
+		Endpoint: EndpointDash0TestAlternative,
+		Authorization: dash0common.Authorization{
+			Token: &AuthorizationTokenTestAlternative,
+		},
+	}, "ns/"+namespace2, authEnvVarNameForNs(namespace2))
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default: []otlpExporter{*dash0ExporterDefault},
+		Namespaced: map[string][]otlpExporter{
+			namespace1: {*grpcExporterNs1, *httpExporterNs1},
+			namespace2: {*dash0ExporterNs2},
+		},
+	}
+}
 
 var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
@@ -109,18 +229,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		{
 			cmType:                    configMapTypeDaemonSet,
 			assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapForTest,
-			exporterPipelineNames: []string{
-				"traces/downstream",
-				"metrics/downstream",
-				"logs/downstream",
-			},
 		},
 		{
 			cmType:                    configMapTypeDeployment,
 			assembleConfigMapFunction: assembleDeploymentCollectorConfigMapForTest,
-			exporterPipelineNames: []string{
-				"metrics/downstream",
-			},
 		},
 	}
 
@@ -133,41 +245,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 	Describe("renders exporters", func() {
 
-		DescribeTable("should fail if no exporter is configured", func(cmTypeDef configMapTypeDefinition) {
-			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export:            dash0common.Export{},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).To(HaveOccurred())
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should fail to render the Dash0 exporter when no endpoint is provided", func(cmTypeDef configMapTypeDefinition) {
-			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).To(
-				MatchError(
-					ContainSubstring(
-						"no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector")))
-
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render the Dash0 exporter without other exporters, with default settings", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should render the default OTLP exporter without other exporters", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
@@ -178,7 +260,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			exporters := exportersRaw.(map[string]interface{})
 			Expect(exporters).To(HaveLen(1))
 
-			exporter := exporters["otlp/dash0"]
+			exporter := exporters["otlp/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
 			dash0OtlpExporter := exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter).ToNot(BeNil())
@@ -191,22 +273,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
 			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0")
 		}, daemonSetAndDeployment)
 
-		DescribeTable("should render the Dash0 exporter with custom dataset", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should render the default OTLP exporter with custom dataset", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Dataset:  "custom-dataset",
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-				},
+				Exporters:         cmTestSingleDefaultOtlpExporterWithCustomDs(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
@@ -217,7 +290,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			exporters := exportersRaw.(map[string]interface{})
 			Expect(exporters).To(HaveLen(1))
 
-			exporter := exporters["otlp/dash0"]
+			exporter := exporters["otlp/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
 			dash0OtlpExporter := exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter).ToNot(BeNil())
@@ -227,57 +300,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			headers := headersRaw.(map[string]interface{})
 			Expect(headers).To(HaveLen(2))
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-			Expect(headers[util.Dash0DatasetHeaderName]).To(Equal("custom-dataset"))
+			Expect(headers[util.Dash0DatasetHeaderName]).To(Equal(DatasetCustomTest))
 			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render the Dash0 exporter with the insecure flag if there is an http:// prefix, for forwarding telemetry to another local collector", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Endpoint: "HTTP://endpoint.dash0.com:1234",
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter := exporters["otlp/dash0"]
-			Expect(exporter).ToNot(BeNil())
-			dash0OtlpExporter := exporter.(map[string]interface{})
-			Expect(dash0OtlpExporter).ToNot(BeNil())
-			Expect(dash0OtlpExporter["endpoint"]).To(Equal("HTTP://endpoint.dash0.com:1234"))
-			insecureFlag := ReadFromMap(dash0OtlpExporter, []string{"tls", "insecure"})
-			Expect(insecureFlag).To(BeTrue())
-			headersRaw := dash0OtlpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
-			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0")
 		}, daemonSetAndDeployment)
 
 		DescribeTable("should render a debug exporter in development mode", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				DevelopmentMode: true,
 			}, monitoredNamespaces, nil, nil, false)
@@ -294,7 +325,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			debugExporter := debugExporterRaw.(map[string]interface{})
 			Expect(debugExporter).To(HaveLen(0))
 
-			exporter := exporters["otlp/dash0"]
+			exporter := exporters["otlp/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
 			dash0OtlpExporter := exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter).ToNot(BeNil())
@@ -307,14 +338,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
 			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "debug", "otlp/dash0")
 		}, daemonSetAndDeployment)
 
 		DescribeTable("should render a debug exporter with verbosity: detailed when requested", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				DevelopmentMode:        false,
 				DebugVerbosityDetailed: true,
@@ -333,14 +363,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(debugExporter).To(HaveLen(1))
 			Expect(debugExporter["verbosity"]).To(Equal("detailed"))
 
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "debug", "otlp/dash0")
 		}, daemonSetAndDeployment)
 
 		DescribeTable("should not render the pprof extension when not requested", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:   OperatorNamespace,
 				NamePrefix:          namePrefix,
-				Export:              *Dash0ExportWithEndpointAndToken(),
+				Exporters:           cmTestSingleDefaultOtlpExporter(),
 				EnableProfExtension: false,
 			}, monitoredNamespaces, nil, nil, false)
 
@@ -360,7 +389,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:   OperatorNamespace,
 				NamePrefix:          namePrefix,
-				Export:              *Dash0ExportWithEndpointAndToken(),
+				Exporters:           cmTestSingleDefaultOtlpExporter(),
 				EnableProfExtension: true,
 			}, monitoredNamespaces, nil, nil, false)
 
@@ -376,686 +405,477 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(serviceExtensions).To(ContainElement("pprof"))
 		}, daemonSetAndDeployment)
 
-		DescribeTable("should fail to render a gRPC exporter when no endpoint is provided", func(cmTypeDef configMapTypeDefinition) {
-			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Grpc: &dash0common.GrpcConfiguration{
-						Headers: []dash0common.Header{{
-							Name:  "Key1",
-							Value: "Value1",
-						}},
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).To(
-				MatchError(
-					ContainSubstring(
-						"no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")))
-
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render an arbitrary gRPC exporter", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should render multiple default OTLP exporters (Dash0 + gRPC)", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint: GrpcEndpointTest,
-						Headers: []dash0common.Header{
-							{
-								Name:  "Key1",
-								Value: "Value1",
-							},
-							{
-								Name:  "Key2",
-								Value: "Value2",
-							},
-						},
-					},
-				},
+				Exporters:         cmTestDash0AndGrpcExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter2 := exporters["otlp/grpc"]
-			Expect(exporter2).ToNot(BeNil())
-			otlpGrpcExporter := exporter2.(map[string]interface{})
-			Expect(otlpGrpcExporter).ToNot(BeNil())
-			Expect(otlpGrpcExporter["endpoint"]).To(Equal(GrpcEndpointTest))
-			headersRaw := otlpGrpcExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(2))
-			Expect(headers["Key1"]).To(Equal("Value1"))
-			Expect(headers["Key2"]).To(Equal("Value2"))
-			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render a gRPC exporter with the insecure flag if there is an http:// prefix, for forwarding telemetry to another local collector", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint: "http://example.com:1234",
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter2 := exporters["otlp/grpc"]
-			Expect(exporter2).ToNot(BeNil())
-			otlpGrpcExporter := exporter2.(map[string]interface{})
-			Expect(otlpGrpcExporter).ToNot(BeNil())
-			Expect(otlpGrpcExporter["endpoint"]).To(Equal("http://example.com:1234"))
-			insecureFlag := ReadFromMap(otlpGrpcExporter, []string{"tls", "insecure"})
-			Expect(insecureFlag).To(BeTrue())
-			headersRaw := otlpGrpcExporter["headers"]
-			Expect(headersRaw).To(BeNil())
-			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render a gRPC exporter with an endpoint without http:// or https:// prefix, defaulting insecure to false", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint: "example.com:1234",
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter2 := exporters["otlp/grpc"]
-			Expect(exporter2).ToNot(BeNil())
-			otlpGrpcExporter := exporter2.(map[string]interface{})
-			Expect(otlpGrpcExporter).ToNot(BeNil())
-			Expect(otlpGrpcExporter["endpoint"]).To(Equal("example.com:1234"))
-			Expect(otlpGrpcExporter["tls"]).To(BeNil())
-			headersRaw := otlpGrpcExporter["headers"]
-			Expect(headersRaw).To(BeNil())
-			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render a gRPC exporter with an endpoint without http:// or https:// prefix using the explicitly set insecure flag", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint: "example.com:1234",
-						Insecure: ptr.To(true),
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter2 := exporters["otlp/grpc"]
-			Expect(exporter2).ToNot(BeNil())
-			otlpGrpcExporter := exporter2.(map[string]interface{})
-			Expect(otlpGrpcExporter).ToNot(BeNil())
-			Expect(otlpGrpcExporter["endpoint"]).To(Equal("example.com:1234"))
-			insecureFlag := ReadFromMap(otlpGrpcExporter, []string{"tls", "insecure"})
-			Expect(insecureFlag).To(BeTrue())
-			headersRaw := otlpGrpcExporter["headers"]
-			Expect(headersRaw).To(BeNil())
-			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render a gRPC exporter with the insecureSkipVerify flag if it is using TLS and has the skipVerifyFlag set to true", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint:           "https://example.com:1234",
-						InsecureSkipVerify: ptr.To(true),
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter2 := exporters["otlp/grpc"]
-			Expect(exporter2).ToNot(BeNil())
-			otlpGrpcExporter := exporter2.(map[string]interface{})
-			Expect(otlpGrpcExporter).ToNot(BeNil())
-			Expect(otlpGrpcExporter["endpoint"]).To(Equal("https://example.com:1234"))
-			insecureSkipVerifyFlag := ReadFromMap(otlpGrpcExporter, []string{"tls", "insecure_skip_verify"})
-			Expect(insecureSkipVerifyFlag).To(BeTrue())
-			headersRaw := otlpGrpcExporter["headers"]
-			Expect(headersRaw).To(BeNil())
-			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render a gRPC exporter and ignore the insecureSkipVerify flag if the endpoint is not using TLS", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint:           "http://example.com:1234",
-						InsecureSkipVerify: ptr.To(true),
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter2 := exporters["otlp/grpc"]
-			Expect(exporter2).ToNot(BeNil())
-			otlpGrpcExporter := exporter2.(map[string]interface{})
-			Expect(otlpGrpcExporter).ToNot(BeNil())
-			Expect(otlpGrpcExporter["endpoint"]).To(Equal("http://example.com:1234"))
-			insecureSkipVerifyFlag := ReadFromMap(otlpGrpcExporter, []string{"tls", "insecure_skip_verify"})
-			Expect(insecureSkipVerifyFlag).To(BeNil())
-			headersRaw := otlpGrpcExporter["headers"]
-			Expect(headersRaw).To(BeNil())
-			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should fail to render an HTTP exporter when no endpoint is provided", func(cmTypeDef configMapTypeDefinition) {
-			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Http: &dash0common.HttpConfiguration{
-						Headers: []dash0common.Header{{
-							Name:  "Key1",
-							Value: "Value1",
-						}},
-						Encoding: dash0common.Proto,
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).To(
-				MatchError(
-					ContainSubstring(
-						"no endpoint provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should fail to render an HTTP exporter when no encoding is provided", func(cmTypeDef configMapTypeDefinition) {
-			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Http: &dash0common.HttpConfiguration{
-						Endpoint: HttpEndpointTest,
-						Headers: []dash0common.Header{{
-							Name:  "Key1",
-							Value: "Value1",
-						}},
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).To(
-				MatchError(
-					ContainSubstring(
-						"no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
-
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render an arbitrary HTTP exporter", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Http: &dash0common.HttpConfiguration{
-						Endpoint: HttpEndpointTest,
-						Headers: []dash0common.Header{
-							{
-								Name:  "Key1",
-								Value: "Value1",
-							},
-							{
-								Name:  "Key2",
-								Value: "Value2",
-							},
-						},
-						Encoding: dash0common.Json,
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter2 := exporters["otlphttp/json"]
-			Expect(exporter2).ToNot(BeNil())
-			otlpHttpExporter := exporter2.(map[string]interface{})
-			Expect(otlpHttpExporter).ToNot(BeNil())
-			Expect(otlpHttpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-			headersRaw := otlpHttpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(2))
-			Expect(headers["Key1"]).To(Equal("Value1"))
-			Expect(headers["Key2"]).To(Equal("Value2"))
-			Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlphttp/json")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render an HTTP exporter with insecureSkipVerify", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Http: &dash0common.HttpConfiguration{
-						Endpoint:           HttpEndpointTest,
-						InsecureSkipVerify: ptr.To(true),
-						Headers: []dash0common.Header{
-							{
-								Name:  "Key1",
-								Value: "Value1",
-							},
-							{
-								Name:  "Key2",
-								Value: "Value2",
-							},
-						},
-						Encoding: dash0common.Json,
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter := exporters["otlphttp/json"]
-			Expect(exporter).ToNot(BeNil())
-			otlpHttpExporter := exporter.(map[string]interface{})
-			Expect(otlpHttpExporter).ToNot(BeNil())
-			Expect(otlpHttpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-			insecureSkipVerifyFlag := ReadFromMap(otlpHttpExporter, []string{"tls", "insecure_skip_verify"})
-			Expect(insecureSkipVerifyFlag).To(BeTrue())
-			headersRaw := otlpHttpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(2))
-			Expect(headers["Key1"]).To(Equal("Value1"))
-			Expect(headers["Key2"]).To(Equal("Value2"))
-			Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlphttp/json")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render an HTTP exporter and ignore insecureSkipVerify if not using TLS", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Http: &dash0common.HttpConfiguration{
-						Endpoint:           HttpInsecureEndpointTest,
-						InsecureSkipVerify: ptr.To(true),
-						Headers: []dash0common.Header{
-							{
-								Name:  "Key1",
-								Value: "Value1",
-							},
-							{
-								Name:  "Key2",
-								Value: "Value2",
-							},
-						},
-						Encoding: dash0common.Json,
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			exportersRaw := collectorConfig["exporters"]
-			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(1))
-
-			exporter2 := exporters["otlphttp/json"]
-			Expect(exporter2).ToNot(BeNil())
-			otlpHttpExporter := exporter2.(map[string]interface{})
-			Expect(otlpHttpExporter).ToNot(BeNil())
-			Expect(otlpHttpExporter["endpoint"]).To(Equal(HttpInsecureEndpointTest))
-			Expect(otlpHttpExporter["tls"]).To(BeNil())
-			headersRaw := otlpHttpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(2))
-			Expect(headers["Key1"]).To(Equal("Value1"))
-			Expect(headers["Key2"]).To(Equal("Value2"))
-			Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlphttp/json")
-		}, daemonSetAndDeployment)
-
-		DescribeTable("should render the Dash0 exporter together with a gRPC exporter", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace: OperatorNamespace,
-				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint: HttpEndpointTest,
-						Headers: []dash0common.Header{{
-							Name:  "Key1",
-							Value: "Value1",
-						}},
-					},
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
-
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
 			exporters := exportersRaw.(map[string]interface{})
 			Expect(exporters).To(HaveLen(2))
 
-			exporter2 := exporters["otlp/dash0"]
-			Expect(exporter2).ToNot(BeNil())
-			dash0OtlpExporter := exporter2.(map[string]interface{})
-			Expect(dash0OtlpExporter).ToNot(BeNil())
+			// Verify Dash0 exporter
+			dash0Exporter := exporters["otlp/dash0/default"]
+			Expect(dash0Exporter).ToNot(BeNil())
+			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 			headersRaw := dash0OtlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
 			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-			exporter3 := exporters["otlp/grpc"]
-			Expect(exporter3).ToNot(BeNil())
-			httpExporter := exporter3.(map[string]interface{})
-			Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-			headersRaw = httpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers = headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers["Key1"]).To(Equal("Value1"))
-			Expect(httpExporter["encoding"]).To(BeNil())
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0", "otlp/grpc")
+			// Verify gRPC exporter
+			grpcExporter := exporters["otlp/grpc/default"]
+			Expect(grpcExporter).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporter.(map[string]interface{})
+			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
+			grpcHeadersRaw := grpcOtlpExporter["headers"]
+			Expect(grpcHeadersRaw).ToNot(BeNil())
+			grpcHeaders := grpcHeadersRaw.(map[string]interface{})
+			Expect(grpcHeaders["Key"]).To(Equal("Value"))
 		}, daemonSetAndDeployment)
 
-		DescribeTable("should render the Dash0 exporter together with an HTTP exporter", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should render multiple default OTLP exporters (Dash0 + HTTP)", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-					Http: &dash0common.HttpConfiguration{
-						Endpoint: HttpEndpointTest,
-						Headers: []dash0common.Header{{
-							Name:  "Key1",
-							Value: "Value1",
-						}},
-						Encoding: dash0common.Proto,
-					},
-				},
+				Exporters:         cmTestDash0AndHttpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
 
+			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
 			exporters := exportersRaw.(map[string]interface{})
 			Expect(exporters).To(HaveLen(2))
 
-			exporter2 := exporters["otlp/dash0"]
-			Expect(exporter2).ToNot(BeNil())
-			dash0OtlpExporter := exporter2.(map[string]interface{})
-			Expect(dash0OtlpExporter).ToNot(BeNil())
+			// Verify Dash0 exporter
+			dash0Exporter := exporters["otlp/dash0/default"]
+			Expect(dash0Exporter).ToNot(BeNil())
+			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
-			headersRaw := dash0OtlpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-			exporter3 := exporters["otlphttp/proto"]
-			Expect(exporter3).ToNot(BeNil())
-			httpExporter := exporter3.(map[string]interface{})
-			Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-			headersRaw = httpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers = headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers["Key1"]).To(Equal("Value1"))
-			Expect(httpExporter["encoding"]).To(Equal("proto"))
-
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0", "otlphttp/proto")
+			// Verify HTTP exporter
+			httpExporter := exporters["otlphttp/default/proto"]
+			Expect(httpExporter).ToNot(BeNil())
+			httpOtlpExporter := httpExporter.(map[string]interface{})
+			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
+			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
+			httpHeadersRaw := httpOtlpExporter["headers"]
+			Expect(httpHeadersRaw).ToNot(BeNil())
+			httpHeaders := httpHeadersRaw.(map[string]interface{})
+			Expect(httpHeaders["Key"]).To(Equal("Value"))
 		}, daemonSetAndDeployment)
 
-		DescribeTable("should render a gRPC exporter together with an HTTP exporter", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should render multiple default OTLP exporters (Dash0 + gRPC + HTTP)", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint: GrpcEndpointTest,
-						Headers: []dash0common.Header{{
-							Name:  "Key1",
-							Value: "Value1",
-						}},
-					},
-					Http: &dash0common.HttpConfiguration{
-						Endpoint: HttpEndpointTest,
-						Headers: []dash0common.Header{{
-							Name:  "Key2",
-							Value: "Value2",
-						}},
-						Encoding: dash0common.Proto,
-					},
-				},
+				Exporters:         cmTestDash0GrpcAndHttpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
 
+			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
 			exporters := exportersRaw.(map[string]interface{})
-			Expect(exporters).To(HaveLen(2))
+			Expect(exporters).To(HaveLen(3))
 
-			exporter2 := exporters["otlp/grpc"]
-			Expect(exporter2).ToNot(BeNil())
-			grpcOtlpExporter := exporter2.(map[string]interface{})
-			Expect(grpcOtlpExporter).ToNot(BeNil())
-			Expect(grpcOtlpExporter["endpoint"]).To(Equal(GrpcEndpointTest))
-			headersRaw := grpcOtlpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers["Key1"]).To(Equal("Value1"))
-			Expect(grpcOtlpExporter["encoding"]).To(BeNil())
+			// Verify Dash0 exporter
+			dash0Exporter := exporters["otlp/dash0/default"]
+			Expect(dash0Exporter).ToNot(BeNil())
+			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 
-			exporter3 := exporters["otlphttp/proto"]
-			Expect(exporter3).ToNot(BeNil())
-			httpExporter := exporter3.(map[string]interface{})
-			Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-			headersRaw = httpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers = headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers).To(HaveLen(1))
-			Expect(headers["Key2"]).To(Equal("Value2"))
-			Expect(httpExporter["encoding"]).To(Equal("proto"))
+			// Verify gRPC exporter
+			grpcExporter := exporters["otlp/grpc/default"]
+			Expect(grpcExporter).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporter.(map[string]interface{})
+			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
 
-			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc", "otlphttp/proto")
+			// Verify HTTP exporter
+			httpExporter := exporters["otlphttp/default/proto"]
+			Expect(httpExporter).ToNot(BeNil())
+			httpOtlpExporter := httpExporter.(map[string]interface{})
+			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
+			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
 		}, daemonSetAndDeployment)
 
-		DescribeTable("should render a combination of all three exporter types", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should render gRPC exporter with insecure flag", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-					Grpc: &dash0common.GrpcConfiguration{
-						Endpoint: GrpcEndpointTest,
-						Headers: []dash0common.Header{{
-							Name:  "Key1",
-							Value: "Value1",
-						}},
-					},
-					Http: &dash0common.HttpConfiguration{
-						Endpoint: HttpEndpointTest,
-						Headers: []dash0common.Header{{
-							Name:  "Key2",
-							Value: "Value2",
-						}},
-						Encoding: dash0common.Json,
-					},
-				},
+				Exporters:         cmTestGrpcExporterWithInsecure(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-				DevelopmentMode: true,
 			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
 
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			// Verify gRPC exporter with insecure flag
+			grpcExporter := exporters["otlp/grpc/default"]
+			Expect(grpcExporter).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporter.(map[string]interface{})
+			Expect(grpcOtlpExporter["endpoint"]).To(Equal(grpcEndpointTest))
+
+			// Verify tls config with insecure = true
+			tlsRaw := grpcOtlpExporter["tls"]
+			Expect(tlsRaw).ToNot(BeNil())
+			tls := tlsRaw.(map[string]interface{})
+			Expect(tls["insecure"]).To(Equal(true))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render HTTP exporter with insecure endpoint (http://)", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestHttpExporterWithInsecure(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			// Verify HTTP exporter with insecure endpoint
+			httpExporter := exporters["otlphttp/default/proto"]
+			Expect(httpExporter).ToNot(BeNil())
+			httpOtlpExporter := httpExporter.(map[string]interface{})
+			Expect(httpOtlpExporter["endpoint"]).To(Equal(httpInsecureEndpointTest))
+			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
+		}, daemonSetAndDeployment)
+
+		It("should render namespaced OTLP exporters (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(3))
+
+			// Verify default Dash0 exporter
+			dash0Exporter := exporters["otlp/dash0/default"]
+			Expect(dash0Exporter).ToNot(BeNil())
+
+			// Verify namespaced gRPC exporter for namespace1
+			grpcExporterNs1 := exporters["otlp/grpc/ns/"+namespace1]
+			Expect(grpcExporterNs1).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporterNs1.(map[string]interface{})
+			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
+
+			// Verify namespaced HTTP exporter for namespace2
+			httpExporterNs2 := exporters["otlphttp/ns/"+namespace2+"/proto"]
+			Expect(httpExporterNs2).ToNot(BeNil())
+			httpOtlpExporter := httpExporterNs2.(map[string]interface{})
+			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
+			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
+		})
+
+		It("should render multiple namespaced OTLP exporters (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
 			exporters := exportersRaw.(map[string]interface{})
 			Expect(exporters).To(HaveLen(4))
 
-			debugExporterRaw := exporters["debug"]
-			Expect(debugExporterRaw).ToNot(BeNil())
-			debugExporter := debugExporterRaw.(map[string]interface{})
-			Expect(debugExporter).To(HaveLen(0))
+			// Verify default Dash0 exporter
+			dash0Exporter := exporters["otlp/dash0/default"]
+			Expect(dash0Exporter).ToNot(BeNil())
 
-			exporter2 := exporters["otlp/dash0"]
-			Expect(exporter2).ToNot(BeNil())
-			dash0OtlpExporter := exporter2.(map[string]interface{})
-			Expect(dash0OtlpExporter).ToNot(BeNil())
-			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
-			headersRaw := dash0OtlpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+			// Verify namespace1 has both gRPC and HTTP exporters
+			grpcExporterNs1 := exporters["otlp/grpc/ns/"+namespace1]
+			Expect(grpcExporterNs1).ToNot(BeNil())
 
-			exporter3 := exporters["otlp/grpc"]
-			Expect(exporter3).ToNot(BeNil())
-			grpcExporter := exporter3.(map[string]interface{})
-			Expect(grpcExporter["endpoint"]).To(Equal(GrpcEndpointTest))
-			headersRaw = grpcExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers = headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers["Key1"]).To(Equal("Value1"))
+			httpExporterNs1 := exporters["otlphttp/ns/"+namespace1+"/proto"]
+			Expect(httpExporterNs1).ToNot(BeNil())
 
-			exporter4 := exporters["otlphttp/json"]
-			Expect(exporter4).ToNot(BeNil())
-			httpExporter := exporter4.(map[string]interface{})
-			Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-			headersRaw = httpExporter["headers"]
-			Expect(headersRaw).ToNot(BeNil())
-			headers = headersRaw.(map[string]interface{})
-			Expect(headers).To(HaveLen(1))
-			Expect(headers["Key2"]).To(Equal("Value2"))
-			Expect(httpExporter["encoding"]).To(Equal("json"))
+			// Verify namespace2 has a Dash0 exporter
+			dash0ExporterNs2 := exporters["otlp/dash0/ns/"+namespace2]
+			Expect(dash0ExporterNs2).ToNot(BeNil())
+			dash0OtlpExporter := dash0ExporterNs2.(map[string]interface{})
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0TestAlternative))
+		})
 
-			verifyDownstreamExportersInPipelines(
-				collectorConfig,
-				cmTypeDef,
-				"debug",
-				"otlp/dash0",
-				"otlp/grpc",
-				"otlphttp/json",
-			)
-		}, daemonSetAndDeployment)
+		It("should render routing connectors when namespaced exporters are configured (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// Verify routing connectors are created
+			connectorsRaw := collectorConfig["connectors"]
+			Expect(connectorsRaw).ToNot(BeNil())
+			connectors := connectorsRaw.(map[string]interface{})
+
+			// Verify routing connector for traces
+			routingTracesRaw := connectors["routing/traces"]
+			Expect(routingTracesRaw).ToNot(BeNil())
+			routingTraces := routingTracesRaw.(map[string]interface{})
+			Expect(routingTraces["error_mode"]).To(Equal("ignore"))
+			defaultPipelinesTraces := routingTraces["default_pipelines"].([]interface{})
+			Expect(defaultPipelinesTraces).To(ContainElement("traces/export/default"))
+
+			// Verify routing connector for metrics
+			routingMetricsRaw := connectors["routing/metrics"]
+			Expect(routingMetricsRaw).ToNot(BeNil())
+			routingMetrics := routingMetricsRaw.(map[string]interface{})
+			Expect(routingMetrics["error_mode"]).To(Equal("ignore"))
+			defaultPipelinesMetrics := routingMetrics["default_pipelines"].([]interface{})
+			Expect(defaultPipelinesMetrics).To(ContainElement("metrics/export/default"))
+
+			// Verify routing connector for logs
+			routingLogsRaw := connectors["routing/logs"]
+			Expect(routingLogsRaw).ToNot(BeNil())
+			routingLogs := routingLogsRaw.(map[string]interface{})
+			Expect(routingLogs["error_mode"]).To(Equal("ignore"))
+			defaultPipelinesLogs := routingLogs["default_pipelines"].([]interface{})
+			Expect(defaultPipelinesLogs).To(ContainElement("logs/export/default"))
+		})
+
+		It("should render routing table entries with correct namespace conditions (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectorsRaw := collectorConfig["connectors"]
+			Expect(connectorsRaw).ToNot(BeNil())
+			connectors := connectorsRaw.(map[string]interface{})
+
+			// Verify routing table entries for traces
+			routingTraces := connectors["routing/traces"].(map[string]interface{})
+			tracesTable := routingTraces["table"].([]interface{})
+			Expect(tracesTable).To(HaveLen(2)) // namespace1 and namespace2
+			verifyRoutingTableEntry(tracesTable, namespace1, "traces/export/ns/"+namespace1)
+			verifyRoutingTableEntry(tracesTable, namespace2, "traces/export/ns/"+namespace2)
+
+			// Verify routing table entries for metrics
+			routingMetrics := connectors["routing/metrics"].(map[string]interface{})
+			metricsTable := routingMetrics["table"].([]interface{})
+			Expect(metricsTable).To(HaveLen(2))
+			verifyRoutingTableEntry(metricsTable, namespace1, "metrics/export/ns/"+namespace1)
+			verifyRoutingTableEntry(metricsTable, namespace2, "metrics/export/ns/"+namespace2)
+
+			// Verify routing table entries for logs
+			routingLogs := connectors["routing/logs"].(map[string]interface{})
+			logsTable := routingLogs["table"].([]interface{})
+			Expect(logsTable).To(HaveLen(2))
+			verifyRoutingTableEntry(logsTable, namespace1, "logs/export/ns/"+namespace1)
+			verifyRoutingTableEntry(logsTable, namespace2, "logs/export/ns/"+namespace2)
+		})
+
+		It("should render namespace-specific export pipelines (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// Verify namespace-specific traces export pipelines
+			tracesExportNs1Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace1)
+			Expect(tracesExportNs1Receivers).To(ContainElement("routing/traces"))
+			tracesExportNs1Exporters := readPipelineExporters(pipelines, "traces/export/ns/"+namespace1)
+			Expect(tracesExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+
+			tracesExportNs2Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace2)
+			Expect(tracesExportNs2Receivers).To(ContainElement("routing/traces"))
+			tracesExportNs2Exporters := readPipelineExporters(pipelines, "traces/export/ns/"+namespace2)
+			Expect(tracesExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+
+			// Verify namespace-specific metrics export pipelines
+			metricsExportNs1Receivers := readPipelineReceivers(pipelines, "metrics/export/ns/"+namespace1)
+			Expect(metricsExportNs1Receivers).To(ContainElement("routing/metrics"))
+			metricsExportNs1Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace1)
+			Expect(metricsExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+
+			metricsExportNs2Receivers := readPipelineReceivers(pipelines, "metrics/export/ns/"+namespace2)
+			Expect(metricsExportNs2Receivers).To(ContainElement("routing/metrics"))
+			metricsExportNs2Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace2)
+			Expect(metricsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+
+			// Verify namespace-specific logs export pipelines
+			logsExportNs1Receivers := readPipelineReceivers(pipelines, "logs/export/ns/"+namespace1)
+			Expect(logsExportNs1Receivers).To(ContainElement("routing/logs"))
+			logsExportNs1Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace1)
+			Expect(logsExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+
+			logsExportNs2Receivers := readPipelineReceivers(pipelines, "logs/export/ns/"+namespace2)
+			Expect(logsExportNs2Receivers).To(ContainElement("routing/logs"))
+			logsExportNs2Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace2)
+			Expect(logsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+		})
+
+		It("should wire common-processors pipelines to routing connectors when namespaced exporters exist (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// Verify traces/common-processors exports to routing/traces
+			tracesCommonProcessorsExporters := readPipelineExporters(pipelines, "traces/common-processors")
+			Expect(tracesCommonProcessorsExporters).To(ContainElement("routing/traces"))
+			Expect(tracesCommonProcessorsExporters).ToNot(ContainElement("forward/traces-default-exporter"))
+
+			// Verify metrics/common-processors exports to routing/metrics
+			metricsCommonProcessorsExporters := readPipelineExporters(pipelines, "metrics/common-processors")
+			Expect(metricsCommonProcessorsExporters).To(ContainElement("routing/metrics"))
+			Expect(metricsCommonProcessorsExporters).ToNot(ContainElement("forward/metrics-default-exporter"))
+
+			// Verify logs/common-processors exports to routing/logs
+			logsCommonProcessorsExporters := readPipelineExporters(pipelines, "logs/common-processors")
+			Expect(logsCommonProcessorsExporters).To(ContainElement("routing/logs"))
+			Expect(logsCommonProcessorsExporters).ToNot(ContainElement("forward/logs-default-exporter"))
+		})
+
+		It("should wire default export pipelines to receive from routing connectors when namespaced exporters exist (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// Verify traces/export/default receives from routing/traces
+			tracesExportDefaultReceivers := readPipelineReceivers(pipelines, "traces/export/default")
+			Expect(tracesExportDefaultReceivers).To(ContainElement("routing/traces"))
+			Expect(tracesExportDefaultReceivers).ToNot(ContainElement("forward/traces-default-exporter"))
+
+			// Verify metrics/export/default receives from routing/metrics
+			metricsExportDefaultReceivers := readPipelineReceivers(pipelines, "metrics/export/default")
+			Expect(metricsExportDefaultReceivers).To(ContainElement("routing/metrics"))
+			Expect(metricsExportDefaultReceivers).ToNot(ContainElement("forward/metrics-default-exporter"))
+
+			// Verify logs/export/default receives from routing/logs
+			logsExportDefaultReceivers := readPipelineReceivers(pipelines, "logs/export/default")
+			Expect(logsExportDefaultReceivers).To(ContainElement("routing/logs"))
+			Expect(logsExportDefaultReceivers).ToNot(ContainElement("forward/logs-default-exporter"))
+		})
+
+		It("should not render routing connectors when no namespaced exporters exist (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// Verify routing connectors are NOT created
+			connectorsRaw := collectorConfig["connectors"]
+			Expect(connectorsRaw).ToNot(BeNil())
+			connectors := connectorsRaw.(map[string]interface{})
+			Expect(connectors["routing/traces"]).To(BeNil())
+			Expect(connectors["routing/metrics"]).To(BeNil())
+			Expect(connectors["routing/logs"]).To(BeNil())
+
+			// Verify forward connectors are used instead
+			Expect(connectors["forward/traces-default-exporter"]).ToNot(BeNil())
+			Expect(connectors["forward/metrics-default-exporter"]).ToNot(BeNil())
+			Expect(connectors["forward/logs-default-exporter"]).ToNot(BeNil())
+		})
+
+		It("should use forward connectors in pipelines when no namespaced exporters exist (DaemonSet only)", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// Verify common-processors pipelines export to forward connectors
+			tracesCommonProcessorsExporters := readPipelineExporters(pipelines, "traces/common-processors")
+			Expect(tracesCommonProcessorsExporters).To(ContainElement("forward/traces-default-exporter"))
+			Expect(tracesCommonProcessorsExporters).ToNot(ContainElement("routing/traces"))
+
+			metricsCommonProcessorsExporters := readPipelineExporters(pipelines, "metrics/common-processors")
+			Expect(metricsCommonProcessorsExporters).To(ContainElement("forward/metrics-default-exporter"))
+			Expect(metricsCommonProcessorsExporters).ToNot(ContainElement("routing/metrics"))
+
+			logsCommonProcessorsExporters := readPipelineExporters(pipelines, "logs/common-processors")
+			Expect(logsCommonProcessorsExporters).To(ContainElement("forward/logs-default-exporter"))
+			Expect(logsCommonProcessorsExporters).ToNot(ContainElement("routing/logs"))
+
+			// Verify default export pipelines receive from forward connectors
+			tracesExportDefaultReceivers := readPipelineReceivers(pipelines, "traces/export/default")
+			Expect(tracesExportDefaultReceivers).To(ContainElement("forward/traces-default-exporter"))
+			Expect(tracesExportDefaultReceivers).ToNot(ContainElement("routing/traces"))
+
+			metricsExportDefaultReceivers := readPipelineReceivers(pipelines, "metrics/export/default")
+			Expect(metricsExportDefaultReceivers).To(ContainElement("forward/metrics-default-exporter"))
+			Expect(metricsExportDefaultReceivers).ToNot(ContainElement("routing/metrics"))
+
+			logsExportDefaultReceivers := readPipelineReceivers(pipelines, "logs/export/default")
+			Expect(logsExportDefaultReceivers).To(ContainElement("forward/logs-default-exporter"))
+			Expect(logsExportDefaultReceivers).ToNot(ContainElement("routing/logs"))
+		})
 	})
 
 	DescribeTable("should render batch processor with defaults if SendBatchMaxSize is not requested", func(cmTypeDef configMapTypeDefinition) {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			SendBatchMaxSize: nil,
 		}, monitoredNamespaces, nil, nil, false)
@@ -1072,7 +892,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			SendBatchMaxSize: ptr.To(uint32(16384)),
 		}, monitoredNamespaces, nil, nil, false)
@@ -1092,7 +912,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			Export: *Dash0ExportWithEndpointAndToken(),
+			Exporters: cmTestSingleDefaultOtlpExporter(),
 		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -1106,7 +926,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			ClusterName: "cluster-name",
 		}, monitoredNamespaces, nil, nil, false)
@@ -1122,7 +942,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(attrs[0].(map[string]interface{})["value"]).To(Equal("cluster-name"))
 		Expect(attrs[0].(map[string]interface{})["action"]).To(Equal("insert"))
 		pipelines := readPipelines(collectorConfig)
-		metricsProcessors := readPipelineProcessors(pipelines, "metrics/downstream")
+		metricsProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
 		Expect(metricsProcessors).ToNot(BeNil())
 		Expect(metricsProcessors).To(ContainElement("resource/clustername"))
 	}, daemonSetAndDeployment)
@@ -1132,7 +952,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
 				KubeletStatsReceiverConfig:                       KubeletStatsReceiverConfig{Enabled: false},
 				UseHostMetricsReceiver:                           false,
@@ -1145,17 +965,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(hostmetricsReceiver).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/default")
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")
 			Expect(metricsReceivers).ToNot(BeNil())
 			Expect(metricsReceivers).To(ContainElement("otlp"))
 			Expect(metricsReceivers).ToNot(ContainElement("kubeletstats"))
 			Expect(metricsReceivers).ToNot(ContainElement("hostmetrics"))
-			defaultMetricsExporters := readPipelineExporters(pipelines, "metrics/default")
-			Expect(defaultMetricsExporters).To(ContainElement("forward/metrics"))
-
-			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
-			Expect(downstreamMetricsReceivers).ToNot(BeNil())
-			Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics"))
+			defaultMetricsExporters := readPipelineExporters(pipelines, "metrics/otlp-to-forwarder")
+			Expect(defaultMetricsExporters).To(ContainElement("forward/metrics-processors"))
 		})
 
 		type kubeletStatsReceiverConfigTestWanted struct {
@@ -1174,7 +990,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
-					Export:            *Dash0ExportWithEndpointAndToken(),
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
 					KubeletStatsReceiverConfig:                       testConfig.kubeletStatsReceiverConfig,
 					UseHostMetricsReceiver:                           true,
@@ -1200,17 +1016,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(hostmetricsReceiver).ToNot(BeNil())
 
 				pipelines := readPipelines(collectorConfig)
-				metricsReceivers := readPipelineReceivers(pipelines, "metrics/default")
+				metricsReceivers := readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")
 				Expect(metricsReceivers).ToNot(BeNil())
 				Expect(metricsReceivers).To(ContainElement("otlp"))
 				Expect(metricsReceivers).To(ContainElement("kubeletstats"))
 				Expect(metricsReceivers).To(ContainElement("hostmetrics"))
-				defaultMetricsExporters := readPipelineExporters(pipelines, "metrics/default")
-				Expect(defaultMetricsExporters).To(ContainElement("forward/metrics"))
-
-				downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
-				Expect(downstreamMetricsReceivers).ToNot(BeNil())
-				Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics"))
+				defaultMetricsExporters := readPipelineExporters(pipelines, "metrics/otlp-to-forwarder")
+				Expect(defaultMetricsExporters).To(ContainElement("forward/metrics-processors"))
 			},
 
 			Entry("should use node name as endpoint", kubeletStatsReceiverConfigTest{
@@ -1267,7 +1079,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:         OperatorNamespace,
 				NamePrefix:                namePrefix,
-				Export:                    *Dash0ExportWithEndpointAndToken(),
+				Exporters:                 cmTestSingleDefaultOtlpExporter(),
 				DisableReplicasetInformer: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -1289,7 +1101,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:         OperatorNamespace,
 				NamePrefix:                namePrefix,
-				Export:                    *Dash0ExportWithEndpointAndToken(),
+				Exporters:                 cmTestSingleDefaultOtlpExporter(),
 				DisableReplicasetInformer: false,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -1311,7 +1123,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				CollectPodLabelsAndAnnotationsEnabled:            false,
 			}, monitoredNamespaces, nil, nil, false)
@@ -1330,7 +1142,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				CollectPodLabelsAndAnnotationsEnabled:            true,
 			}, monitoredNamespaces, nil, nil, false)
@@ -1389,7 +1201,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 
@@ -1402,7 +1214,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			filterString := filters.([]interface{})[0].(string)
 			Expect(filterString).To(Equal(`resource.attributes["k8s.namespace.name"] != nil and resource.attributes["k8s.namespace.name"] != "namespace-1" and resource.attributes["k8s.namespace.name"] != "namespace-2"`))
 			pipelines := readPipelines(collectorConfig)
-			metricsProcessors := readPipelineProcessors(pipelines, "metrics/downstream")
+			metricsProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
 			Expect(metricsProcessors).ToNot(BeNil())
 			Expect(metricsProcessors).To(ContainElement("filter/metrics/only_monitored_namespaces"))
 		}, daemonSetAndDeployment)
@@ -1412,7 +1224,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		var config = &oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
 		}
 
 		It("should not render the prometheus scraping config if no namespace has scraping enabled", func() {
@@ -1448,19 +1260,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 
 			pipelines := readPipelines(collectorConfig)
-			prometheusMetricsReceivers := readPipelineReceivers(pipelines, "metrics/prometheus")
+			prometheusMetricsReceivers := readPipelineReceivers(pipelines, "metrics/prometheus-to-forwarder")
 			Expect(prometheusMetricsReceivers).ToNot(BeNil())
 			Expect(prometheusMetricsReceivers).To(ContainElement("prometheus"))
-			prometheusMetricsProcessors := readPipelineProcessors(pipelines, "metrics/prometheus")
+			prometheusMetricsProcessors := readPipelineProcessors(pipelines, "metrics/prometheus-to-forwarder")
 			Expect(prometheusMetricsProcessors).ToNot(BeNil())
 			Expect(prometheusMetricsProcessors).To(ContainElement("transform/metrics/prometheus_service_attributes"))
-			prometheusMetricsExporters := readPipelineExporters(pipelines, "metrics/prometheus")
+			prometheusMetricsExporters := readPipelineExporters(pipelines, "metrics/prometheus-to-forwarder")
 			Expect(prometheusMetricsExporters).ToNot(BeNil())
-			Expect(prometheusMetricsExporters).To(ContainElement("forward/metrics"))
-
-			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
-			Expect(downstreamMetricsReceivers).ToNot(BeNil())
-			Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics"))
+			Expect(prometheusMetricsExporters).To(ContainElement("forward/metrics-processors"))
 		})
 	})
 
@@ -1468,7 +1276,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		var config = &oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
 		}
 
 		It("should not render the filelog receiver if no namespace has log collection enabled", func() {
@@ -1484,9 +1292,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			pipelines := readPipelines(collectorConfig)
 			Expect(pipelines["logs/filelog"]).To(BeNil())
-			downstreamLogsProcessors := readPipelineProcessors(pipelines, "logs/downstream")
-			Expect(downstreamLogsProcessors).ToNot(BeNil())
-			Expect(downstreamLogsProcessors).ToNot(ContainElement("transform/logs/filelog_service_attributes"))
+			logsCommonProcessorsPipelineProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
+			Expect(logsCommonProcessorsPipelineProcessors).ToNot(BeNil())
+			Expect(logsCommonProcessorsPipelineProcessors).ToNot(ContainElement("transform/logs/filelog_service_attributes"))
 		})
 
 		It("should render the filelog config with all namespaces for which log collection is enabled", func() {
@@ -1515,21 +1323,21 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(filelogServiceAttributeProcessor).ToNot(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			logsFilelogReceivers := readPipelineReceivers(pipelines, "logs/filelog")
+			logsFilelogReceivers := readPipelineReceivers(pipelines, "logs/filelog-to-forwarder")
 			Expect(logsFilelogReceivers).ToNot(BeNil())
 			Expect(logsFilelogReceivers).To(ContainElement("filelog"))
-			logsFilelogProcessors := readPipelineProcessors(pipelines, "logs/filelog")
+			logsFilelogProcessors := readPipelineProcessors(pipelines, "logs/filelog-to-forwarder")
 			Expect(logsFilelogProcessors).ToNot(BeNil())
-			logsFilelogExporters := readPipelineExporters(pipelines, "logs/filelog")
+			logsFilelogExporters := readPipelineExporters(pipelines, "logs/filelog-to-forwarder")
 			Expect(logsFilelogExporters).ToNot(BeNil())
-			Expect(logsFilelogExporters).To(ContainElement("forward/logs"))
+			Expect(logsFilelogExporters).To(ContainElement("forward/logs-processors"))
 
-			downstreamLogsReceivers := readPipelineReceivers(pipelines, "logs/downstream")
-			Expect(downstreamLogsReceivers).ToNot(BeNil())
-			Expect(downstreamLogsReceivers).To(ContainElement("forward/logs"))
-			downstreamLogsProcessors := readPipelineProcessors(pipelines, "logs/downstream")
-			Expect(downstreamLogsProcessors).ToNot(BeNil())
-			Expect(downstreamLogsProcessors).To(ContainElement("transform/logs/filelog_service_attributes"))
+			LogsCommonProcessorsPipelineReceivers := readPipelineReceivers(pipelines, "logs/common-processors")
+			Expect(LogsCommonProcessorsPipelineReceivers).ToNot(BeNil())
+			Expect(LogsCommonProcessorsPipelineReceivers).To(ContainElement("forward/logs-processors"))
+			LogsCommonProcessorsPipelineProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
+			Expect(LogsCommonProcessorsPipelineProcessors).ToNot(BeNil())
+			Expect(LogsCommonProcessorsPipelineProcessors).To(ContainElement("transform/logs/filelog_service_attributes"))
 		})
 	})
 
@@ -1539,7 +1347,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
-					Export:            *Dash0ExportWithEndpointAndToken(),
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: false,
 				},
 				[]string{
@@ -1564,7 +1372,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				"filter/drop-replicaset-metrics-zero-value",
 			})).To(BeNil())
 			pipelines := readPipelines(collectorConfig)
-			Expect(pipelines["metrics/downstream"]).To(BeNil())
+			Expect(pipelines["metrics/common-processors"]).To(BeNil())
 		})
 
 		DescribeTable("should render the k8s_cluster receiver and the associated pipeline if Kubernetes infrastructure metrics collection is enabled",
@@ -1577,7 +1385,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					&oTelColConfig{
 						OperatorNamespace: OperatorNamespace,
 						NamePrefix:        namePrefix,
-						Export:            *Dash0ExportWithEndpointAndToken(),
+						Exporters:         cmTestSingleDefaultOtlpExporter(),
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
 					},
 					[]string{"namespace-1"},
@@ -1598,7 +1406,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"filter/drop-replicaset-metrics-zero-value",
 				})).ToNot(BeNil())
 				pipelines := readPipelines(collectorConfig)
-				Expect(pipelines["metrics/downstream"]).NotTo(BeNil())
+				Expect(pipelines["metrics/common-processors"]).NotTo(BeNil())
 			},
 			Entry("without K8s event collection", false),
 			Entry("together with K8s event collection", true),
@@ -1611,7 +1419,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
-					Export:            *Dash0ExportWithEndpointAndToken(),
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
 				},
 				[]string{},
@@ -1635,7 +1443,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					&oTelColConfig{
 						OperatorNamespace: OperatorNamespace,
 						NamePrefix:        namePrefix,
-						Export:            *Dash0ExportWithEndpointAndToken(),
+						Exporters:         cmTestSingleDefaultOtlpExporter(),
 						KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 					},
 					[]string{"namespace-1", "namespace-2", "namespace-3"},
@@ -1993,7 +1801,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
-					Export:            *Dash0ExportWithEndpointAndToken(),
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
 				},
 				monitoredNamespaces,
@@ -2050,8 +1858,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					}
 				}
 
-				downstreamPipelineProcessors := readPipelineProcessors(pipelines, fmt.Sprintf("%s/downstream", signal))
-				Expect(downstreamPipelineProcessors).To(ContainElements(filterProcessorName))
+				commonProcessorsProcessors := readPipelineProcessors(pipelines, fmt.Sprintf("%s/common-processors", signal))
+				Expect(commonProcessorsProcessors).To(ContainElements(filterProcessorName))
 			}
 
 			for _, signal := range expectations.signalsWithoutFilters {
@@ -2437,7 +2245,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
-					Export:            *Dash0ExportWithEndpointAndToken(),
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
 				},
 				monitoredNamespaces,
@@ -2512,8 +2320,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					}
 				}
 
-				downstreamPipelineProcessors := readPipelineProcessors(pipelines, fmt.Sprintf("%s/downstream", signal))
-				Expect(downstreamPipelineProcessors).To(ContainElements(transformProcessorName))
+				commonProcessorsPipelineProcessors := readPipelineProcessors(pipelines, fmt.Sprintf("%s/common-processors", signal))
+				Expect(commonProcessorsPipelineProcessors).To(ContainElements(transformProcessorName))
 			}
 
 			for _, signal := range expectations.signalsWithoutTransforms {
@@ -2583,7 +2391,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			var config = &oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				IsIPv6Cluster:     testConfig.ipv6,
 			}
 
@@ -2621,7 +2429,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: false,
@@ -2636,7 +2444,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
@@ -2653,7 +2461,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            export,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
@@ -2693,94 +2501,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, daemonSetAndDeployment)
 	})
 
-	DescribeTable("should render metrics & logs pipelines for a gRPC export", func(cmTypeDef configMapTypeDefinition) {
-		export := *GrpcExportTest()
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            export,
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
-				SelfMonitoringEnabled: true,
-				Export:                export,
-			},
-		}, monitoredNamespaces, nil, nil, false)
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-
-		selfMonitoringLogsPipelineRaw := readSelfMonitoringLogsPipeline(collectorConfig)
-		Expect(selfMonitoringLogsPipelineRaw).ToNot(BeNil())
-		selfMonitoringLogsPipeline, ok := selfMonitoringLogsPipelineRaw.(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		otlpExporter := readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline)
-		Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolGrpc))
-		Expect(otlpExporter["endpoint"]).To(Equal(EndpointGrpcWithProtocolTest))
-		headersRaw := otlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers, ok := headersRaw.(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key"]).To(Equal("Value"))
-
-		selfMonitoringMetricsPipelineRaw := readSelfMonitoringMetricsPipeline(collectorConfig)
-		Expect(selfMonitoringMetricsPipelineRaw).ToNot(BeNil())
-		selfMonitoringMetricsPipeline, ok := selfMonitoringMetricsPipelineRaw.(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		otlpExporter = readOtlpExporterFromSelfMonitoringMetricsPipeline(selfMonitoringMetricsPipeline)
-		Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolGrpc))
-		Expect(otlpExporter["endpoint"]).To(Equal(EndpointGrpcWithProtocolTest))
-		headersRaw = otlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers, ok = headersRaw.(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key"]).To(Equal("Value"))
-	}, daemonSetAndDeployment)
-
-	DescribeTable("should render metrics & logs pipelines for an HTTP export", func(cmTypeDef configMapTypeDefinition) {
-		export := *HttpExportTest()
-		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            export,
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
-				SelfMonitoringEnabled: true,
-				Export:                export,
-			},
-		}, monitoredNamespaces, nil, nil, false)
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-
-		selfMonitoringLogsPipelineRaw := readSelfMonitoringLogsPipeline(collectorConfig)
-		Expect(selfMonitoringLogsPipelineRaw).ToNot(BeNil())
-		selfMonitoringLogsPipeline, ok := selfMonitoringLogsPipelineRaw.(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		otlpExporter := readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline)
-		Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolHttpProtobuf))
-		Expect(otlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
-		headersRaw := otlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers, ok := headersRaw.(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key"]).To(Equal("Value"))
-
-		selfMonitoringMetricsPipelineRaw := readSelfMonitoringMetricsPipeline(collectorConfig)
-		Expect(selfMonitoringMetricsPipelineRaw).ToNot(BeNil())
-		selfMonitoringMetricsPipeline, ok := selfMonitoringMetricsPipelineRaw.(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		otlpExporter = readOtlpExporterFromSelfMonitoringMetricsPipeline(selfMonitoringMetricsPipeline)
-		Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolHttpProtobuf))
-		Expect(otlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
-		headersRaw = otlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers, ok = headersRaw.(map[string]interface{})
-		Expect(ok).To(BeTrue())
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key"]).To(Equal("Value"))
-	}, daemonSetAndDeployment)
-
 	Describe("target-allocator config", func() {
 		taMtlsConfig := TargetAllocatorMtlsConfig{
 			Enabled:              true,
@@ -2793,7 +2513,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			config := &oTelColConfig{
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
-				Export:                      *Dash0ExportWithEndpointAndToken(),
+				Exporters:                   cmTestSingleDefaultOtlpExporter(),
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: false,
 			}
@@ -2809,7 +2529,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			config := &oTelColConfig{
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
-				Export:                      *Dash0ExportWithEndpointAndToken(),
+				Exporters:                   cmTestSingleDefaultOtlpExporter(),
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: true,
 			}
@@ -2835,7 +2555,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			config := &oTelColConfig{
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
-				Export:                      *Dash0ExportWithEndpointAndToken(),
+				Exporters:                   cmTestSingleDefaultOtlpExporter(),
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
 				PrometheusCrdSupportEnabled: true,
 			}
@@ -2894,20 +2614,6 @@ func assembleDeploymentCollectorConfigMapForTest(
 
 func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]interface{} {
 	return ParseConfigMapContent(configMap, "config.yaml")
-}
-
-func verifyDownstreamExportersInPipelines(
-	collectorConfig map[string]interface{},
-	cmTypeDef configMapTypeDefinition,
-	expectedExporters ...string,
-) {
-	pipelines := readPipelines(collectorConfig)
-	Expect(pipelines).ToNot(BeNil())
-	for _, pipelineName := range cmTypeDef.exporterPipelineNames {
-		exporters := readPipelineExporters(pipelines, pipelineName)
-		Expect(exporters).To(HaveLen(len(expectedExporters)))
-		Expect(exporters).To(ContainElements(expectedExporters))
-	}
 }
 
 func verifyProcessorDoesNotAppearInAnyPipeline(
@@ -3355,4 +3061,21 @@ func emptyTransformExpectations() transformExpectations {
 	return transformExpectations{
 		signalsWithoutTransforms: allSignals(),
 	}
+}
+
+func verifyRoutingTableEntry(table []interface{}, namespace string, expectedPipeline string) {
+	expectedCondition := fmt.Sprintf(`attributes["k8s.namespace.name"] == "%s"`, namespace)
+	found := false
+	for _, entryRaw := range table {
+		entry := entryRaw.(map[string]interface{})
+		condition := entry["condition"].(string)
+		if condition == expectedCondition {
+			found = true
+			Expect(entry["context"]).To(Equal("resource"))
+			pipelines := entry["pipelines"].([]interface{})
+			Expect(pipelines).To(ContainElement(expectedPipeline))
+			break
+		}
+	}
+	Expect(found).To(BeTrue(), fmt.Sprintf("expected routing table entry for namespace %s not found", namespace))
 }

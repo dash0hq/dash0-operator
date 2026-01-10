@@ -203,6 +203,12 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       It is recommended to set this in `test-resources/.env`.
     * `DASH0_INGRESS_ENDPOINT`: The ingress endpoint where telemetry is sent.
       It is recommended to set this in `test-resources/.env`.
+    * `DASH0_NAMESPACED_DATASET`: Dataset used exclusively by the test script for namespaced exporters. It will be
+      placed in the monitoring resource of the test namespace to override the default config from the operator
+      configuration resource.
+    * `DASH0_NAMESPACED_AUTHORIZATION_TOKEN`: Token used exclusively by the test script for namespaced exporters. It
+      will be placed in the monitoring resource of the test namespace to override the default config from the operator
+      configuration resource.
     * `DEPLOY_APPLICATION_UNDER_MONITORING`: Set this to "false" to skip deploying a workload in the test namespace.
       This is assumed to be "true" by default.
     * `DEPLOY_NGINX_INGRESS`: Set this to "false" to skip deploying an nginx ingress to the cluster.

@@ -62,6 +62,7 @@ const (
 )
 
 var (
+	AuthorizationDefaultEnvVar         = "OTELCOL_AUTH_TOKEN_DEFAULT"
 	AuthorizationTokenTest             = "authorization-token-test"
 	AuthorizationHeaderTest            = fmt.Sprintf("Bearer %s", AuthorizationTokenTest)
 	AuthorizationTokenTestAlternative  = "authorization-token-test-alternative"

@@ -53,6 +53,7 @@ var _ = Describe("Uninstalling the Dash0 operator", Ordered, func() {
 	})
 
 	BeforeEach(func() {
+		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 		createdObjectsPreDeleteHandlerTest, deployment1 = setupNamespaceWithDash0MonitoringResourceAndWorkload(
 			ctx,
 			k8sClient,
@@ -71,6 +72,7 @@ var _ = Describe("Uninstalling the Dash0 operator", Ordered, func() {
 		createdObjectsPreDeleteHandlerTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsPreDeleteHandlerTest)
 		DeleteMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName1, false)
 		DeleteMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName2, false)
+		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 	})
 
 	It("should time out if the deletion of all Dash0 monitoring resources does not happen in a timely manner", func() {

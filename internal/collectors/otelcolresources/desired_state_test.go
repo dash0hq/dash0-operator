@@ -46,28 +46,99 @@ const (
 	otelExporterOtlpProtocolEnvVarName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 )
 
-var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
-	It("should fail if no endpoint has been provided", func() {
-		_, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export: dash0common.Export{
-				Dash0: &dash0common.Dash0Configuration{
-					Authorization: dash0common.Authorization{
-						Token: &AuthorizationTokenTest,
-					},
+// Test helper functions for creating exporters and authorizations
+func defaultDash0Exporters() otlpExporters {
+	return otlpExporters{
+		Default: []otlpExporter{{
+			Name:     "otlp/dash0/default",
+			Endpoint: EndpointDash0Test,
+			Headers: []dash0common.Header{
+				{
+					Name:  util.AuthorizationHeaderName,
+					Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault),
 				},
 			},
-			Images: TestImages,
-		}, nil, util.ExtraConfigDefaults)
-		Expect(err).To(HaveOccurred())
-	})
+		}},
+	}
+}
 
+func defaultDash0ExportersWithCustomDataset() otlpExporters {
+	return otlpExporters{
+		Default: []otlpExporter{{
+			Name:     "otlp/dash0/default",
+			Endpoint: EndpointDash0Test,
+			Headers: []dash0common.Header{
+				{
+					Name:  util.AuthorizationHeaderName,
+					Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault),
+				},
+				{
+					Name:  util.Dash0DatasetHeaderName,
+					Value: DatasetCustomTest,
+				},
+			},
+		}},
+	}
+}
+
+func defaultGrpcExporters() otlpExporters {
+	return otlpExporters{
+		Default: []otlpExporter{{
+			Name:     "otlp/grpc/default",
+			Endpoint: EndpointGrpcTest,
+			Headers: []dash0common.Header{
+				{Name: "Key", Value: "Value"},
+			},
+		}},
+	}
+}
+
+func defaultHttpExporters() otlpExporters {
+	return otlpExporters{
+		Default: []otlpExporter{{
+			Name:     "otlphttp/default/proto",
+			Endpoint: EndpointHttpTest,
+			Encoding: "proto",
+			Headers: []dash0common.Header{
+				{Name: "Key", Value: "Value"},
+			},
+		}},
+	}
+}
+
+func defaultDash0AuthorizationsWithToken() dash0ExporterAuthorizations {
+	return dash0ExporterAuthorizations{
+		DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
+			EnvVarName: authEnvVarNameDefault,
+			Authorization: dash0common.Authorization{
+				Token: &AuthorizationTokenTest,
+			},
+		},
+	}
+}
+
+func defaultDash0AuthorizationsWithSecretRef() dash0ExporterAuthorizations {
+	return dash0ExporterAuthorizations{
+		DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
+			EnvVarName: authEnvVarNameDefault,
+			Authorization: dash0common.Authorization{
+				SecretRef: &SecretRefTest,
+			},
+		},
+	}
+}
+
+func emptyAuthorizations() dash0ExporterAuthorizations {
+	return dash0ExporterAuthorizations{}
+}
+
+var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -222,7 +293,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: false,
 			Images: TestImages,
 		}, nil, util.ExtraConfigDefaults)
@@ -262,16 +334,17 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
-		Expect(configMapContent).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
+		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("\"Authorization\": \"Bearer ${env:%s}\"", authEnvVarNameDefault)))
 
 		daemonSet := getDaemonSet(desiredState)
 
-		authTokenEnvVar := FindEnvVarByName(daemonSet.Spec.Template.Spec.Containers[0].Env, "AUTH_TOKEN")
+		authTokenEnvVar := FindEnvVarByName(daemonSet.Spec.Template.Spec.Containers[0].Env, authEnvVarNameDefault)
 		Expect(authTokenEnvVar).NotTo(BeNil())
 		Expect(authTokenEnvVar.Value).To(Equal(AuthorizationTokenTest))
 	})
@@ -280,17 +353,18 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndSecretRef(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithSecretRef(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
-		Expect(configMapContent).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
+		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("\"Authorization\": \"Bearer ${env:%s}\"", authEnvVarNameDefault)))
 
 		daemonSet := getDaemonSet(desiredState)
 		podSpec := daemonSet.Spec.Template.Spec
 		container := podSpec.Containers[0]
-		authTokenEnvVar := FindEnvVarByName(container.Env, "AUTH_TOKEN")
+		authTokenEnvVar := FindEnvVarByName(container.Env, authEnvVarNameDefault)
 		Expect(authTokenEnvVar).NotTo(BeNil())
 		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(SecretRefTest.Name))
 		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(SecretRefTest.Key))
@@ -300,18 +374,400 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *HttpExportTest(),
+			Exporters:         defaultHttpExporters(),
+			Authorizations:    emptyAuthorizations(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
-		Expect(configMapContent).NotTo(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
+		Expect(configMapContent).NotTo(ContainSubstring("\"Authorization\": \"Bearer ${env:"))
 
 		daemonSet := getDaemonSet(desiredState)
 		podSpec := daemonSet.Spec.Template.Spec
 		container := podSpec.Containers[0]
-		authTokenEnvVar := FindEnvVarByName(container.Env, "AUTH_TOKEN")
+		authTokenEnvVar := FindEnvVarByName(container.Env, authEnvVarNameDefault)
 		Expect(authTokenEnvVar).To(BeNil())
+	})
+
+	It("should add multiple auth env vars for namespaced exporters with tokens", func() {
+		namespace1 := "test-namespace-1"
+		namespace2 := "test-namespace-2"
+		token1 := "test-token-1"
+		token2 := "test-token-2"
+
+		exporters := otlpExporters{
+			Default: []otlpExporter{{
+				Name:     "otlp/dash0/default",
+				Endpoint: EndpointDash0Test,
+				Headers: []dash0common.Header{
+					{
+						Name:  util.AuthorizationHeaderName,
+						Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault),
+					},
+				},
+			}},
+			Namespaced: namespacedOtlpExporters{
+				namespace1: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace1),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace1)),
+						},
+					},
+				}},
+				namespace2: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace2),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace2)),
+						},
+					},
+				}},
+			},
+		}
+
+		authorizations := dash0ExporterAuthorizations{
+			DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			},
+			NamespacedDash0ExporterAuthorizations: dash0ExporterAuthorizationByNamespace{
+				namespace1: {
+					EnvVarName: authEnvVarNameForNs(namespace1),
+					Authorization: dash0common.Authorization{
+						Token: &token1,
+					},
+				},
+				namespace2: {
+					EnvVarName: authEnvVarNameForNs(namespace2),
+					Authorization: dash0common.Authorization{
+						Token: &token2,
+					},
+				},
+			},
+		}
+
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         exporters,
+			Authorizations:    authorizations,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		daemonSet := getDaemonSet(desiredState)
+		podSpec := daemonSet.Spec.Template.Spec
+		container := podSpec.Containers[0]
+
+		// Verify default auth env var
+		defaultAuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameDefault)
+		Expect(defaultAuthEnvVar).NotTo(BeNil())
+		Expect(defaultAuthEnvVar.Value).To(Equal(AuthorizationTokenTest))
+
+		// Verify namespace-1 auth env var
+		ns1AuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameForNs(namespace1))
+		Expect(ns1AuthEnvVar).NotTo(BeNil())
+		Expect(ns1AuthEnvVar.Value).To(Equal(token1))
+
+		// Verify namespace-2 auth env var
+		ns2AuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameForNs(namespace2))
+		Expect(ns2AuthEnvVar).NotTo(BeNil())
+		Expect(ns2AuthEnvVar.Value).To(Equal(token2))
+	})
+
+	It("should add multiple auth env vars for namespaced exporters with secret refs", func() {
+		namespace1 := "test-namespace-1"
+		namespace2 := "test-namespace-2"
+		secretRef1 := dash0common.SecretRef{
+			Name: "secret-1",
+			Key:  "key-1",
+		}
+		secretRef2 := dash0common.SecretRef{
+			Name: "secret-2",
+			Key:  "key-2",
+		}
+
+		exporters := otlpExporters{
+			Default: []otlpExporter{{
+				Name:     "otlp/dash0/default",
+				Endpoint: EndpointDash0Test,
+				Headers: []dash0common.Header{
+					{
+						Name:  util.AuthorizationHeaderName,
+						Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault),
+					},
+				},
+			}},
+			Namespaced: namespacedOtlpExporters{
+				namespace1: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace1),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace1)),
+						},
+					},
+				}},
+				namespace2: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace2),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace2)),
+						},
+					},
+				}},
+			},
+		}
+
+		authorizations := dash0ExporterAuthorizations{
+			DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					SecretRef: &SecretRefTest,
+				},
+			},
+			NamespacedDash0ExporterAuthorizations: dash0ExporterAuthorizationByNamespace{
+				namespace1: {
+					EnvVarName: authEnvVarNameForNs(namespace1),
+					Authorization: dash0common.Authorization{
+						SecretRef: &secretRef1,
+					},
+				},
+				namespace2: {
+					EnvVarName: authEnvVarNameForNs(namespace2),
+					Authorization: dash0common.Authorization{
+						SecretRef: &secretRef2,
+					},
+				},
+			},
+		}
+
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         exporters,
+			Authorizations:    authorizations,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		daemonSet := getDaemonSet(desiredState)
+		podSpec := daemonSet.Spec.Template.Spec
+		container := podSpec.Containers[0]
+
+		// Verify default auth env var
+		defaultAuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameDefault)
+		Expect(defaultAuthEnvVar).NotTo(BeNil())
+		Expect(defaultAuthEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(SecretRefTest.Name))
+		Expect(defaultAuthEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(SecretRefTest.Key))
+
+		// Verify namespace-1 auth env var
+		ns1AuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameForNs(namespace1))
+		Expect(ns1AuthEnvVar).NotTo(BeNil())
+		Expect(ns1AuthEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(secretRef1.Name))
+		Expect(ns1AuthEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(secretRef1.Key))
+
+		// Verify namespace-2 auth env var
+		ns2AuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameForNs(namespace2))
+		Expect(ns2AuthEnvVar).NotTo(BeNil())
+		Expect(ns2AuthEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(secretRef2.Name))
+		Expect(ns2AuthEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(secretRef2.Key))
+	})
+
+	It("should add multiple auth env vars with mixed token and secret ref types", func() {
+		namespace1 := "test-namespace-token"
+		namespace2 := "test-namespace-secret"
+		token1 := "test-token-1"
+		secretRef2 := dash0common.SecretRef{
+			Name: "secret-2",
+			Key:  "key-2",
+		}
+
+		exporters := otlpExporters{
+			Default: []otlpExporter{{
+				Name:     "otlp/dash0/default",
+				Endpoint: EndpointDash0Test,
+				Headers: []dash0common.Header{
+					{
+						Name:  util.AuthorizationHeaderName,
+						Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault),
+					},
+				},
+			}},
+			Namespaced: namespacedOtlpExporters{
+				namespace1: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace1),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace1)),
+						},
+					},
+				}},
+				namespace2: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace2),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace2)),
+						},
+					},
+				}},
+			},
+		}
+
+		authorizations := dash0ExporterAuthorizations{
+			DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			},
+			NamespacedDash0ExporterAuthorizations: dash0ExporterAuthorizationByNamespace{
+				namespace1: {
+					EnvVarName: authEnvVarNameForNs(namespace1),
+					Authorization: dash0common.Authorization{
+						Token: &token1,
+					},
+				},
+				namespace2: {
+					EnvVarName: authEnvVarNameForNs(namespace2),
+					Authorization: dash0common.Authorization{
+						SecretRef: &secretRef2,
+					},
+				},
+			},
+		}
+
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         exporters,
+			Authorizations:    authorizations,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		daemonSet := getDaemonSet(desiredState)
+		podSpec := daemonSet.Spec.Template.Spec
+		container := podSpec.Containers[0]
+
+		// Verify default auth env var (token)
+		defaultAuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameDefault)
+		Expect(defaultAuthEnvVar).NotTo(BeNil())
+		Expect(defaultAuthEnvVar.Value).To(Equal(AuthorizationTokenTest))
+
+		// Verify namespace-1 auth env var (token)
+		ns1AuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameForNs(namespace1))
+		Expect(ns1AuthEnvVar).NotTo(BeNil())
+		Expect(ns1AuthEnvVar.Value).To(Equal(token1))
+
+		// Verify namespace-2 auth env var (secret ref)
+		ns2AuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameForNs(namespace2))
+		Expect(ns2AuthEnvVar).NotTo(BeNil())
+		Expect(ns2AuthEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(secretRef2.Name))
+		Expect(ns2AuthEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(secretRef2.Key))
+	})
+
+	It("should verify correct env var naming for namespaced exporters", func() {
+		// Test various namespace naming patterns
+		namespace1 := "simple"
+		namespace2 := "with-dashes"
+		namespace3 := "with-multiple-dashes-here"
+
+		exporters := otlpExporters{
+			Namespaced: namespacedOtlpExporters{
+				namespace1: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace1),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace1)),
+						},
+					},
+				}},
+				namespace2: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace2),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace2)),
+						},
+					},
+				}},
+				namespace3: []otlpExporter{{
+					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace3),
+					Endpoint: EndpointDash0Test,
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNs(namespace3)),
+						},
+					},
+				}},
+			},
+		}
+
+		token1 := "token-1"
+		token2 := "token-2"
+		token3 := "token-3"
+
+		authorizations := dash0ExporterAuthorizations{
+			NamespacedDash0ExporterAuthorizations: dash0ExporterAuthorizationByNamespace{
+				namespace1: {
+					EnvVarName: authEnvVarNameForNs(namespace1),
+					Authorization: dash0common.Authorization{
+						Token: &token1,
+					},
+				},
+				namespace2: {
+					EnvVarName: authEnvVarNameForNs(namespace2),
+					Authorization: dash0common.Authorization{
+						Token: &token2,
+					},
+				},
+				namespace3: {
+					EnvVarName: authEnvVarNameForNs(namespace3),
+					Authorization: dash0common.Authorization{
+						Token: &token3,
+					},
+				},
+			},
+		}
+
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         exporters,
+			Authorizations:    authorizations,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		daemonSet := getDaemonSet(desiredState)
+		podSpec := daemonSet.Spec.Template.Spec
+		container := podSpec.Containers[0]
+
+		// Verify env var names follow the expected pattern: OTELCOL_AUTH_TOKEN_NS_<NAMESPACE>
+		// where <NAMESPACE> has dashes replaced with underscores and is uppercase
+		ns1AuthEnvVar := FindEnvVarByName(container.Env, "OTELCOL_AUTH_TOKEN_NS_SIMPLE")
+		Expect(ns1AuthEnvVar).NotTo(BeNil())
+
+		ns2AuthEnvVar := FindEnvVarByName(container.Env, "OTELCOL_AUTH_TOKEN_NS_WITH_DASHES")
+		Expect(ns2AuthEnvVar).NotTo(BeNil())
+
+		ns3AuthEnvVar := FindEnvVarByName(container.Env, "OTELCOL_AUTH_TOKEN_NS_WITH_MULTIPLE_DASHES_HERE")
+		Expect(ns3AuthEnvVar).NotTo(BeNil())
 	})
 
 	It("should correctly apply Dash0 export self-monitoring with token on the daemonset", func() {
@@ -319,7 +775,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -349,7 +806,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithSecretRef(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -380,7 +838,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			Exporters:         defaultDash0ExportersWithCustomDataset(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -411,7 +870,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			Exporters:         defaultGrpcExporters(),
+			Authorizations:    emptyAuthorizations(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -440,7 +900,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			Exporters:         defaultHttpExporters(),
+			Authorizations:    emptyAuthorizations(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -465,11 +926,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should correctly apply disabled self-monitoring settings to the daemonset", func() {
-		export := Dash0ExportWithEndpointAndToken()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: false,
 			},
@@ -486,7 +947,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -634,7 +1096,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -719,12 +1182,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should collect logs from namespaces, but not from the operator namespace", func() {
-		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
-			Images:            TestImages,
-		}, []dash0v1beta1.Dash0Monitoring{
+		monitoringResources := []dash0v1beta1.Dash0Monitoring{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      MonitoringResourceName,
@@ -752,7 +1210,15 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)},
 				},
 			},
-		}, util.ExtraConfigDefaults)
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace:      OperatorNamespace,
+			NamePrefix:             namePrefix,
+			Exporters:              defaultDash0Exporters(),
+			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			AllMonitoringResources: monitoringResources,
+			Images:                 TestImages,
+		}, monitoringResources, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
 		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
@@ -765,7 +1231,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			Images: TestImages,
 		}, nil, util.ExtraConfigDefaults)
@@ -773,16 +1240,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		configMapContent := getDeploymentCollectorConfigMapContent(desiredState)
 		Expect(configMapContent).To(ContainSubstring("k8s_cluster:"))
-		Expect(configMapContent).To(ContainSubstring("metrics/downstream:"))
+		Expect(configMapContent).To(ContainSubstring("metrics/common-processors:"))
 	})
 
 	It("should collect events from configured namespaces", func() {
-		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
-			Images:            TestImages,
-		}, []dash0v1beta1.Dash0Monitoring{
+		monitoringResources := []dash0v1beta1.Dash0Monitoring{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      MonitoringResourceName,
@@ -810,7 +1272,15 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					EventCollection: dash0common.EventCollection{Enabled: ptr.To(true)},
 				},
 			},
-		}, util.ExtraConfigDefaults)
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace:      OperatorNamespace,
+			NamePrefix:             namePrefix,
+			Exporters:              defaultDash0Exporters(),
+			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			AllMonitoringResources: monitoringResources,
+			Images:                 TestImages,
+		}, monitoringResources, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
 		configMapContent := getDeploymentCollectorConfigMapContent(desiredState)
@@ -820,12 +1290,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should scrape Prometheus metrics from namespaces when enabled", func() {
-		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
-			Images:            TestImages,
-		}, []dash0v1beta1.Dash0Monitoring{
+		monitoringResources := []dash0v1beta1.Dash0Monitoring{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      MonitoringResourceName,
@@ -851,7 +1316,15 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(false)},
 				},
 			},
-		}, util.ExtraConfigDefaults)
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace:      OperatorNamespace,
+			NamePrefix:             namePrefix,
+			Exporters:              defaultDash0Exporters(),
+			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			AllMonitoringResources: monitoringResources,
+			Images:                 TestImages,
+		}, monitoringResources, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
 		configMap := getDaemonSetCollectorConfigMap(desiredState)
@@ -877,7 +1350,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -914,7 +1388,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -957,7 +1432,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -1048,33 +1524,48 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 		}
 
+		monitoringResources1 := []dash0v1beta1.Dash0Monitoring{mr1, mr2, mr3, mr4}
 		desiredState1, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
-			Images:            TestImages,
-		}, []dash0v1beta1.Dash0Monitoring{mr1, mr2, mr3, mr4}, util.ExtraConfigDefaults)
+			OperatorNamespace:      OperatorNamespace,
+			NamePrefix:             namePrefix,
+			Exporters:              defaultDash0Exporters(),
+			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			AllMonitoringResources: monitoringResources1,
+			Images:                 TestImages,
+		}, monitoringResources1, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
+
+		monitoringResources2 := []dash0v1beta1.Dash0Monitoring{mr3, mr4, mr1, mr2}
 		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
-			Images:            TestImages,
-		}, []dash0v1beta1.Dash0Monitoring{mr3, mr4, mr1, mr2}, util.ExtraConfigDefaults)
+			OperatorNamespace:      OperatorNamespace,
+			NamePrefix:             namePrefix,
+			Exporters:              defaultDash0Exporters(),
+			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			AllMonitoringResources: monitoringResources2,
+			Images:                 TestImages,
+		}, monitoringResources2, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
+
+		monitoringResources3 := []dash0v1beta1.Dash0Monitoring{mr4, mr3, mr2, mr1}
 		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
-			Images:            TestImages,
-		}, []dash0v1beta1.Dash0Monitoring{mr4, mr3, mr2, mr1}, util.ExtraConfigDefaults)
+			OperatorNamespace:      OperatorNamespace,
+			NamePrefix:             namePrefix,
+			Exporters:              defaultDash0Exporters(),
+			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			AllMonitoringResources: monitoringResources3,
+			Images:                 TestImages,
+		}, monitoringResources3, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
+
+		monitoringResources4 := []dash0v1beta1.Dash0Monitoring{mr3, mr1, mr4, mr2}
 		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
-			Images:            TestImages,
-		}, []dash0v1beta1.Dash0Monitoring{mr3, mr1, mr4, mr2}, util.ExtraConfigDefaults)
+			OperatorNamespace:      OperatorNamespace,
+			NamePrefix:             namePrefix,
+			Exporters:              defaultDash0Exporters(),
+			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			AllMonitoringResources: monitoringResources4,
+			Images:                 TestImages,
+		}, monitoringResources4, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(reflect.DeepEqual(desiredState1, desiredState2)).To(BeTrue())

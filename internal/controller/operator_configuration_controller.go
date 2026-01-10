@@ -359,8 +359,6 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 ) error {
 	if _, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
-		nil,
-		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
 		return err

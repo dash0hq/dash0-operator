@@ -67,16 +67,6 @@ var (
               otlp:`
 )
 
-func (c *SelfMonitoringConfiguration) HasDash0ApiAccessConfigured() bool {
-	return c.Export.Dash0 != nil &&
-		c.Export.Dash0.ApiEndpoint != "" &&
-		(c.Export.Dash0.Authorization.Token != nil || c.Export.Dash0.Authorization.SecretRef != nil)
-}
-
-func (c *SelfMonitoringConfiguration) GetDash0Authorization() dash0common.Authorization {
-	return c.Export.Dash0.Authorization
-}
-
 func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	resource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger *logr.Logger,

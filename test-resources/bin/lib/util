@@ -681,6 +681,13 @@ install_monitoring_resource() {
   fi
 }
 
+install_monitoring_resource_with_namespaced_exporter() {
+  kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring-with-namespaced-exporter.yaml
+
+  echo "waiting for the monitoring resource to become available"
+  kubectl wait --namespace ${target_namespace} dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
+}
+
 deploy_application_under_monitoring() {
   if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" = "false" ]]; then
     return
