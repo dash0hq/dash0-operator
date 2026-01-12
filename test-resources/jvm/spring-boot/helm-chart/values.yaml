@@ -50,3 +50,5 @@ statefulset:
   targetPort: 1310
   selector: dash0-operator-jvm-spring-boot-test-statefulset-app
   ingressPath: /statefulset/jvm(/|$)(.*)
+
+simulateLatency: false

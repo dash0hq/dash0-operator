@@ -23,6 +23,8 @@ spec:
       env:
         - name: PORT
           value: "{{ .Values.pod.targetPort }}"
+        - name: SIMULATE_LATENCY
+          value: "{{ .Values.simulateLatency }}"
       ports:
         - containerPort: {{ .Values.pod.targetPort }}
       resources:

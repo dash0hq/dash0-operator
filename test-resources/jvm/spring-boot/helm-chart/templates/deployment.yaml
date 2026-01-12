@@ -32,6 +32,8 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.deployment.targetPort }}"
+            - name: SIMULATE_LATENCY
+              value: "{{ .Values.simulateLatency }}"
           ports:
             - containerPort: {{ .Values.deployment.targetPort }}
           resources:
