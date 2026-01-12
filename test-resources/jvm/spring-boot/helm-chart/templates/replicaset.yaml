@@ -32,6 +32,8 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.replicaset.targetPort }}"
+            - name: SIMULATE_LATENCY
+              value: "{{ .Values.simulateLatency }}"
           ports:
             - containerPort: {{ .Values.replicaset.targetPort }}
           resources:

@@ -328,6 +328,9 @@ determine_test_app_images() {
   test_app_python_image_repository="${image_repository_prefix}dash0-operator-python-flask-test-app"
   test_app_python_image_tag="$image_tag"
   test_app_python_image_pull_policy="$pull_policy"
+  telemetry_matcher_image_repository="${image_repository_prefix}telemetry-matcher"
+  telemetry_matcher_image_tag="$image_tag"
+  telemetry_matcher_image_pull_policy="$pull_policy"
 
   if [[ -n "${TEST_APP_DOTNET_IMAGE_REPOSITORY:-}" ]]; then
     test_app_dotnet_image_repository="$TEST_APP_DOTNET_IMAGE_REPOSITORY"
@@ -367,6 +370,16 @@ determine_test_app_images() {
   fi
   if [[ -n "${TEST_APP_PYTHON_IMAGE_PULL_POLICY:-}" ]]; then
     test_app_python_image_pull_policy="$TEST_APP_PYTHON_IMAGE_PULL_POLICY"
+  fi
+
+  if [[ -n "${TELEMETRY_MATCHER_IMAGE_REPOSITORY:-}" ]]; then
+    telemetry_matcher_image_repository="$TELEMETRY_MATCHER_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${TELEMETRY_MATCHER_IMAGE_TAG:-}" ]]; then
+    telemetry_matcher_image_tag="$TELEMETRY_MATCHER_IMAGE_TAG"
+  fi
+  if [[ -n "${TELEMETRY_MATCHER_IMAGE_PULL_POLICY:-}" ]]; then
+    telemetry_matcher_image_pull_policy="$TELEMETRY_MATCHER_IMAGE_PULL_POLICY"
   fi
 }
 
@@ -647,7 +660,18 @@ deploy_otlp_sink_if_requested() {
     return
   fi
 
-  local helm_install_command="helm install --namespace otlp-sink --create-namespace --wait --timeout 60s otlp-sink test/e2e/otlp-sink/helm-chart"
+  local helm_install_command="helm install --namespace otlp-sink --create-namespace --wait --timeout 60s"
+  if [[ -n "$telemetry_matcher_image_repository" ]]; then
+    helm_install_command+=" --set telemetryMatcher.image.repository=$telemetry_matcher_image_repository"
+  fi
+  if [[ -n "$telemetry_matcher_image_tag" ]]; then
+    helm_install_command+=" --set telemetryMatcher.image.tag=$telemetry_matcher_image_tag"
+  fi
+  if [[ -n "$telemetry_matcher_image_pull_policy" ]]; then
+    helm_install_command+=" --set telemetryMatcher.image.pullPolicy=$telemetry_matcher_image_pull_policy"
+  fi
+
+  helm_install_command+=" otlp-sink test/e2e/otlp-sink/helm-chart"
   echo "deploying otlp-sink"
   echo "$helm_install_command"
   $helm_install_command

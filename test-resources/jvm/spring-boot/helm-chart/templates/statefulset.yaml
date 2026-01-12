@@ -33,6 +33,8 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.statefulset.targetPort }}"
+            - name: SIMULATE_LATENCY
+              value: "{{ .Values.simulateLatency }}"
           ports:
             - containerPort: {{ .Values.statefulset.targetPort }}
           resources:
