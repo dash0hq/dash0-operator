@@ -5,6 +5,7 @@ package workloads
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -692,7 +693,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	}
 	if len(resourceAttributes) > 0 {
 		var resourceAttributeList []string
-		for resourceAttributeKey, resourceAttributeValue := range resourceAttributes {
+		for _, resourceAttributeKey := range slices.Sorted(maps.Keys(resourceAttributes)) {
+			resourceAttributeValue := resourceAttributes[resourceAttributeKey]
 			resourceAttributeList = append(
 				resourceAttributeList,
 				fmt.Sprintf("%s=%s", resourceAttributeKey, resourceAttributeValue))
