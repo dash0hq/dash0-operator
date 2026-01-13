@@ -1831,6 +1831,59 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 		)
 
+		It("the DASH0_RESOURCE_ATTRIBUTES value must be stable against reordering of annotations", func() {
+			workloadMeta1 := metav1.ObjectMeta{
+				Annotations: map[string]string{
+					"resource.opentelemetry.io/workload.key.1": "value 1",
+					"resource.opentelemetry.io/workload.key.2": "value 2",
+					"resource.opentelemetry.io/workload.key.3": "value 3",
+				},
+			}
+			podMeta1 := metav1.ObjectMeta{
+				Annotations: map[string]string{
+					"resource.opentelemetry.io/pod.key.1": "value 4",
+					"resource.opentelemetry.io/pod.key.2": "value 5",
+					"resource.opentelemetry.io/pod.key.3": "value 6",
+				},
+			}
+			container1 := &corev1.Container{}
+			workloadModifier.addEnvironmentVariables(
+				container1,
+				&workloadMeta1,
+				&podMeta1,
+				logger,
+			)
+
+			// now re-order the annotations and generate the DASH0_RESOURCE_ATTRIBUTES value again
+			workloadMeta2 := metav1.ObjectMeta{
+				Annotations: map[string]string{
+					"resource.opentelemetry.io/workload.key.3": "value 3",
+					"resource.opentelemetry.io/workload.key.2": "value 2",
+					"resource.opentelemetry.io/pod.key.1":      "value 4",
+				},
+			}
+			podMeta2 := metav1.ObjectMeta{
+				Annotations: map[string]string{
+					"resource.opentelemetry.io/pod.key.3":      "value 6",
+					"resource.opentelemetry.io/pod.key.2":      "value 5",
+					"resource.opentelemetry.io/workload.key.1": "value 1",
+				},
+			}
+			container2 := &corev1.Container{}
+			workloadModifier.addEnvironmentVariables(
+				container2,
+				&workloadMeta2,
+				&podMeta2,
+				logger,
+			)
+
+			// Verify that the value of DASH0_RESOURCE_ATTRIBUTES is independent of the order in which annotations
+			// are returned by the Kubernetes API:
+			dash0ResourceAttributesValue1 := FindEnvVarByName(container1.Env, envVarDash0ResourceAttributesName).Value
+			dash0ResourceAttributesValue2 := FindEnvVarByName(container2.Env, envVarDash0ResourceAttributesName).Value
+			Expect(dash0ResourceAttributesValue1).To(Equal(dash0ResourceAttributesValue2))
+		})
+
 		type otelPropagatorsTest struct {
 			existingEnvVars                       []corev1.EnvVar
 			namespaceInstrumentationConfig        util.NamespaceInstrumentationConfig
