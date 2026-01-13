@@ -68,7 +68,7 @@ jobs:
         run: |
           shellcheck --version
 
-      - uses: mlugg/setup-zig@fa65c4058643678a4e4a9a60513944a7d8d35440
+      - uses: mlugg/setup-zig@e7d1537c378b83b8049f65dda471d87a2f7b2df2
         with:
           # keep in sync with images/instrumentation/injector/zig-version, if possible
           version: 0.14.1
