@@ -485,7 +485,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	}
 
 	var originsInResource []string
-	var requests []HttpRequestWithItemName
+	var requests []WrappedApiRequest
 	allValidationIssues := make(map[string][]string)
 	allSynchronizationErrors := make(map[string]string)
 
@@ -529,9 +529,11 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 				continue
 			}
 			if ok {
-				requests = append(requests, HttpRequestWithItemName{
-					ItemName: checkRuleName,
+				requests = append(requests, WrappedApiRequest{
 					Request:  request,
+					ItemName: checkRuleName,
+					Origin:   checkRuleOriginNotUrlEncoded,
+					Dataset:  preconditionChecksResult.dataset,
 				})
 				originsInResource = append(originsInResource, checkRuleOriginNotUrlEncoded)
 			}
@@ -594,7 +596,7 @@ func (r *PrometheusRuleReconciler) renderCheckRuleOrigin(
 	if alertName == "" {
 		// Rules without an alert name will not actually be sent to the Dash0 API, since they are deemed invalid by
 		// convertRuleToCheckRule ("rule has neither the alert nor the record attribute").
-		alertName = "unamed rule"
+		alertName = "unnamed rule"
 	}
 	alertNameNotUrlEncoded := strings.ReplaceAll(alertName, "/", "|")
 	alertNameUrlEncoded := url.PathEscape(alertNameNotUrlEncoded)
@@ -877,8 +879,8 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	existingOriginsFromApi []string,
 	originsInResource []string,
 	logger *logr.Logger,
-) ([]HttpRequestWithItemName, map[string]string) {
-	var deleteRequests []HttpRequestWithItemName
+) ([]WrappedApiRequest, map[string]string) {
+	var deleteRequests []WrappedApiRequest
 	allSynchronizationErrors := make(map[string]string)
 	for _, existingOrigin := range existingOriginsFromApi {
 		if !slices.Contains(originsInResource, existingOrigin) {
@@ -898,9 +900,11 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 				allSynchronizationErrors[existingOrigin] = httpError.Error()
 			} else {
 				addAuthorizationHeader(req, preconditionChecksResult)
-				deleteRequests = append(deleteRequests, HttpRequestWithItemName{
-					ItemName: existingOrigin + " (deleted)",
+				deleteRequests = append(deleteRequests, WrappedApiRequest{
 					Request:  req,
+					ItemName: existingOrigin + " (deleted)",
+					Origin:   existingOrigin,
+					Dataset:  preconditionChecksResult.dataset,
 				})
 			}
 		}
@@ -908,7 +912,7 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	return deleteRequests, allSynchronizationErrors
 }
 
-func (r *PrometheusRuleReconciler) ExtractIdOriginAndLinkFromResponseBody(
+func (r *PrometheusRuleReconciler) ExtractIdOriginAndDatasetFromResponseBody(
 	responseBytes []byte,
 	logger *logr.Logger,
 ) Dash0ApiObjectLabels {

@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
@@ -35,7 +36,7 @@ import (
 )
 
 const (
-	dashboardOrigin = "dashboard-origin"
+	dashboardOriginPattern = "dash0-operator_%s_test-dataset_test-namespace_test-dashboard"
 )
 
 var (
@@ -47,38 +48,17 @@ var (
 	dashboardApiBasePath = "/api/dashboards/"
 
 	defaultExpectedPathDashboard = fmt.Sprintf("%s.*%s", dashboardApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-dashboard")
-
-	defaultExpectedPersesSyncResult = dash0common.PersesDashboardSynchronizationResults{
-		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
-		Dash0Origin:           dashboardOrigin,
-		Dash0Dataset:          DatasetCustomTest,
-		SynchronizationError:  "",
-		ValidationIssues:      nil,
-	}
-
-	defaultExpectedPersesSyncResultNoOriginAndDataset = dash0common.PersesDashboardSynchronizationResults{
-		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
-		SynchronizationError:  "",
-		ValidationIssues:      nil,
-	}
-
-	dashboardResponseWithOriginAndDataset = map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"dash0Extensions": map[string]interface{}{
-				"id":      dashboardOrigin,
-				"dataset": DatasetCustomTest,
-			},
-		},
-	}
 )
 
 var _ = Describe("The Perses dashboard controller", Ordered, func() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
+	var clusterId string
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
+		clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, &logger))
 	})
 
 	Describe("the Perses dashboard CRD reconciler", func() {
@@ -298,7 +278,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("it ignores Perses dashboard resource changes if no Dash0 monitoring resource exists in the namespace", func() {
-			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
 
 			dashboardResource := createDashboardResource()
@@ -318,7 +298,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			monitoringResource.Spec.SynchronizePersesDashboards = ptr.To(false)
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
-			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
 
 			dashboardResource := createDashboardResource()
@@ -337,7 +317,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		It("it ignores Perses dashboard resource changes if the API endpoint is not configured", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
 
 			persesDashboardCrdReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
@@ -358,7 +338,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		It("creates a dashboard", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
 
 			dashboardResource := createDashboardResource()
@@ -373,7 +353,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResult,
+				defaultExpectedPersesSyncResult(clusterId),
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -381,7 +361,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		It("updates a dashboard", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
 
 			dashboardResource := createDashboardResource()
@@ -396,7 +376,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResult,
+				defaultExpectedPersesSyncResult(clusterId),
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -404,7 +384,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		It("updates a dashboard if dash0.com/enable is set but not to \"false\"", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
 
 			dashboardResource := createDashboardResourceWithEnableLabel("whatever")
@@ -419,7 +399,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResult,
+				defaultExpectedPersesSyncResult(clusterId),
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -442,7 +422,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResultNoOriginAndDataset,
+				defaultExpectedPersesSyncResult(clusterId),
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -465,7 +445,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResultNoOriginAndDataset,
+				defaultExpectedPersesSyncResult(clusterId),
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -488,7 +468,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResultNoOriginAndDataset,
+				defaultExpectedPersesSyncResult(clusterId),
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -585,10 +565,10 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
 			Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
 
-			Expect(resourceToRequestsResult.HttpRequests).To(HaveLen(1))
-			reqWithName := resourceToRequestsResult.HttpRequests[0]
-			Expect(reqWithName.ItemName).To(Equal("perses-dashboard"))
-			req := reqWithName.Request
+			Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
+			apiRequest := resourceToRequestsResult.ApiRequests[0]
+			Expect(apiRequest.ItemName).To(Equal("perses-dashboard"))
+			req := apiRequest.Request
 			defer func() {
 				_ = req.Body.Close()
 			}()
@@ -768,14 +748,35 @@ func createPersesDashboardCrdReconciler() *PersesDashboardCrdReconciler {
 	return crdReconciler
 }
 
-func expectDashboardPutRequest(expectedPath string) {
+func expectDashboardPutRequest(clusterId string, expectedPath string) {
 	gock.New(ApiEndpointTest).
 		Put(expectedPath).
 		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
 		Reply(200).
-		JSON(dashboardResponseWithOriginAndDataset)
+		JSON(defaultDashboardPutResponse(clusterId))
+}
+
+func defaultDashboardPutResponse(clusterId string) map[string]interface{} {
+	return map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"dash0Extensions": map[string]interface{}{
+				"id":      fmt.Sprintf(dashboardOriginPattern, clusterId),
+				"dataset": DatasetCustomTest,
+			},
+		},
+	}
+}
+
+func defaultExpectedPersesSyncResult(clusterId string) dash0common.PersesDashboardSynchronizationResults {
+	return dash0common.PersesDashboardSynchronizationResults{
+		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
+		Dash0Origin:           fmt.Sprintf(dashboardOriginPattern, clusterId),
+		Dash0Dataset:          DatasetCustomTest,
+		SynchronizationError:  "",
+		ValidationIssues:      nil,
+	}
 }
 
 func expectDashboardDeleteRequest(expectedPath string) {
@@ -788,8 +789,7 @@ func expectDashboardDeleteRequestWithHttpStatus(expectedPath string, status int)
 		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
-		Reply(status).
-		JSON(map[string]string{})
+		Reply(status)
 }
 
 func createDashboardResource() unstructured.Unstructured {
@@ -870,11 +870,12 @@ func verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourc
 		result := results[fmt.Sprintf("%s/%s", TestNamespaceName, "test-dashboard")]
 		g.Expect(result).NotTo(BeNil())
 		if expectedResult.SynchronizationError != "" {
-			// http errors contain a different random path for each run
+			// http errors contain a different random path for each test execution
 			g.Expect(result.SynchronizationError).To(MatchRegexp(expectedResult.SynchronizationError))
 			result.SynchronizationError = ""
 			expectedResult.SynchronizationError = ""
 		}
+		g.Expect(result.Dash0Origin).To(Equal(expectedResult.Dash0Origin))
 
 		// we do not verify the exact timestamp
 		expectedResult.SynchronizedAt = result.SynchronizedAt

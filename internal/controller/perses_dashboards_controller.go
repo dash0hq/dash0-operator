@@ -443,7 +443,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	logger *logr.Logger,
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
-	dashboardUrl := r.renderDashboardUrl(preconditionChecksResult)
+	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(preconditionChecksResult)
 
 	var req *http.Request
 	var method string
@@ -501,7 +501,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return NewResourceToRequestsResultSingleItemSuccess(itemName, req)
+	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, dashboardOrigin, preconditionChecksResult.dataset)
 }
 
 func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[string]interface{}) map[string]interface{} {
@@ -539,7 +539,7 @@ func (r *PersesDashboardReconciler) setDisplayNameIfMissing(preconditionChecksRe
 	}
 }
 
-func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult *preconditionValidationResult) string {
+func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult *preconditionValidationResult) (string, string) {
 	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
 	dashboardOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
@@ -555,7 +555,7 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult 
 		preconditionChecksResult.apiEndpoint,
 		dashboardOrigin,
 		datasetUrlEncoded,
-	)
+	), dashboardOrigin
 }
 
 func (r *PersesDashboardReconciler) CreateDeleteRequests(
@@ -563,7 +563,7 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	_ []string,
 	_ []string,
 	_ *logr.Logger,
-) ([]HttpRequestWithItemName, map[string]string) {
+) ([]WrappedApiRequest, map[string]string) {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
 	// multiple objects that are synchronized (as it is the case for PrometheusRule). Thus, this controller does not
@@ -571,7 +571,7 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	return nil, nil
 }
 
-func (r *PersesDashboardReconciler) ExtractIdOriginAndLinkFromResponseBody(
+func (r *PersesDashboardReconciler) ExtractIdOriginAndDatasetFromResponseBody(
 	responseBytes []byte,
 	logger *logr.Logger,
 ) Dash0ApiObjectLabels {

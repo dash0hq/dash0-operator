@@ -22,6 +22,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
@@ -36,34 +37,26 @@ const (
 	syntheticCheckName2           = "test-synthetic-check-2"
 	syntheticCheckApiBasePath     = "/api/synthetic-checks/"
 
-	syntheticCheckId     = "synthetic-check-id"
-	syntheticCheckOrigin = "synthetic-check-origin"
+	syntheticCheckId            = "synthetic-check-id"
+	syntheticCheckOriginPattern = "dash0-operator_%s_test-dataset_test-namespace_test-synthetic-check"
 )
 
 var (
 	defaultExpectedPathSyntheticCheck  = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-synthetic-check")
 	defaultExpectedPathSyntheticCheck2 = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-synthetic-checks_test-synthetic-check-2")
 	leaderElectionAware                = NewLeaderElectionAwareMock(true)
-
-	syntheticCheckResponseWithIdOriginDataset = map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"labels": map[string]interface{}{
-				"dash0.com/id":      syntheticCheckId,
-				"dash0.com/origin":  syntheticCheckOrigin,
-				"dash0.com/dataset": DatasetCustomTest,
-			},
-		},
-	}
 )
 
 var _ = Describe("The Synthetic Check controller", Ordered, func() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
 	var testStartedAt time.Time
+	var clusterId string
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
+		clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, &logger))
 	})
 
 	BeforeEach(func() {
@@ -83,7 +76,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		var syntheticCheckReconciler *SyntheticCheckReconciler
 
 		BeforeEach(func() {
-			syntheticCheckReconciler = createSyntheticCheckReconciler()
+			syntheticCheckReconciler = createSyntheticCheckReconciler(clusterId)
 
 			syntheticCheckReconciler.apiConfig.Store(&ApiConfig{
 				Endpoint: ApiEndpointTest,
@@ -102,7 +95,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("it ignores synthetic check resource changes if no Dash0 monitoring resource exists in the namespace", func() {
-			expectSyntheticCheckPutRequest(defaultExpectedPathSyntheticCheck)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
 			syntheticCheckResource := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
@@ -120,7 +113,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		It("it ignores synthetic check resource changes if the API endpoint is not configured", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectSyntheticCheckPutRequest(defaultExpectedPathDashboard)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
 			syntheticCheckReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
@@ -148,7 +141,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		It("it ignores synthetic check resource changes if the auth token endpoint has not been provided yet", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectSyntheticCheckPutRequest(defaultExpectedPathDashboard)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
 			syntheticCheckReconciler.RemoveAuthToken(ctx, &logger)
@@ -176,7 +169,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		It("creates a synthetic check", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectSyntheticCheckPutRequest(defaultExpectedPathSyntheticCheck)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
 			syntheticCheckResource := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
@@ -198,7 +191,9 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				syntheticCheckId,
+				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -207,7 +202,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		It("updates a synthetic check", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectSyntheticCheckPutRequest(defaultExpectedPathSyntheticCheck)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
 			syntheticCheckResource := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
@@ -233,7 +228,9 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				syntheticCheckId,
+				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -258,6 +255,8 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
 
+			// We do not call verifyViewSynchronizationStatus in this test case since the entire view resource is
+			// deleted, hence there is nothing to write the status to.
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
@@ -287,7 +286,9 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				false,
+				"", // when deleting an object, we do not get an HTTP response body with an ID
+				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -296,7 +297,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		It("creates a synthetic check if dash0.com/enable is set but not to \"false\"", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectSyntheticCheckPutRequest(defaultExpectedPathSyntheticCheck)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
 			syntheticCheckResource :=
@@ -319,7 +320,9 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				syntheticCheckId,
+				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -355,10 +358,13 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusFailed,
 				testStartedAt,
-				false,
+				"",
+				"",
+				"",
 				"unexpected status code 503 when trying to synchronize the check \"test-synthetic-check\": "+
 					"PUT https://api.dash0.com/api/synthetic-checks/"+
-					"dash0-operator_cluster-uid-test_test-dataset_test-namespace_test-synthetic-check?dataset=test-dataset, response body is {}",
+					"dash0-operator_"+clusterId+
+					"_test-dataset_test-namespace_test-synthetic-check?dataset=test-dataset, response body is {}",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -372,7 +378,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				Times(2).
 				Reply(503).
 				JSON(map[string]string{})
-			expectSyntheticCheckPutRequest(defaultExpectedPathSyntheticCheck)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
 			syntheticCheckResource := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
@@ -394,7 +400,9 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				syntheticCheckId,
+				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -423,8 +431,8 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				Name:      secondMonitoringResource.Name,
 			})
 
-			expectSyntheticCheckPutRequest(defaultExpectedPathSyntheticCheck)
-			expectSyntheticCheckPutRequest(defaultExpectedPathSyntheticCheck2)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
+			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck2)
 			defer gock.Off()
 
 			syntheticCheckResource1 := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
@@ -449,7 +457,9 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				syntheticCheckId,
+				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			verifySyntheticCheckSynchronizationStatus(
@@ -459,7 +469,9 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName2,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				syntheticCheckId,
+				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -540,10 +552,10 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
 			Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
 
-			Expect(resourceToRequestsResult.HttpRequests).To(HaveLen(1))
-			reqWithName := resourceToRequestsResult.HttpRequests[0]
-			Expect(reqWithName.ItemName).To(Equal("dash0-synthetic-check"))
-			req := reqWithName.Request
+			Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
+			apiRequest := resourceToRequestsResult.ApiRequests[0]
+			Expect(apiRequest.ItemName).To(Equal("dash0-synthetic-check"))
+			req := apiRequest.Request
 			defer func() {
 				_ = req.Body.Close()
 			}()
@@ -605,24 +617,36 @@ spec:
 	})
 })
 
-func createSyntheticCheckReconciler() *SyntheticCheckReconciler {
+func createSyntheticCheckReconciler(clusterId string) *SyntheticCheckReconciler {
 	syntheticCheckReconciler := NewSyntheticCheckReconciler(
 		k8sClient,
-		ClusterUidTest,
+		types.UID(clusterId),
 		leaderElectionAware,
 		&http.Client{},
 	)
 	return syntheticCheckReconciler
 }
 
-func expectSyntheticCheckPutRequest(expectedPath string) {
+func expectSyntheticCheckPutRequest(clusterId string, expectedPath string) {
 	gock.New(ApiEndpointTest).
 		Put(expectedPath).
 		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
 		Reply(200).
-		JSON(syntheticCheckResponseWithIdOriginDataset)
+		JSON(defaultSyntheticCheckPutResponse(clusterId))
+}
+
+func defaultSyntheticCheckPutResponse(clusterId string) map[string]interface{} {
+	return map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"labels": map[string]interface{}{
+				"dash0.com/id":      syntheticCheckId,
+				"dash0.com/origin":  fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				"dash0.com/dataset": DatasetCustomTest,
+			},
+		},
+	}
 }
 
 func expectSyntheticCheckDeleteRequest(expectedPath string) {
@@ -635,8 +659,7 @@ func expectSyntheticCheckDeleteRequestWithHttpStatus(expectedPath string, status
 		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
-		Reply(status).
-		JSON(map[string]string{})
+		Reply(status)
 }
 
 func createSyntheticCheckResource(namespace string, name string) *dash0v1alpha1.Dash0SyntheticCheck {
@@ -732,7 +755,9 @@ func verifySyntheticCheckSynchronizationStatus(
 	name string,
 	expectedStatus dash0common.Dash0ApiResourceSynchronizationStatus,
 	testStartedAt time.Time,
-	expectIdOriginAndDataset bool,
+	expectedId string,
+	expectedOrigin string,
+	expectedDataset string,
 	expectedError string,
 ) {
 	Eventually(func(g Gomega) {
@@ -745,11 +770,9 @@ func verifySyntheticCheckSynchronizationStatus(
 		g.Expect(syntheticCheck.Status.SynchronizationStatus).To(Equal(expectedStatus))
 		g.Expect(syntheticCheck.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 		g.Expect(syntheticCheck.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
-		if expectIdOriginAndDataset {
-			g.Expect(syntheticCheck.Status.Dash0Id).To(Equal(syntheticCheckId))
-			g.Expect(syntheticCheck.Status.Dash0Origin).To(Equal(syntheticCheckOrigin))
-			g.Expect(syntheticCheck.Status.Dash0Dataset).To(Equal(DatasetCustomTest))
-		}
+		g.Expect(syntheticCheck.Status.Dash0Id).To(Equal(expectedId))
+		g.Expect(syntheticCheck.Status.Dash0Origin).To(Equal(expectedOrigin))
+		g.Expect(syntheticCheck.Status.Dash0Dataset).To(Equal(expectedDataset))
 		g.Expect(syntheticCheck.Status.SynchronizationError).To(ContainSubstring(expectedError))
 		// synthetic checks have no operator-side validations, all local validations are encoded in the CRD already
 		g.Expect(syntheticCheck.Status.ValidationIssues).To(BeNil())

@@ -21,6 +21,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
@@ -35,34 +36,26 @@ const (
 	viewName2           = "test-view-2"
 	viewApiBasePath     = "/api/views/"
 
-	viewId     = "view-id"
-	viewOrigin = "view-origin"
+	viewId            = "view-id"
+	viewOriginPattern = "dash0-operator_%s_test-dataset_test-namespace_test-view"
 )
 
 var (
 	defaultExpectedPathView  = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-view")
 	defaultExpectedPathView2 = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-views_test-view-2")
 	viewLeaderElectionAware  = NewLeaderElectionAwareMock(true)
-
-	viewResponseWithIdOriginDataset = map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"labels": map[string]interface{}{
-				"dash0.com/id":      viewId,
-				"dash0.com/origin":  viewOrigin,
-				"dash0.com/dataset": DatasetCustomTest,
-			},
-		},
-	}
 )
 
 var _ = Describe("The View controller", Ordered, func() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
 	var testStartedAt time.Time
+	var clusterId string
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
+		clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, &logger))
 	})
 
 	BeforeEach(func() {
@@ -82,7 +75,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		var viewReconciler *ViewReconciler
 
 		BeforeEach(func() {
-			viewReconciler = createViewReconciler()
+			viewReconciler = createViewReconciler(clusterId)
 
 			viewReconciler.apiConfig.Store(&ApiConfig{
 				Endpoint: ApiEndpointTest,
@@ -101,7 +94,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("it ignores view resource changes if no Dash0 monitoring resource exists in the namespace", func() {
-			expectViewPutRequest(defaultExpectedPathView)
+			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
 			viewResource := createViewResource(TestNamespaceName, viewName)
@@ -119,7 +112,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		It("it ignores view resource changes if the API endpoint is not configured", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectViewPutRequest(defaultExpectedPathView)
+			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
 			viewReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
@@ -147,7 +140,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		It("it ignores view resource changes if the auth token endpoint has not been provided yet", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectViewPutRequest(defaultExpectedPathView)
+			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
 			viewReconciler.RemoveAuthToken(ctx, &logger)
@@ -175,7 +168,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		It("creates a view", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectViewPutRequest(defaultExpectedPathView)
+			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
 			viewResource := createViewResource(TestNamespaceName, viewName)
@@ -197,7 +190,9 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				viewId,
+				fmt.Sprintf(viewOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -206,7 +201,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		It("updates a view", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectViewPutRequest(defaultExpectedPathView)
+			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
 			viewResource := createViewResource(TestNamespaceName, viewName)
@@ -232,7 +227,9 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				viewId,
+				fmt.Sprintf(viewOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -257,6 +254,8 @@ var _ = Describe("The View controller", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
 
+			// We do not call verifyViewSynchronizationStatus in this test case since the entire view resource is
+			// deleted, hence there is nothing to write the status to.
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
@@ -285,7 +284,9 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				false,
+				"", // when deleting an object, we do not get an HTTP response body with an ID
+				fmt.Sprintf(viewOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -294,7 +295,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		It("creates a view if dash0.com/enable is set but not to \"false\"", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectViewPutRequest(defaultExpectedPathView)
+			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
 			viewResource := createViewResourceWithEnableLabel(TestNamespaceName, viewName, "whatever")
@@ -316,7 +317,9 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				viewId,
+				fmt.Sprintf(viewOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -352,10 +355,13 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusFailed,
 				testStartedAt,
-				false,
+				"",
+				"",
+				"",
 				"unexpected status code 503 when trying to synchronize the view \"test-view\": "+
 					"PUT https://api.dash0.com/api/views/"+
-					"dash0-operator_cluster-uid-test_test-dataset_test-namespace_test-view?dataset=test-dataset, response body is {}",
+					"dash0-operator_"+clusterId+
+					"_test-dataset_test-namespace_test-view?dataset=test-dataset, response body is {}",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -368,8 +374,8 @@ var _ = Describe("The View controller", Ordered, func() {
 				MatchParam("dataset", DatasetCustomTest).
 				Times(2).
 				Reply(503).
-				JSON(viewResponseWithIdOriginDataset)
-			expectViewPutRequest(defaultExpectedPathView)
+				JSON(map[string]interface{}{})
+			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
 			viewResource := createViewResource(TestNamespaceName, viewName)
@@ -391,7 +397,9 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				viewId,
+				fmt.Sprintf(viewOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -420,8 +428,8 @@ var _ = Describe("The View controller", Ordered, func() {
 				Name:      secondMonitoringResource.Name,
 			})
 
-			expectViewPutRequest(defaultExpectedPathView)
-			expectViewPutRequest(defaultExpectedPathView2)
+			expectViewPutRequest(clusterId, defaultExpectedPathView)
+			expectViewPutRequest(clusterId, defaultExpectedPathView2)
 			defer gock.Off()
 
 			viewResource1 := createViewResource(TestNamespaceName, viewName)
@@ -446,7 +454,9 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				viewId,
+				fmt.Sprintf(viewOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			verifyViewSynchronizationStatus(
@@ -456,7 +466,9 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName2,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
-				true,
+				viewId,
+				fmt.Sprintf(viewOriginPattern, clusterId),
+				DatasetCustomTest,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -537,10 +549,10 @@ var _ = Describe("The View controller", Ordered, func() {
 			Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
 			Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
 
-			Expect(resourceToRequestsResult.HttpRequests).To(HaveLen(1))
-			reqWithName := resourceToRequestsResult.HttpRequests[0]
-			Expect(reqWithName.ItemName).To(Equal("dash0-view"))
-			req := reqWithName.Request
+			Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
+			apiRequest := resourceToRequestsResult.ApiRequests[0]
+			Expect(apiRequest.ItemName).To(Equal("dash0-view"))
+			req := apiRequest.Request
 			defer func() {
 				_ = req.Body.Close()
 			}()
@@ -612,24 +624,36 @@ spec:
 	})
 })
 
-func createViewReconciler() *ViewReconciler {
+func createViewReconciler(clusterId string) *ViewReconciler {
 	viewReconciler := NewViewReconciler(
 		k8sClient,
-		ClusterUidTest,
+		types.UID(clusterId),
 		viewLeaderElectionAware,
 		&http.Client{},
 	)
 	return viewReconciler
 }
 
-func expectViewPutRequest(expectedPath string) {
+func expectViewPutRequest(clusterId string, expectedPath string) {
 	gock.New(ApiEndpointTest).
 		Put(expectedPath).
 		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
 		Reply(200).
-		JSON(viewResponseWithIdOriginDataset)
+		JSON(defaultViewPutResponse(clusterId))
+}
+
+func defaultViewPutResponse(clusterId string) map[string]interface{} {
+	return map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"labels": map[string]interface{}{
+				"dash0.com/id":      viewId,
+				"dash0.com/origin":  fmt.Sprintf(viewOriginPattern, clusterId),
+				"dash0.com/dataset": DatasetCustomTest,
+			},
+		},
+	}
 }
 
 func expectViewDeleteRequest(expectedPath string) {
@@ -642,8 +666,7 @@ func expectViewDeleteRequestWithHttpStatus(expectedPath string, status int) {
 		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
-		Reply(status).
-		JSON(map[string]string{})
+		Reply(status)
 }
 
 func createViewResource(namespace string, name string) *dash0v1alpha1.Dash0View {
@@ -722,7 +745,9 @@ func verifyViewSynchronizationStatus(
 	name string,
 	expectedStatus dash0common.Dash0ApiResourceSynchronizationStatus,
 	testStartedAt time.Time,
-	expectIdOriginAndDataset bool,
+	expectedId string,
+	expectedOrigin string,
+	expectedDataset string,
 	expectedError string,
 ) {
 	Eventually(func(g Gomega) {
@@ -735,11 +760,9 @@ func verifyViewSynchronizationStatus(
 		g.Expect(view.Status.SynchronizationStatus).To(Equal(expectedStatus))
 		g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 		g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
-		if expectIdOriginAndDataset {
-			g.Expect(view.Status.Dash0Id).To(Equal(viewId))
-			g.Expect(view.Status.Dash0Origin).To(Equal(viewOrigin))
-			g.Expect(view.Status.Dash0Dataset).To(Equal(DatasetCustomTest))
-		}
+		g.Expect(view.Status.Dash0Id).To(Equal(expectedId))
+		g.Expect(view.Status.Dash0Origin).To(Equal(expectedOrigin))
+		g.Expect(view.Status.Dash0Dataset).To(Equal(expectedDataset))
 		g.Expect(view.Status.SynchronizationError).To(ContainSubstring(expectedError))
 		// views have no operator-side validations, all local validations are encoded in the CRD already
 		g.Expect(view.Status.ValidationIssues).To(BeNil())

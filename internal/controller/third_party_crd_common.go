@@ -87,7 +87,7 @@ type ThirdPartyResourceReconciler interface {
 	// resource (say, a PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks).
 	// Controllers which manage objects with a one-to-one relation (like Perses dashboards, synthetic checks, view)
 	// should return nil, nil.
-	CreateDeleteRequests(*preconditionValidationResult, []string, []string, *logr.Logger) ([]HttpRequestWithItemName, map[string]string)
+	CreateDeleteRequests(*preconditionValidationResult, []string, []string, *logr.Logger) ([]WrappedApiRequest, map[string]string)
 
 	// UpdateSynchronizationResultsInDash0MonitoringStatus Modifies the status of the provided Dash0Monitoring resource
 	// to reflect the results of the synchronization operation for one third-party Kubernetes resource.

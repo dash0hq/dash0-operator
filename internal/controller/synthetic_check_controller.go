@@ -293,7 +293,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 	logger *logr.Logger,
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
-	syntheticCheckUrl := r.renderSyntheticCheckUrl(preconditionChecksResult)
+	syntheticCheckUrl, syntheticCheckOrigin := r.renderSyntheticCheckUrl(preconditionChecksResult)
 
 	var req *http.Request
 	var method string
@@ -339,10 +339,10 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return NewResourceToRequestsResultSingleItemSuccess(itemName, req)
+	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, syntheticCheckOrigin, preconditionChecksResult.dataset)
 }
 
-func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksResult *preconditionValidationResult) string {
+func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksResult *preconditionValidationResult) (string, string) {
 	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
 	syntheticCheckOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
@@ -358,10 +358,10 @@ func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksRes
 		preconditionChecksResult.apiEndpoint,
 		syntheticCheckOrigin,
 		datasetUrlEncoded,
-	)
+	), syntheticCheckOrigin
 }
 
-func (r *SyntheticCheckReconciler) ExtractIdOriginAndLinkFromResponseBody(
+func (r *SyntheticCheckReconciler) ExtractIdOriginAndDatasetFromResponseBody(
 	responseBytes []byte,
 	logger *logr.Logger,
 ) Dash0ApiObjectLabels {
