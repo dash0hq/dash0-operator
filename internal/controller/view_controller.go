@@ -293,7 +293,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	logger *logr.Logger,
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
-	viewUrl := r.renderViewUrl(preconditionChecksResult)
+	viewUrl, viewOrigin := r.renderViewUrl(preconditionChecksResult)
 
 	var req *http.Request
 	var method string
@@ -339,10 +339,10 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return NewResourceToRequestsResultSingleItemSuccess(itemName, req)
+	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, viewOrigin, preconditionChecksResult.dataset)
 }
 
-func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionValidationResult) string {
+func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionValidationResult) (string, string) {
 	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
 	viewOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
@@ -358,10 +358,10 @@ func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionVal
 		preconditionChecksResult.apiEndpoint,
 		viewOrigin,
 		datasetUrlEncoded,
-	)
+	), viewOrigin
 }
 
-func (r *ViewReconciler) ExtractIdOriginAndLinkFromResponseBody(
+func (r *ViewReconciler) ExtractIdOriginAndDatasetFromResponseBody(
 	responseBytes []byte,
 	logger *logr.Logger,
 ) Dash0ApiObjectLabels {

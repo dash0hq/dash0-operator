@@ -39,39 +39,46 @@ type ResourceToRequestsResult struct {
 	// the total number of eligible items in the Kubernetes resource
 	ItemsTotal int
 	// the request objects for which the conversion was successful
-	HttpRequests []HttpRequestWithItemName
+	ApiRequests []WrappedApiRequest
 	// only set for resource types with a one-to-many relationship between Kubernetes resources and Dash0 entities,
 	// contains a list of all Dash0 origins produced by this Kubernetes resource
 	OriginsInResource []string
 	// validation issues for items that were invalid and
 	ValidationIssues map[string][]string
 	// synchronization errors that occurred during the conversion - if there is a synchronization error for a resource,
-	// HttpRequests must not contain a request for the associated resource
+	// ApiRequests must not contain a request for the associated resource
 	SynchronizationErrors map[string]string
 }
 
 func NewResourceToRequestsResult(
 	itemsTotal int,
-	httpRequests []HttpRequestWithItemName,
+	apiRequest []WrappedApiRequest,
 	originsInResource []string,
 	validationIssues map[string][]string,
 	synchronizationErrors map[string]string,
 ) *ResourceToRequestsResult {
 	return &ResourceToRequestsResult{
 		ItemsTotal:            itemsTotal,
-		HttpRequests:          httpRequests,
+		ApiRequests:           apiRequest,
 		OriginsInResource:     originsInResource,
 		ValidationIssues:      validationIssues,
 		SynchronizationErrors: synchronizationErrors,
 	}
 }
 
-func NewResourceToRequestsResultSingleItemSuccess(itemName string, request *http.Request) *ResourceToRequestsResult {
+func NewResourceToRequestsResultSingleItemSuccess(
+	request *http.Request,
+	itemName string,
+	origin string,
+	dataset string,
+) *ResourceToRequestsResult {
 	return NewResourceToRequestsResult(
 		1,
-		[]HttpRequestWithItemName{{
-			ItemName: itemName,
+		[]WrappedApiRequest{{
 			Request:  request,
+			ItemName: itemName,
+			Origin:   origin,
+			Dataset:  dataset,
 		}},
 		nil,
 		nil,
@@ -79,7 +86,10 @@ func NewResourceToRequestsResultSingleItemSuccess(itemName string, request *http
 	)
 }
 
-func NewResourceToRequestsResultSingleItemValidationIssue(itemName string, issue string) *ResourceToRequestsResult {
+func NewResourceToRequestsResultSingleItemValidationIssue(
+	itemName string,
+	issue string,
+) *ResourceToRequestsResult {
 	return NewResourceToRequestsResult(1,
 		nil,
 		nil,
@@ -107,7 +117,7 @@ func NewResourceToRequestsResultPreconditionError(errorMessage string) *Resource
 }
 
 func (m *ResourceToRequestsResult) IsNoOp() bool {
-	return len(m.HttpRequests) == 0 &&
+	return len(m.ApiRequests) == 0 &&
 		len(m.ValidationIssues) == 0 &&
 		len(m.SynchronizationErrors) == 0
 }
@@ -142,7 +152,7 @@ type ApiSyncReconciler interface {
 		*logr.Logger,
 	) *ResourceToRequestsResult
 
-	ExtractIdOriginAndLinkFromResponseBody(
+	ExtractIdOriginAndDatasetFromResponseBody(
 		responseBytes []byte,
 		logger *logr.Logger,
 	) Dash0ApiObjectLabels
@@ -167,9 +177,12 @@ type OwnedResourceReconciler interface {
 	)
 }
 
-type HttpRequestWithItemName struct {
-	ItemName string
+// WrappedApiRequest bundles an http.Request for the Dash0 API with additional metadata.
+type WrappedApiRequest struct {
 	Request  *http.Request
+	ItemName string
+	Origin   string
+	Dataset  string
 }
 
 type Dash0ApiObjectWithOrigin struct {
@@ -322,9 +335,9 @@ func synchronizeViaApiAndUpdateStatus(
 
 	var successfullySynchronized []SuccessfulSynchronizationResult
 	var httpErrors map[string]string
-	if len(resourceToRequestsResult.HttpRequests) > 0 {
+	if len(resourceToRequestsResult.ApiRequests) > 0 {
 		successfullySynchronized, httpErrors =
-			executeAllHttpRequests(apiSyncReconciler, resourceToRequestsResult.HttpRequests, logger)
+			executeAllHttpRequests(apiSyncReconciler, resourceToRequestsResult.ApiRequests, logger)
 	}
 	if len(httpErrors) > 0 {
 		if resourceToRequestsResult.SynchronizationErrors == nil {
@@ -609,6 +622,7 @@ func fetchExistingOrigins(
 			apiSyncReconciler,
 			fetchExistingOriginsRequest,
 			actionLabel,
+			true,
 			logger,
 		); err != nil {
 			logger.Error(err, "cannot fetch existing origins")
@@ -662,7 +676,7 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	)
 	resourceToRequestsResult.ItemsTotal += len(deleteHttpRequests)
 	maps.Copy(resourceToRequestsResult.SynchronizationErrors, deleteSynchronizationErrors)
-	resourceToRequestsResult.HttpRequests = slices.Concat(resourceToRequestsResult.HttpRequests, deleteHttpRequests)
+	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteHttpRequests)
 }
 
 // structToMap converts any struct to an unstructured.Unstructured object.
@@ -688,23 +702,46 @@ func addAuthorizationHeader(req *http.Request, preconditionChecksResult *precond
 // successfully synchronized, as well as a map of name to error message for items that were rejected by the Dash0 API.
 func executeAllHttpRequests(
 	apiSyncReconciler ApiSyncReconciler,
-	allRequests []HttpRequestWithItemName,
+	allRequests []WrappedApiRequest,
 	logger *logr.Logger,
 ) ([]SuccessfulSynchronizationResult, map[string]string) {
 	successfullySynchronized := make([]SuccessfulSynchronizationResult, 0)
 	httpErrors := make(map[string]string)
-	for _, req := range allRequests {
+	for _, apiRequest := range allRequests {
 		actionLabel := fmt.Sprintf("synchronize the %s \"%s\": %s %s",
 			apiSyncReconciler.ShortName(),
-			req.ItemName,
-			req.Request.Method,
-			req.Request.URL.String())
-		if responseBytes, err := executeSingleHttpRequestWithRetryAndReadBody(apiSyncReconciler, req.Request, actionLabel, logger); err != nil {
-			httpErrors[req.ItemName] = err.Error()
+			apiRequest.ItemName,
+			apiRequest.Request.Method,
+			apiRequest.Request.URL.String())
+		isDelete := apiRequest.Request.Method == http.MethodDelete
+		if responseBytes, err :=
+			executeSingleHttpRequestWithRetryAndReadBody(
+				apiSyncReconciler,
+				apiRequest.Request,
+				actionLabel,
+				!isDelete,
+				logger,
+			); err != nil {
+			httpErrors[apiRequest.ItemName] = err.Error()
 		} else {
+			// The Dash0ApiObjectLabels will be used to provide additional information in the resources status when
+			// we write the synchronization results, like the object's Dash0 id, origin and dataset.
+			var labels Dash0ApiObjectLabels
+			if isDelete {
+				// We do not receive a response body from HTTP DELETE requests. Use the origin and dataset that we have
+				// derived for this object. The id is not available, so it will be omitted.
+				labels = Dash0ApiObjectLabels{
+					Id:      "",
+					Origin:  apiRequest.Origin,
+					Dataset: apiRequest.Dataset,
+				}
+			} else {
+				// For HTTP PUT requests, we can extract the id, origin and dataset from the HTTP response.
+				labels = apiSyncReconciler.ExtractIdOriginAndDatasetFromResponseBody(responseBytes, logger)
+			}
 			syncResponse := SuccessfulSynchronizationResult{
-				ItemName: req.ItemName,
-				Labels:   apiSyncReconciler.ExtractIdOriginAndLinkFromResponseBody(responseBytes, logger),
+				ItemName: apiRequest.ItemName,
+				Labels:   labels,
 			}
 			successfullySynchronized = append(successfullySynchronized, syncResponse)
 		}
@@ -719,6 +756,7 @@ func executeSingleHttpRequestWithRetryAndReadBody(
 	apiSyncReconciler ApiSyncReconciler,
 	req *http.Request,
 	actionLabel string,
+	expectBody bool,
 	logger *logr.Logger,
 ) ([]byte, error) {
 	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
@@ -746,8 +784,10 @@ func executeSingleHttpRequestWithRetryAndReadBody(
 		return nil, err
 	} else if responseBody != nil && len(*responseBody) > 0 {
 		return *responseBody, nil
-	} else {
+	} else if expectBody {
 		return nil, fmt.Errorf("unexpected nil/empty response body")
+	} else {
+		return make([]byte, 0), nil
 	}
 }
 
