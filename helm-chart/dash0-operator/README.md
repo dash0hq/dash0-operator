@@ -1548,9 +1548,12 @@ helm uninstall dash0-operator --namespace dash0-system
 Depending on the command you used to install the operator, you may need to use a different Helm release name or
 namespace.
 
-This will also automatically disable Dash0 monitoring for all namespaces by deleting the Dash0 monitoring resources in all
-namespaces.
-Optionally, remove the namespace that has been created for the operator:
+This will also automatically disable Dash0 monitoring for all namespaces by deleting the Dash0 monitoring resources in
+all namespaces.
+All workload modifications applied by the Dash0 operator will be reverted.
+This will restart the pods of all workloads that were previously instrumented by the Dash0 operator.
+
+Optionally, after `helm uninstall` has finished, remove the namespace that has been created for the operator:
 
 ```
 kubectl delete namespace dash0-system
@@ -1568,6 +1571,36 @@ steps again:
 
 1. set up a [Dash0 backend connection](#configuring-the-dash0-backend-connection) and
 2. enable Dash0 monitoring in each namespace you want to monitor, see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
+
+### Unsupported Uninstallation Procedures
+
+* Do not delete the Dash0 operator controller deployment manually, always use `helm uninstall` to remove the operator.
+* Do not delete the Dash0 operator's namespace before running `helm uninstall` (this would also implicitly delete the
+  operator deployment).
+
+Deleting the Dash0 operator deployment without running `helm uninstall` will lead to an inconsistent state.
+In particular, the operator's admission webhooks are still registered, but the service that responds to the webhook
+requests has been removed, so all webhook requests will time out.
+This will make requests to delete Dash0 monitoring resources fail.
+In addition, the service that is responsible for removing the finalizer from the Dash0 monitoring resources is no longer
+there.
+In turn, this will make it harder to delete namespaces with a Dash0 monitoring resource, the namespace will get stuck in
+the "Terminating" state, due to the finalizer in the monitoring resource no longer being handled correctly.
+
+To rectify this, follow these steps:
+1. Delete all Dash0 validating/mutating webhook configs manually (exact command depends on the Helm release name):
+   ```
+   kubectl delete validatingwebhookconfiguration dash0-operator-monitoring-validator dash0-operator-operator-configuration-validator
+   kubectl delete mutatingwebhookconfiguration dash0-operator-injector dash0-operator-monitoring-mutating dash0-operator-operator-configuration-mutating
+   ```
+2. Remove the finalizer from all Dash0 monitoring resources:
+   ```
+   kubectl patch dash0monitorings <name> -n <namespace> --type=json -p='[{"op":"remove","path":"/metadata/finalizers"}]'
+   ```
+3. Delete the Dash0 monitoring resources:
+   ```
+   kubectl delete dash0monitorings <name> -n <namespace>
+   ```
 
 ## Automatic Workload Instrumentation
 
