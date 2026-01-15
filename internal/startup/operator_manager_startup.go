@@ -502,9 +502,9 @@ func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 
 	delegatingZapCoreWrapper := zaputil.NewDelegatingZapCoreWrapper()
 
-	// Multiplex log records to stdout (defaultZapCore) and also to the OTel log SDK (delegatingZapCore). Additional
-	// plot twist: The OTel logger will only be initialized later, potentially after the operator configuration has been
-	// reconciled. The delegatingZapCore will buffer all messages logged at startup up to th point when the OTel logger
+	// Send log records to stdout (defaultZapCore) and also to the OTel log SDK (delegatingZapCore). Additional plot
+	// twist: The OTel logger will only be initialized later, potentially after the operator configuration has been
+	// reconciled. The delegatingZapCore will buffer all messages logged at startup up to the point when the OTel logger
 	// is actually initialized, then re-spool them to the OTel SDK logger.
 	teeCore := zapcore.NewTee(
 		defaultZapCore,
@@ -513,7 +513,7 @@ func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 	crZapRawLogger := zaputil.NewRawFromCore(o, teeCore)
 	zapLogger := zapr.NewLogger(crZapRawLogger)
 
-	// Set the created multiplexing logger as the logger for the controller-runtime package.
+	// Set the created tee logger as the logger for the controller-runtime package.
 	ctrl.SetLogger(zapLogger)
 
 	setupLog = ctrl.Log.WithName("setup")

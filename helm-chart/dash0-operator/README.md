@@ -1906,7 +1906,12 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
 * The `interval` attribute of the group will be used for the setting "Evaluate every" for each Dash0 check rule in that
   group.
 * Other attributes in the Prometheus rule are converted to Dash0 check rule attributes as described in the table below.
-* Some annotations and labels are interpreted by Dash0, these are described in the conversion table below.
+* Top level Kubernetes annotations from the PrometheusRule metadata are added to each check rule's annotation map.
+  If the same annotation appears in both the PrometheusRule metadata and an individual rule, the annotation value in
+  the individual check rule takes priority and overrides the metadata annotation.
+  This allows defining common annotations at the PrometheusRule level and selectively override them for specific rules
+  as needed.
+* Some rule annotations and labels are interpreted by Dash0, these are described in the conversion table below.
   For example, to set the summary of the Dash0 check rule, add an annotation `summary` to the `rules` item in the
   Prometheus rule resource.
 * If `expr` contains the token `$__threshold`, and neither annotation `dash0-threshold-degraded` nor
