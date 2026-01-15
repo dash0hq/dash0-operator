@@ -24,7 +24,7 @@ receivers:
     namespaces:
     {{- range $i, $namespace := .NamespacesWithEventCollection }}
     - '{{ $namespace }}'
-     {{- end }}
+    {{- end }}
   {{- end }}
 
 processors:
@@ -313,7 +313,7 @@ exporters:
 {{ else if .DevelopmentMode }}
   debug: {}
 {{- end }}
-{{- range $i, $exporter := .Exporters }}
+{{- range $i, $exporter := .DefaultExporters }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
     {{- if $exporter.Insecure }}
@@ -345,7 +345,7 @@ service:
   pipelines:
 
     {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
-    metrics/downstream:
+    metrics/common-processors:
       receivers:
       - k8s_cluster
       processors:
@@ -370,7 +370,7 @@ service:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
       {{- end }}
-      {{- range $i, $exporter := .Exporters }}
+      {{- range $i, $exporter := .DefaultExporters }}
       - {{ $exporter.Name }}
       {{- end }}
     {{- end }}
@@ -392,7 +392,7 @@ service:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
       {{- end }}
-      {{- range $i, $exporter := .Exporters }}
+      {{- range $i, $exporter := .DefaultExporters }}
       - {{ $exporter.Name }}
       {{- end }}
     {{- end }}

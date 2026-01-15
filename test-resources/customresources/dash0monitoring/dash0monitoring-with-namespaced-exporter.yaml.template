@@ -1,0 +1,14 @@
+# This resource will be deployed to the namespace test-namespace unless DEPLOY_MONITORING_RESOURCE=false has been
+# provided.
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  export:
+    dash0:
+      apiEndpoint: "$DASH0_API_ENDPOINT"
+      authorization:
+        token: "$DASH0_NAMESPACED_AUTHORIZATION_TOKEN"
+      dataset: "$DASH0_NAMESPACED_DATASET"
+      endpoint: "$DASH0_INGRESS_ENDPOINT"

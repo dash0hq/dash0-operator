@@ -99,15 +99,16 @@ func VerifyCollectorResources(
 	k8sClient client.Client,
 	operatorNamespace string,
 	dash0Endpoint string,
+	authorizationEnvVar string,
 	authorizationToken string,
 ) {
 	// verify that all expected resources exist and have the expected owner reference
 	VerifyAllResourcesExist(ctx, k8sClient, operatorNamespace)
 
 	// verify a few arbitrary resource in more detail
-	VerifyDaemonSetCollectorConfigMap(ctx, k8sClient, operatorNamespace, dash0Endpoint)
-	VerifyCollectorDaemonSet(ctx, k8sClient, operatorNamespace, authorizationToken)
-	VerifyDeploymentCollectorConfigMap(ctx, k8sClient, operatorNamespace)
+	VerifyDaemonSetCollectorConfigMap(ctx, k8sClient, operatorNamespace, dash0Endpoint, authorizationEnvVar)
+	VerifyCollectorDaemonSet(ctx, k8sClient, operatorNamespace, authorizationEnvVar, authorizationToken)
+	VerifyDeploymentCollectorConfigMap(ctx, k8sClient, operatorNamespace, authorizationEnvVar)
 	VerifyCollectorDeployment(ctx, k8sClient, operatorNamespace)
 }
 
@@ -138,6 +139,7 @@ func VerifyDaemonSetCollectorConfigMap(
 	k8sClient client.Client,
 	operatorNamespace string,
 	dash0Endpoint string,
+	authorizationEnvVar string,
 ) {
 	cm_ := VerifyResourceExists(
 		ctx,
@@ -151,13 +153,14 @@ func VerifyDaemonSetCollectorConfigMap(
 	Expect(cm.Data).To(HaveKey("config.yaml"))
 	config := cm.Data["config.yaml"]
 	Expect(config).To(ContainSubstring(fmt.Sprintf("endpoint: \"%s\"", dash0Endpoint)))
-	Expect(config).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
+	Expect(config).To(ContainSubstring(fmt.Sprintf("\"Authorization\": \"Bearer ${env:%s}\"", authorizationEnvVar)))
 }
 
 func VerifyCollectorDaemonSet(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
+	authorizationEnvVar string,
 	authorizationToken string,
 
 ) *appsv1.DaemonSet {
@@ -186,7 +189,7 @@ func VerifyCollectorDaemonSet(
 	Expect(ports[0].ContainerPort).To(Equal(int32(4317)))
 	Expect(ports[1].ContainerPort).To(Equal(int32(4318)))
 
-	Expect(collectorContainer.Env).To(ContainElement(MatchEnvVar("AUTH_TOKEN", authorizationToken)))
+	Expect(collectorContainer.Env).To(ContainElement(MatchEnvVar(authorizationEnvVar, authorizationToken)))
 
 	return ds
 }
@@ -195,6 +198,7 @@ func VerifyDeploymentCollectorConfigMap(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
+	authorizationEnvVar string,
 ) {
 	cm_ := VerifyResourceExists(
 		ctx,
@@ -208,7 +212,7 @@ func VerifyDeploymentCollectorConfigMap(
 	Expect(cm.Data).To(HaveKey("config.yaml"))
 	config := cm.Data["config.yaml"]
 	Expect(config).To(ContainSubstring("endpoint: \"endpoint.dash0.com:4317\""))
-	Expect(config).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
+	Expect(config).To(ContainSubstring(fmt.Sprintf("\"Authorization\": \"Bearer ${env:%s}\"", authorizationEnvVar)))
 }
 
 func VerifyCollectorDeployment(

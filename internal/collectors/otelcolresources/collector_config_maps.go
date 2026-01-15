@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package otelcolresources
@@ -17,7 +17,6 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
-	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 const (
@@ -72,7 +71,8 @@ func (ct *customTransforms) HasLogTransforms() bool {
 }
 
 type collectorConfigurationTemplateValues struct {
-	Exporters                                        []OtlpExporter
+	DefaultExporters                                 []otlpExporter
+	NamespacedExporters                              map[string][]otlpExporter
 	SendBatchMaxSize                                 *uint32
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
@@ -101,15 +101,6 @@ type collectorConfigurationTemplateValues struct {
 	EnableProfExtension                              bool
 }
 
-type OtlpExporter struct {
-	Name               string
-	Endpoint           string
-	Headers            []dash0common.Header
-	Encoding           string
-	Insecure           bool
-	InsecureSkipVerify bool
-}
-
 type KubeletStatsReceiverConfig struct {
 	Enabled            bool
 	Endpoint           string
@@ -127,8 +118,6 @@ var (
 	deploymentCollectorConfigurationTemplateSource string
 	deploymentCollectorConfigurationTemplate       = template.Must(
 		template.New("deployment-collector-configuration").Parse(deploymentCollectorConfigurationTemplateSource))
-
-	authHeaderValue = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
 )
 
 func assembleDaemonSetCollectorConfigMap(
@@ -196,11 +185,6 @@ func assembleCollectorConfigMap(
 	if forDeletion {
 		configMapData = map[string]string{}
 	} else {
-		exporters, err := ConvertExportSettingsToExporterList(config.Export)
-		if err != nil {
-			return nil, fmt.Errorf("%s %w", commonExportErrorPrefix, err)
-		}
-
 		selfIpReference := "${env:K8S_POD_IP}"
 		if config.IsIPv6Cluster {
 			selfIpReference = "[${env:K8S_POD_IP}]"
@@ -221,8 +205,9 @@ func assembleCollectorConfigMap(
 
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
-				Exporters:        exporters,
-				SendBatchMaxSize: config.SendBatchMaxSize,
+				DefaultExporters:    config.Exporters.Default,
+				NamespacedExporters: config.Exporters.Namespaced,
+				SendBatchMaxSize:    config.SendBatchMaxSize,
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 				DisableReplicasetInformer:                        config.DisableReplicasetInformer,
@@ -268,6 +253,7 @@ func assembleCollectorConfigMap(
 			Namespace: config.OperatorNamespace,
 			Labels:    labels(false),
 		},
+
 		Data: configMapData,
 	}, nil
 }
@@ -450,83 +436,6 @@ func compareErrorMode(
 	return errorMode1
 }
 
-func ConvertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExporter, error) {
-	var exporters []OtlpExporter
-
-	if export.Dash0 == nil && export.Grpc == nil && export.Http == nil {
-		return nil, fmt.Errorf("%s no exporter configuration found", commonExportErrorPrefix)
-	}
-
-	if export.Dash0 != nil {
-		d0 := export.Dash0
-		if d0.Endpoint == "" {
-			return nil, fmt.Errorf("no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector")
-		}
-		headers := []dash0common.Header{{
-			Name:  util.AuthorizationHeaderName,
-			Value: authHeaderValue,
-		}}
-		if d0.Dataset != "" && d0.Dataset != util.DatasetDefault {
-			headers = append(headers, dash0common.Header{
-				Name:  util.Dash0DatasetHeaderName,
-				Value: d0.Dataset,
-			})
-		}
-		dash0Exporter := OtlpExporter{
-			Name:     "otlp/dash0",
-			Endpoint: export.Dash0.Endpoint,
-			Headers:  headers,
-		}
-		setGrpcTlsFromPrefix(export.Dash0.Endpoint, &dash0Exporter)
-		exporters = append(exporters, dash0Exporter)
-	}
-
-	if export.Grpc != nil {
-		grpc := export.Grpc
-		if grpc.Endpoint == "" {
-			return nil, fmt.Errorf("no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")
-		}
-		grpcExporter := OtlpExporter{
-			Name:     "otlp/grpc",
-			Endpoint: grpc.Endpoint,
-			Headers:  grpc.Headers,
-		}
-		if grpc.Insecure != nil {
-			grpcExporter.Insecure = *grpc.Insecure
-		} else {
-			setGrpcTlsFromPrefix(grpc.Endpoint, &grpcExporter)
-		}
-		setInsecureSkipVerify(grpc.Endpoint, grpc.InsecureSkipVerify, &grpcExporter)
-		if len(grpc.Headers) > 0 {
-			grpcExporter.Headers = grpc.Headers
-		}
-		exporters = append(exporters, grpcExporter)
-	}
-
-	if export.Http != nil {
-		http := export.Http
-		if http.Endpoint == "" {
-			return nil, fmt.Errorf("no endpoint provided for the HTTP exporter, unable to create the OpenTelemetry collector")
-		}
-		if http.Encoding == "" {
-			return nil, fmt.Errorf("no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")
-		}
-		encoding := string(http.Encoding)
-		httpExporter := OtlpExporter{
-			Name:     fmt.Sprintf("otlphttp/%s", encoding),
-			Endpoint: http.Endpoint,
-			Encoding: encoding,
-		}
-		setInsecureSkipVerify(http.Endpoint, http.InsecureSkipVerify, &httpExporter)
-		if len(http.Headers) > 0 {
-			httpExporter.Headers = http.Headers
-		}
-		exporters = append(exporters, httpExporter)
-	}
-
-	return exporters, nil
-}
-
 func renderCollectorConfiguration(
 	template *template.Template,
 	templateValues *collectorConfigurationTemplateValues,
@@ -543,14 +452,8 @@ func hasNonTlsPrefix(endpoint string) bool {
 	return strings.HasPrefix(endpointNormalized, "http://")
 }
 
-func setGrpcTlsFromPrefix(endpoint string, exporter *OtlpExporter) {
+func setGrpcTlsFromPrefix(endpoint string, exporter *otlpExporter) {
 	if exporter.Insecure || hasNonTlsPrefix(endpoint) {
 		exporter.Insecure = true
-	}
-}
-
-func setInsecureSkipVerify(endpoint string, insecureSkipVerify *bool, exporter *OtlpExporter) {
-	if !hasNonTlsPrefix(endpoint) && util.ReadBoolPointerWithDefault(insecureSkipVerify, false) {
-		exporter.InsecureSkipVerify = true
 	}
 }

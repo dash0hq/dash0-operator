@@ -19,6 +19,9 @@ them also have to be avoided.
 Note that the first option will also consume _all_ preceding line breaks, so if a line break is desired in the output,
 use option 2.
 */}}
+
+{{- $root := . -}}
+
 extensions:
   health_check:
     endpoint: "{{ .SelfIpReference }}:13133"
@@ -29,11 +32,55 @@ extensions:
   pprof: {}
   {{- end }}
 
-
 connectors:
-  forward/metrics: {}
-  forward/logs: {}
+  forward/traces-processors: {}
+  forward/metrics-processors: {}
+  forward/logs-processors: {}
+  forward/traces-default-exporter: {}
+  forward/metrics-default-exporter: {}
+  forward/logs-default-exporter: {}
 
+  {{- $hasNamespacedExporters := gt (len .NamespacedExporters) 0 }}
+
+  {{- if $hasNamespacedExporters }}
+  routing/traces:
+    default_pipelines: [traces/export/default]
+    error_mode: ignore
+    table:
+    {{- range $ns, $exporters := .NamespacedExporters }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+        {{- range $i, $exporter := $exporters }}
+          - traces/export/ns/{{ $ns }}
+        {{- end }}
+    {{- end }}
+  routing/metrics:
+    default_pipelines: [metrics/export/default]
+    error_mode: ignore
+    table:
+    {{- range $ns, $exporters := .NamespacedExporters }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+        {{- range $i, $exporter := $exporters }}
+          - metrics/export/ns/{{ $ns }}
+        {{- end }}
+    {{- end }}
+  routing/logs:
+    default_pipelines: [logs/export/default]
+    error_mode: ignore
+    table:
+    {{- range $ns, $exporters := .NamespacedExporters }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+
+        pipelines:
+        {{- range $i, $exporter := $exporters }}
+          - logs/export/ns/{{ $ns }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
 
 receivers:
   otlp:
@@ -44,32 +91,34 @@ receivers:
       http:
         endpoint: "{{ .SelfIpReference }}:4318"
 
-{{- if .KubeletStatsReceiverConfig.Enabled }}
+  {{- if .KubeletStatsReceiverConfig.Enabled }}
   kubeletstats:
     endpoint: '{{ .KubeletStatsReceiverConfig.Endpoint }}'
     auth_type: "{{ .KubeletStatsReceiverConfig.AuthType }}"
     collection_interval: 20s
-{{- if .KubeletStatsReceiverConfig.InsecureSkipVerify }}
+    {{- if .KubeletStatsReceiverConfig.InsecureSkipVerify }}
     insecure_skip_verify: true
-{{ end }}
-{{- /* Note: Even if we use K8s_NODE_IP for the endpoint, it is still correct to use K8S_NODE_NAME for 'node'. The node
-      value will only be used as a resource attribute. */}}
+    {{- end }}
+    {{- /*
+    Note: Even if we use K8s_NODE_IP for the endpoint, it is still correct to use K8S_NODE_NAME for 'node'. The node
+    value will only be used as a resource attribute.
+    */}}
     node: '${env:K8S_NODE_NAME}'
     metric_groups:
     - container
     - pod
     - node
     - volume
-    {{- /*
-    Collecting any metadata label requires the nodes/proxy permission, which will not be granted in GKE Autopilot
-    clusters, see:
-    - https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/kubeletstatsreceiver/scraper.go#L112
-    - https://cloud.google.com/kubernetes-engine/docs/how-to/disable-kubelet-readonly-port#:~:text=In%20Kubernetes%20clusters%2C%20including%20GKE,more%20secure%2C%20authenticated%20port%2010250%20.
-      > If your workload uses the /pods endpoint on the insecure kubelet read-only port, you need to grant the
-      > nodes/proxy RBAC permission to access the endpoint on the secure kubelet port. nodes/proxy is a powerful
-      > permission that you can't grant in GKE Autopilot clusters [...].
-    Hence, these labels are disabled on GKE autopilot.
-    */}}
+  {{- /*
+  Collecting any metadata label requires the nodes/proxy permission, which will not be granted in GKE Autopilot
+  clusters, see:
+  - https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/kubeletstatsreceiver/scraper.go#L112
+  - https://cloud.google.com/kubernetes-engine/docs/how-to/disable-kubelet-readonly-port#:~:text=In%20Kubernetes%20clusters%2C%20including%20GKE,more%20secure%2C%20authenticated%20port%2010250%20.
+    > If your workload uses the /pods endpoint on the insecure kubelet read-only port, you need to grant the
+    > nodes/proxy RBAC permission to access the endpoint on the secure kubelet port. nodes/proxy is a powerful
+    > permission that you can't grant in GKE Autopilot clusters [...].
+  Hence, these labels are disabled on GKE autopilot.
+  */}}
     {{- if not .IsGkeAutopilot }}
     extra_metadata_labels:
       - container.id
@@ -106,9 +155,9 @@ receivers:
         enabled: true
     {{- end }}
 
-{{- end }}{{/* if .KubeletStatsReceiverConfig.Enabled */}}
+  {{- end }}{{/* if .KubeletStatsReceiverConfig.Enabled */}}
 
-{{- if .UseHostMetricsReceiver }}
+  {{- if .UseHostMetricsReceiver }}
   hostmetrics:
     collection_interval: 60s
     root_path: /hostfs
@@ -176,13 +225,13 @@ receivers:
             enabled: false
           system.memory.utilization:
             enabled: true
-{{- end }}{{/* if .UseHostMetricsReceiver */}}
+  {{- end }}{{/* if .UseHostMetricsReceiver */}}
 
-{{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
+  {{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
 
-{{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
+  {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
   prometheus:
-{{- if .PrometheusCrdSupportEnabled }}
+    {{- if .PrometheusCrdSupportEnabled }}
     target_allocator:
       {{- if .TargetAllocatorMtlsEnabled }}
       endpoint: https://{{ .TargetAllocatorServiceName }}:443
@@ -197,14 +246,14 @@ receivers:
         cert_file: {{ .TargetAllocatorMtlsClientCertsDir }}/tls.crt
         key_file: {{ .TargetAllocatorMtlsClientCertsDir }}/tls.key
       {{- end }}
-{{- end }}
+    {{- end }}
     config:
-{{- /*
-This particular set of scrape config jobs (dash0-kubernetes-pods-scrape-config and
-dash0-kubernetes-pods-scrape-config-slow) is mostly a copy of
-https://github.com/prometheus-community/helm-charts/blob/5adf0ee898e8e5430471cb43a5f9532745c22f81/charts/prometheus/values.yaml
-to be compatible with the well-known configuration via annotations.
-*/}}
+      {{- /*
+      This particular set of scrape config jobs (dash0-kubernetes-pods-scrape-config and
+      dash0-kubernetes-pods-scrape-config-slow) is mostly a copy of
+      https://github.com/prometheus-community/helm-charts/blob/5adf0ee898e8e5430471cb43a5f9532745c22f81/charts/prometheus/values.yaml
+      to be compatible with the well-known configuration via annotations.
+      */}}
       scrape_configs:
 
       # The relabeling allows the actual pod scrape endpoint to be configured via the
@@ -344,14 +393,14 @@ to be compatible with the well-known configuration via annotations.
           - source_labels: [__meta_kubernetes_pod_node_name]
             action: replace
             target_label: node
-{{- end }}
+  {{- end }}
 
-{{- if .NamespacesWithLogCollection }}
+  {{- if .NamespacesWithLogCollection }}
   filelog:
     include:
-{{- range $i, $namespace := .NamespacesWithLogCollection }}
-    - /var/log/pods/{{ $namespace }}_*/*/*.log
-{{- end}}
+    {{- range $i, $namespace := .NamespacesWithLogCollection }}
+      - /var/log/pods/{{ $namespace }}_*/*/*.log
+    {{- end}}
     storage: file_storage/filelogreceiver_offsets
     include_file_path: true
     include_file_name: false
@@ -360,15 +409,15 @@ to be compatible with the well-known configuration via annotations.
     - id: container-parser
       max_log_size: 102400
       type: container
-{{- end}}
+  {{- end}}
 
 processors:
-{{- if .SendBatchMaxSize }}
+  {{- if .SendBatchMaxSize }}
   batch:
     send_batch_max_size: {{ .SendBatchMaxSize }}
-{{- else }}
+  {{- else }}
   batch: {}
-{{- end }}
+  {{- end }}
 
   resourcedetection:
     detectors:
@@ -424,7 +473,7 @@ processors:
       # The following two work only if k8s.pod.uid and k8s.container.name are set
       - container.image.name
       - container.image.tag
-{{- if .CollectPodLabelsAndAnnotationsEnabled }}
+      {{- if .CollectPodLabelsAndAnnotationsEnabled }}
       labels:
         - tag_name: k8s.pod.label.$$1
           key_regex: (.*)
@@ -433,7 +482,7 @@ processors:
         - tag_name: k8s.pod.annotation.$$1
           key_regex: (.*)
           from: pod
-{{- end }}
+      {{- end }}
     filter:
       node_from_env_var: K8S_NODE_NAME
     passthrough: false
@@ -453,15 +502,15 @@ processors:
     error_mode: ignore
     trace_statements:
       - context: resource
-      - statements:
+        statements:
         - truncate_all(resource.attributes, 2048)
     metric_statements:
       - context: resource
-      - statements:
+        statements:
         - truncate_all(resource.attributes, 2048)
     log_statements:
       - context: resource
-      - statements:
+        statements:
         - truncate_all(resource.attributes, 2048)
 
   {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
@@ -520,7 +569,7 @@ processors:
         action: insert
   {{- end }}
 
-{{ if .NamespaceOttlFilter }}
+  {{- if .NamespaceOttlFilter }}
   # This is a standard filter which is always on; metrics collection receivers generate metrics for all namespaces in
   # the cluster, however, we only want to collect metrics from monitored namespaces, hence this filter.
   # See filter/metrics/$namespaceName filters for user-configurable filters per namespace.
@@ -528,9 +577,9 @@ processors:
     metrics:
       metric:
         - {{ .NamespaceOttlFilter }}
-{{- end }}
+  {{- end }}
 
-{{ if .CustomFilters.HasTraceFilters }}
+  {{- if .CustomFilters.HasTraceFilters }}
   filter/traces/custom_telemetry_filter:
     error_mode: {{ .CustomFilters.ErrorMode }}
     traces:
@@ -546,8 +595,8 @@ processors:
         - '{{ $condition }}'
         {{- end }}
       {{- end }}
-{{- end }}
-{{ if .CustomFilters.HasMetricFilters }}
+  {{- end }}
+  {{- if .CustomFilters.HasMetricFilters }}
   filter/metrics/custom_telemetry_filter:
     error_mode: {{ .CustomFilters.ErrorMode }}
     metrics:
@@ -563,8 +612,8 @@ processors:
         - '{{ $condition }}'
         {{- end }}
       {{- end }}
-{{ end }}
-{{ if .CustomFilters.HasLogFilters }}
+  {{- end }}
+  {{- if .CustomFilters.HasLogFilters }}
   filter/logs/custom_telemetry_filter:
     error_mode: {{ .CustomFilters.ErrorMode }}
     logs:
@@ -574,9 +623,9 @@ processors:
         - '{{ $condition }}'
         {{- end }}
       {{- end }}
-{{- end }}
+  {{- end }}
 
-{{ if .CustomTransforms.HasTraceTransforms }}
+  {{- if .CustomTransforms.HasTraceTransforms }}
   transform/traces/custom_telemetry_transform:
     error_mode: {{ .CustomTransforms.GlobalErrorMode }}
     trace_statements:
@@ -598,8 +647,8 @@ processors:
         context: {{ $group.Context }}
       {{- end }}
       {{- end }}
-{{- end }}
-{{ if .CustomTransforms.HasMetricTransforms }}
+  {{- end }}
+  {{- if .CustomTransforms.HasMetricTransforms }}
   transform/metrics/custom_telemetry_transform:
     error_mode: {{ .CustomTransforms.GlobalErrorMode }}
     metric_statements:
@@ -621,8 +670,8 @@ processors:
         context: {{ $group.Context }}
       {{- end }}
       {{- end }}
-{{- end }}
-{{ if .CustomTransforms.HasLogTransforms }}
+  {{- end }}
+  {{- if .CustomTransforms.HasLogTransforms }}
   transform/logs/custom_telemetry_transform:
     error_mode: {{ .CustomTransforms.GlobalErrorMode }}
     log_statements:
@@ -644,42 +693,64 @@ processors:
         context: {{ $group.Context }}
       {{- end }}
       {{- end }}
-{{- end }}
+  {{- end }}
 
   memory_limiter:
     check_interval: 1s
     limit_percentage: 80
     spike_limit_percentage: 25
 
-
 exporters:
-{{- if .DebugVerbosityDetailed }}
+  {{- if .DebugVerbosityDetailed }}
   debug:
     verbosity: detailed
-{{ else if .DevelopmentMode }}
+  {{- else if .DevelopmentMode }}
   debug: {}
-{{- end }}
-{{- range $i, $exporter := .Exporters }}
+  {{- end }}
+
+  {{- range $i, $exporter := .DefaultExporters }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
-{{- if $exporter.Insecure }}
+    {{- if $exporter.Insecure }}
     tls:
       insecure: true
-{{- else if $exporter.InsecureSkipVerify }}
+    {{- else if $exporter.InsecureSkipVerify }}
     tls:
       insecure_skip_verify: true
-{{- end }}
-{{- if $exporter.Headers }}
+    {{- end }}
+    {{- if $exporter.Headers }}
     headers:
-{{- range $i, $header := $exporter.Headers }}
+      {{- range $i, $header := $exporter.Headers }}
       "{{ $header.Name }}": "{{ $header.Value }}"
-{{- end }}
-{{- end }}
-{{- if $exporter.Encoding }}
+      {{- end }}
+    {{- end }}
+    {{- if $exporter.Encoding }}
     encoding: "{{ $exporter.Encoding }}"
-{{- end }}
-{{- end }}
+    {{- end }}
+  {{- end }}
 
+  {{- range $ns, $exporters := .NamespacedExporters }}
+  {{- range $i, $exporter := $exporters }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+    {{- if $exporter.Insecure }}
+    tls:
+      insecure: true
+    {{- else if $exporter.InsecureSkipVerify }}
+    tls:
+      insecure_skip_verify: true
+    {{- end }}
+    {{- if $exporter.Headers }}
+    headers:
+      {{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
+      {{- end }}
+    {{- end }}
+    {{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
+    {{- end }}
+  {{- end }}
+  {{- end }}
 
 service:
   extensions:
@@ -688,133 +759,221 @@ service:
   {{- if .EnableProfExtension }}
   - pprof
   {{- end }}
+
   pipelines:
-    traces/downstream:
+    traces/otlp-to-forwarder:
       receivers:
-      - otlp
+        - otlp
+      exporters:
+        - forward/traces-processors
+
+    traces/common-processors:
+      receivers:
+        - forward/traces-processors
       processors:
-      - memory_limiter
-      - resourcedetection
-      - k8sattributes
-      {{- if .ClusterName }}
-      - resource/clustername
-      {{- end }}
-      {{- if .CustomFilters.HasTraceFilters }}
-      - filter/traces/custom_telemetry_filter
-      {{- end }}
-      - batch
-      {{- if .CustomTransforms.HasTraceTransforms }}
-      - transform/traces/custom_telemetry_transform
-      {{- end }}
-      - transform/resources
+        - memory_limiter
+        - resourcedetection
+        - k8sattributes
+        {{- if .ClusterName }}
+        - resource/clustername
+        {{- end }}
+        {{- if .CustomFilters.HasTraceFilters }}
+        - filter/traces/custom_telemetry_filter
+        {{- end }}
+        - batch
+        {{- if .CustomTransforms.HasTraceTransforms }}
+        - transform/traces/custom_telemetry_transform
+        {{- end }}
+        - transform/resources
+      exporters:
+        {{- if $hasNamespacedExporters }}
+        - routing/traces
+        {{- else }}
+        - forward/traces-default-exporter
+        {{- end }}
+
+    traces/export/default:
+      receivers:
+        {{- if $hasNamespacedExporters }}
+        - routing/traces
+        {{- else }}
+        - forward/traces-default-exporter
+        {{- end}}
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
-      - debug
+        - debug
       {{- end }}
-      {{- range $i, $exporter := .Exporters }}
-      - {{ $exporter.Name }}
+      {{- range $i, $exporter := .DefaultExporters }}
+        - {{ $exporter.Name }}
       {{- end }}
 
-    metrics/default:
+    {{- range $ns, $exporters := .NamespacedExporters }}
+    traces/export/ns/{{- $ns -}}:
       receivers:
-      - otlp
-      {{- if .KubeletStatsReceiverConfig.Enabled }}
-      - kubeletstats
-      {{- end }}
-      {{- if .UseHostMetricsReceiver }}
-      - hostmetrics
-      {{- end }}
-      processors:
-      - memory_limiter
+        - routing/traces
       exporters:
-      - forward/metrics
+      {{- if (or $root.DevelopmentMode $root.DebugVerbosityDetailed) }}
+        - debug
+      {{- end }}
+      {{- range $i, $exporter := $exporters }}
+        - {{ $exporter.Name }}
+      {{- end }}
+    {{- end }}
 
-{{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
-    metrics/prometheus:
+    metrics/otlp-to-forwarder:
       receivers:
-      - prometheus
+        - otlp
+        {{- if .KubeletStatsReceiverConfig.Enabled }}
+        - kubeletstats
+        {{- end }}
+        {{- if .UseHostMetricsReceiver }}
+        - hostmetrics
+        {{- end }}
       processors:
-      - memory_limiter
-      - transform/metrics/prometheus_service_attributes
+        - memory_limiter
       exporters:
-      - forward/metrics
-{{- end }}
+        - forward/metrics-processors
 
-    metrics/downstream:
+    {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
+    metrics/prometheus-to-forwarder:
       receivers:
-      - forward/metrics
+        - prometheus
       processors:
-      - resourcedetection
-      - k8sattributes
-      {{- if .ClusterName }}
-      - resource/clustername
-      {{- end }}
-      {{- if .NamespaceOttlFilter }}
-      - filter/metrics/only_monitored_namespaces
-      {{- end }}
-      {{- if .CustomFilters.HasMetricFilters }}
-      - filter/metrics/custom_telemetry_filter
-      {{- end }}
-      - batch
-      {{- if .CustomTransforms.HasMetricTransforms }}
-      - transform/metrics/custom_telemetry_transform
-      {{- end }}
-      - transform/resources
+        - memory_limiter
+        - transform/metrics/prometheus_service_attributes
       exporters:
-      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
-      - debug
-      {{- end }}
-      {{- range $i, $exporter := .Exporters }}
-      - {{ $exporter.Name }}
-      {{- end }}
+        - forward/metrics-processors
+    {{- end }}
 
-    logs/otlp:
+    metrics/common-processors:
       receivers:
-      - otlp
+        - forward/metrics-processors
       processors:
-      - memory_limiter
+        - resourcedetection
+        - k8sattributes
+        {{- if .ClusterName }}
+        - resource/clustername
+        {{- end }}
+        {{- if .NamespaceOttlFilter }}
+        - filter/metrics/only_monitored_namespaces
+        {{- end }}
+        {{- if .CustomFilters.HasMetricFilters }}
+        - filter/metrics/custom_telemetry_filter
+        {{- end }}
+        - batch
+        {{- if .CustomTransforms.HasMetricTransforms }}
+        - transform/metrics/custom_telemetry_transform
+        {{- end }}
+        - transform/resources
       exporters:
-      - forward/logs
+        {{- if $hasNamespacedExporters }}
+        - routing/metrics
+        {{- else }}
+        - forward/metrics-default-exporter
+        {{- end }}
 
-{{- if .NamespacesWithLogCollection }}
-    logs/filelog:
+    metrics/export/default:
       receivers:
-      - filelog
-      processors:
-      - memory_limiter
+        {{- if $hasNamespacedExporters }}
+        - routing/metrics
+        {{- else }}
+        - forward/metrics-default-exporter
+        {{- end}}
       exporters:
-      - forward/logs
-{{- end }}
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := .DefaultExporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
 
-    logs/downstream:
+    {{- range $ns, $exporters := .NamespacedExporters }}
+    metrics/export/ns/{{- $ns -}}:
       receivers:
-      - forward/logs
-      processors:
-      - resourcedetection
-      - k8sattributes
-      {{- if .NamespacesWithLogCollection }}
-      - transform/logs/filelog_service_attributes
-      {{- end }}
-      {{- if .ClusterName }}
-      - resource/clustername
-      {{- end }}
-      {{- if .CustomFilters.HasLogFilters }}
-      - filter/logs/custom_telemetry_filter
-      {{- end }}
-      - batch
-      {{- if .CustomTransforms.HasLogTransforms }}
-      - transform/logs/custom_telemetry_transform
-      {{- end }}
-      - transform/resources
+        - routing/metrics
       exporters:
-      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
-      - debug
+        {{- if (or $root.DevelopmentMode $root.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := $exporters }}
+        - {{ $exporter.Name }}
       {{- end }}
-      {{- range $i, $exporter := .Exporters }}
-      - {{ $exporter.Name }}
-      {{- end }}
+    {{- end }}
 
-{{- if .InternalTelemetryEnabled }}
+    logs/otlp-to-forwarder:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+      exporters:
+        - forward/logs-processors
+
+    {{- if .NamespacesWithLogCollection }}
+    logs/filelog-to-forwarder:
+      receivers:
+        - filelog
+      processors:
+        - memory_limiter
+      exporters:
+        - forward/logs-processors
+    {{- end }}
+
+    logs/common-processors:
+      receivers:
+        - forward/logs-processors
+      processors:
+        - resourcedetection
+        - k8sattributes
+        {{- if .NamespacesWithLogCollection }}
+        - transform/logs/filelog_service_attributes
+        {{- end }}
+        {{- if .ClusterName }}
+        - resource/clustername
+        {{- end }}
+        {{- if .CustomFilters.HasLogFilters }}
+        - filter/logs/custom_telemetry_filter
+        {{- end }}
+        - batch
+        {{- if .CustomTransforms.HasLogTransforms }}
+        - transform/logs/custom_telemetry_transform
+        {{- end }}
+        - transform/resources
+      exporters:
+        {{- if $hasNamespacedExporters }}
+        - routing/logs
+        {{- else }}
+        - forward/logs-default-exporter
+        {{- end }}
+
+    logs/export/default:
+      receivers:
+        {{- if $hasNamespacedExporters }}
+        - routing/logs
+        {{- else }}
+        - forward/logs-default-exporter
+        {{- end}}
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := .DefaultExporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+
+    {{- range $ns, $exporters := .NamespacedExporters }}
+    logs/export/ns/{{- $ns -}}:
+      receivers:
+        - routing/logs
+      exporters:
+        {{- if (or $root.DevelopmentMode $root.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := $exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+    {{- end }}
+
+  {{- if .InternalTelemetryEnabled }}
   telemetry:
     resource:
       "k8s.cluster.uid": "{{- .PseudoClusterUid }}"
@@ -829,10 +988,10 @@ service:
       "k8s.pod.name": "${env:K8S_POD_NAME}"
       "k8s.container.name": "opentelemetry-collector"
 
-{{- if .SelfMonitoringMetricsConfig }}
-{{- .SelfMonitoringMetricsConfig }}
-{{- end }}
-{{- if .SelfMonitoringLogsConfig }}
-{{- .SelfMonitoringLogsConfig }}
-{{- end }}
-{{- end }}
+  {{- if .SelfMonitoringMetricsConfig }}
+  {{- .SelfMonitoringMetricsConfig }}
+  {{- end }}
+  {{- if .SelfMonitoringLogsConfig }}
+  {{- .SelfMonitoringLogsConfig }}
+  {{- end }}
+  {{- end }}

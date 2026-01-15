@@ -33,7 +33,9 @@ type oTelColConfig struct {
 	// the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the operator Helm
 	// chart.
 	NamePrefix                                       string
-	Export                                           dash0common.Export
+	Exporters                                        otlpExporters
+	Authorizations                                   dash0ExporterAuthorizations
+	AllMonitoringResources                           []dash0v1beta1.Dash0Monitoring
 	SendBatchMaxSize                                 *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
@@ -114,8 +116,6 @@ const (
 	appKubernetesIoNameValue      = openTelemetryCollector
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
-
-	authTokenEnvVarName = "AUTH_TOKEN"
 
 	configMapVolumeName            = "opentelemetry-collector-configmap"
 	collectorConfigurationYaml     = "config.yaml"
@@ -963,10 +963,10 @@ func assembleCollectorEnvVars(
 		},
 	}
 
-	if config.Export.Dash0 != nil {
+	for _, auth := range config.Authorizations.all() {
 		authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
-			(*(config.Export.Dash0)).Authorization,
-			authTokenEnvVarName,
+			auth.Authorization,
+			auth.EnvVarName,
 		)
 		if err != nil {
 			return nil, err

@@ -126,68 +126,23 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 		})
 
-		It("should reject calls without export settings", func() {
-			_, _, err :=
-				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
-					ctx,
-					util.ExtraConfigDefaults,
-					nil,
-					nil,
-					nil,
-					&logger,
-				)
-			Expect(err).To(MatchError("cannot create or update Dash0 OpenTelemetry collectors without export settings"))
-		})
-
 		It("should use the provided export settings to create the collectors", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					util.ExtraConfigDefaults,
+					operatorConfiguration,
 					nil,
-					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
-			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 
-		It("should not add self-monitoring if there is no operator configuration resource", func() {
-			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
-				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
-					ctx,
-					util.ExtraConfigDefaults,
-					nil,
-					nil,
-					Dash0ExportWithEndpointAndToken(),
-					&logger,
-				)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(resourcesHaveBeenCreated).To(BeTrue())
-			Expect(resourcesHaveBeenUpdated).To(BeFalse())
-
-			ds_ := VerifyResourceExists(
-				ctx,
-				k8sClient,
-				OperatorNamespace,
-				ExpectedDaemonSetName,
-				&appsv1.DaemonSet{},
-			)
-			ds := ds_.(*appsv1.DaemonSet)
-
-			containers := ds.Spec.Template.Spec.Containers
-			Expect(containers).To(HaveLen(3))
-			for _, container := range containers {
-				Expect(container.Env).NotTo(
-					ContainElement(MatchEnvVar("SELF_MONITORING_AUTH_TOKEN", AuthorizationTokenTest)))
-
-			}
-		})
-
-		It("should not add self-monitoring if is is disabled", func() {
+		It("should not add self-monitoring if it is disabled", func() {
 			operatorConfiguration := &dash0v1alpha1.Dash0OperatorConfiguration{
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec:       OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
@@ -198,7 +153,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -231,7 +185,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -265,7 +218,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					operatorConfiguration.Spec.Export,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -289,7 +241,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					operatorConfiguration.Spec.Export,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -347,13 +298,13 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				},
 			})).To(Succeed())
 
+			operatorConfiguration := DefaultOperatorConfigurationResource()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					util.ExtraConfigDefaults,
+					operatorConfiguration,
 					nil,
-					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -377,13 +328,13 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Describe("when OpenTelemetry collector resources have been modified externally", func() {
 		It("should reconcile the resources back into the desired state", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					util.ExtraConfigDefaults,
+					operatorConfiguration,
 					nil,
-					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -422,28 +373,27 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					util.ExtraConfigDefaults,
+					operatorConfiguration,
 					nil,
-					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeTrue())
 
-			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 	})
 
 	Describe("when OpenTelemetry collector resources have been deleted externally", func() {
 		It("should re-created the resources", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					util.ExtraConfigDefaults,
+					operatorConfiguration,
 					nil,
-					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -464,27 +414,27 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					util.ExtraConfigDefaults,
+					operatorConfiguration,
 					nil,
-					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
 
-			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 	})
 
 	Describe("when all OpenTelemetry collector resources are up to date", func() {
 		It("should report that nothing has changed", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+
 			// create resources
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
 				util.ExtraConfigDefaults,
+				operatorConfiguration,
 				nil,
-				nil,
-				Dash0ExportWithEndpointAndToken(),
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -495,9 +445,8 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
 				util.ExtraConfigDefaults,
+				operatorConfiguration,
 				nil,
-				nil,
-				Dash0ExportWithEndpointAndToken(),
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -510,32 +459,32 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					util.ExtraConfigDefaults,
+					operatorConfiguration,
 					nil,
-					nil,
-					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
 
-			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 	})
 
 	Describe("when deleting all OpenTelemetry collector resources", func() {
 		It("should delete the resources", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+
 			// create resources (so there is something to delete)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
 				util.ExtraConfigDefaults,
+				operatorConfiguration,
 				nil,
-				nil,
-				Dash0ExportWithEndpointAndToken(),
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 
 			// delete everything again
 			resourcesHaveBeenDeleted, err := oTelColResourceManager.DeleteResources(

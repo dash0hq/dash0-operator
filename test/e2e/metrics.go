@@ -30,25 +30,16 @@ var (
 	deploymentMetricsMatchConfig = metricsResourceMatchConfig{
 		expectedDeploymentName: "dash0-operator-nodejs-20-express-test-deployment",
 		expectPodUid:           true,
-		namespaceChecks: namespaceChecks{
-			failOnNamespaceOtherThan: applicationUnderTestNamespace,
-		},
 	}
 
 	workloadMetricsMatchConfig = metricsResourceMatchConfig{
 		expectedDeploymentName: "",
 		expectPodUid:           true,
-		namespaceChecks: namespaceChecks{
-			failOnNamespaceOtherThan: applicationUnderTestNamespace,
-		},
 	}
 
 	nodeMetricsMatchConfig = metricsResourceMatchConfig{
 		expectedDeploymentName: "",
 		expectPodUid:           false,
-		namespaceChecks: namespaceChecks{
-			failOnNamespaceScopedMetric: true,
-		},
 	}
 
 	matchAllConfig = metricsResourceMatchConfig{

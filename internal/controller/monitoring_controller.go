@@ -154,7 +154,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// prometheus scraping) after removing the monitoring resource from this namespace. Or, to be more precise,
 		// when r.reconcileOpenTelemetryCollector runs, the monitoring resource in this namespace is still present, but
 		// it is no longer marked as available.
-		if err = r.reconcileOpenTelemetryCollector(ctx, nil, &logger); err != nil {
+		if err = r.reconcileOpenTelemetryCollector(ctx, &logger); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, &logger); err != nil {
@@ -209,7 +209,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// resources.VerifyThatUniqueNonDegradedResourceExists check, due to checkResourceResult.ResourceDoesNotExist
 		// being true. We still want to handle this case correctly for good measure (reconcile the otel collector, then
 		// stop the reconcile of the monitoring resource).
-		if r.reconcileOpenTelemetryCollector(ctx, monitoringResource, &logger) != nil {
+		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 			return ctrl.Result{}, err
 		}
 		if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
@@ -245,7 +245,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	if r.reconcileOpenTelemetryCollector(ctx, monitoringResource, &logger) != nil {
+	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -336,7 +336,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 		return err
 	}
 
-	if err := r.reconcileOpenTelemetryCollector(ctx, monitoringResource, logger); err != nil {
+	if err := r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 		// err has been logged in r.reconcileOpenTelemetryCollector already
 		return err
 	}
@@ -441,7 +441,6 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 
 func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
-	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
 	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
@@ -449,8 +448,6 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.
 	if _, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
-		monitoringResource,
-		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
 		return err

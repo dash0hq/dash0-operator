@@ -27,7 +27,6 @@ func verifyThatWorkloadHasBeenInstrumented(
 	testId string,
 	images Images,
 	instrumentationBy string,
-	expectClusterName bool,
 ) {
 	By(fmt.Sprintf("%s %s: waiting for the workload to get instrumented (polling its labels and events to check)",
 		runtime.runtimeTypeLabel,
@@ -70,7 +69,7 @@ func verifyThatWorkloadHasBeenInstrumented(
 			testEndpoint,
 			query,
 			timestampLowerBound,
-			expectClusterName,
+			true,
 		)
 	}, spanTimeout, pollingInterval).Should(Succeed())
 	By(fmt.Sprintf("%s %s: matching spans have been received", runtime.runtimeTypeLabel, workloadType.workloadTypeString))

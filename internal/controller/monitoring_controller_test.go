@@ -123,11 +123,13 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists", Ordered, func() {
 		BeforeEach(func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 			EnsureMonitoringResourceExists(ctx, k8sClient)
 			extraMonitoringResourceNames = make([]types.NamespacedName, 0)
 		})
 
 		AfterEach(func() {
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 			DeleteMonitoringResource(ctx, k8sClient)
 			for _, name := range extraMonitoringResourceNames {
 				DeleteMonitoringResourceByName(ctx, k8sClient, name, true)
@@ -140,7 +142,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				By("Trigger reconcile request")
 				triggerReconcileRequest(ctx, monitoringReconciler)
 				verifyMonitoringResourceIsAvailable(ctx)
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 			})
 
 			It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
@@ -159,7 +161,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				secondAvailableCondition := verifyMonitoringResourceIsAvailable(ctx)
 				Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
 
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 			})
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
@@ -1268,12 +1270,14 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists and has instrumentWorkloads.mode=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
 			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
@@ -1315,12 +1319,14 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists but has instrumentWorkloads.mode=none set", Ordered, func() {
 		BeforeAll(func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
 			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
@@ -1331,12 +1337,14 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists but has instrumentWorkloads.mode=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
 			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeCreatedAndUpdated
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
@@ -1347,26 +1355,43 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when managing the collector resources", func() {
 		BeforeEach(func() {
-			EnsureMonitoringResourceExists(ctx, k8sClient)
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 		})
 
 		AfterEach(func() {
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
-		It("should add and remove the collector resources", func() {
-			By("Trigger first reconcile request")
-			triggerReconcileRequest(ctx, monitoringReconciler)
-			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+		It("should update the collector with namespaced export settings", func() {
+			By("Create monitoring resource without export")
 
+			specWithoutExport := dash0v1beta1.Dash0MonitoringSpec{
+				InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+					LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+				},
+			}
+			EnsureMonitoringResourceWithSpecExistsInNamespace(ctx, k8sClient, specWithoutExport, MonitoringResourceQualifiedName)
+
+			By("Trigger first reconcile request - should use operator configuration's default exporter")
+			triggerReconcileRequest(ctx, monitoringReconciler)
+			VerifyCollectorDaemonSet(ctx, k8sClient, operatorNamespace, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
+
+			By("Update monitoring resource to add a namespaced exporter")
 			monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
-			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
-			By("Trigger a reconcile request to trigger removing the collector resources")
+			monitoringResource.Spec.Export = &dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint: EndpointDash0TestAlternative,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTestAlternative,
+					},
+				},
+			}
+			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+
+			By("Trigger second reconcile request - auth env var for namespace should exist now")
 			triggerReconcileRequest(ctx, monitoringReconciler)
-
-			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
-
-			verifyMonitoringResourceDoesNotExist(ctx)
+			VerifyCollectorDaemonSet(ctx, k8sClient, operatorNamespace, "OTELCOL_AUTH_TOKEN_NS_TEST_NAMESPACE", AuthorizationTokenTestAlternative)
 		})
 	})
 })

@@ -244,7 +244,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 			})
 
 			DescribeTable("it starts the OTel SDK for self-monitoring in the operator manager deployment",
@@ -555,7 +555,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		})
 
 		It("should remove the collector resources when the operator configuration resource is deleted", func() {
-			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 
 			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
