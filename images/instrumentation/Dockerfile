@@ -36,7 +36,7 @@ RUN ./mvnw dependency:copy-dependencies \
   && cp pom.xml ./build/pom.xml
 
 # build Node.js artifacts
-FROM node:25.2.1-alpine3.22 AS build-node-js
+FROM node:25.3.0-alpine3.22 AS build-node-js
 RUN mkdir -p /dash0-init-container/instrumentation/node.js
 WORKDIR /dash0-init-container/instrumentation/node.js
 COPY node.js/package* .
