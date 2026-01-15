@@ -507,6 +507,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 				preconditionChecksResult,
 				group.Name,
 				group.Interval,
+				r.readTopLevelAnnotations(preconditionChecksResult),
 				logger,
 			)
 			if len(validationIssues) > 0 {
@@ -655,6 +656,25 @@ func (r *PrometheusRuleReconciler) renderCheckRuleOriginPrefix(
 	)
 }
 
+func (r *PrometheusRuleReconciler) readTopLevelAnnotations(preconditionChecksResult *preconditionValidationResult) map[string]string {
+	var metadataAnnotations map[string]string
+	if metadataRaw, ok := preconditionChecksResult.resource["metadata"]; ok {
+		if metadata, ok := metadataRaw.(map[string]interface{}); ok {
+			if annotationsRaw, ok := metadata["annotations"]; ok {
+				if annotations, ok := annotationsRaw.(map[string]interface{}); ok {
+					metadataAnnotations = make(map[string]string, len(annotations))
+					for key, value := range annotations {
+						if strValue, ok := value.(string); ok {
+							metadataAnnotations[key] = strValue
+						}
+					}
+				}
+			}
+		}
+	}
+	return metadataAnnotations
+}
+
 // convertRuleToRequest converts a Prometheus rule to an HTTP request that can be sent to the Dash0 API. It returns the
 // request object if the conversion is successful and there are no validation issues and no synchronization errors.
 // Otherwise, a list of validation issues or a single synchronization errror is returned. There are also rules which we
@@ -667,9 +687,17 @@ func convertRuleToRequest(
 	preconditionChecksResult *preconditionValidationResult,
 	groupName string,
 	interval *prometheusv1.Duration,
+	metadataAnnotations map[string]string,
 	logger *logr.Logger,
 ) (*http.Request, []string, error, bool) {
-	checkRule, validationIssues, ok := convertRuleToCheckRule(rule, action, groupName, interval, logger)
+	checkRule, validationIssues, ok := convertRuleToCheckRule(
+		rule,
+		action,
+		groupName,
+		interval,
+		metadataAnnotations,
+		logger,
+	)
 	if len(validationIssues) > 0 {
 		return nil, validationIssues, nil, ok
 	}
@@ -735,6 +763,7 @@ func convertRuleToCheckRule(
 	action apiAction,
 	groupName string,
 	interval *prometheusv1.Duration,
+	metadataAnnotations map[string]string,
 	logger *logr.Logger,
 ) (*CheckRule, []string, bool) {
 	if rule.Record != "" {
@@ -758,7 +787,10 @@ func convertRuleToCheckRule(
 
 	expression := convertIntOrString(rule.Expr)
 	validationIssues = validateExpression(validationIssues, expression)
-	validationIssues = validateThreshold(validationIssues, expression, rule.Annotations)
+
+	// Merge annotations before validation so that threshold annotations from metadata are considered.
+	mergedAnnotations := mergeAnnotations(metadataAnnotations, rule.Annotations)
+	validationIssues = validateThreshold(validationIssues, expression, mergedAnnotations)
 
 	if len(validationIssues) > 0 {
 		return nil, validationIssues, false
@@ -770,7 +802,7 @@ func convertRuleToCheckRule(
 	checkRule := &CheckRule{
 		Name:          dash0CheckRuleName,
 		Interval:      convertDuration(interval),
-		Annotations:   rule.Annotations,
+		Annotations:   mergedAnnotations,
 		Labels:        rule.Labels,
 		Expression:    expression,
 		For:           convertDuration(rule.For),
@@ -872,6 +904,30 @@ func validateThreshold(
 	}
 
 	return validationIssues
+}
+
+// mergeAnnotations merges metadata annotations with rule annotations. In case of conflicts (same key appears in both),
+// the rule annotation takes priority over the metadata annotation.
+func mergeAnnotations(metadataAnnotations map[string]string, ruleAnnotations map[string]string) map[string]string {
+	if len(metadataAnnotations) == 0 {
+		if ruleAnnotations == nil {
+			return make(map[string]string)
+		}
+		return ruleAnnotations
+	}
+
+	merged := make(map[string]string, len(metadataAnnotations)+len(ruleAnnotations))
+	for key, value := range metadataAnnotations {
+		merged[key] = value
+	}
+
+	// override metadata annotations with individual rule annotations, i.e. annotations from individual rules take
+	// priority
+	for key, value := range ruleAnnotations {
+		merged[key] = value
+	}
+
+	return merged
 }
 
 func (r *PrometheusRuleReconciler) CreateDeleteRequests(

@@ -929,7 +929,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 	})
 
-	Describe("converting a single Prometheus rule to a check rule", func() {
+	Context("converting a single Prometheus rule to a check rule", func() {
 		It("should ignore/skip record rules", func() {
 			rule, validationIssues, ok := convertRuleToCheckRule(
 				prometheusv1.Rule{
@@ -939,6 +939,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -953,6 +954,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -972,6 +974,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -989,6 +992,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1021,6 +1025,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1047,6 +1052,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				upsertAction,
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1073,6 +1079,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					upsertAction,
 					"group",
 					ptr.To(prometheusv1.Duration("10m")),
+					nil,
 					&logger,
 				)
 
@@ -1196,7 +1203,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		)
 	})
 
-	Describe("converting a PrometheusRule resource to multiple http requests", func() {
+	Context("converting a PrometheusRule resource to multiple http requests", func() {
 		var prometheusRuleReconciler *PrometheusRuleReconciler
 
 		BeforeEach(func() {
@@ -1299,7 +1306,7 @@ spec:
 		})
 	})
 
-	Describe("converting a single Prometheus rule to an http request", func() {
+	Context("converting a single Prometheus rule to an http request", func() {
 
 		It("should ignore/skip a record rule", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
@@ -1312,6 +1319,7 @@ spec:
 				&preconditionValidationResult{},
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1329,6 +1337,7 @@ spec:
 				&preconditionValidationResult{},
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1351,6 +1360,7 @@ spec:
 				&preconditionValidationResult{},
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1372,6 +1382,7 @@ spec:
 				&preconditionValidationResult{},
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1392,6 +1403,7 @@ spec:
 				&preconditionValidationResult{},
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1423,6 +1435,7 @@ spec:
 				&preconditionValidationResult{},
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
+				nil,
 				&logger,
 			)
 
@@ -1431,6 +1444,171 @@ spec:
 			Expect(syncError).To(BeNil())
 			Expect(req).ToNot(BeNil())
 			Expect(req.URL.String()).To(Equal("https://api.dash0.com/alerting/check-rules/rule-origin"))
+		})
+
+		Context("merging metadata annotations with rule annotations", func() {
+			It("should use only rule annotations when metadata annotations are nil", func() {
+				rule, validationIssues, ok := convertRuleToCheckRule(
+					prometheusv1.Rule{
+						Alert: "alert",
+						Expr:  intstr.FromString("vector(1)"),
+						Annotations: map[string]string{
+							"rule-key": "rule-value",
+						},
+					},
+					upsertAction,
+					"group",
+					ptr.To(prometheusv1.Duration("10m")),
+					nil,
+					&logger,
+				)
+
+				Expect(ok).To(BeTrue())
+				Expect(validationIssues).To(BeEmpty())
+				Expect(rule.Annotations).To(HaveLen(1))
+				Expect(rule.Annotations["rule-key"]).To(Equal("rule-value"))
+			})
+
+			It("should use only metadata annotations when rule annotations are nil", func() {
+				rule, validationIssues, ok := convertRuleToCheckRule(
+					prometheusv1.Rule{
+						Alert:       "alert",
+						Expr:        intstr.FromString("vector(1)"),
+						Annotations: nil,
+					},
+					upsertAction,
+					"group",
+					ptr.To(prometheusv1.Duration("10m")),
+					map[string]string{
+						"metadata-key": "metadata-value",
+					},
+					&logger,
+				)
+
+				Expect(ok).To(BeTrue())
+				Expect(validationIssues).To(BeEmpty())
+				Expect(rule.Annotations).To(HaveLen(1))
+				Expect(rule.Annotations["metadata-key"]).To(Equal("metadata-value"))
+			})
+
+			It("should use only metadata annotations when rule annotations are empty", func() {
+				rule, validationIssues, ok := convertRuleToCheckRule(
+					prometheusv1.Rule{
+						Alert:       "alert",
+						Expr:        intstr.FromString("vector(1)"),
+						Annotations: map[string]string{},
+					},
+					upsertAction,
+					"group",
+					ptr.To(prometheusv1.Duration("10m")),
+					map[string]string{
+						"metadata-key": "metadata-value",
+					},
+					&logger,
+				)
+
+				Expect(ok).To(BeTrue())
+				Expect(validationIssues).To(BeEmpty())
+				Expect(rule.Annotations).To(HaveLen(1))
+				Expect(rule.Annotations["metadata-key"]).To(Equal("metadata-value"))
+			})
+
+			It("should merge metadata and rule annotations when both have different keys", func() {
+				rule, validationIssues, ok := convertRuleToCheckRule(
+					prometheusv1.Rule{
+						Alert: "alert",
+						Expr:  intstr.FromString("vector(1)"),
+						Annotations: map[string]string{
+							"rule-key": "rule-value",
+						},
+					},
+					upsertAction,
+					"group",
+					ptr.To(prometheusv1.Duration("10m")),
+					map[string]string{
+						"metadata-key": "metadata-value",
+					},
+					&logger,
+				)
+
+				Expect(ok).To(BeTrue())
+				Expect(validationIssues).To(BeEmpty())
+				Expect(rule.Annotations).To(HaveLen(2))
+				Expect(rule.Annotations["metadata-key"]).To(Equal("metadata-value"))
+				Expect(rule.Annotations["rule-key"]).To(Equal("rule-value"))
+			})
+
+			It("should give priority to rule annotations when there are conflicts", func() {
+				rule, validationIssues, ok := convertRuleToCheckRule(
+					prometheusv1.Rule{
+						Alert: "alert",
+						Expr:  intstr.FromString("vector(1)"),
+						Annotations: map[string]string{
+							"common-key": "rule-value",
+							"rule-key":   "rule-value",
+						},
+					},
+					upsertAction,
+					"group",
+					ptr.To(prometheusv1.Duration("10m")),
+					map[string]string{
+						"common-key":   "metadata-value",
+						"metadata-key": "metadata-value",
+					},
+					&logger,
+				)
+
+				Expect(ok).To(BeTrue())
+				Expect(validationIssues).To(BeEmpty())
+				Expect(rule.Annotations).To(HaveLen(3))
+				Expect(rule.Annotations["common-key"]).To(Equal("rule-value"))
+				Expect(rule.Annotations["metadata-key"]).To(Equal("metadata-value"))
+				Expect(rule.Annotations["rule-key"]).To(Equal("rule-value"))
+			})
+
+			It("should handle empty map when both annotations are nil", func() {
+				rule, validationIssues, ok := convertRuleToCheckRule(
+					prometheusv1.Rule{
+						Alert:       "alert",
+						Expr:        intstr.FromString("vector(1)"),
+						Annotations: nil,
+					},
+					upsertAction,
+					"group",
+					ptr.To(prometheusv1.Duration("10m")),
+					nil,
+					&logger,
+				)
+
+				Expect(ok).To(BeTrue())
+				Expect(validationIssues).To(BeEmpty())
+				Expect(rule.Annotations).NotTo(BeNil())
+				Expect(rule.Annotations).To(BeEmpty())
+			})
+
+			It("should allow rule to override metadata annotation with empty string", func() {
+				rule, validationIssues, ok := convertRuleToCheckRule(
+					prometheusv1.Rule{
+						Alert: "alert",
+						Expr:  intstr.FromString("vector(1)"),
+						Annotations: map[string]string{
+							"common-key": "",
+						},
+					},
+					upsertAction,
+					"group",
+					ptr.To(prometheusv1.Duration("10m")),
+					map[string]string{
+						"common-key": "metadata-value",
+					},
+					&logger,
+				)
+
+				Expect(ok).To(BeTrue())
+				Expect(validationIssues).To(BeEmpty())
+				Expect(rule.Annotations).To(HaveLen(1))
+				Expect(rule.Annotations["common-key"]).To(Equal(""))
+			})
 		})
 	})
 })
