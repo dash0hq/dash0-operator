@@ -21,6 +21,7 @@ use option 2.
 */}}
 
 {{- $root := . -}}
+{{- $hasNamespacedExporters := gt (len .NamespacedExporters) 0 -}}
 
 extensions:
   health_check:
@@ -39,8 +40,6 @@ connectors:
   forward/traces-default-exporter: {}
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
-
-  {{- $hasNamespacedExporters := gt (len .NamespacedExporters) 0 }}
 
   {{- if $hasNamespacedExporters }}
   routing/traces:
