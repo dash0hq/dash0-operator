@@ -96,9 +96,10 @@ const (
 )
 
 var (
-	bearerWithAuthToken            = fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault)
-	monitoredNamespaces            = []string{namespace1, namespace2}
-	emptyTargetAllocatorMtlsConfig = TargetAllocatorMtlsConfig{}
+	bearerWithAuthToken                  = fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault)
+	monitoredNamespaces                  = []string{namespace1, namespace2}
+	emptyTargetAllocatorMtlsConfig       = TargetAllocatorMtlsConfig{}
+	defaultNamespacesWithEventCollection = []string{namespace2, namespace3}
 )
 
 func cmTestSingleDefaultOtlpExporter() otlpExporters {
@@ -560,13 +561,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
 		}, daemonSetAndDeployment)
 
-		It("should render namespaced OTLP exporters (DaemonSet only)", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		DescribeTable("should render namespaced OTLP exporters", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -591,15 +592,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			httpOtlpExporter := httpExporterNs2.(map[string]interface{})
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
 			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
-		})
+		}, daemonSetAndDeployment)
 
-		It("should render multiple namespaced OTLP exporters (DaemonSet only)", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		DescribeTable("should render multiple namespaced OTLP exporters", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -624,9 +625,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(dash0ExporterNs2).ToNot(BeNil())
 			dash0OtlpExporter := dash0ExporterNs2.(map[string]interface{})
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0TestAlternative))
-		})
+		}, daemonSetAndDeployment)
 
-		It("should render routing connectors when namespaced exporters are configured (DaemonSet only)", func() {
+		It("should render routing connectors when namespaced exporters are configured [DaemonSet])", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -667,7 +668,40 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(defaultPipelinesLogs).To(ContainElement("logs/export/default"))
 		})
 
-		It("should render routing table entries with correct namespace conditions (DaemonSet only)", func() {
+		It("should render routing connectors when namespaced exporters are configured [Deployment])", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// Verify routing connectors are created
+			connectorsRaw := collectorConfig["connectors"]
+			Expect(connectorsRaw).ToNot(BeNil())
+			connectors := connectorsRaw.(map[string]interface{})
+
+			// Verify routing connector for metrics
+			routingMetricsRaw := connectors["routing/metrics"]
+			Expect(routingMetricsRaw).ToNot(BeNil())
+			routingMetrics := routingMetricsRaw.(map[string]interface{})
+			Expect(routingMetrics["error_mode"]).To(Equal("ignore"))
+			defaultPipelinesMetrics := routingMetrics["default_pipelines"].([]interface{})
+			Expect(defaultPipelinesMetrics).To(ContainElement("metrics/export/default"))
+
+			// Verify routing connector for logs
+			routingLogsRaw := connectors["routing/logs"]
+			Expect(routingLogsRaw).ToNot(BeNil())
+			routingLogs := routingLogsRaw.(map[string]interface{})
+			Expect(routingLogs["error_mode"]).To(Equal("ignore"))
+			defaultPipelinesLogs := routingLogs["default_pipelines"].([]interface{})
+			Expect(defaultPipelinesLogs).To(ContainElement("logs/export/default"))
+		})
+
+		It("should render routing table entries with correct namespace conditions [DaemonSet])", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -704,7 +738,37 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			verifyRoutingTableEntry(logsTable, namespace2, "logs/export/ns/"+namespace2)
 		})
 
-		It("should render namespace-specific export pipelines (DaemonSet only)", func() {
+		It("should render routing table entries with correct namespace conditions [Deployment])", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectorsRaw := collectorConfig["connectors"]
+			Expect(connectorsRaw).ToNot(BeNil())
+			connectors := connectorsRaw.(map[string]interface{})
+
+			// Verify routing table entries for metrics
+			routingMetrics := connectors["routing/metrics"].(map[string]interface{})
+			metricsTable := routingMetrics["table"].([]interface{})
+			Expect(metricsTable).To(HaveLen(2))
+			verifyRoutingTableEntry(metricsTable, namespace1, "metrics/export/ns/"+namespace1)
+			verifyRoutingTableEntry(metricsTable, namespace2, "metrics/export/ns/"+namespace2)
+
+			// Verify routing table entries for logs
+			routingLogs := connectors["routing/logs"].(map[string]interface{})
+			logsTable := routingLogs["table"].([]interface{})
+			Expect(logsTable).To(HaveLen(2))
+			verifyRoutingTableEntry(logsTable, namespace1, "logs/export/ns/"+namespace1)
+			verifyRoutingTableEntry(logsTable, namespace2, "logs/export/ns/"+namespace2)
+		})
+
+		It("should render namespace-specific export pipelines [DaemonSet])", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -750,7 +814,42 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
 		})
 
-		It("should wire common-processors pipelines to routing connectors when namespaced exporters exist (DaemonSet only)", func() {
+		It("should render namespace-specific export pipelines [Deployment])", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// Verify namespace-specific metrics export pipelines
+			metricsExportNs1Receivers := readPipelineReceivers(pipelines, "metrics/export/ns/"+namespace1)
+			Expect(metricsExportNs1Receivers).To(ContainElement("routing/metrics"))
+			metricsExportNs1Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace1)
+			Expect(metricsExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+
+			metricsExportNs2Receivers := readPipelineReceivers(pipelines, "metrics/export/ns/"+namespace2)
+			Expect(metricsExportNs2Receivers).To(ContainElement("routing/metrics"))
+			metricsExportNs2Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace2)
+			Expect(metricsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+
+			// Verify namespace-specific logs export pipelines
+			logsExportNs1Receivers := readPipelineReceivers(pipelines, "logs/export/ns/"+namespace1)
+			Expect(logsExportNs1Receivers).To(ContainElement("routing/logs"))
+			logsExportNs1Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace1)
+			Expect(logsExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+
+			logsExportNs2Receivers := readPipelineReceivers(pipelines, "logs/export/ns/"+namespace2)
+			Expect(logsExportNs2Receivers).To(ContainElement("routing/logs"))
+			logsExportNs2Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace2)
+			Expect(logsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+		})
+
+		It("should wire common-processors pipelines to routing connectors when namespaced exporters exist [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -778,7 +877,30 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsCommonProcessorsExporters).ToNot(ContainElement("forward/logs-default-exporter"))
 		})
 
-		It("should wire default export pipelines to receive from routing connectors when namespaced exporters exist (DaemonSet only)", func() {
+		It("should wire common-processors pipelines to routing connectors when namespaced exporters exist [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// Verify metrics/common-processors exports to routing/metrics
+			metricsCommonProcessorsExporters := readPipelineExporters(pipelines, "metrics/common-processors")
+			Expect(metricsCommonProcessorsExporters).To(ContainElement("routing/metrics"))
+			Expect(metricsCommonProcessorsExporters).ToNot(ContainElement("forward/metrics-default-exporter"))
+
+			// Verify logs/common-processors exports to routing/logs
+			logsCommonProcessorsExporters := readPipelineExporters(pipelines, "logs/k8sevents")
+			Expect(logsCommonProcessorsExporters).To(ContainElement("routing/logs"))
+			Expect(logsCommonProcessorsExporters).ToNot(ContainElement("forward/logs-default-exporter"))
+		})
+
+		It("should wire default export pipelines to receive from routing connectors when namespaced exporters exist [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -806,7 +928,30 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsExportDefaultReceivers).ToNot(ContainElement("forward/logs-default-exporter"))
 		})
 
-		It("should not render routing connectors when no namespaced exporters exist (DaemonSet only)", func() {
+		It("should wire default export pipelines to receive from routing connectors when namespaced exporters exist [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// Verify metrics/export/default receives from routing/metrics
+			metricsExportDefaultReceivers := readPipelineReceivers(pipelines, "metrics/export/default")
+			Expect(metricsExportDefaultReceivers).To(ContainElement("routing/metrics"))
+			Expect(metricsExportDefaultReceivers).ToNot(ContainElement("forward/metrics-default-exporter"))
+
+			// Verify logs/export/default receives from routing/logs
+			logsExportDefaultReceivers := readPipelineReceivers(pipelines, "logs/export/default")
+			Expect(logsExportDefaultReceivers).To(ContainElement("routing/logs"))
+			Expect(logsExportDefaultReceivers).ToNot(ContainElement("forward/logs-default-exporter"))
+		})
+
+		DescribeTable("should not render routing connectors when no namespaced exporters exist", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -829,9 +974,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(connectors["forward/traces-default-exporter"]).ToNot(BeNil())
 			Expect(connectors["forward/metrics-default-exporter"]).ToNot(BeNil())
 			Expect(connectors["forward/logs-default-exporter"]).ToNot(BeNil())
-		})
+		}, daemonSetAndDeployment)
 
-		It("should use forward connectors in pipelines when no namespaced exporters exist (DaemonSet only)", func() {
+		It("should use forward connectors in pipelines when no namespaced exporters exist [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -860,6 +1005,35 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			tracesExportDefaultReceivers := readPipelineReceivers(pipelines, "traces/export/default")
 			Expect(tracesExportDefaultReceivers).To(ContainElement("forward/traces-default-exporter"))
 			Expect(tracesExportDefaultReceivers).ToNot(ContainElement("routing/traces"))
+
+			metricsExportDefaultReceivers := readPipelineReceivers(pipelines, "metrics/export/default")
+			Expect(metricsExportDefaultReceivers).To(ContainElement("forward/metrics-default-exporter"))
+			Expect(metricsExportDefaultReceivers).ToNot(ContainElement("routing/metrics"))
+
+			logsExportDefaultReceivers := readPipelineReceivers(pipelines, "logs/export/default")
+			Expect(logsExportDefaultReceivers).To(ContainElement("forward/logs-default-exporter"))
+			Expect(logsExportDefaultReceivers).ToNot(ContainElement("routing/logs"))
+		})
+
+		It("should use forward connectors in pipelines when no namespaced exporters exist [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			metricsCommonProcessorsExporters := readPipelineExporters(pipelines, "metrics/common-processors")
+			Expect(metricsCommonProcessorsExporters).To(ContainElement("forward/metrics-default-exporter"))
+			Expect(metricsCommonProcessorsExporters).ToNot(ContainElement("routing/metrics"))
+
+			logsCommonProcessorsExporters := readPipelineExporters(pipelines, "logs/k8sevents")
+			Expect(logsCommonProcessorsExporters).To(ContainElement("forward/logs-default-exporter"))
+			Expect(logsCommonProcessorsExporters).ToNot(ContainElement("routing/logs"))
 
 			metricsExportDefaultReceivers := readPipelineReceivers(pipelines, "metrics/export/default")
 			Expect(metricsExportDefaultReceivers).To(ContainElement("forward/metrics-default-exporter"))
