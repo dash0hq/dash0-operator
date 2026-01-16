@@ -1,3 +1,7 @@
+{{- $root := . -}}
+{{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 -}}
+{{- $hasNamespacedExporters := gt (len .NamespacedExporters) 0 -}}
+
 extensions:
   health_check:
     endpoint: "{{ .SelfIpReference }}:13133"
@@ -5,7 +9,40 @@ extensions:
   pprof: {}
   {{- end }}
 
-{{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 }}
+connectors:
+  forward/metrics-default-exporter: {}
+  forward/logs-default-exporter: {}
+
+  {{- if $hasNamespacedExporters }}
+  {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
+  routing/metrics:
+    default_pipelines: [metrics/export/default]
+    error_mode: ignore
+    table:
+    {{- range $ns, $exporters := .NamespacedExporters }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+        {{- range $i, $exporter := $exporters }}
+          - metrics/export/ns/{{ $ns }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
+  routing/logs:
+    default_pipelines: [logs/export/default]
+    error_mode: ignore
+    table:
+    {{- range $ns, $exporters := .NamespacedExporters }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+        {{- range $i, $exporter := $exporters }}
+          - logs/export/ns/{{ $ns }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
 
 receivers:
   {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
@@ -91,16 +128,16 @@ processors:
     error_mode: ignore
     trace_statements:
       - context: resource
-      - statements:
-        - truncate_all(resource.attributes, 2048)
+        statements:
+          - truncate_all(resource.attributes, 2048)
     metric_statements:
       - context: resource
-      - statements:
-        - truncate_all(resource.attributes, 2048)
+        statements:
+          - truncate_all(resource.attributes, 2048)
     log_statements:
       - context: resource
-      - statements:
-        - truncate_all(resource.attributes, 2048)
+        statements:
+          - truncate_all(resource.attributes, 2048)
 
   {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
   transform/k8s_events:
@@ -305,15 +342,15 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 25
 
-
 exporters:
-{{- if .DebugVerbosityDetailed }}
+  {{- if .DebugVerbosityDetailed }}
   debug:
     verbosity: detailed
-{{ else if .DevelopmentMode }}
+  {{- else if .DevelopmentMode }}
   debug: {}
-{{- end }}
-{{- range $i, $exporter := .DefaultExporters }}
+  {{- end }}
+
+  {{- range $i, $exporter := .DefaultExporters }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
     {{- if $exporter.Insecure }}
@@ -323,16 +360,39 @@ exporters:
     tls:
       insecure_skip_verify: true
     {{- end }}
-{{- if $exporter.Headers }}
+    {{- if $exporter.Headers }}
     headers:
-{{- range $i, $header := $exporter.Headers }}
+      {{- range $i, $header := $exporter.Headers }}
       "{{ $header.Name }}": "{{ $header.Value }}"
-{{- end }}
-{{- end }}
-{{- if $exporter.Encoding }}
+      {{- end }}
+    {{- end }}
+    {{- if $exporter.Encoding }}
     encoding: "{{ $exporter.Encoding }}"
-{{- end }}
-{{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- range $ns, $exporters := .NamespacedExporters }}
+  {{- range $i, $exporter := $exporters }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+    {{- if $exporter.Insecure }}
+    tls:
+      insecure: true
+    {{- else if $exporter.InsecureSkipVerify }}
+    tls:
+      insecure_skip_verify: true
+    {{- end }}
+    {{- if $exporter.Headers }}
+    headers:
+      {{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
+      {{- end }}
+    {{- end }}
+    {{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
+    {{- end }}
+  {{- end }}
+  {{- end }}
 
 
 service:
@@ -347,54 +407,108 @@ service:
     {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
     metrics/common-processors:
       receivers:
-      - k8s_cluster
+        - k8s_cluster
       processors:
-      - memory_limiter
-      - k8sattributes
-      {{- if .ClusterName }}
-      - resource/clustername
-      {{- end }}
-      {{- if .NamespaceOttlFilter }}
-      - filter/metrics/only_monitored_namespaces
-      {{- end }}
-      - filter/drop-replicaset-metrics-zero-value
-      {{- if .CustomFilters.HasMetricFilters }}
-      - filter/metrics/custom_telemetry_filter
-      {{- end }}
-      - batch
-      {{- if .CustomTransforms.HasMetricTransforms }}
-      - transform/metrics/custom_telemetry_transform
-      {{- end }}
-      - transform/resources
+        - memory_limiter
+        - k8sattributes
+        {{- if .ClusterName }}
+        - resource/clustername
+        {{- end }}
+        {{- if .NamespaceOttlFilter }}
+        - filter/metrics/only_monitored_namespaces
+        {{- end }}
+        - filter/drop-replicaset-metrics-zero-value
+        {{- if .CustomFilters.HasMetricFilters }}
+        - filter/metrics/custom_telemetry_filter
+        {{- end }}
+        - batch
+        {{- if .CustomTransforms.HasMetricTransforms }}
+        - transform/metrics/custom_telemetry_transform
+        {{- end }}
+        - transform/resources
       exporters:
-      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
-      - debug
-      {{- end }}
-      {{- range $i, $exporter := .DefaultExporters }}
-      - {{ $exporter.Name }}
+        {{- if $hasNamespacedExporters }}
+        - routing/metrics
+        {{- else }}
+        - forward/metrics-default-exporter
+        {{- end }}
+
+    metrics/export/default:
+      receivers:
+        {{- if $hasNamespacedExporters }}
+        - routing/metrics
+        {{- else }}
+        - forward/metrics-default-exporter
+        {{- end}}
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := .DefaultExporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+
+    {{- range $ns, $exporters := .NamespacedExporters }}
+    metrics/export/ns/{{- $ns -}}:
+      receivers:
+        - routing/metrics
+      exporters:
+        {{- if (or $root.DevelopmentMode $root.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := $exporters }}
+        - {{ $exporter.Name }}
       {{- end }}
     {{- end }}
+    {{- end}}
 
     {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
     logs/k8sevents:
       receivers:
-      - k8s_events
+        - k8s_events
       processors:
-      - transform/k8s_events
-      - k8sattributes
-      {{- if .ClusterName }}
-      - resource/clustername
-      {{- end }}
-      - transform/resources
-      - memory_limiter
-      - batch
+        - transform/k8s_events
+        - k8sattributes
+        {{- if .ClusterName }}
+        - resource/clustername
+        {{- end }}
+        - transform/resources
+        - memory_limiter
+        - batch
       exporters:
-      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
-      - debug
-      {{- end }}
-      {{- range $i, $exporter := .DefaultExporters }}
-      - {{ $exporter.Name }}
-      {{- end }}
+        {{- if $hasNamespacedExporters }}
+        - routing/logs
+        {{- else }}
+        - forward/logs-default-exporter
+        {{- end }}
+
+    logs/export/default:
+      receivers:
+        {{- if $hasNamespacedExporters }}
+        - routing/logs
+        {{- else }}
+        - forward/logs-default-exporter
+        {{- end}}
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := .DefaultExporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+
+    {{- range $ns, $exporters := .NamespacedExporters }}
+    logs/export/ns/{{- $ns -}}:
+      receivers:
+        - routing/logs
+      exporters:
+        {{- if (or $root.DevelopmentMode $root.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := $exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+    {{- end }}
     {{- end }}
 
 {{- if .InternalTelemetryEnabled }}
