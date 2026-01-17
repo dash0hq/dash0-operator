@@ -1087,6 +1087,12 @@ func startDash0Controllers(
 	monitoringReconciler := controller.NewMonitoringReconciler(
 		k8sClient,
 		clientset,
+		[]controller.NamespacedApiClient{
+			syntheticCheckReconciler,
+			viewReconciler,
+			persesDashboardCrdReconciler,
+			prometheusRuleCrdReconciler,
+		},
 		instrumenter,
 		collectorManager,
 		targetallocatorManager,
@@ -1139,19 +1145,28 @@ func startDash0Controllers(
 			prometheusRuleCrdReconciler,
 		},
 	)
-	authTokenClients := []selfmonitoringapiaccess.AuthTokenClient{
+	defaultAuthTokenClients := []selfmonitoringapiaccess.AuthTokenClient{
 		oTelSdkStarter,
 		syntheticCheckReconciler,
 		viewReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}
-	operatorConfigurationReconciler.SetAuthTokenClients(authTokenClients)
+
+	namespacedAuthTokenClients := []selfmonitoringapiaccess.NamespacedAuthTokenClient{
+		syntheticCheckReconciler,
+		viewReconciler,
+		prometheusRuleCrdReconciler,
+		persesDashboardCrdReconciler,
+	}
+
+	operatorConfigurationReconciler.SetAuthTokenClients(defaultAuthTokenClients)
+	monitoringReconciler.SetNamespacedAuthTokenClients(namespacedAuthTokenClients)
 
 	triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		ctx,
 		oTelSdkStarter,
-		authTokenClients,
+		defaultAuthTokenClients,
 		operatorConfigurationResource,
 		pseudoClusterUid,
 		images.GetOperatorVersion(),

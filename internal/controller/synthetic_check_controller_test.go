@@ -37,14 +37,16 @@ const (
 	syntheticCheckName2           = "test-synthetic-check-2"
 	syntheticCheckApiBasePath     = "/api/synthetic-checks/"
 
-	syntheticCheckId            = "synthetic-check-id"
-	syntheticCheckOriginPattern = "dash0-operator_%s_test-dataset_test-namespace_test-synthetic-check"
+	syntheticCheckId                       = "synthetic-check-id"
+	syntheticCheckOriginPattern            = "dash0-operator_%s_test-dataset_test-namespace_test-synthetic-check"
+	syntheticCheckOriginPatternAlternative = "dash0-operator_%s_test-dataset-alt_test-namespace_test-synthetic-check"
 )
 
 var (
-	defaultExpectedPathSyntheticCheck  = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-synthetic-check")
-	defaultExpectedPathSyntheticCheck2 = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-synthetic-checks_test-synthetic-check-2")
-	leaderElectionAware                = NewLeaderElectionAwareMock(true)
+	defaultExpectedPathSyntheticCheck     = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-synthetic-check")
+	expectedPathSyntheticCheckAlternative = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset-alt_test-namespace_test-synthetic-check")
+	defaultExpectedPathSyntheticCheck2    = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-synthetic-checks_test-synthetic-check-2")
+	leaderElectionAware                   = NewLeaderElectionAwareMock(true)
 )
 
 var _ = Describe("The Synthetic Check controller", Ordered, func() {
@@ -78,11 +80,11 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		BeforeEach(func() {
 			syntheticCheckReconciler = createSyntheticCheckReconciler(clusterId)
 
-			syntheticCheckReconciler.apiConfig.Store(&ApiConfig{
+			syntheticCheckReconciler.defaultApiConfig.Store(&ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			})
-			syntheticCheckReconciler.authToken.Store(&AuthorizationTokenTest)
+			syntheticCheckReconciler.defaultAuthToken.Store(&AuthorizationTokenTest)
 
 			// to make tests that involve http retries faster, we do not want to wait for one second for each retry
 			syntheticCheckReconciler.overrideHttpRetryDelay(20 * time.Millisecond)
@@ -111,12 +113,12 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("it ignores synthetic check resource changes if the API endpoint is not configured", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
-			syntheticCheckReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
+			syntheticCheckReconciler.RemoveDefaultApiEndpointAndDataset(ctx, &logger)
 
 			syntheticCheckResource := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
 			Expect(k8sClient.Create(ctx, syntheticCheckResource)).To(Succeed())
@@ -139,12 +141,12 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("it ignores synthetic check resource changes if the auth token endpoint has not been provided yet", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
 
-			syntheticCheckReconciler.RemoveAuthToken(ctx, &logger)
+			syntheticCheckReconciler.RemoveDefaultAuthToken(ctx, &logger)
 
 			syntheticCheckResource := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
 			Expect(k8sClient.Create(ctx, syntheticCheckResource)).To(Succeed())
@@ -167,7 +169,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("creates a synthetic check", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
@@ -199,8 +201,54 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
+		It("creates a synthetic check with namespaced config from the monitoring resource", func() {
+			monitoringResource := DefaultMonitoringResourceWithCustomApiConfigAndToken(
+				MonitoringResourceQualifiedName,
+				ApiEndpointTestAlternative,
+				DatasetCustomTestAlternative,
+				AuthorizationTokenTestAlternative)
+			EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, monitoringResource.Spec)
+
+			expectSyntheticCheckPutRequestCustom(
+				clusterId,
+				expectedPathSyntheticCheckAlternative,
+				ApiEndpointTestAlternative,
+				DatasetCustomTestAlternative,
+				AuthorizationTokenTestAlternative,
+				syntheticCheckOriginPatternAlternative,
+				1)
+			defer gock.Off()
+
+			syntheticCheckResource := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
+			Expect(k8sClient.Create(ctx, syntheticCheckResource)).To(Succeed())
+
+			apiConfig := ApiConfig{
+				Endpoint: ApiEndpointTestAlternative,
+				Dataset:  DatasetCustomTestAlternative,
+			}
+
+			syntheticCheckReconciler.SetNamespacedApiEndpointAndDataset(ctx, TestNamespaceName, &apiConfig, &logger)
+			syntheticCheckReconciler.SetNamespacedAuthToken(ctx, TestNamespaceName, AuthorizationTokenTestAlternative, &logger)
+
+			// note: we don't trigger reconcile here because setting the API config and token already triggers a reconciliation
+
+			verifySyntheticCheckSynchronizationStatus(
+				ctx,
+				k8sClient,
+				TestNamespaceName,
+				syntheticCheckName,
+				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
+				testStartedAt,
+				syntheticCheckId,
+				fmt.Sprintf(syntheticCheckOriginPatternAlternative, clusterId),
+				DatasetCustomTestAlternative,
+				"",
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
 		It("updates a synthetic check", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
@@ -237,7 +285,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("deletes a synthetic check", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectSyntheticCheckDeleteRequest(defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
@@ -261,7 +309,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("deletes a synthetic check if labelled with dash0.com/enable=false", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectSyntheticCheckDeleteRequestWithHttpStatus(defaultExpectedPathSyntheticCheck, http.StatusNotFound)
 			defer gock.Off()
@@ -295,7 +343,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("creates a synthetic check if dash0.com/enable is set but not to \"false\"", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectSyntheticCheckPutRequest(clusterId, defaultExpectedPathSyntheticCheck)
 			defer gock.Off()
@@ -329,7 +377,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("reports http errors when synchronizing a synthetic check", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			gock.New(ApiEndpointTest).
 				Put(defaultExpectedPathSyntheticCheck).
@@ -370,7 +418,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		})
 
 		It("retries synchronization when synchronizing a synthetic check", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			gock.New(ApiEndpointTest).
 				Put(defaultExpectedPathSyntheticCheck).
@@ -414,7 +462,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		}
 
 		DescribeTable("synchronizes all existing synthetic check resources when the auth token or api endpoint become available", func(testConfig maybeDoInitialSynchronizationOfAllResourcesTest) {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			// Disable synchronization by removing the auth token or api endpoint.
 			testConfig.disableSync()
@@ -423,7 +471,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			secondMonitoringResource := EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 				ctx,
 				k8sClient,
-				MonitoringResourceDefaultSpec,
+				MonitoringResourceDefaultSpecWithoutExport,
 				types.NamespacedName{Namespace: extraNamespaceSyntheticChecks, Name: MonitoringResourceName},
 			)
 			extraMonitoringResourceNames = append(extraMonitoringResourceNames, types.NamespacedName{
@@ -478,18 +526,18 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		},
 			Entry("when the auth token becomes available", maybeDoInitialSynchronizationOfAllResourcesTest{
 				disableSync: func() {
-					syntheticCheckReconciler.RemoveAuthToken(ctx, &logger)
+					syntheticCheckReconciler.RemoveDefaultAuthToken(ctx, &logger)
 				},
 				enabledSync: func() {
-					syntheticCheckReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+					syntheticCheckReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 				},
 			}),
 			Entry("when the api endpoint becomes available", maybeDoInitialSynchronizationOfAllResourcesTest{
 				disableSync: func() {
-					syntheticCheckReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
+					syntheticCheckReconciler.RemoveDefaultApiEndpointAndDataset(ctx, &logger)
 				},
 				enabledSync: func() {
-					syntheticCheckReconciler.SetApiEndpointAndDataset(
+					syntheticCheckReconciler.SetDefaultApiEndpointAndDataset(
 						ctx,
 						&ApiConfig{
 							Endpoint: ApiEndpointTest,
@@ -509,12 +557,12 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			}),
 			Entry("only sync once evenn if the the auth token is set multiple times", maybeDoInitialSynchronizationOfAllResourcesTest{
 				disableSync: func() {
-					syntheticCheckReconciler.RemoveAuthToken(ctx, &logger)
+					syntheticCheckReconciler.RemoveDefaultAuthToken(ctx, &logger)
 				},
 				enabledSync: func() {
 					// gock only expects two PUT requests, so if we would synchronize twice, the test would fail
-					syntheticCheckReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
-					syntheticCheckReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+					syntheticCheckReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
+					syntheticCheckReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 				},
 			}),
 		)
@@ -537,9 +585,10 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			syntheticCheck := map[string]interface{}{}
 			Expect(yaml.Unmarshal([]byte(testConfig.syntheticCheck), &syntheticCheck)).To(Succeed())
 			preconditionValidationResult := &preconditionValidationResult{
-				k8sName:      "dash0-synthetic-check",
-				k8sNamespace: TestNamespaceName,
-				resource:     syntheticCheck,
+				k8sName:            "dash0-synthetic-check",
+				k8sNamespace:       TestNamespaceName,
+				resource:           syntheticCheck,
+				validatedApiConfig: &ValidatedApiConfigAndToken{},
 			}
 			resourceToRequestsResult :=
 				syntheticCheckReconciler.MapResourceToHttpRequests(
@@ -627,23 +676,27 @@ func createSyntheticCheckReconciler(clusterId string) *SyntheticCheckReconciler 
 	return syntheticCheckReconciler
 }
 
-func expectSyntheticCheckPutRequest(clusterId string, expectedPath string) {
-	gock.New(ApiEndpointTest).
+func expectSyntheticCheckPutRequestCustom(clusterId string, expectedPath string, endpoint string, dataset string, token string, originPattern string, times int) {
+	gock.New(endpoint).
 		Put(expectedPath).
-		MatchHeader("Authorization", AuthorizationHeaderTest).
-		MatchParam("dataset", DatasetCustomTest).
-		Times(1).
+		MatchHeader("Authorization", token).
+		MatchParam("dataset", dataset).
+		Times(times).
 		Reply(200).
-		JSON(defaultSyntheticCheckPutResponse(clusterId))
+		JSON(syntheticCheckPutResponse(clusterId, originPattern, dataset))
 }
 
-func defaultSyntheticCheckPutResponse(clusterId string) map[string]interface{} {
+func expectSyntheticCheckPutRequest(clusterId string, expectedPath string) {
+	expectSyntheticCheckPutRequestCustom(clusterId, expectedPath, ApiEndpointTest, DatasetCustomTest, AuthorizationHeaderTest, syntheticCheckOriginPattern, 1)
+}
+
+func syntheticCheckPutResponse(clusterId string, originPattern string, dataset string) map[string]interface{} {
 	return map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"labels": map[string]interface{}{
 				"dash0.com/id":      syntheticCheckId,
-				"dash0.com/origin":  fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
-				"dash0.com/dataset": DatasetCustomTest,
+				"dash0.com/origin":  fmt.Sprintf(originPattern, clusterId),
+				"dash0.com/dataset": dataset,
 			},
 		},
 	}

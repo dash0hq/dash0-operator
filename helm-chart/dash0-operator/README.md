@@ -623,6 +623,16 @@ spec:
   synchronizePrometheusRules: false
 ```
 
+### Namespace-specific Export and API-sync Overrides
+
+It is possible to override the global/default export config provided via the Dash0 operator configuration on a per-namespace
+basis by providing the corresponding export config via the Dash0 monitoring resource.
+
+The override supports both the export of telemetry and the sync of resources, like dashboards or views, via the Dash0 API.
+
+Note: The operator always expects default export and API-sync settings via the Dash0 operator configuration, even when
+namespace-specific overrides are used.
+
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 
 If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,
@@ -1810,6 +1820,9 @@ Pre-requisites for this feature:
 * The operator will not synchronize Perses dashboard resources in namespaces where the Dash0 monitoring resource
   has the setting [`synchronizePersesDashboards`](#monitoringresource.spec.synchronizePersesDashboards) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing a Dash0 export with and API endpoint and token in the Dash0
+  monitoring resource.
 
 Furthermore, the custom resource definition for Perses dashboards needs to be installed in the cluster. There are two
 ways to achieve this:
@@ -1873,6 +1886,9 @@ Pre-requisites for this feature:
 * The operator will not synchronize Prometheus rule resources in namespaces where the Dash0 monitoring resource
   has the setting [`synchronizePrometheusRules`](#monitoringresource.spec.synchronizePrometheusRules) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing a Dash0 export with and API endpoint and token in the Dash0
+  monitoring resource.
 
 Furthermore, the custom resource definition for Prometheus rules needs to be installed in the cluster. There are two
 ways to achieve this:
@@ -1995,6 +2011,9 @@ Pre-requisites for this feature:
   (either `token` or `secret-ref`).
 * The operator will only pick up synthetic check resources in namespaces that have a Dash0 monitoring resource
   deployed.
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing a Dash0 export with and API endpoint and token in the Dash0
+  monitoring resource.
 
 With the prerequisites in place, you can manage Dash0 synthetic checks via the operator.
 The Dash0 operator will watch for synthetic check resources in all namespaces that have a Dash0 monitoring resource
@@ -2062,6 +2081,9 @@ Pre-requisites for this feature:
   (either `token` or `secret-ref`).
 * The operator will only pick up Dash0 view resources in namespaces that have a Dash0 monitoring resource
   deployed.
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing a Dash0 export with and API endpoint and token in the Dash0
+  monitoring resource.
 
 With the prerequisites in place, you can manage Dash0 views via the operator.
 The Dash0 operator will watch for view resources in all namespaces that have a Dash0 monitoring resource deployed, and

@@ -55,8 +55,6 @@ finish_step
 
 deploy_additional_resources
 
-deploy_dash0_api_sync_resources
-
 echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
@@ -68,6 +66,8 @@ finish_step
 echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
 finish_step
+
+deploy_dash0_api_sync_resources
 
 echo "STEP $step_counter: deploy nodejs app with servicemonitor (or podmonitor)"
 deploy_application_under_monitoring "$runtime_under_test" "$nodejs_values_with_service_monitor"

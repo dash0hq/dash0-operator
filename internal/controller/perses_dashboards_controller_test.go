@@ -36,7 +36,8 @@ import (
 )
 
 const (
-	dashboardOriginPattern = "dash0-operator_%s_test-dataset_test-namespace_test-dashboard"
+	dashboardOriginPattern            = "dash0-operator_%s_test-dataset_test-namespace_test-dashboard"
+	dashboardOriginPatternAlternative = "dash0-operator_%s_test-dataset-alt_test-namespace_test-dashboard"
 )
 
 var (
@@ -47,7 +48,8 @@ var (
 
 	dashboardApiBasePath = "/api/dashboards/"
 
-	defaultExpectedPathDashboard = fmt.Sprintf("%s.*%s", dashboardApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-dashboard")
+	defaultExpectedPathDashboard     = fmt.Sprintf("%s.*%s", dashboardApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-dashboard")
+	ExpectedPathDashboardAlternative = fmt.Sprintf("%s.*%s", dashboardApiBasePath, "dash0-operator_.*_test-dataset-alt_test-namespace_test-dashboard")
 )
 
 var _ = Describe("The Perses dashboard controller", Ordered, func() {
@@ -76,7 +78,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		It("does not start watching Perses dashboard resources if the CRD does not exist and the auth token has not been provided", func() {
 			persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			persesDashboardCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			persesDashboardCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
@@ -86,19 +88,19 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		It("does not start watching Perses dashboards if the CRD does not exist and the API endpoint has not been provided", func() {
 			persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			persesDashboardCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			persesDashboardCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 		})
 
 		It("does not start watching Perses dashboards if the API endpoint & auth token have been provided but the CRD does not exist", func() {
 			persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			persesDashboardCrdReconciler.SetApiEndpointAndDataset(ctx,
+			persesDashboardCrdReconciler.SetDefaultApiEndpointAndDataset(ctx,
 				&ApiConfig{
 					Endpoint: ApiEndpointTest,
 					Dataset:  DatasetCustomTest,
 				}, &logger)
-			persesDashboardCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			persesDashboardCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 		})
 
@@ -106,7 +108,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 			ensurePersesDashboardCrdExists(ctx)
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			persesDashboardCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			persesDashboardCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
@@ -117,7 +119,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 			ensurePersesDashboardCrdExists(ctx)
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			persesDashboardCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			persesDashboardCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 		})
 
@@ -126,12 +128,12 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
 			Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
-			persesDashboardCrdReconciler.SetApiEndpointAndDataset(ctx,
+			persesDashboardCrdReconciler.SetDefaultApiEndpointAndDataset(ctx,
 				&ApiConfig{
 					Endpoint: ApiEndpointTest,
 					Dataset:  DatasetCustomTest,
 				}, &logger)
-			persesDashboardCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			persesDashboardCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeTrue())
 		})
 
@@ -140,12 +142,12 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
 
 			// provide the API endpoint first
-			persesDashboardCrdReconciler.SetApiEndpointAndDataset(ctx,
+			persesDashboardCrdReconciler.SetDefaultApiEndpointAndDataset(ctx,
 				&ApiConfig{
 					Endpoint: ApiEndpointTest,
 					Dataset:  DatasetCustomTest,
 				}, &logger)
-			persesDashboardCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			persesDashboardCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 
 			// create the CRD a bit later
 			time.Sleep(100 * time.Millisecond)
@@ -171,8 +173,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			ensurePersesDashboardCrdExists(ctx)
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
 			Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
-			persesDashboardCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
-			persesDashboardCrdReconciler.SetApiEndpointAndDataset(ctx,
+			persesDashboardCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
+			persesDashboardCrdReconciler.SetDefaultApiEndpointAndDataset(ctx,
 				&ApiConfig{
 					Endpoint: ApiEndpointTest,
 					Dataset:  DatasetCustomTest,
@@ -196,12 +198,12 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		It("can cope with multiple consecutive create & delete events", func() {
 			persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			persesDashboardCrdReconciler.SetApiEndpointAndDataset(ctx,
+			persesDashboardCrdReconciler.SetDefaultApiEndpointAndDataset(ctx,
 				&ApiConfig{
 					Endpoint: ApiEndpointTest,
 					Dataset:  DatasetCustomTest,
 				}, &logger)
-			persesDashboardCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			persesDashboardCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 
 			Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 			ensurePersesDashboardCrdExists(ctx)
@@ -256,12 +258,12 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			persesDashboardCrdReconciler.SetApiEndpointAndDataset(ctx,
+			persesDashboardCrdReconciler.SetDefaultApiEndpointAndDataset(ctx,
 				&ApiConfig{
 					Endpoint: ApiEndpointTest,
 					Dataset:  DatasetCustomTest,
 				}, &logger)
-			persesDashboardCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			persesDashboardCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeTrue())
 			persesDashboardReconciler = persesDashboardCrdReconciler.persesDashboardReconciler
 			// to make tests that involve http retries faster, we do not want to wait for one second for each retry
@@ -270,6 +272,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 
 		AfterEach(func() {
 			DeleteMonitoringResourceIfItExists(ctx, k8sClient)
+			persesDashboardCrdReconciler.RemoveNamespacedApiEndpointAndDataset(ctx, TestNamespaceName, &logger)
+			persesDashboardCrdReconciler.RemoveNamespacedAuthToken(ctx, TestNamespaceName, &logger)
 		})
 
 		AfterAll(func() {
@@ -294,7 +298,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("it ignores Perses dashboard resource changes if synchronization is disabled via the Dash0 monitoring resource", func() {
-			monitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			monitoringResource := EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 			monitoringResource.Spec.SynchronizePersesDashboards = ptr.To(false)
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
@@ -315,12 +319,12 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("it ignores Perses dashboard resource changes if the API endpoint is not configured", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
 
-			persesDashboardCrdReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
+			persesDashboardCrdReconciler.RemoveDefaultApiEndpointAndDataset(ctx, &logger)
 
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Create(
@@ -336,7 +340,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("creates a dashboard", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
@@ -358,8 +362,51 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
+		It("creates a dashboard with namespaced config from the monitoring resource", func() {
+			monitoringResource := DefaultMonitoringResourceWithCustomApiConfigAndToken(
+				MonitoringResourceQualifiedName,
+				ApiEndpointTestAlternative,
+				DatasetCustomTestAlternative,
+				AuthorizationTokenTestAlternative)
+			EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, monitoringResource.Spec)
+
+			expectDashboardPutRequestCustom(
+				clusterId,
+				ExpectedPathDashboardAlternative,
+				ApiEndpointTestAlternative,
+				DatasetCustomTestAlternative,
+				AuthorizationHeaderTestAlternative,
+				dashboardOriginPatternAlternative,
+			)
+			defer gock.Off()
+
+			apiConfig := ApiConfig{
+				Endpoint: ApiEndpointTestAlternative,
+				Dataset:  DatasetCustomTestAlternative,
+			}
+
+			persesDashboardCrdReconciler.SetNamespacedApiEndpointAndDataset(ctx, TestNamespaceName, &apiConfig, &logger)
+			persesDashboardCrdReconciler.SetNamespacedAuthToken(ctx, TestNamespaceName, AuthorizationTokenTestAlternative, &logger)
+
+			dashboardResource := createDashboardResource()
+			persesDashboardReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				expectedPersesSyncResult(clusterId, DatasetCustomTestAlternative, dashboardOriginPatternAlternative),
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
 		It("updates a dashboard", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
@@ -382,7 +429,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("updates a dashboard if dash0.com/enable is set but not to \"false\"", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 			defer gock.Off()
@@ -405,7 +452,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("deletes a dashboard", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectDashboardDeleteRequestWithHttpStatus(defaultExpectedPathDashboard, http.StatusNotFound)
 			defer gock.Off()
@@ -428,7 +475,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("deletes a dashboard on Create (and does not try to create it) if labelled with dash0.com/enable=false", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectDashboardDeleteRequestWithHttpStatus(defaultExpectedPathDashboard, http.StatusNotFound)
 			defer gock.Off()
@@ -451,7 +498,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("deletes a dashboard on Update (and does not try to update it) if labelled with dash0.com/enable=false", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectDashboardDeleteRequest(defaultExpectedPathDashboard)
 			defer gock.Off()
@@ -474,7 +521,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("reports validation issues for a dashboard", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			dashboardResource := createDashboardResource()
 			spec := dashboardResource.Object["spec"].(map[string]interface{})
@@ -499,7 +546,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		It("reports http errors when synchronizing a dashboard", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			gock.New(ApiEndpointTest).
 				Put(defaultExpectedPathDashboard).
@@ -550,9 +597,10 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			dashboard := map[string]interface{}{}
 			Expect(yaml.Unmarshal([]byte(testConfig.dashboard), &dashboard)).To(Succeed())
 			preconditionValidationResult := &preconditionValidationResult{
-				k8sName:      "perses-dashboard",
-				k8sNamespace: TestNamespaceName,
-				resource:     dashboard,
+				k8sName:            "perses-dashboard",
+				k8sNamespace:       TestNamespaceName,
+				resource:           dashboard,
+				validatedApiConfig: &ValidatedApiConfigAndToken{},
 			}
 			resourceToRequestsResult :=
 				persesDashboardReconciler.MapResourceToHttpRequests(
@@ -748,35 +796,43 @@ func createPersesDashboardCrdReconciler() *PersesDashboardCrdReconciler {
 	return crdReconciler
 }
 
-func expectDashboardPutRequest(clusterId string, expectedPath string) {
-	gock.New(ApiEndpointTest).
+func expectDashboardPutRequestCustom(clusterId string, expectedPath string, endpoint string, dataset string, authHeader string, originPattern string) {
+	gock.New(endpoint).
 		Put(expectedPath).
-		MatchHeader("Authorization", AuthorizationHeaderTest).
-		MatchParam("dataset", DatasetCustomTest).
+		MatchHeader("Authorization", authHeader).
+		MatchParam("dataset", dataset).
 		Times(1).
 		Reply(200).
-		JSON(defaultDashboardPutResponse(clusterId))
+		JSON(dashboardPutResponse(clusterId, dataset, originPattern))
 }
 
-func defaultDashboardPutResponse(clusterId string) map[string]interface{} {
+func expectDashboardPutRequest(clusterId string, expectedPath string) {
+	expectDashboardPutRequestCustom(clusterId, expectedPath, ApiEndpointTest, DatasetCustomTest, AuthorizationHeaderTest, dashboardOriginPattern)
+}
+
+func dashboardPutResponse(clusterId string, dataset string, originPattern string) map[string]interface{} {
 	return map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"dash0Extensions": map[string]interface{}{
-				"id":      fmt.Sprintf(dashboardOriginPattern, clusterId),
-				"dataset": DatasetCustomTest,
+				"id":      fmt.Sprintf(originPattern, clusterId),
+				"dataset": dataset,
 			},
 		},
 	}
 }
 
-func defaultExpectedPersesSyncResult(clusterId string) dash0common.PersesDashboardSynchronizationResults {
+func expectedPersesSyncResult(clusterId string, dataset string, originPattern string) dash0common.PersesDashboardSynchronizationResults {
 	return dash0common.PersesDashboardSynchronizationResults{
 		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
-		Dash0Origin:           fmt.Sprintf(dashboardOriginPattern, clusterId),
-		Dash0Dataset:          DatasetCustomTest,
+		Dash0Origin:           fmt.Sprintf(originPattern, clusterId),
+		Dash0Dataset:          dataset,
 		SynchronizationError:  "",
 		ValidationIssues:      nil,
 	}
+}
+
+func defaultExpectedPersesSyncResult(clusterId string) dash0common.PersesDashboardSynchronizationResults {
+	return expectedPersesSyncResult(clusterId, DatasetCustomTest, dashboardOriginPattern)
 }
 
 func expectDashboardDeleteRequest(expectedPath string) {

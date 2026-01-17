@@ -30,6 +30,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -38,10 +39,13 @@ type ViewReconciler struct {
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
 	httpClient            *http.Client
-	apiConfig             atomic.Pointer[ApiConfig]
-	authToken             atomic.Pointer[string]
+	defaultApiConfig      atomic.Pointer[ApiConfig]
+	defaultAuthToken      atomic.Pointer[string]
+	namespacedApiConfig   selfmonitoringapiaccess.NamespacedStore[ApiConfig]
+	namespacedAuthTokens  selfmonitoringapiaccess.NamespacedStore[string]
 	initialSyncMutex      sync.Mutex
 	initialSyncHasHappend atomic.Bool
+	namespacedSyncMutex   selfmonitoringapiaccess.NamespacedStore[*sync.Mutex]
 	httpRetryDelay        time.Duration
 }
 
@@ -96,16 +100,24 @@ func (r *ViewReconciler) ShortName() string {
 	return "view"
 }
 
-func (r *ViewReconciler) GetAuthToken() string {
-	token := r.authToken.Load()
+func (r *ViewReconciler) GetDefaultAuthToken() string {
+	token := r.defaultAuthToken.Load()
 	if token == nil {
 		return ""
 	}
 	return *token
 }
 
-func (r *ViewReconciler) GetApiConfig() *atomic.Pointer[ApiConfig] {
-	return &r.apiConfig
+func (r *ViewReconciler) GetDefaultApiConfig() *atomic.Pointer[ApiConfig] {
+	return &r.defaultApiConfig
+}
+
+func (r *ViewReconciler) GetNamespacedAuthToken(namespace string) (string, bool) {
+	return r.namespacedAuthTokens.Get(namespace)
+}
+
+func (r *ViewReconciler) GetNamespacedApiConfig(namespace string) (ApiConfig, bool) {
+	return r.namespacedApiConfig.Get(namespace)
 }
 
 func (r *ViewReconciler) ControllerName() string {
@@ -129,28 +141,63 @@ func (r *ViewReconciler) overrideHttpRetryDelay(delay time.Duration) {
 	r.httpRetryDelay = delay
 }
 
-func (r *ViewReconciler) SetApiEndpointAndDataset(
+func (r *ViewReconciler) SetDefaultApiEndpointAndDataset(
 	ctx context.Context,
 	apiConfig *ApiConfig,
 	logger *logr.Logger) {
-	r.apiConfig.Store(apiConfig)
+	r.defaultApiConfig.Store(apiConfig)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *ViewReconciler) RemoveApiEndpointAndDataset(_ context.Context, _ *logr.Logger) {
-	r.apiConfig.Store(nil)
+func (r *ViewReconciler) RemoveDefaultApiEndpointAndDataset(_ context.Context, _ *logr.Logger) {
+	r.defaultApiConfig.Store(nil)
 }
 
-func (r *ViewReconciler) SetAuthToken(
+func (r *ViewReconciler) SetNamespacedApiEndpointAndDataset(ctx context.Context, namespace string, updatedApiConfig *ApiConfig, logger *logr.Logger) {
+	if updatedApiConfig != nil {
+		previousApiConfig, _ := r.namespacedApiConfig.Get(namespace)
+
+		r.namespacedApiConfig.Set(namespace, *updatedApiConfig)
+
+		if previousApiConfig != *updatedApiConfig {
+			r.synchronizeNamespacedResources(ctx, namespace, logger)
+		}
+	}
+}
+
+func (r *ViewReconciler) RemoveNamespacedApiEndpointAndDataset(ctx context.Context, namespace string, logger *logr.Logger) {
+	if _, exists := r.namespacedApiConfig.Get(namespace); exists {
+		r.namespacedApiConfig.Delete(namespace)
+		r.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *ViewReconciler) SetDefaultAuthToken(
 	ctx context.Context,
 	authToken string,
 	logger *logr.Logger) {
-	r.authToken.Store(&authToken)
+	r.defaultAuthToken.Store(&authToken)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *ViewReconciler) RemoveAuthToken(_ context.Context, _ *logr.Logger) {
-	r.authToken.Store(nil)
+func (r *ViewReconciler) RemoveDefaultAuthToken(_ context.Context, _ *logr.Logger) {
+	r.defaultAuthToken.Store(nil)
+}
+
+func (r *ViewReconciler) SetNamespacedAuthToken(ctx context.Context, namespace string, updatedAuthToken string, logger *logr.Logger) {
+	previousAuthToken, _ := r.GetNamespacedAuthToken(namespace)
+	r.namespacedAuthTokens.Set(namespace, updatedAuthToken)
+
+	if previousAuthToken != updatedAuthToken {
+		r.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *ViewReconciler) RemoveNamespacedAuthToken(ctx context.Context, namespace string, logger *logr.Logger) {
+	if _, exists := r.namespacedAuthTokens.Get(namespace); exists {
+		r.namespacedAuthTokens.Delete(namespace)
+		r.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
 }
 
 func (r *ViewReconciler) NotifiyOperatorManagerJustBecameLeader(ctx context.Context, logger *logr.Logger) {
@@ -173,7 +220,7 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 			))
 		return
 	}
-	if !isValidApiConfig(r.apiConfig.Load()) {
+	if !isValidApiConfig(r.defaultApiConfig.Load()) {
 		logger.Info(
 			"Waiting for the Dash0 API endpoint before running initial synchronization of views. Either " +
 				"no Dash0 API endpoint has been provided via the operator configuration resource, or the operator " +
@@ -183,7 +230,7 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 		)
 		return
 	}
-	authToken := r.authToken.Load()
+	authToken := r.defaultAuthToken.Load()
 	if authToken == nil || *authToken == "" {
 		logger.Info(
 			"Waiting for the Dash0 auth token before running initial synchronization of views. Either " +
@@ -223,6 +270,59 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 		}
 		logger.Info("Initial synchronization of views has finished.")
 		r.initialSyncHasHappend.Store(true)
+	}()
+}
+
+func (r *ViewReconciler) synchronizeNamespacedResources(ctx context.Context, namespace string, logger *logr.Logger) {
+	// nsSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
+	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
+	// config and auth token at almost the same time, triggering two resyncs.
+	nsSyncMutex, exists := r.namespacedSyncMutex.Get(namespace)
+	if !exists {
+		nsSyncMutex = &sync.Mutex{}
+		r.namespacedSyncMutex.Set(namespace, nsSyncMutex)
+	}
+
+	nsSyncMutex.Lock()
+
+	if !r.leaderElectionAware.IsLeader() {
+		logger.Info(
+			fmt.Sprintf(
+				"Waiting for the this operator manager replica to become leader before running " +
+					"synchronization of views.",
+			))
+		return
+	}
+
+	logger.Info(fmt.Sprintf("Running synchronization of views in namespace %s now.", namespace))
+
+	go func() {
+		defer nsSyncMutex.Unlock()
+
+		allViewResourcesInNamespace := dash0v1alpha1.Dash0ViewList{}
+		if err := r.List(
+			ctx,
+			&allViewResourcesInNamespace,
+			&client.ListOptions{
+				Namespace: namespace,
+			},
+		); err != nil {
+			logger.Error(err, fmt.Sprintf("Failed to list Dash0 view resources in namespace %s.", namespace))
+			return
+		}
+
+		for _, viewResource := range allViewResourcesInNamespace.Items {
+			pseudoReconcileRequest := ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: viewResource.Namespace,
+					Name:      viewResource.Name,
+				},
+			}
+			_, _ = r.Reconcile(ctx, pseudoReconcileRequest)
+			// stagger API requests a bit
+			time.Sleep(50 * time.Millisecond)
+		}
+		logger.Info(fmt.Sprintf("Synchronization of views in namespace %s has finished.", namespace))
 	}()
 }
 
@@ -334,16 +434,16 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 		return NewResourceToRequestsResultSingleItemError(itemName, httpError.Error())
 	}
 
-	addAuthorizationHeader(req, preconditionChecksResult)
+	addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
 	if action == upsertAction {
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, viewOrigin, preconditionChecksResult.dataset)
+	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, viewOrigin, preconditionChecksResult.validatedApiConfig.Dataset)
 }
 
 func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionValidationResult) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
+	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.validatedApiConfig.Dataset)
 	viewOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
@@ -355,7 +455,7 @@ func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionVal
 	)
 	return fmt.Sprintf(
 		"%sapi/views/%s?dataset=%s",
-		preconditionChecksResult.apiEndpoint,
+		preconditionChecksResult.validatedApiConfig.Endpoint,
 		viewOrigin,
 		datasetUrlEncoded,
 	), viewOrigin

@@ -16,13 +16,19 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type AuthTokenClient interface {
-	SetAuthToken(context.Context, string, *logr.Logger)
-	RemoveAuthToken(context.Context, *logr.Logger)
+	SetDefaultAuthToken(context.Context, string, *logr.Logger)
+	RemoveDefaultAuthToken(context.Context, *logr.Logger)
+}
+
+type NamespacedAuthTokenClient interface {
+	SetNamespacedAuthToken(context.Context, string, string, *logr.Logger)
+	RemoveNamespacedAuthToken(context.Context, string, *logr.Logger)
 }
 
 type OtlpProtocol string
@@ -605,7 +611,7 @@ func ExchangeSecretRefForToken(
 		}
 		decodedToken := string(rawToken)
 		for _, authTokenClient := range authTokenClients {
-			authTokenClient.SetAuthToken(ctx, decodedToken, logger)
+			authTokenClient.SetDefaultAuthToken(ctx, decodedToken, logger)
 		}
 		return nil
 	}
@@ -613,6 +619,75 @@ func ExchangeSecretRefForToken(
 
 func removeToken(ctx context.Context, authTokenClients []AuthTokenClient, logger *logr.Logger) {
 	for _, authTokenClient := range authTokenClients {
-		authTokenClient.RemoveAuthToken(ctx, logger)
+		authTokenClient.RemoveDefaultAuthToken(ctx, logger)
+	}
+}
+
+func ExchangeSecretRefForNamespacedToken(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespacedAuthTokenClients []NamespacedAuthTokenClient,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger *logr.Logger,
+) error {
+	if monitoringResource == nil {
+		// note: unfortunately we can't remove the auth token here because we don't have the namspace if the monitoring
+		// resource is nil - however, the way this function is used in the operator, the monitoring resource is guaranteed
+		// to be not nil
+		return fmt.Errorf("operatorConfiguration is nil")
+	}
+	namespace := monitoringResource.Namespace
+	if monitoringResource.Spec.Export == nil {
+		removeNamespacedToken(ctx, namespace, namespacedAuthTokenClients, logger)
+		return fmt.Errorf("operatorConfiguration has no export")
+	}
+	if monitoringResource.Spec.Export.Dash0 == nil {
+		removeNamespacedToken(ctx, namespace, namespacedAuthTokenClients, logger)
+		return fmt.Errorf("operatorConfiguration has no Dash0 export")
+	}
+	if monitoringResource.Spec.Export.Dash0.Authorization.SecretRef == nil {
+		removeNamespacedToken(ctx, namespace, namespacedAuthTokenClients, logger)
+		return fmt.Errorf("operatorConfiguration has no secret ref")
+	}
+	secretRef := monitoringResource.Spec.Export.Dash0.Authorization.SecretRef
+	var dash0AuthTokenSecret corev1.Secret
+	if err := k8sClient.Get(
+		ctx,
+		client.ObjectKey{
+			Name:      secretRef.Name,
+			Namespace: namespace,
+		},
+		&dash0AuthTokenSecret,
+	); err != nil {
+		removeNamespacedToken(ctx, namespace, namespacedAuthTokenClients, logger)
+		msg := fmt.Sprintf("failed to fetch secret with name %s in namespace %s for Dash0 API access",
+			secretRef.Name,
+			namespace,
+		)
+		logger.Error(err, msg)
+		return fmt.Errorf(msg+": %w", err)
+	} else {
+		rawToken, hasToken := dash0AuthTokenSecret.Data[secretRef.Key]
+		if !hasToken || rawToken == nil || len(rawToken) == 0 {
+			removeNamespacedToken(ctx, namespace, namespacedAuthTokenClients, logger)
+			err = fmt.Errorf("secret \"%s/%s\" does not contain key \"%s\"",
+				namespace,
+				secretRef.Name,
+				secretRef.Key)
+			logger.Error(err, "secret does not contain the expected key")
+			return err
+		}
+		decodedToken := string(rawToken)
+		for _, nsAuthTokenClient := range namespacedAuthTokenClients {
+			nsAuthTokenClient.SetNamespacedAuthToken(ctx, namespace, decodedToken, logger)
+		}
+		return nil
+	}
+}
+
+func removeNamespacedToken(ctx context.Context, namespace string,
+	namespacedAuthTokenClients []NamespacedAuthTokenClient, logger *logr.Logger) {
+	for _, nsAuthTokenClient := range namespacedAuthTokenClients {
+		nsAuthTokenClient.RemoveNamespacedAuthToken(ctx, namespace, logger)
 	}
 }
