@@ -900,7 +900,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					)
 				}
 
-				instrumentationIssues := workloadModifier.addOrAppendToLdPreloadEnvVar(container, nil, logger)
+				instrumentationIssues := workloadModifier.addEnvironmentVariables(
+					container,
+					&metav1.ObjectMeta{},
+					&metav1.ObjectMeta{},
+					logger,
+				)
 
 				VerifyEnvVar(testConfig.ldPreloadExpectation, container.Env, envVarLdPreloadName, "")
 				Expect(instrumentationIssues).To(Equal(testConfig.expectedInstrumentationIssues))
@@ -962,12 +967,36 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						"ValueFrom, this container will not be instrumented to send telemetry to Dash0.",
 				},
 			}),
+			Entry("should remove the legacy Dash0 injector and add the OpenTelemetry injector to LD_PRELOAD", addLdPreloadTest{
+				value: envVarLdPreloadLegacyValue,
+				ldPreloadExpectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue,
+				},
+			}),
+			Entry("should remove the legacy Dash0 injector and add the OpenTelemetry injector to LD_PRELOAD in combination with other libs", addLdPreloadTest{
+				value: "one.so " + envVarLdPreloadLegacyValue + " two.so",
+				ldPreloadExpectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue + " one.so two.so",
+				},
+			}),
+			Entry("should remove the legacy Dash0 injector and leave the existing OpenTelemetry injector entry in place", addLdPreloadTest{
+				value: envVarLdPreloadValue + " " + envVarLdPreloadLegacyValue,
+				ldPreloadExpectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue,
+				},
+			}),
+			Entry("should remove the legacy Dash0 injector and leave the existing OpenTelemetry injector entry in place with other libraries present", addLdPreloadTest{
+				value: "one.so " + envVarLdPreloadValue + " two.so " + envVarLdPreloadLegacyValue,
+				ldPreloadExpectation: EnvVarExpectation{
+					Value: "one.so " + envVarLdPreloadValue + " two.so",
+				},
+			}),
 		)
 
 		DescribeTable("should remove the OpenTelemetry injector from LD_PRELOAD",
 			func(testConfig envVarModificationTest) {
 				container := &corev1.Container{Env: testConfig.envVars}
-				workloadModifier.removeLdPreload(container)
+				workloadModifier.removeEnvironmentVariables(container)
 				Expect(container.Env).To(HaveLen(len(testConfig.expectations)))
 				VerifyEnvVarsFromMap(
 					testConfig.expectations,
@@ -1109,6 +1138,44 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				expectations: map[string]*EnvVarExpectation{
 					"OTHER":             {Value: "value"},
 					envVarLdPreloadName: {Value: "one.so:two.so"},
+				},
+			}),
+			Entry("should remove LD_PRELOAD if the legacy Dash0 injector is the only library", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: envVarLdPreloadLegacyValue},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should remove the legacy Dash0 injector from LD_PRELOAD", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "one.so " + envVarLdPreloadLegacyValue + " two.so"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so two.so"},
+				},
+			}),
+			Entry("should remove LD_PRELOAD if it only has the OpenTelemetry injector and the legacy Dash0 injector", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue + " " + envVarLdPreloadLegacyValue},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should remove the OpenTelemetry injector and the legacy Dash0 injector from LD_PRELOAD", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "one.so " + envVarLdPreloadValue + " two.so " + envVarLdPreloadLegacyValue + " three.so"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so two.so three.so"},
 				},
 			}),
 		)
