@@ -61,6 +61,9 @@ const (
 	legacyEnvVarNodeOptionsName       = "NODE_OPTIONS"
 	legacyEnvVarNodeOptionsValue      = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 	legacyEnvVarDash0InjectorLogLevel = "DASH0_INJECTOR_LOG_LEVEL"
+
+	// LD_PRELOAD value until release 0.96.0
+	envVarLdPreloadLegacyValue = "/__dash0__/dash0_injector.so"
 )
 
 var (
@@ -1266,6 +1269,10 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 }
 
 func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
+	m.removeEntryFromLdPreload(container, envVarLdPreloadValue)
+}
+
+func (m *ResourceModifier) removeEntryFromLdPreload(container *corev1.Container, ldPreloadEntry string) {
 	idx := findEnvVarIdx(container, envVarLdPreloadName)
 	if idx < 0 {
 		return
@@ -1278,10 +1285,10 @@ func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
 		// LD_PRELOAD part.
 		return
 	}
-	if strings.TrimSpace(previousValue) == envVarLdPreloadValue {
+	if strings.TrimSpace(previousValue) == ldPreloadEntry {
 		container.Env = slices.Delete(container.Env, idx, idx+1)
 		return
-	} else if !strings.Contains(previousValue, envVarLdPreloadValue) {
+	} else if !strings.Contains(previousValue, ldPreloadEntry) {
 		return
 	}
 
@@ -1295,7 +1302,7 @@ func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
 		libraries = append(libraries, strings.TrimSpace(lib))
 	}
 	libraries = slices.DeleteFunc(libraries, func(lib string) bool {
-		return strings.TrimSpace(lib) == envVarLdPreloadValue || lib == ""
+		return strings.TrimSpace(lib) == ldPreloadEntry || lib == ""
 	})
 	container.Env[idx].Value = strings.Join(libraries, separator)
 }
@@ -1347,17 +1354,18 @@ func removeEnvironmentVariable(container *corev1.Container, name string) {
 // workloads, but which are no longer set. When operator versions <= x set the env var EXAMPLE_VAR, and operator version
 // x + 1 stops setting it, it would never be removed without us actively cleaning up.
 func (m *ResourceModifier) removeLegacyEnvironmentVariables(container *corev1.Container) {
-	// removed in releases 0.28.0 & 0.70.1 (https://github.com/dash0hq/dash0-operator/pull/155,
-	// https://github.com/dash0hq/dash0-operator/pull/453)
+	// removed in release 0.70.1, follow up to adding the Dash0 injector in release 0.28.0
+	// (https://github.com/dash0hq/dash0-operator/pull/453, follow up to
+	// https://github.com/dash0hq/dash0-operator/pull/155)
 	m.removeLegacyEnvVarNodeOptions(container)
 
 	// removed in release 0.47.1 (https://github.com/dash0hq/dash0-operator/pull/280)
 	removeEnvironmentVariable(container, "DASH0_SERVICE_INSTANCE_ID")
 
-	// Removed in release 0.88.0 (https://github.com/dash0hq/dash0-operator/pull/590)
+	// removed in release 0.88.0 (https://github.com/dash0hq/dash0-operator/pull/590)
 	removeEnvironmentVariable(container, "DASH0_INJECTOR_DEBUG")
 
-	// Removed in release ~0.97.0 (https://github.com/dash0hq/dash0-operator/pull/706), replaced with the respective
+	// removed in release 0.97.0 (https://github.com/dash0hq/dash0-operator/pull/706), replaced with the respective
 	// OTEL_INJECTOR_* variables.
 	removeEnvironmentVariable(container, "DASH0_NAMESPACE_NAME")
 	removeEnvironmentVariable(container, "DASH0_POD_NAME")
@@ -1367,6 +1375,11 @@ func (m *ResourceModifier) removeLegacyEnvironmentVariables(container *corev1.Co
 	removeEnvironmentVariable(container, "DASH0_SERVICE_NAMESPACE")
 	removeEnvironmentVariable(container, "DASH0_SERVICE_VERSION")
 	removeEnvironmentVariable(container, "DASH0_RESOURCE_ATTRIBUTES")
+
+	// removed in release 0.97.1, follow up to replacing the Dash0 injector with the OpenTelemetry injector in release
+	// 0.97.0 (https://github.com/dash0hq/dash0-operator/pull/721, follow-up to
+	// https://github.com/dash0hq/dash0-operator/pull/706).
+	m.removeEntryFromLdPreload(container, envVarLdPreloadLegacyValue)
 }
 
 func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Container) {
