@@ -175,9 +175,9 @@ build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and p
 .PHONY: test-e2e
 test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-images-test-e2e).
 ifdef GINKGO_FOCUS
-	go run github.com/onsi/ginkgo/v2/ginkgo -v -focus="$(GINKGO_FOCUS)" test/e2e
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v -focus="$(GINKGO_FOCUS)" .
 else
-	go run github.com/onsi/ginkgo/v2/ginkgo -v test/e2e
+	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v .
 endif
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
@@ -196,6 +196,11 @@ golangci-lint: golangci-lint-install ## Run static code analysis for Go code.
 .PHONY: golangci-lint-fix
 golangci-lint-fix: golangci-lint-install ## Run static code analysis for Go code and fix issues automatically.
 	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run --fix; popd > /dev/null'
+
+.PHONY: go-mod-tidy
+go-mod-tidy: ## Run go mod tidy for all modules
+	@echo "-------------------------------- (running go mod tidy for all modules)"
+	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; GOBIN=$(LOCALBIN) go mod tidy; popd > /dev/null'
 
 .PHONY: internal-config-map-lint
 internal-config-map-lint: ## Verify config map templates for resources managed by the collector.
