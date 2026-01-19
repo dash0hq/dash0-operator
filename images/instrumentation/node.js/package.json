@@ -1,5 +1,5 @@
 {
   "dependencies": {
-    "@dash0/opentelemetry": "3.0.11"
+    "@dash0/opentelemetry": "4.1.0"
   }
 }
