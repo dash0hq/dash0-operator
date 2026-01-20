@@ -467,14 +467,14 @@ service:
       receivers:
         - k8s_events
       processors:
+        - memory_limiter
         - transform/k8s_events
         - k8sattributes
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
-        - transform/resources
-        - memory_limiter
         - batch
+        - transform/resources
       exporters:
         {{- if $hasNamespacedExporters }}
         - routing/logs
