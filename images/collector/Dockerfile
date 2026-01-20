@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM --platform=${BUILDPLATFORM} golang:1.25.5-alpine3.23 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.25.6-alpine3.23 AS builder
 
 RUN apk add --update git make yq && apk cache clean
 
