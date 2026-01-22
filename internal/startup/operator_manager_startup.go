@@ -80,6 +80,7 @@ type environmentVariables struct {
 	sendBatchMaxSize                            *uint32
 	disableReplicasetInformer                   bool
 	instrumentationDebug                        bool
+	enablePythonAutoInstrumentation             bool
 	debugVerbosityDetailed                      bool
 	disableCollectorResourceWatches             bool
 	enablePprofExtension                        bool
@@ -140,6 +141,7 @@ const (
 	developmentModeEnvVarName                 = "DASH0_DEVELOPMENT_MODE"
 	pprofPortEnvVarName                       = "DASH0_PPROF_PORT"
 	instrumentationDebugEnvVarName            = "DASH0_INSTRUMENTATION_DEBUG"
+	enablePythonAutoInstrumentationEnvVarName = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
 	disableCollectorResourceWatchesEnvVarName = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName          = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchMaxSizeEnvVarName                = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
@@ -615,6 +617,8 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 
 	instrumentationDebugRaw, isSet := os.LookupEnv(instrumentationDebugEnvVarName)
 	instrumentationDebug := isSet && strings.ToLower(instrumentationDebugRaw) == envVarValueTrue
+	enablePythonAutoInstrumentationRaw, isSet := os.LookupEnv(enablePythonAutoInstrumentationEnvVarName)
+	enablePythonAutoInstrumentation := isSet && strings.ToLower(enablePythonAutoInstrumentationRaw) == envVarValueTrue
 
 	debugVerbosityDetailedRaw, isSet := os.LookupEnv(debugVerbosityDetailedEnvVarName)
 	debugVerbosityDetailed := isSet && strings.ToLower(debugVerbosityDetailedRaw) == envVarValueTrue
@@ -664,6 +668,7 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		sendBatchMaxSize:                sendBatchMaxSize,
 		disableReplicasetInformer:       disableReplicasetInformer,
 		instrumentationDebug:            instrumentationDebug,
+		enablePythonAutoInstrumentation: enablePythonAutoInstrumentation,
 		debugVerbosityDetailed:          debugVerbosityDetailed,
 		disableCollectorResourceWatches: disableCollectorResourceWatches,
 		enablePprofExtension:            enablePprofExtension,
@@ -817,6 +822,8 @@ func startOperatorManager(
 		envVars.enablePprofExtension,
 		"instrumentation debug",
 		envVars.instrumentationDebug,
+		"Python auto-instrumentation enabled",
+		envVars.enablePythonAutoInstrumentation,
 		"watch collector resources",
 		!envVars.disableCollectorResourceWatches,
 	)
@@ -894,6 +901,7 @@ func startDash0Controllers(
 		extraConfig,
 		cliArgs.instrumentationDelays,
 		envVars.instrumentationDebug,
+		envVars.enablePythonAutoInstrumentation,
 	)
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.

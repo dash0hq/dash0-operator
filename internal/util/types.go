@@ -116,10 +116,11 @@ func getImageVersion(image string) string {
 // cluster, e.g. settings from the helm chart or the operator configuration resource.
 type ClusterInstrumentationConfig struct {
 	Images
-	OTelCollectorBaseUrl  string
-	ExtraConfig           atomic.Pointer[ExtraConfig]
-	InstrumentationDelays *DelayConfig
-	InstrumentationDebug  bool
+	OTelCollectorBaseUrl            string
+	ExtraConfig                     atomic.Pointer[ExtraConfig]
+	InstrumentationDelays           *DelayConfig
+	InstrumentationDebug            bool
+	EnablePythonAutoInstrumentation bool
 }
 
 func NewClusterInstrumentationConfig(
@@ -128,12 +129,14 @@ func NewClusterInstrumentationConfig(
 	extraConfig ExtraConfig,
 	instrumentationDelays *DelayConfig,
 	instrumentationDebug bool,
+	enablePythonAutoInstrumentation bool,
 ) *ClusterInstrumentationConfig {
 	c := &ClusterInstrumentationConfig{
-		Images:                images,
-		OTelCollectorBaseUrl:  oTelCollectorBaseUrl,
-		InstrumentationDelays: instrumentationDelays,
-		InstrumentationDebug:  instrumentationDebug,
+		Images:                          images,
+		OTelCollectorBaseUrl:            oTelCollectorBaseUrl,
+		InstrumentationDelays:           instrumentationDelays,
+		InstrumentationDebug:            instrumentationDebug,
+		EnablePythonAutoInstrumentation: enablePythonAutoInstrumentation,
 	}
 	c.ExtraConfig.Store(&extraConfig)
 	return c

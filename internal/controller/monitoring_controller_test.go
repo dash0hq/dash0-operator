@@ -88,6 +88,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				util.ExtraConfigDefaults,
 				nil,
 				false,
+				false,
 			),
 		)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(

@@ -50,6 +50,24 @@ COPY dotnet/opentelemetry-dotnet-instrumentation-version .
 COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
+# install Python artifacts (glibc)
+FROM python:3.14.2-trixie AS build-python-glibc
+RUN mkdir -p /dash0-init-container/python
+WORKDIR /dash0-init-container/python
+COPY python/requirements.txt .
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt
+COPY python/usercustomize.py .
+
+# install Python artifacts (musl)
+FROM python:3.14.2-alpine3.23 AS build-python-musl
+RUN mkdir -p /dash0-init-container/python
+WORKDIR /dash0-init-container/python
+COPY python/requirements.txt .
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt
+COPY python/usercustomize.py .
+
 # build the final instrumentation image
 FROM alpine:3.23.3
 COPY copy-instrumentation.sh /
@@ -57,10 +75,13 @@ COPY copy-instrumentation.sh /
 # copy artifacts (distros, injector binary) from the build stages to the final image
 COPY --from=download-injector-binary /libotelinject.so /dash0-init-container/injector/libotelinject.so
 COPY opentelemetry-injector/otelinject.conf /dash0-init-container/injector/otelinject.conf
+COPY opentelemetry-injector/otelinject-with-python.conf /dash0-init-container/injector/otelinject-with-python.conf
 COPY --from=build-dotnet /glibc /dash0-init-container/agents/dotnet/glibc
 COPY --from=build-dotnet /musl /dash0-init-container/agents/dotnet/musl
 COPY --from=build-jvm /dash0-init-container/jvm/build /dash0-init-container/agents/jvm
 COPY --from=build-node-js /dash0-init-container/node.js /dash0-init-container/agents/node.js
+COPY --from=build-python-glibc /dash0-init-container/python /dash0-init-container/agents/python/glibc
+COPY --from=build-python-musl /dash0-init-container/python /dash0-init-container/agents/python/musl
 
 WORKDIR /
 CMD ["/copy-instrumentation.sh"]

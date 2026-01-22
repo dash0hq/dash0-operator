@@ -3,6 +3,7 @@
 # last stage of the multi-stage Dockerfile, which only copies the relevant final artifacts from the various build
 # stages.
 test/
+images/instrumentation/python/analyze-dependencies.sh
 **/*.o
 **/*.javac
 **/*.jar

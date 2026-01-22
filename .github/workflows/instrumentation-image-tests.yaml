@@ -131,6 +131,19 @@ jobs:
           cache-to: type=gha,mode=max,scope=instrumentation
           push: true
 
+  run_python_usercustomize_py_unit_tests:
+    name: run Python usercustomize.py unit tests
+    needs:
+      - build_instrumentation_image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
+      - name: run Python usercustomize.py unit tests
+        run: |
+          make python-instrumentation-unit-tests
+
   run_instrumentation_image_tests_x86_64:
     name: Run Instrumentation Image Tests (x86_64)
     needs:

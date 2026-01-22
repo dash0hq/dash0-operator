@@ -38,6 +38,7 @@ var (
 		util.ExtraConfigDefaults,
 		nil,
 		false,
+		false,
 	)
 )
 
@@ -91,6 +92,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						OTelCollectorServiceBaseUrlTest,
 						util.ExtraConfigDefaults,
 						nil,
+						false,
 						false,
 					),
 					DefaultNamespaceInstrumentationConfig,

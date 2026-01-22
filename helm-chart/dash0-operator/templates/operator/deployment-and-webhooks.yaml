@@ -224,6 +224,10 @@ spec:
         - name: DASH0_INSTRUMENTATION_DEBUG
           value: {{ .Values.operator.instrumentation.debug | toString | quote }}
         {{- end }}
+        {{- if .Values.operator.instrumentation.enablePythonAutoInstrumentation }}
+        - name: DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION
+          value: {{ .Values.operator.instrumentation.enablePythonAutoInstrumentation | toString | quote }}
+        {{- end }}
         {{- if .Values.operator.disableCollectorResourceWatches }}
         - name: DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES
           value: {{ .Values.operator.disableCollectorResourceWatches | toString | quote }}

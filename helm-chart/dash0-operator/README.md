@@ -22,6 +22,7 @@ Supported runtimes for automatic workload instrumentation:
 * Java 8+
 * Node.js 16+
 * .NET
+* Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/python-support/helm-chart/dash0-operator/values.yaml#L401-L402))
 
 Other features like metrics and log collection are independent of the runtime of workloads.
 
@@ -330,6 +331,41 @@ Any changes you want to be permanent should be applied via Helm and the `operato
 If you would rather retain manual control over the operator configuration resource, you should omit any
 `operator.dash0Export.*` Helm values and create and manage the operator configuration resource manually (that is, via
 kubectl, ArgoCD etc.).
+
+### Python Auto-Instrumentation
+
+To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true`
+via Helm.
+
+Python auto-instrumentation is only supported for Python 3.9 or later.
+If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.8 or older), it will
+automatically deactivate itself and print a warning to `stderr`:
+```
+[dash0] warning: cannot auto-instrument Python process: unsupported Python version: 3.8.0
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+
+Python auto-instrumentation only works if the configured OTLP export protocol is `http/protobuf`.
+If the operator is managing the container's `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` variables,
+this will be set correctly automatically.
+If the Dash0 Python auto-instrumentation detects an incompatible `OTEL_EXPORTER_OTLP_PROTOCOL` setting, it will
+automatically deactivate itself and print a warning to `stderr`:
+```
+[dash0] warning: cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported
+```
+This can only happen if the container is setting its own `OTEL_EXPORTER_OTLP_ENDPOINT` and/or
+`OTEL_EXPORTER_OTLP_PROTOCOL`.
+Remove these environment variables from the pod spec template to enable automatic Python instrumentation by Dash0.
+
+Due to the nature of Python's dependency management, Python auto-instrumentation has the potential to introduce
+dependency conflicts.
+The Dash0 Python auto-instrumentation checks for potential dependency conflicts before actually instrumenting a process.
+If a dependency conflict is detected, the Dash0 Python auto-instrumentation will automatically deactivate itself and
+print a warning to `stderr`:
+```
+[dash0] warning: cannot auto-instrument Python process: dependency conflicts: {'package-name': {'version_required': '>=20.0', 'version_found': '19.0'}}
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
 
 ### Enable Dash0 Monitoring For a Namespace
 
@@ -1751,6 +1787,8 @@ You can safely skip this section if you are not interested in the technical deta
    adding a `-javaagent`).
    For .NET or other CLR-based workloads, the `CORECLR_PROFILER` mechanism is used to add the OpenTelemetry .NET
    instrumentation.
+   For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`.
+   (Python auto-instrumentation needs to be [enabled](https://github.com/dash0hq/dash0-operator/blob/python-support/helm-chart/dash0-operator/values.yaml#L401-L402) explicitly via Helm.)
 5. Additionally, the OpenTelemetry injector automatically improves Kubernetes-related resource attributes as follows:
    The operator sets the environment variables `OTEL_INJECTOR_K8S_NAMESPACE_NAME`, `OTEL_INJECTOR_K8S_POD_NAME`,
    `OTEL_INJECTOR_K8S_POD_UID` and `OTEL_INJECTOR_K8S_CONTAINER_NAME` on workloads.

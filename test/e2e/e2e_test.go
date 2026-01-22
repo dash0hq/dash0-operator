@@ -151,7 +151,9 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				operatorHelmChartUrl,
 				images,
 				true,
-				nil,
+				map[string]string{
+					"operator.instrumentation.enablePythonAutoInstrumentation": "true",
+				},
 			)
 		})
 
@@ -202,6 +204,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Entry("should instrument new Node.js deployments", workloadTypeDeployment, runtimeTypeNodeJs),
 					Entry("should instrument new JVM deployments", workloadTypeDeployment, runtimeTypeJvm),
 					Entry("should instrument new .NET deployments", workloadTypeDeployment, runtimeTypeDotnet),
+					Entry("should instrument new Python deployments", workloadTypeDeployment, runtimeTypePython),
 					Entry("should instrument new Node.js jobs", workloadTypeJob, runtimeTypeNodeJs),
 					Entry("should instrument new Node.js pods", workloadTypePod, runtimeTypeNodeJs),
 					Entry("should instrument new JVM pods", workloadTypePod, runtimeTypeJvm),
@@ -1499,6 +1502,73 @@ trace_statements:
 			})
 		})
 
+		// This test suite should be removed once Python auto-instrumentation is on by default.
+		Describe("with Python auto-instrumentation disabled", func() {
+			BeforeAll(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					true,
+					nil,
+				)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not instrument Python if Python auto-instrumentation is not enabled", func() {
+				testId := generateNewTestId(runtimeTypePython, workloadTypeDeployment)
+				query := fmt.Sprintf("id=%s", testId)
+				By("installing the Python deployment")
+				Expect(installPythonDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("waiting for the Python deployment to get modified (polling its labels and events to check)")
+				Eventually(func(g Gomega) {
+					verifyLabels(
+						g,
+						applicationUnderTestNamespace,
+						runtimeTypePython,
+						workloadTypeDeployment,
+						true,
+						images,
+						"webhook",
+					)
+					verifySuccessfulInstrumentationEvent(
+						g,
+						applicationUnderTestNamespace,
+						runtimeTypePython,
+						workloadTypeDeployment,
+						"webhook",
+					)
+				}, labelChangeTimeout, pollingInterval).Should(Succeed())
+
+				waitForApplicationToBecomeResponsive(
+					runtimeTypePython,
+					workloadTypeDeployment,
+					testEndpoint,
+					query,
+				)
+				secondsToCheckForSpans := 20
+				By(
+					fmt.Sprintf("verifying that no spans are produced (checking for %d seconds)",
+						secondsToCheckForSpans,
+					))
+				timestampLowerBound := time.Now()
+				Consistently(func(g Gomega) {
+					verifyNoSpans(g, runtimeTypePython, workloadTypeDeployment, testEndpoint, query, timestampLowerBound)
+				}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
+			})
+		})
+
 		Describe("operator startup", func() {
 			AfterAll(func() {
 				undeployOperator(operatorNamespace)
@@ -1923,6 +1993,7 @@ func workloadTestConfigs() []runtimeWorkloadTestConfig {
 		{workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
 		{workloadType: workloadTypeDeployment, runtime: runtimeTypeJvm},
 		{workloadType: workloadTypeDeployment, runtime: runtimeTypeDotnet},
+		{workloadType: workloadTypeDeployment, runtime: runtimeTypePython},
 		{workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
 		{workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
 	}

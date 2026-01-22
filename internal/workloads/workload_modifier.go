@@ -32,26 +32,27 @@ type containerHasServiceAttributes struct {
 const (
 	initContainerName = "dash0-instrumentation"
 
-	dash0VolumeName                          = "dash0-instrumentation"
-	dash0DirectoryEnvVarName                 = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
-	dash0CopyInstrumentationDebugEnvVarName  = "DASH0_COPY_INSTRUMENTATION_DEBUG"
-	otelAutoInstrumentationBaseDirectory     = "/__otel_auto_instrumentation"
-	envVarLdPreloadName                      = "LD_PRELOAD"
-	envVarLdPreloadValue                     = "/__otel_auto_instrumentation/injector/libotelinject.so"
-	envVarOtelInjectorConfigFileName         = "OTEL_INJECTOR_CONFIG_FILE"
-	envVarOtelInjectorConfigFileValue        = "/__otel_auto_instrumentation/injector/otelinject.conf"
-	envVarOtelExporterOtlpEndpointName       = "OTEL_EXPORTER_OTLP_ENDPOINT"
-	envVarOtelExporterOtlpProtocolName       = "OTEL_EXPORTER_OTLP_PROTOCOL"
-	envVarDash0CollectorBaseUrlName          = "DASH0_OTEL_COLLECTOR_BASE_URL"
-	envVarOTelInjectorNamespaceName          = "OTEL_INJECTOR_K8S_NAMESPACE_NAME"
-	envVarOTelInjectorPodName                = "OTEL_INJECTOR_K8S_POD_NAME"
-	envVarOTelInjectorPodUidName             = "OTEL_INJECTOR_K8S_POD_UID"
-	envVarOTelInjectorContainerName          = "OTEL_INJECTOR_K8S_CONTAINER_NAME"
-	envVarOTelInjectorServiceName            = "OTEL_INJECTOR_SERVICE_NAME"
-	envVarOTelInjectorServiceNamespace       = "OTEL_INJECTOR_SERVICE_NAMESPACE"
-	envVarOTelInjectorServiceVersionName     = "OTEL_INJECTOR_SERVICE_VERSION"
-	envVarOTelInjectorResourceAttributesName = "OTEL_INJECTOR_RESOURCE_ATTRIBUTES"
-	otelInjectorLogLevelEnvVarName           = "OTEL_INJECTOR_LOG_LEVEL"
+	dash0VolumeName                                = "dash0-instrumentation"
+	dash0DirectoryEnvVarName                       = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
+	dash0CopyInstrumentationDebugEnvVarName        = "DASH0_COPY_INSTRUMENTATION_DEBUG"
+	otelAutoInstrumentationBaseDirectory           = "/__otel_auto_instrumentation"
+	envVarLdPreloadName                            = "LD_PRELOAD"
+	envVarLdPreloadValue                           = "/__otel_auto_instrumentation/injector/libotelinject.so"
+	envVarOtelInjectorConfigFileName               = "OTEL_INJECTOR_CONFIG_FILE"
+	envVarOtelInjectorConfigFileValue              = "/__otel_auto_instrumentation/injector/otelinject.conf"
+	envVarOtelInjectorConfigFilePythonEnabledValue = "/__otel_auto_instrumentation/injector/otelinject-with-python.conf"
+	envVarOtelExporterOtlpEndpointName             = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	envVarOtelExporterOtlpProtocolName             = "OTEL_EXPORTER_OTLP_PROTOCOL"
+	envVarDash0CollectorBaseUrlName                = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	envVarOTelInjectorNamespaceName                = "OTEL_INJECTOR_K8S_NAMESPACE_NAME"
+	envVarOTelInjectorPodName                      = "OTEL_INJECTOR_K8S_POD_NAME"
+	envVarOTelInjectorPodUidName                   = "OTEL_INJECTOR_K8S_POD_UID"
+	envVarOTelInjectorContainerName                = "OTEL_INJECTOR_K8S_CONTAINER_NAME"
+	envVarOTelInjectorServiceName                  = "OTEL_INJECTOR_SERVICE_NAME"
+	envVarOTelInjectorServiceNamespace             = "OTEL_INJECTOR_SERVICE_NAMESPACE"
+	envVarOTelInjectorServiceVersionName           = "OTEL_INJECTOR_SERVICE_VERSION"
+	envVarOTelInjectorResourceAttributesName       = "OTEL_INJECTOR_RESOURCE_ATTRIBUTES"
+	otelInjectorLogLevelEnvVarName                 = "OTEL_INJECTOR_LOG_LEVEL"
 
 	defaultOtelExporterOtlpProtocol = common.ProtocolHttpProtobuf
 
@@ -567,11 +568,15 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	)
 
 	instrumentationIssues = m.addOrAppendToLdPreloadEnvVar(container, instrumentationIssues, perContainerLogger)
+	otelInjectorConfigFile := envVarOtelInjectorConfigFileValue
+	if m.clusterInstrumentationConfig.EnablePythonAutoInstrumentation {
+		otelInjectorConfigFile = envVarOtelInjectorConfigFilePythonEnabledValue
+	}
 	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name:  envVarOtelInjectorConfigFileName,
-			Value: envVarOtelInjectorConfigFileValue,
+			Value: otelInjectorConfigFile,
 		},
 	)
 

@@ -1,6 +1,5 @@
-# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 python:3.14.2-slim-trixie
 python:3.14.2-alpine3.23
-python:3.8.20-slim-bullseye
