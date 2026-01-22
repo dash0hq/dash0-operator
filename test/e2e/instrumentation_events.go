@@ -9,6 +9,7 @@ import (
 	"os/exec"
 
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -106,15 +107,16 @@ func verifyEvent(
 	resourceName := workloadName(runtime, workloadType)
 	eventsJson, err := run(exec.Command(
 		"kubectl",
-		"events",
+		"get",
+		"events.events.k8s.io",
 		"-ojson",
 		"--namespace",
 		namespace,
-		"--for",
-		fmt.Sprintf("%s/%s", workloadType.workloadTypeString, resourceName),
+		"--field-selector",
+		fmt.Sprintf("regarding.kind=%s,regarding.name=%s", workloadType.workloadTypeStringCamelCase, resourceName),
 	), false)
 	g.Expect(err).NotTo(HaveOccurred())
-	var events corev1.EventList
+	var events eventsv1.EventList
 	err = json.Unmarshal([]byte(eventsJson), &events)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(events.Items).To(
