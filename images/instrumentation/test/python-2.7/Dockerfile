@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image=python:3.14.2-slim-trixie
+ARG base_image=python:2.7.18-buster
 
 FROM ${instrumentation_image} AS init
 

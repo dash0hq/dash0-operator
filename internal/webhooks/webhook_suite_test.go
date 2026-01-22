@@ -130,6 +130,7 @@ var _ = BeforeSuite(func() {
 			util.ExtraConfigDefaults,
 			nil,
 			false,
+			false,
 		),
 	).SetupWebhookWithManager(manager)).To(Succeed())
 

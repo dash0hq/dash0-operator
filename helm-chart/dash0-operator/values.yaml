@@ -405,6 +405,9 @@ operator:
     # If set to true, it enables verbose output from the Dash0 init container and the OpenTelemetry injector.
     debug: false
 
+    # If set to true, it enables Python auto-instrumentation (beta).
+    enablePythonAutoInstrumentation: false
+
   # If set to true, the operator manager will not watch the resources of the OpenTelemetry collectors it manages. By
   # default, the operator watches all collector resources (config maps, deployment, daemonset etc.) and reconciles them
   # if they are changed or deleted externally. This is generally the expected behavior of an operator in relation to the

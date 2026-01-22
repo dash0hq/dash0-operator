@@ -104,6 +104,7 @@ var _ = BeforeSuite(func() {
 			util.ExtraConfigDefaults,
 			nil,
 			false,
+			false,
 		),
 	)
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(

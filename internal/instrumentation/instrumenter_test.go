@@ -61,6 +61,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				util.ExtraConfigDefaults,
 				nil,
 				false,
+				false,
 			),
 		)
 	})
@@ -800,6 +801,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 					util.ExtraConfigDefaults,
 					nil,
 					true,
+					false,
 				),
 			)
 

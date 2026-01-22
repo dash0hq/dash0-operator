@@ -1,0 +1,8 @@
+# Note: All test cases share the same Python installation, i.e.
+# images/instrumentation/test/python-dependency-conflict/test-cases/xxx/requirements.txt and
+# images/instrumentation/test/python-dependency-conflict/test-cases/yyy/requirements.txt are not isolated from each
+# other. Please keep that in mind when designing test cases.
+
+# Deliberately importing an old version of protobuf, app.py verifies that this version is used and not the version that
+# might be brought in by the Dash0 instrumentation image (which is 6.x).
+protobuf==4.25.8

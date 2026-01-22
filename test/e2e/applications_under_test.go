@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -54,11 +55,11 @@ var (
 		isBatch:                     false,
 	}
 
-	runtimeTypeNodeJs = runtimeType{
-		runtimeTypeLabel: runtimeTypeLabelNodeJs,
-		workloadName:     workloadNameNodeJs,
-		helmChartPath:    chartPathNodeJs,
-		helmReleaseName:  releaseNameNodeJs,
+	runtimeTypeDotnet = runtimeType{
+		runtimeTypeLabel: runtimeTypeLabelDotnet,
+		workloadName:     workloadNameDotnet,
+		helmChartPath:    chartPathDotnet,
+		helmReleaseName:  releaseNameDotnet,
 	}
 	runtimeTypeJvm = runtimeType{
 		runtimeTypeLabel: runtimeTypeLabelJvm,
@@ -66,11 +67,17 @@ var (
 		helmChartPath:    chartPathJvm,
 		helmReleaseName:  releaseNameJvm,
 	}
-	runtimeTypeDotnet = runtimeType{
-		runtimeTypeLabel: runtimeTypeLabelDotnet,
-		workloadName:     workloadNameDotnet,
-		helmChartPath:    chartPathDotnet,
-		helmReleaseName:  releaseNameDotnet,
+	runtimeTypeNodeJs = runtimeType{
+		runtimeTypeLabel: runtimeTypeLabelNodeJs,
+		workloadName:     workloadNameNodeJs,
+		helmChartPath:    chartPathNodeJs,
+		helmReleaseName:  releaseNameNodeJs,
+	}
+	runtimeTypePython = runtimeType{
+		runtimeTypeLabel: runtimeTypeLabelPython,
+		workloadName:     workloadNamePython,
+		helmChartPath:    chartPathPython,
+		helmReleaseName:  releaseNamePython,
 	}
 
 	testAppImages = make(map[runtimeType]ImageSpec)
@@ -99,6 +106,14 @@ func determineTestAppImages() {
 			"TEST_APP_NODEJS",
 			repositoryPrefix,
 			"dash0-operator-nodejs-20-express-test-app",
+			imageTag,
+			pullPolicy,
+		)
+	testAppImages[runtimeTypePython] =
+		determineContainerImage(
+			"TEST_APP_PYTHON",
+			repositoryPrefix,
+			"dash0-operator-python-flask-test-app",
 			imageTag,
 			pullPolicy,
 		)
@@ -209,6 +224,18 @@ func installNodeJsStatefulSet(namespace string) error {
 	)
 }
 
+//nolint:unparam
+func installPythonDeployment(namespace string) error {
+	return installTestAppWorkload(
+		runtimeTypePython,
+		workloadTypeDeployment,
+		namespace,
+		"",
+		nil,
+		nil,
+	)
+}
+
 // installTestAppWorkload runs helm install for a single workload, that is, for one particular runtime (Node.js, JVM,
 // ...) and one particular workload type (i.e. Deployment, DaemonSet, ...).
 func installTestAppWorkload(
@@ -301,6 +328,17 @@ func runTestAppHelmInstall(
 	return runAndIgnoreOutput(exec.Command("helm", args...))
 }
 
+func waitForApplicationToBecomeResponsive(
+	runtime runtimeType,
+	workloadType workloadType,
+	route string,
+	query string,
+) {
+	Eventually(func(g Gomega) {
+		sendRequest(g, runtime, workloadType, route, query)
+	}, 30*time.Second, pollingInterval).Should(Succeed())
+}
+
 func runTestAppHelmUninstall(namespace string, releaseName string) error {
 	return runAndIgnoreOutput(
 		exec.Command(
@@ -323,6 +361,10 @@ func uninstallJvmRelease(namespace string) error {
 
 func uninstallNodeJsRelease(namespace string) error {
 	return runTestAppHelmUninstall(namespace, runtimeTypeNodeJs.helmReleaseName)
+}
+
+func uninstallPythonRelease(namespace string) error {
+	return runTestAppHelmUninstall(namespace, runtimeTypePython.helmReleaseName)
 }
 
 func killBatchJobsAndPods(namespace string) {
@@ -365,6 +407,7 @@ func removeAllTestApplications(namespace string) {
 	Expect(uninstallDotnetRelease(namespace)).To(Succeed())
 	Expect(uninstallJvmRelease(namespace)).To(Succeed())
 	Expect(uninstallNodeJsRelease(namespace)).To(Succeed())
+	Expect(uninstallPythonRelease(namespace)).To(Succeed())
 }
 
 // compileWorkloadTypeSetParams creates a list of Helm --set flags for the test app Helm chart to deploy a specific set

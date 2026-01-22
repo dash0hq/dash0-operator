@@ -528,12 +528,15 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     let testCmd: string[];
     switch (runtime) {
       case 'c':
+      // fall through
       case 'c-debian-11-no-libdl':
+      // fall through
       case 'distroless-with-libc':
         testCmd = [`/test-cases/${testCase}/app.o`];
         break;
 
       case 'dotnet':
+      // fall through
       case 'distroless-static':
         testCmd = [`/test-cases/${testCase}/app`];
         break;
@@ -549,6 +552,10 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
         break;
 
       case 'python':
+      // fall through
+      case 'python-dependency-conflict':
+      // fall through
+      case 'python-2.7':
         testCmd = ['python', `/test-cases/${testCase}/app.py`];
         break;
 
@@ -630,6 +637,9 @@ function createRunTestCaseTask(
         dockerRunCmdArray = dockerRunCmdArray.concat(['--env-file', envFile]);
       }
       dockerRunCmdArray = dockerRunCmdArray.concat(['--env', "BASE_IMAGE_RUN='" + baseImageRun + "'"]);
+      if (verbose) {
+        dockerRunCmdArray = dockerRunCmdArray.concat(['--env', 'OTEL_INJECTOR_LOG_LEVEL=debug']);
+      }
       dockerRunCmdArray = dockerRunCmdArray.concat([imageNameTest, ...testCmd]);
       const dockerRunCmd = dockerRunCmdArray.map(arg => `"${arg}"`).join(' ');
 
