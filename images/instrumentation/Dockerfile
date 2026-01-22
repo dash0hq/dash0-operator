@@ -9,17 +9,9 @@ RUN apk add --no-cache curl jq wget
 COPY opentelemetry-injector/version /tmp/opentelemetry-injector-version
 
 ARG TARGETARCH
-RUN injector_version=$(cat /tmp/opentelemetry-injector-version) && \
-  case ${TARGETARCH} in \
-    amd64) export injector_binary="libotelinject_amd64.so" ;; \
-    arm64) export injector_binary="libotelinject_arm64.so" ;; \
-    *)     echo "architecture unsupported: ${TARGETARCH}" && exit 1 ;; \
-  esac && \
-  wget -q -O /libotelinject.so "https://github.com/open-telemetry/opentelemetry-injector/releases/download/${injector_version}/${injector_binary}" && \
-  export checksum=$(curl "https://api.github.com/repos/open-telemetry/opentelemetry-injector/releases/tags/$injector_version" | jq -r ".assets[] | select(.name==\"$injector_binary\") | .digest") && \
-  export checksum=${checksum#sha256:} && \
-  echo "${checksum} libotelinject.so" > checksum.txt && \
-  sha256sum -c checksum.txt
+
+# Temporary change to use locally compiled injector binaries:
+COPY opentelemetry-injector/libotelinject_${TARGETARCH}.so /libotelinject.so
 
 # download OpenTelemetry Java agent
 FROM eclipse-temurin:25-jdk-noble AS build-jvm
@@ -50,6 +42,22 @@ COPY dotnet/opentelemetry-dotnet-instrumentation-version .
 COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
+# install Python artifacts (glibc)
+FROM python:3.14.2-trixie AS build-python-glibc
+RUN mkdir -p /dash0-init-container/python
+WORKDIR /dash0-init-container/python
+ADD python/requirements.txt .
+RUN pip install --target . -r requirements.txt
+ADD python/usercustomize.py .
+
+# install Python artifacts (musl)
+FROM python:3.14.2-alpine3.23 AS build-python-musl
+RUN mkdir -p /dash0-init-container/python
+WORKDIR /dash0-init-container/python
+ADD python/requirements.txt .
+RUN pip install --target . -r requirements.txt
+ADD python/usercustomize.py .
+
 # build the final instrumentation image
 FROM alpine:3.23.2
 COPY copy-instrumentation.sh /
@@ -61,6 +69,8 @@ COPY --from=build-dotnet /glibc /dash0-init-container/agents/dotnet/glibc
 COPY --from=build-dotnet /musl /dash0-init-container/agents/dotnet/musl
 COPY --from=build-jvm /dash0-init-container/jvm/build /dash0-init-container/agents/jvm
 COPY --from=build-node-js /dash0-init-container/node.js /dash0-init-container/agents/node.js
+COPY --from=build-python-glibc /dash0-init-container/python /dash0-init-container/agents/python/glibc
+COPY --from=build-python-musl /dash0-init-container/python /dash0-init-container/agents/python/musl
 
 WORKDIR /
 CMD ["/copy-instrumentation.sh"]
