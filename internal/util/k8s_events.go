@@ -12,15 +12,16 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/record"
+	clienteventsv1 "k8s.io/client-go/kubernetes/typed/events/v1"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func HandlePotentiallySuccessfulInstrumentationEvent(
-	eventRecorder record.EventRecorder,
+	eventRecorder events.EventRecorder,
 	resource runtime.Object,
 	eventSource WorkloadModifierActor,
 	containersTotal int,
@@ -48,29 +49,33 @@ func HandlePotentiallySuccessfulInstrumentationEvent(
 }
 
 func queueSuccessfulInstrumentationEvent(
-	eventRecorder record.EventRecorder,
+	eventRecorder events.EventRecorder,
 	resource runtime.Object,
 	eventSource WorkloadModifierActor,
 ) {
-	eventRecorder.Event(
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeNormal,
 		string(ReasonSuccessfulInstrumentation),
+		string(ActionInstrumentation),
 		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
 	)
 }
 
 func queuePartiallyUnsuccessfulInstrumentationEvent(
-	eventRecorder record.EventRecorder,
+	eventRecorder events.EventRecorder,
 	resource runtime.Object,
 	eventSource WorkloadModifierActor,
 	containersTotal int,
 	instrumentationIssuesPerContainer map[string][]string,
 ) {
-	eventRecorder.Event(
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeWarning,
 		string(ReasonPartiallyUnsuccessfulInstrumentation),
+		string(ActionInstrumentation),
 		fmt.Sprintf(
 			"Dash0 instrumentation of this workload by the %s has been partially unsuccessful, %d out of %d containers have instrumentation issues. %s",
 			eventSource,
@@ -81,48 +86,57 @@ func queuePartiallyUnsuccessfulInstrumentationEvent(
 	)
 }
 
-func QueueNoInstrumentationNecessaryEvent(
-	eventRecorder record.EventRecorder, resource runtime.Object, reason string) {
-	eventRecorder.Event(
+func QueueNoInstrumentationNecessaryEvent(eventRecorder events.EventRecorder, resource runtime.Object, note string) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeNormal,
 		string(ReasonNoInstrumentationNecessary),
-		reason,
+		string(ActionInstrumentation),
+		note,
 	)
 }
 
-func QueueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
-	eventRecorder.Event(
+func QueueFailedInstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeWarning,
 		string(ReasonFailedInstrumentation),
+		string(ActionInstrumentation),
 		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has not been successful. Error message: %s", eventSource, err.Error()),
 	)
 }
 
-func QueueSuccessfulUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
-	eventRecorder.Event(
+func QueueSuccessfulUninstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeNormal,
 		string(ReasonSuccessfulUninstrumentation),
+		string(ActionUninstrumentation),
 		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
 	)
 }
 
-func QueueNoUninstrumentationNecessaryEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
-	eventRecorder.Event(
+func QueueNoUninstrumentationNecessaryEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeNormal,
 		string(ReasonNoUninstrumentationNecessary),
+		string(ActionUninstrumentation),
 		fmt.Sprintf("Dash0 instrumentation was not present on this workload, no modification by the %s has been necessary.", eventSource),
 	)
 }
 
-func QueueFailedUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
-	eventRecorder.Event(
+func QueueFailedUninstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeWarning,
 		string(ReasonFailedUninstrumentation),
+		string(ActionUninstrumentation),
 		fmt.Sprintf("The %s's attempt to remove the Dash0 instrumentation from this workload has not been successful. Error message: %s", eventSource, err.Error()),
 	)
 }
@@ -140,14 +154,14 @@ func stringifyContainerInstrumentationIssues(instrumentationIssuesPerContainer m
 	return sb.String()
 }
 
-func AttachEventToInvolvedObject(
+func AttachEventToObject(
 	ctx context.Context,
 	k8sClient client.Client,
-	eventApi clientcorev1.EventInterface,
-	event *corev1.Event,
+	eventApi clienteventsv1.EventInterface,
+	event *eventsv1.Event,
 ) error {
 	if err := setUidAndResourceVersionForEvent(ctx, k8sClient, event); err != nil {
-		return fmt.Errorf("could not update event.InvolvedObject: %w", err)
+		return fmt.Errorf("could not update event.Regarding: %w", err)
 	}
 	if _, err := eventApi.Update(ctx, event, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("could not update the dangling event %v: %w", event.UID, err)
@@ -158,30 +172,30 @@ func AttachEventToInvolvedObject(
 func setUidAndResourceVersionForEvent(
 	ctx context.Context,
 	k8sClient client.Client,
-	event *corev1.Event,
+	event *eventsv1.Event,
 ) error {
-	involvedObject := &event.InvolvedObject
-	object, err := GetReceiverForWorkloadType(involvedObject.APIVersion, involvedObject.Kind)
+	regardingObject := &event.Regarding
+	object, err := GetReceiverForWorkloadType(regardingObject.APIVersion, regardingObject.Kind)
 	if err != nil {
 		return err
 	}
 
 	if err = k8sClient.Get(
 		ctx,
-		client.ObjectKey{Namespace: involvedObject.Namespace, Name: involvedObject.Name},
+		client.ObjectKey{Namespace: regardingObject.Namespace, Name: regardingObject.Name},
 		object,
 	); err != nil {
 		return fmt.Errorf(
-			"could not load involved object %s %s/%s: %w",
-			involvedObject.Kind,
-			involvedObject.Namespace,
-			involvedObject.Name,
+			"could not load regarding object %s %s/%s: %w",
+			regardingObject.Kind,
+			regardingObject.Namespace,
+			regardingObject.Name,
 			err,
 		)
 	}
 
-	involvedObject.UID = object.GetUID()
-	involvedObject.ResourceVersion = object.GetResourceVersion()
+	regardingObject.UID = object.GetUID()
+	regardingObject.ResourceVersion = object.GetResourceVersion()
 
 	return nil
 }

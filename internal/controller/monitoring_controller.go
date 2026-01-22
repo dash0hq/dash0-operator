@@ -384,14 +384,14 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 	logger *logr.Logger,
 ) {
 	namespace := monitoringResource.Namespace
-	eventApi := r.clientset.CoreV1().Events(namespace)
+	eventApi := r.clientset.EventsV1().Events(namespace)
 	backoff := r.danglingEventsTimeouts.Backoff
 	for _, eventType := range util.AllEvents {
 		retryErr := util.RetryWithCustomBackoff(
-			"attaching dangling event to involved object",
+			"attaching dangling event to object",
 			func() error {
 				danglingEvents, listErr := eventApi.List(ctx, metav1.ListOptions{
-					FieldSelector: fmt.Sprintf("involvedObject.uid=,reason=%s", eventType),
+					FieldSelector: fmt.Sprintf("regarding.uid=,reason=%s", eventType),
 				})
 				if listErr != nil {
 					return listErr
@@ -403,13 +403,13 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 
 				var allAttachErrors []error
 				for _, event := range danglingEvents.Items {
-					attachErr := util.AttachEventToInvolvedObject(ctx, r.Client, eventApi, &event)
+					attachErr := util.AttachEventToObject(ctx, r.Client, eventApi, &event)
 					if attachErr != nil {
 						allAttachErrors = append(allAttachErrors, attachErr)
 					} else {
-						involvedObject := event.InvolvedObject
+						regardingObject := event.Regarding
 						logger.Info(fmt.Sprintf("Attached '%s' event (uid: %s) to its associated object (%s %s/%s).",
-							eventType, event.UID, involvedObject.Kind, involvedObject.Namespace, involvedObject.Name))
+							eventType, event.UID, regardingObject.Kind, regardingObject.Namespace, regardingObject.Name))
 					}
 				}
 				if len(allAttachErrors) > 0 {

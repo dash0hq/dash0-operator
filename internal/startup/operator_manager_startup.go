@@ -891,7 +891,7 @@ func startDash0Controllers(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
 		nil,
 		clientset,
-		mgr.GetEventRecorderFor("dash0-startup-tasks"),
+		mgr.GetEventRecorder("dash0-startup-tasks"),
 		clusterInstrumentationConfig,
 	)
 	// For consistency, we update the extra config map in the startupInstrumenter handler as well if it changes. Since
@@ -916,7 +916,7 @@ func startDash0Controllers(
 	instrumenter := instrumentation.NewInstrumenter(
 		k8sClient,
 		clientset,
-		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
+		mgr.GetEventRecorder("dash0-monitoring-controller"),
 		clusterInstrumentationConfig,
 	)
 	// For consistency, we update the extra config map in the instrumenter handler as well. However, even if
@@ -1100,7 +1100,7 @@ func startDash0Controllers(
 
 	instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
 		k8sClient,
-		mgr.GetEventRecorderFor("dash0-instrumentation-webhook"),
+		mgr.GetEventRecorder("dash0-instrumentation-webhook"),
 		clusterInstrumentationConfig,
 	)
 	if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {

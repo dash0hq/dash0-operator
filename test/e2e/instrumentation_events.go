@@ -29,7 +29,9 @@ func verifySuccessfulInstrumentationEvent(
 		namespace,
 		runtime,
 		workloadType,
+		corev1.EventTypeNormal,
 		util.ReasonSuccessfulInstrumentation,
+		util.ActionInstrumentation,
 		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
 	)
 }
@@ -39,15 +41,17 @@ func verifyFailedInstrumentationEvent(
 	namespace string,
 	runtime runtimeType,
 	workloadType workloadType,
-	message string,
+	note string,
 ) {
 	verifyEvent(
 		g,
 		namespace,
 		runtime,
 		workloadType,
+		corev1.EventTypeWarning,
 		util.ReasonFailedInstrumentation,
-		message,
+		util.ActionInstrumentation,
+		note,
 	)
 }
 
@@ -63,7 +67,9 @@ func verifySuccessfulUninstrumentationEvent(
 		namespace,
 		runtime,
 		workloadType,
+		corev1.EventTypeNormal,
 		util.ReasonSuccessfulUninstrumentation,
+		util.ActionUninstrumentation,
 		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
 	)
 }
@@ -73,15 +79,17 @@ func verifyFailedUninstrumentationEvent(
 	namespace string,
 	runtime runtimeType,
 	workloadType workloadType,
-	message string,
+	note string,
 ) {
 	verifyEvent(
 		g,
 		namespace,
 		runtime,
 		workloadType,
+		corev1.EventTypeWarning,
 		util.ReasonFailedUninstrumentation,
-		message,
+		util.ActionUninstrumentation,
+		note,
 	)
 }
 
@@ -90,8 +98,10 @@ func verifyEvent(
 	namespace string,
 	runtime runtimeType,
 	workloadType workloadType,
+	eventType string,
 	reason util.Reason,
-	message string,
+	action util.Action,
+	note string,
 ) {
 	resourceName := workloadName(runtime, workloadType)
 	eventsJson, err := run(exec.Command(
@@ -112,7 +122,9 @@ func verifyEvent(
 			testUtil.MatchEvent(
 				namespace,
 				resourceName,
+				eventType,
 				reason,
-				message,
+				action,
+				note,
 			)))
 }
