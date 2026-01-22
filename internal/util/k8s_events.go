@@ -15,12 +15,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func HandlePotentiallySuccessfulInstrumentationEvent(
-	eventRecorder record.EventRecorder,
+	eventRecorder events.EventRecorder,
 	resource runtime.Object,
 	eventSource WorkloadModifierActor,
 	containersTotal int,
@@ -48,29 +48,33 @@ func HandlePotentiallySuccessfulInstrumentationEvent(
 }
 
 func queueSuccessfulInstrumentationEvent(
-	eventRecorder record.EventRecorder,
+	eventRecorder events.EventRecorder,
 	resource runtime.Object,
 	eventSource WorkloadModifierActor,
 ) {
-	eventRecorder.Event(
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeNormal,
 		string(ReasonSuccessfulInstrumentation),
+		string(ActionInstrumentation),
 		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
 	)
 }
 
 func queuePartiallyUnsuccessfulInstrumentationEvent(
-	eventRecorder record.EventRecorder,
+	eventRecorder events.EventRecorder,
 	resource runtime.Object,
 	eventSource WorkloadModifierActor,
 	containersTotal int,
 	instrumentationIssuesPerContainer map[string][]string,
 ) {
-	eventRecorder.Event(
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeWarning,
 		string(ReasonPartiallyUnsuccessfulInstrumentation),
+		string(ActionInstrumentation),
 		fmt.Sprintf(
 			"Dash0 instrumentation of this workload by the %s has been partially unsuccessful, %d out of %d containers have instrumentation issues. %s",
 			eventSource,
@@ -81,48 +85,57 @@ func queuePartiallyUnsuccessfulInstrumentationEvent(
 	)
 }
 
-func QueueNoInstrumentationNecessaryEvent(
-	eventRecorder record.EventRecorder, resource runtime.Object, reason string) {
-	eventRecorder.Event(
+func QueueNoInstrumentationNecessaryEvent(eventRecorder events.EventRecorder, resource runtime.Object, note string) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeNormal,
 		string(ReasonNoInstrumentationNecessary),
-		reason,
+		string(ActionInstrumentation),
+		note,
 	)
 }
 
-func QueueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
-	eventRecorder.Event(
+func QueueFailedInstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeWarning,
 		string(ReasonFailedInstrumentation),
+		string(ActionInstrumentation),
 		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has not been successful. Error message: %s", eventSource, err.Error()),
 	)
 }
 
-func QueueSuccessfulUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
-	eventRecorder.Event(
+func QueueSuccessfulUninstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeNormal,
 		string(ReasonSuccessfulUninstrumentation),
+		string(ActionUninstrumentation),
 		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
 	)
 }
 
-func QueueNoUninstrumentationNecessaryEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
-	eventRecorder.Event(
+func QueueNoUninstrumentationNecessaryEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeNormal,
 		string(ReasonNoUninstrumentationNecessary),
+		string(ActionUninstrumentation),
 		fmt.Sprintf("Dash0 instrumentation was not present on this workload, no modification by the %s has been necessary.", eventSource),
 	)
 }
 
-func QueueFailedUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
-	eventRecorder.Event(
+func QueueFailedUninstrumentationEvent(eventRecorder events.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
+	eventRecorder.Eventf(
 		resource,
+		nil,
 		corev1.EventTypeWarning,
 		string(ReasonFailedUninstrumentation),
+		string(ActionUninstrumentation),
 		fmt.Sprintf("The %s's attempt to remove the Dash0 instrumentation from this workload has not been successful. Error message: %s", eventSource, err.Error()),
 	)
 }
@@ -140,17 +153,23 @@ func stringifyContainerInstrumentationIssues(instrumentationIssuesPerContainer m
 	return sb.String()
 }
 
+// AttachEventToInvolvedObject attaches an event that has been created by the webhook to its referenced object by
+// setting the event's InvolvedObject.UID. This only works with the legacy event API from k8s.io/api/core/v1, since the
+// equivalent field (Regarding.UID) is immutable in the new API from k8s.io/api/events/v1.
+//
+// Without doing this, the event will not show up in the event section of "kubectl describe" for the workload, because
+// kubectl always searches for related events with the object's uid.
 func AttachEventToInvolvedObject(
 	ctx context.Context,
 	k8sClient client.Client,
-	eventApi clientcorev1.EventInterface,
-	event *corev1.Event,
+	legacyEventApi clientcorev1.EventInterface,
+	legacyEvent *corev1.Event,
 ) error {
-	if err := setUidAndResourceVersionForEvent(ctx, k8sClient, event); err != nil {
-		return fmt.Errorf("could not update event.InvolvedObject: %w", err)
+	if err := setUidAndResourceVersionForEvent(ctx, k8sClient, legacyEvent); err != nil {
+		return fmt.Errorf("could not update event.Regarding: %w", err)
 	}
-	if _, err := eventApi.Update(ctx, event, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("could not update the dangling event %v: %w", event.UID, err)
+	if _, err := legacyEventApi.Update(ctx, legacyEvent, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("could not update the dangling event %v: %w", legacyEvent.UID, err)
 	}
 	return nil
 }
@@ -158,9 +177,9 @@ func AttachEventToInvolvedObject(
 func setUidAndResourceVersionForEvent(
 	ctx context.Context,
 	k8sClient client.Client,
-	event *corev1.Event,
+	legacyEvent *corev1.Event,
 ) error {
-	involvedObject := &event.InvolvedObject
+	involvedObject := &legacyEvent.InvolvedObject
 	object, err := GetReceiverForWorkloadType(involvedObject.APIVersion, involvedObject.Kind)
 	if err != nil {
 		return err
