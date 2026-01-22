@@ -62,8 +62,9 @@ type neccessaryCleanupSteps struct {
 }
 
 type workloadType struct {
-	workloadTypeString string
-	isBatch            bool
+	workloadTypeString          string
+	workloadTypeStringCamelCase string
+	isBatch                     bool
 }
 
 type runtimeType struct {

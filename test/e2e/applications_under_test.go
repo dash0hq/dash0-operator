@@ -19,32 +19,39 @@ const (
 
 var (
 	workloadTypeCronjob = workloadType{
-		workloadTypeString: "cronjob",
-		isBatch:            true,
+		workloadTypeString:          "cronjob",
+		workloadTypeStringCamelCase: "CronJob",
+		isBatch:                     true,
 	}
 	workloadTypeDaemonSet = workloadType{
-		workloadTypeString: "daemonset",
-		isBatch:            false,
+		workloadTypeString:          "daemonset",
+		workloadTypeStringCamelCase: "DaemonSet",
+		isBatch:                     false,
 	}
 	workloadTypeDeployment = workloadType{
-		workloadTypeString: "deployment",
-		isBatch:            false,
+		workloadTypeString:          "deployment",
+		workloadTypeStringCamelCase: "Deployment",
+		isBatch:                     false,
 	}
 	workloadTypeJob = workloadType{
-		workloadTypeString: "job",
-		isBatch:            true,
+		workloadTypeString:          "job",
+		workloadTypeStringCamelCase: "Job",
+		isBatch:                     true,
 	}
 	workloadTypePod = workloadType{
-		workloadTypeString: "pod",
-		isBatch:            false,
+		workloadTypeString:          "pod",
+		workloadTypeStringCamelCase: "Pod",
+		isBatch:                     false,
 	}
 	workloadTypeReplicaSet = workloadType{
-		workloadTypeString: "replicaset",
-		isBatch:            false,
+		workloadTypeString:          "replicaset",
+		workloadTypeStringCamelCase: "ReplicaSet",
+		isBatch:                     false,
 	}
 	workloadTypeStatefulSet = workloadType{
-		workloadTypeString: "statefulset",
-		isBatch:            false,
+		workloadTypeString:          "statefulset",
+		workloadTypeStringCamelCase: "StatefulSet",
+		isBatch:                     false,
 	}
 
 	runtimeTypeNodeJs = runtimeType{

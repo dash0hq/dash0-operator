@@ -1254,12 +1254,12 @@ func DeleteAllEvents(
 	clientset *kubernetes.Clientset,
 	namespace string,
 ) {
-	err := clientset.CoreV1().Events(namespace).DeleteCollection(ctx, metav1.DeleteOptions{
+	err := clientset.EventsV1().Events(namespace).DeleteCollection(ctx, metav1.DeleteOptions{
 		GracePeriodSeconds: new(int64), // delete immediately
 	}, metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	allEvents, err := clientset.EventsV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(allEvents.Items).To(BeEmpty())
 }

@@ -38,7 +38,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	BeforeAll(func() {
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
 
-		recorder := manager.GetEventRecorderFor("dash0-monitoring-controller")
+		recorder := manager.GetEventRecorder("dash0-monitoring-controller")
 		instrumenter := instrumentation.NewInstrumenter(
 			k8sClient,
 			clientset,
@@ -122,19 +122,19 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 		workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 		event := VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 
-		Expect(event.InvolvedObject.UID).To(BeEmpty())
-		Expect(event.InvolvedObject.ResourceVersion).To(BeEmpty())
+		Expect(event.Regarding.UID).To(BeEmpty())
+		Expect(event.Regarding.ResourceVersion).To(BeEmpty())
 
 		triggerReconcileRequest(ctx, reconciler, dash0MonitoringResource)
 
 		Eventually(func(g Gomega) {
 			// refetch event and check that the UID and ResourceVersion are set correctly now
 			var err error
-			event, err = clientset.CoreV1().Events(TestNamespaceName).Get(ctx, event.Name, metav1.GetOptions{})
+			event, err = clientset.EventsV1().Events(TestNamespaceName).Get(ctx, event.Name, metav1.GetOptions{})
 			g.Expect(err).NotTo(HaveOccurred())
 
-			g.Expect(event.InvolvedObject.UID).To(Equal(workload.Get().GetUID()))
-			g.Expect(event.InvolvedObject.ResourceVersion).To(Equal(workload.Get().GetResourceVersion()))
+			g.Expect(event.Regarding.UID).To(Equal(workload.Get().GetUID()))
+			g.Expect(event.Regarding.ResourceVersion).To(Equal(workload.Get().GetResourceVersion()))
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	}, Entry("should attach event to a cron job", WorkloadTestConfig{
 		WorkloadNamePrefix: CronJobNamePrefix,

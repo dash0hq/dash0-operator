@@ -56,10 +56,9 @@ rules:
   verbs:
   - list
 
-# Permissions required to queue events to report about the operator's actions, and to attach dangling events to their
-# respective involved objects:
+# Permissions required to queue events to report about the operator's actions:
 - apiGroups:
-  - ""
+  - events.k8s.io
   resources:
   - events
   verbs:
@@ -73,6 +72,16 @@ rules:
   - namespaces
   verbs:
   - get
+
+# Permissions for the legacy event API, required to attach dangling events to their respective involved objects:
+- apiGroups:
+    - ""
+  resources:
+    - events
+  verbs:
+    - list
+    - patch
+    - update
 
 # Permissions required to automatically restart (i.e. delete) pods when instrumenting replicasets that are not part of a
 # higher order workload (e.g. a deployment, daemonset):

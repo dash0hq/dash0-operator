@@ -463,25 +463,29 @@ func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 	}()
 }
 
-/*
- * attachDanglingEvents attaches events that have been created by the webhook to the involved object of the event.
- * When the webhook creates the respective events, the workload might not exist yet, so the UID of the workload is not
- * set in the event. The list of events for that workload will not contain this event. We go the extra mile here and
- * retroactively fix the reference of all those events.
- */
+// attachDanglingEvents attaches events that have been created by the webhook to the involved object of the event.
+// When the webhook creates the respective events, the workload might not exist yet, so the UID of the workload is not
+// set in the event. The list of events for that workload will not contain this event. We go the extra mile here and
+// retroactively fix the reference of all those events.
+//
+// Without doing this, the event will not show up in the event section of "kubectl describe" for the workload, because
+// kubectl always searches for related events with the object's uid.
+//
+// This code still uses the legacy event API, as the regarding.UID field is immutable in the new k8s.io/api/events/v1
+// API.
 func (r *MonitoringReconciler) attachDanglingEvents(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) {
 	namespace := monitoringResource.Namespace
-	eventApi := r.clientset.CoreV1().Events(namespace)
+	legacyEventApi := r.clientset.CoreV1().Events(namespace)
 	backoff := r.danglingEventsTimeouts.Backoff
 	for _, eventType := range util.AllEvents {
 		retryErr := util.RetryWithCustomBackoff(
 			"attaching dangling event to involved object",
 			func() error {
-				danglingEvents, listErr := eventApi.List(ctx, metav1.ListOptions{
+				danglingEvents, listErr := legacyEventApi.List(ctx, metav1.ListOptions{
 					FieldSelector: fmt.Sprintf("involvedObject.uid=,reason=%s", eventType),
 				})
 				if listErr != nil {
@@ -494,7 +498,7 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 
 				var allAttachErrors []error
 				for _, event := range danglingEvents.Items {
-					attachErr := util.AttachEventToInvolvedObject(ctx, r.Client, eventApi, &event)
+					attachErr := util.AttachEventToInvolvedObject(ctx, r.Client, legacyEventApi, &event)
 					if attachErr != nil {
 						allAttachErrors = append(allAttachErrors, attachErr)
 					} else {
