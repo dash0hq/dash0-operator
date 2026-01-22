@@ -14,6 +14,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -499,7 +500,7 @@ func VerifyNoEvents(
 	clientset *kubernetes.Clientset,
 	namespace string,
 ) {
-	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	allEvents, err := clientset.EventsV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(allEvents.Items).To(BeEmpty())
 }
@@ -510,13 +511,15 @@ func VerifySuccessfulInstrumentationEvent(
 	namespace string,
 	resourceName string,
 	eventSource string,
-) *corev1.Event {
+) *eventsv1.Event {
 	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
 		resourceName,
+		corev1.EventTypeNormal,
 		util.ReasonSuccessfulInstrumentation,
+		util.ActionInstrumentation,
 		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
 	)
 }
@@ -527,13 +530,15 @@ func VerifyInstrumentationViaHigherOrderWorkloadEvent(
 	namespace string,
 	resourceName string,
 	eventSource string,
-) *corev1.Event {
+) *eventsv1.Event {
 	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
 		resourceName,
+		corev1.EventTypeNormal,
 		util.ReasonNoInstrumentationNecessary,
+		util.ActionInstrumentation,
 		fmt.Sprintf(
 			"The workload is part of a higher order workload that will be instrumented by the %s, "+
 				"no modification by the %s is necessary.",
@@ -547,13 +552,15 @@ func VerifyFailedInstrumentationEvent(
 	namespace string,
 	resourceName string,
 	message string,
-) *corev1.Event {
+) *eventsv1.Event {
 	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
 		resourceName,
+		corev1.EventTypeWarning,
 		util.ReasonFailedInstrumentation,
+		util.ActionInstrumentation,
 		message,
 	)
 }
@@ -564,13 +571,15 @@ func VerifySuccessfulUninstrumentationEvent(
 	namespace string,
 	resourceName string,
 	eventSource string,
-) *corev1.Event {
+) *eventsv1.Event {
 	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
 		resourceName,
+		corev1.EventTypeNormal,
 		util.ReasonSuccessfulUninstrumentation,
+		util.ActionUninstrumentation,
 		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
 	)
 }
@@ -582,14 +591,16 @@ func VerifySuccessfulUninstrumentationEventEventually(
 	namespace string,
 	resourceName string,
 	eventSource string,
-) *corev1.Event {
+) *eventsv1.Event {
 	return verifyEventEventually(
 		ctx,
 		clientset,
 		g,
 		namespace,
 		resourceName,
+		corev1.EventTypeNormal,
 		util.ReasonSuccessfulUninstrumentation,
+		util.ActionUninstrumentation,
 		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
 	)
 }
@@ -600,13 +611,15 @@ func VerifyFailedUninstrumentationEvent(
 	namespace string,
 	resourceName string,
 	message string,
-) *corev1.Event {
+) *eventsv1.Event {
 	return VerifyEvent(
 		ctx,
 		clientset,
 		namespace,
 		resourceName,
+		corev1.EventTypeWarning,
 		util.ReasonFailedUninstrumentation,
+		util.ActionUninstrumentation,
 		message,
 	)
 }
@@ -616,12 +629,14 @@ func VerifyEvent(
 	clientset *kubernetes.Clientset,
 	namespace string,
 	resourceName string,
+	eventType string,
 	reason util.Reason,
-	message string,
-) *corev1.Event {
-	var event *corev1.Event
+	action util.Action,
+	note string,
+) *eventsv1.Event {
+	var event *eventsv1.Event
 	Eventually(func(g Gomega) {
-		event = verifyEventEventually(ctx, clientset, g, namespace, resourceName, reason, message)
+		event = verifyEventEventually(ctx, clientset, g, namespace, resourceName, eventType, reason, action, note)
 	}, eventTimeout).Should(Succeed())
 	return event
 }
@@ -632,19 +647,22 @@ func verifyEventEventually(
 	g Gomega,
 	namespace string,
 	resourceName string,
+	eventType string,
 	reason util.Reason,
-	message string,
-) *corev1.Event {
+	action util.Action,
+	note string,
+) *eventsv1.Event {
 	matcher := MatchEvent(
 		namespace,
 		resourceName,
+		eventType,
 		reason,
-		message,
+		action,
+		note,
 	)
 
-	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	allEvents, err := clientset.EventsV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(allEvents.Items).To(HaveLen(1))
 	g.Expect(allEvents.Items).To(ContainElement(matcher))
 
 	for _, event := range allEvents.Items {
