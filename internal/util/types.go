@@ -13,6 +13,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
+type Action string
+
+const (
+	ActionInstrumentation   Action = "Instrumentation"
+	ActionUninstrumentation Action = "Uninstrumentation"
+)
+
 type Reason string
 
 const (

@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -41,7 +41,7 @@ var (
 	cfg       *rest.Config
 	k8sClient client.Client
 	clientset *kubernetes.Clientset
-	recorder  record.EventRecorder
+	recorder  events.EventRecorder
 	testEnv   *envtest.Environment
 )
 
@@ -85,7 +85,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
-	recorder = mgr.GetEventRecorderFor("dash0-controller")
+	recorder = mgr.GetEventRecorder("dash0-controller")
 })
 
 var _ = AfterSuite(func() {

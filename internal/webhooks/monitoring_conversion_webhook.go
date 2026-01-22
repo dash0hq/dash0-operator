@@ -15,7 +15,7 @@ import (
 func SetupDash0MonitoringConversionWebhookWithManager(mgr ctrl.Manager) error {
 	return errors.Join(
 		//
-		ctrl.NewWebhookManagedBy(mgr).For(&dash0v1alpha1.Dash0Monitoring{}).Complete(),
-		ctrl.NewWebhookManagedBy(mgr).For(&dash0v1beta1.Dash0Monitoring{}).Complete(),
+		ctrl.NewWebhookManagedBy(mgr, &dash0v1alpha1.Dash0Monitoring{}).Complete(),
+		ctrl.NewWebhookManagedBy(mgr, &dash0v1beta1.Dash0Monitoring{}).Complete(),
 	)
 }
