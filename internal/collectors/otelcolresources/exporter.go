@@ -32,9 +32,9 @@ type otlpExporters struct {
 }
 
 const (
-	dash0ExporterNamePrefix = "otlp/dash0"
-	grpcExporterNamePrefix  = "otlp/grpc"
-	httpExporterNamePrefix  = "otlphttp"
+	dash0ExporterNamePrefix = "otlp_grpc/dash0"
+	grpcExporterNamePrefix  = "otlp_grpc"
+	httpExporterNamePrefix  = "otlp_http"
 )
 
 func getDefaultOtlpExporters(dash0Config *dash0v1alpha1.Dash0OperatorConfiguration) ([]otlpExporter, error) {

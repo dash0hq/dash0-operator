@@ -261,7 +261,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			exporters := exportersRaw.(map[string]interface{})
 			Expect(exporters).To(HaveLen(1))
 
-			exporter := exporters["otlp/dash0/default"]
+			exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
 			dash0OtlpExporter := exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter).ToNot(BeNil())
@@ -291,7 +291,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			exporters := exportersRaw.(map[string]interface{})
 			Expect(exporters).To(HaveLen(1))
 
-			exporter := exporters["otlp/dash0/default"]
+			exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
 			dash0OtlpExporter := exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter).ToNot(BeNil())
@@ -326,7 +326,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			debugExporter := debugExporterRaw.(map[string]interface{})
 			Expect(debugExporter).To(HaveLen(0))
 
-			exporter := exporters["otlp/dash0/default"]
+			exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
 			dash0OtlpExporter := exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter).ToNot(BeNil())
@@ -422,7 +422,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(exporters).To(HaveLen(2))
 
 			// Verify Dash0 exporter
-			dash0Exporter := exporters["otlp/dash0/default"]
+			dash0Exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(dash0Exporter).ToNot(BeNil())
 			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
@@ -432,7 +432,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
 
 			// Verify gRPC exporter
-			grpcExporter := exporters["otlp/grpc/default"]
+			grpcExporter := exporters["otlp_grpc/default"]
 			Expect(grpcExporter).ToNot(BeNil())
 			grpcOtlpExporter := grpcExporter.(map[string]interface{})
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
@@ -458,13 +458,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(exporters).To(HaveLen(2))
 
 			// Verify Dash0 exporter
-			dash0Exporter := exporters["otlp/dash0/default"]
+			dash0Exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(dash0Exporter).ToNot(BeNil())
 			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 
 			// Verify HTTP exporter
-			httpExporter := exporters["otlphttp/default/proto"]
+			httpExporter := exporters["otlp_http/default/proto"]
 			Expect(httpExporter).ToNot(BeNil())
 			httpOtlpExporter := httpExporter.(map[string]interface{})
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
@@ -491,19 +491,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(exporters).To(HaveLen(3))
 
 			// Verify Dash0 exporter
-			dash0Exporter := exporters["otlp/dash0/default"]
+			dash0Exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(dash0Exporter).ToNot(BeNil())
 			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 
 			// Verify gRPC exporter
-			grpcExporter := exporters["otlp/grpc/default"]
+			grpcExporter := exporters["otlp_grpc/default"]
 			Expect(grpcExporter).ToNot(BeNil())
 			grpcOtlpExporter := grpcExporter.(map[string]interface{})
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
 
 			// Verify HTTP exporter
-			httpExporter := exporters["otlphttp/default/proto"]
+			httpExporter := exporters["otlp_http/default/proto"]
 			Expect(httpExporter).ToNot(BeNil())
 			httpOtlpExporter := httpExporter.(map[string]interface{})
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
@@ -526,7 +526,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(exporters).To(HaveLen(1))
 
 			// Verify gRPC exporter with insecure flag
-			grpcExporter := exporters["otlp/grpc/default"]
+			grpcExporter := exporters["otlp_grpc/default"]
 			Expect(grpcExporter).ToNot(BeNil())
 			grpcOtlpExporter := grpcExporter.(map[string]interface{})
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(grpcEndpointTest))
@@ -554,7 +554,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(exporters).To(HaveLen(1))
 
 			// Verify HTTP exporter with insecure endpoint
-			httpExporter := exporters["otlphttp/default/proto"]
+			httpExporter := exporters["otlp_http/default/proto"]
 			Expect(httpExporter).ToNot(BeNil())
 			httpOtlpExporter := httpExporter.(map[string]interface{})
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(httpInsecureEndpointTest))
@@ -577,17 +577,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(exporters).To(HaveLen(3))
 
 			// Verify default Dash0 exporter
-			dash0Exporter := exporters["otlp/dash0/default"]
+			dash0Exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(dash0Exporter).ToNot(BeNil())
 
 			// Verify namespaced gRPC exporter for namespace1
-			grpcExporterNs1 := exporters["otlp/grpc/ns/"+namespace1]
+			grpcExporterNs1 := exporters["otlp_grpc/ns/"+namespace1]
 			Expect(grpcExporterNs1).ToNot(BeNil())
 			grpcOtlpExporter := grpcExporterNs1.(map[string]interface{})
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
 
 			// Verify namespaced HTTP exporter for namespace2
-			httpExporterNs2 := exporters["otlphttp/ns/"+namespace2+"/proto"]
+			httpExporterNs2 := exporters["otlp_http/ns/"+namespace2+"/proto"]
 			Expect(httpExporterNs2).ToNot(BeNil())
 			httpOtlpExporter := httpExporterNs2.(map[string]interface{})
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
@@ -610,18 +610,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(exporters).To(HaveLen(4))
 
 			// Verify default Dash0 exporter
-			dash0Exporter := exporters["otlp/dash0/default"]
+			dash0Exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(dash0Exporter).ToNot(BeNil())
 
 			// Verify namespace1 has both gRPC and HTTP exporters
-			grpcExporterNs1 := exporters["otlp/grpc/ns/"+namespace1]
+			grpcExporterNs1 := exporters["otlp_grpc/ns/"+namespace1]
 			Expect(grpcExporterNs1).ToNot(BeNil())
 
-			httpExporterNs1 := exporters["otlphttp/ns/"+namespace1+"/proto"]
+			httpExporterNs1 := exporters["otlp_http/ns/"+namespace1+"/proto"]
 			Expect(httpExporterNs1).ToNot(BeNil())
 
 			// Verify namespace2 has a Dash0 exporter
-			dash0ExporterNs2 := exporters["otlp/dash0/ns/"+namespace2]
+			dash0ExporterNs2 := exporters["otlp_grpc/dash0/ns/"+namespace2]
 			Expect(dash0ExporterNs2).ToNot(BeNil())
 			dash0OtlpExporter := dash0ExporterNs2.(map[string]interface{})
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0TestAlternative))
@@ -784,34 +784,34 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			tracesExportNs1Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace1)
 			Expect(tracesExportNs1Receivers).To(ContainElement("routing/traces"))
 			tracesExportNs1Exporters := readPipelineExporters(pipelines, "traces/export/ns/"+namespace1)
-			Expect(tracesExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+			Expect(tracesExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1))
 
 			tracesExportNs2Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace2)
 			Expect(tracesExportNs2Receivers).To(ContainElement("routing/traces"))
 			tracesExportNs2Exporters := readPipelineExporters(pipelines, "traces/export/ns/"+namespace2)
-			Expect(tracesExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+			Expect(tracesExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "/proto"))
 
 			// Verify namespace-specific metrics export pipelines
 			metricsExportNs1Receivers := readPipelineReceivers(pipelines, "metrics/export/ns/"+namespace1)
 			Expect(metricsExportNs1Receivers).To(ContainElement("routing/metrics"))
 			metricsExportNs1Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace1)
-			Expect(metricsExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+			Expect(metricsExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1))
 
 			metricsExportNs2Receivers := readPipelineReceivers(pipelines, "metrics/export/ns/"+namespace2)
 			Expect(metricsExportNs2Receivers).To(ContainElement("routing/metrics"))
 			metricsExportNs2Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace2)
-			Expect(metricsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+			Expect(metricsExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "/proto"))
 
 			// Verify namespace-specific logs export pipelines
 			logsExportNs1Receivers := readPipelineReceivers(pipelines, "logs/export/ns/"+namespace1)
 			Expect(logsExportNs1Receivers).To(ContainElement("routing/logs"))
 			logsExportNs1Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace1)
-			Expect(logsExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+			Expect(logsExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1))
 
 			logsExportNs2Receivers := readPipelineReceivers(pipelines, "logs/export/ns/"+namespace2)
 			Expect(logsExportNs2Receivers).To(ContainElement("routing/logs"))
 			logsExportNs2Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace2)
-			Expect(logsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+			Expect(logsExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "/proto"))
 		})
 
 		It("should render namespace-specific export pipelines [Deployment])", func() {
@@ -830,23 +830,23 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			metricsExportNs1Receivers := readPipelineReceivers(pipelines, "metrics/export/ns/"+namespace1)
 			Expect(metricsExportNs1Receivers).To(ContainElement("routing/metrics"))
 			metricsExportNs1Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace1)
-			Expect(metricsExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+			Expect(metricsExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1))
 
 			metricsExportNs2Receivers := readPipelineReceivers(pipelines, "metrics/export/ns/"+namespace2)
 			Expect(metricsExportNs2Receivers).To(ContainElement("routing/metrics"))
 			metricsExportNs2Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace2)
-			Expect(metricsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+			Expect(metricsExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "/proto"))
 
 			// Verify namespace-specific logs export pipelines
 			logsExportNs1Receivers := readPipelineReceivers(pipelines, "logs/export/ns/"+namespace1)
 			Expect(logsExportNs1Receivers).To(ContainElement("routing/logs"))
 			logsExportNs1Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace1)
-			Expect(logsExportNs1Exporters).To(ContainElement("otlp/grpc/ns/" + namespace1))
+			Expect(logsExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1))
 
 			logsExportNs2Receivers := readPipelineReceivers(pipelines, "logs/export/ns/"+namespace2)
 			Expect(logsExportNs2Receivers).To(ContainElement("routing/logs"))
 			logsExportNs2Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace2)
-			Expect(logsExportNs2Exporters).To(ContainElement("otlphttp/ns/" + namespace2 + "/proto"))
+			Expect(logsExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "/proto"))
 		})
 
 		It("should wire common-processors pipelines to routing connectors when namespaced exporters exist [DaemonSet]", func() {
