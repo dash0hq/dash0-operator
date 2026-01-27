@@ -482,7 +482,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 					clientset,
 					TestNamespaceName,
 					name,
+					corev1.EventTypeWarning,
 					util.ReasonPartiallyUnsuccessfulInstrumentation,
+					util.ActionInstrumentation,
 					"Dash0 instrumentation of this workload by the webhook has been partially unsuccessful, 1 out of "+
 						"2 containers have instrumentation issues. test-container-0: Dash0 cannot prepend anything to "+
 						"the environment variable LD_PRELOAD as it is specified via ValueFrom, this container will "+

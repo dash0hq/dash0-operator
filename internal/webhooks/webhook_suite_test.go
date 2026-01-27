@@ -123,7 +123,7 @@ var _ = BeforeSuite(func() {
 
 	Expect(NewInstrumentationWebhookHandler(
 		k8sClient,
-		manager.GetEventRecorderFor("dash0-webhook"),
+		manager.GetEventRecorder("dash0-webhook"),
 		util.NewClusterInstrumentationConfig(
 			TestImages,
 			OTelCollectorNodeLocalBaseUrlTest,
