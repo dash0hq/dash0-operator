@@ -230,7 +230,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	err = r.handleDash0Authorization(ctx, monitoringResource, &logger)
 	if err != nil {
-		logger.Error(err, "error when handling the Dash0 authorization information in the operator configuration resource")
+		logger.Error(err, "error when handling the Dash0 authorization information in the monitoring resource")
 		return ctrl.Result{}, err
 	}
 

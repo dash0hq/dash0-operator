@@ -522,15 +522,7 @@ func validatePreconditionsAndPreprocess(
 				namespacedApiConfig.Dataset,
 				namespacedAuthToken,
 			)
-		} else {
-			logger.Info(fmt.Sprintf("No Dash0 API auth token has been provided via the monitoring resource "+
-				"in namespace %s. Falling back to checking the defaults from the operator configuration resource to enabled sync "+
-				"for the %s from %s.", namespace, apiSyncReconciler.ShortName(), name))
 		}
-	} else {
-		logger.Info(fmt.Sprintf("No Dash0 API endpoint has been provided via the monitoring resource "+
-			"in namespace %s. Falling back to checking the defaults from the operator configuration resource to enabled sync "+
-			"for the %s from %s.", namespace, apiSyncReconciler.ShortName(), name))
 	}
 
 	// We also expect a default API endpoint/token, even when the namespaced ones are valid.

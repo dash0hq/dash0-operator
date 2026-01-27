@@ -1421,20 +1421,6 @@ Please note that it is a validation error to set both `insecure` and `insecureSk
 - When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain,
 which can be useful when using self-signed certificates.
 
-#### Exporting Telemetry to Different Backends Per Namespace
-
-Exporting telemetry to different backends per namespace is not yet implemented.
-This feature will be available in a future release.
-The export settings are available on the per-namespace resource (the Dash0 monitoring resource) to prepare for this
-feature.
-
-**Important**: For that reason, having different export settings on the Dash0 monitoring resources in your cluster is
-currently strongly discouraged -- the export settings of one Dash0 monitoring resource would overwrite the settings of
-the other Dash0 monitoring resources, leading to non-deterministic behavior.
-For now, we recommend to only set the `export` attribute on the cluster's Dash0 operator configuration resource.
-
-This restriction will be lifted once exporting telemetry to different backends per namespace is implemented.
-
 ## Disable Self-Monitoring
 
 By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Das0 operator
@@ -1821,7 +1807,7 @@ Pre-requisites for this feature:
   has the setting [`synchronizePersesDashboards`](#monitoringresource.spec.synchronizePersesDashboards) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing a Dash0 export with and API endpoint and token in the Dash0
+  namespace-specific overrides by providing a Dash0 export with an API endpoint and token in the Dash0
   monitoring resource.
 
 Furthermore, the custom resource definition for Perses dashboards needs to be installed in the cluster. There are two
@@ -1887,7 +1873,7 @@ Pre-requisites for this feature:
   has the setting [`synchronizePrometheusRules`](#monitoringresource.spec.synchronizePrometheusRules) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing a Dash0 export with and API endpoint and token in the Dash0
+  namespace-specific overrides by providing a Dash0 export with an API endpoint and token in the Dash0
   monitoring resource.
 
 Furthermore, the custom resource definition for Prometheus rules needs to be installed in the cluster. There are two
@@ -2012,7 +1998,7 @@ Pre-requisites for this feature:
 * The operator will only pick up synthetic check resources in namespaces that have a Dash0 monitoring resource
   deployed.
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing a Dash0 export with and API endpoint and token in the Dash0
+  namespace-specific overrides by providing a Dash0 export with an API endpoint and token in the Dash0
   monitoring resource.
 
 With the prerequisites in place, you can manage Dash0 synthetic checks via the operator.
@@ -2082,7 +2068,7 @@ Pre-requisites for this feature:
 * The operator will only pick up Dash0 view resources in namespaces that have a Dash0 monitoring resource
   deployed.
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing a Dash0 export with and API endpoint and token in the Dash0
+  namespace-specific overrides by providing a Dash0 export with an API endpoint and token in the Dash0
   monitoring resource.
 
 With the prerequisites in place, you can manage Dash0 views via the operator.
