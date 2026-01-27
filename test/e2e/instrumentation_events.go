@@ -9,7 +9,6 @@ import (
 	"os/exec"
 
 	corev1 "k8s.io/api/core/v1"
-	eventsv1 "k8s.io/api/events/v1"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -30,9 +29,7 @@ func verifySuccessfulInstrumentationEvent(
 		namespace,
 		runtime,
 		workloadType,
-		corev1.EventTypeNormal,
 		util.ReasonSuccessfulInstrumentation,
-		util.ActionInstrumentation,
 		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
 	)
 }
@@ -42,17 +39,15 @@ func verifyFailedInstrumentationEvent(
 	namespace string,
 	runtime runtimeType,
 	workloadType workloadType,
-	note string,
+	message string,
 ) {
 	verifyEvent(
 		g,
 		namespace,
 		runtime,
 		workloadType,
-		corev1.EventTypeWarning,
 		util.ReasonFailedInstrumentation,
-		util.ActionInstrumentation,
-		note,
+		message,
 	)
 }
 
@@ -68,9 +63,7 @@ func verifySuccessfulUninstrumentationEvent(
 		namespace,
 		runtime,
 		workloadType,
-		corev1.EventTypeNormal,
 		util.ReasonSuccessfulUninstrumentation,
-		util.ActionUninstrumentation,
 		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
 	)
 }
@@ -80,17 +73,15 @@ func verifyFailedUninstrumentationEvent(
 	namespace string,
 	runtime runtimeType,
 	workloadType workloadType,
-	note string,
+	message string,
 ) {
 	verifyEvent(
 		g,
 		namespace,
 		runtime,
 		workloadType,
-		corev1.EventTypeWarning,
 		util.ReasonFailedUninstrumentation,
-		util.ActionUninstrumentation,
-		note,
+		message,
 	)
 }
 
@@ -99,24 +90,21 @@ func verifyEvent(
 	namespace string,
 	runtime runtimeType,
 	workloadType workloadType,
-	eventType string,
 	reason util.Reason,
-	action util.Action,
-	note string,
+	message string,
 ) {
 	resourceName := workloadName(runtime, workloadType)
 	eventsJson, err := run(exec.Command(
 		"kubectl",
-		"get",
-		"events.events.k8s.io",
+		"events",
 		"-ojson",
 		"--namespace",
 		namespace,
-		"--field-selector",
-		fmt.Sprintf("regarding.kind=%s,regarding.name=%s", workloadType.workloadTypeStringCamelCase, resourceName),
+		"--for",
+		fmt.Sprintf("%s/%s", workloadType.workloadTypeString, resourceName),
 	), false)
 	g.Expect(err).NotTo(HaveOccurred())
-	var events eventsv1.EventList
+	var events corev1.EventList
 	err = json.Unmarshal([]byte(eventsJson), &events)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(events.Items).To(
@@ -124,9 +112,7 @@ func verifyEvent(
 			testUtil.MatchEvent(
 				namespace,
 				resourceName,
-				eventType,
 				reason,
-				action,
-				note,
+				message,
 			)))
 }

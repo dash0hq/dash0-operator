@@ -17,7 +17,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -31,7 +31,7 @@ import (
 
 type InstrumentationWebhookHandler struct {
 	Client                       client.Client
-	Recorder                     events.EventRecorder
+	Recorder                     record.EventRecorder
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
 }
 
@@ -98,7 +98,7 @@ var (
 
 func NewInstrumentationWebhookHandler(
 	client client.Client,
-	recorder events.EventRecorder,
+	recorder record.EventRecorder,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 ) *InstrumentationWebhookHandler {
 	if clusterInstrumentationConfig == nil {
