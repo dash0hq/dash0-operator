@@ -50,7 +50,7 @@ const (
 func defaultDash0Exporters() otlpExporters {
 	return otlpExporters{
 		Default: []otlpExporter{{
-			Name:     "otlp/dash0/default",
+			Name:     "otlp_grpc/dash0/default",
 			Endpoint: EndpointDash0Test,
 			Headers: []dash0common.Header{
 				{
@@ -65,7 +65,7 @@ func defaultDash0Exporters() otlpExporters {
 func defaultDash0ExportersWithCustomDataset() otlpExporters {
 	return otlpExporters{
 		Default: []otlpExporter{{
-			Name:     "otlp/dash0/default",
+			Name:     "otlp_grpc/dash0/default",
 			Endpoint: EndpointDash0Test,
 			Headers: []dash0common.Header{
 				{
@@ -84,7 +84,7 @@ func defaultDash0ExportersWithCustomDataset() otlpExporters {
 func defaultGrpcExporters() otlpExporters {
 	return otlpExporters{
 		Default: []otlpExporter{{
-			Name:     "otlp/grpc/default",
+			Name:     "otlp_grpc/default",
 			Endpoint: EndpointGrpcTest,
 			Headers: []dash0common.Header{
 				{Name: "Key", Value: "Value"},
@@ -96,7 +96,7 @@ func defaultGrpcExporters() otlpExporters {
 func defaultHttpExporters() otlpExporters {
 	return otlpExporters{
 		Default: []otlpExporter{{
-			Name:     "otlphttp/default/proto",
+			Name:     "otlp_http/default/proto",
 			Endpoint: EndpointHttpTest,
 			Encoding: "proto",
 			Headers: []dash0common.Header{
@@ -397,7 +397,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		exporters := otlpExporters{
 			Default: []otlpExporter{{
-				Name:     "otlp/dash0/default",
+				Name:     "otlp_grpc/dash0/default",
 				Endpoint: EndpointDash0Test,
 				Headers: []dash0common.Header{
 					{
@@ -408,7 +408,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			}},
 			Namespaced: namespacedOtlpExporters{
 				namespace1: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace1),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace1),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{
@@ -418,7 +418,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					},
 				}},
 				namespace2: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace2),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace2),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{
@@ -495,7 +495,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		exporters := otlpExporters{
 			Default: []otlpExporter{{
-				Name:     "otlp/dash0/default",
+				Name:     "otlp_grpc/dash0/default",
 				Endpoint: EndpointDash0Test,
 				Headers: []dash0common.Header{
 					{
@@ -506,7 +506,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			}},
 			Namespaced: namespacedOtlpExporters{
 				namespace1: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace1),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace1),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{
@@ -516,7 +516,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					},
 				}},
 				namespace2: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace2),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace2),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{
@@ -593,7 +593,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		exporters := otlpExporters{
 			Default: []otlpExporter{{
-				Name:     "otlp/dash0/default",
+				Name:     "otlp_grpc/dash0/default",
 				Endpoint: EndpointDash0Test,
 				Headers: []dash0common.Header{
 					{
@@ -604,7 +604,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			}},
 			Namespaced: namespacedOtlpExporters{
 				namespace1: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace1),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace1),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{
@@ -614,7 +614,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					},
 				}},
 				namespace2: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace2),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace2),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{
@@ -687,7 +687,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		exporters := otlpExporters{
 			Namespaced: namespacedOtlpExporters{
 				namespace1: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace1),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace1),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{
@@ -697,7 +697,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					},
 				}},
 				namespace2: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace2),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace2),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{
@@ -707,7 +707,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					},
 				}},
 				namespace3: []otlpExporter{{
-					Name:     fmt.Sprintf("otlp/dash0/ns/%s", namespace3),
+					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace3),
 					Endpoint: EndpointDash0Test,
 					Headers: []dash0common.Header{
 						{

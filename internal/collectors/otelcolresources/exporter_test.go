@@ -21,7 +21,7 @@ import (
 // Test helper functions (existing)
 func DefaultOtlpExportersTest() []otlpExporter {
 	return []otlpExporter{{
-		Name:     "otlp/dash0/default",
+		Name:     "otlp_grpc/dash0/default",
 		Endpoint: EndpointDash0Test,
 		Headers: []dash0common.Header{
 			{
@@ -35,7 +35,7 @@ func DefaultOtlpExportersTest() []otlpExporter {
 
 func DefaultOtlpExportersWithCustomDatasetTest() []otlpExporter {
 	return []otlpExporter{{
-		Name:     "otlp/dash0/default",
+		Name:     "otlp_grpc/dash0/default",
 		Endpoint: EndpointDash0Test,
 		Headers: []dash0common.Header{
 			{
@@ -53,7 +53,7 @@ func DefaultOtlpExportersWithCustomDatasetTest() []otlpExporter {
 
 func DefaultOtlpExportersWithGrpc() []otlpExporter {
 	return []otlpExporter{{
-		Name:     "otlp/grpc/default",
+		Name:     "otlp_grpc/default",
 		Endpoint: EndpointDash0Test,
 		Headers: []dash0common.Header{
 			{
@@ -67,7 +67,7 @@ func DefaultOtlpExportersWithGrpc() []otlpExporter {
 
 func DefaultOtlpExportersWithHttp() []otlpExporter {
 	return []otlpExporter{{
-		Name:     "otlp/grpc/default",
+		Name:     "otlp_grpc/default",
 		Endpoint: EndpointDash0Test,
 		Headers: []dash0common.Header{
 			{
@@ -117,7 +117,7 @@ var _ = Describe("Exporter", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exporter).NotTo(BeNil())
-			Expect(exporter.Name).To(Equal("otlp/dash0/default"))
+			Expect(exporter.Name).To(Equal("otlp_grpc/dash0/default"))
 			Expect(exporter.Endpoint).To(Equal(EndpointDash0Test))
 			Expect(exporter.Headers).To(HaveLen(1))
 			Expect(exporter.Headers[0].Name).To(Equal(util.AuthorizationHeaderName))
@@ -183,7 +183,7 @@ var _ = Describe("Exporter", func() {
 			exporter, err := convertDash0ExporterToOtlpExporter(d0Config, "ns/my-namespace", nsEnvVar)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(exporter.Name).To(Equal("otlp/dash0/ns/my-namespace"))
+			Expect(exporter.Name).To(Equal("otlp_grpc/dash0/ns/my-namespace"))
 			Expect(exporter.Headers[0].Value).To(Equal("Bearer ${env:OTELCOL_AUTH_TOKEN_NS_MY_NAMESPACE}"))
 		})
 
@@ -215,7 +215,7 @@ var _ = Describe("Exporter", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exporter).NotTo(BeNil())
-			Expect(exporter.Name).To(Equal("otlp/grpc/default"))
+			Expect(exporter.Name).To(Equal("otlp_grpc/default"))
 			Expect(exporter.Endpoint).To(Equal(EndpointGrpcTest))
 			Expect(exporter.Headers).To(HaveLen(1))
 			Expect(exporter.Headers[0].Name).To(Equal("Key"))
@@ -291,7 +291,7 @@ var _ = Describe("Exporter", func() {
 			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "ns/test-namespace")
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(exporter.Name).To(Equal("otlp/grpc/ns/test-namespace"))
+			Expect(exporter.Name).To(Equal("otlp_grpc/ns/test-namespace"))
 		})
 	})
 
@@ -309,7 +309,7 @@ var _ = Describe("Exporter", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exporter).NotTo(BeNil())
-			Expect(exporter.Name).To(Equal("otlphttp/default/proto"))
+			Expect(exporter.Name).To(Equal("otlp_http/default/proto"))
 			Expect(exporter.Endpoint).To(Equal(EndpointHttpTest))
 			Expect(exporter.Encoding).To(Equal("proto"))
 			Expect(exporter.Headers).To(HaveLen(1))
@@ -324,7 +324,7 @@ var _ = Describe("Exporter", func() {
 			exporter, err := convertHttpExporterToOtlpExporter(httpConfig, "default")
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(exporter.Name).To(Equal("otlphttp/default/json"))
+			Expect(exporter.Name).To(Equal("otlp_http/default/json"))
 			Expect(exporter.Encoding).To(Equal("json"))
 		})
 
@@ -377,7 +377,7 @@ var _ = Describe("Exporter", func() {
 			exporter, err := convertHttpExporterToOtlpExporter(httpConfig, "ns/test-namespace")
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(exporter.Name).To(Equal("otlphttp/ns/test-namespace/proto"))
+			Expect(exporter.Name).To(Equal("otlp_http/ns/test-namespace/proto"))
 		})
 	})
 
@@ -399,7 +399,7 @@ var _ = Describe("Exporter", func() {
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(exporters).To(HaveLen(1))
-				Expect(exporters[0].Name).To(Equal("otlp/dash0/default"))
+				Expect(exporters[0].Name).To(Equal("otlp_grpc/dash0/default"))
 			})
 
 			It("should convert gRPC export settings", func() {
@@ -409,7 +409,7 @@ var _ = Describe("Exporter", func() {
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(exporters).To(HaveLen(1))
-				Expect(exporters[0].Name).To(Equal("otlp/grpc/default"))
+				Expect(exporters[0].Name).To(Equal("otlp_grpc/default"))
 			})
 
 			It("should convert HTTP export settings", func() {
@@ -419,7 +419,7 @@ var _ = Describe("Exporter", func() {
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(exporters).To(HaveLen(1))
-				Expect(exporters[0].Name).To(Equal("otlphttp/default/proto"))
+				Expect(exporters[0].Name).To(Equal("otlp_http/default/proto"))
 			})
 
 			It("should convert combined export settings", func() {
@@ -475,7 +475,7 @@ var _ = Describe("Exporter", func() {
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(exporters).To(HaveLen(1))
-				Expect(exporters[0].Name).To(Equal("otlp/dash0/ns/test-namespace"))
+				Expect(exporters[0].Name).To(Equal("otlp_grpc/dash0/ns/test-namespace"))
 			})
 		})
 	})
@@ -492,7 +492,7 @@ var _ = Describe("Exporter", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exporters).To(HaveLen(1))
-			Expect(exporters[0].Name).To(Equal("otlp/dash0/default"))
+			Expect(exporters[0].Name).To(Equal("otlp_grpc/dash0/default"))
 		})
 
 		It("should return error when no export configured", func() {
@@ -561,8 +561,8 @@ var _ = Describe("Exporter", func() {
 			Expect(exporters).To(HaveLen(2))
 			Expect(exporters).To(HaveKey("namespace-1"))
 			Expect(exporters).To(HaveKey("namespace-2"))
-			Expect(exporters["namespace-1"][0].Name).To(Equal("otlp/dash0/ns/namespace-1"))
-			Expect(exporters["namespace-2"][0].Name).To(Equal("otlp/grpc/ns/namespace-2"))
+			Expect(exporters["namespace-1"][0].Name).To(Equal("otlp_grpc/dash0/ns/namespace-1"))
+			Expect(exporters["namespace-2"][0].Name).To(Equal("otlp_grpc/ns/namespace-2"))
 		})
 
 		It("should skip monitoring resources with nil export", func() {
