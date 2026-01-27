@@ -56,8 +56,6 @@ finish_step
 
 deploy_additional_resources
 
-deploy_dash0_api_sync_resources
-
 echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
@@ -92,5 +90,7 @@ else
   echo "not deploying a Dash0 monitoring resource"
   echo
 fi
+
+deploy_dash0_api_sync_resources
 
 finish_scenario

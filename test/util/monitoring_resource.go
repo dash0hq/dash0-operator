@@ -53,7 +53,14 @@ var (
 				Authorization: dash0common.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
+				ApiEndpoint: ApiEndpointTest,
+				Dataset:     DatasetCustomTest,
 			},
+		},
+	}
+	MonitoringResourceDefaultSpecWithoutExport = dash0v1beta1.Dash0MonitoringSpec{
+		InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+			LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 		},
 	}
 
@@ -69,6 +76,13 @@ func DefaultMonitoringResource() *dash0v1beta1.Dash0Monitoring {
 	}
 }
 
+func DefaultMonitoringResourceWithoutExport() *dash0v1beta1.Dash0Monitoring {
+	return &dash0v1beta1.Dash0Monitoring{
+		ObjectMeta: MonitoringResourceDefaultObjectMeta,
+		Spec:       MonitoringResourceDefaultSpecWithoutExport,
+	}
+}
+
 func DefaultMonitoringResourceWithName(monitoringResourceName types.NamespacedName) *dash0v1beta1.Dash0Monitoring {
 	return &dash0v1beta1.Dash0Monitoring{
 		ObjectMeta: metav1.ObjectMeta{
@@ -76,6 +90,35 @@ func DefaultMonitoringResourceWithName(monitoringResourceName types.NamespacedNa
 			Namespace: monitoringResourceName.Namespace,
 		},
 		Spec: MonitoringResourceDefaultSpec,
+	}
+}
+
+func DefaultMonitoringResourceWithCustomApiConfigAndToken(
+	monitoringResourceName types.NamespacedName,
+	endpoint string,
+	dataset string,
+	token string,
+) *dash0v1beta1.Dash0Monitoring {
+	return &dash0v1beta1.Dash0Monitoring{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      monitoringResourceName.Name,
+			Namespace: monitoringResourceName.Namespace,
+		},
+		Spec: dash0v1beta1.Dash0MonitoringSpec{
+			InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+				LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+			},
+			Export: &dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0common.Authorization{
+						Token: &token,
+					},
+					ApiEndpoint: endpoint,
+					Dataset:     dataset,
+				},
+			},
+		},
 	}
 }
 
@@ -118,6 +161,18 @@ func EnsureMonitoringResourceExists(
 		ctx,
 		k8sClient,
 		MonitoringResourceDefaultSpec,
+		MonitoringResourceQualifiedName,
+	)
+}
+
+func EnsureMonitoringResourceExistsWithoutExport(
+	ctx context.Context,
+	k8sClient client.Client,
+) *dash0v1beta1.Dash0Monitoring {
+	return EnsureMonitoringResourceWithSpecExistsInNamespace(
+		ctx,
+		k8sClient,
+		MonitoringResourceDefaultSpecWithoutExport,
 		MonitoringResourceQualifiedName,
 	)
 }
@@ -195,6 +250,18 @@ func EnsureMonitoringResourceExistsAndIsAvailable(
 		ctx,
 		k8sClient,
 		MonitoringResourceDefaultSpec,
+		MonitoringResourceQualifiedName,
+	)
+}
+
+func EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(
+	ctx context.Context,
+	k8sClient client.Client,
+) *dash0v1beta1.Dash0Monitoring {
+	return EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
+		ctx,
+		k8sClient,
+		MonitoringResourceDefaultSpecWithoutExport,
 		MonitoringResourceQualifiedName,
 	)
 }
@@ -401,5 +468,33 @@ func UpdateInstrumentWorkloadsTraceContextPropagators(
 ) {
 	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 	monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators = traceContextPropagators
+	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+}
+
+func RemoveExportFromMonitoringResource(
+	ctx context.Context,
+	k8sClient client.Client,
+) {
+	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+	monitoringResource.Spec.Export = nil
+	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+}
+
+func AddExportToMonitoringResource(
+	ctx context.Context,
+	k8sClient client.Client,
+) {
+	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+	monitoringResource.Spec.Export = Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint()
+	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+}
+
+func UpdateExportInMonitoringResource(
+	ctx context.Context,
+	k8sClient client.Client,
+	export *dash0common.Export,
+) {
+	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+	monitoringResource.Spec.Export = export
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }

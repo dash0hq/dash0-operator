@@ -39,7 +39,8 @@ import (
 )
 
 const (
-	checkRuleOriginPattern = "dash0-operator_%s_test-dataset_test-namespace_test-rule_%s_%s"
+	checkRuleOriginPattern            = "dash0-operator_%s_test-dataset_test-namespace_test-rule_%s_%s"
+	checkRuleOriginPatternAlternative = "dash0-operator_%s_test-dataset-alt_test-namespace_test-rule_%s_%s"
 )
 
 var (
@@ -87,7 +88,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("does not start watching Prometheus rules if the CRD does not exist and the auth token has not been provided", func() {
 			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			prometheusRuleCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
@@ -97,18 +98,18 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("does not start watching Prometheus rules if the CRD does not exist and the API endpoint has not been provided", func() {
 			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 		})
 
 		It("does not start watching Prometheus rules if the API endpoint & auth token have been provided but the CRD does not exist", func() {
 			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			prometheusRuleCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
-			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 		})
 
@@ -116,7 +117,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			ensurePrometheusRuleCrdExists(ctx)
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			prometheusRuleCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
@@ -127,7 +128,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			ensurePrometheusRuleCrdExists(ctx)
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 		})
 
@@ -136,11 +137,11 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
 			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			prometheusRuleCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
-			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 		})
 
@@ -149,11 +150,11 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
 
 			// provide the API endpoint and the auth token first
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			prometheusRuleCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
-			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 
 			// create the CRD a bit later
 			time.Sleep(100 * time.Millisecond)
@@ -179,8 +180,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			ensurePrometheusRuleCrdExists(ctx)
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
 			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
-			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			prometheusRuleCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
@@ -203,11 +204,11 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("can cope with multiple consecutive create & delete events", func() {
 			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			prometheusRuleCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
-			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 
 			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 			ensurePrometheusRuleCrdExists(ctx)
@@ -262,11 +263,11 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+			prometheusRuleCrdReconciler.SetDefaultApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			}, &logger)
-			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 			prometheusRuleReconciler = prometheusRuleCrdReconciler.prometheusRuleReconciler
 			// to make tests that involve http retries faster, we do not want to wait for one second for each retry
@@ -275,6 +276,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 		AfterEach(func() {
 			DeleteMonitoringResourceIfItExists(ctx, k8sClient)
+			prometheusRuleCrdReconciler.RemoveNamespacedApiEndpointAndDataset(ctx, TestNamespaceName, &logger)
+			prometheusRuleCrdReconciler.RemoveNamespacedAuthToken(ctx, TestNamespaceName, &logger)
 		})
 
 		AfterAll(func() {
@@ -299,7 +302,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("it ignores Prometheus rule resource changes if synchronization is disabled via the Dash0 monitoring resource", func() {
-			monitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			monitoringResource := EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 			monitoringResource.Spec.SynchronizePrometheusRules = ptr.To(false)
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
@@ -320,12 +323,12 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("it ignores Prometheus rule resource changes if the API endpoint is not configured", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectRulePutRequests(clusterId, defaultCheckRuleRequests())
 			defer gock.Off()
 
-			prometheusRuleCrdReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
+			prometheusRuleCrdReconciler.RemoveDefaultApiEndpointAndDataset(ctx, &logger)
 
 			ruleResource := createDefaultRuleResource()
 			prometheusRuleReconciler.Create(
@@ -341,7 +344,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("creates check rules", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(clusterId, defaultCheckRuleRequests())
@@ -364,8 +367,45 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
+		It("creates check rules with namespaced config from the monitoring resource", func() {
+			monitoringResource := DefaultMonitoringResourceWithCustomApiConfigAndToken(
+				MonitoringResourceQualifiedName,
+				ApiEndpointTestAlternative,
+				DatasetCustomTestAlternative,
+				AuthorizationTokenTestAlternative)
+			EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, monitoringResource.Spec)
+
+			expectFetchOriginsGetRequestCustom(clusterId, ApiEndpointTestAlternative, AuthorizationHeaderTestAlternative, DatasetCustomTestAlternative)
+			expectRulePutRequestsCustom(clusterId, ApiEndpointTestAlternative, AuthorizationHeaderTestAlternative, DatasetCustomTestAlternative, defaultCheckRuleRequests())
+			defer gock.Off()
+
+			apiConfig := ApiConfig{
+				Endpoint: ApiEndpointTestAlternative,
+				Dataset:  DatasetCustomTestAlternative,
+			}
+
+			prometheusRuleCrdReconciler.SetNamespacedApiEndpointAndDataset(ctx, TestNamespaceName, &apiConfig, &logger)
+			prometheusRuleCrdReconciler.SetNamespacedAuthToken(ctx, TestNamespaceName, AuthorizationTokenTestAlternative, &logger)
+
+			ruleResource := createDefaultRuleResource()
+			prometheusRuleReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				expectedPrometheusSyncResult(clusterId, DatasetCustomTestAlternative, checkRuleOriginPatternAlternative),
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
 		It("updates check rules", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(clusterId, defaultCheckRuleRequests())
@@ -389,7 +429,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("updates check rules if dash0.com/enable is set but not to \"false\"", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(clusterId, defaultCheckRuleRequests())
@@ -413,7 +453,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("deletes all check rules on Create (and does not try to create them) if labelled with dash0.com/enable=false", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectRuleDeleteRequestsWithHttpStatus(clusterId, defaultCheckRuleRequests(), http.StatusNotFound)
 			defer gock.Off()
@@ -436,7 +476,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("deletes all check rules on Update (and does not try to update them) if labelled with dash0.com/enable=false", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
 			defer gock.Off()
@@ -459,7 +499,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("deletes individual check rules when the rule has been removed from the PrometheusRule resource", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
@@ -533,7 +573,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("deletes individual check rules when the group has been removed from the PrometheusRule resource", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
@@ -608,7 +648,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("deletes individual check rules when the group in the PrometheusRule resource has been renamed", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
@@ -701,7 +741,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("deletes all check rules when the whole PrometheusRule resource has been deleted", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectRuleDeleteRequestsWithHttpStatus(clusterId, defaultCheckRuleRequests(), http.StatusNotFound)
 			defer gock.Off()
@@ -724,7 +764,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("reports validation issues and http errors for Prometheus rules", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchOriginsGetRequest(clusterId)
 
@@ -837,7 +877,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("reports as failed if no Prometheus rule is synchronized succcessul", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchOriginsGetRequest(clusterId)
 
@@ -1240,10 +1280,10 @@ spec:
 `
 			Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
 			preconditionValidationResult := &preconditionValidationResult{
-				k8sName:      "prometheus-rule",
-				k8sNamespace: TestNamespaceName,
-				resource:     prometheusRule,
-			}
+				k8sName:            "prometheus-rule",
+				k8sNamespace:       TestNamespaceName,
+				resource:           prometheusRule,
+				validatedApiConfig: &ValidatedApiConfigAndToken{}}
 			resourceToRequestsResult :=
 				prometheusRuleReconciler.MapResourceToHttpRequests(
 					preconditionValidationResult,
@@ -1400,7 +1440,9 @@ spec:
 				prometheusv1.Rule{
 					Alert: "alert",
 				},
-				&preconditionValidationResult{},
+				&preconditionValidationResult{
+					validatedApiConfig: &ValidatedApiConfigAndToken{},
+				},
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
 				nil,
@@ -1432,7 +1474,9 @@ spec:
 						"label2": "label value 2",
 					},
 				},
-				&preconditionValidationResult{},
+				&preconditionValidationResult{
+					validatedApiConfig: &ValidatedApiConfigAndToken{},
+				},
 				"group",
 				ptr.To(prometheusv1.Duration("10m")),
 				nil,
@@ -1627,51 +1671,60 @@ func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
 	return crdReconciler
 }
 
-func expectFetchOriginsGetRequest(clusterId string) {
-	gock.New(ApiEndpointTest).
+func expectFetchOriginsGetRequestCustom(clusterId string, endpoint string, authHeader string, dataset string) {
+	gock.New(endpoint).
 		Get("/api/alerting/check-rules").
-		MatchHeader("Authorization", AuthorizationHeaderTest).
-		MatchParam("dataset", DatasetCustomTest).
+		MatchHeader("Authorization", authHeader).
+		MatchParam("dataset", dataset).
 		ParamPresent("idPrefix").
 		Times(1).
 		Reply(200).
 		JSON([]map[string]string{
 			{
-				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-1", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_%s_test-namespace_test-rule_dash0|group-1_rule-1-1", clusterId, dataset),
 			},
 			{
-				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_%s_test-namespace_test-rule_dash0|group-1_rule-1-2", clusterId, dataset),
 			},
 			{
-				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_%s_test-namespace_test-rule_dash0|group-2_rule-2-1", clusterId, dataset),
 			},
 			{
-				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_%s_test-namespace_test-rule_dash0|group-2_rule-2-2", clusterId, dataset),
 			},
 		})
 }
 
-func expectRulePutRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
+func expectFetchOriginsGetRequest(clusterId string) {
+	expectFetchOriginsGetRequestCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest)
+}
+
+func expectRulePutRequestsCustom(clusterId string, endpoint string, authHeader string, dataset string, expectedRequests []checkRuleRequestExpectation) {
 	for _, expectedRequest := range expectedRequests {
 		origin :=
 			fmt.Sprintf(
-				"dash0-operator_%s_test-dataset_test-namespace_test-rule_%s_%s",
+				"dash0-operator_%s_%s_test-namespace_test-rule_%s_%s",
 				clusterId,
+				dataset,
 				strings.ReplaceAll(expectedRequest.group, "/", "|"),
 				expectedRequest.alert,
 			)
 		expectedPath := fmt.Sprintf("%s.*%s", checkRuleApiBasePath, origin)
-		gock.New(ApiEndpointTest).
+		gock.New(endpoint).
 			Put(expectedPath).
-			MatchHeader("Authorization", AuthorizationHeaderTest).
-			MatchParam("dataset", DatasetCustomTest).
+			MatchHeader("Authorization", authHeader).
+			MatchParam("dataset", dataset).
 			Times(1).
 			Reply(200).
 			JSON(map[string]interface{}{
 				"id":      origin,
-				"dataset": DatasetCustomTest,
+				"dataset": dataset,
 			})
 	}
+}
+
+func expectRulePutRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
+	expectRulePutRequestsCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest, expectedRequests)
 }
 
 func expectRuleDeleteRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
@@ -1825,27 +1878,27 @@ func defaultCheckRuleRequests() []checkRuleRequestExpectation {
 	}
 }
 
-func defaultExpectedPrometheusSyncResult(clusterId string) dash0common.PrometheusRuleSynchronizationResult {
+func expectedPrometheusSyncResult(clusterId string, dataset string, originPattern string) dash0common.PrometheusRuleSynchronizationResult {
 	return dash0common.PrometheusRuleSynchronizationResult{
 		SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 		AlertingRulesTotal:     4,
 		SynchronizedRulesTotal: 4,
 		SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 			"dash0/group-1 - rule-1-1": {
-				Dash0Origin:  fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-1"),
-				Dash0Dataset: DatasetCustomTest,
+				Dash0Origin:  fmt.Sprintf(originPattern, clusterId, "dash0|group-1", "rule-1-1"),
+				Dash0Dataset: dataset,
 			},
 			"dash0/group-1 - rule-1-2": {
-				Dash0Origin:  fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-2"),
-				Dash0Dataset: DatasetCustomTest,
+				Dash0Origin:  fmt.Sprintf(originPattern, clusterId, "dash0|group-1", "rule-1-2"),
+				Dash0Dataset: dataset,
 			},
 			"dash0/group-2 - rule-2-1": {
-				Dash0Origin:  fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-2", "rule-2-1"),
-				Dash0Dataset: DatasetCustomTest,
+				Dash0Origin:  fmt.Sprintf(originPattern, clusterId, "dash0|group-2", "rule-2-1"),
+				Dash0Dataset: dataset,
 			},
 			"dash0/group-2 - rule-2-2": {
-				Dash0Origin:  fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-2", "rule-2-2"),
-				Dash0Dataset: DatasetCustomTest,
+				Dash0Origin:  fmt.Sprintf(originPattern, clusterId, "dash0|group-2", "rule-2-2"),
+				Dash0Dataset: dataset,
 			},
 		},
 		SynchronizationErrorsTotal: 0,
@@ -1853,6 +1906,10 @@ func defaultExpectedPrometheusSyncResult(clusterId string) dash0common.Prometheu
 		InvalidRulesTotal:          0,
 		InvalidRules:               nil,
 	}
+}
+
+func defaultExpectedPrometheusSyncResult(clusterId string) dash0common.PrometheusRuleSynchronizationResult {
+	return expectedPrometheusSyncResult(clusterId, DatasetCustomTest, checkRuleOriginPattern)
 }
 
 func verifyCheckRuleRequest(apiRequest WrappedApiRequest, itemName string, origin string, expression string) {

@@ -16,12 +16,12 @@ type DummyAuthTokenClient struct {
 	AuthToken            string
 }
 
-func (c *DummyAuthTokenClient) SetAuthToken(_ context.Context, authToken string, _ *logr.Logger) {
+func (c *DummyAuthTokenClient) SetDefaultAuthToken(_ context.Context, authToken string, _ *logr.Logger) {
 	c.SetAuthTokenCalls++
 	c.AuthToken = authToken
 }
 
-func (c *DummyAuthTokenClient) RemoveAuthToken(_ context.Context, _ *logr.Logger) {
+func (c *DummyAuthTokenClient) RemoveDefaultAuthToken(_ context.Context, _ *logr.Logger) {
 	c.RemoveAuthTokenCalls++
 	c.AuthToken = ""
 }

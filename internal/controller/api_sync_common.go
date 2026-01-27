@@ -30,9 +30,37 @@ type ApiConfig struct {
 	Dataset  string
 }
 
+// ValidatedApiConfigAndToken ensures a complete API sync config where all fields have been validated, correctly
+// formatted and (for optional values) defaults have been applied.
+type ValidatedApiConfigAndToken struct {
+	ApiConfig
+	Token string
+}
+
+func NewValidatedApiConfigAndToken(endpoint string, dataset string, token string) *ValidatedApiConfigAndToken {
+	if !strings.HasSuffix(endpoint, "/") {
+		endpoint = endpoint + "/"
+	}
+	if dataset == "" {
+		dataset = util.DatasetDefault
+	}
+	return &ValidatedApiConfigAndToken{
+		ApiConfig: ApiConfig{
+			Endpoint: endpoint,
+			Dataset:  dataset,
+		},
+		Token: token,
+	}
+}
+
 type ApiClient interface {
-	SetApiEndpointAndDataset(context.Context, *ApiConfig, *logr.Logger)
-	RemoveApiEndpointAndDataset(context.Context, *logr.Logger)
+	SetDefaultApiEndpointAndDataset(context.Context, *ApiConfig, *logr.Logger)
+	RemoveDefaultApiEndpointAndDataset(context.Context, *logr.Logger)
+}
+
+type NamespacedApiClient interface {
+	SetNamespacedApiEndpointAndDataset(context.Context, string, *ApiConfig, *logr.Logger)
+	RemoveNamespacedApiEndpointAndDataset(context.Context, string, *logr.Logger)
 }
 
 type ResourceToRequestsResult struct {
@@ -133,8 +161,10 @@ func (m *ResourceToRequestsResult) HasNoErrorsAndNoIssues() bool {
 type ApiSyncReconciler interface {
 	KindDisplayName() string
 	ShortName() string
-	GetAuthToken() string
-	GetApiConfig() *atomic.Pointer[ApiConfig]
+	GetDefaultAuthToken() string
+	GetDefaultApiConfig() *atomic.Pointer[ApiConfig]
+	GetNamespacedAuthToken(string) (string, bool)
+	GetNamespacedApiConfig(string) (ApiConfig, bool)
 	ControllerName() string
 	K8sClient() client.Client
 	HttpClient() *http.Client
@@ -244,15 +274,8 @@ type preconditionValidationResult struct {
 
 	// monitoringResource is the Dash0 monitoring resource that was found in the same namespace as the resource
 	monitoringResource *dash0v1beta1.Dash0Monitoring
-
-	// authToken is the Dash0 auth token that will be used to sync the Dash0 API resource
-	authToken string
-
-	// apiEndpoint is the Dash0 API endpoint that will be used to sync the Dash0 API resource
-	apiEndpoint string
-
-	// dataset is the Dash0 dataset into which the Dash0 API resource will be synchronized
-	dataset string
+	// validatedApiConfig is the validated and standardized API config containing the endpoint, dataset and token
+	validatedApiConfig *ValidatedApiConfigAndToken
 
 	// k8sNamespace is Kubernetes namespace in which the Dash0 API resource has been found
 	k8sNamespace string
@@ -392,7 +415,7 @@ func synchronizeViaApiAndUpdateStatus(
 // - Is there a monitoring resource in the namespace?
 // - Is synchronization enabled for the resource type in the namespace?
 // - Is synchronization disabled for this resource specifically via the dash0.com/enable label?
-// - Are a Dash0 API endpoint and a Dash0 auth token available?
+// - Are a Dash0 API endpoint and a Dash0 auth token available (either in the operator configuration or the monitoring resource)?
 //
 // Preprocessing steps:
 // - Remove irrelevant metadata like metadata.managedFields and the kubectl.kubernetes.io/last-applied-configuration
@@ -469,12 +492,66 @@ func validatePreconditionsAndPreprocess(
 		}
 	}
 
-	apiConfig := apiSyncReconciler.GetApiConfig().Load()
-	authToken := apiSyncReconciler.GetAuthToken()
-	if !isValidApiConfig(apiConfig) {
+	var defaultValidatedApiConfig *ValidatedApiConfigAndToken
+	var namespacedValidatedApiConfig *ValidatedApiConfigAndToken
+
+	namespacedApiConfig, namespacedApiConfigExists := apiSyncReconciler.GetNamespacedApiConfig(namespace)
+	namespacedAuthToken, namespacedAuthTokenExists := apiSyncReconciler.GetNamespacedAuthToken(namespace)
+
+	// This check is only relevant when the operator starts and we might have already reconciled the operator config
+	// but not the monitoring resource in this namespace. In that case we would incorrectly do an initial sync to the
+	// default backend even though the monitoring resource defines a custom API config.
+	if monitoringResourceHasDash0Export(monitoringResource) && !namespacedAuthTokenExists {
+		logger.Info(fmt.Sprintf("The monitoring resource of namespace %s has a Dash0 export, but no auth token "+
+			"is available (yet). This might happen if the monitoring resource has not been reconciled so far and will "+
+			"be resolved once the resource is reconciled. Sync for the %s from %s will be disabled until then.",
+			namespace, apiSyncReconciler.ShortName(), name))
+		return &preconditionValidationResult{
+			synchronizeResource: false,
+		}
+	}
+
+	// We first check whether a valid endpoint and auth token exist for the namespace
+	if namespacedApiConfigExists && isValidApiConfig(&namespacedApiConfig) {
+		if namespacedAuthTokenExists {
+			logger.Info(fmt.Sprintf("Found a valid Dash0 API endpoint and auth token in the monitoring resource "+
+				"in namespace %s. Sync for the %s from %s will use the endpoint, dataset and token defined in the monitoring resource.",
+				namespace, apiSyncReconciler.ShortName(), name))
+			namespacedValidatedApiConfig = NewValidatedApiConfigAndToken(
+				namespacedApiConfig.Endpoint,
+				namespacedApiConfig.Dataset,
+				namespacedAuthToken,
+			)
+		}
+	}
+
+	// We also expect a default API endpoint/token, even when the namespaced ones are valid.
+	// This is done mostly for consistency with the validation logic for the collectors.
+	defaultApiConfig := apiSyncReconciler.GetDefaultApiConfig().Load()
+	defaultAuthToken := apiSyncReconciler.GetDefaultAuthToken()
+	if isValidApiConfig(defaultApiConfig) {
+		if defaultAuthToken != "" {
+			defaultValidatedApiConfig = NewValidatedApiConfigAndToken(
+				defaultApiConfig.Endpoint,
+				defaultApiConfig.Dataset,
+				defaultAuthToken,
+			)
+		} else {
+			logger.Info(
+				fmt.Sprintf(
+					"No default Dash0 auth token has been provided via the operator configuration, the %s(s) from %s/%s will not be updated in Dash0.",
+					apiSyncReconciler.ShortName(),
+					namespace,
+					name,
+				))
+			return &preconditionValidationResult{
+				synchronizeResource: false,
+			}
+		}
+	} else {
 		logger.Info(
 			fmt.Sprintf(
-				"No Dash0 API endpoint has been provided via the operator configuration resource, "+
+				"No default Dash0 API endpoint has been provided via the operator configuration resource, "+
 					"the %s(s) from %s/%s will not be updated in Dash0.",
 				apiSyncReconciler.ShortName(),
 				namespace,
@@ -483,23 +560,6 @@ func validatePreconditionsAndPreprocess(
 		return &preconditionValidationResult{
 			synchronizeResource: false,
 		}
-	}
-	if authToken == "" {
-		logger.Info(
-			fmt.Sprintf(
-				"No Dash0 auth token is available, the %s(s) from %s/%s will not be updated in Dash0.",
-				apiSyncReconciler.ShortName(),
-				namespace,
-				name,
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-
-	dataset := apiConfig.Dataset
-	if dataset == "" {
-		dataset = util.DatasetDefault
 	}
 
 	dash0ApiResourceObject := dash0ApiResource.Object
@@ -535,9 +595,11 @@ func validatePreconditionsAndPreprocess(
 		}
 	}
 
-	apiEndpoint := apiConfig.Endpoint
-	if !strings.HasSuffix(apiEndpoint, "/") {
-		apiEndpoint += "/"
+	var validatedApiConfig *ValidatedApiConfigAndToken
+	if namespacedValidatedApiConfig != nil {
+		validatedApiConfig = namespacedValidatedApiConfig
+	} else {
+		validatedApiConfig = defaultValidatedApiConfig
 	}
 
 	return &preconditionValidationResult{
@@ -545,9 +607,7 @@ func validatePreconditionsAndPreprocess(
 		syncDisabledViaLabel: syncDisabledViaLabel,
 		resource:             dash0ApiResourceObject,
 		monitoringResource:   monitoringResource,
-		authToken:            authToken,
-		apiEndpoint:          apiEndpoint,
-		dataset:              dataset,
+		validatedApiConfig:   validatedApiConfig,
 		k8sNamespace:         namespace,
 		k8sName:              name,
 	}
@@ -694,8 +754,8 @@ func structToMap(obj interface{}) (*unstructured.Unstructured, error) {
 	}, nil
 }
 
-func addAuthorizationHeader(req *http.Request, preconditionChecksResult *preconditionValidationResult) {
-	req.Header.Set(util.AuthorizationHeaderName, util.RenderAuthorizationHeader(preconditionChecksResult.authToken))
+func addAuthorizationHeader(req *http.Request, token string) {
+	req.Header.Set(util.AuthorizationHeaderName, util.RenderAuthorizationHeader(token))
 }
 
 // executeAllHttpRequests executes all HTTP requests in the given list and returns the names of the items that were
@@ -975,4 +1035,14 @@ func convertAndWriteSynchronizationResultForOwnedResource(
 		synchronizationError,
 		logger,
 	)
+}
+
+func monitoringResourceHasDash0Export(m *dash0v1beta1.Dash0Monitoring) bool {
+	if m != nil &&
+		m.Spec.Export != nil &&
+		m.Spec.Export.Dash0 != nil {
+		return true
+	} else {
+		return false
+	}
 }

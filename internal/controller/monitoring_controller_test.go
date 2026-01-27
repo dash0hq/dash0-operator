@@ -28,9 +28,11 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/go-logr/logr"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -42,6 +44,17 @@ var (
 	namespace                    = TestNamespaceName
 	extraMonitoringResourceNames []types.NamespacedName
 	operatorNamespace            = OperatorNamespace
+	namespacedApiClient1         *DummyNamespacedApiClient
+	namespacedApiClient2         *DummyNamespacedApiClient
+	namespacedApiClients         []NamespacedApiClient
+	namespacedAuthTokenClient1   *DummyNamespacedAuthTokenClient
+	namespacedAuthTokenClient2   *DummyNamespacedAuthTokenClient
+	namespacedAuthTokenClients   []selfmonitoringapiaccess.NamespacedAuthTokenClient
+
+	apiConfigTest = ApiConfig{
+		Endpoint: ApiEndpointTest,
+		Dataset:  DatasetCustomTest,
+	}
 )
 
 var _ = Describe("The monitoring resource controller", Ordered, func() {
@@ -57,6 +70,13 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	BeforeEach(func() {
 		createdObjectsMonitoringControllerTest = make([]client.Object, 0)
+
+		namespacedApiClient1 = NewDummyNamespacedApiClient()
+		namespacedApiClient2 = NewDummyNamespacedApiClient()
+		namespacedApiClients = []NamespacedApiClient{namespacedApiClient1, namespacedApiClient2}
+		namespacedAuthTokenClient1 = NewDummyNamespacedAuthTokenClient()
+		namespacedAuthTokenClient2 = NewDummyNamespacedAuthTokenClient()
+		namespacedAuthTokenClients = []selfmonitoringapiaccess.NamespacedAuthTokenClient{namespacedAuthTokenClient1, namespacedAuthTokenClient2}
 
 		instrumenter := instrumentation.NewInstrumenter(
 			k8sClient,
@@ -109,11 +129,13 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		monitoringReconciler = NewMonitoringReconciler(
 			k8sClient,
 			clientset,
+			namespacedApiClients,
 			instrumenter,
 			collectorManager,
 			targetAllocatorManager,
 			&DanglingEventsTimeoutsTest,
 		)
+		monitoringReconciler.SetNamespacedAuthTokenClients(namespacedAuthTokenClients)
 	})
 
 	AfterEach(func() {
@@ -121,7 +143,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		DeleteAllEvents(ctx, clientset, namespace)
 	})
 
-	Describe("when the Dash0 monitoring resource exists", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and has export settings", Ordered, func() {
 		BeforeEach(func() {
 			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 			EnsureMonitoringResourceExists(ctx, k8sClient)
@@ -235,6 +257,55 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				// reconciling the resource should self-heal the degraded state
 				triggerReconcileRequest(ctx, monitoringReconciler)
 				verifyMonitoringResourceIsAvailable(ctx)
+			})
+
+			It("should set, update and remove the API config and auth token in all registered clients based on changes to the monitoring resource", func() {
+				By("Trigger reconcile request")
+				triggerReconcileRequest(ctx, monitoringReconciler)
+				verifyMonitoringResourceIsAvailable(ctx)
+				Expect(namespacedApiClient1.setNamespacedApiEndpointCalls).To(Equal(1))
+				Expect(namespacedApiClient1.namespacedApiconfig[TestNamespaceName]).To(Equal(&apiConfigTest))
+				Expect(namespacedApiClient2.setNamespacedApiEndpointCalls).To(Equal(1))
+				Expect(namespacedApiClient2.namespacedApiconfig[TestNamespaceName]).To(Equal(&apiConfigTest))
+				Expect(namespacedAuthTokenClient1.SetNamespacedAuthTokenCalls).To(Equal(1))
+				Expect(namespacedAuthTokenClient1.NamespacedAuthTokens[TestNamespaceName]).To(Equal(AuthorizationTokenTest))
+				Expect(namespacedAuthTokenClient2.SetNamespacedAuthTokenCalls).To(Equal(1))
+				Expect(namespacedAuthTokenClient2.NamespacedAuthTokens[TestNamespaceName]).To(Equal(AuthorizationTokenTest))
+
+				alternativeApiEndpoint := "alternative-api"
+				alternativeDataset := "alternative-dataset"
+				alternativeAuthToken := "alternative-auth-token"
+				alternativeExport := Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint()
+				alternativeApiConfig := ApiConfig{
+					Endpoint: alternativeApiEndpoint,
+					Dataset:  alternativeDataset,
+				}
+				alternativeExport.Dash0.ApiEndpoint = alternativeApiEndpoint
+				alternativeExport.Dash0.Dataset = alternativeDataset
+				alternativeExport.Dash0.Authorization.Token = &alternativeAuthToken
+				By("Update Export in monitoring resource and reconcile")
+				UpdateExportInMonitoringResource(ctx, k8sClient, alternativeExport)
+				triggerReconcileRequest(ctx, monitoringReconciler)
+				Expect(namespacedApiClient1.setNamespacedApiEndpointCalls).To(Equal(2))
+				Expect(namespacedApiClient1.namespacedApiconfig[TestNamespaceName]).To(Equal(&alternativeApiConfig))
+				Expect(namespacedApiClient2.setNamespacedApiEndpointCalls).To(Equal(2))
+				Expect(namespacedApiClient2.namespacedApiconfig[TestNamespaceName]).To(Equal(&alternativeApiConfig))
+				Expect(namespacedAuthTokenClient1.SetNamespacedAuthTokenCalls).To(Equal(2))
+				Expect(namespacedAuthTokenClient1.NamespacedAuthTokens[TestNamespaceName]).To(Equal(alternativeAuthToken))
+				Expect(namespacedAuthTokenClient2.SetNamespacedAuthTokenCalls).To(Equal(2))
+				Expect(namespacedAuthTokenClient2.NamespacedAuthTokens[TestNamespaceName]).To(Equal(alternativeAuthToken))
+
+				By("Remove Export in monitoring resource and reconcile")
+				RemoveExportFromMonitoringResource(ctx, k8sClient)
+				triggerReconcileRequest(ctx, monitoringReconciler)
+				Expect(namespacedApiClient1.removeNamespacedApiEndpointCalls).To(Equal(1))
+				Expect(namespacedApiClient1.namespacedApiconfig).To(Not(HaveKey(TestNamespaceName)))
+				Expect(namespacedApiClient2.removeNamespacedApiEndpointCalls).To(Equal(1))
+				Expect(namespacedApiClient2.namespacedApiconfig).To(Not(HaveKey(TestNamespaceName)))
+				Expect(namespacedAuthTokenClient1.RemoveNamespacedAuthTokenCalls).To(Equal(1))
+				Expect(namespacedAuthTokenClient1.NamespacedAuthTokens).To(Not(HaveKey(TestNamespaceName)))
+				Expect(namespacedAuthTokenClient2.RemoveNamespacedAuthTokenCalls).To(Equal(1))
+				Expect(namespacedAuthTokenClient2.NamespacedAuthTokens).To(Not(HaveKey(TestNamespaceName)))
 			})
 		})
 
@@ -1477,4 +1548,38 @@ func verifyMonitoringResourceDoesNotExist(ctx context.Context) {
 	Eventually(func(g Gomega) {
 		VerifyMonitoringResourceDoesNotExist(ctx, k8sClient, g)
 	}, timeout, pollingInterval).Should(Succeed())
+}
+
+type DummyNamespacedAuthTokenClient struct {
+	DummyAuthTokenClient
+	SetNamespacedAuthTokenCalls    int
+	RemoveNamespacedAuthTokenCalls int
+	NamespacedAuthTokens           map[string]string
+}
+
+func NewDummyNamespacedAuthTokenClient() *DummyNamespacedAuthTokenClient {
+	return &DummyNamespacedAuthTokenClient{
+		NamespacedAuthTokens: make(map[string]string),
+	}
+}
+
+func (c *DummyNamespacedAuthTokenClient) SetNamespacedAuthToken(_ context.Context, namespace string, authToken string, _ *logr.Logger) {
+	c.SetNamespacedAuthTokenCalls++
+	c.NamespacedAuthTokens[namespace] = authToken
+}
+
+func (c *DummyNamespacedAuthTokenClient) RemoveNamespacedAuthToken(_ context.Context, namespace string, _ *logr.Logger) {
+	c.RemoveNamespacedAuthTokenCalls++
+	delete(c.NamespacedAuthTokens, namespace)
+}
+
+func (c *DummyNamespacedAuthTokenClient) Reset() {
+	c.DummyAuthTokenClient.Reset()
+	c.NamespacedAuthTokens = make(map[string]string)
+	c.ResetCallCounts()
+}
+
+func (c *DummyNamespacedAuthTokenClient) ResetCallCounts() {
+	c.SetNamespacedAuthTokenCalls = 0
+	c.RemoveNamespacedAuthTokenCalls = 0
 }

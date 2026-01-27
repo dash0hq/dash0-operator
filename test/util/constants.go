@@ -57,8 +57,10 @@ const (
 	EndpointGrpcWithProtocolTest  = "dns://endpoint.backend.com:4317"
 	EndpointHttpTest              = "https://endpoint.backend.com:4318"
 
-	ApiEndpointTest   = "https://api.dash0.com"
-	DatasetCustomTest = "test-dataset"
+	ApiEndpointTest              = "https://api.dash0.com"
+	ApiEndpointTestAlternative   = "https://api-alt.dash0.com"
+	DatasetCustomTest            = "test-dataset"
+	DatasetCustomTestAlternative = "test-dataset-alt"
 )
 
 var (
@@ -137,6 +139,19 @@ func Dash0ExportWithEndpointTokenAndCustomDataset() *dash0common.Export {
 			Authorization: dash0common.Authorization{
 				Token: &AuthorizationTokenTest,
 			},
+		},
+	}
+}
+
+func Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint() *dash0common.Export {
+	return &dash0common.Export{
+		Dash0: &dash0common.Dash0Configuration{
+			Endpoint: EndpointDash0Test,
+			Dataset:  DatasetCustomTest,
+			Authorization: dash0common.Authorization{
+				Token: &AuthorizationTokenTest,
+			},
+			ApiEndpoint: ApiEndpointTest,
 		},
 	}
 }

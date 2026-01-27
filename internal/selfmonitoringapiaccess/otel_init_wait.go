@@ -111,12 +111,12 @@ func (s *OTelSdkStarter) RemoveOTelSdkParameters(ctx context.Context, logger *lo
 	s.onParametersHaveChanged(ctx, logger)
 }
 
-func (s *OTelSdkStarter) SetAuthToken(ctx context.Context, authToken string, logger *logr.Logger) {
+func (s *OTelSdkStarter) SetDefaultAuthToken(ctx context.Context, authToken string, logger *logr.Logger) {
 	s.authTokenFromSecretRef.Store(ptr.To(authToken))
 	s.onParametersHaveChanged(ctx, logger)
 }
 
-func (s *OTelSdkStarter) RemoveAuthToken(ctx context.Context, logger *logr.Logger) {
+func (s *OTelSdkStarter) RemoveDefaultAuthToken(ctx context.Context, logger *logr.Logger) {
 	s.authTokenFromSecretRef.Store(ptr.To(""))
 	s.onParametersHaveChanged(ctx, logger)
 }

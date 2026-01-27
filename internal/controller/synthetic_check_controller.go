@@ -30,6 +30,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -38,10 +39,13 @@ type SyntheticCheckReconciler struct {
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
 	httpClient            *http.Client
-	apiConfig             atomic.Pointer[ApiConfig]
-	authToken             atomic.Pointer[string]
+	defaultApiConfig      atomic.Pointer[ApiConfig]
+	defaultAuthToken      atomic.Pointer[string]
+	namespacedApiConfig   selfmonitoringapiaccess.NamespacedStore[ApiConfig]
+	namespacedAuthTokens  selfmonitoringapiaccess.NamespacedStore[string]
 	initialSyncMutex      sync.Mutex
 	initialSyncHasHappend atomic.Bool
+	namespacedSyncMutex   selfmonitoringapiaccess.NamespacedStore[*sync.Mutex]
 	httpRetryDelay        time.Duration
 }
 
@@ -56,11 +60,13 @@ func NewSyntheticCheckReconciler(
 	httpClient *http.Client,
 ) *SyntheticCheckReconciler {
 	return &SyntheticCheckReconciler{
-		Client:              k8sClient,
-		pseudoClusterUid:    pseudoClusterUid,
-		leaderElectionAware: leaderElectionAware,
-		httpClient:          httpClient,
-		httpRetryDelay:      1 * time.Second,
+		Client:               k8sClient,
+		pseudoClusterUid:     pseudoClusterUid,
+		leaderElectionAware:  leaderElectionAware,
+		httpClient:           httpClient,
+		namespacedApiConfig:  *selfmonitoringapiaccess.NewNamespacedStore[ApiConfig](),
+		namespacedAuthTokens: *selfmonitoringapiaccess.NewNamespacedStore[string](),
+		httpRetryDelay:       1 * time.Second,
 	}
 }
 
@@ -96,16 +102,24 @@ func (r *SyntheticCheckReconciler) ShortName() string {
 	return "check"
 }
 
-func (r *SyntheticCheckReconciler) GetAuthToken() string {
-	token := r.authToken.Load()
+func (r *SyntheticCheckReconciler) GetDefaultAuthToken() string {
+	token := r.defaultAuthToken.Load()
 	if token == nil {
 		return ""
 	}
 	return *token
 }
 
-func (r *SyntheticCheckReconciler) GetApiConfig() *atomic.Pointer[ApiConfig] {
-	return &r.apiConfig
+func (r *SyntheticCheckReconciler) GetDefaultApiConfig() *atomic.Pointer[ApiConfig] {
+	return &r.defaultApiConfig
+}
+
+func (r *SyntheticCheckReconciler) GetNamespacedAuthToken(namespace string) (string, bool) {
+	return r.namespacedAuthTokens.Get(namespace)
+}
+
+func (r *SyntheticCheckReconciler) GetNamespacedApiConfig(namespace string) (ApiConfig, bool) {
+	return r.namespacedApiConfig.Get(namespace)
 }
 
 func (r *SyntheticCheckReconciler) ControllerName() string {
@@ -129,28 +143,63 @@ func (r *SyntheticCheckReconciler) overrideHttpRetryDelay(delay time.Duration) {
 	r.httpRetryDelay = delay
 }
 
-func (r *SyntheticCheckReconciler) SetApiEndpointAndDataset(
+func (r *SyntheticCheckReconciler) SetDefaultApiEndpointAndDataset(
 	ctx context.Context,
 	apiConfig *ApiConfig,
 	logger *logr.Logger) {
-	r.apiConfig.Store(apiConfig)
+	r.defaultApiConfig.Store(apiConfig)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *SyntheticCheckReconciler) RemoveApiEndpointAndDataset(_ context.Context, _ *logr.Logger) {
-	r.apiConfig.Store(nil)
+func (r *SyntheticCheckReconciler) RemoveDefaultApiEndpointAndDataset(_ context.Context, _ *logr.Logger) {
+	r.defaultApiConfig.Store(nil)
 }
 
-func (r *SyntheticCheckReconciler) SetAuthToken(
+func (r *SyntheticCheckReconciler) SetNamespacedApiEndpointAndDataset(ctx context.Context, namespace string, updatedApiConfig *ApiConfig, logger *logr.Logger) {
+	if updatedApiConfig != nil {
+		previousApiConfig, _ := r.namespacedApiConfig.Get(namespace)
+
+		r.namespacedApiConfig.Set(namespace, *updatedApiConfig)
+
+		if previousApiConfig != *updatedApiConfig {
+			r.synchronizeNamespacedResources(ctx, namespace, logger)
+		}
+	}
+}
+
+func (r *SyntheticCheckReconciler) RemoveNamespacedApiEndpointAndDataset(ctx context.Context, namespace string, logger *logr.Logger) {
+	if _, exists := r.namespacedApiConfig.Get(namespace); exists {
+		r.namespacedApiConfig.Delete(namespace)
+		r.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *SyntheticCheckReconciler) SetDefaultAuthToken(
 	ctx context.Context,
 	authToken string,
 	logger *logr.Logger) {
-	r.authToken.Store(&authToken)
+	r.defaultAuthToken.Store(&authToken)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *SyntheticCheckReconciler) RemoveAuthToken(_ context.Context, _ *logr.Logger) {
-	r.authToken.Store(nil)
+func (r *SyntheticCheckReconciler) RemoveDefaultAuthToken(_ context.Context, _ *logr.Logger) {
+	r.defaultAuthToken.Store(nil)
+}
+
+func (r *SyntheticCheckReconciler) SetNamespacedAuthToken(ctx context.Context, namespace string, updatedAuthToken string, logger *logr.Logger) {
+	previousAuthToken, _ := r.GetNamespacedAuthToken(namespace)
+	r.namespacedAuthTokens.Set(namespace, updatedAuthToken)
+
+	if previousAuthToken != updatedAuthToken {
+		r.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *SyntheticCheckReconciler) RemoveNamespacedAuthToken(ctx context.Context, namespace string, logger *logr.Logger) {
+	if _, exists := r.namespacedAuthTokens.Get(namespace); exists {
+		r.namespacedAuthTokens.Delete(namespace)
+		r.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
 }
 
 func (r *SyntheticCheckReconciler) NotifiyOperatorManagerJustBecameLeader(ctx context.Context, logger *logr.Logger) {
@@ -173,7 +222,7 @@ func (r *SyntheticCheckReconciler) maybeDoInitialSynchronizationOfAllResources(c
 			))
 		return
 	}
-	if !isValidApiConfig(r.apiConfig.Load()) {
+	if !isValidApiConfig(r.defaultApiConfig.Load()) {
 		logger.Info(
 			"Waiting for the Dash0 API endpoint before running initial synchronization of synthetic checks. Either " +
 				"no Dash0 API endpoint has been provided via the operator configuration resource, or the operator " +
@@ -183,7 +232,7 @@ func (r *SyntheticCheckReconciler) maybeDoInitialSynchronizationOfAllResources(c
 		)
 		return
 	}
-	authToken := r.authToken.Load()
+	authToken := r.defaultAuthToken.Load()
 	if authToken == nil || *authToken == "" {
 		logger.Info(
 			"Waiting for the Dash0 auth token before running initial synchronization of synthetic checks. Either " +
@@ -223,6 +272,59 @@ func (r *SyntheticCheckReconciler) maybeDoInitialSynchronizationOfAllResources(c
 		}
 		logger.Info("Initial synchronization of synthetic checks has finished.")
 		r.initialSyncHasHappend.Store(true)
+	}()
+}
+
+func (r *SyntheticCheckReconciler) synchronizeNamespacedResources(ctx context.Context, namespace string, logger *logr.Logger) {
+	// nsSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
+	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
+	// config and auth token at almost the same time, triggering two resyncs.
+	nsSyncMutex, exists := r.namespacedSyncMutex.Get(namespace)
+	if !exists {
+		nsSyncMutex = &sync.Mutex{}
+		r.namespacedSyncMutex.Set(namespace, nsSyncMutex)
+	}
+
+	nsSyncMutex.Lock()
+
+	if !r.leaderElectionAware.IsLeader() {
+		logger.Info(
+			fmt.Sprintf(
+				"Waiting for the this operator manager replica to become leader before running " +
+					"synchronization of synthetic checks.",
+			))
+		return
+	}
+
+	logger.Info(fmt.Sprintf("Running synchronization of synthetic checks in namespace %s now.", namespace))
+
+	go func() {
+		defer nsSyncMutex.Unlock()
+
+		allSyntheticCheckResourcesInNamespace := dash0v1alpha1.Dash0SyntheticCheckList{}
+		if err := r.List(
+			ctx,
+			&allSyntheticCheckResourcesInNamespace,
+			&client.ListOptions{
+				Namespace: namespace,
+			},
+		); err != nil {
+			logger.Error(err, fmt.Sprintf("Failed to list Dash0 synthetic checks resources in namespace %s.", namespace))
+			return
+		}
+
+		for _, syntheticCheckResource := range allSyntheticCheckResourcesInNamespace.Items {
+			pseudoReconcileRequest := ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: syntheticCheckResource.Namespace,
+					Name:      syntheticCheckResource.Name,
+				},
+			}
+			_, _ = r.Reconcile(ctx, pseudoReconcileRequest)
+			// stagger API requests a bit
+			time.Sleep(50 * time.Millisecond)
+		}
+		logger.Info(fmt.Sprintf("Synchronization of synthetic checks in namespace %s has finished.", namespace))
 	}()
 }
 
@@ -334,16 +436,16 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 		return NewResourceToRequestsResultSingleItemError(itemName, httpError.Error())
 	}
 
-	addAuthorizationHeader(req, preconditionChecksResult)
+	addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
 	if action == upsertAction {
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, syntheticCheckOrigin, preconditionChecksResult.dataset)
+	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, syntheticCheckOrigin, preconditionChecksResult.validatedApiConfig.Dataset)
 }
 
 func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksResult *preconditionValidationResult) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
+	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.validatedApiConfig.Dataset)
 	syntheticCheckOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
@@ -355,7 +457,7 @@ func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksRes
 	)
 	return fmt.Sprintf(
 		"%sapi/synthetic-checks/%s?dataset=%s",
-		preconditionChecksResult.apiEndpoint,
+		preconditionChecksResult.validatedApiConfig.Endpoint,
 		syntheticCheckOrigin,
 		datasetUrlEncoded,
 	), syntheticCheckOrigin

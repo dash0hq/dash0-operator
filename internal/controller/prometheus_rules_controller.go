@@ -22,6 +22,7 @@ import (
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/workqueue"
@@ -34,6 +35,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -53,8 +55,10 @@ type PrometheusRuleReconciler struct {
 	pseudoClusterUid           types.UID
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
-	apiConfig                  atomic.Pointer[ApiConfig]
-	authToken                  atomic.Pointer[string]
+	defaultApiConfig           atomic.Pointer[ApiConfig]
+	defaultAuthToken           atomic.Pointer[string]
+	namespacedApiConfig        selfmonitoringapiaccess.NamespacedStore[ApiConfig]
+	namespacedAuthTokens       selfmonitoringapiaccess.NamespacedStore[string]
 	httpRetryDelay             time.Duration
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
@@ -249,11 +253,11 @@ func (r *PrometheusRuleCrdReconciler) InitializeSelfMonitoringMetrics(
 	)
 }
 
-func (r *PrometheusRuleCrdReconciler) SetApiEndpointAndDataset(
+func (r *PrometheusRuleCrdReconciler) SetDefaultApiEndpointAndDataset(
 	ctx context.Context,
 	apiConfig *ApiConfig,
 	logger *logr.Logger) {
-	r.prometheusRuleReconciler.apiConfig.Store(apiConfig)
+	r.prometheusRuleReconciler.defaultApiConfig.Store(apiConfig)
 	if isValidApiConfig(apiConfig) {
 		maybeStartWatchingThirdPartyResources(r, logger)
 	} else {
@@ -261,16 +265,35 @@ func (r *PrometheusRuleCrdReconciler) SetApiEndpointAndDataset(
 	}
 }
 
-func (r *PrometheusRuleCrdReconciler) RemoveApiEndpointAndDataset(ctx context.Context, logger *logr.Logger) {
-	r.prometheusRuleReconciler.apiConfig.Store(nil)
+func (r *PrometheusRuleCrdReconciler) RemoveDefaultApiEndpointAndDataset(ctx context.Context, logger *logr.Logger) {
+	r.prometheusRuleReconciler.defaultApiConfig.Store(nil)
 	stopWatchingThirdPartyResources(ctx, r, logger)
 }
 
-func (r *PrometheusRuleCrdReconciler) SetAuthToken(
+func (r *PrometheusRuleCrdReconciler) SetNamespacedApiEndpointAndDataset(ctx context.Context, namespace string, updatedApiConfig *ApiConfig, logger *logr.Logger) {
+	if updatedApiConfig != nil {
+		previousApiConfig, _ := r.prometheusRuleReconciler.namespacedApiConfig.Get(namespace)
+
+		r.prometheusRuleReconciler.namespacedApiConfig.Set(namespace, *updatedApiConfig)
+
+		if previousApiConfig != *updatedApiConfig {
+			r.prometheusRuleReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
+		}
+	}
+}
+
+func (r *PrometheusRuleCrdReconciler) RemoveNamespacedApiEndpointAndDataset(ctx context.Context, namespace string, logger *logr.Logger) {
+	if _, exists := r.prometheusRuleReconciler.namespacedApiConfig.Get(namespace); exists {
+		r.prometheusRuleReconciler.namespacedApiConfig.Delete(namespace)
+		r.prometheusRuleReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *PrometheusRuleCrdReconciler) SetDefaultAuthToken(
 	ctx context.Context,
 	authToken string,
 	logger *logr.Logger) {
-	r.prometheusRuleReconciler.authToken.Store(&authToken)
+	r.prometheusRuleReconciler.defaultAuthToken.Store(&authToken)
 	if authToken != "" {
 		maybeStartWatchingThirdPartyResources(r, logger)
 	} else {
@@ -278,9 +301,25 @@ func (r *PrometheusRuleCrdReconciler) SetAuthToken(
 	}
 }
 
-func (r *PrometheusRuleCrdReconciler) RemoveAuthToken(ctx context.Context, logger *logr.Logger) {
-	r.prometheusRuleReconciler.authToken.Store(nil)
+func (r *PrometheusRuleCrdReconciler) RemoveDefaultAuthToken(ctx context.Context, logger *logr.Logger) {
+	r.prometheusRuleReconciler.defaultAuthToken.Store(nil)
 	stopWatchingThirdPartyResources(ctx, r, logger)
+}
+
+func (r *PrometheusRuleCrdReconciler) SetNamespacedAuthToken(ctx context.Context, namespace string, updatedAuthToken string, logger *logr.Logger) {
+	previousAuthToken, _ := r.prometheusRuleReconciler.GetNamespacedAuthToken(namespace)
+	r.prometheusRuleReconciler.namespacedAuthTokens.Set(namespace, updatedAuthToken)
+
+	if previousAuthToken != updatedAuthToken {
+		r.prometheusRuleReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *PrometheusRuleCrdReconciler) RemoveNamespacedAuthToken(ctx context.Context, namespace string, logger *logr.Logger) {
+	if _, exists := r.prometheusRuleReconciler.namespacedAuthTokens.Get(namespace); exists {
+		r.prometheusRuleReconciler.namespacedAuthTokens.Delete(namespace)
+		r.prometheusRuleReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
 }
 
 func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
@@ -323,16 +362,24 @@ func (r *PrometheusRuleReconciler) IsWatching() bool {
 	return r.controllerStopFunction != nil
 }
 
-func (r *PrometheusRuleReconciler) GetAuthToken() string {
-	token := r.authToken.Load()
+func (r *PrometheusRuleReconciler) GetDefaultAuthToken() string {
+	token := r.defaultAuthToken.Load()
 	if token == nil {
 		return ""
 	}
 	return *token
 }
 
-func (r *PrometheusRuleReconciler) GetApiConfig() *atomic.Pointer[ApiConfig] {
-	return &r.apiConfig
+func (r *PrometheusRuleReconciler) GetDefaultApiConfig() *atomic.Pointer[ApiConfig] {
+	return &r.defaultApiConfig
+}
+
+func (r *PrometheusRuleReconciler) GetNamespacedAuthToken(namespace string) (string, bool) {
+	return r.namespacedAuthTokens.Get(namespace)
+}
+
+func (r *PrometheusRuleReconciler) GetNamespacedApiConfig(namespace string) (ApiConfig, bool) {
+	return r.namespacedApiConfig.Get(namespace)
 }
 
 func (r *PrometheusRuleReconciler) ControllerName() string {
@@ -434,11 +481,24 @@ func (r *PrometheusRuleReconciler) Delete(
 }
 
 func (r *PrometheusRuleReconciler) Generic(
-	_ context.Context,
-	_ event.TypedGenericEvent[*unstructured.Unstructured],
+	ctx context.Context,
+	e event.TypedGenericEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
-	// ignoring generic events
+	if prometheusRuleReconcileRequestMetric != nil {
+		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
+	}
+
+	logger := log.FromContext(ctx)
+	logger.Info(
+		"Reconciling check rule triggered by config event (updated API config or authorization).",
+		"namespace",
+		e.Object.GetNamespace(),
+		"name",
+		e.Object.GetName(),
+	)
+
+	upsertViaApi(r, e.Object)
 }
 
 func (r *PrometheusRuleReconciler) Reconcile(
@@ -458,7 +518,7 @@ func (r *PrometheusRuleReconciler) FetchExistingResourceOriginsRequest(
 	if req, err := http.NewRequest(http.MethodGet, checkRulesUrl, nil); err != nil {
 		return nil, err
 	} else {
-		addAuthorizationHeader(req, preconditionChecksResult)
+		addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
 		req.Header.Set(util.AcceptHeaderName, util.ApplicationJsonMediaType)
 		return req, nil
 	}
@@ -534,7 +594,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 					Request:  request,
 					ItemName: checkRuleName,
 					Origin:   checkRuleOriginNotUrlEncoded,
-					Dataset:  preconditionChecksResult.dataset,
+					Dataset:  preconditionChecksResult.validatedApiConfig.Dataset,
 				})
 				originsInResource = append(originsInResource, checkRuleOriginNotUrlEncoded)
 			}
@@ -556,11 +616,11 @@ func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(preconditionChecksResu
 	// soon-ish. We can remove the (misnamed) idPrefix query parameter as soon as the Dash0 API has rolled out the
 	// rename. Then, ~1 year later, the Dash0 API can remove support for the legacy query parameter idPrefix.
 	originPrefix :=
-		r.renderCheckRuleOriginPrefix(preconditionChecksResult, url.QueryEscape(preconditionChecksResult.dataset))
+		r.renderCheckRuleOriginPrefix(preconditionChecksResult, url.QueryEscape(preconditionChecksResult.validatedApiConfig.Dataset))
 	return fmt.Sprintf(
 		"%sapi/alerting/check-rules?dataset=%s&idPrefix=%s&originPrefix=%s",
-		preconditionChecksResult.apiEndpoint,
-		url.QueryEscape(preconditionChecksResult.dataset),
+		preconditionChecksResult.validatedApiConfig.Endpoint,
+		url.QueryEscape(preconditionChecksResult.validatedApiConfig.Dataset),
 		originPrefix,
 		originPrefix,
 	)
@@ -573,9 +633,9 @@ func (r *PrometheusRuleReconciler) renderCheckRuleUrl(
 ) string {
 	return fmt.Sprintf(
 		"%sapi/alerting/check-rules/%s?dataset=%s",
-		preconditionChecksResult.apiEndpoint,
+		preconditionChecksResult.validatedApiConfig.Endpoint,
 		checkRuleOrigin,
-		url.QueryEscape(preconditionChecksResult.dataset),
+		url.QueryEscape(preconditionChecksResult.validatedApiConfig.Dataset),
 	)
 }
 
@@ -604,14 +664,14 @@ func (r *PrometheusRuleReconciler) renderCheckRuleOrigin(
 
 	checkOriginNotUrlEncoded := fmt.Sprintf(
 		"%s%s_%s",
-		r.renderCheckRuleOriginPrefix(preconditionChecksResult, preconditionChecksResult.dataset),
+		r.renderCheckRuleOriginPrefix(preconditionChecksResult, preconditionChecksResult.validatedApiConfig.Dataset),
 		groupNameNotUrlEncoded,
 		alertNameNotUrlEncoded,
 	)
 	checkOriginUrlEncoded := fmt.Sprintf(
 		"%s%s_%s",
 		// dataset can only contain letters, numbers, underscores, and hyphens, so we do not need to replace "/" -> "|".
-		r.renderCheckRuleOriginPrefix(preconditionChecksResult, url.PathEscape(preconditionChecksResult.dataset)),
+		r.renderCheckRuleOriginPrefix(preconditionChecksResult, url.PathEscape(preconditionChecksResult.validatedApiConfig.Dataset)),
 		groupNameUrlEncoded,
 		alertNameUrlEncoded,
 	)
@@ -746,7 +806,7 @@ func convertRuleToRequest(
 		return nil, nil, httpError, false
 	}
 
-	addAuthorizationHeader(req, preconditionChecksResult)
+	addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
 	if action == upsertAction {
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
@@ -955,12 +1015,12 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 				logger.Error(httpError, "error creating http request to delete rule")
 				allSynchronizationErrors[existingOrigin] = httpError.Error()
 			} else {
-				addAuthorizationHeader(req, preconditionChecksResult)
+				addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
 				deleteRequests = append(deleteRequests, WrappedApiRequest{
 					Request:  req,
 					ItemName: existingOrigin + " (deleted)",
 					Origin:   existingOrigin,
-					Dataset:  preconditionChecksResult.dataset,
+					Dataset:  preconditionChecksResult.validatedApiConfig.Dataset,
 				})
 			}
 		}
@@ -1023,4 +1083,46 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 	}
 	previousResults[qualifiedName] = result
 	return result
+}
+
+// synchronizeNamespacedResources explicitly triggers a resync of check rules in a given namespace in response to an
+// updated API endpoint, dataset or auth token.
+func (r *PrometheusRuleReconciler) synchronizeNamespacedResources(ctx context.Context, namespace string, logger *logr.Logger) {
+	// do nothing if we are not currently watching the CRDs
+	if !r.IsWatching() {
+		return
+	}
+
+	logger.Info(fmt.Sprintf("Running synchronization of check rules in namespace %s now.", namespace))
+
+	go func() {
+		allRulesResourcesInNamespace := &unstructured.UnstructuredList{}
+		allRulesResourcesInNamespace.SetGroupVersionKind(schema.GroupVersionKind{
+			Group:   "monitoring.coreos.com",
+			Version: "v1",
+			Kind:    "PrometheusRuleList",
+		})
+		if err := r.List(
+			ctx,
+			allRulesResourcesInNamespace,
+			&client.ListOptions{
+				Namespace: namespace,
+			},
+		); err != nil {
+			logger.Error(err, fmt.Sprintf("Failed to list check rules resources in namespace %s.", namespace))
+			return
+		}
+
+		for i := range allRulesResourcesInNamespace.Items {
+			ruleResource := &allRulesResourcesInNamespace.Items[i]
+			evt := event.TypedGenericEvent[*unstructured.Unstructured]{
+				Object: ruleResource,
+			}
+			r.Generic(ctx, evt, nil)
+
+			// stagger API requests a bit
+			time.Sleep(50 * time.Millisecond)
+		}
+		logger.Info(fmt.Sprintf("Triggering synchronization of check rules in namespace %s has finished.", namespace))
+	}()
 }

@@ -426,6 +426,13 @@ func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInst
 	}
 }
 
+func (d *Dash0Monitoring) HasDash0ApiAccessConfigured() bool {
+	return d.Spec.Export != nil &&
+		d.Spec.Export.Dash0 != nil &&
+		d.Spec.Export.Dash0.ApiEndpoint != "" &&
+		(d.Spec.Export.Dash0.Authorization.Token != nil || d.Spec.Export.Dash0.Authorization.SecretRef != nil)
+}
+
 //+kubebuilder:object:root=true
 
 // Dash0MonitoringList contains a list of Dash0Monitoring resources.

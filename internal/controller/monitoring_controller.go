@@ -23,17 +23,20 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type MonitoringReconciler struct {
 	client.Client
-	clientset              *kubernetes.Clientset
-	instrumenter           *instrumentation.Instrumenter
-	collectorManager       *collectors.CollectorManager
-	targetAllocatorManager *targetallocator.TargetAllocatorManager
-	danglingEventsTimeouts *util.DanglingEventsTimeouts
+	clientset                  *kubernetes.Clientset
+	namespacedApiClients       []NamespacedApiClient
+	namespacedAuthTokenClients []selfmonitoringapiaccess.NamespacedAuthTokenClient
+	instrumenter               *instrumentation.Instrumenter
+	collectorManager           *collectors.CollectorManager
+	targetAllocatorManager     *targetallocator.TargetAllocatorManager
+	danglingEventsTimeouts     *util.DanglingEventsTimeouts
 }
 
 type statusUpdateInfo struct {
@@ -66,6 +69,7 @@ var (
 func NewMonitoringReconciler(
 	k8sClient client.Client,
 	clientset *kubernetes.Clientset,
+	namespacedApiClients []NamespacedApiClient,
 	instrumenter *instrumentation.Instrumenter,
 	collectorManager *collectors.CollectorManager,
 	targetAllocatorManager *targetallocator.TargetAllocatorManager,
@@ -74,11 +78,16 @@ func NewMonitoringReconciler(
 	return &MonitoringReconciler{
 		Client:                 k8sClient,
 		clientset:              clientset,
+		namespacedApiClients:   namespacedApiClients,
 		instrumenter:           instrumenter,
 		collectorManager:       collectorManager,
 		targetAllocatorManager: targetAllocatorManager,
 		danglingEventsTimeouts: danglingEventsTimeouts,
 	}
+}
+
+func (r *MonitoringReconciler) SetNamespacedAuthTokenClients(namespacedAuthTokenClients []selfmonitoringapiaccess.NamespacedAuthTokenClient) {
+	r.namespacedAuthTokenClients = namespacedAuthTokenClients
 }
 
 func (r *MonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -219,6 +228,12 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
+	err = r.handleDash0Authorization(ctx, monitoringResource, &logger)
+	if err != nil {
+		logger.Error(err, "error when handling the Dash0 authorization information in the monitoring resource")
+		return ctrl.Result{}, err
+	}
+
 	var requiredAction util.ModificationMode
 	monitoringResource, requiredAction, statusUpdate :=
 		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, &logger)
@@ -241,6 +256,8 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
+	r.applyApiAccessSettings(ctx, monitoringResource, logger)
+
 	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 		return ctrl.Result{}, err
 	}
@@ -250,6 +267,76 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *MonitoringReconciler) handleDash0Authorization(
+	ctx context.Context,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger *logr.Logger,
+) error {
+	if monitoringResource.Spec.Export != nil &&
+		monitoringResource.Spec.Export.Dash0 != nil {
+		if monitoringResource.Spec.Export.Dash0.Authorization.SecretRef != nil {
+			if err := selfmonitoringapiaccess.ExchangeSecretRefForNamespacedToken(
+				ctx,
+				r.Client,
+				r.namespacedAuthTokenClients,
+				monitoringResource,
+				logger,
+			); err != nil {
+				logger.Error(err, "cannot exchange secret ref for token")
+				return err
+			}
+		} else if monitoringResource.Spec.Export.Dash0.Authorization.Token != nil &&
+			*monitoringResource.Spec.Export.Dash0.Authorization.Token != "" {
+			for _, nsAuthTokenClient := range r.namespacedAuthTokenClients {
+				nsAuthTokenClient.SetNamespacedAuthToken(ctx, monitoringResource.Namespace, *monitoringResource.Spec.Export.Dash0.Authorization.Token, logger)
+			}
+		} else {
+			// The monitoring resource neither has a secret ref nor a token literal, remove the auth token
+			// for the resource's namespace from all clients.
+			for _, nsAuthTokenClient := range r.namespacedAuthTokenClients {
+				nsAuthTokenClient.RemoveNamespacedAuthToken(ctx, monitoringResource.Namespace, logger)
+			}
+		}
+	} else {
+		// The monitoring resource has no Dash0 export and hence also no auth token, remove the auth token
+		// for the resource's namespace from all clients.
+		for _, nsAuthTokenClient := range r.namespacedAuthTokenClients {
+			nsAuthTokenClient.RemoveNamespacedAuthToken(ctx, monitoringResource.Namespace, logger)
+		}
+	}
+	return nil
+}
+
+func (r *MonitoringReconciler) applyApiAccessSettings(
+	ctx context.Context,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger logr.Logger,
+) {
+	if monitoringResource.HasDash0ApiAccessConfigured() {
+		dataset := monitoringResource.Spec.Export.Dash0.Dataset
+		if dataset == "" {
+			dataset = util.DatasetDefault
+		}
+		for _, apiClient := range r.namespacedApiClients {
+			apiClient.SetNamespacedApiEndpointAndDataset(
+				ctx,
+				monitoringResource.Namespace,
+				&ApiConfig{
+					Endpoint: monitoringResource.Spec.Export.Dash0.ApiEndpoint,
+					Dataset:  dataset,
+				}, &logger)
+
+		}
+	} else {
+		logger.Info(fmt.Sprintf("The API endpoint setting required for managing dashboards, check rules, synthetic checks and "+
+			"views via the operator is not set or has been removed from the monitoring resource in namespace %s. API sync will use "+
+			"defaults from the operator configuration.", monitoringResource.Namespace))
+		for _, apiClient := range r.namespacedApiClients {
+			apiClient.RemoveNamespacedApiEndpointAndDataset(ctx, monitoringResource.Namespace, &logger)
+		}
+	}
 }
 
 func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(

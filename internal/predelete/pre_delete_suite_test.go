@@ -145,6 +145,7 @@ var _ = BeforeSuite(func() {
 	reconciler = controller.NewMonitoringReconciler(
 		k8sClient,
 		clientset,
+		nil,
 		instrumenter,
 		collectorManager,
 		targetAllocatorManager,

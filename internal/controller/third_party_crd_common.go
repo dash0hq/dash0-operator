@@ -236,8 +236,8 @@ func maybeStartWatchingThirdPartyResources(
 		return
 	}
 
-	apiConfig := resourceReconciler.GetApiConfig().Load()
-	authToken := resourceReconciler.GetAuthToken()
+	apiConfig := resourceReconciler.GetDefaultApiConfig().Load()
+	authToken := resourceReconciler.GetDefaultAuthToken()
 	if !isValidApiConfig(apiConfig) || authToken == "" {
 		if !crdReconciler.OperatorManagerIsLeader() {
 			logger.Info(

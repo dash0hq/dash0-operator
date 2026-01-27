@@ -7,7 +7,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +25,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
+	"github.com/go-logr/logr"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -130,16 +130,16 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
 				if config.expectSetApiEndpointAndDataset {
-					Expect(apiClient.setApiEndpointCalls).To(Equal(1))
-					Expect(apiClient.removeApiEndpointCalls).To(Equal(0))
-					Expect(apiClient.apiConfig).ToNot(BeNil())
-					Expect(apiClient.apiConfig.Endpoint).To(Equal(ApiEndpointTest))
-					Expect(apiClient.apiConfig.Dataset).To(Equal(expectedDataset))
+					Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(1))
+					Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(0))
+					Expect(apiClient.defaultApiConfig).ToNot(BeNil())
+					Expect(apiClient.defaultApiConfig.Endpoint).To(Equal(ApiEndpointTest))
+					Expect(apiClient.defaultApiConfig.Dataset).To(Equal(expectedDataset))
 				}
 				if config.expectRemoveApiEndpointAndDataset {
-					Expect(apiClient.setApiEndpointCalls).To(Equal(0))
-					Expect(apiClient.removeApiEndpointCalls).To(Equal(1))
-					Expect(apiClient.apiConfig).To(BeNil())
+					Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(0))
+					Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(1))
+					Expect(apiClient.defaultApiConfig).To(BeNil())
 				}
 			}
 			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
@@ -534,9 +534,9 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
 
 			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-				Expect(apiClient.setApiEndpointCalls).To(Equal(0))
-				Expect(apiClient.removeApiEndpointCalls).To(Equal(1))
-				Expect(apiClient.apiConfig).To(BeNil())
+				Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(0))
+				Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(1))
+				Expect(apiClient.defaultApiConfig).To(BeNil())
 			}
 			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
 				Expect(authTokenClient.SetAuthTokenCalls).To(Equal(0))
@@ -814,27 +814,59 @@ func resetCallCounts() {
 }
 
 type DummyApiClient struct {
-	setApiEndpointCalls    int
-	removeApiEndpointCalls int
-	apiConfig              *ApiConfig
+	setDefaultApiEndpointCalls    int
+	removeDefaultApiEndpointCalls int
+	defaultApiConfig              *ApiConfig
 }
 
-func (c *DummyApiClient) SetApiEndpointAndDataset(_ context.Context, apiConfig *ApiConfig, _ *logr.Logger) {
-	c.setApiEndpointCalls++
-	c.apiConfig = apiConfig
+func (c *DummyApiClient) SetDefaultApiEndpointAndDataset(_ context.Context, apiConfig *ApiConfig, _ *logr.Logger) {
+	c.setDefaultApiEndpointCalls++
+	c.defaultApiConfig = apiConfig
 }
 
-func (c *DummyApiClient) RemoveApiEndpointAndDataset(_ context.Context, _ *logr.Logger) {
-	c.removeApiEndpointCalls++
-	c.apiConfig = nil
+func (c *DummyApiClient) RemoveDefaultApiEndpointAndDataset(_ context.Context, _ *logr.Logger) {
+	c.removeDefaultApiEndpointCalls++
+	c.defaultApiConfig = nil
 }
 
 func (c *DummyApiClient) Reset() {
 	c.ResetCallCounts()
-	c.apiConfig = nil
+	c.defaultApiConfig = nil
 }
 
 func (c *DummyApiClient) ResetCallCounts() {
-	c.setApiEndpointCalls = 0
-	c.removeApiEndpointCalls = 0
+	c.setDefaultApiEndpointCalls = 0
+	c.removeDefaultApiEndpointCalls = 0
+}
+
+type DummyNamespacedApiClient struct {
+	setNamespacedApiEndpointCalls    int
+	removeNamespacedApiEndpointCalls int
+	namespacedApiconfig              map[string]*ApiConfig
+}
+
+func NewDummyNamespacedApiClient() *DummyNamespacedApiClient {
+	return &DummyNamespacedApiClient{
+		namespacedApiconfig: make(map[string]*ApiConfig),
+	}
+}
+
+func (c *DummyNamespacedApiClient) SetNamespacedApiEndpointAndDataset(_ context.Context, namespace string, apiConfig *ApiConfig, _ *logr.Logger) {
+	c.setNamespacedApiEndpointCalls++
+	c.namespacedApiconfig[namespace] = apiConfig
+}
+
+func (c *DummyNamespacedApiClient) RemoveNamespacedApiEndpointAndDataset(_ context.Context, namespace string, _ *logr.Logger) {
+	c.removeNamespacedApiEndpointCalls++
+	delete(c.namespacedApiconfig, namespace)
+}
+
+func (c *DummyNamespacedApiClient) Reset() {
+	c.ResetCallCounts()
+	c.namespacedApiconfig = make(map[string]*ApiConfig)
+}
+
+func (c *DummyNamespacedApiClient) ResetCallCounts() {
+	c.setNamespacedApiEndpointCalls = 0
+	c.removeNamespacedApiEndpointCalls = 0
 }

@@ -59,8 +59,6 @@ finish_step
 
 deploy_additional_resources
 
-deploy_dash0_api_sync_resources
-
 echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
@@ -76,6 +74,8 @@ finish_step
 echo "STEP $step_counter: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
 install_monitoring_resource_with_namespaced_exporter
 finish_step
+
+deploy_dash0_api_sync_resources
 
 deploy_application_under_monitoring "$runtime_under_test"
 

@@ -110,7 +110,7 @@ var _ = Describe("The OTel SDK starter", func() {
 				false,
 				logger,
 			)
-			oTelSdkStarter.SetAuthToken(ctx, AuthorizationTokenTest, logger)
+			oTelSdkStarter.SetDefaultAuthToken(ctx, AuthorizationTokenTest, logger)
 			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
 			Expect(config).NotTo(BeNil())
 			Expect(config.Endpoint).To(Equal(EndpointDash0Test))
@@ -153,11 +153,11 @@ var _ = Describe("The OTel SDK starter", func() {
 				false,
 				logger,
 			)
-			oTelSdkStarter.SetAuthToken(ctx, AuthorizationTokenTest, logger)
+			oTelSdkStarter.SetDefaultAuthToken(ctx, AuthorizationTokenTest, logger)
 			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
 			Expect(config).NotTo(BeNil())
 
-			oTelSdkStarter.RemoveAuthToken(ctx, logger)
+			oTelSdkStarter.RemoveDefaultAuthToken(ctx, logger)
 			Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
 		})
 
@@ -174,11 +174,11 @@ var _ = Describe("The OTel SDK starter", func() {
 				false,
 				logger,
 			)
-			oTelSdkStarter.SetAuthToken(ctx, AuthorizationTokenTest, logger)
+			oTelSdkStarter.SetDefaultAuthToken(ctx, AuthorizationTokenTest, logger)
 			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
 			Expect(config).NotTo(BeNil())
 
-			oTelSdkStarter.RemoveAuthToken(ctx, logger)
+			oTelSdkStarter.RemoveDefaultAuthToken(ctx, logger)
 			Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeTrue())
 		})
 

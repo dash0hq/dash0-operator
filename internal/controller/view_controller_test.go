@@ -36,14 +36,16 @@ const (
 	viewName2           = "test-view-2"
 	viewApiBasePath     = "/api/views/"
 
-	viewId            = "view-id"
-	viewOriginPattern = "dash0-operator_%s_test-dataset_test-namespace_test-view"
+	viewId                       = "view-id"
+	viewOriginPattern            = "dash0-operator_%s_test-dataset_test-namespace_test-view"
+	viewOriginPatternAlternative = "dash0-operator_%s_test-dataset-alt_test-namespace_test-view"
 )
 
 var (
-	defaultExpectedPathView  = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-view")
-	defaultExpectedPathView2 = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-views_test-view-2")
-	viewLeaderElectionAware  = NewLeaderElectionAwareMock(true)
+	defaultExpectedPathView     = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-view")
+	expectedPathViewAlternative = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset-alt_test-namespace_test-view")
+	defaultExpectedPathView2    = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-views_test-view-2")
+	viewLeaderElectionAware     = NewLeaderElectionAwareMock(true)
 )
 
 var _ = Describe("The View controller", Ordered, func() {
@@ -77,11 +79,11 @@ var _ = Describe("The View controller", Ordered, func() {
 		BeforeEach(func() {
 			viewReconciler = createViewReconciler(clusterId)
 
-			viewReconciler.apiConfig.Store(&ApiConfig{
+			viewReconciler.defaultApiConfig.Store(&ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetCustomTest,
 			})
-			viewReconciler.authToken.Store(&AuthorizationTokenTest)
+			viewReconciler.defaultAuthToken.Store(&AuthorizationTokenTest)
 
 			// to make tests that involve http retries faster, we do not want to wait for one second for each retry
 			viewReconciler.overrideHttpRetryDelay(20 * time.Millisecond)
@@ -110,12 +112,12 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("it ignores view resource changes if the API endpoint is not configured", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
-			viewReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
+			viewReconciler.RemoveDefaultApiEndpointAndDataset(ctx, &logger)
 
 			viewResource := createViewResource(TestNamespaceName, viewName)
 			Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
@@ -138,12 +140,12 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("it ignores view resource changes if the auth token endpoint has not been provided yet", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
 
-			viewReconciler.RemoveAuthToken(ctx, &logger)
+			viewReconciler.RemoveDefaultAuthToken(ctx, &logger)
 
 			viewResource := createViewResource(TestNamespaceName, viewName)
 			Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
@@ -166,7 +168,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("creates a view", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
@@ -198,8 +200,54 @@ var _ = Describe("The View controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
+		It("creates a view with namespaced config from the monitoring resource", func() {
+			monitoringResource := DefaultMonitoringResourceWithCustomApiConfigAndToken(
+				MonitoringResourceQualifiedName,
+				ApiEndpointTestAlternative,
+				DatasetCustomTestAlternative,
+				AuthorizationTokenTestAlternative)
+			EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, monitoringResource.Spec)
+
+			expectViewPutRequestCustom(
+				clusterId,
+				expectedPathViewAlternative,
+				ApiEndpointTestAlternative,
+				DatasetCustomTestAlternative,
+				AuthorizationTokenTestAlternative,
+				viewOriginPatternAlternative,
+				1)
+			defer gock.Off()
+
+			viewResource := createViewResource(TestNamespaceName, viewName)
+			Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
+
+			apiConfig := ApiConfig{
+				Endpoint: ApiEndpointTestAlternative,
+				Dataset:  DatasetCustomTestAlternative,
+			}
+
+			viewReconciler.SetNamespacedApiEndpointAndDataset(ctx, TestNamespaceName, &apiConfig, &logger)
+			viewReconciler.SetNamespacedAuthToken(ctx, TestNamespaceName, AuthorizationTokenTestAlternative, &logger)
+
+			// note: we don't trigger reconcile here because setting the API config and token already triggers a reconciliation
+
+			verifyViewSynchronizationStatus(
+				ctx,
+				k8sClient,
+				TestNamespaceName,
+				viewName,
+				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
+				testStartedAt,
+				viewId,
+				fmt.Sprintf(viewOriginPatternAlternative, clusterId),
+				DatasetCustomTestAlternative,
+				"",
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
 		It("updates a view", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
@@ -236,7 +284,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("deletes a view", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectViewDeleteRequest(defaultExpectedPathView)
 			defer gock.Off()
@@ -260,7 +308,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("deletes a view if labelled with dash0.com/enable=false", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectViewDeleteRequestWithHttpStatus(defaultExpectedPathView, http.StatusNotFound)
 			defer gock.Off()
@@ -293,7 +341,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("creates a view if dash0.com/enable is set but not to \"false\"", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			expectViewPutRequest(clusterId, defaultExpectedPathView)
 			defer gock.Off()
@@ -326,7 +374,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("reports http errors when synchronizing a view", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			gock.New(ApiEndpointTest).
 				Put(defaultExpectedPathView).
@@ -367,7 +415,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		})
 
 		It("retries synchronization when synchronizing a view", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			gock.New(ApiEndpointTest).
 				Put(defaultExpectedPathView).
@@ -411,7 +459,7 @@ var _ = Describe("The View controller", Ordered, func() {
 		}
 
 		DescribeTable("synchronizes all existing view resources when the auth token or api endpoint become available", func(testConfig maybeDoInitialSynchronizationOfAllResourcesTest) {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 			// Disable synchronization by removing the auth token or api endpoint.
 			testConfig.disableSync()
@@ -420,7 +468,7 @@ var _ = Describe("The View controller", Ordered, func() {
 			secondMonitoringResource := EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 				ctx,
 				k8sClient,
-				MonitoringResourceDefaultSpec,
+				MonitoringResourceDefaultSpecWithoutExport,
 				types.NamespacedName{Namespace: extraNamespaceViews, Name: MonitoringResourceName},
 			)
 			extraMonitoringResourceNames = append(extraMonitoringResourceNames, types.NamespacedName{
@@ -475,18 +523,18 @@ var _ = Describe("The View controller", Ordered, func() {
 		},
 			Entry("when the auth token becomes available", maybeDoInitialSynchronizationOfAllResourcesTest{
 				disableSync: func() {
-					viewReconciler.RemoveAuthToken(ctx, &logger)
+					viewReconciler.RemoveDefaultAuthToken(ctx, &logger)
 				},
 				enabledSync: func() {
-					viewReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+					viewReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 				},
 			}),
 			Entry("when the api endpoint becomes available", maybeDoInitialSynchronizationOfAllResourcesTest{
 				disableSync: func() {
-					viewReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
+					viewReconciler.RemoveDefaultApiEndpointAndDataset(ctx, &logger)
 				},
 				enabledSync: func() {
-					viewReconciler.SetApiEndpointAndDataset(
+					viewReconciler.SetDefaultApiEndpointAndDataset(
 						ctx,
 						&ApiConfig{
 							Endpoint: ApiEndpointTest,
@@ -504,14 +552,14 @@ var _ = Describe("The View controller", Ordered, func() {
 					viewReconciler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
 				},
 			}),
-			Entry("only sync once evenn if the the auth token is set multiple times", maybeDoInitialSynchronizationOfAllResourcesTest{
+			Entry("only sync once even if the the auth token is set multiple times", maybeDoInitialSynchronizationOfAllResourcesTest{
 				disableSync: func() {
-					viewReconciler.RemoveAuthToken(ctx, &logger)
+					viewReconciler.RemoveDefaultAuthToken(ctx, &logger)
 				},
 				enabledSync: func() {
 					// gock only expects two PUT requests, so if we would synchronize twice, the test would fail
-					viewReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
-					viewReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+					viewReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
+					viewReconciler.SetDefaultAuthToken(ctx, AuthorizationTokenTest, &logger)
 				},
 			}),
 		)
@@ -534,9 +582,10 @@ var _ = Describe("The View controller", Ordered, func() {
 			view := map[string]interface{}{}
 			Expect(yaml.Unmarshal([]byte(testConfig.view), &view)).To(Succeed())
 			preconditionValidationResult := &preconditionValidationResult{
-				k8sName:      "dash0-view",
-				k8sNamespace: TestNamespaceName,
-				resource:     view,
+				k8sName:            "dash0-view",
+				k8sNamespace:       TestNamespaceName,
+				resource:           view,
+				validatedApiConfig: &ValidatedApiConfigAndToken{},
 			}
 			resourceToRequestsResult :=
 				viewReconciler.MapResourceToHttpRequests(
@@ -634,23 +683,27 @@ func createViewReconciler(clusterId string) *ViewReconciler {
 	return viewReconciler
 }
 
-func expectViewPutRequest(clusterId string, expectedPath string) {
-	gock.New(ApiEndpointTest).
+func expectViewPutRequestCustom(clusterId string, expectedPath string, endpoint string, dataset string, token string, originPattern string, times int) {
+	gock.New(endpoint).
 		Put(expectedPath).
-		MatchHeader("Authorization", AuthorizationHeaderTest).
-		MatchParam("dataset", DatasetCustomTest).
-		Times(1).
+		MatchHeader("Authorization", token).
+		MatchParam("dataset", dataset).
+		Times(times).
 		Reply(200).
-		JSON(defaultViewPutResponse(clusterId))
+		JSON(viewPutResponse(clusterId, originPattern, dataset))
 }
 
-func defaultViewPutResponse(clusterId string) map[string]interface{} {
+func expectViewPutRequest(clusterId string, expectedPath string) {
+	expectViewPutRequestCustom(clusterId, expectedPath, ApiEndpointTest, DatasetCustomTest, AuthorizationHeaderTest, viewOriginPattern, 1)
+}
+
+func viewPutResponse(clusterId string, originPattern string, dataset string) map[string]interface{} {
 	return map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"labels": map[string]interface{}{
 				"dash0.com/id":      viewId,
-				"dash0.com/origin":  fmt.Sprintf(viewOriginPattern, clusterId),
-				"dash0.com/dataset": DatasetCustomTest,
+				"dash0.com/origin":  fmt.Sprintf(originPattern, clusterId),
+				"dash0.com/dataset": dataset,
 			},
 		},
 	}

@@ -265,20 +265,20 @@ func (r *OperatorConfigurationReconciler) handleDash0Authorization(
 			// The operator configuration resource uses a token literal to provide the Dash0 auth token, distribute the
 			// token value to all clients that need an auth token.
 			for _, authTokenClient := range r.authTokenClients {
-				authTokenClient.SetAuthToken(ctx, *operatorConfigurationResource.Spec.Export.Dash0.Authorization.Token, logger)
+				authTokenClient.SetDefaultAuthToken(ctx, *operatorConfigurationResource.Spec.Export.Dash0.Authorization.Token, logger)
 			}
 		} else {
 			// The operator configuration resource neither has a secret ref nor a token literal, remove the auth token
 			// from all clients.
 			for _, authTokenClient := range r.authTokenClients {
-				authTokenClient.RemoveAuthToken(ctx, logger)
+				authTokenClient.RemoveDefaultAuthToken(ctx, logger)
 			}
 		}
 	} else {
 		// The operator configuration resource has no Dash0 export and hence also no auth token, remove the auth token
 		// from all clients.
 		for _, authTokenClient := range r.authTokenClients {
-			authTokenClient.RemoveAuthToken(ctx, logger)
+			authTokenClient.RemoveDefaultAuthToken(ctx, logger)
 		}
 	}
 	return nil
@@ -322,7 +322,7 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 			dataset = util.DatasetDefault
 		}
 		for _, apiClient := range r.apiClients {
-			apiClient.SetApiEndpointAndDataset(
+			apiClient.SetDefaultApiEndpointAndDataset(
 				ctx,
 				&ApiConfig{
 					Endpoint: operatorConfigurationResource.Spec.Export.Dash0.ApiEndpoint,
@@ -335,21 +335,21 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 			"views via the operator is missing or has been removed, the operator will not update these resources " +
 			"in Dash0.")
 		for _, apiClient := range r.apiClients {
-			apiClient.RemoveApiEndpointAndDataset(ctx, &logger)
+			apiClient.RemoveDefaultApiEndpointAndDataset(ctx, &logger)
 		}
 	}
 }
 
 func (r *OperatorConfigurationReconciler) removeAllOperatorConfigurationSettings(ctx context.Context, logger logr.Logger) {
 	for _, apiClient := range r.apiClients {
-		apiClient.RemoveApiEndpointAndDataset(ctx, &logger)
+		apiClient.RemoveDefaultApiEndpointAndDataset(ctx, &logger)
 	}
 	r.oTelSdkStarter.RemoveOTelSdkParameters(
 		ctx,
 		&logger,
 	)
 	for _, authTokenClient := range r.authTokenClients {
-		authTokenClient.RemoveAuthToken(ctx, &logger)
+		authTokenClient.RemoveDefaultAuthToken(ctx, &logger)
 	}
 }
 
