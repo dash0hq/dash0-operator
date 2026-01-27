@@ -17,8 +17,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/pager"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -32,7 +32,7 @@ import (
 type Instrumenter struct {
 	client.Client
 	Clientset                    *kubernetes.Clientset
-	Recorder                     events.EventRecorder
+	Recorder                     record.EventRecorder
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
 }
 
@@ -79,7 +79,7 @@ func (e ImmutableWorkloadError) Error() string {
 func NewInstrumenter(
 	client client.Client,
 	clientset *kubernetes.Clientset,
-	recorder events.EventRecorder,
+	recorder record.EventRecorder,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 ) *Instrumenter {
 	if clusterInstrumentationConfig == nil {

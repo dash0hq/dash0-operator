@@ -5,12 +5,14 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -251,6 +253,8 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
+	r.scheduleAttachDanglingEvents(ctx, monitoringResource, &logger)
+
 	if err = r.updateStatusAfterReconcile(ctx, monitoringResource, statusUpdate, &logger); err != nil {
 		// The error has already been logged in updateStatusAfterReconcile
 		return ctrl.Result{}, err
@@ -437,6 +441,89 @@ func (r *MonitoringReconciler) runCleanupActions(
 		}
 	}
 	return nil
+}
+
+func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
+	ctx context.Context,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger *logr.Logger,
+) {
+	// execute the event attaching in a separate go routine to not block the main reconcile loop
+	go func() {
+		if r.danglingEventsTimeouts.InitialTimeout > 0 {
+			// wait a bit before attempting to attach dangling events, since the K8s resources do not exist yet when
+			// the webhook queues the events
+			time.Sleep(r.danglingEventsTimeouts.InitialTimeout)
+		}
+		r.attachDanglingEvents(ctx, monitoringResource, logger)
+	}()
+}
+
+/*
+ * attachDanglingEvents attaches events that have been created by the webhook to the involved object of the event.
+ * When the webhook creates the respective events, the workload might not exist yet, so the UID of the workload is not
+ * set in the event. The list of events for that workload will not contain this event. We go the extra mile here and
+ * retroactively fix the reference of all those events.
+ */
+func (r *MonitoringReconciler) attachDanglingEvents(
+	ctx context.Context,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger *logr.Logger,
+) {
+	namespace := monitoringResource.Namespace
+	eventApi := r.clientset.CoreV1().Events(namespace)
+	backoff := r.danglingEventsTimeouts.Backoff
+	for _, eventType := range util.AllEvents {
+		retryErr := util.RetryWithCustomBackoff(
+			"attaching dangling event to involved object",
+			func() error {
+				danglingEvents, listErr := eventApi.List(ctx, metav1.ListOptions{
+					FieldSelector: fmt.Sprintf("involvedObject.uid=,reason=%s", eventType),
+				})
+				if listErr != nil {
+					return listErr
+				}
+
+				if len(danglingEvents.Items) > 0 {
+					logger.Info(fmt.Sprintf("Attempting to attach %d dangling event(s).", len(danglingEvents.Items)))
+				}
+
+				var allAttachErrors []error
+				for _, event := range danglingEvents.Items {
+					attachErr := util.AttachEventToInvolvedObject(ctx, r.Client, eventApi, &event)
+					if attachErr != nil {
+						allAttachErrors = append(allAttachErrors, attachErr)
+					} else {
+						involvedObject := event.InvolvedObject
+						logger.Info(fmt.Sprintf("Attached '%s' event (uid: %s) to its associated object (%s %s/%s).",
+							eventType, event.UID, involvedObject.Kind, involvedObject.Namespace, involvedObject.Name))
+					}
+				}
+				if len(allAttachErrors) > 0 {
+					return errors.Join(allAttachErrors...)
+				}
+
+				if len(danglingEvents.Items) > 0 {
+					logger.Info(
+						fmt.Sprintf(
+							"%d dangling event(s) have been successfully attached to its/their associated object(s).",
+							len(danglingEvents.Items)),
+					)
+				}
+
+				return nil
+			},
+			backoff,
+			false,
+			false,
+			logger,
+		)
+
+		if retryErr != nil {
+			logger.Error(retryErr, fmt.Sprintf(
+				"Could not attach all dangling events after %d retries.", backoff.Steps))
+		}
+	}
 }
 
 func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(

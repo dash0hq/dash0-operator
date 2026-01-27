@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -165,19 +164,15 @@ func (matcher *MatchVolumeMountMatcher) NegatedFailureMessage(actual interface{}
 func MatchEvent(
 	namespace string,
 	resourceName string,
-	eventType string,
 	reason util.Reason,
-	action util.Action,
-	note string,
+	message string,
 	args ...interface{},
 ) gomega.OmegaMatcher {
 	return &MatchEventMatcher{
 		Namespace:    namespace,
 		ResourceName: resourceName,
-		EventType:    eventType,
-		Reason:       reason,
-		Action:       action,
-		Note:         note,
+		Reason:       string(reason),
+		Message:      message,
 		Args:         args,
 	}
 }
@@ -185,26 +180,22 @@ func MatchEvent(
 type MatchEventMatcher struct {
 	Namespace    string
 	ResourceName string
-	EventType    string
-	Reason       util.Reason
-	Action       util.Action
-	Note         string
+	Reason       string
+	Message      string
 	Args         []interface{}
 }
 
 func (matcher *MatchEventMatcher) Match(actual interface{}) (success bool, err error) {
-	event, ok := actual.(eventsv1.Event)
+	event, ok := actual.(corev1.Event)
 	if !ok {
 		return false, fmt.Errorf(
-			"MatchEvent matcher requires a eventsv1.Event. Got:\n%s",
+			"MatchEvent matcher requires a corev1.Event. Got:\n%s",
 			format.Object(actual, 1))
 	}
 	return matcher.Namespace == event.ObjectMeta.Namespace &&
 			strings.Contains(event.ObjectMeta.Name, matcher.ResourceName) &&
-			matcher.EventType == event.Type &&
-			string(matcher.Reason) == event.Reason &&
-			string(matcher.Action) == event.Action &&
-			matcher.Note == event.Note,
+			matcher.Reason == event.Reason &&
+			matcher.Message == event.Message,
 		nil
 }
 
@@ -213,13 +204,11 @@ func (matcher *MatchEventMatcher) FailureMessage(actual interface{}) (message st
 }
 
 func (matcher *MatchEventMatcher) message() string {
-	return fmt.Sprintf("to contain event with for resource %s/%s, type %s, reason %s, action %s and note %s",
+	return fmt.Sprintf("to contain event with for resource %s/%sreason %s and message %s",
 		matcher.Namespace,
 		matcher.ResourceName,
-		matcher.EventType,
 		matcher.Reason,
-		matcher.Action,
-		matcher.Note,
+		matcher.Message,
 	)
 }
 

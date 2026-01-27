@@ -97,7 +97,7 @@ var _ = BeforeSuite(func() {
 	instrumenter := instrumentation.NewInstrumenter(
 		k8sClient,
 		clientset,
-		mgr.GetEventRecorder("dash0-monitoring-controller"),
+		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
 		util.NewClusterInstrumentationConfig(
 			TestImages,
 			OTelCollectorNodeLocalBaseUrlTest,
