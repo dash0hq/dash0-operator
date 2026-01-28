@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 \
     -v \
     telemetrymatcher
 
-FROM --platform=${BUILDPLATFORM} alpine:3.23.2 AS certs
+FROM --platform=${BUILDPLATFORM} alpine:3.23.3 AS certs
 RUN apk --update add ca-certificates && apk cache clean
 
 FROM scratch
