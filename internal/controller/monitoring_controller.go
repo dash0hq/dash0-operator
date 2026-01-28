@@ -39,6 +39,7 @@ type MonitoringReconciler struct {
 	collectorManager           *collectors.CollectorManager
 	targetAllocatorManager     *targetallocator.TargetAllocatorManager
 	danglingEventsTimeouts     *util.DanglingEventsTimeouts
+	operatorNamespace          string
 }
 
 type statusUpdateInfo struct {
@@ -76,6 +77,7 @@ func NewMonitoringReconciler(
 	collectorManager *collectors.CollectorManager,
 	targetAllocatorManager *targetallocator.TargetAllocatorManager,
 	danglingEventsTimeouts *util.DanglingEventsTimeouts,
+	operatorNamespace string,
 ) *MonitoringReconciler {
 	return &MonitoringReconciler{
 		Client:                 k8sClient,
@@ -85,6 +87,7 @@ func NewMonitoringReconciler(
 		collectorManager:       collectorManager,
 		targetAllocatorManager: targetAllocatorManager,
 		danglingEventsTimeouts: danglingEventsTimeouts,
+		operatorNamespace:      operatorNamespace,
 	}
 }
 
@@ -285,6 +288,7 @@ func (r *MonitoringReconciler) handleDash0Authorization(
 				ctx,
 				r.Client,
 				r.namespacedAuthTokenClients,
+				r.operatorNamespace,
 				monitoringResource,
 				logger,
 			); err != nil {

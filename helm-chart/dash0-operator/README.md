@@ -636,7 +636,9 @@ namespace-specific overrides are used.
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 
 If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,
-create the secret in the namespace where the Dash0 operator is installed.
+create the secret in the namespace where the Dash0 operator is installed. This also applies when providing a
+per-namespace export and API-sync config via a monitoring resource, i.e. the operator will always try to look up the
+auth token secret in the operator namespace.
 If you followed the guide above, the name of that namespace is `dash0-system`.
 The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings
 -> "Auth Tokens".

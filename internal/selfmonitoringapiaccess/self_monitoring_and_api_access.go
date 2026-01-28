@@ -627,6 +627,7 @@ func ExchangeSecretRefForNamespacedToken(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespacedAuthTokenClients []NamespacedAuthTokenClient,
+	operatorNamespace string,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
@@ -651,18 +652,20 @@ func ExchangeSecretRefForNamespacedToken(
 	}
 	secretRef := monitoringResource.Spec.Export.Dash0.Authorization.SecretRef
 	var dash0AuthTokenSecret corev1.Secret
+	// note: we always look up the secret in the operator namespace, since this is also the place where the collector
+	// pods expect the secret
 	if err := k8sClient.Get(
 		ctx,
 		client.ObjectKey{
 			Name:      secretRef.Name,
-			Namespace: namespace,
+			Namespace: operatorNamespace,
 		},
 		&dash0AuthTokenSecret,
 	); err != nil {
 		removeNamespacedToken(ctx, namespace, namespacedAuthTokenClients, logger)
 		msg := fmt.Sprintf("failed to fetch secret with name %s in namespace %s for Dash0 API access",
 			secretRef.Name,
-			namespace,
+			operatorNamespace,
 		)
 		logger.Error(err, msg)
 		return fmt.Errorf(msg+": %w", err)

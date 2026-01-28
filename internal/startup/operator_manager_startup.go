@@ -1097,6 +1097,7 @@ func startDash0Controllers(
 		collectorManager,
 		targetallocatorManager,
 		nil,
+		envVars.operatorNamespace,
 	)
 	setupLog.Info("Starting the monitoring resource reconciler.")
 	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {

@@ -96,6 +96,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			collectorManager,
 			targetAllocatorManager,
 			&DanglingEventsTimeoutsTest,
+			OperatorNamespace,
 		)
 
 		dash0MonitoringResource = EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)

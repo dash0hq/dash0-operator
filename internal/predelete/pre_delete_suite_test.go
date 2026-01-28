@@ -150,6 +150,7 @@ var _ = BeforeSuite(func() {
 		collectorManager,
 		targetAllocatorManager,
 		&DanglingEventsTimeoutsTest,
+		OperatorNamespace,
 	)
 })
 
