@@ -22,7 +22,7 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
         {{- if .Values.operator.gke.autopilot.enabled }}
-        cloud.google.com/matching-allowlist: dash0-pre-delete-v1.0.0
+        cloud.google.com/matching-allowlist: dash0-pre-delete-v1.0.1
         {{- end }}
     spec:
       restartPolicy: OnFailure
