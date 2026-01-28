@@ -312,7 +312,10 @@ func (m *OTelColResourceManager) updateResource(
 			"resource %s/%s was out of sync and has been reconciled",
 			desiredResource.GetNamespace(),
 			desiredResource.GetName(),
-		))
+		),
+			"patch",
+			string(patchResult.Patch),
+		)
 	}
 
 	return hasChanged, nil

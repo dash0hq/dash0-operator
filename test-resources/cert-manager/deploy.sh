@@ -29,4 +29,5 @@ helm install \
   --set webhook.securityContext.runAsNonRoot=false \
   --set cainjector.securityContext.runAsNonRoot=false \
   --set startupapicheck.securityContext.runAsNonRoot=false \
+  --set global.leaderElection.namespace=cert-manager \
   --timeout 5m

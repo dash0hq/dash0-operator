@@ -36,6 +36,8 @@ const (
 	appKubernetesIoNameValue      = targetAllocator
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
+	gkeAutopilotAllowlistKey      = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistValue    = "dash0-target-allocator-v1.0.1"
 )
 
 var (
@@ -56,6 +58,8 @@ type targetAllocatorConfig struct {
 
 	CollectorComponent string
 	Images             util.Images
+
+	IsGkeAutopilot bool
 }
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -491,6 +495,10 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		}
 	}
 
+	templateLabels := labels()
+	if c.IsGkeAutopilot {
+		templateLabels[gkeAutopilotAllowlistKey] = gkeAutopilotAllowlistValue
+	}
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
@@ -507,7 +515,7 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels:      labels(),
+					Labels:      templateLabels,
 					Annotations: podTemplateAnnotations,
 				},
 				Spec: taPodSpec,

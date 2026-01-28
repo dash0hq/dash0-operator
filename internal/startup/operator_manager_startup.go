@@ -993,6 +993,7 @@ func startDash0Controllers(
 		OperatorNamespace:         envVars.operatorNamespace,
 		TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
 		CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
+		IsGkeAutopilot:            cliArgs.isGkeAutopilot,
 	}
 	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(k8sClient, mgr.GetScheme(), operatorDeploymentSelfReference, targetAllocatorConfig)
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(

@@ -77,6 +77,7 @@ type TargetAllocatorConfig struct {
 	TargetAllocatorNamePrefix string
 	// CollectorComponent is used as a label matcher, so scrape targets are only assigned to Dash0 daemonset collectors.
 	CollectorComponent string
+	IsGkeAutopilot     bool
 	DevelopmentMode    bool
 }
 

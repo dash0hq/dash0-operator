@@ -176,6 +176,7 @@ determine_container_images() {
   if [[ "$operator_helm_chart" != "helm-chart/dash0-operator" ]]; then
     echo "Looks like a remote helm chart or an installed Helm chart is used."
     is_local_helm_chart="false"
+    SKIP_IMAGE_BUILDS="true"
 
     controller_image_repository=""
     controller_image_tag=""
@@ -440,6 +441,8 @@ deploy_filelog_offsets_pvc() {
     kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-docker.yaml
   elif [[ "$FILELOG_OFFSETS_PVC" = "gke" ]]; then
     kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-gke.yaml
+  elif [[ "$FILELOG_OFFSETS_PVC" = "gke-ap" ]]; then
+    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-gke-ap.yaml
   elif [[ "$FILELOG_OFFSETS_PVC" = "aws-efs-dp" ]]; then
     if ! kubectl get storageclass efs-sc > /dev/null; then
       kubectl apply -f test-resources/filelog-offset-storage/aws-efs-dynamic-provisioning-storage-class.yaml
