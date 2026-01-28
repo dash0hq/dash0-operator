@@ -2157,12 +2157,6 @@ clusters:
   disabled, collecting these requires access to the `/pod` endpoint of the kubelet API which is not available in GKE
   autopilot due to the lack of the `nodes/proxy` permission
 
-**Note:** The `AllowlistSynchronizer` resource is not removed automatically with `helm uninstall dash0-operator`.
-If you decide to remove the Dash0 operator Helm release from the cluster, you might want to delete the
-`AllowlistSynchronizer` manually afterward, for example by executing
-`kubectl delete AllowlistSynchronizer dash0-allowlist-synchronizer`.
-Deleting the `AllowlistSynchronizer` will also delete all associated `WorkloadAllowlist` resources.
-
 Refer to <https://cloud.google.com/kubernetes-engine/docs/how-to/run-autopilot-partner-workloads> for more information
 on `AllowlistSynchronizer`, `WorkloadAllowlist`, and related concepts.
 
@@ -2192,6 +2186,7 @@ spec:
     - Dash0/operator-manager/dash0-operator-manager-v1.0.1.yaml
     - Dash0/post-install/dash0-post-install-v1.0.1.yaml
     - Dash0/pre-delete/dash0-pre-delete-v1.0.1.yaml
+    - Dash0/post-delete-remove-allowlist-synchronizer/dash0-post-delete-remove-allowlist-synchronizer-v1.0.1.yaml
     - Dash0/opentelemetry-collector-agent/dash0-opentelemetry-collector-agent-v1.0.1.yaml
     - Dash0/opentelemetry-cluster-metrics-collector/dash0-opentelemetry-cluster-metrics-collector-v1.0.1.yaml
     - Dash0/opentelemetry-cluster-metrics-collector/dash0-target-allocator-v1.0.1.yaml
