@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # download the opentelemetry-injector binary for the target architecture
-FROM alpine:3.23.2 AS download-injector-binary
+FROM alpine:3.23.3 AS download-injector-binary
 
 RUN apk add --no-cache curl jq wget
 
@@ -30,7 +30,7 @@ RUN ./mvnw dependency:copy-dependencies \
   && cp pom.xml ./build/pom.xml
 
 # build Node.js artifacts
-FROM node:25.4.0-alpine3.22 AS build-node-js
+FROM node:25.5.0-alpine3.22 AS build-node-js
 RUN mkdir -p /dash0-init-container/node.js
 WORKDIR /dash0-init-container/node.js
 COPY node.js/package* .
@@ -42,7 +42,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-fund=true
 
 # download .NET auto instrumentation
-FROM alpine:3.23.2 AS build-dotnet
+FROM alpine:3.23.3 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
 		unzip
@@ -51,7 +51,7 @@ COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
 # build the final instrumentation image
-FROM alpine:3.23.2
+FROM alpine:3.23.3
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
