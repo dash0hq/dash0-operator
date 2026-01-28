@@ -134,6 +134,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			collectorManager,
 			targetAllocatorManager,
 			&DanglingEventsTimeoutsTest,
+			operatorNamespace,
 		)
 		monitoringReconciler.SetNamespacedAuthTokenClients(namespacedAuthTokenClients)
 	})
