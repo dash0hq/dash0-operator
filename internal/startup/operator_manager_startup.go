@@ -45,6 +45,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/postdelete"
 	"github.com/dash0hq/dash0-operator/internal/postinstall"
 	"github.com/dash0hq/dash0-operator/internal/predelete"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
@@ -88,6 +89,7 @@ type environmentVariables struct {
 type commandLineArguments struct {
 	isUninstrumentAll                                                     bool
 	autoOperatorConfigurationResourceAvailableCheck                       bool
+	deleteAllowlistSynchronizer                                           bool
 	operatorConfigurationEndpoint                                         string
 	operatorConfigurationToken                                            string
 	operatorConfigurationSecretRefName                                    string
@@ -225,6 +227,13 @@ func Start() {
 		}
 		os.Exit(0)
 	}
+	if cliArgs.deleteAllowlistSynchronizer {
+		if err := deleteDash0AllowlistSynchronizer(ctx, &setupLog); err != nil {
+			setupLog.Error(err, "deleting the AllowlistSynchronizer resource failed")
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -334,6 +343,13 @@ func defineCommandLineArguments() *commandLineArguments {
 		false,
 		"If set, the process will only wait until the Dash0 operator configuration resource has been created and "+
 			"becomes available, then exit.",
+	)
+	flag.BoolVar(
+		&cliArgs.deleteAllowlistSynchronizer,
+		"delete-allowlist-synchronizer",
+		false,
+		"If set, the process will remove the GKE Autopilot AllowlistSynchronizer resource from the cluster, then "+
+			"exit.",
 	)
 	flag.StringVar(
 		&cliArgs.operatorConfigurationEndpoint,
@@ -1386,6 +1402,18 @@ func waitForOperatorConfigurationResourceAvailability(logger *logr.Logger) error
 	}
 	if err = handler.WaitForOperatorConfigurationResourceToBecomeAvailable(); err != nil {
 		logger.Error(err, "Failed to wait for the operator monitoring resource.")
+		return err
+	}
+	return nil
+}
+
+func deleteDash0AllowlistSynchronizer(ctx context.Context, logger *logr.Logger) error {
+	handler, err := postdelete.NewOperatorPostDeleteHandler()
+	if err != nil {
+		logger.Error(err, "Failed to create the post-delete handler.")
+		return err
+	}
+	if err = handler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, logger); err != nil {
 		return err
 	}
 	return nil

@@ -39,7 +39,7 @@ var (
 	}
 )
 
-var _ = Describe("Uninstalling the Dash0 operator", Ordered, func() {
+var _ = Describe("Uninstalling the Dash0 operator (pre-delete hook)", Ordered, func() {
 
 	ctx := context.Background()
 	var (
