@@ -85,7 +85,7 @@ spec:
         {{- include "dash0-operator.podLabels" . | nindent 8 }}
         {{- end }}
         {{- if .Values.operator.gke.autopilot.enabled }}
-        cloud.google.com/matching-allowlist: dash0-operator-manager-v1.0.0
+        cloud.google.com/matching-allowlist: dash0-operator-manager-v1.0.1
         {{- end }}
     spec:
 {{- if .Values.operator.nodeAffinity }}

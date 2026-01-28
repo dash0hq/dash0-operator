@@ -1,0 +1,25 @@
+# Requires enabling the Cloud Filestore API in the Google cloud project.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: filestore-rwx
+provisioner: filestore.csi.storage.gke.io
+parameters:
+  tier: "standard"
+  network: "default"
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: offset-storage-claim
+  namespace: operator-namespace
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: filestore-rwx
