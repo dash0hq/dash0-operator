@@ -15,7 +15,7 @@ require (
 	github.com/onsi/gomega v1.39.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.144.0
 	github.com/perses/perses-operator v0.2.0
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.88.0
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.88.1
 	go.opentelemetry.io/collector/component v1.50.0
 	go.opentelemetry.io/collector/featuregate v1.50.0
 	go.opentelemetry.io/collector/pdata v1.50.0
@@ -31,7 +31,7 @@ require (
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
-	sigs.k8s.io/controller-runtime v0.22.4
+	sigs.k8s.io/controller-runtime v0.23.1
 	sigs.k8s.io/yaml v1.6.0
 )
 
