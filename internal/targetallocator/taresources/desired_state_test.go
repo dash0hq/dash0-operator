@@ -125,6 +125,21 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Values[1]).To(Equal("affinity-key2-value2"))
 	})
 
+	It("should add GKE Autopilot allowlist match labels", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+			IsGkeAutopilot:    true,
+		}, nil, util.ExtraConfig{})
+		Expect(err).ToNot(HaveOccurred())
+
+		deploymentTemplateLabels := getDeployment(desiredState).Spec.Template.Labels
+		value, ok := deploymentTemplateLabels[gkeAutopilotAllowlistKey]
+		Expect(ok).To(BeTrue())
+		Expect(value).To(Equal(gkeAutopilotAllowlistValue))
+	})
+
 	When("mTLS is enabled", Ordered, func() {
 		const certSecretName = "ta-mtls-server-cert-secret"
 		var desiredState []clientObject

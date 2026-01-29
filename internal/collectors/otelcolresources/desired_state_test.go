@@ -1422,6 +1422,35 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(offsetVolumeMount.SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
 	})
 
+	It("should add GKE Autopilot allowlist match labels to daemonset and deployment", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0Exporters(),
+			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+			IsGkeAutopilot:                                   true,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		Expect(daemonSet).NotTo(BeNil())
+		daemonSetTemplateLabels := daemonSet.Spec.Template.Labels
+		daemonSetValue, ok := daemonSetTemplateLabels[gkeAutopilotAllowlistLabelKey]
+		Expect(ok).To(BeTrue())
+		Expect(daemonSetValue).To(Equal(gkeAutopilotAllowlistLabelDaemonsetValue))
+
+		deployment := getDeployment(desiredState)
+		Expect(deployment).NotTo(BeNil())
+		deploymentTemplateLabels := deployment.Spec.Template.Labels
+		deploymentValue, ok := deploymentTemplateLabels[gkeAutopilotAllowlistLabelKey]
+		Expect(ok).To(BeTrue())
+		Expect(deploymentValue).To(Equal(gkeAutopilotAllowlistLabelDeploymentValue))
+	})
+
 	It("should omit the filelog offset container but add the volume ownership container if a host volume is provided for filelog offset storage", func() {
 		offsetStorageVolume := corev1.Volume{
 			Name: "filelogreceiver-offsets",

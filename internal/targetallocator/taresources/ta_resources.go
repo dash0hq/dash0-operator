@@ -51,6 +51,7 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 		NamePrefix:         m.targetAllocatorConfig.TargetAllocatorNamePrefix,
 		CollectorComponent: m.targetAllocatorConfig.CollectorComponent,
 		Images:             m.targetAllocatorConfig.Images,
+		IsGkeAutopilot:     m.targetAllocatorConfig.IsGkeAutopilot,
 	}
 
 	desiredState, err := assembleDesiredStateForUpsert(config, namespacesWithPrometheusScraping, extraConfig)
@@ -171,7 +172,10 @@ func (m *TargetAllocatorResourceManager) updateResource(
 			"resource %s/%s was out of sync and has been reconciled",
 			desiredResource.GetNamespace(),
 			desiredResource.GetName(),
-		))
+		),
+			"patch",
+			string(patchResult.Patch),
+		)
 	}
 
 	return hasChanged, nil
@@ -190,6 +194,7 @@ func (m *TargetAllocatorResourceManager) DeleteResources(
 	config := &targetAllocatorConfig{
 		OperatorNamespace: m.targetAllocatorConfig.OperatorNamespace,
 		NamePrefix:        m.targetAllocatorConfig.TargetAllocatorNamePrefix,
+		IsGkeAutopilot:    m.targetAllocatorConfig.IsGkeAutopilot,
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, extraConfig)
 	if err != nil {
