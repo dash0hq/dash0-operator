@@ -652,7 +652,10 @@ func (r *PrometheusRuleReconciler) renderCheckRuleOrigin(
 	// something other than %2F.
 	// See
 	// https://stackoverflow.com/questions/71581828/gin-problem-accessing-url-encoded-path-param-containing-forward-slash
+	// The character "%" causes a similar problem, so we also replace it.
+	// See https://github.com/oapi-codegen/runtime/issues/35
 	groupNameNotUrlEncoded := strings.ReplaceAll(groupName, "/", "|")
+	groupNameNotUrlEncoded = strings.ReplaceAll(groupNameNotUrlEncoded, "%", "|")
 	groupNameUrlEncoded := url.PathEscape(groupNameNotUrlEncoded)
 	if alertName == "" {
 		// Rules without an alert name will not actually be sent to the Dash0 API, since they are deemed invalid by
@@ -660,6 +663,7 @@ func (r *PrometheusRuleReconciler) renderCheckRuleOrigin(
 		alertName = "unnamed rule"
 	}
 	alertNameNotUrlEncoded := strings.ReplaceAll(alertName, "/", "|")
+	alertNameNotUrlEncoded = strings.ReplaceAll(alertNameNotUrlEncoded, "%", "|")
 	alertNameUrlEncoded := url.PathEscape(alertNameNotUrlEncoded)
 
 	checkOriginNotUrlEncoded := fmt.Sprintf(
