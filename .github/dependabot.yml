@@ -48,6 +48,7 @@ updates:
       - "/images/filelogoffsetsync"
       - "/images/filelogoffsetvolumeownership"
       - "/images/instrumentation"
+      - "/images/target-allocator"
     schedule:
       interval: "daily"
       time: "07:15"
