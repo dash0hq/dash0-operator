@@ -14,6 +14,7 @@ updates:
       - "/images/configreloader/src"
       - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
+      - "test/e2e"
     schedule:
       interval: "weekly"
       day: "tuesday"
@@ -74,7 +75,11 @@ updates:
         dependency-type: "development"
 
   - package-ecosystem: "gomod"
-    directory: "test/e2e/dash0-api-mock"
+    directories:
+      - "test/e2e/dash0-api-mock"
+      - "test/e2e/otlp-sink/telemetrymatcher"
+      - "test/e2e/pkg/shared"
+
     schedule:
       interval: "weekly"
       day: "tuesday"
