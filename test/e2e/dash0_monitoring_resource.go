@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"text/template"
 	"time"
 
@@ -209,16 +210,23 @@ func updateDash0MonitoringResource(
 
 func undeployDash0MonitoringResource(namespace string) {
 	By(fmt.Sprintf("removing the Dash0 monitoring resource from namespace %s", namespace))
-	Expect(
-		runAndIgnoreOutput(exec.Command(
-			"kubectl",
-			"delete",
-			"--namespace",
-			namespace,
-			"dash0monitoring",
-			dash0MonitoringResourceName,
-			"--ignore-not-found",
-		))).To(Succeed())
+	Expect(undeployDash0MonitoringResourceIgnoringMissingCrdErrors(namespace)).To(Succeed())
+}
+
+func undeployDash0MonitoringResourceIgnoringMissingCrdErrors(namespace string) error {
+	output, err := run(exec.Command(
+		"kubectl",
+		"delete",
+		"--namespace",
+		namespace,
+		"dash0monitoring",
+		dash0MonitoringResourceName,
+		"--ignore-not-found",
+	))
+	if err != nil && strings.HasPrefix(output, "error: the server doesn't have a resource type \"dash0monitoring\"") {
+		return nil
+	}
+	return err
 }
 
 func verifyDash0MonitoringResourceDoesNotExist(g Gomega, namespace string) {
@@ -231,6 +239,11 @@ func verifyDash0MonitoringResourceDoesNotExist(g Gomega, namespace string) {
 		"dash0monitoring",
 		dash0MonitoringResourceName,
 	))
+	// We run this verification after uninstalling the operator Helm chart, naturally, the Dash0Monitoring CRD will no
+	// longer exist.
+	if err != nil && strings.HasPrefix(output, "error: the server doesn't have a resource type \"dash0monitoring\"") {
+		return
+	}
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(output).NotTo(ContainSubstring(dash0MonitoringResourceName))
 }
