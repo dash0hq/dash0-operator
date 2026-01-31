@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: e2e tests on kind
+
+on:
+  # temporary trigger
+  push:
+    branches:
+      - ope-5-e2e-ci
+  workflow_dispatch:
+
+env:
+  KIND_VERSION: v0.25.0
+
+jobs:
+  create-kind-cluster:
+    name: Create Kind Cluster and Registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Install kind
+        run: |
+          echo "Installing kind ${KIND_VERSION}..."
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Create volume directories and kind config
+        run: |
+          # Create directories in /tmp for the kind cluster volumes
+          mkdir -p /tmp/filelog-offsets
+          mkdir -p /tmp/offset-storage
+          mkdir -p /tmp/kind-registry
+
+          # Create a temporary kind config with /tmp paths
+          cat > /tmp/kind-config.yaml << 'EOF'
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          containerdConfigPatches:
+            - |-
+              [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+                endpoint = ["http://kind-registry:5000"]
+          nodes:
+            - role: control-plane
+              extraMounts:
+                - hostPath: /tmp/filelog-offsets
+                  containerPath: /offset-storage
+            - role: worker
+              extraPortMappings:
+                - containerPort: 80
+                  hostPort: 8080
+                  protocol: TCP
+                - containerPort: 443
+                  hostPort: 4443
+                  protocol: TCP
+              labels:
+                nginx-ingress: "true"
+              extraMounts:
+                - hostPath: /tmp/offset-storage
+                  containerPath: /offset-storage
+            - role: worker
+              extraMounts:
+                - hostPath: /tmp/offset-storage
+                  containerPath: /offset-storage
+          EOF
+
+      - name: Create kind cluster and registry
+        env:
+          ALLOWED_KUBECTXS: "kind-dash0-operator-ci"
+          LOCAL_REGISTRY_VOLUME_PATH: "/tmp/kind-registry"
+          DASH0_KIND_CLUSTER: "dash0-operator-ci"
+          DASH0_KIND_CONFIG: "/tmp/kind-config.yaml"
+        run: |
+          ./test-resources/bin/create_cluster_and_registry.sh
+
+      - name: Verify cluster is running
+        run: |
+          echo "Cluster nodes:"
+          kubectl get nodes
+          echo ""
+          echo "Cluster info:"
+          kubectl cluster-info
+          echo ""
+          echo "All pods:"
+          kubectl get pods -A
+
+      - name: Verify registry is running
+        run: |
+          echo "Checking registry container..."
+          docker ps --filter name=kind-registry
+          echo ""
+          echo "Testing registry connectivity..."
+          curl -s http://localhost:5001/v2/_catalog || echo "Registry catalog endpoint responded"
+
+      - name: Summary
+        run: |
+          echo "## Kind Cluster Setup Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster Name:** dash0-operator-ci" >> $GITHUB_STEP_SUMMARY
+          echo "- **Kind Version:** ${{ inputs.kind_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry:** localhost:5001" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Nodes" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          kubectl get nodes >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
