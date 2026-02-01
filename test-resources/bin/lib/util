@@ -645,6 +645,12 @@ run_helm() {
     helm_install_command+=" --set operator.replicaCount=${OPERATOR_REPLICAS:-1}"
   fi
 
+  # on kind, the collectors sometimes need more time to start
+  if [[ "${ALLOW_MORE_TIME_FOR_COLLECTOR_STARTUP:-}" == "true" ]]; then
+    helm_install_command+=" --set operator.collectors.daemonSetProbes.startup.failureThreshold=60"
+    helm_install_command+=" --set operator.collectors.deploymentProbes.startup.failureThreshold=60"
+  fi
+
   helm_install_command+=" dash0-operator"
   helm_install_command+=" ${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
   echo Helm install command:
