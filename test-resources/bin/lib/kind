@@ -15,12 +15,32 @@ start_kind() {
   local kind_config="${2}"
   echo "Creating kind cluster with [name=$name] and [config=$kind_config]..."
   kind create cluster --name "$name" --config "$kind_config"
-  echo "Done."
+  echo "Done creating cluster."
 }
 
 delete_cluster() {
   local name="${1}"
   echo "Deleting kind cluster with [name=$name]..."
   kind delete cluster -n "$name"
-  echo "Done."
+  echo "Done deleting cluster."
+}
+
+add_registry_config_to_nodes() {
+  local cluster_name="${1}"
+  local reg_name="${2}"
+  local reg_port="${3}"
+  local reg_dir="/etc/containerd/certs.d/localhost:${reg_port}"
+  echo "Adding registry config to nodes of cluster [name=$cluster_name], using [reg_dir=$reg_dir]..."
+  for node in $(kind get nodes --name "$cluster_name"); do
+    # when running with podman/nerdctl kind prints some extra info that breaks the script, so we make sure
+    # to only look at actual node names, which are prefixed with the cluster name
+    if [[ $node == "$cluster_name"* ]]; then
+      echo "Patching node [name=$node]"
+      docker exec "${node}" mkdir -p "${reg_dir}"
+      cat <<EOF | docker exec -i "${node}" cp /dev/stdin "${reg_dir}/hosts.toml"
+[host."http://${reg_name}:5000"]
+EOF
+    fi
+  done
+  echo "Done adding registry config to nodes."
 }

@@ -24,8 +24,10 @@ load_env_file
 create_cluster_and_registry() {
   local kind_cluster="${DASH0_KIND_CLUSTER:-$default_kind_cluster}"
   local kind_config="${DASH0_KIND_CONFIG:-$default_kind_config}"
+
   start_kind "$kind_cluster" "$kind_config"
   create_registry "$local_reg_name" "$local_reg_port" "$LOCAL_REGISTRY_VOLUME_PATH"
+  add_registry_config_to_nodes "$kind_cluster" "$local_reg_name" "$local_reg_port"
   connect_kind_network "$local_reg_name"
 }
 

@@ -293,6 +293,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       The default is to use the secret ref.
       This setting is used in both modes, that is, independent of whether `DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM=false`
       has been provided.
+    * `ALLOW_MORE_TIME_FOR_COLLECTOR_STARTUP` set to `true` increases the `failureThreshold` for the startup probes of
+      collectors to support slower environments (e.g. running kind with limited resources).
     * Additional configuration for the Helm deployment can be put into `test-resources/bin/extra-values.yaml` (create
       the file if necessary).
 * Last but not least, there are a couple of environment variables that control which images are built and used, and whether
