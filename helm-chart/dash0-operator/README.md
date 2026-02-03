@@ -157,7 +157,7 @@ Note that the server and client certificates need to be signed by the same CA to
 certificates won't work).
 
 You can find an example of minimal issuers and certificates for cert-manager in
-[test-resources/cert-manager/ta-issuers-and-cert.yaml.template](test-resources/cert-manager/ta-issuers-and-cert.yaml.template).
+[/test-resources/cert-manager/ta-issuers-and-cert.yaml.template](/test-resources/cert-manager/ta-issuers-and-cert.yaml.template).
 
 The secrets must be created in the Dash0 operator namespace.
 
