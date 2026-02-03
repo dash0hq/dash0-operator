@@ -4,12 +4,14 @@
 name: Run e2e tests on kind
 
 on:
+  # tmp trigger
+  push:
+    branches:
+      - ope-5-e2e-ci
   workflow_run:
     workflows: ["CI"]
-    types:
-      - completed
-    branches:
-      - ope-5-e2e-ci # update to main before merging
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -25,7 +27,7 @@ env:
 jobs:
   run-e2e-tests-on-kind:
     name: Set up cluster and run e2e tests
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: 8core_32gb
     timeout-minutes: 60
 
@@ -102,13 +104,6 @@ jobs:
           echo ""
           echo "Testing registry connectivity..."
           curl -s http://localhost:5001/v2/_catalog || echo "Registry catalog endpoint responded"
-
-      # this repo is not actually used, but calling `helm repo list` fails with an error when there are zero repos
-      # see https://github.com/helm/helm/issues/30606
-      # todo: handle that error in the e2e tests
-      - name: Add a helm repo to avoid issue with listing repos
-        run: |
-          helm repo add podinfo https://stefanprodan.github.io/podinfo
 
       - name: Run e2e tests
         run: |

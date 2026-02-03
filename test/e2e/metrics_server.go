@@ -32,7 +32,7 @@ func ensureMetricsServerIsInstalled(cleanupSteps *neccessaryCleanupSteps) {
 
 func installMetricsServer(cleanupSteps *neccessaryCleanupSteps) {
 	repoList, err := run(exec.Command("helm", "repo", "list"))
-	Expect(err).ToNot(HaveOccurred())
+	Expect(err).To(Or(Not(HaveOccurred()), MatchError(ContainSubstring("no repositories to show"))))
 
 	if !strings.Contains(repoList, "metrics-server") {
 		e2ePrint("The helm repo for metrics-server has not been found, adding it now.\n")
