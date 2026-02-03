@@ -64,6 +64,8 @@ type NamespacedApiClient interface {
 }
 
 type ResourceToRequestsResult struct {
+	// The ApiConfig used to sync the resource.
+	ApiConfig ApiConfig
 	// the total number of eligible items in the Kubernetes resource
 	ItemsTotal int
 	// the request objects for which the conversion was successful
@@ -79,6 +81,7 @@ type ResourceToRequestsResult struct {
 }
 
 func NewResourceToRequestsResult(
+	apiConfig ApiConfig,
 	itemsTotal int,
 	apiRequest []WrappedApiRequest,
 	originsInResource []string,
@@ -86,6 +89,7 @@ func NewResourceToRequestsResult(
 	synchronizationErrors map[string]string,
 ) *ResourceToRequestsResult {
 	return &ResourceToRequestsResult{
+		ApiConfig:             apiConfig,
 		ItemsTotal:            itemsTotal,
 		ApiRequests:           apiRequest,
 		OriginsInResource:     originsInResource,
@@ -95,18 +99,20 @@ func NewResourceToRequestsResult(
 }
 
 func NewResourceToRequestsResultSingleItemSuccess(
+	apiConfig ApiConfig,
 	request *http.Request,
 	itemName string,
 	origin string,
-	dataset string,
 ) *ResourceToRequestsResult {
 	return NewResourceToRequestsResult(
+		apiConfig,
 		1,
 		[]WrappedApiRequest{{
-			Request:  request,
-			ItemName: itemName,
-			Origin:   origin,
-			Dataset:  dataset,
+			Request:     request,
+			ItemName:    itemName,
+			Origin:      origin,
+			ApiEndpoint: apiConfig.Endpoint,
+			Dataset:     apiConfig.Dataset,
 		}},
 		nil,
 		nil,
@@ -115,10 +121,13 @@ func NewResourceToRequestsResultSingleItemSuccess(
 }
 
 func NewResourceToRequestsResultSingleItemValidationIssue(
+	apiConfig ApiConfig,
 	itemName string,
 	issue string,
 ) *ResourceToRequestsResult {
-	return NewResourceToRequestsResult(1,
+	return NewResourceToRequestsResult(
+		apiConfig,
+		1,
 		nil,
 		nil,
 		map[string][]string{
@@ -128,12 +137,13 @@ func NewResourceToRequestsResultSingleItemValidationIssue(
 	)
 }
 
-func NewResourceToRequestsResultSingleItemError(itemName string, errorMessage string) *ResourceToRequestsResult {
-	return NewResourceToRequestsResult(1, nil, nil, nil, map[string]string{itemName: errorMessage})
+func NewResourceToRequestsResultSingleItemError(apiConfig ApiConfig, itemName string, errorMessage string) *ResourceToRequestsResult {
+	return NewResourceToRequestsResult(apiConfig, 1, nil, nil, nil, map[string]string{itemName: errorMessage})
 }
 
-func NewResourceToRequestsResultPreconditionError(errorMessage string) *ResourceToRequestsResult {
+func NewResourceToRequestsResultPreconditionError(apiConfig ApiConfig, errorMessage string) *ResourceToRequestsResult {
 	return NewResourceToRequestsResult(
+		apiConfig,
 		// There might actually be eligible items in the Kubernetes resource, but at this point we do not
 		// know yet, so return 0.
 		0,
@@ -182,10 +192,10 @@ type ApiSyncReconciler interface {
 		*logr.Logger,
 	) *ResourceToRequestsResult
 
-	ExtractIdOriginAndDatasetFromResponseBody(
+	ExtractIdFromResponseBody(
 		responseBytes []byte,
 		logger *logr.Logger,
-	) Dash0ApiObjectLabels
+	) (string, error)
 }
 
 // OwnedResourceReconciler extends the ApiSyncReconciler interface with methods that are specific to resource types
@@ -209,10 +219,11 @@ type OwnedResourceReconciler interface {
 
 // WrappedApiRequest bundles an http.Request for the Dash0 API with additional metadata.
 type WrappedApiRequest struct {
-	Request  *http.Request
-	ItemName string
-	Origin   string
-	Dataset  string
+	Request     *http.Request
+	ItemName    string
+	Origin      string
+	ApiEndpoint string
+	Dataset     string
 }
 
 type Dash0ApiObjectWithOrigin struct {
@@ -228,9 +239,10 @@ type Dash0ApiObjectMetadata struct {
 }
 
 type Dash0ApiObjectLabels struct {
-	Id      string `json:"dash0.com/id,omitempty"`
-	Origin  string `json:"dash0.com/origin,omitempty"`
-	Dataset string `json:"dash0.com/dataset"`
+	Id          string `json:"dash0.com/id,omitempty"`
+	Origin      string `json:"dash0.com/origin,omitempty"`
+	ApiEndpoint string `json:"dash0.com/apiEndpoint"`
+	Dataset     string `json:"dash0.com/dataset"`
 }
 
 type Dash0DashboardResponse struct {
@@ -326,7 +338,7 @@ func synchronizeViaApiAndUpdateStatus(
 				preconditionChecksResult.monitoringResource,
 				dash0ApiResource,
 				ownedResource,
-				NewResourceToRequestsResultPreconditionError(err.Error()),
+				NewResourceToRequestsResultPreconditionError(preconditionChecksResult.validatedApiConfig.ApiConfig, err.Error()),
 				nil,
 				false,
 				logger,
@@ -786,18 +798,18 @@ func executeAllHttpRequests(
 		} else {
 			// The Dash0ApiObjectLabels will be used to provide additional information in the resources status when
 			// we write the synchronization results, like the object's Dash0 id, origin and dataset.
-			var labels Dash0ApiObjectLabels
+			labels := Dash0ApiObjectLabels{
+				Origin:      apiRequest.Origin,
+				ApiEndpoint: apiRequest.ApiEndpoint,
+				Dataset:     apiRequest.Dataset,
+			}
+
 			if isDelete {
-				// We do not receive a response body from HTTP DELETE requests. Use the origin and dataset that we have
-				// derived for this object. The id is not available, so it will be omitted.
-				labels = Dash0ApiObjectLabels{
-					Id:      "",
-					Origin:  apiRequest.Origin,
-					Dataset: apiRequest.Dataset,
-				}
+				// We do not receive a response body from HTTP DELETE requests. The id is not available, so it will be omitted.
+				labels.Id = ""
 			} else {
-				// For HTTP PUT requests, we can extract the id, origin and dataset from the HTTP response.
-				labels = apiSyncReconciler.ExtractIdOriginAndDatasetFromResponseBody(responseBytes, logger)
+				id, _ := apiSyncReconciler.ExtractIdFromResponseBody(responseBytes, logger)
+				labels.Id = id
 			}
 			syncResponse := SuccessfulSynchronizationResult{
 				ItemName: apiRequest.ItemName,
@@ -1006,6 +1018,9 @@ func convertAndWriteSynchronizationResultForOwnedResource(
 	apiObjectLabels := Dash0ApiObjectLabels{}
 	if len(successfullySynchronized) > 0 {
 		apiObjectLabels = successfullySynchronized[0].Labels
+	} else {
+		apiObjectLabels.Dataset = resourceToRequestsResult.ApiConfig.Dataset
+		apiObjectLabels.ApiEndpoint = resourceToRequestsResult.ApiConfig.Endpoint
 	}
 
 	synchronizationError := ""

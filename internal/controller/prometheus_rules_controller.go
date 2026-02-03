@@ -530,18 +530,18 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	logger *logr.Logger,
 ) *ResourceToRequestsResult {
 	specRaw := preconditionChecksResult.resource["spec"]
-
+	apiConfig := preconditionChecksResult.validatedApiConfig.ApiConfig
 	// convert the untyped spec to a value of type prometheusv1.PrometheusRuleSpec by marshalling and then unmarshalling
 	//it
 	specAsYaml, err := yaml.Marshal(specRaw)
 	if err != nil {
 		logger.Error(err, "unable to marshal the Prometheus rule spec")
-		return NewResourceToRequestsResultPreconditionError(err.Error())
+		return NewResourceToRequestsResultPreconditionError(apiConfig, err.Error())
 	}
 	ruleSpec := prometheusv1.PrometheusRuleSpec{}
 	if err = yaml.Unmarshal(specAsYaml, &ruleSpec); err != nil {
 		logger.Error(err, "unable to unmarshal the Prometheus rule spec")
-		return NewResourceToRequestsResultPreconditionError(err.Error())
+		return NewResourceToRequestsResultPreconditionError(apiConfig, err.Error())
 	}
 
 	var originsInResource []string
@@ -560,6 +560,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 			checkRuleOriginNotUrlEncoded, checkRuleOriginUrlEncoded :=
 				r.renderCheckRuleOrigin(preconditionChecksResult, duplicateOrigins, group.Name, rule.Alert)
 			checkRuleUrl := r.renderCheckRuleUrl(preconditionChecksResult, checkRuleOriginUrlEncoded)
+			// note: syncError does not actually refer to a failed sync attempt but indicates that the request could not be created
 			request, validationIssues, syncError, ok := convertRuleToRequest(
 				checkRuleUrl,
 				action,
@@ -602,6 +603,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	}
 
 	return NewResourceToRequestsResult(
+		apiConfig,
 		len(requests)+len(allValidationIssues)+len(allSynchronizationErrors),
 		requests,
 		originsInResource,
@@ -1032,24 +1034,21 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	return deleteRequests, allSynchronizationErrors
 }
 
-func (r *PrometheusRuleReconciler) ExtractIdOriginAndDatasetFromResponseBody(
+func (r *PrometheusRuleReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
 	logger *logr.Logger,
-) Dash0ApiObjectLabels {
-	apiResponseWithOriginAsId := Dash0ApiResponseWithOriginAsId{}
-	if err := json.Unmarshal(responseBytes, &apiResponseWithOriginAsId); err != nil {
+) (id string, err error) {
+	objectWithMetadata := Dash0ApiObjectWithMetadata{}
+	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
 		logger.Error(
 			err,
-			"cannot parse response, will not extract the synchronized object's ID or origin",
+			"cannot parse response, will not extract the synchronized object's ID",
 			"response",
 			string(responseBytes),
 		)
-		return Dash0ApiObjectLabels{}
+		return "", err
 	}
-	return Dash0ApiObjectLabels{
-		Origin:  apiResponseWithOriginAsId.Origin,
-		Dataset: apiResponseWithOriginAsId.Dataset,
-	}
+	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
 func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
@@ -1070,20 +1069,28 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 		promRuleSyncAttributes := dash0common.PrometheusRuleSynchronizedRuleAttributes{}
 		apiObjectLabels := syncResult.Labels
 		promRuleSyncAttributes.Dash0Origin = apiObjectLabels.Origin
-		promRuleSyncAttributes.Dash0Dataset = apiObjectLabels.Dataset
 		synchronizedRuleAttributes[syncResult.ItemName] = promRuleSyncAttributes
 	}
 
+	// note: once we support multi-cast, there will be one element per endpoint/dataset combination
+	synchronizationResults := []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
+		{
+			Dash0ApiEndpoint:            resourceToRequestsResult.ApiConfig.Endpoint,
+			Dash0Dataset:                resourceToRequestsResult.ApiConfig.Dataset,
+			SynchronizedRulesTotal:      len(successfullySynchronized),
+			SynchronizedRulesAttributes: synchronizedRuleAttributes,
+			SynchronizationErrorsTotal:  len(resourceToRequestsResult.SynchronizationErrors),
+			SynchronizationErrors:       resourceToRequestsResult.SynchronizationErrors,
+		},
+	}
+
 	result := dash0common.PrometheusRuleSynchronizationResult{
-		SynchronizationStatus:       status,
-		SynchronizedAt:              metav1.Time{Time: time.Now()},
-		AlertingRulesTotal:          resourceToRequestsResult.ItemsTotal,
-		SynchronizedRulesTotal:      len(successfullySynchronized),
-		SynchronizedRulesAttributes: synchronizedRuleAttributes,
-		SynchronizationErrorsTotal:  len(resourceToRequestsResult.SynchronizationErrors),
-		SynchronizationErrors:       resourceToRequestsResult.SynchronizationErrors,
-		InvalidRulesTotal:           len(resourceToRequestsResult.ValidationIssues),
-		InvalidRules:                resourceToRequestsResult.ValidationIssues,
+		SynchronizationStatus:  status,
+		SynchronizedAt:         metav1.Time{Time: time.Now()},
+		AlertingRulesTotal:     resourceToRequestsResult.ItemsTotal,
+		InvalidRulesTotal:      len(resourceToRequestsResult.ValidationIssues),
+		InvalidRules:           resourceToRequestsResult.ValidationIssues,
+		SynchronizationResults: synchronizationResults,
 	}
 	previousResults[qualifiedName] = result
 	return result

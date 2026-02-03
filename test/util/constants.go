@@ -57,10 +57,12 @@ const (
 	EndpointGrpcWithProtocolTest  = "dns://endpoint.backend.com:4317"
 	EndpointHttpTest              = "https://endpoint.backend.com:4318"
 
-	ApiEndpointTest              = "https://api.dash0.com"
-	ApiEndpointTestAlternative   = "https://api-alt.dash0.com"
-	DatasetCustomTest            = "test-dataset"
-	DatasetCustomTestAlternative = "test-dataset-alt"
+	ApiEndpointTest                        = "https://api.dash0.com"
+	ApiEndpointStandardizedTest            = "https://api.dash0.com/"
+	ApiEndpointTestAlternative             = "https://api-alt.dash0.com"
+	ApiEndpointStandardizedTestAlternative = "https://api-alt.dash0.com/"
+	DatasetCustomTest                      = "test-dataset"
+	DatasetCustomTestAlternative           = "test-dataset-alt"
 )
 
 var (

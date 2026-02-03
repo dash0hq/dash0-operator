@@ -422,7 +422,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
-		return NewResourceToRequestsResultSingleItemError(itemName, unknownActionErr.Error())
+		return NewResourceToRequestsResultSingleItemError(preconditionChecksResult.validatedApiConfig.ApiConfig, itemName, unknownActionErr.Error())
 	}
 
 	if err != nil {
@@ -433,7 +433,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 			err,
 		)
 		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(itemName, httpError.Error())
+		return NewResourceToRequestsResultSingleItemError(preconditionChecksResult.validatedApiConfig.ApiConfig, itemName, httpError.Error())
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
@@ -441,7 +441,12 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, syntheticCheckOrigin, preconditionChecksResult.validatedApiConfig.Dataset)
+	return NewResourceToRequestsResultSingleItemSuccess(
+		preconditionChecksResult.validatedApiConfig.ApiConfig,
+		req,
+		itemName,
+		syntheticCheckOrigin,
+	)
 }
 
 func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksResult *preconditionValidationResult) (string, string) {
@@ -463,21 +468,21 @@ func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksRes
 	), syntheticCheckOrigin
 }
 
-func (r *SyntheticCheckReconciler) ExtractIdOriginAndDatasetFromResponseBody(
+func (r *SyntheticCheckReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
 	logger *logr.Logger,
-) Dash0ApiObjectLabels {
+) (id string, err error) {
 	objectWithMetadata := Dash0ApiObjectWithMetadata{}
 	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
 		logger.Error(
 			err,
-			"cannot parse response, will not extract the synchronized object's ID or origin",
+			"cannot parse response, will not extract the synchronized object's ID",
 			"response",
 			string(responseBytes),
 		)
-		return Dash0ApiObjectLabels{}
+		return "", err
 	}
-	return objectWithMetadata.Metadata.Labels
+	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
 func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResource(
@@ -490,19 +495,30 @@ func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResou
 	logger *logr.Logger,
 ) {
 	syntheticCheck := synchronizedResource.(*dash0v1alpha1.Dash0SyntheticCheck)
+
+	// common result
 	syntheticCheck.Status.SynchronizationStatus = status
 	syntheticCheck.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
+	syntheticCheck.Status.ValidationIssues = validationIssues
+
+	// result(s) per endpoint/dataset combination
+	// note: currently there is only one result, but there will be potentially multiple results once we support multi-cast
+	syncResultPerEndpointAndDataset := dash0v1alpha1.Dash0SyntheticCheckSynchronizationResultPerEndpointAndDataset{
+		SynchronizationStatus: status,
+		Dash0ApiEndpoint:      apiObjectLabels.ApiEndpoint,
+		Dash0Dataset:          apiObjectLabels.Dataset,
+		SynchronizationError:  synchronizationError,
+	}
 	if apiObjectLabels.Id != "" {
-		syntheticCheck.Status.Dash0Id = apiObjectLabels.Id
+		syncResultPerEndpointAndDataset.Dash0Id = apiObjectLabels.Id
 	}
 	if apiObjectLabels.Origin != "" {
-		syntheticCheck.Status.Dash0Origin = apiObjectLabels.Origin
+		syncResultPerEndpointAndDataset.Dash0Origin = apiObjectLabels.Origin
 	}
-	if apiObjectLabels.Dataset != "" {
-		syntheticCheck.Status.Dash0Dataset = apiObjectLabels.Dataset
+	syntheticCheck.Status.SynchronizationResults = []dash0v1alpha1.Dash0SyntheticCheckSynchronizationResultPerEndpointAndDataset{
+		syncResultPerEndpointAndDataset,
 	}
-	syntheticCheck.Status.SynchronizationError = synchronizationError
-	syntheticCheck.Status.ValidationIssues = validationIssues
+
 	if err := r.Status().Update(ctx, syntheticCheck); err != nil {
 		logger.Error(err, "Failed to update Dash0 synthetic check status.")
 	}

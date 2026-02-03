@@ -504,6 +504,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
 	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(preconditionChecksResult)
+	apiConfig := preconditionChecksResult.validatedApiConfig.ApiConfig
 
 	var req *http.Request
 	var method string
@@ -519,7 +520,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		display, ok := displayRaw.(map[string]interface{})
 		if !ok {
 			logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
-			return NewResourceToRequestsResultSingleItemValidationIssue(itemName, "spec.display is not a map")
+			return NewResourceToRequestsResultSingleItemValidationIssue(apiConfig, itemName, "spec.display is not a map")
 		}
 		r.setDisplayNameIfMissing(preconditionChecksResult, display)
 
@@ -542,7 +543,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
-		return NewResourceToRequestsResultSingleItemError(itemName, unknownActionErr.Error())
+		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, unknownActionErr.Error())
 	}
 
 	if err != nil {
@@ -553,7 +554,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 			err,
 		)
 		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(itemName, httpError.Error())
+		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
@@ -561,7 +562,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, dashboardOrigin, preconditionChecksResult.validatedApiConfig.Dataset)
+	return NewResourceToRequestsResultSingleItemSuccess(apiConfig, req, itemName, dashboardOrigin)
 }
 
 func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[string]interface{}) map[string]interface{} {
@@ -631,24 +632,21 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	return nil, nil
 }
 
-func (r *PersesDashboardReconciler) ExtractIdOriginAndDatasetFromResponseBody(
+func (r *PersesDashboardReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
 	logger *logr.Logger,
-) Dash0ApiObjectLabels {
-	dashboardResponse := Dash0DashboardResponse{}
-	if err := json.Unmarshal(responseBytes, &dashboardResponse); err != nil {
+) (id string, err error) {
+	objectWithMetadata := Dash0ApiObjectWithMetadata{}
+	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
 		logger.Error(
 			err,
-			"cannot parse response, will not extract the synchronized object's ID or origin",
+			"cannot parse response, will not extract the synchronized object's ID",
 			"response",
 			string(responseBytes),
 		)
-		return Dash0ApiObjectLabels{}
+		return "", err
 	}
-	return Dash0ApiObjectLabels{
-		Origin:  dashboardResponse.Metadata.Dash0Extensions.Origin,
-		Dataset: dashboardResponse.Metadata.Dash0Extensions.Dataset,
-	}
+	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
 func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
@@ -664,26 +662,38 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 		monitoringResource.Status.PersesDashboardSynchronizationResults = previousResults
 	}
 
-	// A Perses dashboard resource can only contain one dashboard, so its SynchronizationResults struct is considerably
-	// simpler than the PrometheusRuleSynchronizationResults struct.
-	result := dash0common.PersesDashboardSynchronizationResults{
-		SynchronizedAt:        metav1.Time{Time: time.Now()},
-		SynchronizationStatus: status,
-	}
+	var synchronizationResult dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset
+	synchronizationResult.Dash0ApiEndpoint = resourceToRequestsResult.ApiConfig.Endpoint
+	synchronizationResult.Dash0Dataset = resourceToRequestsResult.ApiConfig.Dataset
+
 	if len(resourceToRequestsResult.SynchronizationErrors) > 0 {
 		// there can only be at most one synchronization error for a Perses dashboard resource
-		result.SynchronizationError = slices.Collect(maps.Values(resourceToRequestsResult.SynchronizationErrors))[0]
-	}
-	if len(resourceToRequestsResult.ValidationIssues) > 0 {
-		// there can only be at most one list of validation issues for a Perses dashboard resource
-		result.ValidationIssues = slices.Collect(maps.Values(resourceToRequestsResult.ValidationIssues))[0]
+		synchronizationResult.SynchronizationError = slices.Collect(maps.Values(resourceToRequestsResult.SynchronizationErrors))[0]
 	}
 	if len(successfullySynchronized) > 0 {
 		// there can only be at most one successfullySynchronized object for a Perses dashboard resource
 		apiObjectLabels := successfullySynchronized[0].Labels
-		result.Dash0Origin = apiObjectLabels.Origin
-		result.Dash0Dataset = apiObjectLabels.Dataset
+		synchronizationResult.Dash0Origin = apiObjectLabels.Origin
 	}
+
+	// note: once we support multi-cast, there will be one element per endpoint/dataset
+	synchronizationResults := []dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset{
+		synchronizationResult,
+	}
+
+	// A Perses dashboard resource can only contain one dashboard, so its SynchronizationResults struct is considerably
+	// simpler than the PrometheusRuleSynchronizationResults struct.
+	result := dash0common.PersesDashboardSynchronizationResults{
+		SynchronizedAt:         metav1.Time{Time: time.Now()},
+		SynchronizationStatus:  status,
+		SynchronizationResults: synchronizationResults,
+	}
+
+	if len(resourceToRequestsResult.ValidationIssues) > 0 {
+		// there can only be at most one list of validation issues for a Perses dashboard resource
+		result.ValidationIssues = slices.Collect(maps.Values(resourceToRequestsResult.ValidationIssues))[0]
+	}
+
 	previousResults[qualifiedName] = result
 	return result
 }

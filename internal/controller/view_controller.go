@@ -420,7 +420,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
-		return NewResourceToRequestsResultSingleItemError(itemName, unknownActionErr.Error())
+		return NewResourceToRequestsResultSingleItemError(preconditionChecksResult.validatedApiConfig.ApiConfig, itemName, unknownActionErr.Error())
 	}
 
 	if err != nil {
@@ -431,7 +431,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 			err,
 		)
 		logger.Error(httpError, "error creating http request")
-		return NewResourceToRequestsResultSingleItemError(itemName, httpError.Error())
+		return NewResourceToRequestsResultSingleItemError(preconditionChecksResult.validatedApiConfig.ApiConfig, itemName, httpError.Error())
 	}
 
 	addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
@@ -439,7 +439,12 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
-	return NewResourceToRequestsResultSingleItemSuccess(req, itemName, viewOrigin, preconditionChecksResult.validatedApiConfig.Dataset)
+	return NewResourceToRequestsResultSingleItemSuccess(
+		preconditionChecksResult.validatedApiConfig.ApiConfig,
+		req,
+		itemName,
+		viewOrigin,
+	)
 }
 
 func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionValidationResult) (string, string) {
@@ -461,21 +466,21 @@ func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionVal
 	), viewOrigin
 }
 
-func (r *ViewReconciler) ExtractIdOriginAndDatasetFromResponseBody(
+func (r *ViewReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
 	logger *logr.Logger,
-) Dash0ApiObjectLabels {
+) (id string, err error) {
 	objectWithMetadata := Dash0ApiObjectWithMetadata{}
 	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
 		logger.Error(
 			err,
-			"cannot parse response, will not extract the synchronized object's ID or origin",
+			"cannot parse response, will not extract the synchronized object's ID",
 			"response",
 			string(responseBytes),
 		)
-		return Dash0ApiObjectLabels{}
+		return "", err
 	}
-	return objectWithMetadata.Metadata.Labels
+	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
 func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
@@ -488,19 +493,30 @@ func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
 	logger *logr.Logger,
 ) {
 	view := synchronizedResource.(*dash0v1alpha1.Dash0View)
+
+	// common result
 	view.Status.SynchronizationStatus = status
 	view.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
+	view.Status.ValidationIssues = validationIssues
+
+	// result(s) per endpoint/dataset combination
+	// note: currently there is only one result, but there will be potentially multiple results once we support multi-cast
+	syncResultPerEndpointAndDataset := dash0v1alpha1.Dash0ViewSynchronizationResultPerEndpointAndDataset{
+		SynchronizationStatus: status,
+		Dash0ApiEndpoint:      apiObjectLabels.ApiEndpoint,
+		Dash0Dataset:          apiObjectLabels.Dataset,
+		SynchronizationError:  synchronizationError,
+	}
 	if apiObjectLabels.Id != "" {
-		view.Status.Dash0Id = apiObjectLabels.Id
+		syncResultPerEndpointAndDataset.Dash0Id = apiObjectLabels.Id
 	}
 	if apiObjectLabels.Origin != "" {
-		view.Status.Dash0Origin = apiObjectLabels.Origin
+		syncResultPerEndpointAndDataset.Dash0Origin = apiObjectLabels.Origin
 	}
-	if apiObjectLabels.Dataset != "" {
-		view.Status.Dash0Dataset = apiObjectLabels.Dataset
+	view.Status.SynchronizationResults = []dash0v1alpha1.Dash0ViewSynchronizationResultPerEndpointAndDataset{
+		syncResultPerEndpointAndDataset,
 	}
-	view.Status.SynchronizationError = synchronizationError
-	view.Status.ValidationIssues = validationIssues
+
 	if err := r.Status().Update(ctx, view); err != nil {
 		logger.Error(err, "Failed to update Dash0 view status.")
 	}

@@ -192,16 +192,22 @@ type Dash0ViewRenderer string
 
 // Dash0ViewStatus defines the observed state of Dash0View
 type Dash0ViewStatus struct {
+	SynchronizationStatus  dash0common.Dash0ApiResourceSynchronizationStatus     `json:"synchronizationStatus"`
+	SynchronizedAt         metav1.Time                                           `json:"synchronizedAt"`
+	ValidationIssues       []string                                              `json:"validationIssues,omitempty"`
+	SynchronizationResults []Dash0ViewSynchronizationResultPerEndpointAndDataset `json:"synchronizationResults"`
+}
+
+// Dash0ViewSynchronizationResultPerEndpointAndDataset defines the synchronization result per endpoint and dataset
+type Dash0ViewSynchronizationResultPerEndpointAndDataset struct {
 	SynchronizationStatus dash0common.Dash0ApiResourceSynchronizationStatus `json:"synchronizationStatus"`
-	SynchronizedAt        metav1.Time                                       `json:"synchronizedAt"`
+	Dash0ApiEndpoint      string                                            `json:"dash0ApiEndpoint,omitempty"`
+	Dash0Dataset          string                                            `json:"dash0Dataset,omitempty"`
 	// +kubebuilder:validation:Optional
 	Dash0Id string `json:"dash0Id,omitempty"`
 	// +kubebuilder:validation:Optional
-	Dash0Origin string `json:"dash0Origin,omitempty"`
-	// +kubebuilder:validation:Optional
-	Dash0Dataset         string   `json:"dash0Dataset,omitempty"`
-	SynchronizationError string   `json:"synchronizationError,omitempty"`
-	ValidationIssues     []string `json:"validationIssues,omitempty"`
+	Dash0Origin          string `json:"dash0Origin,omitempty"`
+	SynchronizationError string `json:"synchronizationError,omitempty"`
 }
 
 //+kubebuilder:object:root=true
