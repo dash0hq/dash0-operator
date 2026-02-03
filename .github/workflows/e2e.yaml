@@ -4,10 +4,12 @@
 name: Run e2e tests on kind
 
 on:
-  # temporary trigger
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches:
-      - ope-5-e2e-ci
+      - ope-5-e2e-ci # update to main before merging
   workflow_dispatch:
 
 env:
@@ -23,7 +25,8 @@ env:
 jobs:
   run-e2e-tests-on-kind:
     name: Set up cluster and run e2e tests
-    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: 8core_32gb
     timeout-minutes: 60
 
     steps:
@@ -99,19 +102,6 @@ jobs:
           echo ""
           echo "Testing registry connectivity..."
           curl -s http://localhost:5001/v2/_catalog || echo "Registry catalog endpoint responded"
-
-      - name: Summary
-        run: |
-          echo "## Kind Cluster Setup Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cluster Name:** dash0-operator-ci" >> $GITHUB_STEP_SUMMARY
-          echo "- **Kind Version:** ${{ env.KIND_VERSION }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Registry:** localhost:5001" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Nodes" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          kubectl get nodes >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
 
       # this repo is not actually used, but calling `helm repo list` fails with an error when there are zero repos
       # see https://github.com/helm/helm/issues/30606
