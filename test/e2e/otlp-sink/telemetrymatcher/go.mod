@@ -5,8 +5,8 @@ go 1.25.5
 require (
 	github.com/dash0hq/dash0-operator/test/e2e/pkg/shared v0.0.0-00010101000000-000000000000
 	github.com/gin-gonic/gin v1.11.0
-	go.opentelemetry.io/collector/pdata v1.50.0
-	go.opentelemetry.io/otel v1.39.0
+	go.opentelemetry.io/collector/pdata v1.51.0
+	go.opentelemetry.io/otel v1.40.0
 )
 
 require (
@@ -33,7 +33,7 @@ require (
 	github.com/quic-go/quic-go v0.54.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
-	go.opentelemetry.io/collector/featuregate v1.50.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.51.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.20.0 // indirect
