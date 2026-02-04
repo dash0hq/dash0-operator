@@ -1293,13 +1293,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	})
 
 	Describe("should enable/disable collecting labels and annotations", func() {
-		DescribeTable("should not render the label/annotation collection snippet if disabled", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should not render the label/annotation collection snippet if disabled for namespaces and pods", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				CollectPodLabelsAndAnnotationsEnabled:            false,
+				CollectNamespaceLabelsAndAnnotationsEnabled:      false,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1312,13 +1313,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(annotationsSnippet).To(BeNil())
 		}, daemonSetAndDeployment)
 
-		DescribeTable("should collect labels and annotation if enabled", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should collect labels and annotation from namespaces and pods if both are enabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				CollectPodLabelsAndAnnotationsEnabled:            true,
+				CollectNamespaceLabelsAndAnnotationsEnabled:      true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1327,8 +1329,70 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
 			Expect(labelsSnippet).ToNot(BeNil())
+			Expect(labelsSnippet).To(HaveLen(2))
 			annotationsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "annotations"})
 			Expect(annotationsSnippet).ToNot(BeNil())
+			Expect(annotationsSnippet).To(HaveLen(2))
+			namespaceLabelTag := ReadFromMap(labelsSnippet, []string{"0", "tag_name"})
+			Expect(namespaceLabelTag).To(Equal("k8s.namespace.label.$$1"))
+			podLabelTag := ReadFromMap(labelsSnippet, []string{"1", "tag_name"})
+			Expect(podLabelTag).To(Equal("k8s.pod.label.$$1"))
+			namespaceAnnotationTag := ReadFromMap(annotationsSnippet, []string{"0", "tag_name"})
+			Expect(namespaceAnnotationTag).To(Equal("k8s.namespace.annotation.$$1"))
+			podAnnotationTag := ReadFromMap(annotationsSnippet, []string{"1", "tag_name"})
+			Expect(podAnnotationTag).To(Equal("k8s.pod.annotation.$$1"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should collect only namespace labels/annotations when only namespace collection is enabled", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				CollectPodLabelsAndAnnotationsEnabled:            false,
+				CollectNamespaceLabelsAndAnnotationsEnabled:      true,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
+			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
+			Expect(labelsSnippet).ToNot(BeNil())
+			Expect(labelsSnippet).To(HaveLen(1))
+			annotationsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "annotations"})
+			Expect(annotationsSnippet).ToNot(BeNil())
+			Expect(annotationsSnippet).To(HaveLen(1))
+			namespaceLabelTag := ReadFromMap(labelsSnippet, []string{"0", "tag_name"})
+			Expect(namespaceLabelTag).To(Equal("k8s.namespace.label.$$1"))
+			namespaceAnnotationTag := ReadFromMap(annotationsSnippet, []string{"0", "tag_name"})
+			Expect(namespaceAnnotationTag).To(Equal("k8s.namespace.annotation.$$1"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should collect only pod labels/annotations when only pod collection is enabled", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				CollectPodLabelsAndAnnotationsEnabled:            true,
+				CollectNamespaceLabelsAndAnnotationsEnabled:      false,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
+			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
+			Expect(labelsSnippet).ToNot(BeNil())
+			Expect(labelsSnippet).To(HaveLen(1))
+			annotationsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "annotations"})
+			Expect(annotationsSnippet).ToNot(BeNil())
+			Expect(annotationsSnippet).To(HaveLen(1))
+			namespaceLabelTag := ReadFromMap(labelsSnippet, []string{"0", "tag_name"})
+			Expect(namespaceLabelTag).To(Equal("k8s.pod.label.$$1"))
+			namespaceAnnotationTag := ReadFromMap(annotationsSnippet, []string{"0", "tag_name"})
+			Expect(namespaceAnnotationTag).To(Equal("k8s.pod.annotation.$$1"))
 		}, daemonSetAndDeployment)
 	})
 

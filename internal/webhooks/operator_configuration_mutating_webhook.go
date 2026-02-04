@@ -95,6 +95,11 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		spec.CollectPodLabelsAndAnnotations.Enabled = ptr.To(telemetryCollectionEnabled)
 		patchRequired = true
 	}
+	if spec.CollectNamespaceLabelsAndAnnotations.Enabled == nil {
+		// collecting namespace labels and annotations is opt-in, so it defaults to false if unset
+		spec.CollectNamespaceLabelsAndAnnotations.Enabled = ptr.To(false)
+		patchRequired = true
+	}
 	if spec.PrometheusCrdSupport.Enabled == nil {
 		spec.PrometheusCrdSupport.Enabled = ptr.To(false)
 		patchRequired = true

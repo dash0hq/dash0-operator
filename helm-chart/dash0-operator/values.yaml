@@ -88,6 +88,13 @@ operator:
   # resource will be created by the Helm chart then.
   collectPodLabelsAndAnnotationsEnabled: true
 
+  # An opt-in for collecting namespace labels and annotations as resource attributes. If set to true, the operator will
+  # convert namespace labels and annotations to resource attributes. This setting is optional, it defaults to false.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
+  # resource will be created by the Helm chart then.
+  collectNamespaceLabelsAndAnnotationsEnabled: false
+
   # An opt-in for enabling support for Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig). If set to true,
   # the operator will deploy an OpenTelemetry target-allocator that watches Prometheus CRDs and provides an API that
   # allows collectors to query the resulting scrape configs.

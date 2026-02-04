@@ -83,6 +83,8 @@ ensure_namespace_exists() {
 
   if ! kubectl get ns "$target_namespace" &> /dev/null; then
     kubectl create ns "$target_namespace"
+    kubectl label namespace "$target_namespace" test-label-1=test-value-1 test-label-2=test-value-2
+    kubectl annotate namespace "$target_namespace" test-annotation-1=test-value-1 test-annotation-2=test-value-2
   fi
 }
 
@@ -517,6 +519,7 @@ run_helm() {
   elif [[ "${FILELOG_OFFSETS_HOST_PATH_VOLUME:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/filelog-offset-storage/volume-values-hostpath.yaml"
   fi
+  helm_install_command+=" --set operator.collectNamespaceLabelsAndAnnotationsEnabled=true"
 
   if [[ -n "$controller_image_repository" ]]; then
     helm_install_command+=" --set operator.image.repository=$controller_image_repository"

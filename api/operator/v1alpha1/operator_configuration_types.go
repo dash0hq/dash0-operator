@@ -23,6 +23,7 @@ import (
 // +kubebuilder:printcolumn:name="Collect Telemetry",type="boolean",JSONPath=".spec.telemetryCollection.enabled"
 // +kubebuilder:printcolumn:name="Collect Metrics",type="boolean",JSONPath=".spec.kubernetesInfrastructureMetricsCollection.enabled"
 // +kubebuilder:printcolumn:name="Collect Pod Meta",type="boolean",JSONPath=".spec.collectPodLabelsAndAnnotations.enabled"
+// +kubebuilder:printcolumn:name="Collect Namespace Meta",type="boolean",JSONPath=".spec.collectNamespaceLabelsAndAnnotations.enabled"
 // +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Dash0OperatorConfiguration struct {
@@ -73,14 +74,20 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:validation:Optional
 	KubernetesInfrastructureMetricsCollectionEnabled *bool `json:"kubernetesInfrastructureMetricsCollectionEnabled,omitempty"`
 
-	// Settings for collecting pod labels and annotations in the target namespace. This setting is optional, by default
-	// the operator will collect pod labels and annotations as resource attributes in the target namespace; unless
-	// `telemetryCollection.enabled` is set to `false`, then collecting pod labels and annotations is off by default as
-	// well. It is a validation error to set `telemetryCollection.enabled=false` and
-	// `collectPodLabelsAndAnnotations.enabled=true` at the same time.
+	// Settings for collecting pod labels and annotations. This setting is optional, by default the operator will
+	// collect pod labels and annotations as resource attributes in all namespaces; unless `telemetryCollection.enabled`
+	// is set to `false`, then collecting pod labels and annotations is off by default as well. It is a validation error
+	// to set `telemetryCollection.enabled=false` and `collectPodLabelsAndAnnotations.enabled=true` at the same time.
 	//
 	// +kubebuilder:validation:Optional
 	CollectPodLabelsAndAnnotations CollectPodLabelsAndAnnotations `json:"collectPodLabelsAndAnnotations,omitempty"`
+
+	// Settings for collecting namespace labels and annotations. This setting is optional, by default the operator will
+	// not collect namespace labels and annotations as resource attributes. It is a validation error to set
+	// `telemetryCollection.enabled=false` and `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	CollectNamespaceLabelsAndAnnotations CollectNamespaceLabelsAndAnnotations `json:"collectNamespaceLabelsAndAnnotations,omitempty"`
 
 	// Settings for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig).
 	// This setting is optional and opt-in, by default the operator will not consider Prometheus CRDs when configuring
@@ -135,14 +142,27 @@ type PrometheusCrdSupport struct {
 }
 
 type CollectPodLabelsAndAnnotations struct {
-	// Opt-out for log collecting all pod labels and annotations as resource . If set to `false`, the operator will not
-	// collect Kubernetes labels and annotations as resource attributes.
+	// Opt-out for collecting all pod labels and annotations as resource attributes. If set to `false`, the operator
+	// will not collect Kubernetes labels and annotations as resource attributes.
 	//
 	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
 	// and the operator will collect pod labels and annotations as resource attributes; unless
 	// `telemetryCollection.enabled` is set to `false`, then  `collectPodLabelsAndAnnotations.enabled` defaults to
 	// `false` as well. It is a validation error to set `telemetryCollection.enabled=false` and
 	// `collectPodLabelsAndAnnotations.enabled=true` at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled"`
+}
+
+type CollectNamespaceLabelsAndAnnotations struct {
+	// Opt-in for collecting all namespace labels and annotations as resource attributes. If set to `true`, the operator
+	// will collect Kubernetes namespace labels and annotations as resource attributes.
+	//
+	// This setting is optional, it defaults to `false`, that is, if this setting is omitted, the value `false` is
+	// assumed and the operator will not collect namespace labels and annotations as resource attributes. It is a
+	// validation error to set `telemetryCollection.enabled=false` and
+	// `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled"`

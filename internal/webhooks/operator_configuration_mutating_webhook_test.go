@@ -49,6 +49,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				//nolint:staticcheck
 				g.Expect(spec.KubernetesInfrastructureMetricsCollectionEnabled).To(Equal(ptr.To(true)))
 				g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).To(Equal(ptr.To(true)))
+				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(ptr.To(false)))
 				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(ptr.To(true)))
 			})
 		})
@@ -78,6 +79,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				//nolint:staticcheck
 				g.Expect(spec.KubernetesInfrastructureMetricsCollectionEnabled).To(Equal(ptr.To(false)))
 				g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).To(Equal(ptr.To(false)))
+				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(ptr.To(false)))
 				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(ptr.To(false)))
 			})
 		})
@@ -100,6 +102,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 				CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 					Enabled: ptr.To(true),
+				},
+				CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+					Enabled: ptr.To(false),
 				},
 				PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 					Enabled: ptr.To(false),
@@ -129,6 +134,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(true),
 					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(false),
 					},
@@ -154,6 +162,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -185,6 +196,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(false),
 					},
@@ -206,6 +220,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(false),
 					},
@@ -219,6 +236,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -242,6 +262,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(false),
 					},
@@ -258,6 +281,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: ptr.To(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -281,6 +307,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(true),
 					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(true),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(true),
 					},
@@ -294,6 +323,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(true),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: ptr.To(true),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -334,6 +366,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(true),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(false),

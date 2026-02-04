@@ -40,6 +40,7 @@ type oTelColConfig struct {
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
+	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	DisableReplicasetInformer                        bool
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorNamePrefix                        string

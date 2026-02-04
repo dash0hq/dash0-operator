@@ -76,6 +76,7 @@ type collectorConfigurationTemplateValues struct {
 	SendBatchMaxSize                                 *uint32
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
+	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	DisableReplicasetInformer                        bool
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorServiceName                       string
@@ -210,6 +211,7 @@ func assembleCollectorConfigMap(
 				SendBatchMaxSize:    config.SendBatchMaxSize,
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
+				CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
 				DisableReplicasetInformer:                        config.DisableReplicasetInformer,
 				PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
 				TargetAllocatorServiceName:                       targetAllocatorServiceName,
