@@ -116,6 +116,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			operatorConfigurationResource.Spec.CollectPodLabelsAndAnnotations.Enabled,
 			true,
 		)
+	collectNamespaceLabelsAndAnnotationsEnabled :=
+		util.ReadBoolPointerWithDefault(
+			operatorConfigurationResource.Spec.CollectNamespaceLabelsAndAnnotations.Enabled,
+			false,
+		)
 	prometheusCrdSupportEnabled =
 		util.ReadBoolPointerWithDefault(
 			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
@@ -150,6 +155,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
+		CollectNamespaceLabelsAndAnnotationsEnabled:      collectNamespaceLabelsAndAnnotationsEnabled,
 		DisableReplicasetInformer:                        m.collectorConfig.DisableReplicasetInformer,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,

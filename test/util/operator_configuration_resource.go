@@ -55,6 +55,9 @@ var (
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 			Enabled: ptr.To(true),
 		},
+		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+			Enabled: ptr.To(true),
+		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -73,6 +76,9 @@ var (
 			Enabled: ptr.To(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+			Enabled: ptr.To(true),
+		},
+		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 			Enabled: ptr.To(true),
 		},
 	}
@@ -96,6 +102,9 @@ var (
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 			Enabled: ptr.To(true),
 		},
+		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+			Enabled: ptr.To(true),
+		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -115,6 +124,9 @@ var (
 			Enabled: ptr.To(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+			Enabled: ptr.To(true),
+		},
+		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 			Enabled: ptr.To(true),
 		},
 	}
@@ -138,6 +150,9 @@ var (
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 			Enabled: ptr.To(true),
 		},
+		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+			Enabled: ptr.To(true),
+		},
 	}
 
 	OperatorConfigurationResourceWithSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -156,6 +171,9 @@ var (
 			Enabled: ptr.To(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+			Enabled: ptr.To(true),
+		},
+		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 			Enabled: ptr.To(true),
 		},
 	}

@@ -29,6 +29,9 @@ spec:
     - jsonPath: .spec.collectPodLabelsAndAnnotations.enabled
       name: Collect Pod Meta
       type: boolean
+    - jsonPath: .spec.collectNamespaceLabelsAndAnnotations.enabled
+      name: Collect Namespace Meta
+      type: boolean
     - jsonPath: .status.conditions[?(@.type == "Available")].status
       name: Available
       type: string
@@ -67,18 +70,34 @@ spec:
                   If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
                   optional. By default, k8s.cluster.name will not be added to telemetry.
                 type: string
-              collectPodLabelsAndAnnotations:
+              collectNamespaceLabelsAndAnnotations:
                 description: |-
-                  Settings for collecting pod labels and annotations in the target namespace. This setting is optional, by default
-                  the operator will collect pod labels and annotations as resource attributes in the target namespace; unless
-                  `telemetryCollection.enabled` is set to `false`, then collecting pod labels and annotations is off by default as
-                  well. It is a validation error to set `telemetryCollection.enabled=false` and
-                  `collectPodLabelsAndAnnotations.enabled=true` at the same time.
+                  Settings for collecting namespace labels and annotations. This setting is optional, by default the operator will
+                  not collect namespace labels and annotations as resource attributes. It is a validation error to set
+                  `telemetryCollection.enabled=false` and `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
                 properties:
                   enabled:
                     description: |-
-                      Opt-out for log collecting all pod labels and annotations as resource . If set to `false`, the operator will not
-                      collect Kubernetes labels and annotations as resource attributes.
+                      Opt-in for collecting all namespace labels and annotations as resource attributes. If set to `true`, the operator
+                      will collect Kubernetes namespace labels and annotations as resource attributes.
+
+                      This setting is optional, it defaults to `false`, that is, if this setting is omitted, the value `false` is
+                      assumed and the operator will not collect namespace labels and annotations as resource attributes. It is a
+                      validation error to set `telemetryCollection.enabled=false` and
+                      `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
+                    type: boolean
+                type: object
+              collectPodLabelsAndAnnotations:
+                description: |-
+                  Settings for collecting pod labels and annotations. This setting is optional, by default the operator will
+                  collect pod labels and annotations as resource attributes in all namespaces; unless `telemetryCollection.enabled`
+                  is set to `false`, then collecting pod labels and annotations is off by default as well. It is a validation error
+                  to set `telemetryCollection.enabled=false` and `collectPodLabelsAndAnnotations.enabled=true` at the same time.
+                properties:
+                  enabled:
+                    description: |-
+                      Opt-out for collecting all pod labels and annotations as resource attributes. If set to `false`, the operator
+                      will not collect Kubernetes labels and annotations as resource attributes.
 
                       This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
                       and the operator will collect pod labels and annotations as resource attributes; unless

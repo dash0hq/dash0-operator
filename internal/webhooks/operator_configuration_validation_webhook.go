@@ -109,6 +109,13 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 					"Please either set telemetryCollection.enabled=true or " +
 					"collectPodLabelsAndAnnotations.enabled=false.")
 		}
+		if util.ReadBoolPointerWithDefault(spec.CollectNamespaceLabelsAndAnnotations.Enabled, true) {
+			return admission.Denied(
+				"The provided Dash0 operator configuration resource has namespace label and annotation collection " +
+					"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+					"Please either set telemetryCollection.enabled=true or " +
+					"collectNamespaceLabelsAndAnnotations.enabled=false.")
+		}
 		if util.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
 			return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		}

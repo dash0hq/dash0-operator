@@ -472,16 +472,30 @@ processors:
       # The following two work only if k8s.pod.uid and k8s.container.name are set
       - container.image.name
       - container.image.tag
-      {{- if .CollectPodLabelsAndAnnotationsEnabled }}
+      {{- if or .CollectNamespaceLabelsAndAnnotationsEnabled .CollectPodLabelsAndAnnotationsEnabled }}
       labels:
+        {{- if .CollectNamespaceLabelsAndAnnotationsEnabled }}
+        - tag_name: k8s.namespace.label.$$1
+          key_regex: (.*)
+          from: namespace
+        {{- end }}
+        {{- if .CollectPodLabelsAndAnnotationsEnabled }}
         - tag_name: k8s.pod.label.$$1
           key_regex: (.*)
           from: pod
+        {{- end }}
       annotations:
+        {{- if .CollectNamespaceLabelsAndAnnotationsEnabled }}
+        - tag_name: k8s.namespace.annotation.$$1
+          key_regex: (.*)
+          from: namespace
+        {{- end }}
+        {{- if .CollectPodLabelsAndAnnotationsEnabled }}
         - tag_name: k8s.pod.annotation.$$1
           key_regex: (.*)
           from: pod
-      {{- end }}
+        {{- end }}
+    {{- end }}
     filter:
       node_from_env_var: K8S_NODE_NAME
     passthrough: false

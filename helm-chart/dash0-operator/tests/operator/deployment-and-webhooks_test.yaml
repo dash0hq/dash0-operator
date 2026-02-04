@@ -562,7 +562,7 @@ tests:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[9]
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-prometheus-crd-support-enabled=false
 
   - it: should add args for creating an operator configuration resource with a custom dataset to the deployment
@@ -597,10 +597,10 @@ tests:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[9]
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[10]
+          path: spec.template.spec.containers[0].args[11]
           value: --operator-configuration-dataset=test-dataset
 
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
@@ -635,10 +635,10 @@ tests:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[9]
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[10]
+          path: spec.template.spec.containers[0].args[11]
           value: --operator-configuration-cluster-name=cluster-name
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
@@ -680,6 +680,9 @@ tests:
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[10]
+          value: --operator-configuration-collect-namespace-labels-and-annotations-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[11]
           value: --operator-configuration-prometheus-crd-support-enabled=false
 
   - it: should disable self-monitoring & Kubernetes infrastructure metrics collection
@@ -730,6 +733,24 @@ tests:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=false
 
+  - it: should enable namespace label and annotation collection
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        selfMonitoringEnabled: false
+        collectNamespaceLabelsAndAnnotationsEnabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-collect-namespace-labels-and-annotations-enabled=true
+
   - it: should enable support for prometheus crds
     documentSelector:
       path: metadata.name
@@ -745,7 +766,7 @@ tests:
         prometheusCrdSupportEnabled: true
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[9]
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-prometheus-crd-support-enabled=true
 
   - it: should render the "dash0.com/cert-digest" label

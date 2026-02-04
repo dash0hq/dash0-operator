@@ -33,6 +33,7 @@ type OperatorConfigurationValues struct {
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
+	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	PrometheusCrdSupportEnabled                      bool
 	ClusterName                                      string
 }
@@ -270,6 +271,9 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 			},
 			CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 				Enabled: ptr.To(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),
+			},
+			CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+				Enabled: ptr.To(operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled),
 			},
 			PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 				Enabled: ptr.To(operatorConfigurationValues.PrometheusCrdSupportEnabled),
