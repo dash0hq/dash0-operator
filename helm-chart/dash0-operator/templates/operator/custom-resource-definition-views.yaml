@@ -364,21 +364,42 @@ spec:
           status:
             description: Dash0ViewStatus defines the observed state of Dash0View
             properties:
-              dash0Dataset:
-                type: string
-              dash0Id:
-                type: string
-              dash0Origin:
-                type: string
-              synchronizationError:
-                type: string
+              synchronizationResults:
+                description: SynchronizationResults map[string]Dash0ViewSynchronizationResultPerEndpoint
+                  `json:"synchronizationResults"`
+                items:
+                  description: Dash0ViewSynchronizationResultPerEndpointAndDataset
+                    defines the synchronization result per endpoint and dataset
+                  properties:
+                    dash0ApiEndpoint:
+                      type: string
+                    dash0Dataset:
+                      type: string
+                    dash0Id:
+                      type: string
+                    dash0Origin:
+                      type: string
+                    synchronizationError:
+                      type: string
+                    synchronizationStatus:
+                      description: |-
+                        Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
+                        (e.g. synthetic checks) to the Dash0 API.
+                      enum:
+                        - successful
+                        - failed
+                      type: string
+                  required:
+                    - synchronizationStatus
+                  type: object
+                type: array
               synchronizationStatus:
                 description: |-
                   Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
                   (e.g. synthetic checks) to the Dash0 API.
                 enum:
-                - successful
-                - failed
+                  - successful
+                  - failed
                 type: string
               synchronizedAt:
                 format: date-time
@@ -388,8 +409,9 @@ spec:
                   type: string
                 type: array
             required:
-            - synchronizationStatus
-            - synchronizedAt
+              - synchronizationResults
+              - synchronizationStatus
+              - synchronizedAt
             type: object
         type: object
     served: true

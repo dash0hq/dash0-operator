@@ -400,7 +400,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				expectedPersesSyncResult(clusterId, DatasetCustomTestAlternative, dashboardOriginPatternAlternative),
+				expectedPersesSyncResult(clusterId, ApiEndpointStandardizedTestAlternative, DatasetCustomTestAlternative, dashboardOriginPatternAlternative),
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -539,8 +539,15 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				k8sClient,
 				dash0common.PersesDashboardSynchronizationResults{
 					SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusFailed,
-					SynchronizationError:  "",
 					ValidationIssues:      []string{"spec.display is not a map"},
+					SynchronizationResults: []dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset{
+						{
+							Dash0ApiEndpoint:     ApiEndpointStandardizedTest,
+							Dash0Origin:          "",
+							Dash0Dataset:         DatasetCustomTest,
+							SynchronizationError: "",
+						},
+					},
 				},
 			)
 		})
@@ -570,8 +577,15 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				k8sClient,
 				dash0common.PersesDashboardSynchronizationResults{
 					SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusFailed,
-					SynchronizationError:  "^unexpected status code 503 when trying to synchronize the dashboard \"test-dashboard\": PUT https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
 					ValidationIssues:      nil,
+					SynchronizationResults: []dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset{
+						{
+							Dash0ApiEndpoint:     ApiEndpointStandardizedTest,
+							Dash0Origin:          "",
+							Dash0Dataset:         DatasetCustomTest,
+							SynchronizationError: "^unexpected status code 503 when trying to synchronize the dashboard \"test-dashboard\": PUT https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
+						},
+					},
 				},
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -821,18 +835,23 @@ func dashboardPutResponse(clusterId string, dataset string, originPattern string
 	}
 }
 
-func expectedPersesSyncResult(clusterId string, dataset string, originPattern string) dash0common.PersesDashboardSynchronizationResults {
+func expectedPersesSyncResult(clusterId string, apiEndpoint string, dataset string, originPattern string) dash0common.PersesDashboardSynchronizationResults {
 	return dash0common.PersesDashboardSynchronizationResults{
 		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
-		Dash0Origin:           fmt.Sprintf(originPattern, clusterId),
-		Dash0Dataset:          dataset,
-		SynchronizationError:  "",
 		ValidationIssues:      nil,
+		SynchronizationResults: []dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset{
+			{
+				Dash0ApiEndpoint:     apiEndpoint,
+				Dash0Origin:          fmt.Sprintf(originPattern, clusterId),
+				Dash0Dataset:         dataset,
+				SynchronizationError: "",
+			},
+		},
 	}
 }
 
 func defaultExpectedPersesSyncResult(clusterId string) dash0common.PersesDashboardSynchronizationResults {
-	return expectedPersesSyncResult(clusterId, DatasetCustomTest, dashboardOriginPattern)
+	return expectedPersesSyncResult(clusterId, ApiEndpointStandardizedTest, DatasetCustomTest, dashboardOriginPattern)
 }
 
 func expectDashboardDeleteRequest(expectedPath string) {
@@ -924,17 +943,21 @@ func verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourc
 		g.Expect(results).NotTo(BeNil())
 		g.Expect(results).To(HaveLen(1))
 		result := results[fmt.Sprintf("%s/%s", TestNamespaceName, "test-dashboard")]
+		g.Expect(result.SynchronizationResults).To(HaveLen(1))
 		g.Expect(result).NotTo(BeNil())
-		if expectedResult.SynchronizationError != "" {
+		actualSyncResult := &result.SynchronizationResults[0]
+		expectedSyncResult := &expectedResult.SynchronizationResults[0]
+		if expectedSyncResult.SynchronizationError != "" {
 			// http errors contain a different random path for each test execution
-			g.Expect(result.SynchronizationError).To(MatchRegexp(expectedResult.SynchronizationError))
-			result.SynchronizationError = ""
-			expectedResult.SynchronizationError = ""
+			g.Expect(actualSyncResult.SynchronizationError).To(MatchRegexp(expectedSyncResult.SynchronizationError))
 		}
-		g.Expect(result.Dash0Origin).To(Equal(expectedResult.Dash0Origin))
+		g.Expect(actualSyncResult.Dash0Origin).To(Equal(expectedSyncResult.Dash0Origin))
 
 		// we do not verify the exact timestamp
 		expectedResult.SynchronizedAt = result.SynchronizedAt
+		// errors have been verified using regex
+		actualSyncResult.SynchronizationError = ""
+		expectedSyncResult.SynchronizationError = ""
 
 		g.Expect(result).To(Equal(expectedResult))
 	}).Should(Succeed())

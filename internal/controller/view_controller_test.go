@@ -38,6 +38,7 @@ const (
 
 	viewId                       = "view-id"
 	viewOriginPattern            = "dash0-operator_%s_test-dataset_test-namespace_test-view"
+	viewOriginPatternExtra       = "dash0-operator_%s_test-dataset_extra-namespace-views_test-view-2"
 	viewOriginPatternAlternative = "dash0-operator_%s_test-dataset-alt_test-namespace_test-view"
 )
 
@@ -194,6 +195,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				testStartedAt,
 				viewId,
 				fmt.Sprintf(viewOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -240,6 +242,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				testStartedAt,
 				viewId,
 				fmt.Sprintf(viewOriginPatternAlternative, clusterId),
+				ApiEndpointStandardizedTestAlternative,
 				DatasetCustomTestAlternative,
 				"",
 			)
@@ -277,6 +280,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				testStartedAt,
 				viewId,
 				fmt.Sprintf(viewOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -334,6 +338,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				testStartedAt,
 				"", // when deleting an object, we do not get an HTTP response body with an ID
 				fmt.Sprintf(viewOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -367,6 +372,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				testStartedAt,
 				viewId,
 				fmt.Sprintf(viewOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -405,7 +411,8 @@ var _ = Describe("The View controller", Ordered, func() {
 				testStartedAt,
 				"",
 				"",
-				"",
+				ApiEndpointStandardizedTest,
+				DatasetCustomTest,
 				"unexpected status code 503 when trying to synchronize the view \"test-view\": "+
 					"PUT https://api.dash0.com/api/views/"+
 					"dash0-operator_"+clusterId+
@@ -447,6 +454,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				testStartedAt,
 				viewId,
 				fmt.Sprintf(viewOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -504,6 +512,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				testStartedAt,
 				viewId,
 				fmt.Sprintf(viewOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -515,7 +524,8 @@ var _ = Describe("The View controller", Ordered, func() {
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
 				viewId,
-				fmt.Sprintf(viewOriginPattern, clusterId),
+				fmt.Sprintf(viewOriginPatternExtra, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -800,6 +810,7 @@ func verifyViewSynchronizationStatus(
 	testStartedAt time.Time,
 	expectedId string,
 	expectedOrigin string,
+	expectedApiEndpoint string,
 	expectedDataset string,
 	expectedError string,
 ) {
@@ -813,12 +824,17 @@ func verifyViewSynchronizationStatus(
 		g.Expect(view.Status.SynchronizationStatus).To(Equal(expectedStatus))
 		g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 		g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
-		g.Expect(view.Status.Dash0Id).To(Equal(expectedId))
-		g.Expect(view.Status.Dash0Origin).To(Equal(expectedOrigin))
-		g.Expect(view.Status.Dash0Dataset).To(Equal(expectedDataset))
-		g.Expect(view.Status.SynchronizationError).To(ContainSubstring(expectedError))
 		// views have no operator-side validations, all local validations are encoded in the CRD already
 		g.Expect(view.Status.ValidationIssues).To(BeNil())
+
+		g.Expect(view.Status.SynchronizationResults).To(HaveLen(1))
+		syncResultPerEndpointAndDataset := view.Status.SynchronizationResults[0]
+		g.Expect(syncResultPerEndpointAndDataset).ToNot(BeNil())
+		g.Expect(syncResultPerEndpointAndDataset.Dash0ApiEndpoint).To(Equal(expectedApiEndpoint))
+		g.Expect(syncResultPerEndpointAndDataset.Dash0Dataset).To(Equal(expectedDataset))
+		g.Expect(syncResultPerEndpointAndDataset.Dash0Id).To(Equal(expectedId))
+		g.Expect(syncResultPerEndpointAndDataset.Dash0Origin).To(Equal(expectedOrigin))
+		g.Expect(syncResultPerEndpointAndDataset.SynchronizationError).To(ContainSubstring(expectedError))
 	}).Should(Succeed())
 }
 
@@ -836,7 +852,7 @@ func verifyViewHasNoSynchronizationStatus(
 		}, view)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(string(view.Status.SynchronizationStatus)).To(Equal(""))
-		g.Expect(view.Status.SynchronizationError).To(Equal(""))
 		g.Expect(view.Status.ValidationIssues).To(BeNil())
+		g.Expect(view.Status.SynchronizationResults).To(HaveLen(0))
 	}).Should(Succeed())
 }

@@ -39,6 +39,7 @@ const (
 
 	syntheticCheckId                       = "synthetic-check-id"
 	syntheticCheckOriginPattern            = "dash0-operator_%s_test-dataset_test-namespace_test-synthetic-check"
+	syntheticCheckOriginPatternExtra       = "dash0-operator_%s_test-dataset_extra-namespace-synthetic-checks_test-synthetic-check-2"
 	syntheticCheckOriginPatternAlternative = "dash0-operator_%s_test-dataset-alt_test-namespace_test-synthetic-check"
 )
 
@@ -195,6 +196,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				testStartedAt,
 				syntheticCheckId,
 				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -241,6 +243,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				testStartedAt,
 				syntheticCheckId,
 				fmt.Sprintf(syntheticCheckOriginPatternAlternative, clusterId),
+				ApiEndpointStandardizedTestAlternative,
 				DatasetCustomTestAlternative,
 				"",
 			)
@@ -278,6 +281,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				testStartedAt,
 				syntheticCheckId,
 				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -336,6 +340,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				testStartedAt,
 				"", // when deleting an object, we do not get an HTTP response body with an ID
 				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -370,6 +375,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				testStartedAt,
 				syntheticCheckId,
 				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -408,7 +414,8 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				testStartedAt,
 				"",
 				"",
-				"",
+				ApiEndpointStandardizedTest,
+				DatasetCustomTest,
 				"unexpected status code 503 when trying to synchronize the check \"test-synthetic-check\": "+
 					"PUT https://api.dash0.com/api/synthetic-checks/"+
 					"dash0-operator_"+clusterId+
@@ -450,6 +457,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				testStartedAt,
 				syntheticCheckId,
 				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -507,6 +515,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				testStartedAt,
 				syntheticCheckId,
 				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -518,7 +527,8 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
 				syntheticCheckId,
-				fmt.Sprintf(syntheticCheckOriginPattern, clusterId),
+				fmt.Sprintf(syntheticCheckOriginPatternExtra, clusterId),
+				ApiEndpointStandardizedTest,
 				DatasetCustomTest,
 				"",
 			)
@@ -810,6 +820,7 @@ func verifySyntheticCheckSynchronizationStatus(
 	testStartedAt time.Time,
 	expectedId string,
 	expectedOrigin string,
+	expectedApiEndpoint string,
 	expectedDataset string,
 	expectedError string,
 ) {
@@ -823,12 +834,17 @@ func verifySyntheticCheckSynchronizationStatus(
 		g.Expect(syntheticCheck.Status.SynchronizationStatus).To(Equal(expectedStatus))
 		g.Expect(syntheticCheck.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 		g.Expect(syntheticCheck.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
-		g.Expect(syntheticCheck.Status.Dash0Id).To(Equal(expectedId))
-		g.Expect(syntheticCheck.Status.Dash0Origin).To(Equal(expectedOrigin))
-		g.Expect(syntheticCheck.Status.Dash0Dataset).To(Equal(expectedDataset))
-		g.Expect(syntheticCheck.Status.SynchronizationError).To(ContainSubstring(expectedError))
-		// synthetic checks have no operator-side validations, all local validations are encoded in the CRD already
+		// syntheticChecks have no operator-side validations, all local validations are encoded in the CRD already
 		g.Expect(syntheticCheck.Status.ValidationIssues).To(BeNil())
+
+		g.Expect(syntheticCheck.Status.SynchronizationResults).To(HaveLen(1))
+		syncResultPerEndpointAndDataset := syntheticCheck.Status.SynchronizationResults[0]
+		g.Expect(syncResultPerEndpointAndDataset).ToNot(BeNil())
+		g.Expect(syncResultPerEndpointAndDataset.Dash0ApiEndpoint).To(Equal(expectedApiEndpoint))
+		g.Expect(syncResultPerEndpointAndDataset.Dash0Dataset).To(Equal(expectedDataset))
+		g.Expect(syncResultPerEndpointAndDataset.Dash0Id).To(Equal(expectedId))
+		g.Expect(syncResultPerEndpointAndDataset.Dash0Origin).To(Equal(expectedOrigin))
+		g.Expect(syncResultPerEndpointAndDataset.SynchronizationError).To(ContainSubstring(expectedError))
 	}).Should(Succeed())
 }
 
@@ -846,7 +862,7 @@ func verifySyntheticCheckHasNoSynchronizationStatus(
 		}, syntheticCheck)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(string(syntheticCheck.Status.SynchronizationStatus)).To(Equal(""))
-		g.Expect(syntheticCheck.Status.SynchronizationError).To(Equal(""))
 		g.Expect(syntheticCheck.Status.ValidationIssues).To(BeNil())
+		g.Expect(syntheticCheck.Status.SynchronizationResults).To(HaveLen(0))
 	}).Should(Succeed())
 }

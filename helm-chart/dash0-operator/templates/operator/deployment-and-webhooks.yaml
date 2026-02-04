@@ -1311,20 +1311,29 @@ spec:
               persesDashboardSynchronizationResults:
                 additionalProperties:
                   properties:
-                    dash0Dataset:
-                      type: string
-                    dash0Origin:
-                      type: string
-                    synchronizationError:
-                      type: string
+                    synchronizationResults:
+                      items:
+                        properties:
+                          dash0ApiEndpoint:
+                            type: string
+                          dash0Dataset:
+                            type: string
+                          dash0Origin:
+                            type: string
+                          synchronizationError:
+                            type: string
+                        required:
+                          - dash0ApiEndpoint
+                        type: object
+                      type: array
                     synchronizationStatus:
                       description: |-
                         ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
-                      - successful
-                      - partially-successful
-                      - failed
+                        - successful
+                        - partially-successful
+                        - failed
                       type: string
                     synchronizedAt:
                       format: date-time
@@ -1334,8 +1343,9 @@ spec:
                         type: string
                       type: array
                   required:
-                  - synchronizationStatus
-                  - synchronizedAt
+                    - synchronizationResults
+                    - synchronizationStatus
+                    - synchronizedAt
                   type: object
                 description: Shows results of synchronizing Perses dashboard resources
                   in this namespace via the Dash0 API.
@@ -1344,9 +1354,9 @@ spec:
                 description: The spec.instrumentWorkloads settings that have been
                   observed in the previous reconcile cycle.
                 enum:
-                - all
-                - created-and-updated
-                - none
+                  - all
+                  - created-and-updated
+                  - none
                 type: string
               prometheusRuleSynchronizationResults:
                 additionalProperties:
@@ -1361,42 +1371,52 @@ spec:
                       type: object
                     invalidRulesTotal:
                       type: integer
-                    synchronizationErrors:
-                      additionalProperties:
-                        type: string
-                      type: object
-                    synchronizationErrorsTotal:
-                      type: integer
+                    synchronizationResults:
+                      items:
+                        properties:
+                          dash0ApiEndpoint:
+                            type: string
+                          dash0Dataset:
+                            type: string
+                          synchronizationErrors:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          synchronizationErrorsTotal:
+                            type: integer
+                          synchronizedRulesAttributes:
+                            additionalProperties:
+                              properties:
+                                dash0Origin:
+                                  type: string
+                              type: object
+                            type: object
+                          synchronizedRulesTotal:
+                            type: integer
+                        required:
+                          - dash0ApiEndpoint
+                          - synchronizationErrorsTotal
+                          - synchronizedRulesTotal
+                        type: object
+                      type: array
                     synchronizationStatus:
                       description: |-
                         ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
-                      - successful
-                      - partially-successful
-                      - failed
+                        - successful
+                        - partially-successful
+                        - failed
                       type: string
                     synchronizedAt:
                       format: date-time
                       type: string
-                    synchronizedRulesAttributes:
-                      additionalProperties:
-                        properties:
-                          dash0Dataset:
-                            type: string
-                          dash0Origin:
-                            type: string
-                        type: object
-                      type: object
-                    synchronizedRulesTotal:
-                      type: integer
                   required:
-                  - alertingRulesTotal
-                  - invalidRulesTotal
-                  - synchronizationErrorsTotal
-                  - synchronizationStatus
-                  - synchronizedAt
-                  - synchronizedRulesTotal
+                    - alertingRulesTotal
+                    - invalidRulesTotal
+                    - synchronizationResults
+                    - synchronizationStatus
+                    - synchronizedAt
                   type: object
                 description: Shows results of synchronizing Prometheus rule resources
                   in this namespace via the Dash0 API.
@@ -2095,20 +2115,29 @@ spec:
               persesDashboardSynchronizationResults:
                 additionalProperties:
                   properties:
-                    dash0Dataset:
-                      type: string
-                    dash0Origin:
-                      type: string
-                    synchronizationError:
-                      type: string
+                    synchronizationResults:
+                      items:
+                        properties:
+                          dash0ApiEndpoint:
+                            type: string
+                          dash0Dataset:
+                            type: string
+                          dash0Origin:
+                            type: string
+                          synchronizationError:
+                            type: string
+                        required:
+                          - dash0ApiEndpoint
+                        type: object
+                      type: array
                     synchronizationStatus:
                       description: |-
                         ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
-                      - successful
-                      - partially-successful
-                      - failed
+                        - successful
+                        - partially-successful
+                        - failed
                       type: string
                     synchronizedAt:
                       format: date-time
@@ -2118,8 +2147,9 @@ spec:
                         type: string
                       type: array
                   required:
-                  - synchronizationStatus
-                  - synchronizedAt
+                    - synchronizationResults
+                    - synchronizationStatus
+                    - synchronizedAt
                   type: object
                 description: Shows results of synchronizing Perses dashboard resources
                   in this namespace via the Dash0 API.
@@ -2234,42 +2264,52 @@ spec:
                       type: object
                     invalidRulesTotal:
                       type: integer
-                    synchronizationErrors:
-                      additionalProperties:
-                        type: string
-                      type: object
-                    synchronizationErrorsTotal:
-                      type: integer
+                    synchronizationResults:
+                      items:
+                        properties:
+                          dash0ApiEndpoint:
+                            type: string
+                          dash0Dataset:
+                            type: string
+                          synchronizationErrors:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          synchronizationErrorsTotal:
+                            type: integer
+                          synchronizedRulesAttributes:
+                            additionalProperties:
+                              properties:
+                                dash0Origin:
+                                  type: string
+                              type: object
+                            type: object
+                          synchronizedRulesTotal:
+                            type: integer
+                        required:
+                          - dash0ApiEndpoint
+                          - synchronizationErrorsTotal
+                          - synchronizedRulesTotal
+                        type: object
+                      type: array
                     synchronizationStatus:
                       description: |-
                         ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
-                      - successful
-                      - partially-successful
-                      - failed
+                        - successful
+                        - partially-successful
+                        - failed
                       type: string
                     synchronizedAt:
                       format: date-time
                       type: string
-                    synchronizedRulesAttributes:
-                      additionalProperties:
-                        properties:
-                          dash0Dataset:
-                            type: string
-                          dash0Origin:
-                            type: string
-                        type: object
-                      type: object
-                    synchronizedRulesTotal:
-                      type: integer
                   required:
-                  - alertingRulesTotal
-                  - invalidRulesTotal
-                  - synchronizationErrorsTotal
-                  - synchronizationStatus
-                  - synchronizedAt
-                  - synchronizedRulesTotal
+                    - alertingRulesTotal
+                    - invalidRulesTotal
+                    - synchronizationResults
+                    - synchronizationStatus
+                    - synchronizedAt
                   type: object
                 description: Shows results of synchronizing Prometheus rule resources
                   in this namespace via the Dash0 API.

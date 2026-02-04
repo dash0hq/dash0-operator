@@ -318,31 +318,39 @@ const (
 )
 
 type PersesDashboardSynchronizationResults struct {
-	SynchronizationStatus ThirdPartySynchronizationStatus `json:"synchronizationStatus"`
-	SynchronizedAt        metav1.Time                     `json:"synchronizedAt"`
+	SynchronizationStatus  ThirdPartySynchronizationStatus                             `json:"synchronizationStatus"`
+	SynchronizedAt         metav1.Time                                                 `json:"synchronizedAt"`
+	ValidationIssues       []string                                                    `json:"validationIssues,omitempty"`
+	SynchronizationResults []PersesDashboardSynchronizationResultPerEndpointAndDataset `json:"synchronizationResults"`
+}
+
+type PersesDashboardSynchronizationResultPerEndpointAndDataset struct {
+	Dash0ApiEndpoint string `json:"dash0ApiEndpoint"`
+	Dash0Dataset     string `json:"dash0Dataset,omitempty"`
 	// +kubebuilder:validation:Optional
-	Dash0Origin string `json:"dash0Origin,omitempty"`
-	// +kubebuilder:validation:Optional
-	Dash0Dataset         string   `json:"dash0Dataset,omitempty"`
-	SynchronizationError string   `json:"synchronizationError,omitempty"`
-	ValidationIssues     []string `json:"validationIssues,omitempty"`
+	Dash0Origin          string `json:"dash0Origin,omitempty"`
+	SynchronizationError string `json:"synchronizationError,omitempty"`
 }
 
 type PrometheusRuleSynchronizationResult struct {
-	SynchronizationStatus       ThirdPartySynchronizationStatus                     `json:"synchronizationStatus"`
-	SynchronizedAt              metav1.Time                                         `json:"synchronizedAt"`
-	AlertingRulesTotal          int                                                 `json:"alertingRulesTotal"`
+	SynchronizationStatus  ThirdPartySynchronizationStatus                            `json:"synchronizationStatus"`
+	SynchronizedAt         metav1.Time                                                `json:"synchronizedAt"`
+	AlertingRulesTotal     int                                                        `json:"alertingRulesTotal"`
+	InvalidRulesTotal      int                                                        `json:"invalidRulesTotal"`
+	InvalidRules           map[string][]string                                        `json:"invalidRules,omitempty"`
+	SynchronizationResults []PrometheusRuleSynchronizationResultPerEndpointAndDataset `json:"synchronizationResults"`
+}
+
+type PrometheusRuleSynchronizationResultPerEndpointAndDataset struct {
+	Dash0ApiEndpoint            string                                              `json:"dash0ApiEndpoint"`
+	Dash0Dataset                string                                              `json:"dash0Dataset,omitempty"`
 	SynchronizedRulesTotal      int                                                 `json:"synchronizedRulesTotal"`
 	SynchronizedRulesAttributes map[string]PrometheusRuleSynchronizedRuleAttributes `json:"synchronizedRulesAttributes,omitempty"`
 	SynchronizationErrorsTotal  int                                                 `json:"synchronizationErrorsTotal"`
 	SynchronizationErrors       map[string]string                                   `json:"synchronizationErrors,omitempty"`
-	InvalidRulesTotal           int                                                 `json:"invalidRulesTotal"`
-	InvalidRules                map[string][]string                                 `json:"invalidRules,omitempty"`
 }
 
 type PrometheusRuleSynchronizedRuleAttributes struct {
 	// +kubebuilder:validation:Optional
 	Dash0Origin string `json:"dash0Origin,omitempty"`
-	// +kubebuilder:validation:Optional
-	Dash0Dataset string `json:"dash0Dataset,omitempty"`
 }
