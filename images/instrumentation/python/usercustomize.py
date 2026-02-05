@@ -29,74 +29,55 @@ def _print_cannot_auto_instrument_message(reason):
     else:
         _print_to_stderr("warning: cannot auto-instrument Python process: {}".format(reason))
 
-def _read_requirements_txt():
-    """Read package names from requirements.txt. Returns list of package names or None on error."""
-    requirements_file = os.path.join(dirname(__file__), 'requirements.txt')
-    packages_to_check = []
+def _read_all_dependencies():
+    """Read all flattened dependencies from all-dependencies.txt. Returns list of requirement strings or None on error."""
+    dependencies_file = os.path.join(dirname(__file__), 'all-dependencies.txt')
+    requirements_to_check = []
     try:
-        with open(requirements_file, 'r') as f:
+        with open(dependencies_file, 'r') as f:
             for line in f:
                 line = line.strip()
                 # Skip empty lines and comments
                 if not line or line.startswith('#'):
                     continue
-                # Extract package name (everything before version specifier)
-                package_name = line
-                for sep in ['==', '>=', '<=', '>', '<', '!=', ' ']:
-                    if sep in line:
-                        package_name = line.split(sep)[0].strip()
-                        break
-
-                packages_to_check.append(package_name)
-        return packages_to_check
+                requirements_to_check.append(line)
+        return requirements_to_check
     except (IOError, OSError):
         return None
 
-def _check_dependency_version_conflicts(package_name, version_conflicts):
-    """Check for dependency version conflicts for a given package.
+def _check_dependency_version_conflict(req_string, version_conflicts):
+    """Check for dependency version conflict for a given requirement.
 
     Args:
-        package_name: Name of the package to check
+        req_string: Requirement string (e.g., "package-name >=1.0.0")
         version_conflicts: Dictionary to accumulate version conflicts (modified in place)
     """
     import importlib.metadata
     from packaging.requirements import Requirement
     from packaging.version import Version
 
-    _print_debug_msg("_check_dependency_version_conflicts({})".format(package_name))
-    try:
-        distro = importlib.metadata.distribution(package_name)
-    except importlib.metadata.PackageNotFoundError:
-        version_conflicts[package_name] = {'error': 'package not found'}
+    _print_debug_msg("_check_dependency_version_conflict({})".format(req_string))
+    req = Requirement(req_string)
+
+    # Skip extras/markers for simplicity in conflict detection
+    if req.marker and not req.marker.evaluate():
         return
 
-    requires = distro.requires
-    if requires:
-        for req_string in requires:
-            req = Requirement(req_string)
-            # Skip extras/markers for simplicity in conflict detection
-            if req.marker and not req.marker.evaluate():
-                continue
-            _print_debug_msg("checking dependency: {}".format(req_string))
+    try:
+        installed_distribution = importlib.metadata.distribution(req.name)
+        installed_version = Version(installed_distribution.version)
+        _print_debug_msg("installed_version: {}".format(installed_version))
 
-            try:
-                installed_distro = importlib.metadata.distribution(req.name)
-                installed_version = Version(installed_distro.version)
-                _print_debug_msg("installed_version: {}".format(installed_version))
-
-                # Check if installed version satisfies the requirement
-                if req.specifier and installed_version not in req.specifier:
-                    _print_debug_msg("adding version conflict for {}".format(req.name))
-                    version_conflicts[req.name] = {
-                        'version_required': str(req.specifier),
-                        'version_found': str(installed_version),
-                    }
-            except importlib.metadata.PackageNotFoundError:
-                _print_debug_msg("adding version error for {}".format(req.name))
-                version_conflicts[req.name] = {'error': 'required package not found'}
-
-            # Recursively check dependencies
-            _check_dependency_version_conflicts(req.name, version_conflicts)
+        # Check if installed version satisfies the requirement
+        if req.specifier and installed_version not in req.specifier:
+            _print_debug_msg("adding version conflict for {}".format(req.name))
+            version_conflicts[req.name] = {
+                'version_required': str(req.specifier),
+                'version_found': str(installed_version),
+            }
+    except importlib.metadata.PackageNotFoundError:
+        _print_debug_msg("adding version error for {}".format(req.name))
+        version_conflicts[req.name] = {'error': 'required package not found'}
 
 def import_distro():
     _print_debug_msg("import_distro")
@@ -144,14 +125,14 @@ def import_distro():
     path.append(current_site)
 
     version_conflicts = {}
-    packages_to_check = _read_requirements_txt()
-    if packages_to_check is None:
+    requirements_to_check = _read_all_dependencies()
+    if requirements_to_check is None:
         path.remove(current_site)
-        _print_cannot_auto_instrument_message("cannot read internal requirements.txt for dependency conflict checking")
+        _print_cannot_auto_instrument_message("cannot read all-dependencies.txt for dependency conflict checking")
         return
 
-    for package in packages_to_check:
-        _check_dependency_version_conflicts(package, version_conflicts)
+    for req_string in requirements_to_check:
+        _check_dependency_version_conflict(req_string, version_conflicts)
         if version_conflicts:
             break
 
