@@ -55,8 +55,11 @@ FROM python:3.14.2-trixie AS build-python-glibc
 RUN mkdir -p /dash0-init-container/python
 WORKDIR /dash0-init-container/python
 COPY python/requirements.txt .
+COPY python/extract-flattened-requirements.sh .
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt
+RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt && \
+  ./extract-flattened-requirements.sh && \
+  rm extract-flattened-requirements.sh
 COPY python/usercustomize.py .
 
 # install Python artifacts (musl)
@@ -64,8 +67,11 @@ FROM python:3.14.2-alpine3.23 AS build-python-musl
 RUN mkdir -p /dash0-init-container/python
 WORKDIR /dash0-init-container/python
 COPY python/requirements.txt .
+COPY python/extract-flattened-requirements.sh .
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt
+RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt && \
+  ./extract-flattened-requirements.sh && \
+  rm extract-flattened-requirements.sh
 COPY python/usercustomize.py .
 
 # build the final instrumentation image

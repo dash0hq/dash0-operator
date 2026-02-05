@@ -134,33 +134,27 @@ class TestImportDistro(unittest.TestCase):
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'http/protobuf'
         mock_site = '/mock/site-packages'
 
-        # Create mock distributions with version conflicts
-        mock_distro = Mock()
-        mock_distro.requires = ['packaging>=20.0']
-        mock_distro.version = '1.0.0'
-
+        # Create mock distribution with conflicting version
         mock_packaging = Mock()
         mock_packaging.version = '19.0'  # Too old
-        mock_packaging.requires = []  # No further dependencies
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                with patch('importlib.metadata.distribution') as mock_dist:
-                    def dist_side_effect(name):
-                        if name == 'opentelemetry-distro':
-                            return mock_distro
-                        elif name == 'packaging':
-                            return mock_packaging
-                        else:
-                            # Return mocks for other packages
-                            other_mock = Mock()
-                            other_mock.requires = []
-                            return other_mock
+                # Mock _read_all_dependencies to return a requirement that will conflict
+                with patch('builtins.open', unittest.mock.mock_open(read_data='packaging >=20.0\n')):
+                    with patch('importlib.metadata.distribution') as mock_dist:
+                        def dist_side_effect(name):
+                            if name == 'packaging':
+                                return mock_packaging
+                            else:
+                                # Return mocks for other packages
+                                other_mock = Mock()
+                                return other_mock
 
-                    mock_dist.side_effect = dist_side_effect
+                        mock_dist.side_effect = dist_side_effect
 
-                    module, spec = load_usercustomize_module()
-                    spec.loader.exec_module(module)
+                        module, spec = load_usercustomize_module()
+                        spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
         # Should report dependency conflicts
@@ -174,16 +168,23 @@ class TestImportDistro(unittest.TestCase):
         os.environ['OTEL_INJECTOR_LOG_LEVEL'] = 'debug'
         mock_site = '/mock/site-packages'
 
+        # Create mock distribution with matching version
+        mock_packaging = Mock()
+        mock_packaging.version = '21.0'  # Satisfies >=20.0
+
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                with patch('importlib.metadata.distribution'):
-                    with patch.dict('sys.modules', {
-                        'opentelemetry': MagicMock(),
-                        'opentelemetry.instrumentation': MagicMock(),
-                        'opentelemetry.instrumentation.auto_instrumentation': MagicMock()
-                    }):
-                        module, spec = load_usercustomize_module()
-                        spec.loader.exec_module(module)
+                # Mock _read_all_dependencies to return a requirement that is satisfied
+                with patch('builtins.open', unittest.mock.mock_open(read_data='packaging >=20.0\n')):
+                    with patch('importlib.metadata.distribution') as mock_dist:
+                        mock_dist.return_value = mock_packaging
+                        with patch.dict('sys.modules', {
+                            'opentelemetry': MagicMock(),
+                            'opentelemetry.instrumentation': MagicMock(),
+                            'opentelemetry.instrumentation.auto_instrumentation': MagicMock()
+                        }):
+                            module, spec = load_usercustomize_module()
+                            spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
         self.assertIn("[dash0] importing and initializing the Python auto-instrumentation now", output)
@@ -195,30 +196,24 @@ class TestImportDistro(unittest.TestCase):
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'http/protobuf'
         mock_site = '/mock/site-packages'
 
-        # Create a mock where opentelemetry-distro exists but has a missing dependency
-        mock_distro = Mock()
-        mock_distro.requires = ['missing-package>=1.0']
-        mock_distro.version = '1.0.0'
-
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                with patch('importlib.metadata.distribution') as mock_dist:
-                    def dist_side_effect(name):
-                        if name == 'opentelemetry-distro':
-                            return mock_distro
-                        elif name == 'missing-package':
-                            # This dependency is not found
-                            raise importlib.metadata.PackageNotFoundError()
-                        else:
-                            # Other packages exist
-                            mock_pkg = Mock()
-                            mock_pkg.requires = []
-                            return mock_pkg
+                # Mock _read_all_dependencies to return a requirement for a missing package
+                with patch('builtins.open', unittest.mock.mock_open(read_data='missing-package >=1.0\n')):
+                    with patch('importlib.metadata.distribution') as mock_dist:
+                        def dist_side_effect(name):
+                            if name == 'missing-package':
+                                # This dependency is not found
+                                raise importlib.metadata.PackageNotFoundError()
+                            else:
+                                # Other packages exist
+                                mock_pkg = Mock()
+                                return mock_pkg
 
-                    mock_dist.side_effect = dist_side_effect
+                        mock_dist.side_effect = dist_side_effect
 
-                    module, spec = load_usercustomize_module()
-                    spec.loader.exec_module(module)
+                        module, spec = load_usercustomize_module()
+                        spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
         # Should report dependency conflicts for the missing required package
