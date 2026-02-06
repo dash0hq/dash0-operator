@@ -25,6 +25,9 @@ updates:
         dependency-type: "production"
       development-dependencies:
         dependency-type: "development"
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
@@ -57,6 +60,9 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   # -----------------------
   # -- Test applications --
