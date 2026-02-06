@@ -25,6 +25,9 @@ updates:
         dependency-type: "production"
       development-dependencies:
         dependency-type: "development"
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
@@ -57,6 +60,9 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   # -----------------------
   # -- Test applications --
@@ -73,13 +79,15 @@ updates:
     groups:
       development-dependencies:
         dependency-type: "development"
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "gomod"
     directories:
       - "test/e2e/dash0-api-mock"
       - "test/e2e/otlp-sink/telemetrymatcher"
       - "test/e2e/pkg/shared"
-
     schedule:
       interval: "weekly"
       day: "tuesday"
@@ -91,6 +99,9 @@ updates:
           - "*"
     commit-message:
       prefix: "test"
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "maven"
     directory: "test-resources/jvm/spring-boot"
