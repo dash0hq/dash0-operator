@@ -3,7 +3,7 @@
 
 # Note: This Dockerfile expects dash0-operator/images as the build context.
 
-FROM --platform=${BUILDPLATFORM} golang:1.25.6-alpine3.23 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.25.7-alpine3.23 AS builder
 
 WORKDIR /usr/local/go/src/filelogoffsetsync
 
