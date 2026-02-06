@@ -79,13 +79,15 @@ updates:
     groups:
       development-dependencies:
         dependency-type: "development"
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "gomod"
     directories:
       - "test/e2e/dash0-api-mock"
       - "test/e2e/otlp-sink/telemetrymatcher"
       - "test/e2e/pkg/shared"
-
     schedule:
       interval: "weekly"
       day: "tuesday"
@@ -97,6 +99,9 @@ updates:
           - "*"
     commit-message:
       prefix: "test"
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "maven"
     directory: "test-resources/jvm/spring-boot"
