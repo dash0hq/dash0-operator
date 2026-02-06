@@ -94,17 +94,12 @@ runs:
         load: true
         push: false
 
-    - name: set short sha
-      shell: bash
-      run: |
-        echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-
     # optionally scan the built container image with Trivy and upload the results
     - name: run Trivy vulnerability scanner
       if: ${{ inputs.scan == 'true' }}
       uses: aquasecurity/trivy-action@0.28.0
       with:
-        image-ref: 'ghcr.io/dash0hq/${{ inputs.imageName }}:sha-${{ env.SHORT_SHA }}'
+        image-ref: '${{ steps.docker-build.outputs.imageid }}'
         format: 'sarif'
         output: 'trivy-results.sarif'
         exit-code: '1' # fail build if vulnerabilities are found
