@@ -61,19 +61,6 @@ type neccessaryCleanupSteps struct {
 	removeTestApplications         bool
 }
 
-type workloadType struct {
-	workloadTypeString          string
-	workloadTypeStringCamelCase string
-	isBatch                     bool
-}
-
-type runtimeType struct {
-	runtimeTypeLabel string
-	workloadName     string
-	helmChartPath    string
-	helmReleaseName  string
-}
-
 // getProjectDir returns the repository's root directory
 func getProjectDir() (string, error) {
 	wd, err := os.Getwd()
@@ -110,7 +97,11 @@ func workloadName(runtime runtimeType, workloadType workloadType) string {
 }
 
 func sendRequest(g Gomega, runtime runtimeType, workloadType workloadType, route string, query string) {
-	httpPathWithQuery := fmt.Sprintf("%s?%s", route, query)
+	httpPathWithQuery := route
+	if query != "" {
+		httpPathWithQuery = fmt.Sprintf("%s?%s", route, query)
+	}
+
 	executeTestAppHttpRequest(
 		g,
 		runtime.runtimeTypeLabel,
@@ -148,7 +139,7 @@ func executeTestAppHttpRequest(
 		httpPathWithQuery,
 	)
 	httpClient := http.Client{
-		Timeout: 500 * time.Millisecond,
+		Timeout: 5000 * time.Millisecond,
 	}
 	if verboseHttp {
 		e2ePrint("%s: sending HTTP GET request\n", url)
