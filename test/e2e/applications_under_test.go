@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -19,67 +18,6 @@ const (
 )
 
 var (
-	workloadTypeCronjob = workloadType{
-		workloadTypeString:          "cronjob",
-		workloadTypeStringCamelCase: "CronJob",
-		isBatch:                     true,
-	}
-	workloadTypeDaemonSet = workloadType{
-		workloadTypeString:          "daemonset",
-		workloadTypeStringCamelCase: "DaemonSet",
-		isBatch:                     false,
-	}
-	workloadTypeDeployment = workloadType{
-		workloadTypeString:          "deployment",
-		workloadTypeStringCamelCase: "Deployment",
-		isBatch:                     false,
-	}
-	workloadTypeJob = workloadType{
-		workloadTypeString:          "job",
-		workloadTypeStringCamelCase: "Job",
-		isBatch:                     true,
-	}
-	workloadTypePod = workloadType{
-		workloadTypeString:          "pod",
-		workloadTypeStringCamelCase: "Pod",
-		isBatch:                     false,
-	}
-	workloadTypeReplicaSet = workloadType{
-		workloadTypeString:          "replicaset",
-		workloadTypeStringCamelCase: "ReplicaSet",
-		isBatch:                     false,
-	}
-	workloadTypeStatefulSet = workloadType{
-		workloadTypeString:          "statefulset",
-		workloadTypeStringCamelCase: "StatefulSet",
-		isBatch:                     false,
-	}
-
-	runtimeTypeDotnet = runtimeType{
-		runtimeTypeLabel: runtimeTypeLabelDotnet,
-		workloadName:     workloadNameDotnet,
-		helmChartPath:    chartPathDotnet,
-		helmReleaseName:  releaseNameDotnet,
-	}
-	runtimeTypeJvm = runtimeType{
-		runtimeTypeLabel: runtimeTypeLabelJvm,
-		workloadName:     workloadNameJvm,
-		helmChartPath:    chartPathJvm,
-		helmReleaseName:  releaseNameJvm,
-	}
-	runtimeTypeNodeJs = runtimeType{
-		runtimeTypeLabel: runtimeTypeLabelNodeJs,
-		workloadName:     workloadNameNodeJs,
-		helmChartPath:    chartPathNodeJs,
-		helmReleaseName:  releaseNameNodeJs,
-	}
-	runtimeTypePython = runtimeType{
-		runtimeTypeLabel: runtimeTypeLabelPython,
-		workloadName:     workloadNamePython,
-		helmChartPath:    chartPathPython,
-		helmReleaseName:  releaseNamePython,
-	}
-
 	testAppImages = make(map[runtimeType]ImageSpec)
 )
 
@@ -326,17 +264,6 @@ func runTestAppHelmInstall(
 	args = append(args, setValues...)
 
 	return runAndIgnoreOutput(exec.Command("helm", args...))
-}
-
-func waitForApplicationToBecomeResponsive(
-	runtime runtimeType,
-	workloadType workloadType,
-	route string,
-	query string,
-) {
-	Eventually(func(g Gomega) {
-		sendRequest(g, runtime, workloadType, route, query)
-	}, 30*time.Second, pollingInterval).Should(Succeed())
 }
 
 func runTestAppHelmUninstall(namespace string, releaseName string) error {

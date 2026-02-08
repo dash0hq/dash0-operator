@@ -44,6 +44,17 @@ func verifyThatWorkloadHasBeenInstrumented(
 		verifySuccessfulInstrumentationEvent(g, namespace, runtime, workloadType, instrumentationBy)
 	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 
+	// After instrumenting the workload, old pods (from the uninstrumented workload) can still be up and running,
+	// especially if the new pods take too long to become ready. Before we start waiting for spans, we make sure that
+	// the pods of the instrumented workload have become ready and the old uninstrumented pods have terminated.
+	waitForRollout(namespace, runtime, workloadType)
+	waitForApplicationToBecomeResponsive(
+		runtime,
+		workloadType,
+		testEndpoint,
+		"",
+	)
+
 	By(fmt.Sprintf("%s %s: waiting for spans to be captured", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 
 	// For workload types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
@@ -131,8 +142,18 @@ func verifyThatInstrumentationIsRevertedEventually(
 		verifySuccessfulUninstrumentationEvent(g, namespace, runtime, workloadType, instrumentationBy)
 	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 
-	// Add some buffer time between the workloads being restarted and verifying that no spans are produced/captured.
-	time.Sleep(10 * time.Second)
+	// After uninstrumenting the workload, old pods (from the instrumented workload) can still be up and running,
+	// especially if the new pods take too long to become ready. Before we can run the "verifying that spans are no
+	// longer being captured" check in a meaningful way, we need to make sure that the pods of the uninstrumented
+	// workload have become ready and the old pods have terminated.
+	waitForRollout(namespace, runtime, workloadType)
+	waitForApplicationToBecomeResponsive(
+		runtime,
+		workloadType,
+		testEndpoint,
+		"",
+	)
+	time.Sleep(5 * time.Second)
 
 	secondsToCheckForSpans := 20
 	if workloadType.workloadTypeString == cronjob {
