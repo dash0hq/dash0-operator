@@ -22,7 +22,7 @@ Supported runtimes for automatic workload instrumentation:
 * Java 8+
 * Node.js 16+
 * .NET
-* Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/python-support/helm-chart/dash0-operator/values.yaml#L401-L402))
+* Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/0.100.0/helm-chart/dash0-operator/values.yaml#L408-L409))
 
 Other features like metrics and log collection are independent of the runtime of workloads.
 
@@ -1788,7 +1788,7 @@ You can safely skip this section if you are not interested in the technical deta
    For .NET or other CLR-based workloads, the `CORECLR_PROFILER` mechanism is used to add the OpenTelemetry .NET
    instrumentation.
    For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`.
-   (Python auto-instrumentation needs to be [enabled](https://github.com/dash0hq/dash0-operator/blob/python-support/helm-chart/dash0-operator/values.yaml#L401-L402) explicitly via Helm.)
+   (Python auto-instrumentation needs to be [enabled](https://github.com/dash0hq/dash0-operator/blob/0.100.0/helm-chart/dash0-operator/values.yaml#L408-L409) explicitly via Helm.)
 5. Additionally, the OpenTelemetry injector automatically improves Kubernetes-related resource attributes as follows:
    The operator sets the environment variables `OTEL_INJECTOR_K8S_NAMESPACE_NAME`, `OTEL_INJECTOR_K8S_POD_NAME`,
    `OTEL_INJECTOR_K8S_POD_UID` and `OTEL_INJECTOR_K8S_CONTAINER_NAME` on workloads.
