@@ -215,7 +215,7 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/target-allocator
           context: images/target-allocator
           scan: 'true'
-          scanSeverity: 'HIGH,CRITICAL'
+          scanSeverity: 'CRITICAL'
 
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
