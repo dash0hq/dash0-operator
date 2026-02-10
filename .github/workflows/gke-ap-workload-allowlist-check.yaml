@@ -1,7 +1,7 @@
 name: GKE Autopilot WorkloadAllowlist Check
 
 on:
-  deployment_status:
+  page_build:
   workflow_dispatch:
 
 env:
