@@ -217,6 +217,13 @@ jobs:
           scan: 'true'
           scanSeverity: 'CRITICAL'
 
+  e2e_tests:
+    name: End-to-end Tests
+    needs:
+      - build_and_push_images
+    if: ${{ github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
+    uses: ./.github/workflows/e2e.yaml
+
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
     runs-on: ubuntu-latest
