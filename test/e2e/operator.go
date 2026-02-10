@@ -237,7 +237,7 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	By(fmt.Sprintf("checking whether the operator Helm chart repo %s (%s) has been installed",
 		repositoryName, operatorHelmChartUrl))
 	repoList, err := run(exec.Command("helm", "repo", "list"))
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).To(Or(Not(HaveOccurred()), MatchError(ContainSubstring("no repositories to show"))))
 	if !regexp.MustCompile(
 		fmt.Sprintf("%s\\s+%s", repositoryName, operatorHelmChartUrl)).MatchString(repoList) {
 		e2ePrint(

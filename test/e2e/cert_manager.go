@@ -50,7 +50,7 @@ func ensureCertManagerIsInstalled() {
 
 func installCertManager() error {
 	repoList, err := run(exec.Command("helm", "repo", "list"))
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "no repositories to show") {
 		return err
 	}
 	if !strings.Contains(repoList, "jetstack") {
