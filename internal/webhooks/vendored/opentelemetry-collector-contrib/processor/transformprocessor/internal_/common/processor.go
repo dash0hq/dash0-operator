@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/common/processor.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.145.0/processor/transformprocessor/internal/common/processor.go
 
 package common
 
@@ -48,6 +48,7 @@ func (r resourceStatements) ConsumeTraces(ctx context.Context, td ptrace.Traces)
 				return err
 			}
 		}
+		tCtx.Close()
 	}
 	return nil
 }

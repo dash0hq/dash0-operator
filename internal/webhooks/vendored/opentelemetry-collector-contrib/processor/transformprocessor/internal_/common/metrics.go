@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/common/metrics.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.145.0/processor/transformprocessor/internal/common/metrics.go
 
 package common
 
@@ -115,6 +115,7 @@ func (d dataPointStatements) handleNumberDataPoints(ctx context.Context, resourc
 				return err
 			}
 		}
+		tCtx.Close()
 	}
 	return nil
 }
@@ -134,6 +135,7 @@ func (d dataPointStatements) handleHistogramDataPoints(ctx context.Context, reso
 				return err
 			}
 		}
+		tCtx.Close()
 	}
 	return nil
 }
@@ -153,6 +155,7 @@ func (d dataPointStatements) handleExponentialHistogramDataPoints(ctx context.Co
 				return err
 			}
 		}
+		tCtx.Close()
 	}
 	return nil
 }
@@ -172,6 +175,7 @@ func (d dataPointStatements) handleSummaryDataPoints(ctx context.Context, resour
 				return err
 			}
 		}
+		tCtx.Close()
 	}
 	return nil
 }

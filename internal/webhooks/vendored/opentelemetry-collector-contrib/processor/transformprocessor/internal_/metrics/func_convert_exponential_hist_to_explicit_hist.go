@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/metrics/func_convert_exponential_hist_to_explicit_hist.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.145.0/processor/transformprocessor/internal/metrics/func_convert_exponential_hist_to_explicit_hist.go
 
 package metrics
 
