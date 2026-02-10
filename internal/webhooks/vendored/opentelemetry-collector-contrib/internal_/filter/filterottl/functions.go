@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/internal/filter/filterottl/functions.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.145.0/internal/filter/filterottl/functions.go
 
 package filterottl
 
@@ -56,8 +56,8 @@ func StandardLogFuncs() map[string]ottl.Factory[*ottllog.TransformContext] {
 	return ottlfuncs.StandardConverters[*ottllog.TransformContext]()
 }
 
-func StandardProfileFuncs() map[string]ottl.Factory[ottlprofile.TransformContext] {
-	return ottlfuncs.StandardConverters[ottlprofile.TransformContext]()
+func StandardProfileFuncs() map[string]ottl.Factory[*ottlprofile.TransformContext] {
+	return ottlfuncs.StandardConverters[*ottlprofile.TransformContext]()
 }
 
 func StandardResourceFuncs() map[string]ottl.Factory[*ottlresource.TransformContext] {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/internal/filter/filterottl/filter.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.145.0/internal/filter/filterottl/filter.go
 
 package filterottl
 
@@ -125,15 +125,15 @@ func NewBoolExprForLogWithOptions(conditions []string, functions map[string]ottl
 	return &c, nil
 }
 
-// NewBoolExprForProfile creates a BoolExpr[ottlprofile.TransformContext] that will return true if any of the given OTTL conditions evaluate to true.
+// NewBoolExprForProfile creates a BoolExpr[*ottlprofile.TransformContext] that will return true if any of the given OTTL conditions evaluate to true.
 // The passed in functions should use the ottlprofile.TransformContext.
 // If a function named `match` is not present in the function map it will be added automatically so that parsing works as expected
-func NewBoolExprForProfile(conditions []string, functions map[string]ottl.Factory[ottlprofile.TransformContext], errorMode ottl.ErrorMode, set component.TelemetrySettings) (*ottl.ConditionSequence[ottlprofile.TransformContext], error) {
+func NewBoolExprForProfile(conditions []string, functions map[string]ottl.Factory[*ottlprofile.TransformContext], errorMode ottl.ErrorMode, set component.TelemetrySettings) (*ottl.ConditionSequence[*ottlprofile.TransformContext], error) {
 	return NewBoolExprForProfileWithOptions(conditions, functions, errorMode, set, nil)
 }
 
 // NewBoolExprForProfileWithOptions is like NewBoolExprForProfile, but with additional options.
-func NewBoolExprForProfileWithOptions(conditions []string, functions map[string]ottl.Factory[ottlprofile.TransformContext], errorMode ottl.ErrorMode, set component.TelemetrySettings, parserOptions []ottl.Option[ottlprofile.TransformContext]) (*ottl.ConditionSequence[ottlprofile.TransformContext], error) {
+func NewBoolExprForProfileWithOptions(conditions []string, functions map[string]ottl.Factory[*ottlprofile.TransformContext], errorMode ottl.ErrorMode, set component.TelemetrySettings, parserOptions []ottl.Option[*ottlprofile.TransformContext]) (*ottl.ConditionSequence[*ottlprofile.TransformContext], error) {
 	parser, err := ottlprofile.NewParser(functions, set, parserOptions...)
 	if err != nil {
 		return nil, err

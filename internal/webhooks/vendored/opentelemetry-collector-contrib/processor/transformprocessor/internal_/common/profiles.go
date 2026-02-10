@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.142.0/processor/transformprocessor/internal/common/profiles.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.145.0/processor/transformprocessor/internal/common/profiles.go
 
 package common
 
@@ -24,8 +24,8 @@ type ProfilesConsumer interface {
 }
 
 type profileStatements struct {
-	ottl.StatementSequence[ottlprofile.TransformContext]
-	expr.BoolExpr[ottlprofile.TransformContext]
+	ottl.StatementSequence[*ottlprofile.TransformContext]
+	expr.BoolExpr[*ottlprofile.TransformContext]
 }
 
 func (profileStatements) Context() ContextID {
@@ -37,17 +37,20 @@ func (l profileStatements) ConsumeProfiles(ctx context.Context, ld pprofile.Prof
 	for _, rprofiles := range ld.ResourceProfiles().All() {
 		for _, sprofiles := range rprofiles.ScopeProfiles().All() {
 			for _, profile := range sprofiles.Profiles().All() {
-				tCtx := ottlprofile.NewTransformContext(profile, dic, sprofiles.Scope(), rprofiles.Resource(), sprofiles, rprofiles)
+				tCtx := ottlprofile.NewTransformContextPtr(rprofiles, sprofiles, profile, dic)
 				condition, err := l.Eval(ctx, tCtx)
 				if err != nil {
+					tCtx.Close()
 					return err
 				}
 				if condition {
 					err := l.Execute(ctx, tCtx)
 					if err != nil {
+						tCtx.Close()
 						return err
 					}
 				}
+				tCtx.Close()
 			}
 		}
 	}
@@ -58,7 +61,7 @@ type ProfileParserCollection ottl.ParserCollection[ProfilesConsumer]
 
 type ProfileParserCollectionOption ottl.ParserCollectionOption[ProfilesConsumer]
 
-func WithProfileParser(functions map[string]ottl.Factory[ottlprofile.TransformContext]) ProfileParserCollectionOption {
+func WithProfileParser(functions map[string]ottl.Factory[*ottlprofile.TransformContext]) ProfileParserCollectionOption {
 	return func(pc *ottl.ParserCollection[ProfilesConsumer]) error {
 		profileParser, err := ottlprofile.NewParser(functions, pc.Settings, ottlprofile.EnablePathContextNames())
 		if err != nil {
@@ -91,7 +94,7 @@ func NewProfileParserCollection(settings component.TelemetrySettings, options ..
 	return &ppc, nil
 }
 
-func convertProfileStatements(pc *ottl.ParserCollection[ProfilesConsumer], statements ottl.StatementsGetter, parsedStatements []*ottl.Statement[ottlprofile.TransformContext]) (ProfilesConsumer, error) {
+func convertProfileStatements(pc *ottl.ParserCollection[ProfilesConsumer], statements ottl.StatementsGetter, parsedStatements []*ottl.Statement[*ottlprofile.TransformContext]) (ProfilesConsumer, error) {
 	contextStatements, err := toContextStatements(statements)
 	if err != nil {
 		return nil, err
@@ -100,7 +103,7 @@ func convertProfileStatements(pc *ottl.ParserCollection[ProfilesConsumer], state
 	if contextStatements.ErrorMode != "" {
 		errorMode = contextStatements.ErrorMode
 	}
-	var parserOptions []ottl.Option[ottlprofile.TransformContext]
+	var parserOptions []ottl.Option[*ottlprofile.TransformContext]
 	if contextStatements.Context == "" {
 		parserOptions = append(parserOptions, ottlprofile.EnablePathContextNames())
 	}
