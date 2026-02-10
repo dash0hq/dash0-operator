@@ -185,10 +185,12 @@ func getEnvOrDefault(name string, defaultValue string) string {
 
 func deriveAlternativeImagesForUpdateTest(images Images) Images {
 	return Images{
-		operator: deriveAlternativeImageForUpdateTest(
-			images.operator,
-			operatorControllerImageName,
-		),
+		// Deliberately not using a different image for the operator manager itself. Replacing the operator manager
+		// image with say, ghcr.io/dash0hq/operator-controller:latest (i.e. the most recently published release) or
+		// ghcr.io/dash0hq/operator-controller:main-dev (the most recent build on main) would lead to the operator
+		// manager crashing at startup with "flag provided but not defined: -new-command-line-argument" if the current
+		// branch adds a new command line flags (which is of course unknown in those operator manager image versions).
+		operator: images.operator,
 		instrumentation: deriveAlternativeImageForUpdateTest(
 			images.instrumentation,
 			instrumentationImageName,
