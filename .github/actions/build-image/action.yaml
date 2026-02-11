@@ -32,6 +32,10 @@ inputs:
     description: "severity setting for the Trivy scanner, see https://trivy.dev/docs/latest/guide/configuration/filtering/#by-severity"
     required: false
     default: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+  exitCode:
+    description: "the exit code in case a cve is found, use this setting to control whether the build should fail or not"
+    required: false
+    default: '1'
 
 runs:
   using: "composite"
@@ -102,7 +106,7 @@ runs:
         image-ref: '${{ steps.docker-build.outputs.imageid }}'
         format: 'sarif'
         output: 'trivy-results.sarif'
-        exit-code: '1' # fail build if vulnerabilities are found
+        exit-code: ${{ inputs.exitCode }}
         severity: ${{ inputs.scanSeverity }}
         limit-severities-for-sarif: true
 
