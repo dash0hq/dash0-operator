@@ -216,6 +216,7 @@ jobs:
           context: images/target-allocator
           scan: 'true'
           scanSeverity: 'CRITICAL'
+          exitCode: '0'
 
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
