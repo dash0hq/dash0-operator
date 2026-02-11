@@ -1166,7 +1166,7 @@ traces:
   span:
   - 'attributes["http.route"] == "/ready"'
 `
-					// minTimestampCollectorRestart := time.Now()
+					minTimestampCollectorRestart := time.Now()
 					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
@@ -1182,16 +1182,11 @@ traces:
 						// nolint:lll
 						`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace" and (attributes["http.route"] == "/ready")'`,
 					)
-					// TODO reactivate this once we move these tests to the suite
-					// "with an existing operator deployment and operation configuration resource::without deployed Dash0
-					//  monitoring resource"
-					// (waits for https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 to be merged and
-					// released)
-					// By("verify that the collector has restarted after the config change")
-					// Eventually(func(g Gomega) {
-					// 	mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
-					// 	g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-					// }, 30*time.Second, time.Second).Should(Succeed())
+					By("verify that the collector has restarted after the config change")
+					Eventually(func(g Gomega) {
+						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
+					}, 90*time.Second, time.Second).Should(Succeed())
 
 					testId := uuid.New().String()
 					timestampLowerBound := time.Now()
@@ -1240,7 +1235,7 @@ traces:
 trace_statements:
 - truncate_all(span.attributes, 10)
 `
-					// minTimestampCollectorRestart := time.Now()
+					minTimestampCollectorRestart := time.Now()
 					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
@@ -1259,16 +1254,11 @@ trace_statements:
 						operatorNamespace,
 						`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace"'`,
 					)
-					// TODO reactivate this once we move these tests to the suite
-					// "with an existing operator deployment and operation configuration resource::without deployed Dash0
-					//  monitoring resource"
-					// (waits for https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 to be merged and
-					// released)
-					// By("verify that the collector has restarted after the config change")
-					// Eventually(func(g Gomega) {
-					//	 mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
-					//	 g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-					// }, 30*time.Second, time.Second).Should(Succeed())
+					By("verify that the collector has restarted after the config change")
+					Eventually(func(g Gomega) {
+						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
+					}, 90*time.Second, time.Second).Should(Succeed())
 
 					testId := uuid.New().String()
 					timestampLowerBound := time.Now()
