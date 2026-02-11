@@ -222,7 +222,7 @@ jobs:
     name: End-to-end Tests
     needs:
       - build_and_push_images
-    if: ${{ github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
     uses: ./.github/workflows/e2e.yaml
 
   publish_helm_chart_dry_run:
