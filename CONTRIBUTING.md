@@ -4,7 +4,7 @@ Contributing
 ## Prerequisites
 
 - Signing the [Contributor License Agreement](https://github.com/cla-assistant/cla-assistant)
-- Go (version >= v1.25)
+- Go (version >= v1.26)
 - Docker
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.

@@ -3,7 +3,7 @@
 
 # Note: This Dockerfile expects test/e2e as the build context.
 
-FROM --platform=${BUILDPLATFORM} golang:1.25.7-alpine3.23 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.26.0-alpine3.23 AS builder
 
 WORKDIR /usr/local/go/src/telemetrymatcher
 

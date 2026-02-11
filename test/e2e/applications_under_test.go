@@ -251,6 +251,7 @@ func runTestAppHelmInstall(
 	runtime runtimeType,
 	setValues []string,
 ) error {
+	//nolint:prealloc
 	args := []string{
 		"install",
 		"--namespace",

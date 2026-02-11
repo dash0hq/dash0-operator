@@ -73,6 +73,7 @@ func determineDash0ApiMockImage() {
 }
 
 func installDash0ApiMock() {
+	//nolint:prealloc
 	helmArgs := []string{"install",
 		"--namespace",
 		dash0ApiMockNamespace,

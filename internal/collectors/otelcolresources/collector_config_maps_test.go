@@ -237,7 +237,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		},
 	}
 
-	var daemonSetAndDeployment []TableEntry
+	daemonSetAndDeployment := make([]TableEntry, 0, len(configMapTypeDefinitions))
 	for _, cmTypeDef := range configMapTypeDefinitions {
 		daemonSetAndDeployment = append(
 			daemonSetAndDeployment,
@@ -2122,7 +2122,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		DescribeTable("filter processor should use the most severe error mode", func(testConfig filterErrorModeTestConfig) {
-			var filters []NamespacedFilter
+			filters := make([]NamespacedFilter, 0, len(testConfig.errorModes))
 			for _, errorMode := range testConfig.errorModes {
 				filters = append(filters, NamespacedFilter{
 					Namespace: namespace1,
@@ -2584,7 +2584,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		DescribeTable("transform processor should use the most severe error mode", func(testConfig transformErrorModeTestConfig) {
-			var transforms []NamespacedTransform
+			transforms := make([]NamespacedTransform, 0, len(testConfig.errorModes))
 			for _, errorMode := range testConfig.errorModes {
 				transforms = append(transforms, NamespacedTransform{
 					Namespace: namespace1,
