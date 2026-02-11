@@ -4,10 +4,7 @@
 name: Run e2e tests on kind
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 env:
@@ -23,7 +20,6 @@ env:
 jobs:
   run-e2e-tests-on-kind:
     name: Set up cluster and run e2e tests
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: 8core_32gb
     timeout-minutes: 60
 
