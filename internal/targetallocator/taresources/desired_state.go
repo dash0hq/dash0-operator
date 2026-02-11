@@ -128,7 +128,7 @@ func assembleDesiredState(
 ) ([]clientObject, error) {
 	// sort namespaces so we don't re-trigger reconciliation because of unstable ordering
 	slices.Sort(namespacesWithPrometheusScraping)
-	var desiredState []clientObject
+	desiredState := make([]clientObject, 0, 6)
 	cm, err := assembleConfigMap(config, namespacesWithPrometheusScraping, extraConfig.TargetAllocatorMtlsEnabled, forDeletion)
 	if err != nil {
 		return desiredState, err
@@ -580,7 +580,7 @@ func labels() map[string]string {
 }
 
 func getSHAfromConfigmap(configmap *corev1.ConfigMap) (string, error) {
-	values := []string{}
+	values := make([]string, 0, len(configmap.Data)+len(configmap.BinaryData))
 	for k, v := range configmap.Data {
 		values = append(values, k+"="+v)
 	}

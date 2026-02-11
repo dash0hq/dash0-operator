@@ -50,7 +50,9 @@ func determineTelemetryMatcherImage() {
 }
 
 func deployOtlpSink(cleanupSteps *neccessaryCleanupSteps) {
-	helmArgs := []string{"install",
+	//nolint:prealloc
+	helmArgs := []string{
+		"install",
 		"--namespace",
 		otlpSinkNamespace,
 		"--create-namespace",

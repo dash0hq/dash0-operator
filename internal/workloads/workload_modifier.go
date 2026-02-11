@@ -709,6 +709,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		}
 	}
 	if len(resourceAttributes) > 0 {
+		//nolint:prealloc
 		var resourceAttributeList []string
 		for _, resourceAttributeKey := range slices.Sorted(maps.Keys(resourceAttributes)) {
 			resourceAttributeValue := resourceAttributes[resourceAttributeKey]
