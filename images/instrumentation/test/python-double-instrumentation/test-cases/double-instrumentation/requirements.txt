@@ -1,0 +1,7 @@
+# Note: All test cases share the same Python installation, i.e.
+# images/instrumentation/test/python-double-instrumentation/test-cases/xxx/requirements.txt and
+# images/instrumentation/test/python-double-instrumentation/test-cases/yyy/requirements.txt are not isolated from each
+# other. Please keep that in mind when designing test cases.
+
+opentelemetry-distro==0.59b0
+opentelemetry-instrumentation==0.59b0
