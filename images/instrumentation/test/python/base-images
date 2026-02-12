@@ -3,4 +3,9 @@
 
 python:3.14.2-slim-trixie
 python:3.14.2-alpine3.23
+
+# Python 3.9.0 is the minimum supported Python version.
+python:3.9.0-slim-buster
+
+# Python 3.8 is not supported, test-cases/verify-distro-is-loaded/app.py checks for that as well.
 python:3.8.20-slim-bullseye
