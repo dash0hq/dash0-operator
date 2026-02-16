@@ -35,7 +35,7 @@ inputs:
   exitCode:
     description: "the exit code in case a cve is found, use this setting to control whether the build should fail or not"
     required: false
-    default: '1'
+    default: '0'
 
 runs:
   using: "composite"
@@ -124,6 +124,35 @@ runs:
       with:
         sarif_file: 'trivy-results.sarif'
         category: ".github/workflows/ci.yaml:build_and_push_images/${{ inputs.imageName }}"
+
+    - name: send Slack notification on failure
+      if: failure()
+      uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a
+      with:
+        errors: true
+        method: chat.postMessage
+        token: ${{ secrets.SLACK_BOT_TOKEN }}
+        # language=YAML
+        payload: |
+          channel: ${{ secrets.SLACK_CHANNEL_ID }}
+          text: 'Trivy scan failed: vulnerabilities found or issues running the scan'
+          blocks:
+            - type: header
+              text:
+                type: plain_text
+                text: ':x: Trivy scan failed: vulnerabilities found or issues running the scan'
+            - type: context
+              elements:
+                - type: mrkdwn
+                  text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
+                - type: mrkdwn
+                  text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
+                - type: mrkdwn
+                  text: ':seedling: <${{ github.server_url }}/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}|${{ github.head_ref || github.ref_name }}>'
+                - type: mrkdwn
+                  text: ':package: ${{ inputs.imageName }}'
+                - type: mrkdwn
+                  text: ':mag: <${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=ref%3A${{ github.head_ref || github.ref_name }}+tool%3ATrivy|Scan result>'
 
     - name: push container image
       if: ${{ env.PUSH_ENABLED == 'true' }}

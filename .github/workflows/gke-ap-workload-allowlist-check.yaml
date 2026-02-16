@@ -62,7 +62,7 @@ jobs:
                   - type: mrkdwn
                     text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
                   - type: mrkdwn
-                    text: ':diff: <${{ github.event.head_commit.url }}|Commit>'
+                    text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
 
       - name: send Slack notification on failure
         if: failure()
