@@ -116,7 +116,7 @@ jobs:
   # meant for production use.
   build_and_push_images:
     name: Build Images
-    runs-on: 8core_32gb
+    runs-on: depot-ubuntu-24.04-4
     needs:
       - verify
       - instrumentation_image_tests
