@@ -148,7 +148,7 @@ jobs:
     name: Run Instrumentation Image Tests (x86_64)
     needs:
     - build_instrumentation_image
-    runs-on: ubuntu-latest
+    runs-on: 8core_32gb
     timeout-minutes: 15
 
     steps:
@@ -178,7 +178,7 @@ jobs:
     name: Run Instrumentation Image Tests (arm64)
     needs:
     - build_instrumentation_image
-    runs-on: ubuntu-24.04-arm
+    runs-on: 8core_32gb_arm64
     timeout-minutes: 15
 
     steps:
