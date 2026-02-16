@@ -63,7 +63,6 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 	resourcesHaveBeenUpdated := false
 	for _, wrapper := range desiredState {
 		desiredResource := wrapper.object
-		logger.Info("creating or updating", "ta_resource", desiredResource)
 		isNew, isChanged, err := m.createOrUpdateResource(
 			ctx,
 			desiredResource,
