@@ -155,7 +155,6 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation
           context: images/instrumentation
           scan: 'true'
-          scanSeverity: 'UNKNOWN,HIGH,CRITICAL'
 
       - name: build collector image
         uses: ./.github/actions/build-image
@@ -167,7 +166,6 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
           context: images/collector
           scan: 'true'
-          scanSeverity: 'UNKNOWN,CRITICAL'
 
       - name: build configuration reloader image
         uses: ./.github/actions/build-image
@@ -215,8 +213,6 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/target-allocator
           context: images/target-allocator
           scan: 'true'
-          scanSeverity: 'CRITICAL'
-          exitCode: '0'
 
   e2e_tests:
     name: End-to-end Tests
