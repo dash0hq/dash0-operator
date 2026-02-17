@@ -190,29 +190,31 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration
 spec:
-  export:
-    dash0:
-      # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
-      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
+  exports:
+    - dash0:
+        # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
+        endpoint: ingress... # TODO needs to be replaced with the actual value, see below
 
-      authorization:
-        # Provide the Dash0 authorization token as a string via the token property:
-        token: auth_... # TODO needs to be replaced with the actual value, see below
+        authorization:
+          # Provide the Dash0 authorization token as a string via the token property:
+          token: auth_... # TODO needs to be replaced with the actual value, see below
 
-      apiEndpoint: https://api.....dash0.com # TODO needs to be replaced with the actual value, see below
+        apiEndpoint: https://api.....dash0.com # TODO needs to be replaced with the actual value, see below
 
   clusterName: my-kubernetes-cluster # optional, see below
 ```
 
 Here is a list of configuration options for this resource:
-* <a href="#operatorconfigurationresource.spec.export.dash0.endpoint"><span id="operatorconfigurationresource.spec.export.dash0.endpoint">`spec.export.dash0.endpoint`</span></a>: The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
+* <a href="#operatorconfigurationresource.spec.exports[]"><span id="operatorconfigurationresource.spec.exports[]">`spec.exports[]`</span></a>: One or more `export` configs defining endpoints and authorization (see below for details).
+  If multiple exports are defined, the telemetry will be exported to all defined exports and CRs (views, synthetic checks, dashboards, check rules) will be synced to all defined Dash0 exports.
+* <a href="#operatorconfigurationresource.spec.exports[].dash0.endpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.endpoint">`spec.exports[].dash0.endpoint`</span></a>: The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
   The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints"
   -> "OTLP/gRPC".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
-* `spec.export.dash0.authorization.token` or `spec.export.dash0.authorization.secretRef`:
+* `spec.exports[].dash0.authorization.token` or `spec.exports[].dash0.authorization.secretRef`:
   Exactly one of these two properties needs to be provided.
   Providing both will cause a validation error when installing the Dash0Monitoring resource.
     * <a href="#operatorconfigurationresource.spec.export.dash0.authorization.token"><span id="operatorconfigurationresource.spec.export.dash0.authorization.token">`spec.export.dash0.authorization.token`</span></a>:
@@ -233,7 +235,7 @@ Here is a list of configuration options for this resource:
       cluster will be able to read the value.
       Additional steps are required to make sure secret values are encrypted.
       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
-* <a href="#operatorconfigurationresource.spec.export.dash0.apiEndpoint"><span id="operatorconfigurationresource.spec.export.dash0.apiEndpoint">`spec.export.dash0.apiEndpoint`</span></a>:
+* <a href="#operatorconfigurationresource.spec.exports[].dash0.apiEndpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.apiEndpoint">`spec.exports[].dash0.apiEndpoint`</span></a>:
   The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
   dashboards, check rules, synthetic checks and views via the operator.
   This property is optional.
@@ -403,7 +405,7 @@ kubectl apply -f dash0-monitoring.yaml
 Note: Even when no monitoring resources has been installed and no namespace is being monitored by Dash0, the Dash0
 operator's collector will collect Kubernetes infrastructure metrics that are not namespace scoped, like node-related
 metrics. The only prerequisite for this is an [operator configuration](#configuring-the-dash0-backend-connection) with
-export settings.
+exports settings.
 
 ### Additional Configuration Per Namespace
 
@@ -659,10 +661,10 @@ spec:
   synchronizePrometheusRules: false
 ```
 
-### Namespace-specific Export and API-sync Overrides
+### Namespace-specific Exports and API-sync Overrides
 
-It is possible to override the global/default export config provided via the Dash0 operator configuration on a per-namespace
-basis by providing the corresponding export config via the Dash0 monitoring resource.
+It is possible to override the global/default exports config provided via the Dash0 operator configuration on a per-namespace
+basis by providing the corresponding exports config via the Dash0 monitoring resource.
 
 The override supports both the export of telemetry and the sync of resources, like dashboards or views, via the Dash0 API.
 
@@ -728,16 +730,16 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration
 spec:
-  export:
-    dash0:
-      endpoint: ingress... # TODO REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT
+  exports:
+    - dash0:
+        endpoint: ingress... # TODO REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT
 
-      authorization:
-        secretRef:
-          name: dash0-authorization-secret
-          key: token
+        authorization:
+          secretRef:
+            name: dash0-authorization-secret
+            key: token
 
-      apiEndpoint: https://api... # optional, see above
+        apiEndpoint: https://api... # optional, see above
 ```
 
 When deploying the operator configuration resource via `kubectl`, the following defaults apply:
@@ -752,14 +754,14 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration
 spec:
-  export:
-    dash0:
-      endpoint: ingress... # TODO needs to be replaced with the actual value, see above
+  exports:
+    - dash0:
+        endpoint: ingress... # TODO needs to be replaced with the actual value, see above
 
-      authorization:
-        secretRef: {}
+        authorization:
+          secretRef: {}
 
-      apiEndpoint: https://api... # optional, see above
+        apiEndpoint: https://api... # optional, see above
 ```
 
 Note: There are no defaults when using `--set operator.dash0Export.secretRef.name` and
@@ -773,7 +775,7 @@ See https://kubernetes.io/docs/concepts/configuration/secret/ for more informati
 
 ### Dash0 Dataset Configuration
 
-Use the `spec.export.dash0.dataset` property to configure the dataset that should be used for the telemetry data.
+Use the `spec.exports[].dash0.dataset` property to configure the dataset that should be used for the telemetry data.
 By default, data will be sent to the dataset `default`.
 Here is an example for a configuration that uses a different Dash0 dataset:
 
@@ -783,16 +785,16 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration
 spec:
-  export:
-    dash0:
-      endpoint: ingress... # see above
+  exports:
+    - dash0:
+        endpoint: ingress... # see above
 
-      dataset: my-custom-dataset # This optional setting determines the Dash0 dataset to which telemetry will be sent.
+        dataset: my-custom-dataset # This optional setting determines the Dash0 dataset to which telemetry will be sent.
 
-      authorization: # see above
-        ...
+        authorization: # see above
+          ...
 
-      apiEndpoint: https://api... # optional, see above
+        apiEndpoint: https://api... # optional, see above
 ```
 
 ### Configure Metrics Collection
@@ -821,7 +823,7 @@ By default, the operator collects metrics as follows:
 * Metrics which are not namespace-scoped (for example node metrics like `k8s.node.*` or host metrics like
   `system.cpu.utilization`) will always be collected, unless metrics collection is disabled globally for the cluster
   (`kubernetesInfrastructureMetricsCollection.enabled: false`, see above).
-  An operator configuration resource with [export settings](#configuring-the-dash0-backend-connection) has to be present
+  An operator configuration resource with [exports settings](#configuring-the-dash0-backend-connection) has to be present
   in the cluster, otherwise no metrics collection takes place.
 
 Disabling or enabling individual metrics via configuration is not supported.
@@ -1137,7 +1139,7 @@ The modifications are described in detail in the section
 You can disable these workload modifications for specific workloads by setting the label `dash0.com/enable: "false"` in
 the top level metadata section of the workload specification.
 
-Note: The actual label selector for enabling or disabling workload modification can be customized in the Dash0 
+Note: The actual label selector for enabling or disabling workload modification can be customized in the Dash0
 monitoring resource.
 The label `dash0.com/enable: "false"` can be used when no custom label selector has been configured in the Dash0
 monitoring resource, see [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation).
@@ -1366,8 +1368,8 @@ One notable exception are so called freestanding a.k.a. libc-free binaries, for 
 
 ### Exporting Data to Other Observability Backends
 
-Instead of `spec.export.dash0` in the Dash0 operator configuration resource, you can also provide `spec.export.http` or
-`spec.export.grpc` to export telemetry data to arbitrary OTLP-compatible backends, or to another local OpenTelemetry
+Instead of `spec.exports[].dash0` in the Dash0 operator configuration resource, you can also provide `spec.exports[].http` or
+`spec.exports[].grpc` to export telemetry data to arbitrary OTLP-compatible backends, or to another local OpenTelemetry
 collector.
 
 Here is an example for HTTP:
@@ -1378,13 +1380,13 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration
 spec:
-  export:
-    http:
-      endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
-      headers: # you can optionally provide additional headers, for example for authorization
-        - name: X-My-Header
-          value: my-value
-      encoding: json # optional, can be "json" or "proto", defaults to "proto"
+  exports:
+    - http:
+        endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
+        headers: # you can optionally provide additional headers, for example for authorization
+          - name: X-My-Header
+            value: my-value
+        encoding: json # optional, can be "json" or "proto", defaults to "proto"
 ```
 
 Here is an example for gRPC:
@@ -1395,12 +1397,12 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration
 spec:
-  export:
-    grpc:
-      endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
-      headers: # you can optionally provide additional headers, for example for authorization
-        - name: X-My-Header
-          value: my-value
+  exports:
+    - grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+        headers: # you can optionally provide additional headers, for example for authorization
+          - name: X-My-Header
+            value: my-value
 ```
 
 You can combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP) to send data to multiple backends. This allows
@@ -1416,15 +1418,15 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration
 spec:
-  export:
-    dash0:
-      endpoint: ingress... # TODO needs to be replaced with the actual value, see above
-      authorization:
-        token: auth_... # TODO needs to be replaced with the actual value, see above
-    http:
-      endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
-    grpc:
-      endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+  exports:
+    - dash0:
+        endpoint: ingress... # TODO needs to be replaced with the actual value, see above
+        authorization:
+          token: auth_... # TODO needs to be replaced with the actual value, see above
+      http:
+        endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
+      grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
 ```
 
 #### Note regarding TLS when using arbitrary OTLP-compatible backends
@@ -1444,10 +1446,10 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration
 spec:
-  export:
-    grpc:
-      endpoint: ...             # provide the secure OTLP gRPC endpoint of your observability backend here
-      insecureSkipVerify: true  # disables the verification of the server's certificate chain
+  exports:
+    - grpc:
+        endpoint: ...             # provide the secure OTLP gRPC endpoint of your observability backend here
+        insecureSkipVerify: true  # disables the verification of the server's certificate chain
 ```
 
 Please note that it is a validation error to set both `insecure` and `insecureSkipVerify` explicitly to true at the same time, since `insecureSkipVerify` is only applicable when using TLS.
@@ -1461,8 +1463,8 @@ which can be useful when using self-signed certificates.
 
 ## Disable Self-Monitoring
 
-By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Das0 operator
-configuration resource with an export.
+By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Dash0 operator
+configuration resource with exports.
 That means, the operator will send self-monitoring telemetry to the configured Dash0 backend.
 Disabling self-monitoring is available as a setting on the Dash0 operator configuration resource.
 Dash0 does not recommend to disable the operator's self-monitoring.
@@ -1477,8 +1479,8 @@ metadata:
 spec:
   selfMonitoring:
     enabled: false
-  export:
-    # ... see above for details on the export settings
+  exports:
+    - # ... see above for details on the exports settings
 ```
 
 ## Disable Dash0 Monitoring For a Namespace
@@ -1839,7 +1841,7 @@ You can manage your Dash0 dashboards via the Dash0 operator.
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
 * The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have a Dash0 export configured with authorization
+* The operator configuration resource must have at least one Dash0 export configured with authorization
   (either `token` or `secret-ref`).
 * The operator will only pick up Perses dashboard resources in namespaces that have a Dash0 monitoring resource
   deployed.
@@ -1847,7 +1849,7 @@ Pre-requisites for this feature:
   has the setting [`synchronizePersesDashboards`](#monitoringresource.spec.synchronizePersesDashboards) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing a Dash0 export with an API endpoint and token in the Dash0
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
   monitoring resource.
 
 Furthermore, the custom resource definition for Perses dashboards needs to be installed in the cluster. There are two
@@ -1905,7 +1907,7 @@ You can manage your Dash0 check rules via the Dash0 operator.
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
 * The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have a Dash0 export configured with authorization
+* The operator configuration resource must have at least one Dash0 export configured with authorization
   (either `token` or `secret-ref`).
 * The operator will only pick up Prometheus rule resources in namespaces that have a Dash0 monitoring resource
   deployed.
@@ -1913,7 +1915,7 @@ Pre-requisites for this feature:
   has the setting [`synchronizePrometheusRules`](#monitoringresource.spec.synchronizePrometheusRules) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing a Dash0 export with an API endpoint and token in the Dash0
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
   monitoring resource.
 
 Furthermore, the custom resource definition for Prometheus rules needs to be installed in the cluster. There are two
@@ -2033,12 +2035,12 @@ You can manage your Dash0 synthetic checks via the Dash0 operator.
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
 * The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have a Dash0 export configured with authorization
+* The operator configuration resource must have at least one Dash0 export configured with authorization
   (either `token` or `secret-ref`).
 * The operator will only pick up synthetic check resources in namespaces that have a Dash0 monitoring resource
   deployed.
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing a Dash0 export with an API endpoint and token in the Dash0
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
   monitoring resource.
 
 With the prerequisites in place, you can manage Dash0 synthetic checks via the operator.
@@ -2103,12 +2105,12 @@ You can manage your Dash0 views via the Dash0 operator.
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
 * The operator configuration resource must have the `apiEndpoint` property.
-* The operator configuration resource must have a Dash0 export configured with authorization
+* The operator configuration resource must have at least one Dash0 export configured with authorization
   (either `token` or `secret-ref`).
 * The operator will only pick up Dash0 view resources in namespaces that have a Dash0 monitoring resource
   deployed.
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
-  namespace-specific overrides by providing a Dash0 export with an API endpoint and token in the Dash0
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
   monitoring resource.
 
 With the prerequisites in place, you can manage Dash0 views via the operator.
