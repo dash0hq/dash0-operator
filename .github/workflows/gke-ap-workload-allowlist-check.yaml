@@ -1,7 +1,10 @@
 name: GKE Autopilot WorkloadAllowlist Check
 
 on:
-  page_build:
+  workflow_run:
+    workflows: ["pages-build-deployment"]
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -20,6 +23,7 @@ jobs:
   check_workload_allowlists:
     name: Check WorkloadAllowlists
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 8
 
     steps:
