@@ -37,7 +37,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Name: "dash0-operator-configuration-test-1",
 					},
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: Dash0ExportWithEndpointAndToken(),
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					},
 				})
 			Expect(err).ToNot(HaveOccurred())
@@ -64,7 +64,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Name: "dash0-operator-configuration-test-1",
 					},
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: Dash0ExportWithEndpointAndToken(),
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 						TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 							Enabled: ptr.To(false),
 						},

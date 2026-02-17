@@ -804,11 +804,13 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						LabelSelector: "dash0-auto-instrument=yes",
 					},
-					Export: &dash0common.Export{
-						Dash0: &dash0common.Dash0Configuration{
-							Endpoint: EndpointDash0Test,
-							Authorization: dash0common.Authorization{
-								Token: &AuthorizationTokenTest,
+					Exports: []dash0common.Export{
+						{
+							Dash0: &dash0common.Dash0Configuration{
+								Endpoint: EndpointDash0Test,
+								Authorization: dash0common.Authorization{
+									Token: &AuthorizationTokenTest,
+								},
 							},
 						},
 					},

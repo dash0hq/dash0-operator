@@ -9,11 +9,11 @@ spec:
     labelSelector: {{ .InstrumentWorkloadsLabelSelector }}
 {{- end }}
 {{- if .Endpoint }}
-  export:
-    dash0:
-      endpoint: {{ .Endpoint }}
-      authorization:
-        token: {{ .Token }}
+  exports:
+    - dash0:
+        endpoint: {{ .Endpoint }}
+        authorization:
+          token: {{ .Token }}
 {{- end }}
 {{- if .Filter }}
   filter:

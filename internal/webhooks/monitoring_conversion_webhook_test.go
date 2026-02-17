@@ -32,7 +32,7 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 			ctx,
 			k8sClient,
 			dash0v1alpha1.Dash0OperatorConfigurationSpec{
-				Export: Dash0ExportWithEndpointAndToken(),
+				Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 			},
 		)
 		operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
