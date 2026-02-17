@@ -5,6 +5,12 @@ inputs:
   githubToken:
     description: "github token"
     required: true
+  slackBotToken:
+    description: "slackbot token"
+    required: true
+  slackChannelId:
+    description: "slack channel id"
+    required: true
   imageName:
     description: "name of the container image (without registry prefix)"
     required: true
@@ -131,10 +137,10 @@ runs:
       with:
         errors: true
         method: chat.postMessage
-        token: ${{ secrets.SLACK_BOT_TOKEN }}
+        token: ${{ inputs.slackBotToken }}
         # language=YAML
         payload: |
-          channel: ${{ secrets.SLACK_CHANNEL_ID }}
+          channel: ${{ inputs.slackChannelId }}
           text: 'Trivy scan failed: vulnerabilities found or issues running the scan'
           blocks:
             - type: header

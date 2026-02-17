@@ -138,6 +138,8 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          slackBotToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          slackChannelId: ${{ secrets.SLACK_CHANNEL_ID }}
           imageName: operator-controller
           imageTitle: Dash0 Kubernetes Operator Controller
           imageDescription: the controller for the Dash0 operator for Kubernetes
@@ -149,6 +151,8 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          slackBotToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          slackChannelId: ${{ secrets.SLACK_CHANNEL_ID }}
           imageName: instrumentation
           imageTitle: Dash0 Instrumentation
           imageDescription: contains Dash0 OpenTelemetry distributions for multiple runtimes
@@ -160,6 +164,8 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          slackBotToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          slackChannelId: ${{ secrets.SLACK_CHANNEL_ID }}
           imageName: collector
           imageTitle: Dash0 Kubernetes Collector
           imageDescription: the OpenTelemetry collector for the Dash0 operator for Kubernetes
@@ -171,6 +177,8 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          slackBotToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          slackChannelId: ${{ secrets.SLACK_CHANNEL_ID }}
           imageName: configuration-reloader
           imageTitle: Dash0 Kubernetes Configuration Reloader
           imageDescription: the configuration reloader for the Dash0 operator for Kubernetes
@@ -183,6 +191,8 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          slackBotToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          slackChannelId: ${{ secrets.SLACK_CHANNEL_ID }}
           imageName: filelog-offset-sync
           imageTitle: Dash0 Kubernetes Filelog Offset Sync
           imageDescription: the filelog offset sync for the Dash0 operator for Kubernetes
@@ -195,6 +205,8 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          slackBotToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          slackChannelId: ${{ secrets.SLACK_CHANNEL_ID }}
           imageName: filelog-offset-volume-ownership
           imageTitle: Dash0 Kubernetes Filelog Offset Volume Ownership
           imageDescription: the filelog offset volume ownership init container for the Dash0 operator for Kubernetes
@@ -207,6 +219,8 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          slackBotToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          slackChannelId: ${{ secrets.SLACK_CHANNEL_ID }}
           imageName: target-allocator
           imageTitle: Dash0 OpenTelemetry Target Allocator
           imageDescription: the OpenTelemetry target-allocator for the Dash0 operator for Kubernetes
