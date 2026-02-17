@@ -295,6 +295,13 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       has been provided.
     * `ALLOW_MORE_TIME_FOR_COLLECTOR_STARTUP` set to `true` increases the `failureThreshold` for the startup probes of
       collectors to support slower environments (e.g. running kind with limited resources).
+    * `USE_MULTI_CAST` set to `true` to deploy
+      `test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.multi.yaml.template`
+      which has two Dash0 exports with different datasets and tokens. Note: Setting this only makes sense when also
+      setting `DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM="false"` and defining `DASH0_SECOND_DATASET` and
+      `DASH0_SECOND_AUTHORIZATION_TOKEN`.
+    * `DASH0_SECOND_DATASET` the dataset of the second Dash0 export (when using `USE_MULTI_CAST`)
+    * `DASH0_SECOND_AUTHORIZATION_TOKEN` the auth token for the second Dash0 export (when using `USE_MULTI_CAST`)
     * Additional configuration for the Helm deployment can be put into `test-resources/bin/extra-values.yaml` (create
       the file if necessary).
 * Last but not least, there are a couple of environment variables that control which images are built and used, and whether

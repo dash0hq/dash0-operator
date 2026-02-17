@@ -1,0 +1,28 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration-resource
+spec:
+  exports:
+    - dash0:
+        endpoint: "$DASH0_INGRESS_ENDPOINT"
+        authorization:
+          # Note: without an explicit name and key attribute, the defaults will be used:
+          #   name: dash0-authorization-secret
+          #   key: token
+          secretRef: {}
+        apiEndpoint: "$DASH0_API_ENDPOINT"
+    - dash0:
+        endpoint: "$DASH0_INGRESS_ENDPOINT"
+        authorization:
+          token: "$DASH0_SECOND_AUTHORIZATION_TOKEN"
+        apiEndpoint: "$DASH0_API_ENDPOINT"
+        dataset: "$DASH0_SECOND_DATASET"
+  selfMonitoring:
+    enabled: $SELF_MONITORING_ENABLED
+  kubernetesInfrastructureMetricsCollection:
+    enabled: $KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED
+  collectPodLabelsAndAnnotations:
+    enabled: $COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED
+  telemetryCollection:
+    enabled: $TELEMETRY_COLLECTION_ENABLED

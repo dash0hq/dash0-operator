@@ -95,6 +95,7 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
+//nolint:staticcheck
 func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	request admission.Request,
 	operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
@@ -104,6 +105,14 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	patchRequired := h.setTelemetryCollectionRelatedDefaults(request, operatorConfigurationSpec, monitoringSpec)
 	patchRequiredForLogCollection := h.overrideLogCollectionDefault(request, monitoringSpec, logger)
 	patchRequired = patchRequired || patchRequiredForLogCollection
+
+	// Migrate deprecated export field to exports (only if exports is not set).
+	// If both are set, leave them as-is; the validating webhook will reject this combination.
+	if monitoringSpec.Export != nil && len(monitoringSpec.Exports) == 0 {
+		monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+		monitoringSpec.Export = nil
+		patchRequired = true
+	}
 
 	// Normalize spec.transform to the transform processors "advanced" config format.
 	transform := monitoringSpec.Transform

@@ -48,6 +48,9 @@ type Dash0Monitoring struct {
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
 // telemetry to an observability backend.
 type Dash0MonitoringSpec struct {
+	// Deprecated: Use `exports` instead. It is a validation error to set both `export` and `exports`.
+	// The mutating webhook will automatically migrate `export` to `exports` if only `export` is specified.
+	//
 	// The configuration of the observability backend to which telemetry data will be sent. This property is optional.
 	// If not set, the operator will use the default export configuration from the cluster-wide
 	// Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
@@ -60,6 +63,19 @@ type Dash0MonitoringSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	Export *dash0common.Export `json:"export,omitempty"`
+
+	// The configuration of the observability backend(s) to which telemetry data will be sent. This property is optional.
+	// If not set, the operator will use the default export configuration from the cluster-wide
+	// Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
+	// the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
+	// Dash0Monitoring resource without export settings will result in an error.
+	//
+	// Each export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
+	// per export (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to multiple targets simultaneously.
+	// When the exports setting is present, it has to contain at least one export with at least one exporter.
+	//
+	// +kubebuilder:validation:Optional
+	Exports []dash0common.Export `json:"exports,omitempty"`
 
 	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
 	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
@@ -381,10 +397,14 @@ func init() {
 }
 
 // ConvertFrom converts the hub version (v1beta1) to this Dash0Monitoring resource version (v1alpha1).
+//
+//nolint:staticcheck
 func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*dash0v1beta1.Dash0Monitoring)
 	dst.ObjectMeta = src.ObjectMeta
+	//nolint:staticcheck
 	dst.Spec.Export = src.Spec.Export
+	dst.Spec.Exports = src.Spec.Exports
 	dst.Spec.InstrumentWorkloads = src.Spec.InstrumentWorkloads.Mode
 	if strings.TrimSpace(src.Spec.InstrumentWorkloads.LabelSelector) != "" &&
 		src.Spec.InstrumentWorkloads.LabelSelector != util.DefaultAutoInstrumentationLabelSelector {
@@ -443,7 +463,9 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*dash0v1beta1.Dash0Monitoring)
 	dst.ObjectMeta = src.ObjectMeta
+	//nolint:staticcheck
 	dst.Spec.Export = src.Spec.Export
+	dst.Spec.Exports = src.Spec.Exports
 	dst.Spec.InstrumentWorkloads = dash0v1beta1.InstrumentWorkloads{
 		LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 		Mode:          src.Spec.InstrumentWorkloads,

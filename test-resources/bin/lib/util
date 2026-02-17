@@ -694,6 +694,8 @@ install_operator_configuration_resource() {
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.otlpsink.yaml
   elif [[ "${USE_TOKEN:-}" = true ]]; then
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
+  elif [[ "${USE_MULTI_CAST:-}" = true ]]; then
+    kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.multi.yaml
   else
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.secret.yaml
   fi

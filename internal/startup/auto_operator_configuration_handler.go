@@ -61,7 +61,10 @@ func NewAutoOperatorConfigurationResourceHandler(
 	}
 }
 
-func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBecameLeader(_ context.Context, _ *logr.Logger) {
+func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBecameLeader(
+	_ context.Context,
+	_ *logr.Logger,
+) {
 	close(r.hasBecomeLeaderChan)
 }
 
@@ -103,7 +106,10 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 			"waiting for the webhook service to become available before creating or updating the Dash0 " +
 				"operator configuration resource",
 		)
-		if webhookServiceIsAvailable, err := r.readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, &setupLog); err != nil {
+		if webhookServiceIsAvailable, err := r.readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(
+			ctx,
+			&setupLog,
+		); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
 			return
 		} else if !webhookServiceIsAvailable {
@@ -115,7 +121,11 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 		}
 		logger.Info("the webhook service is available now")
 
-		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(ctx, operatorConfigurationResource, logger); err != nil {
+		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(
+			ctx,
+			operatorConfigurationResource,
+			logger,
+		); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
 			return
 		}
@@ -133,14 +143,18 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 	}
 	if operatorConfiguration.Token == "" {
 		if operatorConfiguration.SecretRef.Name == "" { //nolint:staticcheck
-			return fmt.Errorf("invalid operator configuration: --operator-configuration-endpoint has been provided, " +
-				"indicating that an operator configuration resource should be created, but neither " +
-				"--operator-configuration-token nor --operator-configuration-secret-ref-name have been provided")
+			return fmt.Errorf(
+				"invalid operator configuration: --operator-configuration-endpoint has been provided, " +
+					"indicating that an operator configuration resource should be created, but neither " +
+					"--operator-configuration-token nor --operator-configuration-secret-ref-name have been provided",
+			)
 		}
 		if operatorConfiguration.SecretRef.Key == "" { //nolint:staticcheck
-			return fmt.Errorf("invalid operator configuration: --operator-configuration-endpoint has been provided, " +
-				"indicating that an operator configuration resource should be created, but neither " +
-				"--operator-configuration-token nor --operator-configuration-secret-ref-key have been provided")
+			return fmt.Errorf(
+				"invalid operator configuration: --operator-configuration-endpoint has been provided, " +
+					"indicating that an operator configuration resource should be created, but neither " +
+					"--operator-configuration-token nor --operator-configuration-secret-ref-key have been provided",
+			)
 		}
 	}
 	return nil
@@ -183,16 +197,19 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 		existingOperatorConfigurationResource := allOperatorConfigurationResources.Items[0]
 		// If this is a manually created operator configuration resource, we refuse to overwrite it.
 		if existingOperatorConfigurationResource.Name != util.OperatorConfigurationAutoResourceName {
-			return util.NewRetryableErrorWithFlag(fmt.Errorf( //nolint:staticcheck
-				"The configuration provided via Helm instructs the operator manager to create an operator "+
-					"configuration resource at startup, that is, operator.dash0Export.enabled is true and "+
-					"operator.dash0Export.endpoint has been provided. But there is already an operator configuration "+
-					"resource in the cluster with the name %s that has not been created by the operator "+
-					"manager. Replacing a manually created operator configuration resource with values provided via "+
-					"Helm is not supported. Please either delete the existing operator configuration resource or "+
-					"change the Helm values to not create an operator configuration resource at startup, "+
-					"e.g. set operator.dash0Export.enabled to false or remove all operator.dash0Export.* values.",
-				existingOperatorConfigurationResource.Name),
+			//nolint:staticcheck
+			return util.NewRetryableErrorWithFlag(
+				fmt.Errorf(
+					"The configuration provided via Helm instructs the operator manager to create an operator "+
+						"configuration resource at startup, that is, operator.dash0Export.enabled is true and "+
+						"operator.dash0Export.endpoint has been provided. But there is already an operator configuration "+
+						"resource in the cluster with the name %s that has not been created by the operator "+
+						"manager. Replacing a manually created operator configuration resource with values provided via "+
+						"Helm is not supported. Please either delete the existing operator configuration resource or "+
+						"change the Helm values to not create an operator configuration resource at startup, "+
+						"e.g. set operator.dash0Export.enabled to false or remove all operator.dash0Export.* values.",
+					existingOperatorConfigurationResource.Name,
+				),
 				// do not retry
 				false,
 			)
@@ -225,18 +242,23 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 		}
 	}
 
-	dash0Export := dash0common.Export{
-		Dash0: &dash0common.Dash0Configuration{
-			Endpoint:      operatorConfigurationValues.Endpoint,
-			Authorization: authorization,
+	// note: for the automatically created operator configuration resource, where the values are supplied via helm,
+	// we always define a single export since the cli args only support a single export atm.
+	dash0Exports := []dash0common.Export{
+		{
+			Dash0: &dash0common.Dash0Configuration{
+				Endpoint:      operatorConfigurationValues.Endpoint,
+				Authorization: authorization,
+			},
 		},
 	}
 	if operatorConfigurationValues.ApiEndpoint != "" {
-		dash0Export.Dash0.ApiEndpoint = operatorConfigurationValues.ApiEndpoint
+		dash0Exports[0].Dash0.ApiEndpoint = operatorConfigurationValues.ApiEndpoint
 	}
 	if operatorConfigurationValues.Dataset != "" {
-		dash0Export.Dash0.Dataset = operatorConfigurationValues.Dataset
+		dash0Exports[0].Dash0.Dataset = operatorConfigurationValues.Dataset
 	}
+
 	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: util.OperatorConfigurationAutoResourceName,
@@ -265,7 +287,7 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 			SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 				Enabled: ptr.To(operatorConfigurationValues.SelfMonitoringEnabled),
 			},
-			Export: &dash0Export,
+			Exports: dash0Exports,
 			KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
 				Enabled: ptr.To(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
 			},

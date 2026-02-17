@@ -27,6 +27,10 @@ const ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure = "The provided
 	"explicitly enabled for the GRPC export. This is an invalid combination. " +
 	"Please set at most one of these two flags to true."
 
+const ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive = "The provided Dash0 operator configuration resource has both the " +
+	"deprecated `export` and the `exports` field set. These fields are mutually exclusive. Please use only the " +
+	"`exports` field and remove the `export` field."
+
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client client.Client
 }
@@ -65,6 +69,12 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 
 	spec := operatorConfigurationResource.Spec
 
+	// Reject if both the deprecated export and the new exports field are set.
+	//nolint:staticcheck
+	if spec.Export != nil && len(spec.Exports) > 0 {
+		return admission.Denied(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)
+	}
+
 	//nolint:staticcheck
 	if spec.KubernetesInfrastructureMetricsCollectionEnabled != nil &&
 		//nolint:staticcheck
@@ -77,7 +87,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	if util.ReadBoolPointerWithDefault(spec.SelfMonitoring.Enabled, true) &&
-		spec.Export == nil {
+		len(spec.Exports) == 0 {
 		return admission.Denied(
 			"The provided Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
 				"export configuration. Either disable self-monitoring or provide an export configuration for self-" +
@@ -121,8 +131,10 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	if !validateGrpcExportInsecureFlags(spec.Export) {
-		return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
+	for _, export := range spec.Exports {
+		if !validateGrpcExportInsecureFlags(&export) {
+			return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
+		}
 	}
 
 	if request.Operation == admissionv1.Create {

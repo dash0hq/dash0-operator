@@ -41,6 +41,9 @@ type Dash0Monitoring struct {
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
 // telemetry to an observability backend.
 type Dash0MonitoringSpec struct {
+	// Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.
+	// The mutating webhook will automatically migrate `export` to `exports` if only `export` is specified.
+	//
 	// The configuration of the observability backend to which telemetry data will be sent. This property is optional.
 	// If not set, the operator will use the default export configuration from the cluster-wide
 	// Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
@@ -53,6 +56,19 @@ type Dash0MonitoringSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	Export *dash0common.Export `json:"export,omitempty"`
+
+	// The configuration of the observability backend(s) to which telemetry data will be sent. This property is optional.
+	// If not set, the operator will use the default export configuration from the cluster-wide
+	// Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
+	// the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
+	// Dash0Monitoring resource without export settings will result in an error.
+	//
+	// Each export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
+	// per export (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to multiple targets simultaneously.
+	// When the exports setting is present, it has to contain at least one export with at least one exporter.
+	//
+	// +kubebuilder:validation:Optional
+	Exports []dash0common.Export `json:"exports,omitempty"`
 
 	// Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
 	// the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
@@ -426,11 +442,47 @@ func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInst
 	}
 }
 
+func (d *Dash0Monitoring) HasExportsConfigured() bool {
+	return d != nil && len(d.Spec.Exports) > 0
+}
+
+func (d *Dash0Monitoring) HasDash0ExportConfigured() bool {
+	for _, export := range d.Spec.Exports {
+		if export.HasDash0ExportConfigured() {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (d *Dash0Monitoring) ExportsCount() int {
+	if !d.HasExportsConfigured() {
+		return 0
+	} else {
+		return dash0common.CountExports(d.Spec.Exports)
+	}
+}
+
 func (d *Dash0Monitoring) HasDash0ApiAccessConfigured() bool {
-	return d.Spec.Export != nil &&
-		d.Spec.Export.Dash0 != nil &&
-		d.Spec.Export.Dash0.ApiEndpoint != "" &&
-		(d.Spec.Export.Dash0.Authorization.Token != nil || d.Spec.Export.Dash0.Authorization.SecretRef != nil)
+	for _, export := range d.Spec.Exports {
+		if export.HasDash0ApiAccessConfigured() {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (d *Dash0Monitoring) GetDash0Exports() []dash0common.Dash0Configuration {
+	var res []dash0common.Dash0Configuration
+	for _, export := range d.Spec.Exports {
+		// intentionally not doing any further filtering here, as validation will happen later where errors are properly logged
+		if export.Dash0 != nil {
+			res = append(res, *export.Dash0)
+		}
+	}
+	return res
 }
 
 //+kubebuilder:object:root=true

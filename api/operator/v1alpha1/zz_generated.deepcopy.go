@@ -120,6 +120,13 @@ func (in *Dash0MonitoringSpec) DeepCopyInto(out *Dash0MonitoringSpec) {
 		*out = new(common.Export)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.Exports != nil {
+		in, out := &in.Exports, &out.Exports
+		*out = make([]common.Export, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	in.LogCollection.DeepCopyInto(&out.LogCollection)
 	in.PrometheusScraping.DeepCopyInto(&out.PrometheusScraping)
 	if in.PrometheusScrapingEnabled != nil {
@@ -266,6 +273,13 @@ func (in *Dash0OperatorConfigurationSpec) DeepCopyInto(out *Dash0OperatorConfigu
 		in, out := &in.Export, &out.Export
 		*out = new(common.Export)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.Exports != nil {
+		in, out := &in.Exports, &out.Exports
+		*out = make([]common.Export, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	in.SelfMonitoring.DeepCopyInto(&out.SelfMonitoring)
 	in.KubernetesInfrastructureMetricsCollection.DeepCopyInto(&out.KubernetesInfrastructureMetricsCollection)

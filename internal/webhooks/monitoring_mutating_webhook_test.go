@@ -48,6 +48,11 @@ type normalizeTransformSpecTestCase struct {
 	expected               *dash0common.NormalizedTransformSpec
 }
 
+type migrateExportToExportsTestConfig struct {
+	spec   dash0v1beta1.Dash0MonitoringSpec
+	wanted dash0v1beta1.Dash0MonitoringSpec
+}
+
 const (
 	errorModeKey  = "error_mode"
 	contextKey    = "context"
@@ -517,6 +522,61 @@ spec:
 				},
 			}),
 		)
+
+		DescribeTable("should handle export to exports migration",
+			func(testConfig migrateExportToExportsTestConfig) {
+				spec := testConfig.spec
+				monitoringMutatingWebhookHandler.normalizeMonitoringResourceSpec(
+					toAdmissionRequest(TestNamespaceName, spec),
+					&dash0v1alpha1.Dash0OperatorConfigurationSpec{},
+					&spec,
+					&logger,
+				)
+				// Only check export/exports fields; other defaults are tested elsewhere.
+				Expect(spec.Export).To(Equal(testConfig.wanted.Export))
+				Expect(spec.Exports).To(Equal(testConfig.wanted.Exports))
+			},
+			Entry("should migrate deprecated export to exports when only export is set",
+				migrateExportToExportsTestConfig{
+					spec: dash0v1beta1.Dash0MonitoringSpec{
+						Export: Dash0ExportWithEndpointAndToken(),
+					},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						Export:  nil,
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+				}),
+			Entry("should not modify exports when only exports is set",
+				migrateExportToExportsTestConfig{
+					spec: dash0v1beta1.Dash0MonitoringSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						Export:  nil,
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+				}),
+			Entry("should not clear export when both export and exports are set (validation webhook will reject)",
+				migrateExportToExportsTestConfig{
+					spec: dash0v1beta1.Dash0MonitoringSpec{
+						Export:  Dash0ExportWithEndpointAndToken(),
+						Exports: []dash0common.Export{*GrpcExportTest()},
+					},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						// export is NOT cleared, both fields remain as-is
+						Export:  Dash0ExportWithEndpointAndToken(),
+						Exports: []dash0common.Export{*GrpcExportTest()},
+					},
+				}),
+			Entry("should not change anything when neither export nor exports is set",
+				migrateExportToExportsTestConfig{
+					spec: dash0v1beta1.Dash0MonitoringSpec{},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						Export:  nil,
+						Exports: nil,
+					},
+				}),
+		)
 	})
 
 	Describe("using the actual webhook", func() {
@@ -532,7 +592,7 @@ spec:
 				ctx,
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: ptr.To(testConfig.telemetryCollectionEnabled),
 					},
@@ -597,11 +657,13 @@ spec:
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					Export: &dash0common.Export{
-						Dash0: &dash0common.Dash0Configuration{
-							Endpoint: EndpointDash0Test,
-							Authorization: dash0common.Authorization{
-								Token: &AuthorizationTokenTest,
+					Exports: []dash0common.Export{
+						{
+							Dash0: &dash0common.Dash0Configuration{
+								Endpoint: EndpointDash0Test,
+								Authorization: dash0common.Authorization{
+									Token: &AuthorizationTokenTest,
+								},
 							},
 						},
 					},

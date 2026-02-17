@@ -80,6 +80,13 @@ func (in *Dash0MonitoringSpec) DeepCopyInto(out *Dash0MonitoringSpec) {
 		*out = new(common.Export)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.Exports != nil {
+		in, out := &in.Exports, &out.Exports
+		*out = make([]common.Export, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	in.InstrumentWorkloads.DeepCopyInto(&out.InstrumentWorkloads)
 	in.LogCollection.DeepCopyInto(&out.LogCollection)
 	in.EventCollection.DeepCopyInto(&out.EventCollection)

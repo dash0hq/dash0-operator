@@ -96,14 +96,16 @@ const (
 )
 
 var (
-	bearerWithAuthToken                  = fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault)
+	bearerWithAuthToken                  = fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0))
 	monitoredNamespaces                  = []string{namespace1, namespace2}
 	emptyTargetAllocatorMtlsConfig       = TargetAllocatorMtlsConfig{}
 	defaultNamespacesWithEventCollection = []string{namespace2, namespace3}
 )
 
 func cmTestSingleDefaultOtlpExporter() otlpExporters {
-	exporter, _ := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	exporter, _ := convertDash0ExporterToOtlpExporter(export.Dash0, "default", auth)
 	return otlpExporters{
 		Default:    []otlpExporter{*exporter},
 		Namespaced: make(map[string][]otlpExporter),
@@ -111,7 +113,9 @@ func cmTestSingleDefaultOtlpExporter() otlpExporters {
 }
 
 func cmTestSingleDefaultOtlpExporterWithCustomDs() otlpExporters {
-	exporter, _ := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointTokenAndCustomDataset().Dash0, "default", authEnvVarNameDefault)
+	export := Dash0ExportWithEndpointTokenAndCustomDataset()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	exporter, _ := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointTokenAndCustomDataset().Dash0, "default", auth)
 	return otlpExporters{
 		Default:    []otlpExporter{*exporter},
 		Namespaced: make(map[string][]otlpExporter),
@@ -119,7 +123,9 @@ func cmTestSingleDefaultOtlpExporterWithCustomDs() otlpExporters {
 }
 
 func cmTestDash0AndGrpcExporters() otlpExporters {
-	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", auth)
 	Expect(err).ToNot(HaveOccurred())
 	grpcExporter, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "default")
 	Expect(err).ToNot(HaveOccurred())
@@ -130,7 +136,9 @@ func cmTestDash0AndGrpcExporters() otlpExporters {
 }
 
 func cmTestDash0AndHttpExporters() otlpExporters {
-	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", auth)
 	Expect(err).ToNot(HaveOccurred())
 	httpExporter, err := convertHttpExporterToOtlpExporter(HttpExportTest().Http, "default")
 	Expect(err).ToNot(HaveOccurred())
@@ -141,7 +149,9 @@ func cmTestDash0AndHttpExporters() otlpExporters {
 }
 
 func cmTestDash0GrpcAndHttpExporters() otlpExporters {
-	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0Exporter, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", auth)
 	Expect(err).ToNot(HaveOccurred())
 	grpcExporter, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "default")
 	Expect(err).ToNot(HaveOccurred())
@@ -186,7 +196,9 @@ func cmTestHttpExporterWithInsecure() otlpExporters {
 }
 
 func cmTestNamespacedOtlpExporters() otlpExporters {
-	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", auth)
 	Expect(err).ToNot(HaveOccurred())
 	grpcExporterNs1, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "ns/"+namespace1)
 	Expect(err).ToNot(HaveOccurred())
@@ -202,24 +214,113 @@ func cmTestNamespacedOtlpExporters() otlpExporters {
 }
 
 func cmTestMultipleNamespacedOtlpExporters() otlpExporters {
-	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", authEnvVarNameDefault)
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "default", auth)
 	Expect(err).ToNot(HaveOccurred())
 	grpcExporterNs1, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "ns/"+namespace1)
 	Expect(err).ToNot(HaveOccurred())
 	httpExporterNs1, err := convertHttpExporterToOtlpExporter(HttpExportTest().Http, "ns/"+namespace1)
 	Expect(err).ToNot(HaveOccurred())
-	dash0ExporterNs2, err := convertDash0ExporterToOtlpExporter(&dash0common.Dash0Configuration{
+	export2 := Dash0ExportWithEndpointAndToken()
+	export2.Dash0 = &dash0common.Dash0Configuration{
 		Endpoint: EndpointDash0TestAlternative,
 		Authorization: dash0common.Authorization{
 			Token: &AuthorizationTokenTestAlternative,
 		},
-	}, "ns/"+namespace2, authEnvVarNameForNs(namespace2))
+	}
+	auth2, _ := dash0ExporterAuthorizationForExport(*export2, 0, true, nil)
+	dash0ExporterNs2, err := convertDash0ExporterToOtlpExporter(export2.Dash0, "ns/"+namespace2, auth2)
 	Expect(err).ToNot(HaveOccurred())
 	return otlpExporters{
 		Default: []otlpExporter{*dash0ExporterDefault},
 		Namespaced: map[string][]otlpExporter{
 			namespace1: {*grpcExporterNs1, *httpExporterNs1},
 			namespace2: {*dash0ExporterNs2},
+		},
+	}
+}
+
+// cmTestMultipleDefaultDash0Exporters creates two Dash0 default exporters (simulating two Exports entries
+// each with a Dash0 config), which is only possible with multiple Exports array elements.
+func cmTestMultipleDefaultDash0Exporters() otlpExporters {
+	export1 := Dash0ExportWithEndpointAndToken()
+	auth1, _ := dash0ExporterAuthorizationForExport(*export1, 0, true, nil)
+	dash0Exporter1, err := convertDash0ExporterToOtlpExporter(export1.Dash0, "default_0", auth1)
+	Expect(err).ToNot(HaveOccurred())
+
+	export2 := &dash0common.Export{
+		Dash0: &dash0common.Dash0Configuration{
+			Endpoint: EndpointDash0TestAlternative,
+			Authorization: dash0common.Authorization{
+				Token: &AuthorizationTokenTestAlternative,
+			},
+		},
+	}
+	auth2, _ := dash0ExporterAuthorizationForExport(*export2, 1, true, nil)
+	dash0Exporter2, err := convertDash0ExporterToOtlpExporter(export2.Dash0, "default_1", auth2)
+	Expect(err).ToNot(HaveOccurred())
+
+	return otlpExporters{
+		Default:    []otlpExporter{*dash0Exporter1, *dash0Exporter2},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+// cmTestMultipleExportsDefaultMixed creates three default exporters from multiple Exports entries:
+// Exports[0] has Dash0, Exports[1] has gRPC, Exports[2] has HTTP.
+func cmTestMultipleExportsDefaultMixed() otlpExporters {
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0Exporter, err := convertDash0ExporterToOtlpExporter(export.Dash0, "default_0", auth)
+	Expect(err).ToNot(HaveOccurred())
+	grpcExporter, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "default_1")
+	Expect(err).ToNot(HaveOccurred())
+	httpExporter, err := convertHttpExporterToOtlpExporter(HttpExportTest().Http, "default_2")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*dash0Exporter, *grpcExporter, *httpExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+// cmTestMultipleExportsWithNamespacedMultiExporters creates a scenario where multiple Exports entries
+// produce multiple exporters per namespace.
+func cmTestMultipleExportsWithNamespacedMultiExporters() otlpExporters {
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(export.Dash0, "default_0", auth)
+	Expect(err).ToNot(HaveOccurred())
+
+	// namespace-1: Exports[0] = Dash0, Exports[1] = gRPC (two separate Exports entries)
+	ns1 := namespace1
+	authNs1, _ := dash0ExporterAuthorizationForExport(*Dash0ExportWithEndpointAndToken(), 0, false, &ns1)
+	dash0ExporterNs1, err := convertDash0ExporterToOtlpExporter(Dash0ExportWithEndpointAndToken().Dash0, "ns/"+namespace1+"_0", authNs1)
+	Expect(err).ToNot(HaveOccurred())
+	grpcExporterNs1, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "ns/"+namespace1+"_1")
+	Expect(err).ToNot(HaveOccurred())
+
+	// namespace-2: Exports[0] = HTTP, Exports[1] = Dash0 (two separate Exports entries)
+	ns2 := namespace2
+	export2 := &dash0common.Export{
+		Dash0: &dash0common.Dash0Configuration{
+			Endpoint: EndpointDash0TestAlternative,
+			Authorization: dash0common.Authorization{
+				Token: &AuthorizationTokenTestAlternative,
+			},
+		},
+	}
+	authNs2, _ := dash0ExporterAuthorizationForExport(*export2, 1, false, &ns2)
+	httpExporterNs2, err := convertHttpExporterToOtlpExporter(HttpExportTest().Http, "ns/"+namespace2+"_0")
+	Expect(err).ToNot(HaveOccurred())
+	dash0ExporterNs2, err := convertDash0ExporterToOtlpExporter(export2.Dash0, "ns/"+namespace2+"_1", authNs2)
+	Expect(err).ToNot(HaveOccurred())
+
+	return otlpExporters{
+		Default: []otlpExporter{*dash0ExporterDefault},
+		Namespaced: map[string][]otlpExporter{
+			namespace1: {*dash0ExporterNs1, *grpcExporterNs1},
+			namespace2: {*httpExporterNs2, *dash0ExporterNs2},
 		},
 	}
 }
@@ -626,6 +727,244 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			dash0OtlpExporter := dash0ExporterNs2.(map[string]interface{})
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0TestAlternative))
 		}, daemonSetAndDeployment)
+
+		DescribeTable("should render two Dash0 default exporters from multiple Exports entries", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleDefaultDash0Exporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(2))
+
+			// Verify first Dash0 exporter
+			dash0Exporter1 := exporters["otlp_grpc/dash0/default_0"]
+			Expect(dash0Exporter1).ToNot(BeNil())
+			dash0OtlpExporter1 := dash0Exporter1.(map[string]interface{})
+			Expect(dash0OtlpExporter1["endpoint"]).To(Equal(EndpointDash0Test))
+			headers1 := dash0OtlpExporter1["headers"].(map[string]interface{})
+			Expect(headers1[util.AuthorizationHeaderName]).To(
+				Equal(fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0))))
+
+			// Verify second Dash0 exporter (different endpoint and auth)
+			dash0Exporter2 := exporters["otlp_grpc/dash0/default_1"]
+			Expect(dash0Exporter2).ToNot(BeNil())
+			dash0OtlpExporter2 := dash0Exporter2.(map[string]interface{})
+			Expect(dash0OtlpExporter2["endpoint"]).To(Equal(EndpointDash0TestAlternative))
+			headers2 := dash0OtlpExporter2["headers"].(map[string]interface{})
+			Expect(headers2[util.AuthorizationHeaderName]).To(
+				Equal(fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(1))))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render mixed default exporters from multiple Exports entries (Dash0 + gRPC + HTTP)", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleExportsDefaultMixed(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(3))
+
+			// Verify Dash0 exporter (index 0)
+			dash0Exporter := exporters["otlp_grpc/dash0/default_0"]
+			Expect(dash0Exporter).ToNot(BeNil())
+			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+
+			// Verify gRPC exporter (index 1)
+			grpcExporter := exporters["otlp_grpc/default_1"]
+			Expect(grpcExporter).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporter.(map[string]interface{})
+			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
+
+			// Verify HTTP exporter (index 2)
+			httpExporter := exporters["otlp_http/default_2/proto"]
+			Expect(httpExporter).ToNot(BeNil())
+			httpOtlpExporter := httpExporter.(map[string]interface{})
+			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
+			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
+		}, daemonSetAndDeployment)
+
+		It("should list all default exporters in the default export pipeline [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleExportsDefaultMixed(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// All three exporters should be in the traces/export/default pipeline
+			tracesExportDefaultExporters := readPipelineExporters(pipelines, "traces/export/default")
+			Expect(tracesExportDefaultExporters).To(ContainElement("otlp_grpc/dash0/default_0"))
+			Expect(tracesExportDefaultExporters).To(ContainElement("otlp_grpc/default_1"))
+			Expect(tracesExportDefaultExporters).To(ContainElement("otlp_http/default_2/proto"))
+
+			// All three exporters should be in the metrics/export/default pipeline
+			metricsExportDefaultExporters := readPipelineExporters(pipelines, "metrics/export/default")
+			Expect(metricsExportDefaultExporters).To(ContainElement("otlp_grpc/dash0/default_0"))
+			Expect(metricsExportDefaultExporters).To(ContainElement("otlp_grpc/default_1"))
+			Expect(metricsExportDefaultExporters).To(ContainElement("otlp_http/default_2/proto"))
+
+			// All three exporters should be in the logs/export/default pipeline
+			logsExportDefaultExporters := readPipelineExporters(pipelines, "logs/export/default")
+			Expect(logsExportDefaultExporters).To(ContainElement("otlp_grpc/dash0/default_0"))
+			Expect(logsExportDefaultExporters).To(ContainElement("otlp_grpc/default_1"))
+			Expect(logsExportDefaultExporters).To(ContainElement("otlp_http/default_2/proto"))
+		})
+
+		It("should list all default exporters in the default export pipeline [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleExportsDefaultMixed(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// All three exporters should be in the metrics/export/default pipeline
+			metricsExportDefaultExporters := readPipelineExporters(pipelines, "metrics/export/default")
+			Expect(metricsExportDefaultExporters).To(ContainElement("otlp_grpc/dash0/default_0"))
+			Expect(metricsExportDefaultExporters).To(ContainElement("otlp_grpc/default_1"))
+			Expect(metricsExportDefaultExporters).To(ContainElement("otlp_http/default_2/proto"))
+
+			// All three exporters should be in the logs/export/default pipeline
+			logsExportDefaultExporters := readPipelineExporters(pipelines, "logs/export/default")
+			Expect(logsExportDefaultExporters).To(ContainElement("otlp_grpc/dash0/default_0"))
+			Expect(logsExportDefaultExporters).To(ContainElement("otlp_grpc/default_1"))
+			Expect(logsExportDefaultExporters).To(ContainElement("otlp_http/default_2/proto"))
+		})
+
+		DescribeTable("should render namespaced exporters with multiple Exports entries per namespace", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleExportsWithNamespacedMultiExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			// 1 default + 2 for namespace1 + 2 for namespace2 = 5
+			Expect(exporters).To(HaveLen(5))
+
+			// Verify default exporter
+			defaultExporter := exporters["otlp_grpc/dash0/default_0"]
+			Expect(defaultExporter).ToNot(BeNil())
+
+			// Verify namespace-1 exporters (Dash0 + gRPC)
+			dash0ExporterNs1 := exporters["otlp_grpc/dash0/ns/"+namespace1+"_0"]
+			Expect(dash0ExporterNs1).ToNot(BeNil())
+			dash0OtlpExporterNs1 := dash0ExporterNs1.(map[string]interface{})
+			Expect(dash0OtlpExporterNs1["endpoint"]).To(Equal(EndpointDash0Test))
+
+			grpcExporterNs1 := exporters["otlp_grpc/ns/"+namespace1+"_1"]
+			Expect(grpcExporterNs1).ToNot(BeNil())
+			grpcOtlpExporterNs1 := grpcExporterNs1.(map[string]interface{})
+			Expect(grpcOtlpExporterNs1["endpoint"]).To(Equal(EndpointGrpcTest))
+
+			// Verify namespace-2 exporters (HTTP + Dash0)
+			httpExporterNs2 := exporters["otlp_http/ns/"+namespace2+"_0/proto"]
+			Expect(httpExporterNs2).ToNot(BeNil())
+			httpOtlpExporterNs2 := httpExporterNs2.(map[string]interface{})
+			Expect(httpOtlpExporterNs2["endpoint"]).To(Equal(EndpointHttpTest))
+
+			dash0ExporterNs2 := exporters["otlp_grpc/dash0/ns/"+namespace2+"_1"]
+			Expect(dash0ExporterNs2).ToNot(BeNil())
+			dash0OtlpExporterNs2 := dash0ExporterNs2.(map[string]interface{})
+			Expect(dash0OtlpExporterNs2["endpoint"]).To(Equal(EndpointDash0TestAlternative))
+		}, daemonSetAndDeployment)
+
+		It("should list all namespaced exporters in namespace-specific export pipelines [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleExportsWithNamespacedMultiExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// namespace-1 pipelines should include both Dash0 and gRPC exporters
+			tracesExportNs1Exporters := readPipelineExporters(pipelines, "traces/export/ns/"+namespace1)
+			Expect(tracesExportNs1Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace1 + "_0"))
+			Expect(tracesExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1 + "_1"))
+
+			metricsExportNs1Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace1)
+			Expect(metricsExportNs1Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace1 + "_0"))
+			Expect(metricsExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1 + "_1"))
+
+			logsExportNs1Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace1)
+			Expect(logsExportNs1Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace1 + "_0"))
+			Expect(logsExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1 + "_1"))
+
+			// namespace-2 pipelines should include both HTTP and Dash0 exporters
+			tracesExportNs2Exporters := readPipelineExporters(pipelines, "traces/export/ns/"+namespace2)
+			Expect(tracesExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "_0/proto"))
+			Expect(tracesExportNs2Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace2 + "_1"))
+
+			metricsExportNs2Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace2)
+			Expect(metricsExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "_0/proto"))
+			Expect(metricsExportNs2Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace2 + "_1"))
+
+			logsExportNs2Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace2)
+			Expect(logsExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "_0/proto"))
+			Expect(logsExportNs2Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace2 + "_1"))
+		})
+
+		It("should list all namespaced exporters in namespace-specific export pipelines [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleExportsWithNamespacedMultiExporters(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// namespace-1 pipelines should include both Dash0 and gRPC exporters
+			metricsExportNs1Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace1)
+			Expect(metricsExportNs1Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace1 + "_0"))
+			Expect(metricsExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1 + "_1"))
+
+			logsExportNs1Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace1)
+			Expect(logsExportNs1Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace1 + "_0"))
+			Expect(logsExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1 + "_1"))
+
+			// namespace-2 pipelines should include both HTTP and Dash0 exporters
+			metricsExportNs2Exporters := readPipelineExporters(pipelines, "metrics/export/ns/"+namespace2)
+			Expect(metricsExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "_0/proto"))
+			Expect(metricsExportNs2Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace2 + "_1"))
+
+			logsExportNs2Exporters := readPipelineExporters(pipelines, "logs/export/ns/"+namespace2)
+			Expect(logsExportNs2Exporters).To(ContainElement("otlp_http/ns/" + namespace2 + "_0/proto"))
+			Expect(logsExportNs2Exporters).To(ContainElement("otlp_grpc/dash0/ns/" + namespace2 + "_1"))
+		})
 
 		It("should render routing connectors when namespaced exporters are configured [DaemonSet])", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
@@ -2695,7 +3034,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, daemonSetAndDeployment)
 
 		DescribeTable("should render metrics & logs pipelines for a Dash0 export", func(cmTypeDef configMapTypeDefinition) {
-			export := *Dash0ExportWithEndpointAndToken()
+			export := Dash0ExportWithEndpointAndToken()
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -2703,7 +3042,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
-					Export:                export,
+					Export:                *export,
 				},
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())

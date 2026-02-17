@@ -35,6 +35,10 @@ const ErrorMessageMonitoringGrpcExportInvalidInsecure = "The provided Dash0 moni
 	"explicitly enabled for the GRPC export. This is an invalid combination. " +
 	"Please set at most one of these two flags to true."
 
+const ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive = "The provided Dash0 monitoring resource has both the " +
+	"deprecated `export` and the `exports` field set. These fields are mutually exclusive. Please use only the " +
+	"`exports` field and remove the `export` field."
+
 type MonitoringValidationWebhookHandler struct {
 	Client client.Client
 }
@@ -135,7 +139,14 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) (admission.Response, bool) {
-	if monitoringResource.Spec.Export == nil {
+
+	// Reject if both the deprecated export and the new exports field are set.
+	//nolint:staticcheck
+	if monitoringResource.Spec.Export != nil && len(monitoringResource.Spec.Exports) > 0 {
+		return admission.Denied(ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive), true
+	}
+
+	if len(monitoringResource.Spec.Exports) == 0 {
 		if len(availableOperatorConfigurations) == 0 {
 			return admission.Denied(
 				"The provided Dash0 monitoring resource does not have an export configuration, and no Dash0 operator " +
@@ -149,14 +160,19 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 
 		operatorConfiguration := availableOperatorConfigurations[0]
 
-		if operatorConfiguration.Spec.Export == nil {
+		if len(operatorConfiguration.Spec.Exports) == 0 {
 			return admission.Denied(
 				"The provided Dash0 monitoring resource does not have an export configuration, and the existing Dash0 " +
 					"operator configuration does not have an export configuration either."), true
 		}
-	} else if !validateGrpcExportInsecureFlags(monitoringResource.Spec.Export) {
-		return admission.Denied(ErrorMessageMonitoringGrpcExportInvalidInsecure), true
 	}
+
+	for _, export := range monitoringResource.Spec.Exports {
+		if !validateGrpcExportInsecureFlags(&export) {
+			return admission.Denied(ErrorMessageMonitoringGrpcExportInvalidInsecure), true
+		}
+	}
+
 	return admission.Response{}, false
 }
 
@@ -277,28 +293,28 @@ func (h *MonitoringValidationWebhookHandler) validateOttl(monitoringResource *da
 	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor and
 	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/transformprocessor,
 	// we need to vendor in quite a bit of internal code from the collector-contrib repo, see
-	// internal/webhooks/vendored/opentelemetry-collector-contrib. Would be worth trying to refactor
-	// dash0common.Filter and dash0common.Transform to directly use the types from the collector-contrib repo, then
-	// we might be able to get away with only using collector-contrib's public API only, in particular,
-	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor/config.go,
-	// func (cfg *Config) Validate() error, and
-	// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/config.go,
-	// func (cfg *Config) Validate() error.
-	if monitoringResource.Spec.Filter != nil {
-		if err := validateFilter(monitoringResource.Spec.Filter); err != nil {
-			return admission.Denied(err.Error()), true
-		}
+	// internal/webhooks/vendored/opentelemetry-collector-contrib.
+
+	var errors error
+
+	filter := monitoringResource.Spec.Filter
+	if filter != nil {
+		errors = multierr.Append(errors, validateFilter(filter))
 	}
-	if monitoringResource.Spec.NormalizedTransformSpec != nil {
-		if err := validateTransform(monitoringResource.Spec.NormalizedTransformSpec); err != nil {
-			return admission.Denied(err.Error()), true
-		}
+
+	normalizedTransformSpec := monitoringResource.Spec.NormalizedTransformSpec
+	if normalizedTransformSpec != nil {
+		errors = multierr.Append(errors, validateTransform(normalizedTransformSpec))
+	}
+
+	if errors != nil {
+		return admission.Denied(errors.Error()), true
 	}
 	return admission.Response{}, false
 }
 
 // validateFilter is a modified copy of
-// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor/config.go,
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/filterprocessor/config.go,
 // func (cfg *Config) Validate() error {
 func validateFilter(filter *dash0common.Filter) error {
 	var errors error
@@ -384,16 +400,16 @@ func validateTransform(transform *dash0common.NormalizedTransformSpec) error {
 }
 
 func toContextStatements(transformGroup dash0common.NormalizedTransformGroup) common.ContextStatements {
-	var context common.ContextID
+	var ctx common.ContextID
 	if transformGroup.Context != nil {
-		context = common.ContextID(*transformGroup.Context)
+		ctx = common.ContextID(*transformGroup.Context)
 	}
 	var errorMode ottl.ErrorMode
 	if transformGroup.ErrorMode != nil {
 		errorMode = ottl.ErrorMode(*transformGroup.ErrorMode)
 	}
 	return common.ContextStatements{
-		Context:    context,
+		Context:    ctx,
 		Conditions: transformGroup.Conditions,
 		Statements: transformGroup.Statements,
 		ErrorMode:  errorMode,

@@ -109,7 +109,8 @@ func InitOTelSdkFromEnvVars(
 					metricExporter,
 					sdkmetric.WithTimeout(10*time.Second),
 					sdkmetric.WithInterval(30*time.Second),
-				)),
+				),
+			),
 		)
 		sdkLoggerProvider := sdklog.NewLoggerProvider(
 			sdklog.WithResource(resourceAttributes),
@@ -222,7 +223,8 @@ func InitOTelSdkWithConfig(
 					metricExporter,
 					sdkmetric.WithTimeout(10*time.Second),
 					sdkmetric.WithInterval(30*time.Second),
-				)),
+				),
+			),
 		)
 		sdkLoggerProvider := sdklog.NewLoggerProvider(
 			sdklog.WithResource(resourceAttributes),
@@ -283,7 +285,10 @@ func createMetricExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkC
 	case ProtocolHttpProtobuf:
 		var options []otlpmetrichttp.Option
 		if EndpointHasScheme(oTelSdkConfig.Endpoint) {
-			log.Printf("Using an HTTP export for self-monitoring metrics (via WithEndpointURL): %s \n", oTelSdkConfig.Endpoint)
+			log.Printf(
+				"Using an HTTP export for self-monitoring metrics (via WithEndpointURL): %s \n",
+				oTelSdkConfig.Endpoint,
+			)
 			options = []otlpmetrichttp.Option{otlpmetrichttp.WithEndpointURL(oTelSdkConfig.Endpoint)}
 		} else {
 			log.Printf("Using an HTTP export for self-monitoring metrics (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
@@ -422,7 +427,8 @@ func assembleResource(
 		attributes = append(attributes, semconv.K8SContainerName(containerName))
 	}
 
-	resource, err := resource.New(ctx,
+	resource, err := resource.New(
+		ctx,
 		resource.WithAttributes(attributes...),
 	)
 	if err != nil {

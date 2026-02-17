@@ -36,6 +36,9 @@ type Dash0OperatorConfiguration struct {
 
 // Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 operator.
 type Dash0OperatorConfigurationSpec struct {
+	// Deprecated: Use `exports` instead. It is a validation error to set both `export` and `exports`.
+	// The mutating webhook will automatically migrate `export` to `exports` if only `export` is specified.
+	//
 	// The configuration of the default observability backend to which telemetry data will be sent by the operator, as
 	// well as the backend that will receive the operator's self-monitoring data. This property is mandatory.
 	// This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.
@@ -46,6 +49,19 @@ type Dash0OperatorConfigurationSpec struct {
 	// HTTP, and gRPC taking precedence over HTTP if multiple exports are defined. Furthermore, HTTP export with JSON
 	// encoding is not supported for self-monitoring telemetry.
 	Export *dash0common.Export `json:"export,omitempty"`
+
+	// The configuration of the default observability backends to which telemetry data will be sent by the operator, as
+	// well as the backend that will receive the operator's self-monitoring data. This property is mandatory.
+	// These can either be Dash0 or another OTLP-compatible backends. Every Export entry can contain up to three distinct
+	// exporters (i.e. Dash0 plus gRPC plus HTTP).
+	//
+	// The telemetry data will be sent to all backends of all Export entries. At least one exporter has to be defined.
+	//
+	// Please note that self-monitoring data is only sent to a single backend of the first defined Export.
+	// If there are multiple backends in the Export, the Dash0 export is taking precedence over gRPC and HTTP, and gRPC taking
+	// precedence over HTTP if multiple exports are defined. Furthermore, HTTP export with JSON encoding is not supported
+	// for self-monitoring telemetry.
+	Exports []dash0common.Export `json:"exports,omitempty"`
 
 	// Global opt-out for self-monitoring for this operator
 	//
@@ -224,7 +240,8 @@ func (d *Dash0OperatorConfiguration) SetAvailableConditionToUnknown() {
 			Status:  metav1.ConditionUnknown,
 			Reason:  "ReconcileStarted",
 			Message: "Dash0 has started resource reconciliation for the cluster-wide operator configuration.",
-		})
+		},
+	)
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
@@ -232,7 +249,8 @@ func (d *Dash0OperatorConfiguration) SetAvailableConditionToUnknown() {
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileStarted",
 			Message: "Dash0 operator configuration resource reconciliation is in progress.",
-		})
+		},
+	)
 }
 
 func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsAvailable() {
@@ -246,7 +264,8 @@ func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsAvailable() {
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileFinished",
 			Message: "Dash0 operator configuration is available in this cluster now.",
-		})
+		},
+	)
 	meta.RemoveStatusCondition(&d.Status.Conditions, string(dash0common.ConditionTypeDegraded))
 }
 
@@ -271,7 +290,8 @@ func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsDegraded(
 			Status:  metav1.ConditionFalse,
 			Reason:  reason,
 			Message: message,
-		})
+		},
+	)
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
@@ -279,30 +299,58 @@ func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsDegraded(
 			Status:  metav1.ConditionTrue,
 			Reason:  reason,
 			Message: message,
-		})
+		},
+	)
+}
+
+func (d *Dash0OperatorConfiguration) HasExportsConfigured() bool {
+	return d != nil && len(d.Spec.Exports) > 0
+}
+
+func (d *Dash0OperatorConfiguration) ExportsCount() int {
+	if !d.HasExportsConfigured() {
+		return 0
+	} else {
+		return dash0common.CountExports(d.Spec.Exports)
+	}
+}
+
+func (d *Dash0OperatorConfiguration) HasDash0ExportConfigured() bool {
+	return len(d.GetDash0Exports()) > 0
+}
+
+func (d *Dash0OperatorConfiguration) GetFirstDash0Export() *dash0common.Export {
+	for i := range d.Spec.Exports {
+		if d.Spec.Exports[i].HasDash0ExportConfigured() {
+			return &d.Spec.Exports[i]
+		}
+	}
+	return nil
+}
+
+func (d *Dash0OperatorConfiguration) GetDash0Exports() []dash0common.Dash0Configuration {
+	var dash0Configs []dash0common.Dash0Configuration
+	for i := range d.Spec.Exports {
+		if d.Spec.Exports[i].HasDash0ExportConfigured() {
+			dash0Configs = append(dash0Configs, *d.Spec.Exports[i].Dash0)
+		}
+	}
+	return dash0Configs
 }
 
 func (d *Dash0OperatorConfiguration) HasDash0ApiAccessConfigured() bool {
-	return d.Spec.Export != nil &&
-		d.Spec.Export.Dash0 != nil &&
-		d.Spec.Export.Dash0.ApiEndpoint != "" &&
-		(d.Spec.Export.Dash0.Authorization.Token != nil || d.Spec.Export.Dash0.Authorization.SecretRef != nil)
+	return len(d.GetDash0ExportsWithApiAccess()) > 0
 }
 
-func (d *Dash0OperatorConfiguration) GetDash0AuthorizationIfConfigured() *dash0common.Authorization {
-	if d.Spec.Export == nil {
-		return nil
+func (d *Dash0OperatorConfiguration) GetDash0ExportsWithApiAccess() []dash0common.Dash0Configuration {
+	var res []dash0common.Dash0Configuration
+	for _, export := range d.Spec.Exports {
+		// intentionally not doing any further filtering here, as validation will happen later where errors are properly logged
+		if export.Dash0 != nil {
+			res = append(res, *export.Dash0)
+		}
 	}
-	if d.Spec.Export.Dash0 == nil {
-		return nil
-	}
-
-	authorization := d.Spec.Export.Dash0.Authorization
-	if (authorization.Token != nil && *authorization.Token != "") ||
-		(authorization.SecretRef != nil && authorization.SecretRef.Name != "" && authorization.SecretRef.Key != "") {
-		return &authorization
-	}
-	return nil
+	return res
 }
 
 func (d *Dash0OperatorConfiguration) GetNaturalLanguageResourceTypeName() string {

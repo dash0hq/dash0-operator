@@ -12,7 +12,6 @@ import (
 	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -27,6 +26,7 @@ type SelfMonitoringMetricsClient interface {
 
 type OTelSdkConfigInput struct {
 	export                        dash0common.Export
+	token                         *string // the resolved token (in case of a Dash0 export)
 	pseudoClusterUid              types.UID
 	clusterName                   string
 	operatorNamespace             string
@@ -40,7 +40,6 @@ type OTelSdkStarter struct {
 	sdkIsActive              atomic.Bool
 	oTelSdkConfigInput       atomic.Pointer[OTelSdkConfigInput]
 	activeOTelSdkConfig      atomic.Pointer[common.OTelSdkConfig]
-	authTokenFromSecretRef   atomic.Pointer[string]
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper
 
 	startOrRestartOTelSdkChannel chan *common.OTelSdkConfig
@@ -64,14 +63,12 @@ func NewOTelSdkStarter(
 		sdkIsActive:                  atomic.Bool{},
 		oTelSdkConfigInput:           atomic.Pointer[OTelSdkConfigInput]{},
 		activeOTelSdkConfig:          atomic.Pointer[common.OTelSdkConfig]{},
-		authTokenFromSecretRef:       atomic.Pointer[string]{},
 		delegatingZapCoreWrapper:     delegatingZapCoreWrapper,
 		startOrRestartOTelSdkChannel: make(chan *common.OTelSdkConfig),
 		shutDownChannel:              make(chan bool),
 	}
 	// we start with empty values (so we don't have to deal with nil later)
 	starter.oTelSdkConfigInput.Store(&OTelSdkConfigInput{})
-	starter.authTokenFromSecretRef.Store(ptr.To(""))
 	return starter
 }
 
@@ -84,6 +81,7 @@ func (s *OTelSdkStarter) WaitForOTelConfig(
 func (s *OTelSdkStarter) SetOTelSdkParameters(
 	ctx context.Context,
 	export dash0common.Export,
+	token *string,
 	pseudoClusterUid types.UID,
 	clusterName string,
 	operatorNamespace string,
@@ -93,31 +91,24 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	developmentMode bool,
 	logger *logr.Logger,
 ) {
-	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{
-		export:                        export,
-		clusterName:                   clusterName,
-		pseudoClusterUid:              pseudoClusterUid,
-		operatorNamespace:             operatorNamespace,
-		operatorManagerDeploymentUID:  operatorManagerDeploymentUID,
-		operatorManagerDeploymentName: operatorManagerDeploymentName,
-		operatorVersion:               operatorVersion,
-		developmentMode:               developmentMode,
-	})
+	s.oTelSdkConfigInput.Store(
+		&OTelSdkConfigInput{
+			export:                        export,
+			token:                         token,
+			clusterName:                   clusterName,
+			pseudoClusterUid:              pseudoClusterUid,
+			operatorNamespace:             operatorNamespace,
+			operatorManagerDeploymentUID:  operatorManagerDeploymentUID,
+			operatorManagerDeploymentName: operatorManagerDeploymentName,
+			operatorVersion:               operatorVersion,
+			developmentMode:               developmentMode,
+		},
+	)
 	s.onParametersHaveChanged(ctx, logger)
 }
 
 func (s *OTelSdkStarter) RemoveOTelSdkParameters(ctx context.Context, logger *logr.Logger) {
 	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{})
-	s.onParametersHaveChanged(ctx, logger)
-}
-
-func (s *OTelSdkStarter) SetDefaultAuthToken(ctx context.Context, authToken string, logger *logr.Logger) {
-	s.authTokenFromSecretRef.Store(ptr.To(authToken))
-	s.onParametersHaveChanged(ctx, logger)
-}
-
-func (s *OTelSdkStarter) RemoveDefaultAuthToken(ctx context.Context, logger *logr.Logger) {
-	s.authTokenFromSecretRef.Store(ptr.To(""))
 	s.onParametersHaveChanged(ctx, logger)
 }
 
@@ -142,7 +133,6 @@ func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger *lo
 	newOTelSDKConfig, configComplete :=
 		convertExportConfigurationToOTelSDKConfig(
 			s.oTelSdkConfigInput.Load(),
-			s.authTokenFromSecretRef.Load(),
 		)
 	if configComplete {
 		if !sdkIsActive {
@@ -179,7 +169,6 @@ func (s *OTelSdkStarter) UpdateOTelSdkState(newState bool) {
 // process. We use this approach for the operator manager.
 func convertExportConfigurationToOTelSDKConfig(
 	oTelSdkConfigInput *OTelSdkConfigInput,
-	authTokenFromSecretRef *string,
 ) (*common.OTelSdkConfig, bool) {
 	if oTelSdkConfigInput == nil {
 		return nil, false
@@ -188,23 +177,24 @@ func convertExportConfigurationToOTelSDKConfig(
 	var endpointAndHeaders *EndpointAndHeaders
 	if selfMonitoringExport.Dash0 != nil {
 		dash0Export := selfMonitoringExport.Dash0
-		token := selfMonitoringExport.Dash0.Authorization.Token
-		if token == nil || *token == "" {
-			token = authTokenFromSecretRef
-		}
-		if token == nil || *token == "" {
+
+		if oTelSdkConfigInput.token == nil {
 			return nil, false
 		}
 
-		headers := []dash0common.Header{{
-			Name:  util.AuthorizationHeaderName,
-			Value: util.RenderAuthorizationHeader(*token),
-		}}
+		headers := []dash0common.Header{
+			{
+				Name:  util.AuthorizationHeaderName,
+				Value: util.RenderAuthorizationHeader(*oTelSdkConfigInput.token),
+			},
+		}
 		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
-			headers = append(headers, dash0common.Header{
-				Name:  util.Dash0DatasetHeaderName,
-				Value: dash0Export.Dataset,
-			})
+			headers = append(
+				headers, dash0common.Header{
+					Name:  util.Dash0DatasetHeaderName,
+					Value: dash0Export.Dataset,
+				},
+			)
 		}
 		endpointAndHeaders = &EndpointAndHeaders{
 			// Deliberately not prepending a protocol here, but using the endpoint as-is. When configuring this via env
@@ -282,9 +272,11 @@ func startOTelSDK(
 	// messages from the operator startup in self-monitoring, even if the OTel SDK is delayed until we have found and
 	// reconciled an operator configuration resource.
 	delegatingZapCoreWrapper.RootDelegatingZapCore.SetDelegate(zapOTelBridge)
-	delegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear(func(entry *zaputil.ZapEntryWithFields) {
-		_ = zapOTelBridge.Write(entry.Entry, entry.Fields)
-	})
+	delegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear(
+		func(entry *zaputil.ZapEntryWithFields) {
+			_ = zapOTelBridge.Write(entry.Entry, entry.Fields)
+		},
+	)
 
 	for _, client := range selfMonitoringMetricsClients {
 		client.InitializeSelfMonitoringMetrics(
@@ -306,10 +298,8 @@ func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger *logr.Logge
 	}
 }
 
-func (s *OTelSdkStarter) ForTestOnlyGetState() (bool, *common.OTelSdkConfig, *string) {
-	return s.sdkIsActive.Load(),
-		s.activeOTelSdkConfig.Load(),
-		s.authTokenFromSecretRef.Load()
+func (s *OTelSdkStarter) ForTestOnlyGetState() (bool, *common.OTelSdkConfig) {
+	return s.sdkIsActive.Load(), s.activeOTelSdkConfig.Load()
 }
 
 func (s *OTelSdkStarter) ShutDown(ctx context.Context, logger *logr.Logger) {

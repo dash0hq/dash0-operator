@@ -65,9 +65,11 @@ var (
 	}
 
 	httpClient     = &http.Client{}
-	insecureClient = &http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}}
+	insecureClient = &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 )
 
 func NewOTelColResourceManager(
@@ -93,6 +95,9 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 ) (bool, bool, error) {
 	selfMonitoringConfiguration, err :=
 		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+			ctx,
+			m.Client,
+			m.collectorConfig.OperatorNamespace,
 			operatorConfigurationResource,
 			logger,
 		)
@@ -143,13 +148,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Namespaced: namespacedExporters,
 	}
 
-	authorizations := collectDash0ExporterAuthorizations(operatorConfigurationResource, allMonitoringResources)
-
 	config := &oTelColConfig{
 		OperatorNamespace:           m.collectorConfig.OperatorNamespace,
 		NamePrefix:                  m.collectorConfig.OTelCollectorNamePrefix,
 		Exporters:                   otlpExporters,
-		Authorizations:              authorizations,
 		AllMonitoringResources:      allMonitoringResources,
 		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
@@ -326,7 +328,10 @@ func isKnownIrrelevantPatch(patchResult *patch.PatchResult) bool {
 	return slices.Contains(knownIrrelevantPatches, p)
 }
 
-func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource client.Object, desiredResource client.Object) {
+func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUIDs(
+	existingResource client.Object,
+	desiredResource client.Object,
+) {
 	name := desiredResource.GetName()
 	uid := existingResource.GetUID()
 	if name == DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix) {
@@ -340,14 +345,18 @@ func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUID
 
 func addSelfReferenceUidToAllContainers(containers *[]corev1.Container, envVarName string, uid types.UID) {
 	for i, container := range *containers {
-		selfReferenceUidIsAlreadyPresent := slices.ContainsFunc(container.Env, func(envVar corev1.EnvVar) bool {
-			return envVar.Name == envVarName
-		})
+		selfReferenceUidIsAlreadyPresent := slices.ContainsFunc(
+			container.Env, func(envVar corev1.EnvVar) bool {
+				return envVar.Name == envVarName
+			},
+		)
 		if !selfReferenceUidIsAlreadyPresent {
-			container.Env = append(container.Env, corev1.EnvVar{
-				Name:  envVarName,
-				Value: string(uid),
-			})
+			container.Env = append(
+				container.Env, corev1.EnvVar{
+					Name:  envVarName,
+					Value: string(uid),
+				},
+			)
 			(*containers)[i] = container
 		}
 	}
@@ -362,7 +371,8 @@ func (m *OTelColResourceManager) DeleteResources(
 		fmt.Sprintf(
 			"Deleting the OpenTelemetry collector Kubernetes resources in the Dash0 operator namespace %s (if any exist).",
 			m.collectorConfig.OperatorNamespace,
-		))
+		),
+	)
 
 	config := &oTelColConfig{
 		OperatorNamespace: m.collectorConfig.OperatorNamespace,
@@ -405,11 +415,13 @@ func (m *OTelColResourceManager) DeleteResources(
 			}
 		} else {
 			resourcesHaveBeenDeleted = true
-			logger.Info(fmt.Sprintf(
-				"deleted resource %s/%s",
-				desiredResource.GetNamespace(),
-				desiredResource.GetName(),
-			))
+			logger.Info(
+				fmt.Sprintf(
+					"deleted resource %s/%s",
+					desiredResource.GetNamespace(),
+					desiredResource.GetName(),
+				),
+			)
 		}
 	}
 	if len(allErrors) > 0 {
@@ -516,8 +528,10 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 		return *cachedConfig
 	}
 	if m.collectorConfig.NodeName == "" && m.collectorConfig.NodeIp == "" {
-		logger.Info("No K8s_NODE_NAME and no K8S_NODE_IP available, skipping kubeletstats receiver endpoint lookup. " +
-			"The kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.")
+		logger.Info(
+			"No K8s_NODE_NAME and no K8S_NODE_IP available, skipping kubeletstats receiver endpoint lookup. " +
+				"The kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.",
+		)
 		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{Enabled: false})
 	}
 	if !kubernetesInfrastructureMetricsCollectionEnabled {
@@ -615,7 +629,12 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	err = executeHttpRequest(httpClient, readOnlyNodeIpEndpointWithPath)
 	if err == nil {
 		endpoint := kubetletStatsReadyOnlyEndpoint
-		logger.Info(fmt.Sprintf("Probe request request to read-only endpoint %s has been successful.", readOnlyNodeIpEndpointWithPath))
+		logger.Info(
+			fmt.Sprintf(
+				"Probe request request to read-only endpoint %s has been successful.",
+				readOnlyNodeIpEndpointWithPath,
+			),
+		)
 		logger.Info(fmt.Sprintf("Using read-only endpoint %s as kubeletstats receiver endpoint.", endpoint))
 		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{
 			Enabled:            true,
@@ -637,7 +656,8 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	}
 
 	logger.Info(
-		fmt.Sprintf("Attempting probe request to %s without TLS certificate verification.", nodeIpEndpointWithPath))
+		fmt.Sprintf("Attempting probe request to %s without TLS certificate verification.", nodeIpEndpointWithPath),
+	)
 	err = executeHttpRequest(insecureClient, nodeIpEndpointWithPath)
 	if err == nil {
 		endpoint := kubeletStatsNodeIpEndpoint
@@ -689,6 +709,7 @@ func (m *OTelColResourceManager) logErrorAndDisableKubeletStatsReceiver(logger *
 	logger.Error(
 		fmt.Errorf("cannot determine viable endpoint for kubeletstats receiver endpoint, see above"),
 		"The operator ran out of options when trying to find a viable kubeletstats receiver endpoint. The "+
-			"kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.")
+			"kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.",
+	)
 	return KubeletStatsReceiverConfig{Enabled: false}
 }

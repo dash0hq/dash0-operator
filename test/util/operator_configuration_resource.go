@@ -41,11 +41,13 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0common.Export{
-			Dash0: &dash0common.Dash0Configuration{
-				Endpoint: EndpointDash0Test,
-				Authorization: dash0common.Authorization{
-					Token: &AuthorizationTokenTest,
+		Exports: []dash0common.Export{
+			{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
 				},
 			},
 		},
@@ -64,11 +66,13 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0common.Export{
-			Dash0: &dash0common.Dash0Configuration{
-				Endpoint: EndpointDash0Test,
-				Authorization: dash0common.Authorization{
-					SecretRef: &SecretRefTest,
+		Exports: []dash0common.Export{
+			{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0common.Authorization{
+						SecretRef: &SecretRefTest,
+					},
 				},
 			},
 		},
@@ -87,12 +91,14 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0common.Export{
-			Dash0: &dash0common.Dash0Configuration{
-				Endpoint:    EndpointDash0Test,
-				ApiEndpoint: ApiEndpointTest,
-				Authorization: dash0common.Authorization{
-					Token: &AuthorizationTokenTest,
+		Exports: []dash0common.Export{
+			{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:    EndpointDash0Test,
+					ApiEndpoint: ApiEndpointTest,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
 				},
 			},
 		},
@@ -111,12 +117,14 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0common.Export{
-			Dash0: &dash0common.Dash0Configuration{
-				Endpoint:    EndpointDash0Test,
-				ApiEndpoint: ApiEndpointTest,
-				Authorization: dash0common.Authorization{
-					SecretRef: &SecretRefTest,
+		Exports: []dash0common.Export{
+			{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:    EndpointDash0Test,
+					ApiEndpoint: ApiEndpointTest,
+					Authorization: dash0common.Authorization{
+						SecretRef: &SecretRefTest,
+					},
 				},
 			},
 		},
@@ -135,12 +143,14 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0common.Export{
-			Dash0: &dash0common.Dash0Configuration{
-				Endpoint:    EndpointDash0Test,
-				ApiEndpoint: ApiEndpointTest,
-				Authorization: dash0common.Authorization{
-					Token: &AuthorizationTokenTest,
+		Exports: []dash0common.Export{
+			{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:    EndpointDash0Test,
+					ApiEndpoint: ApiEndpointTest,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
 				},
 			},
 		},
@@ -159,11 +169,13 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(true),
 		},
-		Export: &dash0common.Export{
-			Dash0: &dash0common.Dash0Configuration{
-				Endpoint: EndpointDash0Test,
-				Authorization: dash0common.Authorization{
-					Token: &AuthorizationTokenTest,
+		Exports: []dash0common.Export{
+			{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
 				},
 			},
 		},
@@ -245,11 +257,13 @@ func CreateOperatorConfigurationResourceWithName(
 				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 					Enabled: ptr.To(false),
 				},
-				Export: &dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTest,
+				Exports: []dash0common.Export{
+					{
+						Dash0: &dash0common.Dash0Configuration{
+							Endpoint: EndpointDash0Test,
+							Authorization: dash0common.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
 						},
 					},
 				},

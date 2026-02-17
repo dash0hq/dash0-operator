@@ -130,7 +130,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		logger.Info(fmt.Sprintf(logMsgTelemetryDisabled, operatorConfigurationResource.Name))
 		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, &logger)
 		return err == nil, err
-	} else if operatorConfigurationResource.Spec.Export == nil {
+	} else if !operatorConfigurationResource.HasExportsConfigured() {
 		logger.Info(fmt.Sprintf(logMsgDefaultExportMissing, operatorConfigurationResource.Name))
 		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, &logger)
 		return err == nil, err

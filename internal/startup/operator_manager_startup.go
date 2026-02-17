@@ -248,14 +248,16 @@ func Start() {
 		c.NextProtos = []string{"http/1.1"}
 	}
 
-	tlsOpts := []func(*tls.Config){}
+	var tlsOpts []func(*tls.Config)
 	if !cliArgs.enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	webhookServer := k8swebhook.NewServer(k8swebhook.Options{
-		TLSOpts: tlsOpts,
-	})
+	webhookServer := k8swebhook.NewServer(
+		k8swebhook.Options{
+			TLSOpts: tlsOpts,
+		},
+	)
 
 	var err error
 	if err = readEnvironmentVariables(&setupLog); err != nil {
@@ -403,38 +405,44 @@ func defineCommandLineArguments() *commandLineArguments {
 		"operator-configuration-kubernetes-infrastructure-metrics-collection-enabled",
 		true,
 		"The value for kubernetesInfrastructureMetricsCollection.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.")
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
 	flag.BoolVar(
 		&cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-pod-labels-and-annotations-enabled",
 		true,
 		"The value for collectPodLabelsAndAnnotations.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.")
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
 	flag.BoolVar(
 		&cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-namespace-labels-and-annotations-enabled",
 		true,
 		"The value for collectNamespaceLabelsAndAnnotations.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.")
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
 	flag.BoolVar(
 		&cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 		"operator-configuration-prometheus-crd-support-enabled",
 		false,
 		"The value for prometheusCrdSupport.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.")
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
 	flag.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
 		"operator-configuration-cluster-name",
 		"",
 		"The clusterName to set on the operator configuration resource; will be ignored if"+
 			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
-			"k8s.cluster.name to all telemetry.")
+			"k8s.cluster.name to all telemetry.",
+	)
 	flag.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"force-use-otel-collector-service-url",
 		false,
 		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
-			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.")
+			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.",
+	)
 	flag.BoolVar(
 		&cliArgs.isGkeAutopilot,
 		"gke-autopilot",
@@ -446,7 +454,8 @@ func defineCommandLineArguments() *commandLineArguments {
 		"disable-otel-collector-host-ports",
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
-			"--force-use-otel-collector-service-url.")
+			"--force-use-otel-collector-service-url.",
+	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	flag.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachWorkloadMillis,
@@ -454,14 +463,16 @@ func defineCommandLineArguments() *commandLineArguments {
 		0,
 		"An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at "+
 			"operator startup or when enabling instrumentation for a new namespace via Dash0Monitoring resource. This "+
-			"delay will be applied after each individual workload.")
+			"delay will be applied after each individual workload.",
+	)
 	flag.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachNamespaceMillis,
 		"instrumentation-delay-after-each-namespace-millis",
 		0,
 		"An optional delay to stagger access to the Kubernetes API server to instrument (or update the "+
 			"instrumentation of) existing workloads at operator startup. This delay will be applied each time all "+
-			"workloads in a namespace have been processed, before starting with the next namespace.")
+			"workloads in a namespace have been processed, before starting with the next namespace.",
+	)
 	flag.StringVar(
 		&cliArgs.metricsAddr,
 		"metrics-bind-address",
@@ -714,7 +725,9 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 		} else {
 			setupLog.Info(
 				fmt.Sprintf(
-					"Ignoring unknown pull policy setting (%s): %s.", envVarName, pullPolicyRaw))
+					"Ignoring unknown pull policy setting (%s): %s.", envVarName, pullPolicyRaw,
+				),
+			)
 		}
 	}
 	return ""
@@ -723,9 +736,11 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 func initStartupTasksK8sClient(logger *logr.Logger) error {
 	cfg := ctrl.GetConfigOrDie()
 	var err error
-	if startupTasksK8sClient, err = client.New(cfg, client.Options{
-		Scheme: runtimeScheme,
-	}); err != nil {
+	if startupTasksK8sClient, err = client.New(
+		cfg, client.Options{
+			Scheme: runtimeScheme,
+		},
+	); err != nil {
 		logger.Error(err, "failed to create Kubernetes API client for startup tasks")
 		return err
 	}
@@ -760,23 +775,25 @@ func startOperatorManager(
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	developmentMode bool,
 ) error {
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: runtimeScheme,
-		Metrics: metricsserver.Options{
-			BindAddress:   cliArgs.metricsAddr,
-			SecureServing: cliArgs.secureMetrics,
-			TLSOpts:       tlsOpts,
-		},
-		WebhookServer:          webhookServer,
-		HealthProbeBindAddress: cliArgs.probeAddr,
-		LeaderElection:         cliArgs.enableLeaderElection,
-		LeaderElectionID:       "5ae7ac41.dash0.com",
+	mgr, err := ctrl.NewManager(
+		ctrl.GetConfigOrDie(), ctrl.Options{
+			Scheme: runtimeScheme,
+			Metrics: metricsserver.Options{
+				BindAddress:   cliArgs.metricsAddr,
+				SecureServing: cliArgs.secureMetrics,
+				TLSOpts:       tlsOpts,
+			},
+			WebhookServer:          webhookServer,
+			HealthProbeBindAddress: cliArgs.probeAddr,
+			LeaderElection:         cliArgs.enableLeaderElection,
+			LeaderElectionID:       "5ae7ac41.dash0.com",
 
-		// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
-		// operator manager will terminate immediately, we need to shut down a couple of internal components before
-		// terminating (self monitoring OTel SDK shutdown etc.).
-		LeaderElectionReleaseOnCancel: false,
-	})
+			// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
+			// operator manager will terminate immediately, we need to shut down a couple of internal components before
+			// terminating (self monitoring OTel SDK shutdown etc.).
+			LeaderElectionReleaseOnCancel: false,
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("unable to create the manager: %w", err)
 	}
@@ -1019,14 +1036,24 @@ func startDash0Controllers(
 		CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 		IsGkeAutopilot:            cliArgs.isGkeAutopilot,
 	}
-	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(k8sClient, mgr.GetScheme(), operatorDeploymentSelfReference, targetAllocatorConfig)
+	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
+		k8sClient,
+		mgr.GetScheme(),
+		operatorDeploymentSelfReference,
+		targetAllocatorConfig,
+	)
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
 		k8sClient, clientset, extraConfig, developmentMode, targetallocatorResourceManager,
 	)
 	// We update the extra config map in the targetallocatorManager when the extra config map changes, and also trigger a
 	// reconciliation of the target-allocator.
 	extraConfigMapWatcher.AddClient(targetallocatorManager)
-	targetAllocatorReconciler := targetallocator.NewTargetAllocatorReconciler(k8sClient, targetallocatorManager, envVars.operatorNamespace, envVars.targetAllocatorNamePrefix)
+	targetAllocatorReconciler := targetallocator.NewTargetAllocatorReconciler(
+		k8sClient,
+		targetallocatorManager,
+		envVars.operatorNamespace,
+		envVars.targetAllocatorNamePrefix,
+	)
 	if err := targetAllocatorReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
 	}
@@ -1062,7 +1089,8 @@ func startDash0Controllers(
 		workqueue.NewTypedWithConfig(
 			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
 				Name: "dash0-third-party-resource-synchronization-queue",
-			})
+			},
+		)
 
 	persesDashboardCrdReconciler := controller.NewPersesDashboardCrdReconciler(
 		k8sClient,
@@ -1159,7 +1187,10 @@ func startDash0Controllers(
 	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
-	if err := webhooks.NewMonitoringMutatingWebhookHandler(k8sClient, envVars.operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewMonitoringMutatingWebhookHandler(
+		k8sClient,
+		envVars.operatorNamespace,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
 	}
 	if err := webhooks.NewMonitoringValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
@@ -1179,28 +1210,12 @@ func startDash0Controllers(
 			prometheusRuleCrdReconciler,
 		},
 	)
-	defaultAuthTokenClients := []selfmonitoringapiaccess.AuthTokenClient{
-		oTelSdkStarter,
-		syntheticCheckReconciler,
-		viewReconciler,
-		persesDashboardCrdReconciler,
-		prometheusRuleCrdReconciler,
-	}
-
-	namespacedAuthTokenClients := []selfmonitoringapiaccess.NamespacedAuthTokenClient{
-		syntheticCheckReconciler,
-		viewReconciler,
-		prometheusRuleCrdReconciler,
-		persesDashboardCrdReconciler,
-	}
-
-	operatorConfigurationReconciler.SetAuthTokenClients(defaultAuthTokenClients)
-	monitoringReconciler.SetNamespacedAuthTokenClients(namespacedAuthTokenClients)
 
 	triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		ctx,
+		startupTasksK8sClient,
+		envVars.operatorNamespace,
 		oTelSdkStarter,
-		defaultAuthTokenClients,
 		operatorConfigurationResource,
 		pseudoClusterUid,
 		images.GetOperatorVersion(),
@@ -1231,7 +1246,8 @@ func determineCollectorBaseUrl(forceOTelCollectorServiceUrl bool, isIPv6Cluster 
 		fmt.Sprintf(
 			oTelCollectorServiceBaseUrlPattern,
 			envVars.oTelCollectorNamePrefix,
-			envVars.operatorNamespace)
+			envVars.operatorNamespace,
+		)
 	oTelCollectorNodeLocalBaseUrl := fmt.Sprintf(
 		oTelCollectorNodeLocalBaseUrlPattern,
 		util.EnvVarDash0NodeIp,
@@ -1274,10 +1290,12 @@ func findDeploymentReference(
 ) (*appsv1.Deployment, error) {
 	deploymentReference := &appsv1.Deployment{}
 	fullyQualifiedName := fmt.Sprintf("%s/%s", operatorNamespace, deploymentName)
-	if err := k8sClient.Get(ctx, client.ObjectKey{
-		Namespace: operatorNamespace,
-		Name:      deploymentName,
-	}, deploymentReference); err != nil {
+	if err := k8sClient.Get(
+		ctx, client.ObjectKey{
+			Namespace: operatorNamespace,
+			Name:      deploymentName,
+		}, deploymentReference,
+	); err != nil {
 		logger.Error(err, fmt.Sprintf("failed to get reference to deployment %s", deploymentName))
 		return nil, err
 	}
@@ -1328,8 +1346,9 @@ func createOrUpdateAutoOperatorConfigurationResource(
 // resource command line parameters specify a secret ref instead of a token).
 func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
 	oTelSdkStarter *selfmonitoringapiaccess.OTelSdkStarter,
-	authTokenClients []selfmonitoringapiaccess.AuthTokenClient,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	pseudoClusterUid types.UID,
 	operatorVersion string,
@@ -1339,24 +1358,6 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		return
 	}
 
-	if operatorConfigurationResource.Spec.Export != nil &&
-		operatorConfigurationResource.Spec.Export.Dash0 != nil &&
-		operatorConfigurationResource.Spec.Export.Dash0.Authorization.SecretRef != nil {
-		if err := selfmonitoringapiaccess.ExchangeSecretRefForToken(
-			ctx,
-			startupTasksK8sClient,
-			authTokenClients,
-			envVars.operatorNamespace,
-			operatorConfigurationResource,
-			&setupLog,
-		); err != nil {
-			setupLog.Error(err, "cannot exchange secret ref for token")
-			// Deliberately not aborting the rest of the operations here, we will try to exchange the secret ref for a
-			// token again later via the reconcile cycle of the operator configuration controller; there is no reason to
-			// not make the rest of the OTel SDK config available to the oTelSdkStarter here already.
-		}
-	}
-
 	if operatorConfigurationResource.Spec.SelfMonitoring.Enabled == nil ||
 		!*operatorConfigurationResource.Spec.SelfMonitoring.Enabled {
 		return
@@ -1364,6 +1365,9 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 
 	selfMonitoringConfiguration, err :=
 		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+			ctx,
+			k8sClient,
+			operatorNamespace,
 			operatorConfigurationResource,
 			&setupLog,
 		)
@@ -1378,6 +1382,7 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	oTelSdkStarter.SetOTelSdkParameters(
 		ctx,
 		selfMonitoringConfiguration.Export,
+		selfMonitoringConfiguration.Token,
 		pseudoClusterUid,
 		operatorConfigurationResource.Spec.ClusterName,
 		operatorDeploymentSelfReference.Namespace,
