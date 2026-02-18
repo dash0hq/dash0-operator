@@ -138,8 +138,9 @@ If you would like to enable support for Prometheus CRDs
 1. ensure the CRDs (`ServiceMonitor`, `PodMonitor`, `ScrapeConfig`) are installed in the cluster
 2. include `--set operator.prometheusCrdSupportEnabled=true` when running `helm install`
 
-Alternatively, if you are creating the operator configuration resource manually, refer to the [Configuration](#configuration)
-section below.
+Alternatively, if you are creating the operator configuration resource manually, set
+`spec.prometheusCrdSupport.enabled: true` in the operator configuration resource. Refer to the
+[Configuration](#configuration) for details.
 
 The operator supports the following CRDs
 - `ServiceMonitor`
