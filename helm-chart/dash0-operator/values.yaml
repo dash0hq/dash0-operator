@@ -9,11 +9,27 @@ operator:
   # will be created right away, when starting the operator. If left empty, you can always create a
   # Dash0OperatorConfiguration resource manually later.
   dash0Export:
-    # Set this to true to enable the creation of a Dash0OperatorConfiguration resource at startup. If a
-    # Dash0OperatorConfiguration already exists in the cluster, no action will be taken. Note that if this is set to
-    # true, you will also need to provide a valid endpoint (operator.dash0Export.endpoint), and either an auth token
-    # (operator.dash0Export.token) or a reference to a Kubernetes secret containing that token
+    # Set this to true to enable the creation of a Dash0OperatorConfiguration resource at startup. Note that if this is
+    # set to true, you will also need to provide a valid endpoint (operator.dash0Export.endpoint), and either an auth
+    # token (operator.dash0Export.token) or a reference to a Kubernetes secret containing that token
     # (operator.dash0Export.secretRef).
+    #
+    # The automatically created operator configuration resource will have the name
+    # dash0-operator-configuration-auto-resource. If an operator configuration resource with a different name exists in
+    # the cluster (e.g. a manually created operator configuration resource), the operator will log this as an error
+    # and ignore the operator.dash0Export.* settings.
+    #
+    # If an operator configuration resource with the name dash0-operator-configuration-auto-resource already exists in
+    # the cluster (e.g. a previous startup of the operator manager has created the resource), the operator manager will
+    # update/overwrite this resource with the values provided here.
+    #
+    # Manual changes to the dash0-operator-configuration-auto-resource will be overwritten with the settings provided
+    # via Helm the next time the operator manager pod is restarted. Possible reasons for a restart of the operator
+    # manager pod include upgrading to a new operator version, running helm upgrade etc.
+    #
+    # If you would rather retain manual control over the operator configuration resource, you should omit any
+    # operator.dash0Export.* Helm values and create and manage the operator configuration resource manually (that is,
+    # via kubectl, ArgoCD etc.).
     enabled: false
 
     # The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory if
