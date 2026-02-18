@@ -154,12 +154,12 @@ runs:
         # language=YAML
         payload: |
           channel: ${{ inputs.slackChannelId }}
-          text: 'Trivy scan failed: vulnerabilities found or issues running the scan'
+          text: 'Trivy scan: vulnerabilities found'
           blocks:
             - type: header
               text:
                 type: plain_text
-                text: ':x: Trivy scan failed: vulnerabilities found or issues running the scan'
+                text: ':x: Trivy scan: vulnerabilities found'
             - type: context
               elements:
                 - type: mrkdwn
@@ -173,7 +173,7 @@ runs:
                 - type: mrkdwn
                   text: ':warning: ${{ steps.trivy-check.outputs.vulnerability_count }} CVE(s) found'
                 - type: mrkdwn
-                  text: ':mag: <${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=ref%3A${{ github.head_ref || github.ref_name }}+tool%3ATrivy|Scan result>'
+                  text: ':mag: <${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=${{ github.event.pull_request.number && format('pr%3A{0}', github.event.pull_request.number) || format('branch%3A{0}', github.ref_name) }}+tool%3ATrivy+is%3Aopen|Scan result>'
 
     - name: push container image
       if: ${{ env.PUSH_ENABLED == 'true' }}
