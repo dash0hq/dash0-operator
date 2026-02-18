@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"fmt"
+	"sort"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -32,14 +33,28 @@ type otlpExporters struct {
 	Namespaced namespacedOtlpExporters
 }
 
-func (e *otlpExporters) allExporters() []otlpExporter {
-	all := make([]otlpExporter, 0, len(e.Default)+len(e.Namespaced))
-	all = append(all, e.Default...)
-
-	for _, nsExporters := range e.Namespaced {
-		all = append(all, nsExporters...)
+func (e *otlpExporters) AllNamespaceKeys() []string {
+	keys := make([]string, 0, len(e.Namespaced))
+	for k := range e.Namespaced {
+		keys = append(keys, k)
 	}
+	sort.Strings(keys)
+	return keys
+}
 
+func (e *otlpExporters) allNamespacedExporters() []otlpExporter {
+	all := make([]otlpExporter, 0, len(e.Namespaced))
+	for _, k := range e.AllNamespaceKeys() {
+		all = append(all, e.Namespaced[k]...)
+	}
+	return all
+}
+
+func (e *otlpExporters) allExporters() []otlpExporter {
+	nsExporters := e.allNamespacedExporters()
+	all := make([]otlpExporter, 0, len(e.Default)+len(nsExporters))
+	all = append(all, e.Default...)
+	all = append(all, nsExporters...)
 	return all
 }
 

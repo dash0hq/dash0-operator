@@ -71,8 +71,7 @@ func (ct *customTransforms) HasLogTransforms() bool {
 }
 
 type collectorConfigurationTemplateValues struct {
-	DefaultExporters                                 []otlpExporter
-	NamespacedExporters                              map[string][]otlpExporter
+	Exporters                                        otlpExporters
 	SendBatchMaxSize                                 *uint32
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
@@ -206,9 +205,8 @@ func assembleCollectorConfigMap(
 
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
-				DefaultExporters:    config.Exporters.Default,
-				NamespacedExporters: config.Exporters.Namespaced,
-				SendBatchMaxSize:    config.SendBatchMaxSize,
+				Exporters:        config.Exporters,
+				SendBatchMaxSize: config.SendBatchMaxSize,
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 				CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,

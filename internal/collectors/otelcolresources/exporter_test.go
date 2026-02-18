@@ -859,4 +859,22 @@ var _ = Describe("Exporter Conversion", func() {
 			Expect(exporters["triple-export-namespace"][2].Endpoint).To(Equal(EndpointHttpTest))
 		})
 	})
+
+	Describe("allExporters", func() {
+		It("should return exporters in stable order across multiple calls", func() {
+			exporters := &otlpExporters{
+				Namespaced: namespacedOtlpExporters{
+					"zebra-namespace":  {{Name: "exporter-z"}},
+					"alpha-namespace":  {{Name: "exporter-a"}},
+					"middle-namespace": {{Name: "exporter-m"}},
+					"beta-namespace":   {{Name: "exporter-b"}},
+				},
+			}
+
+			reference := exporters.allExporters()
+			for i := 0; i < 5; i++ {
+				Expect(exporters.allExporters()).To(Equal(reference))
+			}
+		})
+	})
 })
