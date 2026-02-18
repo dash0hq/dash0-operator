@@ -131,8 +131,21 @@ runs:
         sarif_file: 'trivy-results.sarif'
         category: ".github/workflows/ci.yaml:build_and_push_images/${{ inputs.imageName }}"
 
-    - name: send Slack notification on failure
-      if: failure()
+    - name: check Trivy results for vulnerabilities
+      id: trivy-check
+      if: ${{ always() && inputs.scan == 'true' }}
+      shell: bash
+      run: |
+        if ! command -v jq &> /dev/null; then
+          echo "jq not found"
+          exit 1
+        fi
+        VULN_COUNT=$(jq '[.runs[]?.results[]?] | length' trivy-results.sarif)
+        echo "vulnerability_count=$VULN_COUNT" >> "$GITHUB_OUTPUT"
+        echo "has_vulnerabilities=$( [ "$VULN_COUNT" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
+    - name: send Slack notification in case of vulnerabilities
+      if: ${{ always() && steps.trivy-check.outputs.has_vulnerabilities == 'true' }}
       uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a
       with:
         errors: true
@@ -141,12 +154,12 @@ runs:
         # language=YAML
         payload: |
           channel: ${{ inputs.slackChannelId }}
-          text: 'Trivy scan failed: vulnerabilities found or issues running the scan'
+          text: 'Trivy scan: vulnerabilities found'
           blocks:
             - type: header
               text:
                 type: plain_text
-                text: ':x: Trivy scan failed: vulnerabilities found or issues running the scan'
+                text: ':x: Trivy scan: vulnerabilities found'
             - type: context
               elements:
                 - type: mrkdwn
@@ -158,7 +171,9 @@ runs:
                 - type: mrkdwn
                   text: ':package: ${{ inputs.imageName }}'
                 - type: mrkdwn
-                  text: ':mag: <${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=ref%3A${{ github.head_ref || github.ref_name }}+tool%3ATrivy|Scan result>'
+                  text: ':warning: ${{ steps.trivy-check.outputs.vulnerability_count }} CVE(s) found'
+                - type: mrkdwn
+                  text: ':mag: <${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=${{ github.event.pull_request.number && format('pr%3A{0}', github.event.pull_request.number) || format('branch%3A{0}', github.ref_name) }}+tool%3ATrivy+is%3Aopen|Scan result>'
 
     - name: push container image
       if: ${{ env.PUSH_ENABLED == 'true' }}
