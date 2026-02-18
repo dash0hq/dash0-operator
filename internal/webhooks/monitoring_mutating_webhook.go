@@ -107,7 +107,7 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	patchRequired = patchRequired || patchRequiredForLogCollection
 
 	// Migrate deprecated export field to exports (only if exports is not set).
-	// If both are set, leave them as-is; the validating webhook will reject this combination.
+	// If both are set, we leave them as-is and the validating webhook will reject this combination.
 	if monitoringSpec.Export != nil && len(monitoringSpec.Exports) == 0 {
 		monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
 		monitoringSpec.Export = nil

@@ -73,8 +73,9 @@ type ResourceToRequestsResult struct {
 	OriginsInResource []string
 	// synchronization errors that occurred during the conversion - if there is a synchronization error for a resource,
 	// ApiRequests must not contain a request for the associated resource
-	ValidationIssues      map[string][]string
 	SynchronizationErrors map[string]string
+	// validation issues that occurred while preparing the request
+	ValidationIssues map[string][]string
 }
 
 func NewResourceToRequestsResult(

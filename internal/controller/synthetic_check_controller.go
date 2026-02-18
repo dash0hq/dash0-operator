@@ -242,7 +242,7 @@ func (r *SyntheticCheckReconciler) synchronizeNamespacedResources(
 	namespace string,
 	logger *logr.Logger,
 ) {
-	// nsSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
+	// The namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
 	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
 	// config and auth token at almost the same time, triggering two resyncs.
 	r.namespacedSyncMutex.Lock(namespace)

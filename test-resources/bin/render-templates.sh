@@ -65,6 +65,7 @@ cat \
   envsubst > \
   test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.otlpsink.yaml
 
+if [[ "${USE_MULTI_CAST:-}" = true ]]; then
 # shellcheck disable=SC2002
 cat \
   test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.multi.yaml.template | \
@@ -79,6 +80,7 @@ cat \
   DASH0_SECOND_DATASET="$DASH0_SECOND_DATASET" \
   envsubst > \
   test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.multi.yaml
+fi
 
 # shellcheck disable=SC2002
 cat \

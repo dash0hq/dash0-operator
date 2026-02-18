@@ -75,7 +75,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 	patchRequired := false
 
 	// Migrate deprecated export field to exports (only if exports is not set).
-	// If both are set, leave them as-is; the validating webhook will reject this combination.
+	// If both are set, we leave them as-is and the validating webhook will reject this combination.
 	//nolint:staticcheck
 	if spec.Export != nil && len(spec.Exports) == 0 {
 		//nolint:staticcheck

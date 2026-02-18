@@ -663,8 +663,9 @@ spec:
 
 ### Namespace-specific Exports and API-sync Overrides
 
-It is possible to override the global/default exports config provided via the Dash0 operator configuration on a per-namespace
-basis by providing the corresponding exports config via the Dash0 monitoring resource.
+It is possible to override the global/default exports config provided via the Dash0 operator configuration on a
+per-namespace basis by providing the corresponding exports config via the Dash0 monitoring resource. Please note that
+the namespace-specific overrides replace the default list of exports from the Dash0 operator configuration.
 
 The override supports both the export of telemetry and the sync of resources, like dashboards or views, via the Dash0 API.
 
@@ -1405,12 +1406,9 @@ spec:
             value: my-value
 ```
 
-You can combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP) to send data to multiple backends. This allows
-sending the same data to two or three targets simultaneously. At least one exporter has to be defined. More than three
-exporters cannot be defined. Listing two or more exporters of the same type (i.e. providing `spec.export.grpc` twice)
-is not supported.
-
-Here is an example that combines three exporters:
+Export to multiple backends is also supported. The supplied backends can be either of the same type or of different
+types. In the following example the telemetry would be sent to two different datasets in Dash0 and in addition to a gRPC
+endpoint:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -1420,12 +1418,16 @@ metadata:
 spec:
   exports:
     - dash0:
+        dataset: dataset-one
         endpoint: ingress... # TODO needs to be replaced with the actual value, see above
         authorization:
           token: auth_... # TODO needs to be replaced with the actual value, see above
-      http:
-        endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
-      grpc:
+    - dash0:
+        dataset: dataset-two
+        endpoint: ingress... # TODO needs to be replaced with the actual value, see above
+        authorization:
+          token: auth_... # TODO needs to be replaced with the actual value, see above
+    - grpc:
         endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
 ```
 
