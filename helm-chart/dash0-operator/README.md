@@ -339,36 +339,65 @@ kubectl, ArgoCD etc.).
 
 To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true`
 via Helm.
+If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled
+immediately for workloads in namespaces that have a Dash0Monitoring resource with
+[`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
+This will cause all pods in these namespaces to be restarted.
+For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
+re-deployment of the workload.
+The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
+Dash0Monitoring resource.
 
 Python auto-instrumentation is only supported for Python 3.9 or later.
 If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.8 or older), it will
-automatically deactivate itself and print a warning to `stderr`:
+automatically deactivate itself safely and print a warning to `stderr`:
 ```
 [dash0] warning: cannot auto-instrument Python process: unsupported Python version: 3.8.0
 ```
 This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+Update the Python version to enable automatic Python instrumentation by Dash0 for this workload.
 
 Python auto-instrumentation only works if the configured OTLP export protocol is `http/protobuf`.
 If the operator is managing the container's `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` variables,
 this will be set correctly automatically.
 If the Dash0 Python auto-instrumentation detects an incompatible `OTEL_EXPORTER_OTLP_PROTOCOL` setting, it will
-automatically deactivate itself and print a warning to `stderr`:
+automatically deactivate itself safely and print a warning to `stderr`:
 ```
 [dash0] warning: cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported
 ```
 This can only happen if the container is setting its own `OTEL_EXPORTER_OTLP_ENDPOINT` and/or
 `OTEL_EXPORTER_OTLP_PROTOCOL`.
-Remove these environment variables from the pod spec template to enable automatic Python instrumentation by Dash0.
+Remove these environment variables from the pod spec template to enable automatic Python instrumentation by Dash0 for
+this workload.
 
-Due to the nature of Python's dependency management, Python auto-instrumentation has the potential to introduce
-dependency conflicts.
+Dash0's Python auto-instrumentation is not compatible with workloads that are already instrumented, either
+[manually](https://opentelemetry.io/docs/languages/python/instrumentation/) or using the
+[zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/), e.g. the `opentelemetry-instrument`
+wrapper.
+If existing instrumentation is detected, the Dash0 Python auto-instrumentation will automatically deactivate itself
+safely and print a warning to `stderr`:
+```
+[dash0] warning: cannot auto-instrument Python process: The application has OpenTelemetry dependencies which indicate
+that it is already instrumented. The following problematic dependencies have been found: ...
+Skipping the Dash0 Python auto-instrumentation to avoid double instrumentation.
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+Remove the existing instrumentation from the workload to enable automatic Python instrumentation by Dash0 for
+this, or leave the existing instrumentation in place, in which case Dash0 will refrain from instrumenting it.
+
+Last but not least, due to the nature of Python's dependency management, Python auto-instrumentation has the potential
+to introduce dependency conflicts.
 The Dash0 Python auto-instrumentation checks for potential dependency conflicts before actually instrumenting a process.
-If a dependency conflict is detected, the Dash0 Python auto-instrumentation will automatically deactivate itself and
-print a warning to `stderr`:
+If a dependency conflict is detected, the Dash0 Python auto-instrumentation will automatically deactivate itself safely
+and print a warning to `stderr`:
 ```
 [dash0] warning: cannot auto-instrument Python process: dependency conflicts: {'package-name': {'version_required': '>=20.0', 'version_found': '19.0'}}
 ```
 This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+Resolve the version conflicts to enable automatic Python instrumentation by Dash0 for this workload, for example
+by updating the dependency versions used by the workload.
+If the conflicting dependencies cannot be resolved, you might need to instrument this workload individually, for
+example by using the OpenTelemetry Python [zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/).
 
 ### Enable Dash0 Monitoring For a Namespace
 

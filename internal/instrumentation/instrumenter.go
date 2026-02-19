@@ -607,7 +607,7 @@ func (i *Instrumenter) instrumentWorkload(
 		// The webhook will skip modifying this workload on the i.Update below anyway, since this workload is marked
 		// as opt-out. Therefore, adding the ignore-once label is not required.
 		addIgnoreOnceLabel = false
-	} else if workloads.InstrumentationIsUpToDate(workloadMeta, containers, i.ClusterInstrumentationConfig.Images, namespaceInstrumentationConfig) {
+	} else if workloads.InstrumentationIsUpToDate(workloadMeta, containers, i.ClusterInstrumentationConfig, namespaceInstrumentationConfig) {
 		// No change necessary, this workload has already been instrumented and an opt-out label (which would need to
 		// trigger uninstrumentation) has not been added since it has been instrumented.
 		logger.Info("not updating the existing instrumentation for this workload, it has already been successfully " +

@@ -201,13 +201,16 @@ type modifyPodSpecResult struct {
 func InstrumentationIsUpToDate(
 	objectMeta *metav1.ObjectMeta,
 	containers []corev1.Container,
-	images util.Images,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 ) bool {
-	if !util.HasBeenInstrumentedSuccessfullyByThisVersion(objectMeta, images) {
+	if !util.HasBeenInstrumentedSuccessfullyByThisVersion(objectMeta, clusterInstrumentationConfig.Images) {
 		return false
 	}
 	if otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers, namespaceInstrumentationConfig) {
+		return false
+	}
+	if otelInjectorConfEnvVarWillBeUpdatedForAtLeastOneContainer(containers, clusterInstrumentationConfig) {
 		return false
 	}
 	return true
@@ -974,6 +977,42 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 			return false
 		}
 	}
+}
+
+func otelInjectorConfEnvVarWillBeUpdatedForAtLeastOneContainer(
+	containers []corev1.Container,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+) bool {
+	for _, container := range containers {
+		envVarOnContainer := util.GetEnvVar(ptr.To(container), envVarOtelInjectorConfigFileName)
+		if envVarOnContainer != nil && envVarOnContainer.ValueFrom != nil {
+			// The environment variable OTEL_INJECTOR_CONFIG_FILE is set via ValueFrom for this container, which is basically
+			// impossible because only the operator should ever set this variable, and it never uses ValueFrom. Anyway, we
+			// will update this to use Value instead of ValueFrom in addEnvironmentVariables.
+			return true
+		}
+
+		if util.IsEnvVarUnsetOrEmpty(envVarOnContainer) {
+			// This container currently does not have the OTEL_INJECTOR_CONFIG_FILE environment variable set. It will be set
+			// in addEnvironmentVariables.
+			return true
+		}
+
+		currentEnvVarValue := (*envVarOnContainer).Value
+		desiredValue := envVarOtelInjectorConfigFileValue
+		if clusterInstrumentationConfig.EnablePythonAutoInstrumentation {
+			desiredValue = envVarOtelInjectorConfigFilePythonEnabledValue
+		}
+
+		if strings.TrimSpace(currentEnvVarValue) != strings.TrimSpace(desiredValue) {
+			// The container has the wrong value for OTEL_INJECTOR_CONFIG_FILE, this will be updated in
+			// addEnvironmentVariables.
+			return true
+		}
+	}
+
+	// No container requires changing OTEL_INJECTOR_CONFIG_FILE.
+	return false
 }
 
 func (m *ResourceModifier) checkContainerForServiceAttributes(container *corev1.Container) containerHasServiceAttributes {
