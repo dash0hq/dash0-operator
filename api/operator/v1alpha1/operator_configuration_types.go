@@ -303,15 +303,29 @@ func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsDegraded(
 	)
 }
 
+// EffectiveExports returns Exports if set, otherwise wraps the deprecated Export field into a single-element slice.
+// This ensures code that reads exports works for resources that have not yet been migrated by the mutating webhook.
+func (d *Dash0OperatorConfiguration) EffectiveExports() []dash0common.Export {
+	if len(d.Spec.Exports) > 0 {
+		return d.Spec.Exports
+	}
+	//nolint:staticcheck
+	if d.Spec.Export != nil {
+		//nolint:staticcheck
+		return []dash0common.Export{*d.Spec.Export}
+	}
+	return nil
+}
+
 func (d *Dash0OperatorConfiguration) HasExportsConfigured() bool {
-	return d != nil && len(d.Spec.Exports) > 0
+	return d != nil && len(d.EffectiveExports()) > 0
 }
 
 func (d *Dash0OperatorConfiguration) ExportsCount() int {
 	if !d.HasExportsConfigured() {
 		return 0
 	} else {
-		return dash0common.CountExports(d.Spec.Exports)
+		return dash0common.CountExports(d.EffectiveExports())
 	}
 }
 
@@ -320,9 +334,10 @@ func (d *Dash0OperatorConfiguration) HasDash0ExportConfigured() bool {
 }
 
 func (d *Dash0OperatorConfiguration) GetFirstDash0Export() *dash0common.Export {
-	for i := range d.Spec.Exports {
-		if d.Spec.Exports[i].HasDash0ExportConfigured() {
-			return &d.Spec.Exports[i]
+	exports := d.EffectiveExports()
+	for i := range exports {
+		if exports[i].HasDash0ExportConfigured() {
+			return &exports[i]
 		}
 	}
 	return nil
@@ -330,9 +345,10 @@ func (d *Dash0OperatorConfiguration) GetFirstDash0Export() *dash0common.Export {
 
 func (d *Dash0OperatorConfiguration) GetDash0Exports() []dash0common.Dash0Configuration {
 	var dash0Configs []dash0common.Dash0Configuration
-	for i := range d.Spec.Exports {
-		if d.Spec.Exports[i].HasDash0ExportConfigured() {
-			dash0Configs = append(dash0Configs, *d.Spec.Exports[i].Dash0)
+	exports := d.EffectiveExports()
+	for i := range exports {
+		if exports[i].HasDash0ExportConfigured() {
+			dash0Configs = append(dash0Configs, *exports[i].Dash0)
 		}
 	}
 	return dash0Configs
@@ -344,7 +360,7 @@ func (d *Dash0OperatorConfiguration) HasDash0ApiAccessConfigured() bool {
 
 func (d *Dash0OperatorConfiguration) GetDash0ExportsWithApiAccess() []dash0common.Dash0Configuration {
 	var res []dash0common.Dash0Configuration
-	for _, export := range d.Spec.Exports {
+	for _, export := range d.EffectiveExports() {
 		// intentionally not doing any further filtering here, as validation will happen later where errors are properly logged
 		if export.Dash0 != nil {
 			res = append(res, *export.Dash0)
