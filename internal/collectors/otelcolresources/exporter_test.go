@@ -549,6 +549,21 @@ var _ = Describe("Exporter Conversion", func() {
 			Expect(exporters[1].Name).To(Equal("otlp_grpc/dash0/default_1"))
 			Expect(exporters[1].Endpoint).To(Equal(EndpointDash0TestAlternative))
 		})
+
+		It("should get default exporters from operator config with deprecated export field (not yet migrated)", func() {
+			operatorConfig := &dash0v1alpha1.Dash0OperatorConfiguration{
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					//nolint:staticcheck
+					Export: Dash0ExportWithEndpointAndToken(),
+				},
+			}
+
+			exporters, err := getDefaultOtlpExporters(operatorConfig)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporters).To(HaveLen(1))
+			Expect(exporters[0].Name).To(Equal("otlp_grpc/dash0/default_0"))
+		})
 	})
 
 	Describe("GetNamespacedOtlpExporters", func() {
@@ -857,6 +872,27 @@ var _ = Describe("Exporter Conversion", func() {
 			Expect(exporters["triple-export-namespace"][1].Endpoint).To(Equal(EndpointGrpcTest))
 			Expect(exporters["triple-export-namespace"][2].Name).To(Equal("otlp_http/ns/triple-export-namespace_2/proto"))
 			Expect(exporters["triple-export-namespace"][2].Endpoint).To(Equal(EndpointHttpTest))
+		})
+
+		It("should return exporters for monitoring resource with deprecated export field (not yet migrated)", func() {
+			monitoringResources := []dash0v1beta1.Dash0Monitoring{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      MonitoringResourceName,
+						Namespace: "namespace-1",
+					},
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						//nolint:staticcheck
+						Export: Dash0ExportWithEndpointAndToken(),
+					},
+				},
+			}
+
+			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+
+			Expect(exporters).To(HaveLen(1))
+			Expect(exporters).To(HaveKey("namespace-1"))
+			Expect(exporters["namespace-1"][0].Name).To(Equal("otlp_grpc/dash0/ns/namespace-1_0"))
 		})
 	})
 
