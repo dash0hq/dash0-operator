@@ -215,6 +215,13 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 			)
 		}
 
+		// Since version 0.102.0 we are setting the `exports` field when auto-creating the operator config resource and
+		// if the existing resource (from before the upgrade) still has an `export` field, we would end up with an
+		// operator config that has both `export` and `exports` set and gets rejected by the validating webhook.
+		// For this reason we remove the `export from the existing resource.
+		//nolint:staticcheck
+		existingOperatorConfigurationResource.Spec.Export = nil
+
 		existingOperatorConfigurationResource.Spec = operatorConfigurationResource.Spec
 		if err := r.Update(ctx, &existingOperatorConfigurationResource); err != nil {
 			return fmt.Errorf("failed to update the Dash0 operator configuration resource: %w", err)
