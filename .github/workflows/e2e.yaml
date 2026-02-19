@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Run e2e tests on kind
+name: E2E tests on kind
 
 on:
   workflow_call:
@@ -131,6 +131,15 @@ jobs:
                   - type: mrkdwn
                     text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
 
+      - name: Upload Kubernetes cluster information and pod logs for failed tests
+        id: upload-k8s-logs
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: e2e-cluster-info-and-logs
+          path: test-resources/e2e/logs
+          if-no-files-found: ignore
+
       - name: Send Slack notification on failure
         if: failure()
         uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a
@@ -155,3 +164,5 @@ jobs:
                     text: ':seedling: <${{ github.server_url }}/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}|${{ github.head_ref || github.ref_name }}>'
                   - type: mrkdwn
                     text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
+                  - type: mrkdwn
+                    text: ':scroll: <${{ steps.upload-k8s-logs.outputs.artifact-url }}|K8s cluster info/pod logs>'
