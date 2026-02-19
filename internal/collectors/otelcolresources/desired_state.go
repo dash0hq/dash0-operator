@@ -1012,7 +1012,6 @@ func assembleDaemonSetCollectorContainer(
 		Name: openTelemetryCollector,
 		Args: []string{
 			"--config=file:" + collectorConfigurationFilePath,
-			"--feature-gates=-processor.resourcedetection.propagateerrors",
 		},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: ptr.To(false),
