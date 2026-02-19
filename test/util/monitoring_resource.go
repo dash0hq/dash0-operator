@@ -47,14 +47,16 @@ var (
 		InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 			LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 		},
-		Export: &dash0common.Export{
-			Dash0: &dash0common.Dash0Configuration{
-				Endpoint: EndpointDash0Test,
-				Authorization: dash0common.Authorization{
-					Token: &AuthorizationTokenTest,
+		Exports: []dash0common.Export{
+			{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+					ApiEndpoint: ApiEndpointTest,
+					Dataset:     DatasetCustomTest,
 				},
-				ApiEndpoint: ApiEndpointTest,
-				Dataset:     DatasetCustomTest,
 			},
 		},
 	}
@@ -108,14 +110,16 @@ func DefaultMonitoringResourceWithCustomApiConfigAndToken(
 			InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 				LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 			},
-			Export: &dash0common.Export{
-				Dash0: &dash0common.Dash0Configuration{
-					Endpoint: EndpointDash0Test,
-					Authorization: dash0common.Authorization{
-						Token: &token,
+			Exports: []dash0common.Export{
+				{
+					Dash0: &dash0common.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Authorization: dash0common.Authorization{
+							Token: &token,
+						},
+						ApiEndpoint: endpoint,
+						Dataset:     dataset,
 					},
-					ApiEndpoint: endpoint,
-					Dataset:     dataset,
 				},
 			},
 		},
@@ -476,7 +480,7 @@ func RemoveExportFromMonitoringResource(
 	k8sClient client.Client,
 ) {
 	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
-	monitoringResource.Spec.Export = nil
+	monitoringResource.Spec.Exports = nil
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }
 
@@ -485,7 +489,7 @@ func AddExportToMonitoringResource(
 	k8sClient client.Client,
 ) {
 	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
-	monitoringResource.Spec.Export = Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint()
+	monitoringResource.Spec.Exports = Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint().ToExports()
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }
 
@@ -495,6 +499,8 @@ func UpdateExportInMonitoringResource(
 	export *dash0common.Export,
 ) {
 	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
-	monitoringResource.Spec.Export = export
+	monitoringResource.Spec.Exports = []dash0common.Export{
+		*export,
+	}
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }

@@ -51,10 +51,8 @@ type PersesDashboardReconciler struct {
 	pseudoClusterUid           types.UID
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
-	apiConfig                  atomic.Pointer[ApiConfig]
-	authToken                  atomic.Pointer[string]
-	namespacedApiConfig        selfmonitoringapiaccess.NamespacedStore[ApiConfig]
-	namespacedAuthTokens       selfmonitoringapiaccess.NamespacedStore[string]
+	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
+	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	httpRetryDelay             time.Duration
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
@@ -125,11 +123,13 @@ func (r *PersesDashboardCrdReconciler) OperatorManagerIsLeader() bool {
 
 func (r *PersesDashboardCrdReconciler) CreateThirdPartyResourceReconciler(pseudoClusterUid types.UID) {
 	r.persesDashboardReconciler = &PersesDashboardReconciler{
-		Client:           r.Client,
-		queue:            r.queue,
-		pseudoClusterUid: pseudoClusterUid,
-		httpClient:       r.httpClient,
-		httpRetryDelay:   1 * time.Second,
+		Client:               r.Client,
+		queue:                r.queue,
+		pseudoClusterUid:     pseudoClusterUid,
+		httpClient:           r.httpClient,
+		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
+		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
+		httpRetryDelay:       1 * time.Second,
 	}
 }
 
@@ -229,71 +229,48 @@ func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
 	)
 }
 
-func (r *PersesDashboardCrdReconciler) SetDefaultApiEndpointAndDataset(
+func (r *PersesDashboardCrdReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
-	apiConfig *ApiConfig,
-	logger *logr.Logger) {
-	r.persesDashboardReconciler.apiConfig.Store(apiConfig)
-	if isValidApiConfig(apiConfig) {
+	apiConfigs []ApiConfig,
+	logger *logr.Logger,
+) {
+	r.persesDashboardReconciler.defaultApiConfigs.Set(apiConfigs)
+	if len(filterValidApiConfigs(apiConfigs, logger, "default operator configuration")) > 0 {
 		maybeStartWatchingThirdPartyResources(r, logger)
 	} else {
 		stopWatchingThirdPartyResources(ctx, r, logger)
 	}
 }
 
-func (r *PersesDashboardCrdReconciler) RemoveDefaultApiEndpointAndDataset(ctx context.Context, logger *logr.Logger) {
-	r.persesDashboardReconciler.apiConfig.Store(nil)
+func (r *PersesDashboardCrdReconciler) RemoveDefaultApiConfigs(ctx context.Context, logger *logr.Logger) {
+	r.persesDashboardReconciler.defaultApiConfigs.Clear()
 	stopWatchingThirdPartyResources(ctx, r, logger)
 }
 
-func (r *PersesDashboardCrdReconciler) SetNamespacedApiEndpointAndDataset(ctx context.Context, namespace string, updatedApiConfig *ApiConfig, logger *logr.Logger) {
-	if updatedApiConfig != nil {
-		previousApiConfig, _ := r.persesDashboardReconciler.namespacedApiConfig.Get(namespace)
+func (r *PersesDashboardCrdReconciler) SetNamespacedApiConfigs(
+	ctx context.Context,
+	namespace string,
+	updatedApiConfigs []ApiConfig,
+	logger *logr.Logger,
+) {
+	if len(updatedApiConfigs) > 0 {
+		previousApiConfigs, _ := r.persesDashboardReconciler.namespacedApiConfigs.Get(namespace)
 
-		r.persesDashboardReconciler.namespacedApiConfig.Set(namespace, *updatedApiConfig)
+		r.persesDashboardReconciler.namespacedApiConfigs.Set(namespace, updatedApiConfigs)
 
-		if previousApiConfig != *updatedApiConfig {
+		if !slices.Equal(previousApiConfigs, updatedApiConfigs) {
 			r.persesDashboardReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
 		}
 	}
 }
 
-func (r *PersesDashboardCrdReconciler) RemoveNamespacedApiEndpointAndDataset(ctx context.Context, namespace string, logger *logr.Logger) {
-	if _, exists := r.persesDashboardReconciler.namespacedApiConfig.Get(namespace); exists {
-		r.persesDashboardReconciler.namespacedApiConfig.Delete(namespace)
-		r.persesDashboardReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
-	}
-}
-
-func (r *PersesDashboardCrdReconciler) SetDefaultAuthToken(
+func (r *PersesDashboardCrdReconciler) RemoveNamespacedApiConfigs(
 	ctx context.Context,
-	authToken string,
-	logger *logr.Logger) {
-	r.persesDashboardReconciler.authToken.Store(&authToken)
-	if authToken != "" {
-		maybeStartWatchingThirdPartyResources(r, logger)
-	} else {
-		stopWatchingThirdPartyResources(ctx, r, logger)
-	}
-}
-
-func (r *PersesDashboardCrdReconciler) RemoveDefaultAuthToken(ctx context.Context, logger *logr.Logger) {
-	r.persesDashboardReconciler.authToken.Store(nil)
-	stopWatchingThirdPartyResources(ctx, r, logger)
-}
-
-func (r *PersesDashboardCrdReconciler) SetNamespacedAuthToken(ctx context.Context, namespace string, updatedAuthToken string, logger *logr.Logger) {
-	previousAuthToken, _ := r.persesDashboardReconciler.GetNamespacedAuthToken(namespace)
-	r.persesDashboardReconciler.namespacedAuthTokens.Set(namespace, updatedAuthToken)
-
-	if previousAuthToken != updatedAuthToken {
-		r.persesDashboardReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
-	}
-}
-
-func (r *PersesDashboardCrdReconciler) RemoveNamespacedAuthToken(ctx context.Context, namespace string, logger *logr.Logger) {
-	if _, exists := r.persesDashboardReconciler.namespacedAuthTokens.Get(namespace); exists {
-		r.persesDashboardReconciler.namespacedAuthTokens.Delete(namespace)
+	namespace string,
+	logger *logr.Logger,
+) {
+	if _, exists := r.persesDashboardReconciler.namespacedApiConfigs.Get(namespace); exists {
+		r.persesDashboardReconciler.namespacedApiConfigs.Delete(namespace)
 		r.persesDashboardReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
 }
@@ -338,24 +315,12 @@ func (r *PersesDashboardReconciler) IsWatching() bool {
 	return r.controllerStopFunction != nil
 }
 
-func (r *PersesDashboardReconciler) GetDefaultAuthToken() string {
-	token := r.authToken.Load()
-	if token == nil {
-		return ""
-	}
-	return *token
+func (r *PersesDashboardReconciler) GetDefaultApiConfigs() []ApiConfig {
+	return r.defaultApiConfigs.Get()
 }
 
-func (r *PersesDashboardReconciler) GetDefaultApiConfig() *atomic.Pointer[ApiConfig] {
-	return &r.apiConfig
-}
-
-func (r *PersesDashboardReconciler) GetNamespacedAuthToken(namespace string) (string, bool) {
-	return r.namespacedAuthTokens.Get(namespace)
-}
-
-func (r *PersesDashboardReconciler) GetNamespacedApiConfig(namespace string) (ApiConfig, bool) {
-	return r.namespacedApiConfig.Get(namespace)
+func (r *PersesDashboardReconciler) GetNamespacedApiConfigs(namespace string) ([]ApiConfig, bool) {
+	return r.namespacedApiConfigs.Get(namespace)
 }
 
 func (r *PersesDashboardReconciler) ControllerName() string {
@@ -489,6 +454,7 @@ func (r *PersesDashboardReconciler) Reconcile(
 
 func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequest(
 	_ *preconditionValidationResult,
+	_ ApiConfig,
 ) (*http.Request, error) {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
@@ -499,12 +465,13 @@ func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequest(
 
 func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
+	apiConfig ApiConfig,
 	action apiAction,
 	logger *logr.Logger,
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
-	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(preconditionChecksResult)
-	apiConfig := preconditionChecksResult.validatedApiConfig.ApiConfig
+
+	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
 
 	var req *http.Request
 	var method string
@@ -557,7 +524,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		return NewResourceToRequestsResultSingleItemError(apiConfig, itemName, httpError.Error())
 	}
 
-	addAuthorizationHeader(req, preconditionChecksResult.validatedApiConfig.Token)
+	addAuthorizationHeader(req, apiConfig.Token)
 	if action == upsertAction {
 		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
@@ -592,7 +559,10 @@ func (r *PersesDashboardReconciler) addDisplaySectionIfMissing(
 	return displayRaw
 }
 
-func (r *PersesDashboardReconciler) setDisplayNameIfMissing(preconditionChecksResult *preconditionValidationResult, display map[string]interface{}) {
+func (r *PersesDashboardReconciler) setDisplayNameIfMissing(
+	preconditionChecksResult *preconditionValidationResult,
+	display map[string]interface{},
+) {
 	displayName, ok := display["name"]
 	if !ok || displayName == "" {
 		// Let the dashboard name default to the perses dashboard resource's namespace + name, if unset.
@@ -600,8 +570,12 @@ func (r *PersesDashboardReconciler) setDisplayNameIfMissing(preconditionChecksRe
 	}
 }
 
-func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult *preconditionValidationResult) (string, string) {
-	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.validatedApiConfig.Dataset)
+func (r *PersesDashboardReconciler) renderDashboardUrl(
+	preconditionChecksResult *preconditionValidationResult,
+	endpoint string,
+	dataset string,
+) (string, string) {
+	datasetUrlEncoded := url.QueryEscape(dataset)
 	dashboardOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
@@ -613,14 +587,14 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult 
 	)
 	return fmt.Sprintf(
 		"%sapi/dashboards/%s?dataset=%s",
-		preconditionChecksResult.validatedApiConfig.Endpoint,
+		endpoint,
 		dashboardOrigin,
 		datasetUrlEncoded,
 	), dashboardOrigin
 }
 
 func (r *PersesDashboardReconciler) CreateDeleteRequests(
-	_ *preconditionValidationResult,
+	_ ApiConfig,
 	_ []string,
 	_ []string,
 	_ *logr.Logger,
@@ -653,8 +627,7 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,
-	resourceToRequestsResult *ResourceToRequestsResult,
-	successfullySynchronized []SuccessfulSynchronizationResult,
+	syncResults synchronizationResults,
 ) interface{} {
 	previousResults := monitoringResource.Status.PersesDashboardSynchronizationResults
 	if previousResults == nil {
@@ -662,23 +635,24 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 		monitoringResource.Status.PersesDashboardSynchronizationResults = previousResults
 	}
 
-	var synchronizationResult dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset
-	synchronizationResult.Dash0ApiEndpoint = resourceToRequestsResult.ApiConfig.Endpoint
-	synchronizationResult.Dash0Dataset = resourceToRequestsResult.ApiConfig.Dataset
+	persesDashboardSyncResults := make([]dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset, 0,
+		len(syncResults.resultsPerApiConfig))
+	for _, syncResult := range syncResults.resultsPerApiConfig {
+		var persesSyncResult dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset
+		persesSyncResult.Dash0ApiEndpoint = syncResult.apiConfig.Endpoint
+		persesSyncResult.Dash0Dataset = syncResult.apiConfig.Dataset
 
-	if len(resourceToRequestsResult.SynchronizationErrors) > 0 {
-		// there can only be at most one synchronization error for a Perses dashboard resource
-		synchronizationResult.SynchronizationError = slices.Collect(maps.Values(resourceToRequestsResult.SynchronizationErrors))[0]
-	}
-	if len(successfullySynchronized) > 0 {
-		// there can only be at most one successfullySynchronized object for a Perses dashboard resource
-		apiObjectLabels := successfullySynchronized[0].Labels
-		synchronizationResult.Dash0Origin = apiObjectLabels.Origin
-	}
+		if len(syncResult.resourceToRequestsResult.SynchronizationErrors) > 0 {
+			// there can only be at most one synchronization error for a Perses dashboard resource
+			persesSyncResult.SynchronizationError = slices.Collect(maps.Values(syncResult.resourceToRequestsResult.SynchronizationErrors))[0]
+		}
+		if len(syncResult.successfullySynchronized) > 0 {
+			// there can only be at most one successfullySynchronized object for a Perses dashboard resource
+			apiObjectLabels := syncResult.successfullySynchronized[0].Labels
+			persesSyncResult.Dash0Origin = apiObjectLabels.Origin
+		}
 
-	// note: once we support multi-cast, there will be one element per endpoint/dataset
-	synchronizationResults := []dash0common.PersesDashboardSynchronizationResultPerEndpointAndDataset{
-		synchronizationResult,
+		persesDashboardSyncResults = append(persesDashboardSyncResults, persesSyncResult)
 	}
 
 	// A Perses dashboard resource can only contain one dashboard, so its SynchronizationResults struct is considerably
@@ -686,12 +660,12 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 	result := dash0common.PersesDashboardSynchronizationResults{
 		SynchronizedAt:         metav1.Time{Time: time.Now()},
 		SynchronizationStatus:  status,
-		SynchronizationResults: synchronizationResults,
+		SynchronizationResults: persesDashboardSyncResults,
 	}
 
-	if len(resourceToRequestsResult.ValidationIssues) > 0 {
+	if len(syncResults.validationIssues) > 0 {
 		// there can only be at most one list of validation issues for a Perses dashboard resource
-		result.ValidationIssues = slices.Collect(maps.Values(resourceToRequestsResult.ValidationIssues))[0]
+		result.ValidationIssues = slices.Collect(maps.Values(syncResults.validationIssues))[0]
 	}
 
 	previousResults[qualifiedName] = result
@@ -700,7 +674,11 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 
 // synchronizeNamespacedResources explicitly triggers a resync of dashboards in a given namespace in response to an
 // updated API endpoint, dataset or auth token.
-func (r *PersesDashboardReconciler) synchronizeNamespacedResources(ctx context.Context, namespace string, logger *logr.Logger) {
+func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) {
 	// do nothing if we are not currently watching the CRDs
 	if !r.IsWatching() {
 		return
@@ -710,11 +688,13 @@ func (r *PersesDashboardReconciler) synchronizeNamespacedResources(ctx context.C
 
 	go func() {
 		allDashboardResourcesInNamespace := &unstructured.UnstructuredList{}
-		allDashboardResourcesInNamespace.SetGroupVersionKind(schema.GroupVersionKind{
-			Group:   "perses.dev",
-			Version: "v1alpha1",
-			Kind:    "PersesDashboardList",
-		})
+		allDashboardResourcesInNamespace.SetGroupVersionKind(
+			schema.GroupVersionKind{
+				Group:   "perses.dev",
+				Version: "v1alpha1",
+				Kind:    "PersesDashboardList",
+			},
+		)
 		if err := r.List(
 			ctx,
 			allDashboardResourcesInNamespace,

@@ -398,6 +398,7 @@ custom resource definition for synthetic checks should match snapshot:
                               (e.g. synthetic checks) to the Dash0 API.
                             enum:
                               - successful
+                              - partially-successful
                               - failed
                             type: string
                         required:
@@ -410,6 +411,7 @@ custom resource definition for synthetic checks should match snapshot:
                         (e.g. synthetic checks) to the Dash0 API.
                       enum:
                         - successful
+                        - partially-successful
                         - failed
                       type: string
                     synchronizedAt:

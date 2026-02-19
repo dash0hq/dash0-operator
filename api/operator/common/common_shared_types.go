@@ -163,3 +163,40 @@ type Header struct {
 	// +kubebuilder:validation:Required
 	Value string `json:"value"`
 }
+
+func (e *Export) HasDash0ExportConfigured() bool {
+	return e != nil && e.Dash0 != nil
+}
+
+func (e *Export) HasDash0ApiAccessConfigured() bool {
+	return e.HasDash0ExportConfigured() &&
+		e.Dash0.ApiEndpoint != "" &&
+		(e.Dash0.Authorization.Token != nil || e.Dash0.Authorization.SecretRef != nil)
+}
+
+// CountExports counts the total number of different exports (dash0, grpc, http) in the given slice of Export elements.
+func CountExports(exports []Export) int {
+	count := 0
+	for _, export := range exports {
+		if export.Dash0 != nil {
+			count++
+		}
+		if export.Grpc != nil {
+			count++
+		}
+		if export.Http != nil {
+			count++
+		}
+	}
+	return count
+}
+
+// ToExports is a small helper function to convert a single Export into Exports with a single element.
+func (e *Export) ToExports() []Export {
+	if e == nil {
+		return nil
+	}
+	return []Export{
+		*e,
+	}
+}

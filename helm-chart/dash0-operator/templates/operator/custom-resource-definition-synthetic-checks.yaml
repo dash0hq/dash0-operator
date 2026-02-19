@@ -444,6 +444,7 @@ spec:
                         (e.g. synthetic checks) to the Dash0 API.
                       enum:
                         - successful
+                        - partially-successful
                         - failed
                       type: string
                   required:
@@ -456,6 +457,7 @@ spec:
                   (e.g. synthetic checks) to the Dash0 API.
                 enum:
                   - successful
+                  - partially-successful
                   - failed
                 type: string
               synchronizedAt:

@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -36,7 +37,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Name: "dash0-operator-configuration-test-1",
 					},
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: Dash0ExportWithEndpointAndToken(),
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					},
 				})
 			Expect(err).ToNot(HaveOccurred())
@@ -63,7 +64,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Name: "dash0-operator-configuration-test-1",
 					},
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: Dash0ExportWithEndpointAndToken(),
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 						TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 							Enabled: ptr.To(false),
 						},
@@ -249,7 +250,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 				},
 			}),
-		Entry("given telemetry collection enabled explicitly & individual flags disabled, do nothing",
+		Entry("given telemetry collection enabled explicitly & individual flags disabled, leave everything as provided",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -375,6 +376,96 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: ptr.To(false),
+					},
+				},
+			}),
+
+		Entry("should migrate deprecated export to exports when only export is set",
+			normalizeOperatorConfigurationResourceSpecTestConfig{
+				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+				},
+				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export:  nil,
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: ptr.To(true),
+					},
+					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+						Enabled: ptr.To(true),
+					},
+					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(true),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(false),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+			}),
+		Entry("should not modify exports when only exports is set",
+			normalizeOperatorConfigurationResourceSpecTestConfig{
+				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				},
+				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export:  nil,
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: ptr.To(true),
+					},
+					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+						Enabled: ptr.To(true),
+					},
+					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(true),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(false),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+			}),
+		Entry("should not clear export when both export and exports are set (validation webhook will reject)",
+			normalizeOperatorConfigurationResourceSpecTestConfig{
+				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export:  Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*GrpcExportTest()},
+				},
+				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					// export is NOT cleared, both fields remain as-is
+					Export:  Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*GrpcExportTest()},
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: ptr.To(true),
+					},
+					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+						Enabled: ptr.To(true),
+					},
+					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(true),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: ptr.To(false),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: ptr.To(false),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(true),
 					},
 				},
 			}),

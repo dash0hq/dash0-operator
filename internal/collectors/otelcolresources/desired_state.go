@@ -34,7 +34,6 @@ type oTelColConfig struct {
 	// chart.
 	NamePrefix                                       string
 	Exporters                                        otlpExporters
-	Authorizations                                   dash0ExporterAuthorizations
 	AllMonitoringResources                           []dash0v1beta1.Dash0Monitoring
 	SendBatchMaxSize                                 *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
@@ -964,15 +963,17 @@ func assembleCollectorEnvVars(
 		},
 	}
 
-	for _, auth := range config.Authorizations.all() {
-		authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
-			auth.Authorization,
-			auth.EnvVarName,
-		)
-		if err != nil {
-			return nil, err
+	for _, export := range config.Exporters.allExporters() {
+		if auth := export.Authorization; auth != nil {
+			authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
+				auth.Authorization,
+				auth.EnvVarName,
+			)
+			if err != nil {
+				return nil, err
+			}
+			collectorEnv = append(collectorEnv, authTokenEnvVar)
 		}
-		collectorEnv = append(collectorEnv, authTokenEnvVar)
 	}
 
 	return collectorEnv, nil

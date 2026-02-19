@@ -179,7 +179,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"configuration does not have an export configuration either.")))
 		})
 
-		It("should allow monitoring resource creation without export if there is an available operator configuration resource with an export", func() {
+		It("should allow monitoring resource creation without export(s) if there is an available operator configuration resource with exports", func() {
 			operatorConfigurationResource := CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
@@ -196,7 +196,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("should allow monitoring resource creation with export settings", func() {
+		It("should allow monitoring resource creation with exports settings", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec:       MonitoringResourceDefaultSpec,
@@ -707,5 +707,29 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 		)
+
+		It("should reject monitoring resources with both export and exports set", func() {
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Export:  Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*GrpcExportTest()},
+				},
+			})
+
+			Expect(err).To(MatchError(ContainSubstring(ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive)))
+		})
+
+		It("should allow monitoring resource creation with only export set (mutating webhook migrates it)", func() {
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 	})
 })

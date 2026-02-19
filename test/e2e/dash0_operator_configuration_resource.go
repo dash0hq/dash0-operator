@@ -143,19 +143,12 @@ func waitForOperatorConfigurationResourceToBecomeAvailable() {
 func updateEndpointOfDash0OperatorConfigurationResource(
 	newEndpoint string,
 ) {
-	updateDash0OperatorConfigurationResource(
-		fmt.Sprintf(`
-{
-  "spec": {
-    "export": {
-      "dash0": {
-        "endpoint": "%s"
-      }
-    }
-   }
-}
-`, newEndpoint),
-	)
+	jsonPatch := fmt.Sprintf(`[{
+    "op":"replace",
+    "path":"/spec/exports/0/dash0/endpoint",
+    "value":"%s"
+	}]`, newEndpoint)
+	updateDash0OperatorConfigurationResource(jsonPatch)
 }
 
 func updateDash0OperatorConfigurationResource(
@@ -168,7 +161,7 @@ func updateDash0OperatorConfigurationResource(
 			"Dash0OperatorConfiguration",
 			dash0OperatorConfigurationResourceName,
 			"--type",
-			"merge",
+			"json",
 			"-p",
 			jsonPatch,
 		))).To(Succeed())

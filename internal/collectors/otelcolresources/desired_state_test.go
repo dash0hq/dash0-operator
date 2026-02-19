@@ -46,12 +46,39 @@ const (
 	otelExporterOtlpProtocolEnvVarName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 )
 
-// Test helper functions for creating exporters and authorizations
-func defaultDash0Exporters() otlpExporters {
+// Test helper functions for creating exporters
+func defaultDash0ExportersWithToken() otlpExporters {
 	return otlpExporters{
 		Default: []otlpExporter{{
 			Name:     "otlp_grpc/dash0/default",
 			Endpoint: EndpointDash0Test,
+			Authorization: &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			},
+			Headers: []dash0common.Header{
+				{
+					Name:  util.AuthorizationHeaderName,
+					Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefault),
+				},
+			},
+		}},
+	}
+}
+
+func defaultDash0ExportersWithSecretRef() otlpExporters {
+	return otlpExporters{
+		Default: []otlpExporter{{
+			Name:     "otlp_grpc/dash0/default",
+			Endpoint: EndpointDash0Test,
+			Authorization: &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					SecretRef: &SecretRefTest,
+				},
+			},
 			Headers: []dash0common.Header{
 				{
 					Name:  util.AuthorizationHeaderName,
@@ -67,6 +94,12 @@ func defaultDash0ExportersWithCustomDataset() otlpExporters {
 		Default: []otlpExporter{{
 			Name:     "otlp_grpc/dash0/default",
 			Endpoint: EndpointDash0Test,
+			Authorization: &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			},
 			Headers: []dash0common.Header{
 				{
 					Name:  util.AuthorizationHeaderName,
@@ -106,30 +139,244 @@ func defaultHttpExporters() otlpExporters {
 	}
 }
 
-func defaultDash0AuthorizationsWithToken() dash0ExporterAuthorizations {
-	return dash0ExporterAuthorizations{
-		DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
-			EnvVarName: authEnvVarNameDefault,
-			Authorization: dash0common.Authorization{
-				Token: &AuthorizationTokenTest,
+func multipleDefaultDash0Exporters() otlpExporters {
+	alternativeToken := AuthorizationTokenTestAlternative
+	return otlpExporters{
+		Default: []otlpExporter{
+			{
+				Name:     "otlp_grpc/dash0/default_0",
+				Endpoint: EndpointDash0Test,
+				Authorization: &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefaultIndexed(0),
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
+				Headers: []dash0common.Header{
+					{
+						Name:  util.AuthorizationHeaderName,
+						Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0)),
+					},
+				},
+			},
+			{
+				Name:     "otlp_grpc/dash0/default_1",
+				Endpoint: EndpointDash0TestAlternative,
+				Authorization: &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefaultIndexed(1),
+					Authorization: dash0common.Authorization{
+						Token: &alternativeToken,
+					},
+				},
+				Headers: []dash0common.Header{
+					{
+						Name:  util.AuthorizationHeaderName,
+						Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(1)),
+					},
+				},
 			},
 		},
 	}
 }
 
-func defaultDash0AuthorizationsWithSecretRef() dash0ExporterAuthorizations {
-	return dash0ExporterAuthorizations{
-		DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
-			EnvVarName: authEnvVarNameDefault,
-			Authorization: dash0common.Authorization{
-				SecretRef: &SecretRefTest,
+func multipleMixedDefaultExporters() otlpExporters {
+	return otlpExporters{
+		Default: []otlpExporter{
+			{
+				Name:     "otlp_grpc/dash0/default_0",
+				Endpoint: EndpointDash0Test,
+				Authorization: &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefaultIndexed(0),
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
+				Headers: []dash0common.Header{
+					{
+						Name:  util.AuthorizationHeaderName,
+						Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0)),
+					},
+				},
+			},
+			{
+				Name:     "otlp_grpc/default_1",
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "Key", Value: "Value"},
+				},
+			},
+			{
+				Name:     "otlp_http/default_2/proto",
+				Endpoint: EndpointHttpTest,
+				Encoding: "proto",
+				Headers: []dash0common.Header{
+					{Name: "Key", Value: "Value"},
+				},
 			},
 		},
 	}
 }
 
-func emptyAuthorizations() dash0ExporterAuthorizations {
-	return dash0ExporterAuthorizations{}
+func multipleDefaultAndNamespacedExporters() otlpExporters {
+	alternativeToken := AuthorizationTokenTestAlternative
+	return otlpExporters{
+		Default: []otlpExporter{
+			{
+				Name:     "otlp_grpc/dash0/default_0",
+				Endpoint: EndpointDash0Test,
+				Authorization: &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefaultIndexed(0),
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
+				Headers: []dash0common.Header{
+					{
+						Name:  util.AuthorizationHeaderName,
+						Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0)),
+					},
+				},
+			},
+			{
+				Name:     "otlp_grpc/default_1",
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "Key", Value: "Value"},
+				},
+			},
+		},
+		Namespaced: namespacedOtlpExporters{
+			"namespace-1": {
+				{
+					Name:     "otlp_grpc/dash0/ns/namespace-1_0",
+					Endpoint: EndpointDash0TestAlternative,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNsIndexed("namespace-1", 0),
+						Authorization: dash0common.Authorization{
+							Token: &alternativeToken,
+						},
+					},
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNsIndexed("namespace-1", 0)),
+						},
+					},
+				},
+				{
+					Name:     "otlp_http/ns/namespace-1_1/proto",
+					Endpoint: EndpointHttpTest,
+					Encoding: "proto",
+					Headers: []dash0common.Header{
+						{Name: "Key", Value: "Value"},
+					},
+				},
+			},
+		},
+	}
+}
+
+func multipleDefaultAndMultipleNamespacedExporters() otlpExporters {
+	alternativeToken := AuthorizationTokenTestAlternative
+	return otlpExporters{
+		Default: []otlpExporter{
+			{
+				Name:     "otlp_grpc/dash0/default_0",
+				Endpoint: EndpointDash0Test,
+				Authorization: &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefaultIndexed(0),
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
+				Headers: []dash0common.Header{
+					{
+						Name:  util.AuthorizationHeaderName,
+						Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0)),
+					},
+				},
+			},
+			{
+				Name:     "otlp_grpc/default_1",
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "Key", Value: "Value"},
+				},
+			},
+		},
+		Namespaced: namespacedOtlpExporters{
+			"namespace-1": {
+				{
+					Name:     "otlp_grpc/dash0/ns/namespace-1_0",
+					Endpoint: EndpointDash0TestAlternative,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNsIndexed("namespace-1", 0),
+						Authorization: dash0common.Authorization{
+							Token: &alternativeToken,
+						},
+					},
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNsIndexed("namespace-1", 0)),
+						},
+					},
+				},
+				{
+					Name:     "otlp_http/ns/namespace-1_1/proto",
+					Endpoint: EndpointHttpTest,
+					Encoding: "proto",
+					Headers: []dash0common.Header{
+						{Name: "Key", Value: "Value"},
+					},
+				},
+			},
+			"namespace-2": {
+				{
+					Name:     "otlp_grpc/dash0/ns/namespace-2_0",
+					Endpoint: EndpointDash0TestAlternative,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNsIndexed("namespace-2", 0),
+						Authorization: dash0common.Authorization{
+							Token: &alternativeToken,
+						},
+					},
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNsIndexed("namespace-2", 0)),
+						},
+					},
+				},
+			},
+			"namespace-3": {
+				{
+					Name:     "otlp_grpc/dash0/ns/namespace-3_0",
+					Endpoint: EndpointDash0TestAlternative,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNsIndexed("namespace-3", 0),
+						Authorization: dash0common.Authorization{
+							Token: &alternativeToken,
+						},
+					},
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNsIndexed("namespace-3", 0)),
+						},
+					},
+				},
+				{
+					Name:     "otlp_http/ns/namespace-3_1/proto",
+					Endpoint: EndpointHttpTest,
+					Encoding: "proto",
+					Headers: []dash0common.Header{
+						{Name: "Key", Value: "Value"},
+					},
+				},
+			},
+		},
+	}
 }
 
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
@@ -137,8 +384,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -293,8 +539,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: false,
 			Images: TestImages,
 		}, nil, util.ExtraConfigDefaults)
@@ -334,8 +579,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -353,8 +597,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithSecretRef(),
+			Exporters:         defaultDash0ExportersWithSecretRef(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -375,7 +618,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         defaultHttpExporters(),
-			Authorizations:    emptyAuthorizations(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -399,6 +641,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Default: []otlpExporter{{
 				Name:     "otlp_grpc/dash0/default",
 				Endpoint: EndpointDash0Test,
+				Authorization: &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefault,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
 				Headers: []dash0common.Header{
 					{
 						Name:  util.AuthorizationHeaderName,
@@ -410,6 +658,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				namespace1: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace1),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace1),
+						Authorization: dash0common.Authorization{
+							Token: &token1,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -420,6 +674,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				namespace2: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace2),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace2),
+						Authorization: dash0common.Authorization{
+							Token: &token2,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -430,34 +690,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 		}
 
-		authorizations := dash0ExporterAuthorizations{
-			DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
-				EnvVarName: authEnvVarNameDefault,
-				Authorization: dash0common.Authorization{
-					Token: &AuthorizationTokenTest,
-				},
-			},
-			NamespacedDash0ExporterAuthorizations: dash0ExporterAuthorizationByNamespace{
-				namespace1: {
-					EnvVarName: authEnvVarNameForNs(namespace1),
-					Authorization: dash0common.Authorization{
-						Token: &token1,
-					},
-				},
-				namespace2: {
-					EnvVarName: authEnvVarNameForNs(namespace2),
-					Authorization: dash0common.Authorization{
-						Token: &token2,
-					},
-				},
-			},
-		}
-
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         exporters,
-			Authorizations:    authorizations,
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -497,6 +733,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Default: []otlpExporter{{
 				Name:     "otlp_grpc/dash0/default",
 				Endpoint: EndpointDash0Test,
+				Authorization: &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefault,
+					Authorization: dash0common.Authorization{
+						SecretRef: &SecretRefTest,
+					},
+				},
 				Headers: []dash0common.Header{
 					{
 						Name:  util.AuthorizationHeaderName,
@@ -508,6 +750,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				namespace1: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace1),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace1),
+						Authorization: dash0common.Authorization{
+							SecretRef: &secretRef1,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -518,6 +766,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				namespace2: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace2),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace2),
+						Authorization: dash0common.Authorization{
+							SecretRef: &secretRef2,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -528,34 +782,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 		}
 
-		authorizations := dash0ExporterAuthorizations{
-			DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
-				EnvVarName: authEnvVarNameDefault,
-				Authorization: dash0common.Authorization{
-					SecretRef: &SecretRefTest,
-				},
-			},
-			NamespacedDash0ExporterAuthorizations: dash0ExporterAuthorizationByNamespace{
-				namespace1: {
-					EnvVarName: authEnvVarNameForNs(namespace1),
-					Authorization: dash0common.Authorization{
-						SecretRef: &secretRef1,
-					},
-				},
-				namespace2: {
-					EnvVarName: authEnvVarNameForNs(namespace2),
-					Authorization: dash0common.Authorization{
-						SecretRef: &secretRef2,
-					},
-				},
-			},
-		}
-
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         exporters,
-			Authorizations:    authorizations,
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -595,6 +825,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Default: []otlpExporter{{
 				Name:     "otlp_grpc/dash0/default",
 				Endpoint: EndpointDash0Test,
+				Authorization: &dash0ExporterAuthorization{
+					EnvVarName: authEnvVarNameDefault,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
 				Headers: []dash0common.Header{
 					{
 						Name:  util.AuthorizationHeaderName,
@@ -606,6 +842,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				namespace1: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace1),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace1),
+						Authorization: dash0common.Authorization{
+							Token: &token1,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -616,6 +858,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				namespace2: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace2),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace2),
+						Authorization: dash0common.Authorization{
+							SecretRef: &secretRef2,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -626,34 +874,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 		}
 
-		authorizations := dash0ExporterAuthorizations{
-			DefaultDash0ExporterAuthorization: &dash0ExporterAuthorization{
-				EnvVarName: authEnvVarNameDefault,
-				Authorization: dash0common.Authorization{
-					Token: &AuthorizationTokenTest,
-				},
-			},
-			NamespacedDash0ExporterAuthorizations: dash0ExporterAuthorizationByNamespace{
-				namespace1: {
-					EnvVarName: authEnvVarNameForNs(namespace1),
-					Authorization: dash0common.Authorization{
-						Token: &token1,
-					},
-				},
-				namespace2: {
-					EnvVarName: authEnvVarNameForNs(namespace2),
-					Authorization: dash0common.Authorization{
-						SecretRef: &secretRef2,
-					},
-				},
-			},
-		}
-
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         exporters,
-			Authorizations:    authorizations,
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -684,11 +908,21 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		namespace2 := "with-dashes"
 		namespace3 := "with-multiple-dashes-here"
 
+		token1 := "token-1"
+		token2 := "token-2"
+		token3 := "token-3"
+
 		exporters := otlpExporters{
 			Namespaced: namespacedOtlpExporters{
 				namespace1: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace1),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace1),
+						Authorization: dash0common.Authorization{
+							Token: &token1,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -699,6 +933,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				namespace2: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace2),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace2),
+						Authorization: dash0common.Authorization{
+							Token: &token2,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -709,6 +949,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				namespace3: []otlpExporter{{
 					Name:     fmt.Sprintf("otlp_grpc/dash0/ns/%s", namespace3),
 					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameForNs(namespace3),
+						Authorization: dash0common.Authorization{
+							Token: &token3,
+						},
+					},
 					Headers: []dash0common.Header{
 						{
 							Name:  util.AuthorizationHeaderName,
@@ -719,38 +965,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 		}
 
-		token1 := "token-1"
-		token2 := "token-2"
-		token3 := "token-3"
-
-		authorizations := dash0ExporterAuthorizations{
-			NamespacedDash0ExporterAuthorizations: dash0ExporterAuthorizationByNamespace{
-				namespace1: {
-					EnvVarName: authEnvVarNameForNs(namespace1),
-					Authorization: dash0common.Authorization{
-						Token: &token1,
-					},
-				},
-				namespace2: {
-					EnvVarName: authEnvVarNameForNs(namespace2),
-					Authorization: dash0common.Authorization{
-						Token: &token2,
-					},
-				},
-				namespace3: {
-					EnvVarName: authEnvVarNameForNs(namespace3),
-					Authorization: dash0common.Authorization{
-						Token: &token3,
-					},
-				},
-			},
-		}
-
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         exporters,
-			Authorizations:    authorizations,
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -775,8 +993,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -806,8 +1023,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithSecretRef(),
+			Exporters:         defaultDash0ExportersWithSecretRef(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -839,7 +1055,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         defaultDash0ExportersWithCustomDataset(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -871,7 +1086,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         defaultGrpcExporters(),
-			Authorizations:    emptyAuthorizations(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -901,7 +1115,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         defaultHttpExporters(),
-			Authorizations:    emptyAuthorizations(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -929,8 +1142,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: false,
 			},
@@ -947,8 +1159,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -1096,8 +1307,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -1214,8 +1424,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace:      OperatorNamespace,
 			NamePrefix:             namePrefix,
-			Exporters:              defaultDash0Exporters(),
-			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			Exporters:              defaultDash0ExportersWithToken(),
 			AllMonitoringResources: monitoringResources,
 			Images:                 TestImages,
 		}, monitoringResources, util.ExtraConfigDefaults)
@@ -1231,8 +1440,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			Images: TestImages,
 		}, nil, util.ExtraConfigDefaults)
@@ -1276,8 +1484,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace:      OperatorNamespace,
 			NamePrefix:             namePrefix,
-			Exporters:              defaultDash0Exporters(),
-			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			Exporters:              defaultDash0ExportersWithToken(),
 			AllMonitoringResources: monitoringResources,
 			Images:                 TestImages,
 		}, monitoringResources, util.ExtraConfigDefaults)
@@ -1320,8 +1527,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace:      OperatorNamespace,
 			NamePrefix:             namePrefix,
-			Exporters:              defaultDash0Exporters(),
-			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			Exporters:              defaultDash0ExportersWithToken(),
 			AllMonitoringResources: monitoringResources,
 			Images:                 TestImages,
 		}, monitoringResources, util.ExtraConfigDefaults)
@@ -1350,8 +1556,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -1388,8 +1593,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -1426,8 +1630,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -1461,8 +1664,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Exporters:         defaultDash0Exporters(),
-			Authorizations:    defaultDash0AuthorizationsWithToken(),
+			Exporters:         defaultDash0ExportersWithToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -1493,6 +1695,308 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		offsetVolumeMount := FindVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, offsetStorageVolume.Name)
 		Expect(offsetVolumeFromDesiredState).NotTo(BeNil())
 		Expect(offsetVolumeMount.SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
+	})
+
+	It("should create config with multiple default Dash0 exports (two Dash0 endpoints)", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         multipleDefaultDash0Exporters(),
+			Images:            TestImages,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
+		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+		Expect(configMapContent).To(ContainSubstring(EndpointDash0TestAlternative))
+
+		daemonSet := getDaemonSet(desiredState)
+		podSpec := daemonSet.Spec.Template.Spec
+		container := podSpec.Containers[0]
+
+		// Verify both auth env vars are present with indexed names
+		authEnvVar0 := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(0))
+		Expect(authEnvVar0).NotTo(BeNil())
+		Expect(authEnvVar0.Value).To(Equal(AuthorizationTokenTest))
+
+		authEnvVar1 := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(1))
+		Expect(authEnvVar1).NotTo(BeNil())
+		Expect(authEnvVar1.Value).To(Equal(AuthorizationTokenTestAlternative))
+	})
+
+	It("should create config with multiple mixed default exports (Dash0, gRPC, HTTP)", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         multipleMixedDefaultExporters(),
+			Images:            TestImages,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
+
+		// All three endpoints should appear in the config map
+		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+		Expect(configMapContent).To(ContainSubstring(EndpointGrpcTest))
+		Expect(configMapContent).To(ContainSubstring(EndpointHttpTest))
+
+		daemonSet := getDaemonSet(desiredState)
+		podSpec := daemonSet.Spec.Template.Spec
+		container := podSpec.Containers[0]
+
+		// Only the Dash0 exporter should have an auth env var
+		authEnvVar0 := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(0))
+		Expect(authEnvVar0).NotTo(BeNil())
+		Expect(authEnvVar0.Value).To(Equal(AuthorizationTokenTest))
+
+		// gRPC and HTTP exporters don't have Dash0 auth env vars
+		authEnvVar1 := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(1))
+		Expect(authEnvVar1).To(BeNil())
+		authEnvVar2 := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(2))
+		Expect(authEnvVar2).To(BeNil())
+	})
+
+	It("should create config with multiple default and namespaced exports", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         multipleDefaultAndNamespacedExporters(),
+			Images:            TestImages,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
+
+		// Default exporters should be in the config
+		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+		Expect(configMapContent).To(ContainSubstring(EndpointGrpcTest))
+
+		// Namespaced exporters should also be in the config
+		Expect(configMapContent).To(ContainSubstring(EndpointDash0TestAlternative))
+		Expect(configMapContent).To(ContainSubstring(EndpointHttpTest))
+
+		daemonSet := getDaemonSet(desiredState)
+		podSpec := daemonSet.Spec.Template.Spec
+		container := podSpec.Containers[0]
+
+		// Default Dash0 auth env var (indexed)
+		defaultAuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(0))
+		Expect(defaultAuthEnvVar).NotTo(BeNil())
+		Expect(defaultAuthEnvVar.Value).To(Equal(AuthorizationTokenTest))
+
+		// Namespaced Dash0 auth env var (indexed)
+		nsAuthEnvVar := FindEnvVarByName(container.Env, authEnvVarNameForNsIndexed("namespace-1", 0))
+		Expect(nsAuthEnvVar).NotTo(BeNil())
+		Expect(nsAuthEnvVar.Value).To(Equal(AuthorizationTokenTestAlternative))
+	})
+
+	It("should create config with multiple default exports and verify deployment also gets auth env vars", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         multipleDefaultDash0Exporters(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Images: TestImages,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+
+		// Check deployment config map
+		deploymentConfigMapContent := getDeploymentCollectorConfigMapContent(desiredState)
+		Expect(deploymentConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+		Expect(deploymentConfigMapContent).To(ContainSubstring(EndpointDash0TestAlternative))
+
+		// Check deployment container env vars
+		deployment := getDeployment(desiredState)
+		Expect(deployment).NotTo(BeNil())
+		deploymentContainer := deployment.Spec.Template.Spec.Containers[0]
+
+		authEnvVar0 := FindEnvVarByName(deploymentContainer.Env, authEnvVarNameDefaultIndexed(0))
+		Expect(authEnvVar0).NotTo(BeNil())
+		Expect(authEnvVar0.Value).To(Equal(AuthorizationTokenTest))
+
+		authEnvVar1 := FindEnvVarByName(deploymentContainer.Env, authEnvVarNameDefaultIndexed(1))
+		Expect(authEnvVar1).NotTo(BeNil())
+		Expect(authEnvVar1.Value).To(Equal(AuthorizationTokenTestAlternative))
+	})
+
+	It("should create config with multiple Dash0 exports with mixed auth (token and secret ref)", func() {
+		secretRef := dash0common.SecretRef{
+			Name: "multi-export-secret",
+			Key:  "multi-export-key",
+		}
+		exporters := otlpExporters{
+			Default: []otlpExporter{
+				{
+					Name:     "otlp_grpc/dash0/default_0",
+					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameDefaultIndexed(0),
+						Authorization: dash0common.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0)),
+						},
+					},
+				},
+				{
+					Name:     "otlp_grpc/dash0/default_1",
+					Endpoint: EndpointDash0TestAlternative,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameDefaultIndexed(1),
+						Authorization: dash0common.Authorization{
+							SecretRef: &secretRef,
+						},
+					},
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(1)),
+						},
+					},
+				},
+			},
+		}
+
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         exporters,
+			Images:            TestImages,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		container := daemonSet.Spec.Template.Spec.Containers[0]
+
+		// First export uses token
+		authEnvVar0 := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(0))
+		Expect(authEnvVar0).NotTo(BeNil())
+		Expect(authEnvVar0.Value).To(Equal(AuthorizationTokenTest))
+
+		// Second export uses secret ref
+		authEnvVar1 := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(1))
+		Expect(authEnvVar1).NotTo(BeNil())
+		Expect(authEnvVar1.ValueFrom).NotTo(BeNil())
+		Expect(authEnvVar1.ValueFrom.SecretKeyRef.Name).To(Equal(secretRef.Name))
+		Expect(authEnvVar1.ValueFrom.SecretKeyRef.Key).To(Equal(secretRef.Key))
+	})
+
+	It("should create config with multiple namespaced exports each having multiple exporters", func() {
+		token1 := "token-ns1"
+		token2 := "token-ns2"
+		exporters := otlpExporters{
+			Default: []otlpExporter{
+				{
+					Name:     "otlp_grpc/dash0/default_0",
+					Endpoint: EndpointDash0Test,
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameDefaultIndexed(0),
+						Authorization: dash0common.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+					Headers: []dash0common.Header{
+						{
+							Name:  util.AuthorizationHeaderName,
+							Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0)),
+						},
+					},
+				},
+			},
+			Namespaced: namespacedOtlpExporters{
+				"ns-alpha": {
+					{
+						Name:     "otlp_grpc/dash0/ns/ns-alpha_0",
+						Endpoint: EndpointDash0Test,
+						Authorization: &dash0ExporterAuthorization{
+							EnvVarName: authEnvVarNameForNsIndexed("ns-alpha", 0),
+							Authorization: dash0common.Authorization{
+								Token: &token1,
+							},
+						},
+						Headers: []dash0common.Header{
+							{
+								Name:  util.AuthorizationHeaderName,
+								Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNsIndexed("ns-alpha", 0)),
+							},
+						},
+					},
+					{
+						Name:     "otlp_grpc/ns/ns-alpha_1",
+						Endpoint: EndpointGrpcTest,
+						Headers: []dash0common.Header{
+							{Name: "Key", Value: "Value"},
+						},
+					},
+				},
+				"ns-beta": {
+					{
+						Name:     "otlp_grpc/dash0/ns/ns-beta_0",
+						Endpoint: EndpointDash0TestAlternative,
+						Authorization: &dash0ExporterAuthorization{
+							EnvVarName: authEnvVarNameForNsIndexed("ns-beta", 0),
+							Authorization: dash0common.Authorization{
+								Token: &token2,
+							},
+						},
+						Headers: []dash0common.Header{
+							{
+								Name:  util.AuthorizationHeaderName,
+								Value: fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameForNsIndexed("ns-beta", 0)),
+							},
+						},
+					},
+					{
+						Name:     "otlp_http/ns/ns-beta_1/proto",
+						Endpoint: EndpointHttpTest,
+						Encoding: "proto",
+						Headers: []dash0common.Header{
+							{Name: "Key", Value: "Value"},
+						},
+					},
+				},
+			},
+		}
+
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         exporters,
+			Images:            TestImages,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		container := daemonSet.Spec.Template.Spec.Containers[0]
+
+		// Default export auth
+		defaultAuth := FindEnvVarByName(container.Env, authEnvVarNameDefaultIndexed(0))
+		Expect(defaultAuth).NotTo(BeNil())
+		Expect(defaultAuth.Value).To(Equal(AuthorizationTokenTest))
+
+		// ns-alpha Dash0 export auth
+		nsAlphaAuth := FindEnvVarByName(container.Env, authEnvVarNameForNsIndexed("ns-alpha", 0))
+		Expect(nsAlphaAuth).NotTo(BeNil())
+		Expect(nsAlphaAuth.Value).To(Equal(token1))
+
+		// ns-beta Dash0 export auth
+		nsBetaAuth := FindEnvVarByName(container.Env, authEnvVarNameForNsIndexed("ns-beta", 0))
+		Expect(nsBetaAuth).NotTo(BeNil())
+		Expect(nsBetaAuth.Value).To(Equal(token2))
+
+		// Config map should contain all endpoints
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
+		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+		Expect(configMapContent).To(ContainSubstring(EndpointGrpcTest))
+		Expect(configMapContent).To(ContainSubstring(EndpointDash0TestAlternative))
+		Expect(configMapContent).To(ContainSubstring(EndpointHttpTest))
 	})
 
 	It("rendered objects must be stable", func() {
@@ -1557,8 +2061,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState1, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace:      OperatorNamespace,
 			NamePrefix:             namePrefix,
-			Exporters:              defaultDash0Exporters(),
-			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			Exporters:              multipleDefaultAndMultipleNamespacedExporters(),
 			AllMonitoringResources: monitoringResources1,
 			Images:                 TestImages,
 		}, monitoringResources1, util.ExtraConfigDefaults)
@@ -1568,8 +2071,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace:      OperatorNamespace,
 			NamePrefix:             namePrefix,
-			Exporters:              defaultDash0Exporters(),
-			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			Exporters:              multipleDefaultAndMultipleNamespacedExporters(),
 			AllMonitoringResources: monitoringResources2,
 			Images:                 TestImages,
 		}, monitoringResources2, util.ExtraConfigDefaults)
@@ -1579,8 +2081,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace:      OperatorNamespace,
 			NamePrefix:             namePrefix,
-			Exporters:              defaultDash0Exporters(),
-			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			Exporters:              multipleDefaultAndMultipleNamespacedExporters(),
 			AllMonitoringResources: monitoringResources3,
 			Images:                 TestImages,
 		}, monitoringResources3, util.ExtraConfigDefaults)
@@ -1590,8 +2091,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace:      OperatorNamespace,
 			NamePrefix:             namePrefix,
-			Exporters:              defaultDash0Exporters(),
-			Authorizations:         defaultDash0AuthorizationsWithToken(),
+			Exporters:              multipleDefaultAndMultipleNamespacedExporters(),
 			AllMonitoringResources: monitoringResources4,
 			Images:                 TestImages,
 		}, monitoringResources4, util.ExtraConfigDefaults)

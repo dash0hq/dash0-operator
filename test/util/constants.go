@@ -66,7 +66,7 @@ const (
 )
 
 var (
-	AuthorizationDefaultEnvVar         = "OTELCOL_AUTH_TOKEN_DEFAULT"
+	AuthorizationDefaultEnvVar         = "OTELCOL_AUTH_TOKEN_DEFAULT_0"
 	AuthorizationTokenTest             = "authorization-token-test"
 	AuthorizationHeaderTest            = fmt.Sprintf("Bearer %s", AuthorizationTokenTest)
 	AuthorizationTokenTestAlternative  = "authorization-token-test-alternative"
@@ -130,6 +130,12 @@ func Dash0ExportWithEndpointAndToken() *dash0common.Export {
 				Token: &AuthorizationTokenTest,
 			},
 		},
+	}
+}
+
+func Dash0ExportsWithEndpointAndTokenSingle() []dash0common.Export {
+	return []dash0common.Export{
+		*Dash0ExportWithEndpointAndToken(),
 	}
 }
 

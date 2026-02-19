@@ -85,10 +85,12 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 		It("should fail if no endpoint is provided", func() {
 			operatorConfig := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			operatorConfig.Spec.Export = &dash0common.Export{
-				Dash0: &dash0common.Dash0Configuration{
-					Authorization: dash0common.Authorization{
-						Token: &AuthorizationTokenTest,
+			operatorConfig.Spec.Exports = []dash0common.Export{
+				{
+					Dash0: &dash0common.Dash0Configuration{
+						Authorization: dash0common.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
 					},
 				},
 			}
@@ -97,10 +99,12 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 		It("should fail if neither authorization token nor secret ref are provided for Dash0 exporter", func() {
 			operatorConfig := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			operatorConfig.Spec.Export = &dash0common.Export{
-				Dash0: &dash0common.Dash0Configuration{
-					Endpoint:      EndpointDash0Test,
-					Authorization: dash0common.Authorization{},
+			operatorConfig.Spec.Exports = []dash0common.Export{
+				{
+					Dash0: &dash0common.Dash0Configuration{
+						Endpoint:      EndpointDash0Test,
+						Authorization: dash0common.Authorization{},
+					},
 				},
 			}
 			Expect(k8sClient.Update(ctx, operatorConfig)).To(HaveOccurred())
@@ -149,11 +153,13 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0v1beta1.Dash0MonitoringSpec{
-					Export: &dash0common.Export{
-						Dash0: &dash0common.Dash0Configuration{
-							Endpoint: EndpointDash0TestAlternative,
-							Authorization: dash0common.Authorization{
-								Token: &AuthorizationTokenTestAlternative,
+					Exports: []dash0common.Export{
+						{
+							Dash0: &dash0common.Dash0Configuration{
+								Endpoint: EndpointDash0TestAlternative,
+								Authorization: dash0common.Authorization{
+									Token: &AuthorizationTokenTestAlternative,
+								},
 							},
 						},
 					},

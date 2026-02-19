@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 )
 
@@ -72,6 +73,18 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(_ context.Context, 
 
 func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigurationResourceSpec(spec *dash0v1alpha1.Dash0OperatorConfigurationSpec) bool {
 	patchRequired := false
+
+	// Migrate deprecated export field to exports (only if exports is not set).
+	// If both are set, we leave them as-is and the validating webhook will reject this combination.
+	//nolint:staticcheck
+	if spec.Export != nil && len(spec.Exports) == 0 {
+		//nolint:staticcheck
+		spec.Exports = []dash0common.Export{*spec.Export}
+		//nolint:staticcheck
+		spec.Export = nil
+		patchRequired = true
+	}
+
 	if spec.TelemetryCollection.Enabled == nil {
 		spec.TelemetryCollection.Enabled = ptr.To(true)
 		patchRequired = true

@@ -117,7 +117,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					},
 				},
 			}),
-			Entry("full spec, full status", convertToTestCase{
+			Entry("full spec with deprecated export, full status", convertToTestCase{
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: Dash0MonitoringSpec{
 					Export:              testExport(),
@@ -146,6 +146,64 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					Export: testExport(),
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+					LogCollection: dash0common.LogCollection{
+						Enabled: ptr.To(false),
+					},
+					PrometheusScraping: dash0common.PrometheusScraping{
+						Enabled: ptr.To(false),
+					},
+					Filter:                      testFilter(),
+					Transform:                   testTransform(),
+					NormalizedTransformSpec:     testNormalizedTransform(),
+					SynchronizePersesDashboards: ptr.To(false),
+					SynchronizePrometheusRules:  ptr.To(false),
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(dash0common.ConditionTypeAvailable),
+							Status: metav1.ConditionTrue,
+						},
+					},
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+			}),
+			Entry("full spec with exports, full status", convertToTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: Dash0MonitoringSpec{
+					Exports:             []dash0common.Export{*testExport()},
+					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+					LogCollection: dash0common.LogCollection{
+						Enabled: ptr.To(false),
+					},
+					PrometheusScraping: dash0common.PrometheusScraping{
+						Enabled: ptr.To(false),
+					},
+					Filter:                      testFilter(),
+					Transform:                   testTransform(),
+					NormalizedTransformSpec:     testNormalizedTransform(),
+					SynchronizePersesDashboards: ptr.To(false),
+					SynchronizePrometheusRules:  ptr.To(false),
+				},
+				srcStatus: Dash0MonitoringStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(dash0common.ConditionTypeAvailable),
+							Status: metav1.ConditionTrue,
+						},
+					},
+					PreviousInstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+				},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					Exports: []dash0common.Export{*testExport()},
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
@@ -562,7 +620,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstSpec:       Dash0MonitoringSpec{},
 				expectedDstStatus:     Dash0MonitoringStatus{},
 			}),
-			Entry("full spec, full status", convertFromTestCase{
+			Entry("full spec with deprecated export, full status", convertFromTestCase{
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					Export: testExport(),
@@ -595,6 +653,62 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: Dash0MonitoringSpec{
 					Export:              testExport(),
+					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+					LogCollection: dash0common.LogCollection{
+						Enabled: ptr.To(false),
+					},
+					PrometheusScraping: dash0common.PrometheusScraping{
+						Enabled: ptr.To(false),
+					},
+					Filter:                      testFilter(),
+					Transform:                   testTransform(),
+					NormalizedTransformSpec:     testNormalizedTransform(),
+					SynchronizePersesDashboards: ptr.To(false),
+					SynchronizePrometheusRules:  ptr.To(false),
+				},
+				expectedDstStatus: Dash0MonitoringStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(dash0common.ConditionTypeAvailable),
+							Status: metav1.ConditionTrue,
+						},
+					},
+					PreviousInstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+				},
+			}),
+			Entry("full spec with exports, full status", convertFromTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
+					Exports: []dash0common.Export{*testExport()},
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+					},
+					LogCollection: dash0common.LogCollection{
+						Enabled: ptr.To(false),
+					},
+					PrometheusScraping: dash0common.PrometheusScraping{
+						Enabled: ptr.To(false),
+					},
+					Filter:                      testFilter(),
+					Transform:                   testTransform(),
+					NormalizedTransformSpec:     testNormalizedTransform(),
+					SynchronizePersesDashboards: ptr.To(false),
+					SynchronizePrometheusRules:  ptr.To(false),
+				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(dash0common.ConditionTypeAvailable),
+							Status: metav1.ConditionTrue,
+						},
+					},
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+					},
+				},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: Dash0MonitoringSpec{
+					Exports:             []dash0common.Export{*testExport()},
 					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					LogCollection: dash0common.LogCollection{
 						Enabled: ptr.To(false),

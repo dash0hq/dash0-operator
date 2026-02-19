@@ -35,286 +35,317 @@ func (c *DummyClient) InitializeSelfMonitoringMetrics(_ otelmetric.Meter, _ stri
 	c.hasBeenCalled++
 }
 
-var _ = Describe("The OTel SDK starter", func() {
+var _ = Describe(
+	"The OTel SDK starter", func() {
 
-	ctx := context.Background()
-	logger := ptr.To(log.FromContext(ctx))
+		ctx := context.Background()
+		logger := ptr.To(log.FromContext(ctx))
 
-	It("should start with empty values", func() {
-		oTelSdkStarter := NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper())
-		Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
-		Expect(*oTelSdkStarter.oTelSdkConfigInput.Load()).To(Equal(OTelSdkConfigInput{}))
-		Expect(oTelSdkStarter.activeOTelSdkConfig.Load()).To(BeNil())
-		Expect(*oTelSdkStarter.authTokenFromSecretRef.Load()).To(Equal(""))
-	})
+		It(
+			"should start with empty values", func() {
+				oTelSdkStarter := NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper())
+				Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
+				Expect(*oTelSdkStarter.oTelSdkConfigInput.Load()).To(Equal(OTelSdkConfigInput{}))
+				Expect(oTelSdkStarter.activeOTelSdkConfig.Load()).To(BeNil())
+			},
+		)
 
-	Describe("should start and stop when pre-conditions are met / no longer met", func() {
-		var oTelSdkStarter *OTelSdkStarter
-		var mockChannel chan *common.OTelSdkConfig
+		Describe(
+			"should start and stop when pre-conditions are met / no longer met", func() {
+				var oTelSdkStarter *OTelSdkStarter
+				var mockChannel chan *common.OTelSdkConfig
 
-		BeforeEach(func() {
-			oTelSdkStarter = NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper())
-			mockChannel = make(chan *common.OTelSdkConfig, 100)
-			oTelSdkStarter.startOrRestartOTelSdkChannel = mockChannel
-		})
-
-		It("should start when there is an export with auth token", func() {
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndToken(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-			Expect(config.Endpoint).To(Equal(EndpointDash0Test))
-			Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
-			Expect(config.Headers).To(HaveLen(1))
-			Expect(config.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
-			Expect(config.LogLevel).To(BeEmpty())
-		})
-
-		It("should not start when there is an export with a secret ref and the auth token has not been resolved yet", func() {
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndSecretRef(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).To(BeNil())
-		})
-
-		It("should start when there is an export with a secret ref and the auth token has been resolved", func() {
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndSecretRef(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			oTelSdkStarter.SetDefaultAuthToken(ctx, AuthorizationTokenTest, logger)
-			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-			Expect(config.Endpoint).To(Equal(EndpointDash0Test))
-			Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
-			Expect(config.Headers).To(HaveLen(1))
-			Expect(config.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
-			Expect(config.LogLevel).To(BeEmpty())
-		})
-
-		It("should stop when the export is removed", func() {
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndToken(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-
-			oTelSdkStarter.RemoveOTelSdkParameters(ctx, logger)
-			Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
-		})
-
-		It("should stop when the auth token from the resolved secret ref is removed", func() {
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndSecretRef(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			oTelSdkStarter.SetDefaultAuthToken(ctx, AuthorizationTokenTest, logger)
-			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-
-			oTelSdkStarter.RemoveDefaultAuthToken(ctx, logger)
-			Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
-		})
-
-		It("should not stop when the auth token from the resolved secret ref is removed but the export has a token", func() {
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndToken(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			oTelSdkStarter.SetDefaultAuthToken(ctx, AuthorizationTokenTest, logger)
-			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-
-			oTelSdkStarter.RemoveDefaultAuthToken(ctx, logger)
-			Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeTrue())
-		})
-
-		It("should restart when endpoint changes", func() {
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndToken(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-			Expect(config.Endpoint).To(Equal(EndpointDash0Test))
-
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Endpoint: EndpointDash0TestAlternative,
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
+				BeforeEach(
+					func() {
+						oTelSdkStarter = NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper())
+						mockChannel = make(chan *common.OTelSdkConfig, 100)
+						oTelSdkStarter.startOrRestartOTelSdkChannel = mockChannel
 					},
-				},
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			// shutdown happens synchronously
-			Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
+				)
 
-			// restart happens asynchronously
-			config = readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-			Expect(config.Endpoint).To(Equal(EndpointDash0TestAlternative))
-			Expect(config.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
-		})
-
-		It("should restart when token changes", func() {
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndToken(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-			Expect(config.Endpoint).To(Equal(EndpointDash0Test))
-
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				dash0common.Export{
-					Dash0: &dash0common.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Authorization: dash0common.Authorization{
-							Token: &AuthorizationTokenTestAlternative,
-						},
+				It(
+					"should start when there is an export with auth token", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndToken(),
+							&AuthorizationTokenTest,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.Endpoint).To(Equal(EndpointDash0Test))
+						Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
+						Expect(config.Headers).To(HaveLen(1))
+						Expect(config.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
+						Expect(config.LogLevel).To(BeEmpty())
 					},
-				},
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
-			// shutdown happens synchronously
-			Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
+				)
 
-			// restart happens asynchronously
-			config = readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
-			Expect(config).NotTo(BeNil())
-			Expect(config.Endpoint).To(Equal(EndpointDash0Test))
-			Expect(config.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTestAlternative))
-		})
+				It(
+					"should not start when there is an export but no token", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndSecretRef(),
+							nil,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).To(BeNil())
+					},
+				)
 
-	})
+				It(
+					"should start when there is an export with a resolved secret ref token", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndSecretRef(),
+							&AuthorizationTokenTest,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.Endpoint).To(Equal(EndpointDash0Test))
+						Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
+						Expect(config.Headers).To(HaveLen(1))
+						Expect(config.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
+						Expect(config.LogLevel).To(BeEmpty())
+					},
+				)
 
-	Describe("should notify self monitoring clients and set the logging delegate", func() {
-		var oTelSdkStarter *OTelSdkStarter
-		var delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper
+				It(
+					"should stop when the export is removed", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndToken(),
+							&AuthorizationTokenTest,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
 
-		BeforeEach(func() {
-			delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
-			oTelSdkStarter = NewOTelSdkStarter(delegatingZapCoreWrapper)
-		})
+						oTelSdkStarter.RemoveOTelSdkParameters(ctx, logger)
+						Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
+					},
+				)
 
-		It("should notify clients when there is an export with auth token", func() {
+				It(
+					"should stop when the token is removed", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndSecretRef(),
+							&AuthorizationTokenTest,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
 
-			dummyClient1 := &DummyClient{}
-			dummyClient2 := &DummyClient{}
-			oTelSdkStarter.WaitForOTelConfig([]SelfMonitoringMetricsClient{
-				dummyClient1,
-				dummyClient2,
-			})
+						// Re-set parameters with nil token to simulate token removal
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndSecretRef(),
+							nil,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
+					},
+				)
 
-			oTelSdkStarter.SetOTelSdkParameters(
-				ctx,
-				*Dash0ExportWithEndpointAndToken(),
-				ClusterUidTest,
-				ClusterNameTest,
-				OperatorNamespace,
-				OperatorManagerDeploymentUID,
-				OperatorManagerDeploymentName,
-				OperatorVersionTest,
-				false,
-				logger,
-			)
+				It(
+					"should restart when endpoint changes", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndToken(),
+							&AuthorizationTokenTest,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.Endpoint).To(Equal(EndpointDash0Test))
 
-			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
-				g.Expect(dummyClient1.hasBeenCalled).To(Equal(1))
-				g.Expect(dummyClient2.hasBeenCalled).To(Equal(1))
-			}).Should(Succeed())
-		})
-	})
-})
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							dash0common.Export{
+								Dash0: &dash0common.Dash0Configuration{
+									Endpoint: EndpointDash0TestAlternative,
+									Authorization: dash0common.Authorization{
+										Token: &AuthorizationTokenTest,
+									},
+								},
+							},
+							&AuthorizationTokenTest,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						// shutdown happens synchronously
+						Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
+
+						// restart happens asynchronously
+						config = readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.Endpoint).To(Equal(EndpointDash0TestAlternative))
+						Expect(config.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
+					},
+				)
+
+				It(
+					"should restart when token changes", func() {
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndToken(),
+							&AuthorizationTokenTest,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.Endpoint).To(Equal(EndpointDash0Test))
+
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							dash0common.Export{
+								Dash0: &dash0common.Dash0Configuration{
+									Endpoint: EndpointDash0Test,
+									Authorization: dash0common.Authorization{
+										Token: &AuthorizationTokenTestAlternative,
+									},
+								},
+							},
+							&AuthorizationTokenTestAlternative,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+						// shutdown happens synchronously
+						Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
+
+						// restart happens asynchronously
+						config = readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+						Expect(config).NotTo(BeNil())
+						Expect(config.Endpoint).To(Equal(EndpointDash0Test))
+						Expect(config.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTestAlternative))
+					},
+				)
+
+			},
+		)
+
+		Describe(
+			"should notify self monitoring clients and set the logging delegate", func() {
+				var oTelSdkStarter *OTelSdkStarter
+				var delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper
+
+				BeforeEach(
+					func() {
+						delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
+						oTelSdkStarter = NewOTelSdkStarter(delegatingZapCoreWrapper)
+					},
+				)
+
+				It(
+					"should notify clients when there is an export with auth token", func() {
+
+						dummyClient1 := &DummyClient{}
+						dummyClient2 := &DummyClient{}
+						oTelSdkStarter.WaitForOTelConfig(
+							[]SelfMonitoringMetricsClient{
+								dummyClient1,
+								dummyClient2,
+							},
+						)
+
+						oTelSdkStarter.SetOTelSdkParameters(
+							ctx,
+							*Dash0ExportWithEndpointAndToken(),
+							&AuthorizationTokenTest,
+							ClusterUidTest,
+							ClusterNameTest,
+							OperatorNamespace,
+							OperatorManagerDeploymentUID,
+							OperatorManagerDeploymentName,
+							OperatorVersionTest,
+							false,
+							logger,
+						)
+
+						Eventually(
+							func(g Gomega) {
+								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+								g.Expect(dummyClient1.hasBeenCalled).To(Equal(1))
+								g.Expect(dummyClient2.hasBeenCalled).To(Equal(1))
+							},
+						).Should(Succeed())
+					},
+				)
+			},
+		)
+	},
+)
 
 func readFromChannelWithTimeout(
 	oTelSdkStarter *OTelSdkStarter,

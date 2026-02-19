@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,21 +26,19 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/resources"
-	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type MonitoringReconciler struct {
 	client.Client
-	clientset                  *kubernetes.Clientset
-	namespacedApiClients       []NamespacedApiClient
-	namespacedAuthTokenClients []selfmonitoringapiaccess.NamespacedAuthTokenClient
-	instrumenter               *instrumentation.Instrumenter
-	collectorManager           *collectors.CollectorManager
-	targetAllocatorManager     *targetallocator.TargetAllocatorManager
-	danglingEventsTimeouts     *util.DanglingEventsTimeouts
-	operatorNamespace          string
+	clientset              *kubernetes.Clientset
+	namespacedApiClients   []NamespacedApiClient
+	instrumenter           *instrumentation.Instrumenter
+	collectorManager       *collectors.CollectorManager
+	targetAllocatorManager *targetallocator.TargetAllocatorManager
+	danglingEventsTimeouts *util.DanglingEventsTimeouts
+	operatorNamespace      string
 }
 
 type statusUpdateInfo struct {
@@ -91,10 +90,6 @@ func NewMonitoringReconciler(
 	}
 }
 
-func (r *MonitoringReconciler) SetNamespacedAuthTokenClients(namespacedAuthTokenClients []selfmonitoringapiaccess.NamespacedAuthTokenClient) {
-	r.namespacedAuthTokenClients = namespacedAuthTokenClients
-}
-
 func (r *MonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.danglingEventsTimeouts == nil {
 		r.danglingEventsTimeouts = defaultDanglingEventsTimeouts
@@ -144,8 +139,10 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// The error has already been logged in checkIfNamespaceExists.
 		return ctrl.Result{}, err
 	} else if !namespaceStillExists {
-		logger.Info("The namespace seems to have been deleted after this reconcile request has been scheduled. " +
-			"Ignoring the reconcile request.")
+		logger.Info(
+			"The namespace seems to have been deleted after this reconcile request has been scheduled. " +
+				"Ignoring the reconcile request.",
+		)
 		return ctrl.Result{}, nil
 	}
 
@@ -233,12 +230,6 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	err = r.handleDash0Authorization(ctx, monitoringResource, &logger)
-	if err != nil {
-		logger.Error(err, "error when handling the Dash0 authorization information in the monitoring resource")
-		return ctrl.Result{}, err
-	}
-
 	var requiredAction util.ModificationMode
 	monitoringResource, requiredAction, statusUpdate :=
 		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, &logger)
@@ -276,73 +267,71 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *MonitoringReconciler) handleDash0Authorization(
-	ctx context.Context,
-	monitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger *logr.Logger,
-) error {
-	if monitoringResource.Spec.Export != nil &&
-		monitoringResource.Spec.Export.Dash0 != nil {
-		if monitoringResource.Spec.Export.Dash0.Authorization.SecretRef != nil {
-			if err := selfmonitoringapiaccess.ExchangeSecretRefForNamespacedToken(
-				ctx,
-				r.Client,
-				r.namespacedAuthTokenClients,
-				r.operatorNamespace,
-				monitoringResource,
-				logger,
-			); err != nil {
-				logger.Error(err, "cannot exchange secret ref for token")
-				return err
-			}
-		} else if monitoringResource.Spec.Export.Dash0.Authorization.Token != nil &&
-			*monitoringResource.Spec.Export.Dash0.Authorization.Token != "" {
-			for _, nsAuthTokenClient := range r.namespacedAuthTokenClients {
-				nsAuthTokenClient.SetNamespacedAuthToken(ctx, monitoringResource.Namespace, *monitoringResource.Spec.Export.Dash0.Authorization.Token, logger)
-			}
-		} else {
-			// The monitoring resource neither has a secret ref nor a token literal, remove the auth token
-			// for the resource's namespace from all clients.
-			for _, nsAuthTokenClient := range r.namespacedAuthTokenClients {
-				nsAuthTokenClient.RemoveNamespacedAuthToken(ctx, monitoringResource.Namespace, logger)
-			}
-		}
-	} else {
-		// The monitoring resource has no Dash0 export and hence also no auth token, remove the auth token
-		// for the resource's namespace from all clients.
-		for _, nsAuthTokenClient := range r.namespacedAuthTokenClients {
-			nsAuthTokenClient.RemoveNamespacedAuthToken(ctx, monitoringResource.Namespace, logger)
-		}
-	}
-	return nil
-}
-
 func (r *MonitoringReconciler) applyApiAccessSettings(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger logr.Logger,
 ) {
 	if monitoringResource.HasDash0ApiAccessConfigured() {
-		dataset := monitoringResource.Spec.Export.Dash0.Dataset
-		if dataset == "" {
-			dataset = util.DatasetDefault
+		var apiConfigs []ApiConfig
+		for idx, dash0Config := range monitoringResource.GetDash0Exports() {
+			token, err := selfmonitoringapiaccess.GetAuthTokenForDash0Export(
+				ctx,
+				r.Client,
+				r.operatorNamespace,
+				dash0Config,
+				logger,
+			)
+			if err != nil || token == nil {
+				logger.Info(
+					fmt.Sprintf(
+						"Could not retrieve token for export #%d (endpoint: %s) in namespace %s. "+
+							"This export will be skipped, but other exports will continue to be processed.",
+						idx+1,
+						dash0Config.ApiEndpoint,
+						monitoringResource.Namespace,
+					),
+				)
+				continue
+			}
+			apiConfig := ApiConfig{
+				Endpoint: dash0Config.ApiEndpoint,
+				Dataset:  dash0Config.Dataset,
+				Token:    *token,
+			}
+			apiConfigs = append(apiConfigs, apiConfig)
+		}
+		if len(apiConfigs) == 0 {
+			logger.Info(
+				fmt.Sprintf(
+					"None of the configured exports in namespace %s have valid tokens. "+
+						"API sync in this namespace will attempt to use the defaults from the operator configuration.",
+					monitoringResource.Namespace,
+				),
+			)
+			for _, apiClient := range r.namespacedApiClients {
+				apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, &logger)
+			}
+			return
 		}
 		for _, apiClient := range r.namespacedApiClients {
-			apiClient.SetNamespacedApiEndpointAndDataset(
+			apiClient.SetNamespacedApiConfigs(
 				ctx,
 				monitoringResource.Namespace,
-				&ApiConfig{
-					Endpoint: monitoringResource.Spec.Export.Dash0.ApiEndpoint,
-					Dataset:  dataset,
-				}, &logger)
-
+				apiConfigs,
+				&logger,
+			)
 		}
 	} else {
-		logger.Info(fmt.Sprintf("The API endpoint setting required for managing dashboards, check rules, synthetic checks and "+
-			"views via the operator is not set or has been removed from the monitoring resource in namespace %s. API sync will use "+
-			"defaults from the operator configuration.", monitoringResource.Namespace))
+		logger.Info(
+			fmt.Sprintf(
+				"The API config settings required for managing dashboards, check rules, synthetic checks and "+
+					"views via the operator are not set or have been removed from the monitoring resource in namespace %s. API sync will use "+
+					"defaults from the operator configuration.", monitoringResource.Namespace,
+			),
+		)
 		for _, apiClient := range r.namespacedApiClients {
-			apiClient.RemoveNamespacedApiEndpointAndDataset(ctx, monitoringResource.Namespace, &logger)
+			apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, &logger)
 		}
 	}
 }
@@ -364,17 +353,23 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	var requiredAction util.ModificationMode
 	if !isFirstReconcile {
 		if previousInstrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeAll && previousInstrumentWorkloadsMode != "" && currentInstrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeAll {
-			logger.Info(fmt.Sprintf(
-				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\" (or it is absent, in which case it"+
-					"defaults to \"all\"). Workloads in this namespace will now be instrumented so they send "+
-					"telemetry to Dash0.", previousInstrumentWorkloadsMode, currentInstrumentWorkloadsMode))
+			logger.Info(
+				fmt.Sprintf(
+					"The instrumentWorkloads mode has changed from \"%s\" to \"%s\" (or it is absent, in which case it"+
+						"defaults to \"all\"). Workloads in this namespace will now be instrumented so they send "+
+						"telemetry to Dash0.", previousInstrumentWorkloadsMode, currentInstrumentWorkloadsMode,
+				),
+			)
 			requiredAction = util.ModificationModeInstrumentation
 		} else if previousInstrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone && currentInstrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
-			logger.Info(fmt.Sprintf(
-				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\". Instrumented workloads in this "+
-					"namespace will now be uninstrumented, they will no longer send telemetry to Dash0.",
-				previousInstrumentWorkloadsMode,
-				currentInstrumentWorkloadsMode))
+			logger.Info(
+				fmt.Sprintf(
+					"The instrumentWorkloads mode has changed from \"%s\" to \"%s\". Instrumented workloads in this "+
+						"namespace will now be uninstrumented, they will no longer send telemetry to Dash0.",
+					previousInstrumentWorkloadsMode,
+					currentInstrumentWorkloadsMode,
+				),
+			)
 			requiredAction = util.ModificationModeUninstrumentation
 		}
 
@@ -437,10 +432,15 @@ func (r *MonitoringReconciler) runCleanupActions(
 		return err
 	}
 
-	if finalizersUpdated := controllerutil.RemoveFinalizer(monitoringResource, dash0common.MonitoringFinalizerId); finalizersUpdated {
+	if finalizersUpdated := controllerutil.RemoveFinalizer(
+		monitoringResource,
+		dash0common.MonitoringFinalizerId,
+	); finalizersUpdated {
 		if err := r.Update(ctx, monitoringResource); err != nil {
-			logger.Error(err, "Failed to remove the finalizer from the Dash0 monitoring resource, requeuing reconcile "+
-				"request.")
+			logger.Error(
+				err, "Failed to remove the finalizer from the Dash0 monitoring resource, requeuing reconcile "+
+					"request.",
+			)
 			return err
 		}
 	}
@@ -485,9 +485,11 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 		retryErr := util.RetryWithCustomBackoff(
 			"attaching dangling event to involved object",
 			func() error {
-				danglingEvents, listErr := legacyEventApi.List(ctx, metav1.ListOptions{
-					FieldSelector: fmt.Sprintf("involvedObject.uid=,reason=%s", eventType),
-				})
+				danglingEvents, listErr := legacyEventApi.List(
+					ctx, metav1.ListOptions{
+						FieldSelector: fmt.Sprintf("involvedObject.uid=,reason=%s", eventType),
+					},
+				)
 				if listErr != nil {
 					return listErr
 				}
@@ -503,8 +505,12 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 						allAttachErrors = append(allAttachErrors, attachErr)
 					} else {
 						involvedObject := event.InvolvedObject
-						logger.Info(fmt.Sprintf("Attached '%s' event (uid: %s) to its associated object (%s %s/%s).",
-							eventType, event.UID, involvedObject.Kind, involvedObject.Namespace, involvedObject.Name))
+						logger.Info(
+							fmt.Sprintf(
+								"Attached '%s' event (uid: %s) to its associated object (%s %s/%s).",
+								eventType, event.UID, involvedObject.Kind, involvedObject.Namespace, involvedObject.Name,
+							),
+						)
 					}
 				}
 				if len(allAttachErrors) > 0 {
@@ -515,7 +521,8 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 					logger.Info(
 						fmt.Sprintf(
 							"%d dangling event(s) have been successfully attached to its/their associated object(s).",
-							len(danglingEvents.Items)),
+							len(danglingEvents.Items),
+						),
 					)
 				}
 
@@ -528,8 +535,11 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 		)
 
 		if retryErr != nil {
-			logger.Error(retryErr, fmt.Sprintf(
-				"Could not attach all dangling events after %d retries.", backoff.Steps))
+			logger.Error(
+				retryErr, fmt.Sprintf(
+					"Could not attach all dangling events after %d retries.", backoff.Steps,
+				),
+			)
 		}
 	}
 }
@@ -580,7 +590,10 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 	if strings.TrimSpace(statusUpdate.previousInstrumentWorkloadsLabelSelector) != strings.TrimSpace(statusUpdate.currentInstrumentWorkloadsLabelSelector) {
 		monitoringResource.Status.PreviousInstrumentWorkloads.LabelSelector = statusUpdate.currentInstrumentWorkloadsLabelSelector
 	}
-	if util.IsStringPointerValueDifferent(statusUpdate.previousTraceContextPropagators, statusUpdate.currentTraceContextPropagators) {
+	if util.IsStringPointerValueDifferent(
+		statusUpdate.previousTraceContextPropagators,
+		statusUpdate.currentTraceContextPropagators,
+	) {
 		monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = statusUpdate.currentTraceContextPropagators
 	}
 	if err := r.Status().Update(ctx, monitoringResource); err != nil {

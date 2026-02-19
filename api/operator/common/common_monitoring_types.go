@@ -289,14 +289,17 @@ type NormalizedTransformGroup struct {
 // Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
 // (e.g. synthetic checks) to the Dash0 API.
 //
-// +kubebuilder:validation:Enum=successful;failed
+// +kubebuilder:validation:Enum=successful;partially-successful;failed
 type Dash0ApiResourceSynchronizationStatus string
 
 const (
-	// Dash0ApiResourceSynchronizationStatusSuccessful means the last synchronization attempt has been successsful.
+	// Dash0ApiResourceSynchronizationStatusSuccessful means the resource was synced successfully to all provided endpoints/datasets.
 	Dash0ApiResourceSynchronizationStatusSuccessful Dash0ApiResourceSynchronizationStatus = "successful"
 
-	// Dash0ApiResourceSynchronizationStatusFailed means the last synchronization attempt has failed.
+	// Dash0ApiResourceSynchronizationStatusPartiallySuccessful means the sync has succeeded for some endpoints/datasets and failed for others.
+	Dash0ApiResourceSynchronizationStatusPartiallySuccessful Dash0ApiResourceSynchronizationStatus = "partially-successful"
+
+	// Dash0ApiResourceSynchronizationStatusFailed means the resource could not be synced to any endpoints/datasets.
 	Dash0ApiResourceSynchronizationStatusFailed Dash0ApiResourceSynchronizationStatus = "failed"
 )
 

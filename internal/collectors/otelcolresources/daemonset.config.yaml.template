@@ -20,8 +20,7 @@ Note that the first option will also consume _all_ preceding line breaks, so if 
 use option 2.
 */}}
 
-{{- $root := . -}}
-{{- $hasNamespacedExporters := gt (len .NamespacedExporters) 0 -}}
+{{- $hasNamespacedExporters := gt (len .Exporters.Namespaced) 0 -}}
 
 extensions:
   health_check:
@@ -46,7 +45,8 @@ connectors:
     default_pipelines: [traces/export/default]
     error_mode: ignore
     table:
-    {{- range $ns, $exporters := .NamespacedExporters }}
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+    {{- $exporters := index $.Exporters.Namespaced $ns }}
       - context: resource
         condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
         pipelines:
@@ -58,7 +58,8 @@ connectors:
     default_pipelines: [metrics/export/default]
     error_mode: ignore
     table:
-    {{- range $ns, $exporters := .NamespacedExporters }}
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+    {{- $exporters := index $.Exporters.Namespaced $ns }}
       - context: resource
         condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
         pipelines:
@@ -70,7 +71,8 @@ connectors:
     default_pipelines: [logs/export/default]
     error_mode: ignore
     table:
-    {{- range $ns, $exporters := .NamespacedExporters }}
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+    {{- $exporters := index $.Exporters.Namespaced $ns }}
       - context: resource
         condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
 
@@ -721,7 +723,7 @@ exporters:
   debug: {}
   {{- end }}
 
-  {{- range $i, $exporter := .DefaultExporters }}
+  {{- range $i, $exporter := .Exporters.Default }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
     {{- if $exporter.Insecure }}
@@ -742,7 +744,8 @@ exporters:
     {{- end }}
   {{- end }}
 
-  {{- range $ns, $exporters := .NamespacedExporters }}
+  {{- range $ns := .Exporters.AllNamespaceKeys }}
+  {{- $exporters := index $.Exporters.Namespaced $ns }}
   {{- range $i, $exporter := $exporters }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
@@ -816,16 +819,17 @@ service:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
       {{- end }}
-      {{- range $i, $exporter := .DefaultExporters }}
+      {{- range $i, $exporter := .Exporters.Default }}
         - {{ $exporter.Name }}
       {{- end }}
 
-    {{- range $ns, $exporters := .NamespacedExporters }}
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+    {{- $exporters := index $.Exporters.Namespaced $ns }}
     traces/export/ns/{{- $ns -}}:
       receivers:
         - routing/traces
       exporters:
-      {{- if (or $root.DevelopmentMode $root.DebugVerbosityDetailed) }}
+      {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
       {{- end }}
       {{- range $i, $exporter := $exporters }}
@@ -896,16 +900,17 @@ service:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
-        {{- range $i, $exporter := .DefaultExporters }}
+        {{- range $i, $exporter := .Exporters.Default }}
         - {{ $exporter.Name }}
         {{- end }}
 
-    {{- range $ns, $exporters := .NamespacedExporters }}
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+    {{- $exporters := index $.Exporters.Namespaced $ns }}
     metrics/export/ns/{{- $ns -}}:
       receivers:
         - routing/metrics
       exporters:
-        {{- if (or $root.DevelopmentMode $root.DebugVerbosityDetailed) }}
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
         {{- end }}
         {{- range $i, $exporter := $exporters }}
@@ -969,16 +974,17 @@ service:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
-        {{- range $i, $exporter := .DefaultExporters }}
+        {{- range $i, $exporter := .Exporters.Default }}
         - {{ $exporter.Name }}
         {{- end }}
 
-    {{- range $ns, $exporters := .NamespacedExporters }}
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+    {{- $exporters := index $.Exporters.Namespaced $ns }}
     logs/export/ns/{{- $ns -}}:
       receivers:
         - routing/logs
       exporters:
-        {{- if (or $root.DevelopmentMode $root.DebugVerbosityDetailed) }}
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
         - debug
         {{- end }}
         {{- range $i, $exporter := $exporters }}

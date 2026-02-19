@@ -38,10 +38,8 @@ type ApiClientSetRemoveTestConfig struct {
 	dataset                           string
 	createSecret                      *corev1.Secret
 	expectSetApiEndpointAndDataset    bool
+	expectedApiConfigs                []ApiConfig
 	expectRemoveApiEndpointAndDataset bool
-	expectSetAuthToken                bool
-	expectedAuthToken                 string
-	expectRemoveAuthToken             bool
 }
 
 type SelfMonitoringTestConfig struct {
@@ -61,631 +59,1201 @@ var (
 	createdObjectsOperatorConfigurationControllerTest []client.Object
 	apiClient1                                        *DummyApiClient
 	apiClient2                                        *DummyApiClient
-	authTokenClient1                                  *DummyAuthTokenClient
-	authTokenClient2                                  *DummyAuthTokenClient
 	selfMonitoringMetricsClient1                      *DummySelfMonitoringMetricsClient
 	selfMonitoringMetricsClient2                      *DummySelfMonitoringMetricsClient
 )
 
-var _ = Describe("The operation configuration resource controller", Ordered, func() {
-	ctx := context.Background()
+var _ = Describe(
+	"The operation configuration resource controller", Ordered, func() {
+		ctx := context.Background()
 
-	BeforeAll(func() {
-		EnsureTestNamespaceExists(ctx, k8sClient)
-		EnsureOperatorNamespaceExists(ctx, k8sClient)
-	})
-
-	BeforeEach(func() {
-		authTokenClient1 = &DummyAuthTokenClient{}
-		authTokenClient2 = &DummyAuthTokenClient{}
-		apiClient1 = &DummyApiClient{}
-		apiClient2 = &DummyApiClient{}
-		selfMonitoringMetricsClient1 = &DummySelfMonitoringMetricsClient{}
-		selfMonitoringMetricsClient2 = &DummySelfMonitoringMetricsClient{}
-	})
-
-	AfterEach(func() {
-		for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-			apiClient.Reset()
-		}
-		for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
-			authTokenClient.Reset()
-		}
-		for _, selfMonitoringMetricsClient := range []*DummySelfMonitoringMetricsClient{
-			selfMonitoringMetricsClient1,
-			selfMonitoringMetricsClient2,
-		} {
-			selfMonitoringMetricsClient.Reset()
-		}
-		createdObjectsOperatorConfigurationControllerTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsOperatorConfigurationControllerTest)
-	})
-
-	Describe("updates all registered API and auth token clients", func() {
-		AfterEach(func() {
-			RemoveOperatorConfigurationResource(ctx, k8sClient)
-		})
-
-		DescribeTable("when setting or removing the API config or authorization", func(config ApiClientSetRemoveTestConfig) {
-			if config.createSecret != nil {
-				Expect(k8sClient.Create(ctx, config.createSecret)).To(Succeed())
-				createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, config.createSecret)
-			}
-
-			reconciler = createReconciler()
-			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
-				ctx,
-				k8sClient,
-				config.operatorConfigurationResourceSpec,
-			)
-
-			expectedDataset := "default"
-			if config.dataset != "" {
-				operatorConfigurationResource.Spec.Export.Dash0.Dataset = config.dataset
-				Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
-				expectedDataset = config.dataset
-			}
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-				if config.expectSetApiEndpointAndDataset {
-					Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(1))
-					Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(0))
-					Expect(apiClient.defaultApiConfig).ToNot(BeNil())
-					Expect(apiClient.defaultApiConfig.Endpoint).To(Equal(ApiEndpointTest))
-					Expect(apiClient.defaultApiConfig.Dataset).To(Equal(expectedDataset))
-				}
-				if config.expectRemoveApiEndpointAndDataset {
-					Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(0))
-					Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(1))
-					Expect(apiClient.defaultApiConfig).To(BeNil())
-				}
-			}
-			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
-				if config.expectSetAuthToken {
-					Expect(authTokenClient.SetAuthTokenCalls).To(Equal(1))
-					Expect(authTokenClient.RemoveAuthTokenCalls).To(Equal(0))
-				}
-				if config.expectRemoveAuthToken {
-					Expect(authTokenClient.SetAuthTokenCalls).To(Equal(0))
-					Expect(authTokenClient.RemoveAuthTokenCalls).To(Equal(1))
-				}
-				Expect(authTokenClient.AuthToken).To(Equal(config.expectedAuthToken))
-			}
-		},
-
-			Entry("no API endpoint, no Dash0 export", ApiClientSetRemoveTestConfig{
-				operatorConfigurationResourceSpec: OperatorConfigurationResourceWithoutExport,
-				expectSetApiEndpointAndDataset:    false,
-				expectRemoveApiEndpointAndDataset: true,
-				expectSetAuthToken:                false,
-				expectRemoveAuthToken:             true,
-			}),
-			Entry("no API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
-				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithToken,
-				expectSetApiEndpointAndDataset:    false,
-				expectRemoveApiEndpointAndDataset: true,
-				expectSetAuthToken:                true,
-				expectedAuthToken:                 AuthorizationTokenTest,
-				expectRemoveAuthToken:             false,
-			}),
-			Entry("no API endpoint, Dash0 export with secret ref", ApiClientSetRemoveTestConfig{
-				createSecret:                      DefaultSecret(),
-				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
-				expectSetApiEndpointAndDataset:    false,
-				expectRemoveApiEndpointAndDataset: true,
-				expectSetAuthToken:                true,
-				expectedAuthToken:                 AuthorizationTokenTestFromSecret,
-				expectRemoveAuthToken:             false,
-			}),
-			Entry("API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
-				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
-				expectSetApiEndpointAndDataset:    true,
-				expectRemoveApiEndpointAndDataset: false,
-				expectSetAuthToken:                true,
-				expectedAuthToken:                 AuthorizationTokenTest,
-				expectRemoveAuthToken:             false,
-			}),
-			Entry("API endpoint, Dash0 export with secret ref", ApiClientSetRemoveTestConfig{
-				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
-				createSecret:                      DefaultSecret(),
-				expectSetApiEndpointAndDataset:    true,
-				expectRemoveApiEndpointAndDataset: false,
-				expectSetAuthToken:                true,
-				expectedAuthToken:                 AuthorizationTokenTestFromSecret,
-				expectRemoveAuthToken:             false,
-			}),
-			Entry("API endpoint, Dash0 export with token, custom dataset", ApiClientSetRemoveTestConfig{
-				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
-				dataset:                           "custom-dataset",
-				expectSetApiEndpointAndDataset:    true,
-				expectRemoveApiEndpointAndDataset: false,
-				expectSetAuthToken:                true,
-				expectedAuthToken:                 AuthorizationTokenTest,
-				expectRemoveAuthToken:             false,
-			}),
-			Entry("API endpoint, Dash0 export with secret ref, custom dataset", ApiClientSetRemoveTestConfig{
-				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
-				dataset:                           "custom-dataset",
-				createSecret:                      DefaultSecret(),
-				expectSetApiEndpointAndDataset:    true,
-				expectRemoveApiEndpointAndDataset: false,
-				expectSetAuthToken:                true,
-				expectedAuthToken:                 AuthorizationTokenTestFromSecret,
-				expectRemoveAuthToken:             false,
-			}),
+		BeforeAll(
+			func() {
+				EnsureTestNamespaceExists(ctx, k8sClient)
+				EnsureOperatorNamespaceExists(ctx, k8sClient)
+			},
 		)
-	})
 
-	Describe("when creating the operator configuration resource", func() {
-		BeforeEach(func() {
-			reconciler = createReconciler()
-		})
+		BeforeEach(
+			func() {
+				apiClient1 = &DummyApiClient{}
+				apiClient2 = &DummyApiClient{}
+				selfMonitoringMetricsClient1 = &DummySelfMonitoringMetricsClient{}
+				selfMonitoringMetricsClient2 = &DummySelfMonitoringMetricsClient{}
+			},
+		)
 
-		AfterEach(func() {
-			RemoveOperatorConfigurationResource(ctx, k8sClient)
-		})
-
-		Describe("when creating the collector resources", func() {
-
-			It("should add the collector resources", func() {
-				CreateOperatorConfigurationResourceWithSpec(
+		AfterEach(
+			func() {
+				for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+					apiClient.Reset()
+				}
+				for _, selfMonitoringMetricsClient := range []*DummySelfMonitoringMetricsClient{
+					selfMonitoringMetricsClient1,
+					selfMonitoringMetricsClient2,
+				} {
+					selfMonitoringMetricsClient.Reset()
+				}
+				createdObjectsOperatorConfigurationControllerTest = DeleteAllCreatedObjects(
 					ctx,
 					k8sClient,
-					dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: Dash0ExportWithEndpointAndToken(),
-						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: ptr.To(false),
-						},
-						ClusterName: ClusterNameTest,
+					createdObjectsOperatorConfigurationControllerTest,
+				)
+			},
+		)
+
+		Describe(
+			"updates all registered API and auth token clients", func() {
+				AfterEach(
+					func() {
+						RemoveOperatorConfigurationResource(ctx, k8sClient)
 					},
 				)
 
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+				DescribeTable(
+					"when setting or removing the API config or authorization", func(config ApiClientSetRemoveTestConfig) {
+						if config.createSecret != nil {
+							Expect(k8sClient.Create(ctx, config.createSecret)).To(Succeed())
+							createdObjectsOperatorConfigurationControllerTest = append(
+								createdObjectsOperatorConfigurationControllerTest,
+								config.createSecret,
+							)
+						}
 
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
-			})
+						reconciler = createReconciler()
+						operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
+							ctx,
+							k8sClient,
+							config.operatorConfigurationResourceSpec,
+						)
 
-			DescribeTable("it starts the OTel SDK for self-monitoring in the operator manager deployment",
-				func(config SelfMonitoringTestConfig) {
-					if config.createSecret != nil {
-						Expect(k8sClient.Create(ctx, config.createSecret)).To(Succeed())
-						createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, config.createSecret)
-					}
+						expectedDataset := "default"
+						if config.dataset != "" {
+							operatorConfigurationResource.Spec.Exports[0].Dash0.Dataset = config.dataset
+							Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+							expectedDataset = config.dataset
+						}
 
-					CreateOperatorConfigurationResourceWithSpec(
-						ctx,
-						k8sClient,
-						dash0v1alpha1.Dash0OperatorConfigurationSpec{
-							Export: config.createExport(),
-							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: ptr.To(config.selfMonitoringEnabled),
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+							if config.expectSetApiEndpointAndDataset {
+								Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(1))
+								Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(0))
+								Expect(apiClient.defaultApiConfigs).ToNot(BeNil())
+								if config.expectedApiConfigs != nil {
+									Expect(apiClient.defaultApiConfigs).To(HaveLen(len(config.expectedApiConfigs)))
+								}
+								for i, expectedApiConfig := range config.expectedApiConfigs {
+									expectedEndpoint := expectedApiConfig.Endpoint
+									if expectedEndpoint == "" {
+										expectedEndpoint = ApiEndpointTest
+									}
+									expectedDs := expectedApiConfig.Dataset
+									if expectedDs == "" {
+										expectedDs = expectedDataset
+									}
+									Expect(apiClient.defaultApiConfigs[i].Endpoint).To(Equal(expectedEndpoint))
+									Expect(apiClient.defaultApiConfigs[i].Dataset).To(Equal(expectedDs))
+									Expect(apiClient.defaultApiConfigs[i].Token).To(Equal(expectedApiConfig.Token))
+								}
+							}
+							if config.expectRemoveApiEndpointAndDataset {
+								Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(0))
+								Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(1))
+								Expect(apiClient.defaultApiConfigs).To(BeNil())
+							}
+						}
+					},
+
+					Entry(
+						"no API endpoint, no Dash0 export", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: OperatorConfigurationResourceWithoutExport,
+							expectSetApiEndpointAndDataset:    false,
+							expectRemoveApiEndpointAndDataset: true,
+						},
+					),
+					Entry(
+						"no API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithToken,
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+						},
+					),
+					Entry(
+						"no API endpoint, Dash0 export with secret ref", ApiClientSetRemoveTestConfig{
+							createSecret:                      DefaultSecret(),
+							operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+						},
+					),
+					Entry(
+						"API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs:                []ApiConfig{{Token: AuthorizationTokenTest}},
+						},
+					),
+					Entry(
+						"API endpoint, Dash0 export with secret ref", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
+							createSecret:                      DefaultSecret(),
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs:                []ApiConfig{{Token: AuthorizationTokenTestFromSecret}},
+						},
+					),
+					Entry(
+						"API endpoint, Dash0 export with token, custom dataset", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
+							dataset:                           "custom-dataset",
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs:                []ApiConfig{{Token: AuthorizationTokenTest}},
+						},
+					),
+					Entry(
+						"API endpoint, Dash0 export with secret ref, custom dataset", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
+							dataset:                           "custom-dataset",
+							createSecret:                      DefaultSecret(),
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs:                []ApiConfig{{Token: AuthorizationTokenTestFromSecret}},
+						},
+					),
+
+					Entry(
+						"multiple exports, first Dash0 with API endpoint and token, second gRPC", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: ptr.To(false),
+								},
+								Exports: []dash0common.Export{
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint:    EndpointDash0Test,
+											ApiEndpoint: ApiEndpointTest,
+											Authorization: dash0common.Authorization{
+												Token: &AuthorizationTokenTest,
+											},
+										},
+									},
+									{
+										Grpc: &dash0common.GrpcConfiguration{
+											Endpoint: EndpointGrpcTest,
+											Headers: []dash0common.Header{
+												{
+													Name:  "Key",
+													Value: "Value",
+												},
+											},
+										},
+									},
+								},
 							},
-							ClusterName: ClusterNameTest,
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs:                []ApiConfig{{Token: AuthorizationTokenTest}},
 						},
-					)
+					),
 
-					reconciler.oTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
-						selfMonitoringMetricsClient1,
-						selfMonitoringMetricsClient2,
-					})
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-					verifyOperatorConfigurationResourceIsAvailable(ctx)
+					Entry(
+						"multiple exports, first Dash0 with API endpoint and secret ref, second Dash0 with token",
+						ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: ptr.To(false),
+								},
+								Exports: []dash0common.Export{
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint:    EndpointDash0Test,
+											ApiEndpoint: ApiEndpointTest,
+											Authorization: dash0common.Authorization{
+												SecretRef: &SecretRefTest,
+											},
+										},
+									},
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint:    EndpointDash0TestAlternative,
+											ApiEndpoint: ApiEndpointTestAlternative,
+											Authorization: dash0common.Authorization{
+												Token: &AuthorizationTokenTestAlternative,
+											},
+										},
+									},
+								},
+							},
+							createSecret:                      DefaultSecret(),
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs: []ApiConfig{
+								{Endpoint: ApiEndpointTest, Token: AuthorizationTokenTestFromSecret},
+								{Endpoint: ApiEndpointTestAlternative, Token: AuthorizationTokenTestAlternative},
+							},
+						},
+					),
 
-					Eventually(func(g Gomega) {
-						sdkIsActive, activeOTelSdkConfig, _ :=
-							reconciler.oTelSdkStarter.ForTestOnlyGetState()
-						g.Expect(sdkIsActive).To(Equal(config.expectedSdkIsActive))
-						if config.expectHasConfig {
-							g.Expect(activeOTelSdkConfig).ToNot(BeNil())
-							g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(config.expectedEndpoint))
-							g.Expect(activeOTelSdkConfig.Protocol).To(Equal(config.expectedProtocol))
-							verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
+					Entry(
+						"multiple exports, neither Dash0 export has API endpoint", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: ptr.To(false),
+								},
+								Exports: []dash0common.Export{
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint: EndpointDash0Test,
+											Authorization: dash0common.Authorization{
+												Token: &AuthorizationTokenTest,
+											},
+										},
+									},
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint: EndpointDash0TestAlternative,
+											Authorization: dash0common.Authorization{
+												Token: &AuthorizationTokenTestAlternative,
+											},
+										},
+									},
+								},
+							},
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+						},
+					),
 
-							g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(len(config.expectedHeaders)))
-							for key, value := range config.expectedHeaders {
-								g.Expect(activeOTelSdkConfig.Headers[key]).To(Equal(value))
-							}
+					Entry(
+						"multiple exports, first gRPC, second Dash0 with API endpoint and token", ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: ptr.To(false),
+								},
+								Exports: []dash0common.Export{
+									{
+										Grpc: &dash0common.GrpcConfiguration{
+											Endpoint: EndpointGrpcTest,
+											Headers: []dash0common.Header{
+												{
+													Name:  "Key",
+													Value: "Value",
+												},
+											},
+										},
+									},
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint:    EndpointDash0TestAlternative,
+											ApiEndpoint: ApiEndpointTestAlternative,
+											Authorization: dash0common.Authorization{
+												Token: &AuthorizationTokenTestAlternative,
+											},
+										},
+									},
+								},
+							},
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs: []ApiConfig{
+								{
+									Endpoint: ApiEndpointTestAlternative,
+									Token:    AuthorizationTokenTestAlternative,
+								},
+							},
+						},
+					),
 
-						} else {
-							g.Expect(activeOTelSdkConfig).To(BeNil())
-						}
+					Entry(
+						"multiple exports, first has non-existing secret, second has token",
+						ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: ptr.To(false),
+								},
+								Exports: []dash0common.Export{
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint:    EndpointDash0Test,
+											ApiEndpoint: ApiEndpointTest,
+											Authorization: dash0common.Authorization{
+												SecretRef: &SecretRefTest, // secret NOT created
+											},
+										},
+									},
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint:    EndpointDash0TestAlternative,
+											ApiEndpoint: ApiEndpointTestAlternative,
+											Authorization: dash0common.Authorization{
+												Token: &AuthorizationTokenTestAlternative,
+											},
+										},
+									},
+								},
+							},
+							// no createSecret — first export's secret ref cannot be resolved
+							expectSetApiEndpointAndDataset:    true,
+							expectRemoveApiEndpointAndDataset: false,
+							expectedApiConfigs: []ApiConfig{
+								{Endpoint: ApiEndpointTestAlternative, Token: AuthorizationTokenTestAlternative},
+							},
+						},
+					),
 
-						for _, smc := range []*DummySelfMonitoringMetricsClient{
-							selfMonitoringMetricsClient1,
-							selfMonitoringMetricsClient2,
-						} {
-							if config.expectedSdkIsActive {
+					Entry(
+						"multiple exports, all have non-existing secrets — all removed",
+						ApiClientSetRemoveTestConfig{
+							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: ptr.To(false),
+								},
+								Exports: []dash0common.Export{
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint:    EndpointDash0Test,
+											ApiEndpoint: ApiEndpointTest,
+											Authorization: dash0common.Authorization{
+												SecretRef: &SecretRefTest,
+											},
+										},
+									},
+									{
+										Dash0: &dash0common.Dash0Configuration{
+											Endpoint:    EndpointDash0TestAlternative,
+											ApiEndpoint: ApiEndpointTestAlternative,
+											Authorization: dash0common.Authorization{
+												SecretRef: &SecretRefTest,
+											},
+										},
+									},
+								},
+							},
+							expectSetApiEndpointAndDataset:    false,
+							expectRemoveApiEndpointAndDataset: true,
+						},
+					),
+				)
+			},
+		)
+
+		Describe(
+			"when creating the operator configuration resource", func() {
+				BeforeEach(
+					func() {
+						reconciler = createReconciler()
+					},
+				)
+
+				AfterEach(
+					func() {
+						RemoveOperatorConfigurationResource(ctx, k8sClient)
+					},
+				)
+
+				Describe(
+					"when creating the collector resources", func() {
+
+						It(
+							"should add the collector resources", func() {
+								CreateOperatorConfigurationResourceWithSpec(
+									ctx,
+									k8sClient,
+									dash0v1alpha1.Dash0OperatorConfigurationSpec{
+										Exports: Dash0ExportWithEndpointAndToken().ToExports(),
+										SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+											Enabled: ptr.To(false),
+										},
+										ClusterName: ClusterNameTest,
+									},
+								)
+
+								triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+
+								VerifyCollectorResources(
+									ctx,
+									k8sClient,
+									operatorNamespace,
+									EndpointDash0Test,
+									AuthorizationDefaultEnvVar,
+									AuthorizationTokenTest,
+								)
+							},
+						)
+
+						DescribeTable(
+							"it starts the OTel SDK for self-monitoring in the operator manager deployment",
+							func(config SelfMonitoringTestConfig) {
+								if config.createSecret != nil {
+									Expect(k8sClient.Create(ctx, config.createSecret)).To(Succeed())
+									createdObjectsOperatorConfigurationControllerTest = append(
+										createdObjectsOperatorConfigurationControllerTest,
+										config.createSecret,
+									)
+								}
+
+								CreateOperatorConfigurationResourceWithSpec(
+									ctx,
+									k8sClient,
+									dash0v1alpha1.Dash0OperatorConfigurationSpec{
+										Exports: config.createExport().ToExports(),
+										SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+											Enabled: ptr.To(config.selfMonitoringEnabled),
+										},
+										ClusterName: ClusterNameTest,
+									},
+								)
+
+								reconciler.oTelSdkStarter.WaitForOTelConfig(
+									[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+										selfMonitoringMetricsClient1,
+										selfMonitoringMetricsClient2,
+									},
+								)
+								triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+								verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+								Eventually(
+									func(g Gomega) {
+										sdkIsActive, activeOTelSdkConfig :=
+											reconciler.oTelSdkStarter.ForTestOnlyGetState()
+										g.Expect(sdkIsActive).To(Equal(config.expectedSdkIsActive))
+										if config.expectHasConfig {
+											g.Expect(activeOTelSdkConfig).ToNot(BeNil())
+											g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(config.expectedEndpoint))
+											g.Expect(activeOTelSdkConfig.Protocol).To(Equal(config.expectedProtocol))
+											verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
+
+											g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(len(config.expectedHeaders)))
+											for key, value := range config.expectedHeaders {
+												g.Expect(activeOTelSdkConfig.Headers[key]).To(Equal(value))
+											}
+
+										} else {
+											g.Expect(activeOTelSdkConfig).To(BeNil())
+										}
+
+										for _, smc := range []*DummySelfMonitoringMetricsClient{
+											selfMonitoringMetricsClient1,
+											selfMonitoringMetricsClient2,
+										} {
+											if config.expectedSdkIsActive {
+												g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+												g.Expect(smc.InitializeSelfMonitoringMetricsCalls).To(Equal(1))
+											} else {
+												g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
+												g.Expect(smc.InitializeSelfMonitoringMetricsCalls).To(Equal(0))
+											}
+										}
+									}, 1*time.Second, pollingInterval,
+								).Should(Succeed())
+							},
+
+							Entry(
+								"without an export", SelfMonitoringTestConfig{
+									createExport:          NoExport,
+									selfMonitoringEnabled: false,
+									expectedSdkIsActive:   false,
+									expectHasConfig:       false,
+								},
+							),
+							Entry(
+								"with a Dash0 export with a token", SelfMonitoringTestConfig{
+									createExport:          Dash0ExportWithEndpointAndToken,
+									selfMonitoringEnabled: true,
+									expectedSdkIsActive:   true,
+									expectHasConfig:       true,
+									expectedEndpoint:      EndpointDash0Test,
+									expectedProtocol:      common.ProtocolGrpc,
+									expectedHeaders: map[string]string{
+										util.AuthorizationHeaderName: AuthorizationHeaderTest,
+									},
+								},
+							),
+							Entry(
+								"with a Dash0 export with a token and a custom dataset", SelfMonitoringTestConfig{
+									createExport:          Dash0ExportWithEndpointTokenAndCustomDataset,
+									selfMonitoringEnabled: true,
+									expectedSdkIsActive:   true,
+									expectHasConfig:       true,
+									expectedEndpoint:      EndpointDash0Test,
+									expectedProtocol:      common.ProtocolGrpc,
+									expectedHeaders: map[string]string{
+										util.AuthorizationHeaderName: AuthorizationHeaderTest,
+										util.Dash0DatasetHeaderName:  DatasetCustomTest,
+									},
+								},
+							),
+							Entry(
+								"with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
+									createExport:          Dash0ExportWithEndpointAndSecretRef,
+									createSecret:          DefaultSecret(),
+									selfMonitoringEnabled: true,
+									expectedSdkIsActive:   true,
+									expectHasConfig:       true,
+									expectedEndpoint:      EndpointDash0Test,
+									expectedProtocol:      common.ProtocolGrpc,
+									expectedHeaders: map[string]string{
+										util.AuthorizationHeaderName: AuthorizationHeaderTestFromSecret,
+									},
+								},
+							),
+							Entry(
+								"with a Grpc export", SelfMonitoringTestConfig{
+									createExport:          GrpcExportTest,
+									selfMonitoringEnabled: true,
+									expectedSdkIsActive:   true,
+									expectHasConfig:       true,
+									expectedEndpoint:      EndpointGrpcTest,
+									expectedProtocol:      common.ProtocolGrpc,
+									expectedHeaders: map[string]string{
+										"Key": "Value",
+									},
+								},
+							),
+							Entry(
+								"with an HTTP export", SelfMonitoringTestConfig{
+									createExport:          HttpExportTest,
+									selfMonitoringEnabled: true,
+									expectedSdkIsActive:   true,
+									expectHasConfig:       true,
+									expectedEndpoint:      EndpointHttpTest,
+									expectedProtocol:      common.ProtocolHttpProtobuf,
+									expectedHeaders: map[string]string{
+										"Key": "Value",
+									},
+								},
+							),
+						)
+
+						It(
+							"starts the OTel SDK using the first Dash0 export when multiple exports are configured", func() {
+								CreateOperatorConfigurationResourceWithSpec(
+									ctx,
+									k8sClient,
+									dash0v1alpha1.Dash0OperatorConfigurationSpec{
+										Exports: []dash0common.Export{
+											{
+												Dash0: &dash0common.Dash0Configuration{
+													Endpoint: EndpointDash0Test,
+													Authorization: dash0common.Authorization{
+														Token: &AuthorizationTokenTest,
+													},
+												},
+											},
+											{
+												Grpc: &dash0common.GrpcConfiguration{
+													Endpoint: EndpointGrpcTest,
+													Headers: []dash0common.Header{
+														{
+															Name:  "Key",
+															Value: "Value",
+														},
+													},
+												},
+											},
+										},
+										SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+											Enabled: ptr.To(true),
+										},
+										ClusterName: ClusterNameTest,
+									},
+								)
+
+								reconciler.oTelSdkStarter.WaitForOTelConfig(
+									[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+										selfMonitoringMetricsClient1,
+										selfMonitoringMetricsClient2,
+									},
+								)
+								triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+								verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+								Eventually(
+									func(g Gomega) {
+										sdkIsActive, activeOTelSdkConfig :=
+											reconciler.oTelSdkStarter.ForTestOnlyGetState()
+										g.Expect(sdkIsActive).To(BeTrue())
+										g.Expect(activeOTelSdkConfig).ToNot(BeNil())
+										g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0Test))
+										g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
+										verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
+										g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(1))
+										g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
+									}, 1*time.Second, pollingInterval,
+								).Should(Succeed())
+							},
+						)
+
+						It(
+							"starts the OTel SDK using the first export when multiple Dash0 exports are configured", func() {
+								CreateOperatorConfigurationResourceWithSpec(
+									ctx,
+									k8sClient,
+									dash0v1alpha1.Dash0OperatorConfigurationSpec{
+										Exports: []dash0common.Export{
+											{
+												Dash0: &dash0common.Dash0Configuration{
+													Endpoint: EndpointDash0Test,
+													Authorization: dash0common.Authorization{
+														Token: &AuthorizationTokenTest,
+													},
+												},
+											},
+											{
+												Dash0: &dash0common.Dash0Configuration{
+													Endpoint: EndpointDash0TestAlternative,
+													Authorization: dash0common.Authorization{
+														Token: &AuthorizationTokenTestAlternative,
+													},
+													Dataset: DatasetCustomTest,
+												},
+											},
+										},
+										SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+											Enabled: ptr.To(true),
+										},
+										ClusterName: ClusterNameTest,
+									},
+								)
+
+								reconciler.oTelSdkStarter.WaitForOTelConfig(
+									[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+										selfMonitoringMetricsClient1,
+										selfMonitoringMetricsClient2,
+									},
+								)
+								triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+								verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+								Eventually(
+									func(g Gomega) {
+										sdkIsActive, activeOTelSdkConfig :=
+											reconciler.oTelSdkStarter.ForTestOnlyGetState()
+										g.Expect(sdkIsActive).To(BeTrue())
+										g.Expect(activeOTelSdkConfig).ToNot(BeNil())
+										// Verify it uses the first Dash0 export's endpoint, not the second
+										g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0Test))
+										g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
+										verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
+										g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(1))
+										g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
+									}, 1*time.Second, pollingInterval,
+								).Should(Succeed())
+							},
+						)
+					},
+				)
+			},
+		)
+
+		Describe(
+			"when updating or deleting the existing operator configuration resource", func() {
+
+				BeforeEach(
+					func() {
+						reconciler = createReconciler()
+
+						// Reconcile once with self-monitoring enabled and an export, so the tests below start in a state where the
+						// OTel SDK is already active.
+						CreateOperatorConfigurationResourceWithSpec(
+							ctx,
+							k8sClient,
+							dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								Exports: Dash0ExportWithEndpointAndToken().ToExports(),
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: ptr.To(true),
+								},
+								ClusterName: ClusterNameTest,
+							},
+						)
+
+						reconciler.oTelSdkStarter.WaitForOTelConfig(
+							[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+								selfMonitoringMetricsClient1,
+								selfMonitoringMetricsClient2,
+							},
+						)
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						Eventually(
+							func(g Gomega) {
 								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
-								g.Expect(smc.InitializeSelfMonitoringMetricsCalls).To(Equal(1))
-							} else {
+								sdkIsActive, activeOTelSdkConfig :=
+									reconciler.oTelSdkStarter.ForTestOnlyGetState()
+								g.Expect(sdkIsActive).To(BeTrue())
+								g.Expect(activeOTelSdkConfig).ToNot(BeNil())
+							}, 1*time.Second, pollingInterval,
+						).Should(Succeed())
+
+						resetCallCounts()
+					},
+				)
+
+				AfterEach(
+					func() {
+						RemoveOperatorConfigurationResource(ctx, k8sClient)
+					},
+				)
+
+				It(
+					"shuts down the OTel SDK when self-monitoring is disabled or the export config removed", func() {
+						// update operator configuration, removing the export and disabling self-monitoring
+						updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(false)
+						updatedOperatorConfigurationResource.Spec.Exports = nil
+						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
+
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						// verify the OTel SDK has been shut down
+						Eventually(
+							func(g Gomega) {
 								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
-								g.Expect(smc.InitializeSelfMonitoringMetricsCalls).To(Equal(0))
-							}
+								sdkIsActive, activeOTelSdkConfig :=
+									reconciler.oTelSdkStarter.ForTestOnlyGetState()
+								g.Expect(activeOTelSdkConfig).ToNot(BeNil())
+								g.Expect(sdkIsActive).To(BeFalse())
+							}, 1*time.Second, pollingInterval,
+						).Should(Succeed())
+					},
+				)
+
+				It(
+					"restarts the OTel SDK after shutting it down previously", func() {
+						// update operator configuration, removing the export and disabling self-monitoring
+						updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(false)
+						updatedOperatorConfigurationResource.Spec.Exports = nil
+						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
+
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						// verify the OTel SDK has been shut down
+						Eventually(
+							func(g Gomega) {
+								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
+								sdkIsActive, _ :=
+									reconciler.oTelSdkStarter.ForTestOnlyGetState()
+								g.Expect(sdkIsActive).To(BeFalse())
+							}, 1*time.Second, pollingInterval,
+						).Should(Succeed())
+
+						// update operator configuration _once again_, adding the export config back and enabling self-monitoring
+						// again
+						updatedOperatorConfigurationResource = LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(true)
+						updatedOperatorConfigurationResource.Spec.Exports = Dash0ExportWithEndpointAndToken().ToExports()
+						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
+
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						// verify the OTel SDK has been started again
+						Eventually(
+							func(g Gomega) {
+								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+								sdkIsActive, activeOTelSdkConfig :=
+									reconciler.oTelSdkStarter.ForTestOnlyGetState()
+								g.Expect(sdkIsActive).To(BeTrue())
+
+								g.Expect(activeOTelSdkConfig).ToNot(BeNil())
+								g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0Test))
+								g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
+								verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
+
+								g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(1))
+								g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
+							}, 1*time.Second, pollingInterval,
+						).Should(Succeed())
+					},
+				)
+
+				It(
+					"restarts the OTel SDK when it is already running and there is a configuration change", func() {
+
+						// update operator configuration, but do not disable self-monitoring, only change endpoint, dataset and
+						// token
+						updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						updatedOperatorConfigurationResource.Spec.Exports = []dash0common.Export{
+							{
+								Dash0: &dash0common.Dash0Configuration{
+									Endpoint: EndpointDash0TestAlternative,
+									Authorization: dash0common.Authorization{
+										Token: &AuthorizationTokenTestAlternative,
+									},
+									Dataset: DatasetCustomTest,
+								},
+							},
 						}
-					}, 1*time.Second, pollingInterval).Should(Succeed())
-				},
+						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
-				Entry("without an export", SelfMonitoringTestConfig{
-					createExport:          NoExport,
-					selfMonitoringEnabled: false,
-					expectedSdkIsActive:   false,
-					expectHasConfig:       false,
-				}),
-				Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
-					createExport:          Dash0ExportWithEndpointAndToken,
-					selfMonitoringEnabled: true,
-					expectedSdkIsActive:   true,
-					expectHasConfig:       true,
-					expectedEndpoint:      EndpointDash0Test,
-					expectedProtocol:      common.ProtocolGrpc,
-					expectedHeaders: map[string]string{
-						util.AuthorizationHeaderName: AuthorizationHeaderTest,
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						// Verify the OTel SDK has been restarted - well, within this test case we can not actually verify that the
+						// SDK has been shut down before being restarted, but we can verify the new config values. The aspect of
+						// shutting it down and actually restarting it is covered in otel_init_wait_test.go
+						Eventually(
+							func(g Gomega) {
+								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+
+								sdkIsActive, activeOTelSdkConfig :=
+									reconciler.oTelSdkStarter.ForTestOnlyGetState()
+								g.Expect(sdkIsActive).To(BeTrue())
+
+								g.Expect(activeOTelSdkConfig).ToNot(BeNil())
+								g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0TestAlternative))
+								g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
+								verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
+
+								g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(2))
+								g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(
+									Equal(AuthorizationHeaderTestAlternative),
+								)
+								g.Expect(activeOTelSdkConfig.Headers[util.Dash0DatasetHeaderName]).To(Equal(DatasetCustomTest))
+							}, 1*time.Second, pollingInterval,
+						).Should(Succeed())
 					},
-				}),
-				Entry("with a Dash0 export with a token and a custom dataset", SelfMonitoringTestConfig{
-					createExport:          Dash0ExportWithEndpointTokenAndCustomDataset,
-					selfMonitoringEnabled: true,
-					expectedSdkIsActive:   true,
-					expectHasConfig:       true,
-					expectedEndpoint:      EndpointDash0Test,
-					expectedProtocol:      common.ProtocolGrpc,
-					expectedHeaders: map[string]string{
-						util.AuthorizationHeaderName: AuthorizationHeaderTest,
-						util.Dash0DatasetHeaderName:  DatasetCustomTest,
-					},
-				}),
-				Entry("with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
-					createExport:          Dash0ExportWithEndpointAndSecretRef,
-					createSecret:          DefaultSecret(),
-					selfMonitoringEnabled: true,
-					expectedSdkIsActive:   true,
-					expectHasConfig:       true,
-					expectedEndpoint:      EndpointDash0Test,
-					expectedProtocol:      common.ProtocolGrpc,
-					expectedHeaders: map[string]string{
-						util.AuthorizationHeaderName: AuthorizationHeaderTestFromSecret,
-					},
-				}),
-				Entry("with a Grpc export", SelfMonitoringTestConfig{
-					createExport:          GrpcExportTest,
-					selfMonitoringEnabled: true,
-					expectedSdkIsActive:   true,
-					expectHasConfig:       true,
-					expectedEndpoint:      EndpointGrpcTest,
-					expectedProtocol:      common.ProtocolGrpc,
-					expectedHeaders: map[string]string{
-						"Key": "Value",
-					},
-				}),
-				Entry("with an HTTP export", SelfMonitoringTestConfig{
-					createExport:          HttpExportTest,
-					selfMonitoringEnabled: true,
-					expectedSdkIsActive:   true,
-					expectHasConfig:       true,
-					expectedEndpoint:      EndpointHttpTest,
-					expectedProtocol:      common.ProtocolHttpProtobuf,
-					expectedHeaders: map[string]string{
-						"Key": "Value",
-					},
-				}),
-			)
-		})
-	})
-
-	Describe("when updating or deleting the existing operator configuration resource", func() {
-
-		BeforeEach(func() {
-			reconciler = createReconciler()
-
-			// Reconcile once with self-monitoring enabled and an export, so the tests below start in a state where the
-			// OTel SDK is already active.
-			CreateOperatorConfigurationResourceWithSpec(
-				ctx,
-				k8sClient,
-				dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: Dash0ExportWithEndpointAndToken(),
-					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
-					},
-					ClusterName: ClusterNameTest,
-				},
-			)
-
-			reconciler.oTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
-				selfMonitoringMetricsClient1,
-				selfMonitoringMetricsClient2,
-			})
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
-				sdkIsActive, activeOTelSdkConfig, _ :=
-					reconciler.oTelSdkStarter.ForTestOnlyGetState()
-				g.Expect(sdkIsActive).To(BeTrue())
-				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
-			}, 1*time.Second, pollingInterval).Should(Succeed())
-
-			resetCallCounts()
-		})
-
-		AfterEach(func() {
-			RemoveOperatorConfigurationResource(ctx, k8sClient)
-		})
-
-		It("shuts down the OTel SDK when self-monitoring is disabled or the export config removed", func() {
-			// update operator configuration, removing the export and disabling self-monitoring
-			updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(false)
-			updatedOperatorConfigurationResource.Spec.Export = nil
-			Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-			// verify the OTel SDK has been shut down
-			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
-				sdkIsActive, activeOTelSdkConfig, _ :=
-					reconciler.oTelSdkStarter.ForTestOnlyGetState()
-				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
-				g.Expect(sdkIsActive).To(BeFalse())
-			}, 1*time.Second, pollingInterval).Should(Succeed())
-		})
-
-		It("restarts the OTel SDK after shutting it down previously", func() {
-			// update operator configuration, removing the export and disabling self-monitoring
-			updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(false)
-			updatedOperatorConfigurationResource.Spec.Export = nil
-			Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-			// verify the OTel SDK has been shut down
-			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
-				sdkIsActive, _, _ :=
-					reconciler.oTelSdkStarter.ForTestOnlyGetState()
-				g.Expect(sdkIsActive).To(BeFalse())
-			}, 1*time.Second, pollingInterval).Should(Succeed())
-
-			// update operator configuration _once again_, adding the export config back and enabling self-monitoring
-			// again
-			updatedOperatorConfigurationResource = LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(true)
-			updatedOperatorConfigurationResource.Spec.Export = Dash0ExportWithEndpointAndToken()
-			Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-			// verify the OTel SDK has been started again
-			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
-				sdkIsActive, activeOTelSdkConfig, _ :=
-					reconciler.oTelSdkStarter.ForTestOnlyGetState()
-				g.Expect(sdkIsActive).To(BeTrue())
-
-				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
-				g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0Test))
-				g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
-				verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
-
-				g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(1))
-				g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
-			}, 1*time.Second, pollingInterval).Should(Succeed())
-		})
-
-		It("restarts the OTel SDK when it is already running and there is a configuration change", func() {
-
-			// update operator configuration, but do not disable self-monitoring, only change endpoint, dataset and
-			// token
-			updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			updatedOperatorConfigurationResource.Spec.Export = &dash0common.Export{
-				Dash0: &dash0common.Dash0Configuration{
-					Endpoint: EndpointDash0TestAlternative,
-					Authorization: dash0common.Authorization{
-						Token: &AuthorizationTokenTestAlternative,
-					},
-					Dataset: DatasetCustomTest,
-				},
-			}
-			Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
-				Expect(authTokenClient.SetAuthTokenCalls).To(Equal(1))
-				Expect(authTokenClient.AuthToken).To(Equal(AuthorizationTokenTestAlternative))
-			}
-
-			// Verify the OTel SDK has been restarted - well, within this test case we can not actually verify that the
-			// SDK has been shut down before being restarted, but we can verify the new config values. The aspect of
-			// shutting it down and actually restarting it is covered in otel_init_wait_test.go
-			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
-
-				sdkIsActive, activeOTelSdkConfig, _ :=
-					reconciler.oTelSdkStarter.ForTestOnlyGetState()
-				g.Expect(sdkIsActive).To(BeTrue())
-
-				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
-				g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0TestAlternative))
-				g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
-				verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
-
-				g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(2))
-				g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(
-					Equal(AuthorizationHeaderTestAlternative))
-				g.Expect(activeOTelSdkConfig.Headers[util.Dash0DatasetHeaderName]).To(Equal(DatasetCustomTest))
-			}, 1*time.Second, pollingInterval).Should(Succeed())
-		})
-
-		It("shuts down the OTel SDK and removes config values from API clients when the operator configuration resource is deleted", func() {
-			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
-
-			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-				Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(0))
-				Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(1))
-				Expect(apiClient.defaultApiConfig).To(BeNil())
-			}
-			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
-				Expect(authTokenClient.SetAuthTokenCalls).To(Equal(0))
-				Expect(authTokenClient.RemoveAuthTokenCalls).To(Equal(1))
-				Expect(authTokenClient.AuthToken).To(Equal(""))
-			}
-
-			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
-				sdkIsActive, activeOTelSdkConfig, authTokenFromSecretRef :=
-					reconciler.oTelSdkStarter.ForTestOnlyGetState()
-				g.Expect(sdkIsActive).To(BeFalse())
-				g.Expect(activeOTelSdkConfig).To(BeNil())
-				g.Expect(authTokenFromSecretRef).To(BeNil())
-			})
-		})
-
-		It("should remove the collector resources when the operator configuration resource is deleted", func() {
-			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
-
-			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
-
-			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
-		})
-	})
-
-	Describe("when self-healing a degraded resource state", func() {
-
-		BeforeEach(func() {
-			reconciler = createReconciler()
-
-			CreateOperatorConfigurationResourceWithSpec(
-				ctx,
-				k8sClient,
-				dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: Dash0ExportWithEndpointAndToken(),
-					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
-					},
-					ClusterName: ClusterNameTest,
-				},
-			)
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-			// start test in a degraded state
-			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			resource.EnsureResourceIsMarkedAsDegraded("TestReason", "This is a test message.")
-			Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())
-			verifyOperatorConfigurationResourceIsDegraded(ctx)
-		})
-
-		AfterEach(func() {
-			RemoveOperatorConfigurationResource(ctx, k8sClient)
-		})
-
-		It("reconciling should self-heal the degraded state", func() {
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-		})
-	})
-
-	Describe("uniqueness check", func() {
-		It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
-			reconciler = createReconciler()
-			firstName := types.NamespacedName{Name: "resource-1"}
-			firstResource := CreateOperatorConfigurationResourceWithName(
-				ctx,
-				k8sClient,
-				firstName.Name,
-				OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
-			)
-			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, firstResource)
-			time.Sleep(10 * time.Millisecond)
-
-			secondName := types.NamespacedName{Name: "resource-2"}
-			secondResource := CreateOperatorConfigurationResourceWithName(
-				ctx,
-				k8sClient,
-				secondName.Name,
-				OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
-			)
-			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, secondResource)
-			time.Sleep(10 * time.Millisecond)
-
-			thirdName := types.NamespacedName{Name: "resource-3"}
-			thirdResource := CreateOperatorConfigurationResourceWithName(
-				ctx,
-				k8sClient,
-				thirdName.Name,
-				OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
-			)
-			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, thirdResource)
-			time.Sleep(10 * time.Millisecond)
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, firstName.Name)
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, secondName.Name)
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, thirdName.Name)
-
-			Eventually(func(g Gomega) {
-				resource1Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, firstName.Name, dash0common.ConditionTypeAvailable)
-				resource1Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, firstName.Name, dash0common.ConditionTypeDegraded)
-				resource2Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, secondName.Name, dash0common.ConditionTypeAvailable)
-				resource2Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, secondName.Name, dash0common.ConditionTypeDegraded)
-				resource3Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, thirdName.Name, dash0common.ConditionTypeAvailable)
-				resource3Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, thirdName.Name, dash0common.ConditionTypeDegraded)
-
-				// The first two resource should have been marked as degraded.
-				VerifyResourceStatusCondition(
-					g,
-					resource1Available,
-					metav1.ConditionFalse,
-					"NewerResourceIsPresent",
-					"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
-						"remove all but one resource instance.",
 				)
-				VerifyResourceStatusCondition(
-					g,
-					resource1Degraded,
-					metav1.ConditionTrue,
-					"NewerResourceIsPresent",
-					"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
-						"remove all but one resource instance.",
-				)
-				VerifyResourceStatusCondition(g, resource2Available, metav1.ConditionFalse, "NewerResourceIsPresent",
-					"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
-						"remove all but one resource instance.")
-				VerifyResourceStatusCondition(g, resource2Degraded, metav1.ConditionTrue, "NewerResourceIsPresent",
-					"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
-						"remove all but one resource instance.")
 
-				// The third (and most recent) resource should have been marked as available.
-				VerifyResourceStatusCondition(
-					g,
-					resource3Available,
-					metav1.ConditionTrue,
-					"ReconcileFinished",
-					"Dash0 operator configuration is available in this cluster now.",
-				)
-				g.Expect(resource3Degraded).To(BeNil())
+				It(
+					"restarts the OTel SDK when updating from a single export to multiple exports", func() {
+						// update operator configuration, changing from single export to multiple exports
+						updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						updatedOperatorConfigurationResource.Spec.Exports = []dash0common.Export{
+							{
+								Dash0: &dash0common.Dash0Configuration{
+									Endpoint: EndpointDash0TestAlternative,
+									Authorization: dash0common.Authorization{
+										Token: &AuthorizationTokenTestAlternative,
+									},
+									Dataset: DatasetCustomTest,
+								},
+							},
+							{
+								Grpc: &dash0common.GrpcConfiguration{
+									Endpoint: EndpointGrpcTest,
+									Headers: []dash0common.Header{
+										{
+											Name:  "Key",
+											Value: "Value",
+										},
+									},
+								},
+							},
+						}
+						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
-			}, timeout, pollingInterval).Should(Succeed())
-		})
-	})
-})
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						// Verify the OTel SDK uses the first export's configuration
+						Eventually(
+							func(g Gomega) {
+								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+
+								sdkIsActive, activeOTelSdkConfig :=
+									reconciler.oTelSdkStarter.ForTestOnlyGetState()
+								g.Expect(sdkIsActive).To(BeTrue())
+
+								g.Expect(activeOTelSdkConfig).ToNot(BeNil())
+								g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0TestAlternative))
+								g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
+								verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
+
+								g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(2))
+								g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(
+									Equal(AuthorizationHeaderTestAlternative),
+								)
+								g.Expect(activeOTelSdkConfig.Headers[util.Dash0DatasetHeaderName]).To(Equal(DatasetCustomTest))
+							}, 1*time.Second, pollingInterval,
+						).Should(Succeed())
+					},
+				)
+
+				It(
+					"updates API clients when changing from single export to multiple exports with API endpoint", func() {
+						// update operator configuration, adding multiple exports where the first has an API endpoint
+						updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						updatedOperatorConfigurationResource.Spec.Exports = []dash0common.Export{
+							{
+								Dash0: &dash0common.Dash0Configuration{
+									Endpoint:    EndpointDash0TestAlternative,
+									ApiEndpoint: ApiEndpointTestAlternative,
+									Authorization: dash0common.Authorization{
+										Token: &AuthorizationTokenTestAlternative,
+									},
+									Dataset: DatasetCustomTest,
+								},
+							},
+							{
+								Dash0: &dash0common.Dash0Configuration{
+									Endpoint:    EndpointDash0Test,
+									ApiEndpoint: ApiEndpointTest,
+									Authorization: dash0common.Authorization{
+										Token: &AuthorizationTokenTest,
+									},
+								},
+							},
+						}
+						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
+
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						// Verify the API clients use the first export's API endpoint, not the second
+						for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+							Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(1))
+							Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(0))
+							Expect(apiClient.defaultApiConfigs).ToNot(BeNil())
+							Expect(apiClient.defaultApiConfigs).To(HaveLen(2))
+							Expect(apiClient.defaultApiConfigs[0].Endpoint).To(Equal(ApiEndpointTestAlternative))
+							Expect(apiClient.defaultApiConfigs[0].Dataset).To(Equal(DatasetCustomTest))
+							Expect(apiClient.defaultApiConfigs[0].Token).To(Equal(AuthorizationTokenTestAlternative))
+							Expect(apiClient.defaultApiConfigs[1].Endpoint).To(Equal(ApiEndpointTest))
+							Expect(apiClient.defaultApiConfigs[1].Dataset).To(Equal("default"))
+							Expect(apiClient.defaultApiConfigs[1].Token).To(Equal(AuthorizationTokenTest))
+						}
+					},
+				)
+
+				It(
+					"shuts down the OTel SDK and removes config values from API clients when the operator configuration resource is deleted",
+					func() {
+						resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
+
+						for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+							Expect(apiClient.setDefaultApiEndpointCalls).To(Equal(0))
+							Expect(apiClient.removeDefaultApiEndpointCalls).To(Equal(1))
+							Expect(apiClient.defaultApiConfigs).To(BeNil())
+						}
+
+						Eventually(
+							func(g Gomega) {
+								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
+								sdkIsActive, activeOTelSdkConfig :=
+									reconciler.oTelSdkStarter.ForTestOnlyGetState()
+								g.Expect(sdkIsActive).To(BeFalse())
+								g.Expect(activeOTelSdkConfig).To(BeNil())
+							},
+						)
+					},
+				)
+
+				It(
+					"should remove the collector resources when the operator configuration resource is deleted", func() {
+						VerifyCollectorResources(
+							ctx,
+							k8sClient,
+							operatorNamespace,
+							EndpointDash0Test,
+							AuthorizationDefaultEnvVar,
+							AuthorizationTokenTest,
+						)
+
+						resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
+
+						VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+					},
+				)
+			},
+		)
+
+		Describe(
+			"when self-healing a degraded resource state", func() {
+
+				BeforeEach(
+					func() {
+						reconciler = createReconciler()
+
+						CreateOperatorConfigurationResourceWithSpec(
+							ctx,
+							k8sClient,
+							dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								Exports: Dash0ExportWithEndpointAndToken().ToExports(),
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: ptr.To(false),
+								},
+								ClusterName: ClusterNameTest,
+							},
+						)
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+						// start test in a degraded state
+						resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+						resource.EnsureResourceIsMarkedAsDegraded("TestReason", "This is a test message.")
+						Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())
+						verifyOperatorConfigurationResourceIsDegraded(ctx)
+					},
+				)
+
+				AfterEach(
+					func() {
+						RemoveOperatorConfigurationResource(ctx, k8sClient)
+					},
+				)
+
+				It(
+					"reconciling should self-heal the degraded state", func() {
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+					},
+				)
+			},
+		)
+
+		Describe(
+			"uniqueness check", func() {
+				It(
+					"should mark only the most recent resource as available and the other ones as degraded when multiple resources exist",
+					func() {
+						reconciler = createReconciler()
+						firstName := types.NamespacedName{Name: "resource-1"}
+						firstResource := CreateOperatorConfigurationResourceWithName(
+							ctx,
+							k8sClient,
+							firstName.Name,
+							OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+						)
+						createdObjectsOperatorConfigurationControllerTest = append(
+							createdObjectsOperatorConfigurationControllerTest,
+							firstResource,
+						)
+						time.Sleep(10 * time.Millisecond)
+
+						secondName := types.NamespacedName{Name: "resource-2"}
+						secondResource := CreateOperatorConfigurationResourceWithName(
+							ctx,
+							k8sClient,
+							secondName.Name,
+							OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+						)
+						createdObjectsOperatorConfigurationControllerTest = append(
+							createdObjectsOperatorConfigurationControllerTest,
+							secondResource,
+						)
+						time.Sleep(10 * time.Millisecond)
+
+						thirdName := types.NamespacedName{Name: "resource-3"}
+						thirdResource := CreateOperatorConfigurationResourceWithName(
+							ctx,
+							k8sClient,
+							thirdName.Name,
+							OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+						)
+						createdObjectsOperatorConfigurationControllerTest = append(
+							createdObjectsOperatorConfigurationControllerTest,
+							thirdResource,
+						)
+						time.Sleep(10 * time.Millisecond)
+
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, firstName.Name)
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, secondName.Name)
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, thirdName.Name)
+
+						Eventually(
+							func(g Gomega) {
+								resource1Available := LoadOperatorConfigurationResourceStatusCondition(
+									ctx,
+									k8sClient,
+									firstName.Name,
+									dash0common.ConditionTypeAvailable,
+								)
+								resource1Degraded := LoadOperatorConfigurationResourceStatusCondition(
+									ctx,
+									k8sClient,
+									firstName.Name,
+									dash0common.ConditionTypeDegraded,
+								)
+								resource2Available := LoadOperatorConfigurationResourceStatusCondition(
+									ctx,
+									k8sClient,
+									secondName.Name,
+									dash0common.ConditionTypeAvailable,
+								)
+								resource2Degraded := LoadOperatorConfigurationResourceStatusCondition(
+									ctx,
+									k8sClient,
+									secondName.Name,
+									dash0common.ConditionTypeDegraded,
+								)
+								resource3Available := LoadOperatorConfigurationResourceStatusCondition(
+									ctx,
+									k8sClient,
+									thirdName.Name,
+									dash0common.ConditionTypeAvailable,
+								)
+								resource3Degraded := LoadOperatorConfigurationResourceStatusCondition(
+									ctx,
+									k8sClient,
+									thirdName.Name,
+									dash0common.ConditionTypeDegraded,
+								)
+
+								// The first two resource should have been marked as degraded.
+								VerifyResourceStatusCondition(
+									g,
+									resource1Available,
+									metav1.ConditionFalse,
+									"NewerResourceIsPresent",
+									"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
+										"remove all but one resource instance.",
+								)
+								VerifyResourceStatusCondition(
+									g,
+									resource1Degraded,
+									metav1.ConditionTrue,
+									"NewerResourceIsPresent",
+									"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
+										"remove all but one resource instance.",
+								)
+								VerifyResourceStatusCondition(
+									g, resource2Available, metav1.ConditionFalse, "NewerResourceIsPresent",
+									"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
+										"remove all but one resource instance.",
+								)
+								VerifyResourceStatusCondition(
+									g, resource2Degraded, metav1.ConditionTrue, "NewerResourceIsPresent",
+									"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
+										"remove all but one resource instance.",
+								)
+
+								// The third (and most recent) resource should have been marked as available.
+								VerifyResourceStatusCondition(
+									g,
+									resource3Available,
+									metav1.ConditionTrue,
+									"ReconcileFinished",
+									"Dash0 operator configuration is available in this cluster now.",
+								)
+								g.Expect(resource3Degraded).To(BeNil())
+
+							}, timeout, pollingInterval,
+						).Should(Succeed())
+					},
+				)
+			},
+		)
+	},
+)
 
 func verifyOperatorManagerResourceAttributes(g Gomega, oTelSdkConfig *common.OTelSdkConfig) {
 	g.Expect(oTelSdkConfig.ServiceName).To(Equal("operator-manager"))
@@ -725,7 +1293,8 @@ func createReconciler() *OperatorConfigurationReconciler {
 			OperatorNamespace:         operatorNamespace,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
-		})
+		},
+	)
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
 		k8sClient, clientset, util.ExtraConfigDefaults, false, targetallocatorResourceManager,
 	)
@@ -750,15 +1319,14 @@ func createReconciler() *OperatorConfigurationReconciler {
 		OperatorNamespace,
 		false,
 	)
-	operatorConfigurationReconciler.SetAuthTokenClients([]selfmonitoringapiaccess.AuthTokenClient{
-		otelSdkStarter,
-		authTokenClient1,
-		authTokenClient2,
-	})
 	return operatorConfigurationReconciler
 }
 
-func triggerOperatorConfigurationReconcileRequest(ctx context.Context, reconciler *OperatorConfigurationReconciler, name string) {
+func triggerOperatorConfigurationReconcileRequest(
+	ctx context.Context,
+	reconciler *OperatorConfigurationReconciler,
+	name string,
+) {
 	triggerOperatorReconcileRequestForName(ctx, reconciler, name)
 }
 
@@ -768,42 +1336,57 @@ func triggerOperatorReconcileRequestForName(
 	dash0OperatorResourceName string,
 ) {
 	By("Triggering an operator configuration resource reconcile request")
-	_, err := reconciler.Reconcile(ctx, reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: dash0OperatorResourceName},
-	})
+	_, err := reconciler.Reconcile(
+		ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: dash0OperatorResourceName},
+		},
+	)
 	Expect(err).NotTo(HaveOccurred())
 }
 
 func verifyOperatorConfigurationResourceIsAvailable(ctx context.Context) {
 	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
-	Eventually(func(g Gomega) {
-		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(resource.Status.Conditions, string(dash0common.ConditionTypeAvailable))
-		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
-		degradedCondition := meta.FindStatusCondition(resource.Status.Conditions, string(dash0common.ConditionTypeDegraded))
-		g.Expect(degradedCondition).To(BeNil())
-	}, timeout, pollingInterval).Should(Succeed())
+	Eventually(
+		func(g Gomega) {
+			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
+			availableCondition = meta.FindStatusCondition(
+				resource.Status.Conditions,
+				string(dash0common.ConditionTypeAvailable),
+			)
+			g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
+			degradedCondition := meta.FindStatusCondition(
+				resource.Status.Conditions,
+				string(dash0common.ConditionTypeDegraded),
+			)
+			g.Expect(degradedCondition).To(BeNil())
+		}, timeout, pollingInterval,
+	).Should(Succeed())
 }
 
 func verifyOperatorConfigurationResourceIsDegraded(ctx context.Context) {
 	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
-	Eventually(func(g Gomega) {
-		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(resource.Status.Conditions, string(dash0common.ConditionTypeAvailable))
-		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-		degradedCondition := meta.FindStatusCondition(resource.Status.Conditions, string(dash0common.ConditionTypeDegraded))
-		g.Expect(degradedCondition.Status).To(Equal(metav1.ConditionTrue))
-	}, timeout, pollingInterval).Should(Succeed())
+	Eventually(
+		func(g Gomega) {
+			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
+			availableCondition = meta.FindStatusCondition(
+				resource.Status.Conditions,
+				string(dash0common.ConditionTypeAvailable),
+			)
+			g.Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			degradedCondition := meta.FindStatusCondition(
+				resource.Status.Conditions,
+				string(dash0common.ConditionTypeDegraded),
+			)
+			g.Expect(degradedCondition.Status).To(Equal(metav1.ConditionTrue))
+		}, timeout, pollingInterval,
+	).Should(Succeed())
 }
 
 func resetCallCounts() {
 	for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
 		apiClient.ResetCallCounts()
-	}
-	for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
-		authTokenClient.ResetCallCounts()
 	}
 	for _, selfMonitoringMetricsClient := range []*DummySelfMonitoringMetricsClient{
 		selfMonitoringMetricsClient1,
@@ -816,22 +1399,22 @@ func resetCallCounts() {
 type DummyApiClient struct {
 	setDefaultApiEndpointCalls    int
 	removeDefaultApiEndpointCalls int
-	defaultApiConfig              *ApiConfig
+	defaultApiConfigs             []ApiConfig
 }
 
-func (c *DummyApiClient) SetDefaultApiEndpointAndDataset(_ context.Context, apiConfig *ApiConfig, _ *logr.Logger) {
+func (c *DummyApiClient) SetDefaultApiConfigs(_ context.Context, apiConfigs []ApiConfig, _ *logr.Logger) {
 	c.setDefaultApiEndpointCalls++
-	c.defaultApiConfig = apiConfig
+	c.defaultApiConfigs = apiConfigs
 }
 
-func (c *DummyApiClient) RemoveDefaultApiEndpointAndDataset(_ context.Context, _ *logr.Logger) {
+func (c *DummyApiClient) RemoveDefaultApiConfigs(_ context.Context, _ *logr.Logger) {
 	c.removeDefaultApiEndpointCalls++
-	c.defaultApiConfig = nil
+	c.defaultApiConfigs = nil
 }
 
 func (c *DummyApiClient) Reset() {
 	c.ResetCallCounts()
-	c.defaultApiConfig = nil
+	c.defaultApiConfigs = nil
 }
 
 func (c *DummyApiClient) ResetCallCounts() {
@@ -842,28 +1425,33 @@ func (c *DummyApiClient) ResetCallCounts() {
 type DummyNamespacedApiClient struct {
 	setNamespacedApiEndpointCalls    int
 	removeNamespacedApiEndpointCalls int
-	namespacedApiconfig              map[string]*ApiConfig
+	namespacedApiconfigs             map[string][]ApiConfig
 }
 
 func NewDummyNamespacedApiClient() *DummyNamespacedApiClient {
 	return &DummyNamespacedApiClient{
-		namespacedApiconfig: make(map[string]*ApiConfig),
+		namespacedApiconfigs: make(map[string][]ApiConfig),
 	}
 }
 
-func (c *DummyNamespacedApiClient) SetNamespacedApiEndpointAndDataset(_ context.Context, namespace string, apiConfig *ApiConfig, _ *logr.Logger) {
+func (c *DummyNamespacedApiClient) SetNamespacedApiConfigs(
+	_ context.Context,
+	namespace string,
+	apiConfigs []ApiConfig,
+	_ *logr.Logger,
+) {
 	c.setNamespacedApiEndpointCalls++
-	c.namespacedApiconfig[namespace] = apiConfig
+	c.namespacedApiconfigs[namespace] = apiConfigs
 }
 
-func (c *DummyNamespacedApiClient) RemoveNamespacedApiEndpointAndDataset(_ context.Context, namespace string, _ *logr.Logger) {
+func (c *DummyNamespacedApiClient) RemoveNamespacedApiConfigs(_ context.Context, namespace string, _ *logr.Logger) {
 	c.removeNamespacedApiEndpointCalls++
-	delete(c.namespacedApiconfig, namespace)
+	delete(c.namespacedApiconfigs, namespace)
 }
 
 func (c *DummyNamespacedApiClient) Reset() {
 	c.ResetCallCounts()
-	c.namespacedApiconfig = make(map[string]*ApiConfig)
+	c.namespacedApiconfigs = make(map[string][]ApiConfig)
 }
 
 func (c *DummyNamespacedApiClient) ResetCallCounts() {

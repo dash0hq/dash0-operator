@@ -132,7 +132,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			&dash0v1alpha1.Dash0OperatorConfiguration{
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
 						Enabled: ptr.To(true),
 					},
@@ -156,7 +156,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			&dash0v1alpha1.Dash0OperatorConfiguration{
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: ptr.To(false),
@@ -179,7 +179,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			&dash0v1alpha1.Dash0OperatorConfiguration{
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
 						Enabled: ptr.To(true),
 					},
@@ -203,7 +203,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			&dash0v1alpha1.Dash0OperatorConfiguration{
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: ptr.To(true),
 					},
@@ -227,7 +227,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			&dash0v1alpha1.Dash0OperatorConfiguration{
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: ptr.To(true),
 					},
@@ -246,11 +246,13 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			&dash0v1alpha1.Dash0OperatorConfiguration{
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: &dash0common.Export{
-						Grpc: &dash0common.GrpcConfiguration{
-							Endpoint:           EndpointGrpcTest,
-							Insecure:           ptr.To(true),
-							InsecureSkipVerify: ptr.To(true),
+					Exports: []dash0common.Export{
+						{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint:           EndpointGrpcTest,
+								Insecure:           ptr.To(true),
+								InsecureSkipVerify: ptr.To(true),
+							},
 						},
 					},
 				},
@@ -273,16 +275,67 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		Expect(err).ToNot(HaveOccurred())
 
 		operatorConfiguration.Spec.SelfMonitoring.Enabled = ptr.To(true)
-		operatorConfiguration.Spec.Export = &dash0common.Export{
-			Dash0: &dash0common.Dash0Configuration{
-				Endpoint: EndpointDash0Test,
-				Authorization: dash0common.Authorization{
-					Token: &AuthorizationTokenTest,
+		operatorConfiguration.Spec.Exports = []dash0common.Export{
+			{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0common.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
 				},
 			},
 		}
 
 		err = k8sClient.Update(ctx, operatorConfiguration)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("should reject a new operator configuration resource with both export and exports set", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: ptr.To(false),
+					},
+					Export:  Dash0ExportWithEndpointAndToken(),
+					Exports: []dash0common.Export{*GrpcExportTest()},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)))
+	})
+
+	It("should allow a new operator configuration resource with only exports set", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: ptr.To(false),
+					},
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				},
+			})
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("should allow a new operator configuration resource with only export set (mutating webhook migrates it)", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: ptr.To(false),
+					},
+					Export: Dash0ExportWithEndpointAndToken(),
+				},
+			})
 		Expect(err).ToNot(HaveOccurred())
 	})
 })
