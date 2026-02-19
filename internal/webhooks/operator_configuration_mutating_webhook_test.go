@@ -105,7 +105,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 		operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
 			admission.Request{},
 			&spec,
-			&logger,
+			logger,
 		)
 		Expect(spec).To(Equal(testConfig.wanted))
 	}, Entry("given an empty spec, set all default values",
@@ -500,7 +500,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
 				req,
 				&spec,
-				&logger,
+				logger,
 			)
 			//nolint:staticcheck
 			Expect(spec.Export).To(Equal(testConfig.wanted.Export))

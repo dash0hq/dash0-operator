@@ -77,7 +77,7 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 		operatorConfigurationSpec = &availableOperatorConfigurations[0].Spec
 	}
 
-	patchRequired, errorResponse := h.normalizeMonitoringResourceSpec(request, operatorConfigurationSpec, &monitoringResource.Spec, &logger)
+	patchRequired, errorResponse := h.normalizeMonitoringResourceSpec(request, operatorConfigurationSpec, &monitoringResource.Spec, logger)
 
 	if errorResponse != nil {
 		return *errorResponse
@@ -101,7 +101,7 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	request admission.Request,
 	operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
 	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, *admission.Response) {
 	patchRequired := h.setTelemetryCollectionRelatedDefaults(request, operatorConfigurationSpec, monitoringSpec)
 	patchRequiredForLogCollection := h.overrideLogCollectionDefault(request, monitoringSpec, logger)
@@ -180,7 +180,7 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 	request admission.Request,
 	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) bool {
 	if request.Namespace == h.operatorNamespace &&
 		util.ReadBoolPointerWithDefault(monitoringSpec.LogCollection.Enabled, true) {
@@ -206,7 +206,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 func isExportsUnchangedFromOldMonitoringResource(
 	request admission.Request,
 	incomingExports []dash0common.Export,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) bool {
 	if request.Operation != admissionv1.Update {
 		return false
@@ -217,7 +217,7 @@ func isExportsUnchangedFromOldMonitoringResource(
 	oldResource := &dash0v1beta1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
 		logger.Info(
-			"could not decode OldObject for export migration, falling back to default behavior",
+			"could not decode OldObject for export migration, migration will use `exports`",
 			"error", err,
 		)
 		return false
@@ -225,7 +225,7 @@ func isExportsUnchangedFromOldMonitoringResource(
 	return dash0common.ExportsEqual(incomingExports, oldResource.Spec.Exports)
 }
 
-func normalizeTransform(transform *dash0common.Transform, logger *logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
+func normalizeTransform(transform *dash0common.Transform, logger logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
 	traceTransformGroups, responseStatus, err :=
 		normalizeTransformGroupsForOneSignal(transform.Traces, "trace_statements", logger)
 	if err != nil {
@@ -256,7 +256,7 @@ func normalizeTransform(transform *dash0common.Transform, logger *logr.Logger) (
 func normalizeTransformGroupsForOneSignal(
 	signalTransformSpec []json.RawMessage,
 	signalTypeKey string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) ([]dash0common.NormalizedTransformGroup, int32, error) {
 	var allGroups []dash0common.NormalizedTransformGroup
 	for ctxIdx, transformGroup := range signalTransformSpec {

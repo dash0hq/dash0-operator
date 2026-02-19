@@ -72,7 +72,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 			patchRequired := monitoringMutatingWebhookHandler.overrideLogCollectionDefault(
 				toAdmissionRequest(testCase.namespace, spec),
 				&spec,
-				&logger,
+				logger,
 			)
 			Expect(patchRequired).To(Equal(testCase.expectPatch))
 			if testCase.expectPatch {
@@ -543,7 +543,7 @@ spec:
 					req,
 					&dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 					&spec,
-					&logger,
+					logger,
 				)
 				// Only check export/exports fields; other defaults are tested elsewhere.
 				Expect(spec.Export).To(Equal(testConfig.wanted.Export))

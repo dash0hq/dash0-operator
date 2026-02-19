@@ -61,7 +61,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	patchRequired := h.normalizeOperatorConfigurationResourceSpec(request, &operatorConfigurationResource.Spec, &logger)
+	patchRequired := h.normalizeOperatorConfigurationResourceSpec(request, &operatorConfigurationResource.Spec, logger)
 
 	if !patchRequired {
 		return admission.Allowed("no changes")
@@ -79,7 +79,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context
 func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigurationResourceSpec(
 	request admission.Request,
 	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) bool {
 	patchRequired := false
 
@@ -145,7 +145,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 func isExportsUnchangedFromOldOperatorConfigurationResource(
 	request admission.Request,
 	incomingExports []dash0common.Export,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) bool {
 	if request.Operation != admissionv1.Update {
 		return false
@@ -156,7 +156,7 @@ func isExportsUnchangedFromOldOperatorConfigurationResource(
 	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
 		logger.Info(
-			"could not decode OldObject for export migration, falling back to default behavior",
+			"could not decode OldObject for export migration, migration will use `exports`",
 			"error", err,
 		)
 		return false
