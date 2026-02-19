@@ -200,3 +200,104 @@ func (e *Export) ToExports() []Export {
 		*e,
 	}
 }
+
+// ExportsEqual compares two Export slices for equality without using reflect.
+func ExportsEqual(a, b []Export) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !exportEqual(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func exportEqual(a, b Export) bool {
+	return dash0ConfigEqual(a.Dash0, b.Dash0) &&
+		httpConfigEqual(a.Http, b.Http) &&
+		grpcConfigEqual(a.Grpc, b.Grpc)
+}
+
+func dash0ConfigEqual(a, b *Dash0Configuration) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Endpoint == b.Endpoint &&
+		a.Dataset == b.Dataset &&
+		a.ApiEndpoint == b.ApiEndpoint &&
+		stringPtrEqual(a.Authorization.Token, b.Authorization.Token) &&
+		secretRefPtrEqual(a.Authorization.SecretRef, b.Authorization.SecretRef)
+}
+
+func httpConfigEqual(a, b *HttpConfiguration) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Endpoint == b.Endpoint &&
+		a.Encoding == b.Encoding &&
+		boolPtrEqual(a.InsecureSkipVerify, b.InsecureSkipVerify) &&
+		headersEqual(a.Headers, b.Headers)
+}
+
+func grpcConfigEqual(a, b *GrpcConfiguration) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Endpoint == b.Endpoint &&
+		boolPtrEqual(a.Insecure, b.Insecure) &&
+		boolPtrEqual(a.InsecureSkipVerify, b.InsecureSkipVerify) &&
+		headersEqual(a.Headers, b.Headers)
+}
+
+func headersEqual(a, b []Header) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func stringPtrEqual(a, b *string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+func boolPtrEqual(a, b *bool) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+func secretRefPtrEqual(a, b *SecretRef) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Name == b.Name && a.Key == b.Key
+}

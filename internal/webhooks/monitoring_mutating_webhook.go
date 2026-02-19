@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/go-logr/logr"
+	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -106,10 +107,18 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	patchRequiredForLogCollection := h.overrideLogCollectionDefault(request, monitoringSpec, logger)
 	patchRequired = patchRequired || patchRequiredForLogCollection
 
-	// Migrate deprecated export field to exports (only if exports is not set).
-	// If both are set, we leave them as-is and the validating webhook will reject this combination.
-	if monitoringSpec.Export != nil && len(monitoringSpec.Exports) == 0 {
-		monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+	// Migrate deprecated export field to exports, or strip it if exports is already set.
+	// - If only export is set: migrate export → exports (the common upgrade path).
+	// - If both are set on UPDATE and exports matches the stored resource: kubectl's three-way merge carried over the
+	//   old exports from the stored resource. The user's real change is in export, so we migrate export → exports.
+	// - If both are set and exports differs from the stored resource (or this is a CREATE): the user intentionally
+	//   changed exports directly (or is actively migrating). We honor exports and discard export.
+	if monitoringSpec.Export != nil {
+		if len(monitoringSpec.Exports) == 0 {
+			monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+		} else if isExportsUnchangedFromOldMonitoringResource(request, monitoringSpec.Exports, logger) {
+			monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+		}
 		monitoringSpec.Export = nil
 		patchRequired = true
 	}
@@ -188,6 +197,32 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 		return true
 	}
 	return false
+}
+
+// isExportsUnchangedFromOldMonitoringResource checks whether the incoming exports slice matches the previously stored
+// exports on an UPDATE operation. This detects when kubectl's three-way merge carried over the old exports field (set
+// by a prior webhook migration), so the user's real intent is in the deprecated export field.
+// Returns false for CREATE operations, decode failures, or when exports differ.
+func isExportsUnchangedFromOldMonitoringResource(
+	request admission.Request,
+	incomingExports []dash0common.Export,
+	logger *logr.Logger,
+) bool {
+	if request.Operation != admissionv1.Update {
+		return false
+	}
+	if request.OldObject.Raw == nil {
+		return false
+	}
+	oldResource := &dash0v1beta1.Dash0Monitoring{}
+	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
+		logger.Info(
+			"could not decode OldObject for export migration, falling back to default behavior",
+			"error", err,
+		)
+		return false
+	}
+	return dash0common.ExportsEqual(incomingExports, oldResource.Spec.Exports)
 }
 
 func normalizeTransform(transform *dash0common.Transform, logger *logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {

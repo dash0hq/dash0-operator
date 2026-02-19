@@ -4,8 +4,14 @@
 package webhooks
 
 import (
+	"encoding/json"
+
+	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -21,7 +27,15 @@ type normalizeOperatorConfigurationResourceSpecTestConfig struct {
 	wanted dash0v1alpha1.Dash0OperatorConfigurationSpec
 }
 
+type migrateOperatorConfigExportToExportsTestConfig struct {
+	operation admissionv1.Operation
+	oldSpec   *dash0v1alpha1.Dash0OperatorConfigurationSpec
+	spec      dash0v1alpha1.Dash0OperatorConfigurationSpec
+	wanted    dash0v1alpha1.Dash0OperatorConfigurationSpec
+}
+
 var _ = Describe("The mutating webhook for the operator configuration resource", func() {
+	logger := log.FromContext(ctx)
 
 	Describe("when a new operator configuration resource is created", Ordered, func() {
 		AfterEach(func() {
@@ -88,7 +102,11 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 
 	DescribeTable("should normalize the resource spec", func(testConfig normalizeOperatorConfigurationResourceSpecTestConfig) {
 		spec := testConfig.spec
-		operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(&spec)
+		operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
+			admission.Request{},
+			&spec,
+			&logger,
+		)
 		Expect(spec).To(Equal(testConfig.wanted))
 	}, Entry("given an empty spec, set all default values",
 		normalizeOperatorConfigurationResourceSpecTestConfig{
@@ -438,15 +456,15 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 				},
 			}),
-		Entry("should not clear export when both export and exports are set (validation webhook will reject)",
+		Entry("CREATE: should clear export and keep exports when both are set",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Export:  Dash0ExportWithEndpointAndToken(),
 					Exports: []dash0common.Export{*GrpcExportTest()},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					// export is NOT cleared, both fields remain as-is
-					Export:  Dash0ExportWithEndpointAndToken(),
+					// export is cleared, exports is kept as-is
+					Export:  nil,
 					Exports: []dash0common.Export{*GrpcExportTest()},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: ptr.To(true),
@@ -470,4 +488,91 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				},
 			}),
 	)
+
+	DescribeTable("should handle export to exports migration on UPDATE",
+		func(testConfig migrateOperatorConfigExportToExportsTestConfig) {
+			spec := testConfig.spec
+			req := toOperatorConfigAdmissionRequestWithOldObject(
+				spec,
+				testConfig.operation,
+				testConfig.oldSpec,
+			)
+			operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
+				req,
+				&spec,
+				&logger,
+			)
+			//nolint:staticcheck
+			Expect(spec.Export).To(Equal(testConfig.wanted.Export))
+			Expect(spec.Exports).To(Equal(testConfig.wanted.Exports))
+		},
+		Entry("UPDATE: should use export when exports is unchanged from stored resource (three-way merge carry-over)",
+			migrateOperatorConfigExportToExportsTestConfig{
+				operation: admissionv1.Update,
+				oldSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					// This is what was stored after the previous webhook migration.
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				},
+				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					// export has the user's new intended value
+					Export: GrpcExportTest(),
+					// exports is the same as oldSpec.Exports — carried over by three-way merge
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				},
+				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: nil,
+					// The webhook should use the value from export, not the stale exports.
+					Exports: []dash0common.Export{*GrpcExportTest()},
+				},
+			}),
+		Entry("UPDATE: should keep exports when exports has been changed by the user",
+			migrateOperatorConfigExportToExportsTestConfig{
+				operation: admissionv1.Update,
+				oldSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+				},
+				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: HttpExportTest(),
+					// exports differs from oldSpec — user intentionally changed it
+					Exports: []dash0common.Export{*GrpcExportTest()},
+				},
+				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export:  nil,
+					Exports: []dash0common.Export{*GrpcExportTest()},
+				},
+			}),
+	)
 })
+
+func toOperatorConfigAdmissionRequestWithOldObject(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	operation admissionv1.Operation,
+	oldSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
+) admission.Request {
+	rawJson, err := json.Marshal(dash0v1alpha1.Dash0OperatorConfiguration{
+		Spec: spec,
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	req := admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Name:      OperatorConfigurationResourceName,
+			Operation: operation,
+			Object: runtime.RawExtension{
+				Raw: rawJson,
+			},
+		},
+	}
+
+	if oldSpec != nil {
+		oldRawJson, err := json.Marshal(dash0v1alpha1.Dash0OperatorConfiguration{
+			Spec: *oldSpec,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		req.AdmissionRequest.OldObject = runtime.RawExtension{
+			Raw: oldRawJson,
+		}
+	}
+
+	return req
+}

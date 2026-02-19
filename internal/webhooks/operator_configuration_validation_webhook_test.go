@@ -290,23 +290,6 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should reject a new operator configuration resource with both export and exports set", func() {
-		_, err := CreateOperatorConfigurationResource(
-			ctx,
-			k8sClient,
-			&dash0v1alpha1.Dash0OperatorConfiguration{
-				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
-				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
-					},
-					Export:  Dash0ExportWithEndpointAndToken(),
-					Exports: []dash0common.Export{*GrpcExportTest()},
-				},
-			})
-		Expect(err).To(MatchError(ContainSubstring(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)))
-	})
-
 	It("should allow a new operator configuration resource with only exports set", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
