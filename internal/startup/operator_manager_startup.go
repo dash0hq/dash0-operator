@@ -962,6 +962,10 @@ func startDash0Controllers(
 
 	k8sClient := mgr.GetClient()
 
+	if err = mgr.Add(NewLogConfigurationResourcesRunnable(k8sClient)); err != nil {
+		return fmt.Errorf("unable to add log-operator-configuration task: %w", err)
+	}
+
 	instrumenter := instrumentation.NewInstrumenter(
 		k8sClient,
 		clientset,

@@ -11,6 +11,7 @@ type ConditionType string
 const (
 	ConditionTypeAvailable ConditionType = "Available"
 	ConditionTypeDegraded  ConditionType = "Degraded"
+	redactedValue                        = "<redacted>"
 )
 
 // Export describes the observability backend to which telemetry data will be sent. This can either be Dash0 or another
@@ -198,5 +199,24 @@ func (e *Export) ToExports() []Export {
 	}
 	return []Export{
 		*e,
+	}
+}
+
+// Redact removes the authorization token and header values from the export. The export is modified in place, make sure
+// to only call it on exports that are not intended to be used for actual exporting later.
+func (e *Export) Redact() {
+	if e.Dash0 != nil && e.Dash0.Authorization.Token != nil && len(*e.Dash0.Authorization.Token) > 0 {
+		e.Dash0.Authorization.Token = new(redactedValue)
+	}
+	if e.Http != nil {
+		// Any header value can potentially be a secret, so we redact all values.
+		for i := range e.Http.Headers {
+			e.Http.Headers[i].Value = redactedValue
+		}
+	}
+	if e.Grpc != nil {
+		for i := range e.Grpc.Headers {
+			e.Grpc.Headers[i].Value = redactedValue
+		}
 	}
 }

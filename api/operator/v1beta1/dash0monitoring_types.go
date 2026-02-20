@@ -4,9 +4,11 @@
 package v1beta1
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -497,6 +499,32 @@ func (d *Dash0Monitoring) GetDash0Exports() []dash0common.Dash0Configuration {
 		}
 	}
 	return res
+}
+
+func (d *Dash0Monitoring) LogResourceAsEvent(logger logr.Logger) {
+	redactedMonitoringResource := d.cloneAndRedact()
+	if redactedMonitoringResourceMarshalled, err := json.Marshal(redactedMonitoringResource); err != nil {
+		logger.Error(err, "cannot marshal Dash0Monitoring resource for dash0.monitoring_resource event")
+	} else {
+		logger.Info(
+			// per https://opentelemetry.io/docs/specs/semconv/general/events, events should not use the log body
+			"",
+			"otel.event.name", "dash0.monitoring_resource",
+			"dash0.monitoring.monitoring_resource.snapshot", string(redactedMonitoringResourceMarshalled),
+			"dash0.monitoring.monitoring_resource.namespace", d.GetNamespace(),
+			"dash0.monitoring.monitoring_resource.name", d.GetName(),
+		)
+	}
+}
+
+func (d *Dash0Monitoring) cloneAndRedact() Dash0Monitoring {
+	redactedResource := Dash0Monitoring{}
+	d.DeepCopyInto(&redactedResource)
+	redactedResource.ManagedFields = nil
+	for _, export := range redactedResource.EffectiveExports() {
+		export.Redact()
+	}
+	return redactedResource
 }
 
 //+kubebuilder:object:root=true
