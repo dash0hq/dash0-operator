@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/go-logr/logr"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -161,5 +162,5 @@ func isExportsUnchangedFromOldOperatorConfigurationResource(
 		)
 		return false
 	}
-	return dash0common.ExportsEqual(incomingExports, oldResource.Spec.Exports)
+	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports)
 }

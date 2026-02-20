@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/go-logr/logr"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -222,7 +223,7 @@ func isExportsUnchangedFromOldMonitoringResource(
 		)
 		return false
 	}
-	return dash0common.ExportsEqual(incomingExports, oldResource.Spec.Exports)
+	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports)
 }
 
 func normalizeTransform(transform *dash0common.Transform, logger logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
