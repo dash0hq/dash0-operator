@@ -3,6 +3,8 @@
 
 package common
 
+import "k8s.io/utils/ptr"
+
 // This file contains common types used in multiple custom resource definitions (e.g. Dash0Monitoring and
 // Dash0OperatorConfiguration), and potentially also in multiple versions of those.
 
@@ -198,5 +200,24 @@ func (e *Export) ToExports() []Export {
 	}
 	return []Export{
 		*e,
+	}
+}
+
+// Redact removes authorization token and header values from the export. The export is modified in place, make sure
+// to only call it on exports that are not intended to be used for actual exporting later.
+func (e *Export) Redact() {
+	if e.Dash0 != nil && e.Dash0.Authorization.Token != nil && len(*e.Dash0.Authorization.Token) > 0 {
+		e.Dash0.Authorization.Token = ptr.To("<redacted>")
+	}
+	if e.Http != nil {
+		// Any header value can potentially be a secret, so we redact all values.
+		for i := range e.Http.Headers {
+			e.Http.Headers[i].Value = "<redacted>"
+		}
+	}
+	if e.Grpc != nil {
+		for i := range e.Grpc.Headers {
+			e.Grpc.Headers[i].Value = "<redacted>"
+		}
 	}
 }
