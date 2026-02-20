@@ -5,11 +5,24 @@
 
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
+if ! command -v curl &> /dev/null; then
+  echo "Error: the curl executable is not available."
+  exit 1
+fi
+if ! command -v git &> /dev/null; then
+  echo "Error: the git executable is not available."
+  exit 1
+fi
+if ! command -v yq &> /dev/null; then
+  echo "Error: the yq executable is not available."
+  exit 1
+fi
+
+cd "$(dirname "${BASH_SOURCE[0]}")/../../.."
 
 core_versions_yaml=core_versions.yaml
 contrib_versions_yaml=contrib_versions.yaml
-builder_config=src/builder/config.yaml
+builder_config=images/collector/src/builder/config.yaml
 
 component_types=( \
   connectors \
@@ -97,6 +110,9 @@ curl -s https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector
 
 trap "{ rm -f ""$core_versions_yaml""; rm -f ""$contrib_versions_yaml""; }" EXIT
 
+# new_stable_version is the 1.x version of stable components
+# new_beta_version is the 0.x versions of components from the opentelemetry-collector repository
+# new_contrib_version is the 0.x versions of components from the opentelemetry-collector-contrib repository
 new_stable_version=$(yq '.module-sets.stable.version' "$core_versions_yaml")
 new_stable_version="${new_stable_version#v}"
 new_beta_version=$(yq '.module-sets.beta.version' "$core_versions_yaml")
@@ -105,11 +121,37 @@ new_contrib_version=$(yq '.module-sets.contrib-base.version | sub("v", "")' "$co
 echo "Currently using versions:  $current_stable_version/$current_beta_version."
 echo "Latest available versions: core: $new_stable_version/$new_beta_version, contrib: $new_contrib_version."
 
+semver_regex='^([0-9]+)\.([0-9]+)\.[0-9]+$'
+if [[ ! "$new_beta_version" =~ $semver_regex ]]; then
+  echo "Error: cannot parse new_beta_version \"$new_beta_version\" as a semver string."
+  exit 1
+fi
+new_beta_major="${BASH_REMATCH[1]}"
+new_beta_minor="${BASH_REMATCH[2]}"
+if [[ ! "$new_contrib_version" =~ $semver_regex ]]; then
+  echo "Error: cannot parse new_contrib_version \"$new_contrib_version\" as a semver string."
+  exit 1
+fi
+new_contrib_major="${BASH_REMATCH[1]}"
+new_contrib_minor="${BASH_REMATCH[2]}"
+if [[ "$new_beta_major" != "$new_contrib_major" || "$new_beta_minor" != "$new_contrib_minor" ]]; then
+  echo "The major/minor version of new_beta_version ($new_beta_version) and new_contrib_version ($new_contrib_version) do not match, skipping update for now. This usually means that the core components have already been released, but the contrib components have not been released yet."
+  exit 0
+fi
+
 if [[ "$current_stable_version" != "$new_stable_version" || "$current_beta_version" != "$new_beta_version" ]]; then
   update_components
   echo
   echo git diff:
   git --no-pager diff -- "$builder_config"
+  if [[ -f "${COLLECTOR_VERSIONS_OUTPUT:-}" ]]; then
+    {
+      echo "new_stable_version=$new_stable_version"
+      echo "new_beta_version=$new_beta_version"
+      echo "new_contrib_version=$new_contrib_version"
+    } >> "$COLLECTOR_VERSIONS_OUTPUT"
+  fi
+
 else
   echo "No update necessary, components are up to date."
 fi
