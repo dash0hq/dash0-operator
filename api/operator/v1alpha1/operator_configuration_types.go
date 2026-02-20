@@ -4,6 +4,9 @@
 package v1alpha1
 
 import (
+	"encoding/json"
+
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -425,6 +428,32 @@ func (d *Dash0OperatorConfiguration) Items(list client.ObjectList) []client.Obje
 
 func (d *Dash0OperatorConfiguration) At(list client.ObjectList, index int) dash0operator.Dash0Resource {
 	return &list.(*Dash0OperatorConfigurationList).Items[index]
+}
+
+func (d *Dash0OperatorConfiguration) LogResourceAsEvent(logger logr.Logger) {
+	redactedOperatorConfiguration := d.cloneAndRedact()
+	if operatorConfigurationResourceMarshalled, err := json.Marshal(redactedOperatorConfiguration); err != nil {
+		logger.Error(err, "cannot marshal Dash0OperatorConfiguration resource for dash0.operator_configuration event")
+	} else {
+		logger.Info(
+			// per https://opentelemetry.io/docs/specs/semconv/general/events, events should not use the log body
+			"",
+			"otel.event.name", "dash0.operator_configuration_resource",
+			"dash0.monitoring.operator_configuration_resource.snapshot", string(operatorConfigurationResourceMarshalled),
+			"dash0.monitoring.operator_configuration_resource.namespace", d.GetNamespace(),
+			"dash0.monitoring.operator_configuration_resource.name", d.GetName(),
+		)
+	}
+}
+
+func (d *Dash0OperatorConfiguration) cloneAndRedact() Dash0OperatorConfiguration {
+	redactedResource := Dash0OperatorConfiguration{}
+	d.DeepCopyInto(&redactedResource)
+	redactedResource.ManagedFields = nil
+	for _, export := range redactedResource.EffectiveExports() {
+		export.Redact()
+	}
+	return redactedResource
 }
 
 //+kubebuilder:object:root=true

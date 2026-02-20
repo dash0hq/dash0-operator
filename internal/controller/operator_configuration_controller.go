@@ -108,17 +108,8 @@ func (r *OperatorConfigurationReconciler) InitializeSelfMonitoringMetrics(
 	}
 }
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// It is essential for the controller's reconciliation loop to be idempotent. By following the Operator
-// pattern you will create Controllers which provide a reconcile function
-// responsible for synchronizing resources until the desired state is reached on the cluster.
-// Breaking this recommendation goes against the design principles of controller-runtime.
-// and may lead to unforeseen consequences such as resources becoming stuck and requiring manual intervention.
-// For further info:
-// - About Operator Pattern: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
-// - About Controllers: https://kubernetes.io/docs/concepts/architecture/controller/
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
+// Reconcile is part of the main kubernetes reconciliation loop which aims to move the current state of the cluster
+// closer to the desired state. Needs to be idempotent.
 func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	if operatorReconcileRequestMetric != nil {
 		operatorReconcileRequestMetric.Add(ctx, 1)
@@ -158,6 +149,9 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	operatorConfigurationResource := checkResourceResult.Resource.(*dash0v1alpha1.Dash0OperatorConfiguration)
+	defer func() {
+		operatorConfigurationResource.LogResourceAsEvent(logger)
+	}()
 
 	stopReconcile, err :=
 		resources.VerifyThatResourceIsUniqueInScope(
