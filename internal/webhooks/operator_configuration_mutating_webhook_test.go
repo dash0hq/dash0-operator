@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -35,8 +34,6 @@ type migrateOperatorConfigExportToExportsTestConfig struct {
 }
 
 var _ = Describe("The mutating webhook for the operator configuration resource", func() {
-	logger := log.FromContext(ctx)
-
 	Describe("when a new operator configuration resource is created", Ordered, func() {
 		AfterEach(func() {
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
@@ -102,11 +99,11 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 
 	DescribeTable("should normalize the resource spec", func(testConfig normalizeOperatorConfigurationResourceSpecTestConfig) {
 		spec := testConfig.spec
-		operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
+		_, errorResponse := operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
 			admission.Request{},
 			&spec,
-			logger,
 		)
+		Expect(errorResponse).To(BeNil())
 		Expect(spec).To(Equal(testConfig.wanted))
 	}, Entry("given an empty spec, set all default values",
 		normalizeOperatorConfigurationResourceSpecTestConfig{
@@ -497,11 +494,12 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				testConfig.operation,
 				testConfig.oldSpec,
 			)
-			operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
+			_, errorResponse := operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
 				req,
 				&spec,
-				logger,
 			)
+			Expect(errorResponse).To(BeNil())
+			// Only check export/exports fields; other defaults are tested elsewhere.
 			//nolint:staticcheck
 			Expect(spec.Export).To(Equal(testConfig.wanted.Export))
 			Expect(spec.Exports).To(Equal(testConfig.wanted.Exports))

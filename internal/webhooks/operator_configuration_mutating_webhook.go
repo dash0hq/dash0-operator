@@ -10,12 +10,10 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/go-logr/logr"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -48,21 +46,22 @@ func (h *OperatorConfigurationMutatingWebhookHandler) SetupWebhookWithManager(mg
 	return nil
 }
 
-func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
+func (h *OperatorConfigurationMutatingWebhookHandler) Handle(_ context.Context, request admission.Request) admission.Response {
 	// Note: The mutating webhook is called before the validating webhook, so we can normalize the resource here and
 	// verify that it is valid (after having been normalized) in the validating webhook.
 	// Note that default values from // +kubebuilder:default comments from
 	// api/operator/v1alpha1/operator_configuration_types.go have already been applied by the time this webhook
 	// is called.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
-	logger := log.FromContext(ctx)
-
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	patchRequired := h.normalizeOperatorConfigurationResourceSpec(request, &operatorConfigurationResource.Spec, logger)
+	patchRequired, errorResponse := h.normalizeOperatorConfigurationResourceSpec(request, &operatorConfigurationResource.Spec)
+	if errorResponse != nil {
+		return *errorResponse
+	}
 
 	if !patchRequired {
 		return admission.Allowed("no changes")
@@ -80,8 +79,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context
 func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigurationResourceSpec(
 	request admission.Request,
 	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
-	logger logr.Logger,
-) bool {
+) (bool, *admission.Response) {
 	patchRequired := false
 
 	// Migrate deprecated export field to exports, or strip it if exports is already set.
@@ -95,9 +93,15 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		if len(spec.Exports) == 0 {
 			//nolint:staticcheck
 			spec.Exports = []dash0common.Export{*spec.Export}
-		} else if isExportsUnchangedFromOldOperatorConfigurationResource(request, spec.Exports, logger) {
-			//nolint:staticcheck
-			spec.Exports = []dash0common.Export{*spec.Export}
+		} else {
+			unchanged, errorResponse := isExportsUnchangedFromOldOperatorConfigurationResource(request, spec.Exports)
+			if errorResponse != nil {
+				return false, errorResponse
+			}
+			if unchanged {
+				//nolint:staticcheck
+				spec.Exports = []dash0common.Export{*spec.Export}
+			}
 		}
 		//nolint:staticcheck
 		spec.Export = nil
@@ -136,31 +140,31 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		spec.PrometheusCrdSupport.Enabled = ptr.To(false)
 		patchRequired = true
 	}
-	return patchRequired
+	return patchRequired, nil
 }
 
 // isExportsUnchangedFromOldOperatorConfigurationResource checks whether the incoming exports slice matches the
 // previously stored exports on an UPDATE operation. This detects when kubectl's three-way merge carried over the old
 // exports field (set by a prior webhook migration), so the user's real intent is in the deprecated export field.
-// Returns false for CREATE operations, decode failures, or when exports differ.
+// Returns false for CREATE operations or when exports differ. Returns an error response if the OldObject cannot be
+// decoded.
 func isExportsUnchangedFromOldOperatorConfigurationResource(
 	request admission.Request,
 	incomingExports []dash0common.Export,
-	logger logr.Logger,
-) bool {
+) (bool, *admission.Response) {
 	if request.Operation != admissionv1.Update {
-		return false
+		return false, nil
 	}
 	if request.OldObject.Raw == nil {
-		return false
+		return false, nil
 	}
 	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
-		logger.Info(
-			"could not decode OldObject for export migration, migration will use `exports`",
-			"error", err,
+		errResponse := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("could not decode OldObject for export migration: %w", err),
 		)
-		return false
+		return false, &errResponse
 	}
-	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports)
+	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports), nil
 }

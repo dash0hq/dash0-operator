@@ -539,12 +539,13 @@ spec:
 				} else {
 					req = toAdmissionRequest(TestNamespaceName, spec)
 				}
-				monitoringMutatingWebhookHandler.normalizeMonitoringResourceSpec(
+				_, errorResponse := monitoringMutatingWebhookHandler.normalizeMonitoringResourceSpec(
 					req,
 					&dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 					&spec,
 					logger,
 				)
+				Expect(errorResponse).To(BeNil())
 				// Only check export/exports fields; other defaults are tested elsewhere.
 				Expect(spec.Export).To(Equal(testConfig.wanted.Export))
 				Expect(spec.Exports).To(Equal(testConfig.wanted.Exports))

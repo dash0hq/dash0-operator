@@ -117,8 +117,14 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	if monitoringSpec.Export != nil {
 		if len(monitoringSpec.Exports) == 0 {
 			monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
-		} else if isExportsUnchangedFromOldMonitoringResource(request, monitoringSpec.Exports, logger) {
-			monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+		} else {
+			unchanged, errorResponse := isExportsUnchangedFromOldMonitoringResource(request, monitoringSpec.Exports)
+			if errorResponse != nil {
+				return false, errorResponse
+			}
+			if unchanged {
+				monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+			}
 		}
 		monitoringSpec.Export = nil
 		patchRequired = true
@@ -203,27 +209,27 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 // isExportsUnchangedFromOldMonitoringResource checks whether the incoming exports slice matches the previously stored
 // exports on an UPDATE operation. This detects when kubectl's three-way merge carried over the old exports field (set
 // by a prior webhook migration), so the user's real intent is in the deprecated export field.
-// Returns false for CREATE operations, decode failures, or when exports differ.
+// Returns false for CREATE operations or when exports differ. Returns an error response if the OldObject cannot be
+// decoded.
 func isExportsUnchangedFromOldMonitoringResource(
 	request admission.Request,
 	incomingExports []dash0common.Export,
-	logger logr.Logger,
-) bool {
+) (bool, *admission.Response) {
 	if request.Operation != admissionv1.Update {
-		return false
+		return false, nil
 	}
 	if request.OldObject.Raw == nil {
-		return false
+		return false, nil
 	}
 	oldResource := &dash0v1beta1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
-		logger.Info(
-			"could not decode OldObject for export migration, migration will use `exports`",
-			"error", err,
+		errResponse := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("could not decode OldObject for export migration: %w", err),
 		)
-		return false
+		return false, &errResponse
 	}
-	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports)
+	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports), nil
 }
 
 func normalizeTransform(transform *dash0common.Transform, logger logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
