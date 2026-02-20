@@ -70,7 +70,7 @@ func getDefaultOtlpExporters(dash0Config *dash0v1alpha1.Dash0OperatorConfigurati
 	}
 
 	exporters := make([]otlpExporter, 0, dash0Config.ExportsCount())
-	for i, export := range dash0Config.Spec.Exports {
+	for i, export := range dash0Config.EffectiveExports() {
 		exp, err := convertExportSettingsToExporterList(&export, i, true, nil)
 		if err != nil {
 			return nil, err
@@ -95,7 +95,7 @@ func getNamespacedOtlpExporters(
 		ns := monitoringResource.Namespace
 
 		exporters := make([]otlpExporter, 0, monitoringResource.ExportsCount())
-		for i, export := range monitoringResource.Spec.Exports {
+		for i, export := range monitoringResource.EffectiveExports() {
 			exp, err := convertExportSettingsToExporterList(&export, i, false, &ns)
 			if err != nil {
 				logger.Error(err, fmt.Sprintf("Custom exporters for namespace %s could not be applied. "+

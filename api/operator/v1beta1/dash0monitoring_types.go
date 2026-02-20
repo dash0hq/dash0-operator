@@ -442,12 +442,26 @@ func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInst
 	}
 }
 
+// EffectiveExports returns Exports if set, otherwise wraps the deprecated Export field into a single-element slice.
+// This ensures code that reads exports works for resources that have not yet been migrated by the mutating webhook.
+func (d *Dash0Monitoring) EffectiveExports() []dash0common.Export {
+	if len(d.Spec.Exports) > 0 {
+		return d.Spec.Exports
+	}
+	//nolint:staticcheck
+	if d.Spec.Export != nil {
+		//nolint:staticcheck
+		return []dash0common.Export{*d.Spec.Export}
+	}
+	return nil
+}
+
 func (d *Dash0Monitoring) HasExportsConfigured() bool {
-	return d != nil && len(d.Spec.Exports) > 0
+	return d != nil && len(d.EffectiveExports()) > 0
 }
 
 func (d *Dash0Monitoring) HasDash0ExportConfigured() bool {
-	for _, export := range d.Spec.Exports {
+	for _, export := range d.EffectiveExports() {
 		if export.HasDash0ExportConfigured() {
 			return true
 		}
@@ -460,12 +474,12 @@ func (d *Dash0Monitoring) ExportsCount() int {
 	if !d.HasExportsConfigured() {
 		return 0
 	} else {
-		return dash0common.CountExports(d.Spec.Exports)
+		return dash0common.CountExports(d.EffectiveExports())
 	}
 }
 
 func (d *Dash0Monitoring) HasDash0ApiAccessConfigured() bool {
-	for _, export := range d.Spec.Exports {
+	for _, export := range d.EffectiveExports() {
 		if export.HasDash0ApiAccessConfigured() {
 			return true
 		}
@@ -476,7 +490,7 @@ func (d *Dash0Monitoring) HasDash0ApiAccessConfigured() bool {
 
 func (d *Dash0Monitoring) GetDash0Exports() []dash0common.Dash0Configuration {
 	var res []dash0common.Dash0Configuration
-	for _, export := range d.Spec.Exports {
+	for _, export := range d.EffectiveExports() {
 		// intentionally not doing any further filtering here, as validation will happen later where errors are properly logged
 		if export.Dash0 != nil {
 			res = append(res, *export.Dash0)

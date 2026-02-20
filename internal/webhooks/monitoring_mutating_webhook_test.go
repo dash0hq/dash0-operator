@@ -49,8 +49,10 @@ type normalizeTransformSpecTestCase struct {
 }
 
 type migrateExportToExportsTestConfig struct {
-	spec   dash0v1beta1.Dash0MonitoringSpec
-	wanted dash0v1beta1.Dash0MonitoringSpec
+	operation admissionv1.Operation
+	oldSpec   *dash0v1beta1.Dash0MonitoringSpec
+	spec      dash0v1beta1.Dash0MonitoringSpec
+	wanted    dash0v1beta1.Dash0MonitoringSpec
 }
 
 const (
@@ -70,7 +72,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 			patchRequired := monitoringMutatingWebhookHandler.overrideLogCollectionDefault(
 				toAdmissionRequest(testCase.namespace, spec),
 				&spec,
-				&logger,
+				logger,
 			)
 			Expect(patchRequired).To(Equal(testCase.expectPatch))
 			if testCase.expectPatch {
@@ -526,12 +528,24 @@ spec:
 		DescribeTable("should handle export to exports migration",
 			func(testConfig migrateExportToExportsTestConfig) {
 				spec := testConfig.spec
-				monitoringMutatingWebhookHandler.normalizeMonitoringResourceSpec(
-					toAdmissionRequest(TestNamespaceName, spec),
+				var req admission.Request
+				if testConfig.operation != "" {
+					req = toAdmissionRequestWithOldObject(
+						TestNamespaceName,
+						spec,
+						testConfig.operation,
+						testConfig.oldSpec,
+					)
+				} else {
+					req = toAdmissionRequest(TestNamespaceName, spec)
+				}
+				_, errorResponse := monitoringMutatingWebhookHandler.normalizeMonitoringResourceSpec(
+					req,
 					&dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 					&spec,
-					&logger,
+					logger,
 				)
+				Expect(errorResponse).To(BeNil())
 				// Only check export/exports fields; other defaults are tested elsewhere.
 				Expect(spec.Export).To(Equal(testConfig.wanted.Export))
 				Expect(spec.Exports).To(Equal(testConfig.wanted.Exports))
@@ -556,15 +570,49 @@ spec:
 						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					},
 				}),
-			Entry("should not clear export when both export and exports are set (validation webhook will reject)",
+			Entry("CREATE: should clear export and keep exports when both are set",
 				migrateExportToExportsTestConfig{
 					spec: dash0v1beta1.Dash0MonitoringSpec{
 						Export:  Dash0ExportWithEndpointAndToken(),
 						Exports: []dash0common.Export{*GrpcExportTest()},
 					},
 					wanted: dash0v1beta1.Dash0MonitoringSpec{
-						// export is NOT cleared, both fields remain as-is
-						Export:  Dash0ExportWithEndpointAndToken(),
+						Export:  nil,
+						Exports: []dash0common.Export{*GrpcExportTest()},
+					},
+				}),
+			Entry("UPDATE: should use export when exports is unchanged from stored resource (three-way merge carry-over)",
+				migrateExportToExportsTestConfig{
+					operation: admissionv1.Update,
+					oldSpec: &dash0v1beta1.Dash0MonitoringSpec{
+						// This is what was stored after the previous webhook migration.
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+					spec: dash0v1beta1.Dash0MonitoringSpec{
+						// export has the user's new intended value
+						Export: GrpcExportTest(),
+						// exports is the same as oldSpec.Exports — carried over by three-way merge
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						Export: nil,
+						// The webhook should use the value from export, not the stale exports.
+						Exports: []dash0common.Export{*GrpcExportTest()},
+					},
+				}),
+			Entry("UPDATE: should keep exports when exports has been changed by the user",
+				migrateExportToExportsTestConfig{
+					operation: admissionv1.Update,
+					oldSpec: &dash0v1beta1.Dash0MonitoringSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+					spec: dash0v1beta1.Dash0MonitoringSpec{
+						Export: HttpExportTest(),
+						// exports differs from oldSpec — user intentionally changed it
+						Exports: []dash0common.Export{*GrpcExportTest()},
+					},
+					wanted: dash0v1beta1.Dash0MonitoringSpec{
+						Export:  nil,
 						Exports: []dash0common.Export{*GrpcExportTest()},
 					},
 				}),
@@ -733,6 +781,41 @@ func toAdmissionRequest(namespace string, spec dash0v1beta1.Dash0MonitoringSpec)
 			},
 		},
 	}
+}
+
+func toAdmissionRequestWithOldObject(
+	namespace string,
+	spec dash0v1beta1.Dash0MonitoringSpec,
+	operation admissionv1.Operation,
+	oldSpec *dash0v1beta1.Dash0MonitoringSpec,
+) admission.Request {
+	rawJson, err := json.Marshal(dash0v1beta1.Dash0Monitoring{
+		Spec: spec,
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	req := admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Name:      MonitoringResourceName,
+			Namespace: namespace,
+			Operation: operation,
+			Object: runtime.RawExtension{
+				Raw: rawJson,
+			},
+		},
+	}
+
+	if oldSpec != nil {
+		oldRawJson, err := json.Marshal(dash0v1beta1.Dash0Monitoring{
+			Spec: *oldSpec,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		req.AdmissionRequest.OldObject = runtime.RawExtension{
+			Raw: oldRawJson,
+		}
+	}
+
+	return req
 }
 
 func verifyNormalizedTransformGroupsForOneSignal(

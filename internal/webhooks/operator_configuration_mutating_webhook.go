@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -56,7 +58,10 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(_ context.Context, 
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	patchRequired := h.normalizeOperatorConfigurationResourceSpec(&operatorConfigurationResource.Spec)
+	patchRequired, errorResponse := h.normalizeOperatorConfigurationResourceSpec(request, &operatorConfigurationResource.Spec)
+	if errorResponse != nil {
+		return *errorResponse
+	}
 
 	if !patchRequired {
 		return admission.Allowed("no changes")
@@ -71,15 +76,33 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(_ context.Context, 
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
-func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigurationResourceSpec(spec *dash0v1alpha1.Dash0OperatorConfigurationSpec) bool {
+func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigurationResourceSpec(
+	request admission.Request,
+	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
+) (bool, *admission.Response) {
 	patchRequired := false
 
-	// Migrate deprecated export field to exports (only if exports is not set).
-	// If both are set, we leave them as-is and the validating webhook will reject this combination.
+	// Migrate deprecated export field to exports, or strip it if exports is already set.
+	// - If only export is set: migrate export → exports (the common upgrade path).
+	// - If both are set on UPDATE and exports matches the stored resource: kubectl's three-way merge carried over the
+	//   old exports from the stored resource. The user's real change is in export, so we migrate export → exports.
+	// - If both are set and exports differs from the stored resource (or this is a CREATE): the user intentionally
+	//   changed exports directly (or is actively migrating). We honor exports and discard export.
 	//nolint:staticcheck
-	if spec.Export != nil && len(spec.Exports) == 0 {
-		//nolint:staticcheck
-		spec.Exports = []dash0common.Export{*spec.Export}
+	if spec.Export != nil {
+		if len(spec.Exports) == 0 {
+			//nolint:staticcheck
+			spec.Exports = []dash0common.Export{*spec.Export}
+		} else {
+			unchanged, errorResponse := isExportsUnchangedFromOldOperatorConfigurationResource(request, spec.Exports)
+			if errorResponse != nil {
+				return false, errorResponse
+			}
+			if unchanged {
+				//nolint:staticcheck
+				spec.Exports = []dash0common.Export{*spec.Export}
+			}
+		}
 		//nolint:staticcheck
 		spec.Export = nil
 		patchRequired = true
@@ -117,5 +140,31 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		spec.PrometheusCrdSupport.Enabled = ptr.To(false)
 		patchRequired = true
 	}
-	return patchRequired
+	return patchRequired, nil
+}
+
+// isExportsUnchangedFromOldOperatorConfigurationResource checks whether the incoming exports slice matches the
+// previously stored exports on an UPDATE operation. This detects when kubectl's three-way merge carried over the old
+// exports field (set by a prior webhook migration), so the user's real intent is in the deprecated export field.
+// Returns false for CREATE operations or when exports differ. Returns an error response if the OldObject cannot be
+// decoded.
+func isExportsUnchangedFromOldOperatorConfigurationResource(
+	request admission.Request,
+	incomingExports []dash0common.Export,
+) (bool, *admission.Response) {
+	if request.Operation != admissionv1.Update {
+		return false, nil
+	}
+	if request.OldObject.Raw == nil {
+		return false, nil
+	}
+	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
+	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
+		errResponse := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("could not decode OldObject for export migration: %w", err),
+		)
+		return false, &errResponse
+	}
+	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports), nil
 }

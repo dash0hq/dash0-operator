@@ -89,7 +89,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	}
 
 	// for self-monitoring we only send telemetry to a single backend
-	export := resource.Spec.Exports[0]
+	export := resource.EffectiveExports()[0]
 	if export.Dash0 != nil {
 		token, err := GetAuthTokenForDash0Export(ctx, k8sClient, operatorNamespace, *export.Dash0, *logger)
 		if err != nil || token == nil {

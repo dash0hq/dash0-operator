@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/go-logr/logr"
+	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -76,7 +78,7 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 		operatorConfigurationSpec = &availableOperatorConfigurations[0].Spec
 	}
 
-	patchRequired, errorResponse := h.normalizeMonitoringResourceSpec(request, operatorConfigurationSpec, &monitoringResource.Spec, &logger)
+	patchRequired, errorResponse := h.normalizeMonitoringResourceSpec(request, operatorConfigurationSpec, &monitoringResource.Spec, logger)
 
 	if errorResponse != nil {
 		return *errorResponse
@@ -100,16 +102,30 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	request admission.Request,
 	operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
 	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, *admission.Response) {
 	patchRequired := h.setTelemetryCollectionRelatedDefaults(request, operatorConfigurationSpec, monitoringSpec)
 	patchRequiredForLogCollection := h.overrideLogCollectionDefault(request, monitoringSpec, logger)
 	patchRequired = patchRequired || patchRequiredForLogCollection
 
-	// Migrate deprecated export field to exports (only if exports is not set).
-	// If both are set, we leave them as-is and the validating webhook will reject this combination.
-	if monitoringSpec.Export != nil && len(monitoringSpec.Exports) == 0 {
-		monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+	// Migrate deprecated export field to exports, or strip it if exports is already set.
+	// - If only export is set: migrate export → exports (the common upgrade path).
+	// - If both are set on UPDATE and exports matches the stored resource: kubectl's three-way merge carried over the
+	//   old exports from the stored resource. The user's real change is in export, so we migrate export → exports.
+	// - If both are set and exports differs from the stored resource (or this is a CREATE): the user intentionally
+	//   changed exports directly (or is actively migrating). We honor exports and discard export.
+	if monitoringSpec.Export != nil {
+		if len(monitoringSpec.Exports) == 0 {
+			monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+		} else {
+			unchanged, errorResponse := isExportsUnchangedFromOldMonitoringResource(request, monitoringSpec.Exports)
+			if errorResponse != nil {
+				return false, errorResponse
+			}
+			if unchanged {
+				monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
+			}
+		}
 		monitoringSpec.Export = nil
 		patchRequired = true
 	}
@@ -171,7 +187,7 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 	request admission.Request,
 	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) bool {
 	if request.Namespace == h.operatorNamespace &&
 		util.ReadBoolPointerWithDefault(monitoringSpec.LogCollection.Enabled, true) {
@@ -190,7 +206,33 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 	return false
 }
 
-func normalizeTransform(transform *dash0common.Transform, logger *logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
+// isExportsUnchangedFromOldMonitoringResource checks whether the incoming exports slice matches the previously stored
+// exports on an UPDATE operation. This detects when kubectl's three-way merge carried over the old exports field (set
+// by a prior webhook migration), so the user's real intent is in the deprecated export field.
+// Returns false for CREATE operations or when exports differ. Returns an error response if the OldObject cannot be
+// decoded.
+func isExportsUnchangedFromOldMonitoringResource(
+	request admission.Request,
+	incomingExports []dash0common.Export,
+) (bool, *admission.Response) {
+	if request.Operation != admissionv1.Update {
+		return false, nil
+	}
+	if request.OldObject.Raw == nil {
+		return false, nil
+	}
+	oldResource := &dash0v1beta1.Dash0Monitoring{}
+	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
+		errResponse := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("could not decode OldObject for export migration: %w", err),
+		)
+		return false, &errResponse
+	}
+	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports), nil
+}
+
+func normalizeTransform(transform *dash0common.Transform, logger logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
 	traceTransformGroups, responseStatus, err :=
 		normalizeTransformGroupsForOneSignal(transform.Traces, "trace_statements", logger)
 	if err != nil {
@@ -221,7 +263,7 @@ func normalizeTransform(transform *dash0common.Transform, logger *logr.Logger) (
 func normalizeTransformGroupsForOneSignal(
 	signalTransformSpec []json.RawMessage,
 	signalTypeKey string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) ([]dash0common.NormalizedTransformGroup, int32, error) {
 	var allGroups []dash0common.NormalizedTransformGroup
 	for ctxIdx, transformGroup := range signalTransformSpec {
