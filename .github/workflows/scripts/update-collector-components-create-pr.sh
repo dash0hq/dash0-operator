@@ -12,7 +12,7 @@ fi
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-branch_name="update-dash0-collector-components"
+branch_name="update-dash0-collector-components-test-ci-changes"
 git checkout -b $branch_name
 
 COLLECTOR_VERSIONS_OUTPUT=$(mktemp)
