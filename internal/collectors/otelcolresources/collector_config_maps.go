@@ -71,6 +71,8 @@ func (ct *customTransforms) HasLogTransforms() bool {
 }
 
 type collectorConfigurationTemplateValues struct {
+	OperatorNamespace                                string
+	OperatorResourcesNamePrefix                      string
 	Exporters                                        otlpExporters
 	SendBatchMaxSize                                 *uint32
 	KubernetesInfrastructureMetricsCollectionEnabled bool
@@ -78,6 +80,8 @@ type collectorConfigurationTemplateValues struct {
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	DisableReplicasetInformer                        bool
 	PrometheusCrdSupportEnabled                      bool
+	TargetAllocatorAppKubernetesIoInstance           string
+	TargetAllocatorAppKubernetesIoName               string
 	TargetAllocatorServiceName                       string
 	TargetAllocatorMtlsEnabled                       bool
 	TargetAllocatorMtlsClientCertsDir                string
@@ -94,6 +98,7 @@ type collectorConfigurationTemplateValues struct {
 	CustomTransforms                                 customTransforms
 	SelfIpReference                                  string
 	InternalTelemetryEnabled                         bool
+	SelfMonitoringEnabled                            bool
 	SelfMonitoringMetricsConfig                      string
 	SelfMonitoringLogsConfig                         string
 	DevelopmentMode                                  bool
@@ -189,7 +194,11 @@ func assembleCollectorConfigMap(
 		if config.IsIPv6Cluster {
 			selfIpReference = "[${env:K8S_POD_IP}]"
 		}
-		namespaceOttlFilter := renderOttlNamespaceFilter(monitoredNamespaces)
+		namespaceOttlFilter := renderOttlNamespaceFilter(
+			monitoredNamespaces,
+			config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
+			config.PrometheusCrdSupportEnabled,
+		)
 		customTelemetryFilters := aggregateCustomFilters(filters)
 		customTelemetryTransforms := aggregateCustomTransforms(transforms)
 		selfMonitoringMetricsConfig :=
@@ -205,13 +214,17 @@ func assembleCollectorConfigMap(
 
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
-				Exporters:        config.Exporters,
-				SendBatchMaxSize: config.SendBatchMaxSize,
+				OperatorNamespace:           config.OperatorNamespace,
+				OperatorResourcesNamePrefix: config.NamePrefix,
+				Exporters:                   config.Exporters,
+				SendBatchMaxSize:            config.SendBatchMaxSize,
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 				CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
 				DisableReplicasetInformer:                        config.DisableReplicasetInformer,
 				PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
+				TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
+				TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
 				TargetAllocatorServiceName:                       targetAllocatorServiceName,
 				TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
 				TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
@@ -228,6 +241,7 @@ func assembleCollectorConfigMap(
 				CustomTransforms:                                 customTelemetryTransforms,
 				SelfIpReference:                                  selfIpReference,
 				InternalTelemetryEnabled:                         selfMonitoringMetricsConfig != "" || selfMonitoringLogsConfig != "",
+				SelfMonitoringEnabled:                            config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
 				SelfMonitoringMetricsConfig:                      selfMonitoringMetricsConfig,
 				SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
 				DevelopmentMode:                                  config.DevelopmentMode,
@@ -258,10 +272,20 @@ func assembleCollectorConfigMap(
 	}, nil
 }
 
-func renderOttlNamespaceFilter(monitoredNamespaces []string) string {
+func renderOttlNamespaceFilter(monitoredNamespaces []string, selfMonitoringEnabled bool, prometheusCrdSupportEnabled bool) string {
+	// Do not drop metrics from the target-allocator even if there isn't a Dash0Monitoring resource in the namespace.
+	// target-allocator metrics are considered self-monitoring and therefore controlled via the global SelfMonitoring
+	// config (and prometheusCrdSupportEnabled) from the Dash0OperatorConfiguration.
+	taExclusion := ""
+	if selfMonitoringEnabled && prometheusCrdSupportEnabled {
+		taExclusion = fmt.Sprintf(
+			"(resource.attributes[\"k8s.pod.label.app.kubernetes.io/instance\"] != \"%s\" and "+
+				"resource.attributes[\"k8s.pod.label.app.kubernetes.io/name\"] != \"%s\") and ",
+			taresources.AppKubernetesIoInstanceValue, taresources.AppKubernetesIoNameValue)
+	}
 	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
 	// list of monitored namespaces.
-	namespaceOttlFilter := "resource.attributes[\"k8s.namespace.name\"] != nil\n"
+	namespaceOttlFilter := fmt.Sprintf("%sresource.attributes[\"k8s.namespace.name\"] != nil\n", taExclusion)
 	for _, namespace := range monitoredNamespaces {
 		// Be wary of indentation, all lines after the first must start with at least 10 spaces for YAML compliance.
 		namespaceOttlFilter = namespaceOttlFilter +

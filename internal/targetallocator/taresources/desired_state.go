@@ -32,17 +32,17 @@ const (
 	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-server"
 
 	// label values
-	appKubernetesIoNameValue      = targetAllocator
-	appKubernetesIoInstanceValue  = "dash0-operator"
-	appKubernetesIoManagedByValue = "dash0-operator"
+	AppKubernetesIoNameValue      = targetAllocator
+	AppKubernetesIoInstanceValue  = "dash0-operator"
+	AppKubernetesIoManagedByValue = "dash0-operator"
 	gkeAutopilotAllowlistKey      = "cloud.google.com/matching-allowlist"
 	gkeAutopilotAllowlistValue    = "dash0-target-allocator-v1.0.1"
 )
 
 var (
 	deploymentMatchLabels = map[string]string{
-		util.AppKubernetesIoNameLabel:     appKubernetesIoNameValue,
-		util.AppKubernetesIoInstanceLabel: appKubernetesIoInstanceValue,
+		util.AppKubernetesIoNameLabel:     AppKubernetesIoNameValue,
+		util.AppKubernetesIoInstanceLabel: AppKubernetesIoInstanceValue,
 	}
 )
 
@@ -385,6 +385,10 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 				Name:  "OTELCOL_NAMESPACE",
 				Value: c.OperatorNamespace,
 			},
+			{
+				Name:  "OTEL_SERVICE_NAME",
+				Value: targetAllocator,
+			},
 		},
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -571,9 +575,9 @@ func addCommonMetadata(object client.Object) clientObject {
 
 func labels() map[string]string {
 	lbls := map[string]string{
-		util.AppKubernetesIoNameLabel:      appKubernetesIoNameValue,
-		util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
-		util.AppKubernetesIoManagedByLabel: appKubernetesIoManagedByValue,
+		util.AppKubernetesIoNameLabel:      AppKubernetesIoNameValue,
+		util.AppKubernetesIoInstanceLabel:  AppKubernetesIoInstanceValue,
+		util.AppKubernetesIoManagedByLabel: AppKubernetesIoManagedByValue,
 	}
 	return lbls
 }
