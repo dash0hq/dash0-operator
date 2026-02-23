@@ -64,6 +64,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	logger := log.FromContext(ctx)
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
+		logger.Info("rejecting invalid operator configuration resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
@@ -72,6 +73,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	// Reject if both the deprecated export and the new exports field are set.
 	//nolint:staticcheck
 	if spec.Export != nil && len(spec.Exports) > 0 {
+		logger.Info(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)
 		return admission.Denied(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)
 	}
 
@@ -88,51 +90,57 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 
 	if util.ReadBoolPointerWithDefault(spec.SelfMonitoring.Enabled, true) &&
 		len(spec.Exports) == 0 {
-		return admission.Denied(
-			"The provided Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
-				"export configuration. Either disable self-monitoring or provide an export configuration for self-" +
-				"monitoring telemetry.")
-
+		msg := "The provided Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
+			"export configuration. Either disable self-monitoring or provide an export configuration for self-" +
+			"monitoring telemetry."
+		logger.Info(msg)
+		return admission.Denied(msg)
 	}
 
 	if !util.ReadBoolPointerWithDefault(spec.TelemetryCollection.Enabled, true) {
 		if util.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollection.Enabled, true) {
-			return admission.Denied(
-				"The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
-					"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
-					"Please either set telemetryCollection.enabled=true or " +
-					"kubernetesInfrastructureMetricsCollection.enabled=false.")
+			msg := "The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
+				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+				"Please either set telemetryCollection.enabled=true or " +
+				"kubernetesInfrastructureMetricsCollection.enabled=false."
+			logger.Info(msg)
+			return admission.Denied(msg)
 		}
 		//nolint:staticcheck
 		if util.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollectionEnabled, true) {
-			return admission.Denied(
-				"The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
-					"explicitly enabled (via the deprecated legacy setting " +
-					"kubernetesInfrastructureMetricsCollectionEnabled), although telemetry collection is disabled. " +
-					"This is an invalid combination. Please either set telemetryCollection.enabled=true or " +
-					"kubernetesInfrastructureMetricsCollection.enabled=false.")
+			msg := "The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
+				"explicitly enabled (via the deprecated legacy setting " +
+				"kubernetesInfrastructureMetricsCollectionEnabled), although telemetry collection is disabled. " +
+				"This is an invalid combination. Please either set telemetryCollection.enabled=true or " +
+				"kubernetesInfrastructureMetricsCollection.enabled=false."
+			logger.Info(msg)
+			return admission.Denied(msg)
 		}
 		if util.ReadBoolPointerWithDefault(spec.CollectPodLabelsAndAnnotations.Enabled, true) {
-			return admission.Denied(
-				"The provided Dash0 operator configuration resource has pod label and annotation collection " +
-					"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
-					"Please either set telemetryCollection.enabled=true or " +
-					"collectPodLabelsAndAnnotations.enabled=false.")
+			msg := "The provided Dash0 operator configuration resource has pod label and annotation collection " +
+				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+				"Please either set telemetryCollection.enabled=true or " +
+				"collectPodLabelsAndAnnotations.enabled=false."
+			logger.Info(msg)
+			return admission.Denied(msg)
 		}
 		if util.ReadBoolPointerWithDefault(spec.CollectNamespaceLabelsAndAnnotations.Enabled, true) {
-			return admission.Denied(
-				"The provided Dash0 operator configuration resource has namespace label and annotation collection " +
-					"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
-					"Please either set telemetryCollection.enabled=true or " +
-					"collectNamespaceLabelsAndAnnotations.enabled=false.")
+			msg := "The provided Dash0 operator configuration resource has namespace label and annotation collection " +
+				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+				"Please either set telemetryCollection.enabled=true or " +
+				"collectNamespaceLabelsAndAnnotations.enabled=false."
+			logger.Info(msg)
+			return admission.Denied(msg)
 		}
 		if util.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
+			logger.Info(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 			return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		}
 	}
 
 	for _, export := range spec.Exports {
 		if !validateGrpcExportInsecureFlags(&export) {
+			logger.Info(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
 			return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
 		}
 	}
@@ -140,14 +148,17 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	if request.Operation == admissionv1.Create {
 		allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 		if err := h.Client.List(ctx, allOperatorConfigurationResources); err != nil {
-			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err))
+			wrappedErr := fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err)
+			logger.Error(wrappedErr, "failed to list all Dash0 operator configuration resources")
+			return admission.Errored(http.StatusInternalServerError, wrappedErr)
 		}
 		if len(allOperatorConfigurationResources.Items) > 0 {
-			return admission.Denied(
-				fmt.Sprintf("At least one Dash0 operator configuration resource (%s) already exists in this cluster. "+
-					"Only one operator configuration resource is allowed per cluster.",
-					allOperatorConfigurationResources.Items[0].Name,
-				))
+			msg := fmt.Sprintf("At least one Dash0 operator configuration resource (%s) already exists in this cluster. "+
+				"Only one operator configuration resource is allowed per cluster.",
+				allOperatorConfigurationResources.Items[0].Name,
+			)
+			logger.Info(msg)
+			return admission.Denied(msg)
 		}
 	}
 

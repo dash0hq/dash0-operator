@@ -97,14 +97,15 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 
 	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
 	if slices.Contains(restrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
-		return admission.Denied(
-			fmt.Sprintf(
-				"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
-					"\"%s\" with instrumentWorkloads.mode=%s, use instrumentWorkloads.mode=none instead.",
-				request.Name,
-				request.Namespace,
-				instrumentWorkloadsMode,
-			))
+		msg := fmt.Sprintf(
+			"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
+				"\"%s\" with instrumentWorkloads.mode=%s, use instrumentWorkloads.mode=none instead.",
+			request.Name,
+			request.Namespace,
+			instrumentWorkloadsMode,
+		)
+		logger.Info(msg)
+		return admission.Denied(msg)
 	}
 
 	availableOperatorConfigurations, errorResponse := loadAvailableOperatorConfigurationResources(ctx, h.Client)
@@ -113,22 +114,27 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	}
 	admissionResponse, done := h.validateExport(availableOperatorConfigurations, monitoringResource)
 	if done {
+		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
 	}
 	admissionResponse, done = h.validateTelemetryRelatedSettingsIfTelemetryCollectionIsDisabled(availableOperatorConfigurations, monitoringResource)
 	if done {
+		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
 	}
 	admissionResponse, done = h.validateLabelSelector(monitoringResource)
 	if done {
+		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
 	}
 	admissionResponse, done = h.validateTraceContextPropagators(monitoringResource)
 	if done {
+		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
 	}
 	admissionResponse, done = h.validateOttl(monitoringResource)
 	if done {
+		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
 	}
 

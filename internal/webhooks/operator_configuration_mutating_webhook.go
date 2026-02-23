@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/go-logr/logr"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -46,19 +48,25 @@ func (h *OperatorConfigurationMutatingWebhookHandler) SetupWebhookWithManager(mg
 	return nil
 }
 
-func (h *OperatorConfigurationMutatingWebhookHandler) Handle(_ context.Context, request admission.Request) admission.Response {
+func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
 	// Note: The mutating webhook is called before the validating webhook, so we can normalize the resource here and
 	// verify that it is valid (after having been normalized) in the validating webhook.
 	// Note that default values from // +kubebuilder:default comments from
 	// api/operator/v1alpha1/operator_configuration_types.go have already been applied by the time this webhook
 	// is called.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
+	logger := log.FromContext(ctx)
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
+		logger.Info("rejecting invalid operator configuration resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	patchRequired, errorResponse := h.normalizeOperatorConfigurationResourceSpec(request, &operatorConfigurationResource.Spec)
+	patchRequired, errorResponse := h.normalizeOperatorConfigurationResourceSpec(
+		request,
+		&operatorConfigurationResource.Spec,
+		logger,
+	)
 	if errorResponse != nil {
 		return *errorResponse
 	}
@@ -70,6 +78,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(_ context.Context, 
 	marshalled, err := json.Marshal(operatorConfigurationResource)
 	if err != nil {
 		wrappedErr := fmt.Errorf("error when marshalling modfied operator configuration resource to JSON: %w", err)
+		logger.Error(wrappedErr, "error when marshalling modified operator configuration resource to JSON")
 		return admission.Errored(http.StatusInternalServerError, wrappedErr)
 	}
 
@@ -79,6 +88,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(_ context.Context, 
 func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigurationResourceSpec(
 	request admission.Request,
 	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	logger logr.Logger,
 ) (bool, *admission.Response) {
 	patchRequired := false
 
@@ -94,7 +104,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 			//nolint:staticcheck
 			spec.Exports = []dash0common.Export{*spec.Export}
 		} else {
-			unchanged, errorResponse := isExportsUnchangedFromOldOperatorConfigurationResource(request, spec.Exports)
+			unchanged, errorResponse := isExportsUnchangedFromOldOperatorConfigurationResource(request, spec.Exports, logger)
 			if errorResponse != nil {
 				return false, errorResponse
 			}
@@ -151,6 +161,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 func isExportsUnchangedFromOldOperatorConfigurationResource(
 	request admission.Request,
 	incomingExports []dash0common.Export,
+	logger logr.Logger,
 ) (bool, *admission.Response) {
 	if request.Operation != admissionv1.Update {
 		return false, nil
@@ -160,9 +171,11 @@ func isExportsUnchangedFromOldOperatorConfigurationResource(
 	}
 	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
+		msg := "could not decode OldObject for export migration"
+		logger.Error(err, msg)
 		errResponse := admission.Errored(
 			http.StatusBadRequest,
-			fmt.Errorf("could not decode OldObject for export migration: %w", err),
+			fmt.Errorf("%s: %w", msg, err),
 		)
 		return false, &errResponse
 	}
