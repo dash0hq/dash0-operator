@@ -8,7 +8,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -82,7 +81,7 @@ var _ = Describe(
 						"self monitoring is not activated if it isn't enabled",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(false)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
 							},
 							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
 								SelfMonitoringEnabled: false,
@@ -93,7 +92,7 @@ var _ = Describe(
 						"self monitoring is not activated if there is no export",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports:        nil,
 							},
 							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
@@ -105,7 +104,7 @@ var _ = Describe(
 						"self monitoring is not activated if there is an export struct with no export",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports: []dash0common.Export{
 									{},
 								},
@@ -117,7 +116,7 @@ var _ = Describe(
 						"should convert Dash0 export with token",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports:        Dash0ExportWithEndpointAndToken().ToExports(),
 							},
 							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
@@ -131,7 +130,7 @@ var _ = Describe(
 						"should convert Dash0 export with secret ref",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports:        Dash0ExportWithEndpointAndSecretRef().ToExports(),
 							},
 							secret: DefaultSecret(),
@@ -146,7 +145,7 @@ var _ = Describe(
 						"should use custom dataset",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports:        Dash0ExportWithEndpointTokenAndCustomDataset().ToExports(),
 							},
 							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
@@ -160,7 +159,7 @@ var _ = Describe(
 						"should ignore grpc and http exports if a Dash0 export is present",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports: []dash0common.Export{
 									{
 										Dash0: &dash0common.Dash0Configuration{
@@ -190,7 +189,7 @@ var _ = Describe(
 						"should convert gRPC export",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports:        GrpcExportTest().ToExports(),
 							},
 							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
@@ -203,7 +202,7 @@ var _ = Describe(
 						"should convert HTTP export",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports:        HttpExportTest().ToExports(),
 							},
 							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
@@ -216,7 +215,7 @@ var _ = Describe(
 						"multiple exports: should use the first Dash0 export for self-monitoring",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports: []dash0common.Export{
 									{
 										Dash0: &dash0common.Dash0Configuration{
@@ -247,7 +246,7 @@ var _ = Describe(
 						"multiple exports: should use the first gRPC export if it comes before a Dash0 export",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports: []dash0common.Export{
 									{
 										Grpc: &dash0common.GrpcConfiguration{
@@ -280,7 +279,7 @@ var _ = Describe(
 						"multiple exports: should disable self-monitoring if the first export token cannot be resolved",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
-								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
 								Exports: []dash0common.Export{
 									{
 										Dash0: &dash0common.Dash0Configuration{

@@ -75,7 +75,7 @@ var _ = Describe("Uninstalling the Dash0 operator (post-delete hook)", Ordered, 
 					"",
 					dash0AllowlistSynchronizerName,
 					&unstructured.Unstructured{
-						Object: map[string]interface{}{
+						Object: map[string]any{
 							"apiVersion": gkeAutopilotAllowlistSynchronizerGroupAndVersion,
 							"kind":       gkeAutopilotAllowlistSynchronizerKind,
 						},
@@ -144,13 +144,13 @@ func uninstallAllowlistSynchronizerCrd(ctx context.Context) {
 
 func createAllowlistSynchronizer(ctx context.Context, name string) {
 	dash0AllowlistSynchronizer := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": gkeAutopilotAllowlistSynchronizerGroupAndVersion,
 			"kind":       gkeAutopilotAllowlistSynchronizerKind,
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": name,
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 	Expect(k8sClient.Create(ctx, dash0AllowlistSynchronizer)).To(Succeed())
@@ -158,7 +158,7 @@ func createAllowlistSynchronizer(ctx context.Context, name string) {
 
 func createAllowlistSynchronizerReceiver() *unstructured.Unstructured {
 	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": gkeAutopilotAllowlistSynchronizerGroupAndVersion,
 			"kind":       gkeAutopilotAllowlistSynchronizerKind,
 		},

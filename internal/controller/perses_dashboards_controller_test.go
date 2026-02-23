@@ -17,7 +17,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -403,7 +402,7 @@ var _ = Describe(
 					"it ignores Perses dashboard resource changes if synchronization is disabled via the Dash0 monitoring resource",
 					func() {
 						monitoringResource := EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
-						monitoringResource.Spec.SynchronizePersesDashboards = ptr.To(false)
+						monitoringResource.Spec.SynchronizePersesDashboards = new(false)
 						Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
 						expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
@@ -656,7 +655,7 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						dashboardResource := createDashboardResource()
-						spec := dashboardResource.Object["spec"].(map[string]interface{})
+						spec := dashboardResource.Object["spec"].(map[string]any)
 						spec["display"] = "not a map"
 						persesDashboardReconciler.Create(
 							ctx,
@@ -748,7 +747,7 @@ var _ = Describe(
 
 				DescribeTable(
 					"maps both CRD versions", func(testConfig dashboardToRequestTestConfig) {
-						dashboard := map[string]interface{}{}
+						dashboard := map[string]any{}
 						Expect(yaml.Unmarshal([]byte(testConfig.dashboard), &dashboard)).To(Succeed())
 						apiConfig := ApiConfig{}
 						preconditionValidationResult := &preconditionValidationResult{
@@ -778,7 +777,7 @@ var _ = Describe(
 						}()
 						body, err := io.ReadAll(req.Body)
 						Expect(err).ToNot(HaveOccurred())
-						resultingDashboardInRequest := map[string]interface{}{}
+						resultingDashboardInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingDashboardInRequest)).To(Succeed())
 						Expect(
 							ReadFromMap(
@@ -803,7 +802,7 @@ var _ = Describe(
 						if testConfig.expectedAnnotations != nil {
 							annotationsRaw := ReadFromMap(resultingDashboardInRequest, []string{"metadata", "annotations"})
 							Expect(annotationsRaw).ToNot(BeNil())
-							annotations := annotationsRaw.(map[string]interface{})
+							annotations := annotationsRaw.(map[string]any)
 							Expect(annotations).To(HaveLen(len(testConfig.expectedAnnotations)))
 							for expectedKey, expectedValue := range testConfig.expectedAnnotations {
 								value, ok := annotations[expectedKey]
@@ -828,7 +827,7 @@ spec:
   duration: 5m
 `,
 							expectedName:        "Perses Dashboard Example",
-							expectedDescription: ptr.To("This is an example dashboard."),
+							expectedDescription: new("This is an example dashboard."),
 						},
 					),
 					Entry(
@@ -846,7 +845,7 @@ spec:
     duration: 5m
 `,
 							expectedName:        "Perses Dashboard Example",
-							expectedDescription: ptr.To("This is an example dashboard."),
+							expectedDescription: new("This is an example dashboard."),
 						},
 					),
 					Entry(
@@ -862,7 +861,7 @@ spec:
   duration: 5m
 `,
 							expectedName:        fmt.Sprintf("%s/perses-dashboard", TestNamespaceName),
-							expectedDescription: ptr.To("This is an example dashboard."),
+							expectedDescription: new("This is an example dashboard."),
 						},
 					),
 					Entry(
@@ -879,7 +878,7 @@ spec:
     duration: 5m
 `,
 							expectedName:        fmt.Sprintf("%s/perses-dashboard", TestNamespaceName),
-							expectedDescription: ptr.To("This is an example dashboard."),
+							expectedDescription: new("This is an example dashboard."),
 						},
 					),
 					Entry(
@@ -928,7 +927,7 @@ spec:
   duration: 5m
 `,
 							expectedName:        "Perses Dashboard Example",
-							expectedDescription: ptr.To("This is an example dashboard."),
+							expectedDescription: new("This is an example dashboard."),
 							expectedAnnotations: map[string]string{
 								"dash0com/annotation1": "value1",
 								"dash0com/annotation2": "value2",
@@ -953,7 +952,7 @@ spec:
     duration: 5m
 `,
 							expectedName:        "Perses Dashboard Example",
-							expectedDescription: ptr.To("This is an example dashboard."),
+							expectedDescription: new("This is an example dashboard."),
 							expectedAnnotations: map[string]string{
 								"dash0com/annotation1": "value1",
 								"dash0com/annotation2": "value2",
@@ -1008,10 +1007,10 @@ func expectDashboardPutRequest(clusterId string, expectedPath string) {
 	)
 }
 
-func dashboardPutResponse(clusterId string, dataset string, originPattern string) map[string]interface{} {
-	return map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"dash0Extensions": map[string]interface{}{
+func dashboardPutResponse(clusterId string, dataset string, originPattern string) map[string]any {
+	return map[string]any{
+		"metadata": map[string]any{
+			"dash0Extensions": map[string]any{
 				"id":      fmt.Sprintf(originPattern, clusterId),
 				"dataset": dataset,
 			},

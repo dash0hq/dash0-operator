@@ -274,7 +274,7 @@ type preconditionValidationResult struct {
 	syncDisabledViaLabel bool
 
 	// resource is the Kubernetes resource that is being reconciled, as a map
-	resource map[string]interface{}
+	resource map[string]any
 
 	// monitoringResource is the Dash0 monitoring resource that was found in the same namespace as the resource
 	monitoringResource *dash0v1beta1.Dash0Monitoring
@@ -715,11 +715,11 @@ func validatePreconditionsAndPreprocess(
 	}
 }
 
-func isSyncDisabledViaLabel(dash0ApiResourceObject map[string]interface{}) bool {
+func isSyncDisabledViaLabel(dash0ApiResourceObject map[string]any) bool {
 	if metadataRaw := dash0ApiResourceObject["metadata"]; metadataRaw != nil {
-		if metadata, ok := metadataRaw.(map[string]interface{}); ok {
+		if metadata, ok := metadataRaw.(map[string]any); ok {
 			if labelsRaw := metadata["labels"]; labelsRaw != nil {
-				if labels, ok := labelsRaw.(map[string]interface{}); ok {
+				if labels, ok := labelsRaw.(map[string]any); ok {
 					if dash0Enable := labels["dash0.com/enable"]; dash0Enable == "false" {
 						return true
 					}
@@ -733,22 +733,22 @@ func isSyncDisabledViaLabel(dash0ApiResourceObject map[string]interface{}) bool 
 // cleanUpMetadata removes fields from the resource that are somewhat large and not relevant for synchronizing a
 // resource with the Dash0 API, to reduce the payload size of the request sent to the API (e.g. metadata.managedFields,
 // metadata.annotations.kubectl.kubernetes.io/last-applied-configuration).
-func cleanUpMetadata(resource map[string]interface{}) {
+func cleanUpMetadata(resource map[string]any) {
 	metadataRaw := resource["metadata"]
 	if metadataRaw != nil {
-		metadata, ok := metadataRaw.(map[string]interface{})
+		metadata, ok := metadataRaw.(map[string]any)
 		if ok {
 			delete(metadata, "managedFields")
 			annotationsRaw := metadata["annotations"]
 			if annotationsRaw != nil {
-				annotations, ok := annotationsRaw.(map[string]interface{})
+				annotations, ok := annotationsRaw.(map[string]any)
 				if ok {
 					delete(annotations, "kubectl.kubernetes.io/last-applied-configuration")
 				}
 			}
 			labelsRaw := metadata["labels"]
 			if labelsRaw != nil {
-				labels, ok := labelsRaw.(map[string]interface{})
+				labels, ok := labelsRaw.(map[string]any)
 				if ok {
 					delete(labels, "dash0.com/dataset")
 					delete(labels, "dash0.com/id")
@@ -845,12 +845,12 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 }
 
 // structToMap converts any struct to an unstructured.Unstructured object.
-func structToMap(obj interface{}) (*unstructured.Unstructured, error) {
+func structToMap(obj any) (*unstructured.Unstructured, error) {
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
 		return nil, err
 	}
-	var object map[string]interface{}
+	var object map[string]any
 	if err = json.Unmarshal(jsonBytes, &object); err != nil {
 		return nil, err
 	}

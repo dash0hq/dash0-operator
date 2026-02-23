@@ -20,7 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -96,7 +95,7 @@ type ThirdPartyResourceReconciler interface {
 		qualifiedName string,
 		status dash0common.ThirdPartySynchronizationStatus,
 		synchronizationResults synchronizationResults,
-	) interface{}
+	) any
 }
 
 type ThirdPartyResourceSyncJob struct {
@@ -166,7 +165,7 @@ func SetupThirdPartyCrdReconcilerWithManager(
 	if crdReconciler.SkipNameValidation() {
 		controllerBuilder = controllerBuilder.WithOptions(
 			controller.TypedOptions[reconcile.Request]{
-				SkipNameValidation: ptr.To(true),
+				SkipNameValidation: new(true),
 			},
 		)
 	}
@@ -302,7 +301,7 @@ func maybeStartWatchingThirdPartyResources(
 				// the controller name from the set of controller names when the controller is stopped, so we need to
 				// skip the duplicate name validation check.
 				// See also: https://github.com/kubernetes-sigs/controller-runtime/issues/2983#issuecomment-2440089997.
-				SkipNameValidation: ptr.To(true),
+				SkipNameValidation: new(true),
 			},
 		)
 	if err != nil {

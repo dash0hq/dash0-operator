@@ -11,7 +11,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
@@ -686,7 +685,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Name: corev1.Windows,
 					},
 				},
-				expectedMessage: ptr.To(
+				expectedMessage: new(
 					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
 						"system, workload modifications are only supported for Linux workloads. Details: " +
 						"pod.spec.os.name: \"windows\"",
@@ -698,7 +697,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Name: "whatever",
 					},
 				},
-				expectedMessage: ptr.To(
+				expectedMessage: new(
 					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
 						"system, workload modifications are only supported for Linux workloads. Details: " +
 						"pod.spec.os.name: \"whatever\""),
@@ -726,7 +725,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						util.KubernetesIoOs: "windows",
 					},
 				},
-				expectedMessage: ptr.To(
+				expectedMessage: new(
 					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
 						"system, workload modifications are only supported for Linux workloads. " +
 						"Details: pod.spec.nodeSelector: \"kubernetes.io/os=windows\"",
@@ -817,7 +816,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						},
 					},
 				},
-				expectedMessage: ptr.To(
+				expectedMessage: new(
 					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
 						"system, workload modifications are only supported for Linux workloads. " +
 						"Details: pod.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution." +
@@ -863,7 +862,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						},
 					},
 				},
-				expectedMessage: ptr.To(
+				expectedMessage: new(
 					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
 						"system, workload modifications are only supported for Linux workloads. " +
 						"Details: pod.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution." +
@@ -2042,7 +2041,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Value: "tracecontext,baggage",
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					PreviousTraceContextPropagators: ptr.To("something,else"),
+					PreviousTraceContextPropagators: new("something,else"),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2055,7 +2054,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Value: "tracecontext,baggage",
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					PreviousTraceContextPropagators: ptr.To("tracecontext,baggage"),
+					PreviousTraceContextPropagators: new("tracecontext,baggage"),
 				},
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2064,7 +2063,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 			Entry("should not add OTEL_PROPAGATORS if configured as empty string", otelPropagatorsTest{
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To(""),
+					TraceContextPropagators: new(""),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2073,7 +2072,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 			Entry("should not add OTEL_PROPAGATORS if configured string is only whitespace", otelPropagatorsTest{
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("   "),
+					TraceContextPropagators: new("   "),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2082,7 +2081,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 			Entry("should add OTEL_PROPAGATORS if configured and the env var does not exist on the container", otelPropagatorsTest{
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2099,7 +2098,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					},
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2112,7 +2111,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Value: "jaeger,b3multi",
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2125,8 +2124,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Value: "jaeger,b3multi",
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators:         ptr.To("tracecontext,xray"),
-					PreviousTraceContextPropagators: ptr.To("something,else"),
+					TraceContextPropagators:         new("tracecontext,xray"),
+					PreviousTraceContextPropagators: new("something,else"),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2139,8 +2138,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Value: "jaeger,b3multi",
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators:         ptr.To("tracecontext,xray"),
-					PreviousTraceContextPropagators: ptr.To("jaeger,b3multi"),
+					TraceContextPropagators:         new("tracecontext,xray"),
+					PreviousTraceContextPropagators: new("jaeger,b3multi"),
 				},
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2153,8 +2152,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Value: "tracecontext,xray",
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators:         ptr.To("tracecontext,xray"),
-					PreviousTraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators:         new("tracecontext,xray"),
+					PreviousTraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2172,7 +2171,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					},
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
@@ -2214,7 +2213,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Value: "jaeger,b3multi",
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: {Value: "jaeger,b3multi"},
@@ -2231,7 +2230,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					},
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: {ValueFrom: "tracecontext,xray"},
@@ -2243,7 +2242,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Value: "tracecontext,xray",
 				}},
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: nil,
@@ -2251,7 +2250,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 			Entry("should do nothing if env var is not set", otelPropagatorsTest{
 				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
-					TraceContextPropagators: ptr.To("tracecontext,xray"),
+					TraceContextPropagators: new("tracecontext,xray"),
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: nil,

@@ -9,7 +9,6 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -56,13 +55,13 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			Eventually(func(g Gomega) {
 				operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
 				spec := operatorConfigurationResource.Spec
-				g.Expect(spec.SelfMonitoring.Enabled).To(Equal(ptr.To(true)))
-				g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).To(Equal(ptr.To(true)))
+				g.Expect(spec.SelfMonitoring.Enabled).To(Equal(new(true)))
+				g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).To(Equal(new(true)))
 				//nolint:staticcheck
-				g.Expect(spec.KubernetesInfrastructureMetricsCollectionEnabled).To(Equal(ptr.To(true)))
-				g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).To(Equal(ptr.To(true)))
-				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(ptr.To(false)))
-				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(ptr.To(true)))
+				g.Expect(spec.KubernetesInfrastructureMetricsCollectionEnabled).To(Equal(new(true)))
+				g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).To(Equal(new(true)))
+				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(new(false)))
+				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(new(true)))
 			})
 		})
 
@@ -77,7 +76,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 						TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-							Enabled: ptr.To(false),
+							Enabled: new(false),
 						},
 					},
 				})
@@ -86,13 +85,13 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			Eventually(func(g Gomega) {
 				operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
 				spec := operatorConfigurationResource.Spec
-				g.Expect(spec.SelfMonitoring.Enabled).To(Equal(ptr.To(false)))
-				g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).To(Equal(ptr.To(false)))
+				g.Expect(spec.SelfMonitoring.Enabled).To(Equal(new(false)))
+				g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).To(Equal(new(false)))
 				//nolint:staticcheck
-				g.Expect(spec.KubernetesInfrastructureMetricsCollectionEnabled).To(Equal(ptr.To(false)))
-				g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).To(Equal(ptr.To(false)))
-				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(ptr.To(false)))
-				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(ptr.To(false)))
+				g.Expect(spec.KubernetesInfrastructureMetricsCollectionEnabled).To(Equal(new(false)))
+				g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).To(Equal(new(false)))
+				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(new(false)))
+				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(new(false)))
 			})
 		})
 	})
@@ -110,23 +109,23 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 			wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 				KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
-				KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+				KubernetesInfrastructureMetricsCollectionEnabled: new(true),
 				CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 				CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 			},
 		}),
@@ -141,23 +140,23 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(true),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			}),
@@ -165,29 +164,29 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						// self-monitoring does not depend on the telemetry collection flag
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			}),
@@ -198,28 +197,28 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{},
 					CollectPodLabelsAndAnnotations:            dash0v1alpha1.CollectPodLabelsAndAnnotations{},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			}),
@@ -227,41 +226,41 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			}),
@@ -269,44 +268,44 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			}),
@@ -314,41 +313,41 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			}),
@@ -359,38 +358,38 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(false),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(false),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			}),
@@ -404,23 +403,23 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					Export:  nil,
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(true),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			}),
@@ -433,23 +432,23 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					Export:  nil,
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(true),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			}),
@@ -464,23 +463,23 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					Export:  nil,
 					Exports: []dash0common.Export{*GrpcExportTest()},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(true),
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			}),

@@ -22,7 +22,7 @@ type CapturingLogSink struct {
 	runtimeInfo logr.RuntimeInfo
 }
 
-func (s *CapturingLogSink) doLog(_ int, msg string, _ ...interface{}) {
+func (s *CapturingLogSink) doLog(_ int, msg string, _ ...any) {
 	s.messages = append(s.messages, msg)
 }
 
@@ -34,15 +34,15 @@ func (s *CapturingLogSink) Enabled(_ int) bool {
 	return true
 }
 
-func (s *CapturingLogSink) Info(level int, msg string, keysAndValues ...interface{}) {
+func (s *CapturingLogSink) Info(level int, msg string, keysAndValues ...any) {
 	s.doLog(level, msg, keysAndValues...)
 }
 
-func (s *CapturingLogSink) Error(err error, msg string, keysAndValues ...interface{}) {
+func (s *CapturingLogSink) Error(err error, msg string, keysAndValues ...any) {
 	s.doLog(int(slog.LevelError), msg, append(keysAndValues, err)...)
 }
 
-func (s *CapturingLogSink) WithValues(_ ...interface{}) logr.LogSink {
+func (s *CapturingLogSink) WithValues(_ ...any) logr.LogSink {
 	return s
 }
 

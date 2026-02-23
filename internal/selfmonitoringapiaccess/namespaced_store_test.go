@@ -181,7 +181,7 @@ var _ = Describe(
 								go func() {
 									defer GinkgoRecover()
 									defer wg.Done()
-									for i := 0; i < iterations; i++ {
+									for i := range iterations {
 										store.Set([]string{fmt.Sprintf("val-%d", i)})
 									}
 								}()
@@ -191,7 +191,7 @@ var _ = Describe(
 								go func() {
 									defer GinkgoRecover()
 									defer wg.Done()
-									for i := 0; i < iterations; i++ {
+									for range iterations {
 										store.Get()
 									}
 								}()
@@ -507,7 +507,7 @@ var _ = Describe(
 									go func(key string) {
 										defer GinkgoRecover()
 										defer wg.Done()
-										for i := 0; i < iterations; i++ {
+										for i := range iterations {
 											store.Set(key, []string{fmt.Sprintf("val-%d", i)})
 										}
 									}(k)
@@ -519,7 +519,7 @@ var _ = Describe(
 									go func(key string) {
 										defer GinkgoRecover()
 										defer wg.Done()
-										for i := 0; i < iterations; i++ {
+										for range iterations {
 											store.Get(key)
 										}
 									}(k)
@@ -661,7 +661,7 @@ var _ = Describe(
 						iterations := 100
 
 						var wg sync.WaitGroup
-						for i := 0; i < iterations; i++ {
+						for range iterations {
 							wg.Add(1)
 							go func() {
 								defer GinkgoRecover()
@@ -689,7 +689,7 @@ var _ = Describe(
 						var wg sync.WaitGroup
 
 						for _, k := range keys {
-							for i := 0; i < iterations; i++ {
+							for range iterations {
 								wg.Add(1)
 								go func(key string) {
 									defer GinkgoRecover()

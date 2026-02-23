@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -33,13 +32,13 @@ var (
 
 	OperatorConfigurationResourceWithoutExport = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(false),
+			Enabled: new(false),
 		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(false),
+			Enabled: new(false),
 		},
 		Exports: []dash0common.Export{
 			{
@@ -52,19 +51,19 @@ var (
 			},
 		},
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(false),
+			Enabled: new(false),
 		},
 		Exports: []dash0common.Export{
 			{
@@ -77,19 +76,19 @@ var (
 			},
 		},
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(false),
+			Enabled: new(false),
 		},
 		Exports: []dash0common.Export{
 			{
@@ -103,19 +102,19 @@ var (
 			},
 		},
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(false),
+			Enabled: new(false),
 		},
 		Exports: []dash0common.Export{
 			{
@@ -129,19 +128,19 @@ var (
 			},
 		},
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 	}
 
 	OperatorConfigurationResourceWithoutSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(false),
+			Enabled: new(false),
 		},
 		Exports: []dash0common.Export{
 			{
@@ -155,19 +154,19 @@ var (
 			},
 		},
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 	}
 
 	OperatorConfigurationResourceWithSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		Exports: []dash0common.Export{
 			{
@@ -180,13 +179,13 @@ var (
 			},
 		},
 		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 	}
 
@@ -255,7 +254,7 @@ func CreateOperatorConfigurationResourceWithName(
 			},
 			Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				Exports: []dash0common.Export{
 					{

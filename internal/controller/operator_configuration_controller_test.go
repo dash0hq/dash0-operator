@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -230,7 +229,7 @@ var _ = Describe(
 						"multiple exports, first Dash0 with API endpoint and token, second gRPC", ApiClientSetRemoveTestConfig{
 							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-									Enabled: ptr.To(false),
+									Enabled: new(false),
 								},
 								Exports: []dash0common.Export{
 									{
@@ -266,7 +265,7 @@ var _ = Describe(
 						ApiClientSetRemoveTestConfig{
 							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-									Enabled: ptr.To(false),
+									Enabled: new(false),
 								},
 								Exports: []dash0common.Export{
 									{
@@ -303,7 +302,7 @@ var _ = Describe(
 						"multiple exports, neither Dash0 export has API endpoint", ApiClientSetRemoveTestConfig{
 							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-									Enabled: ptr.To(false),
+									Enabled: new(false),
 								},
 								Exports: []dash0common.Export{
 									{
@@ -333,7 +332,7 @@ var _ = Describe(
 						"multiple exports, first gRPC, second Dash0 with API endpoint and token", ApiClientSetRemoveTestConfig{
 							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-									Enabled: ptr.To(false),
+									Enabled: new(false),
 								},
 								Exports: []dash0common.Export{
 									{
@@ -374,7 +373,7 @@ var _ = Describe(
 						ApiClientSetRemoveTestConfig{
 							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-									Enabled: ptr.To(false),
+									Enabled: new(false),
 								},
 								Exports: []dash0common.Export{
 									{
@@ -411,7 +410,7 @@ var _ = Describe(
 						ApiClientSetRemoveTestConfig{
 							operatorConfigurationResourceSpec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-									Enabled: ptr.To(false),
+									Enabled: new(false),
 								},
 								Exports: []dash0common.Export{
 									{
@@ -467,7 +466,7 @@ var _ = Describe(
 									dash0v1alpha1.Dash0OperatorConfigurationSpec{
 										Exports: Dash0ExportWithEndpointAndToken().ToExports(),
 										SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-											Enabled: ptr.To(false),
+											Enabled: new(false),
 										},
 										ClusterName: ClusterNameTest,
 									},
@@ -503,7 +502,7 @@ var _ = Describe(
 									dash0v1alpha1.Dash0OperatorConfigurationSpec{
 										Exports: config.createExport().ToExports(),
 										SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-											Enabled: ptr.To(config.selfMonitoringEnabled),
+											Enabled: new(config.selfMonitoringEnabled),
 										},
 										ClusterName: ClusterNameTest,
 									},
@@ -659,7 +658,7 @@ var _ = Describe(
 											},
 										},
 										SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-											Enabled: ptr.To(true),
+											Enabled: new(true),
 										},
 										ClusterName: ClusterNameTest,
 									},
@@ -716,7 +715,7 @@ var _ = Describe(
 											},
 										},
 										SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-											Enabled: ptr.To(true),
+											Enabled: new(true),
 										},
 										ClusterName: ClusterNameTest,
 									},
@@ -767,7 +766,7 @@ var _ = Describe(
 							dash0v1alpha1.Dash0OperatorConfigurationSpec{
 								Exports: Dash0ExportWithEndpointAndToken().ToExports(),
 								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-									Enabled: ptr.To(true),
+									Enabled: new(true),
 								},
 								ClusterName: ClusterNameTest,
 							},
@@ -806,7 +805,7 @@ var _ = Describe(
 					"shuts down the OTel SDK when self-monitoring is disabled or the export config removed", func() {
 						// update operator configuration, removing the export and disabling self-monitoring
 						updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(false)
+						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = new(false)
 						updatedOperatorConfigurationResource.Spec.Exports = nil
 						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
@@ -830,7 +829,7 @@ var _ = Describe(
 					"restarts the OTel SDK after shutting it down previously", func() {
 						// update operator configuration, removing the export and disabling self-monitoring
 						updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(false)
+						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = new(false)
 						updatedOperatorConfigurationResource.Spec.Exports = nil
 						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
@@ -850,7 +849,7 @@ var _ = Describe(
 						// update operator configuration _once again_, adding the export config back and enabling self-monitoring
 						// again
 						updatedOperatorConfigurationResource = LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = ptr.To(true)
+						updatedOperatorConfigurationResource.Spec.SelfMonitoring.Enabled = new(true)
 						updatedOperatorConfigurationResource.Spec.Exports = Dash0ExportWithEndpointAndToken().ToExports()
 						Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
@@ -1089,7 +1088,7 @@ var _ = Describe(
 							dash0v1alpha1.Dash0OperatorConfigurationSpec{
 								Exports: Dash0ExportWithEndpointAndToken().ToExports(),
 								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-									Enabled: ptr.To(false),
+									Enabled: new(false),
 								},
 								ClusterName: ClusterNameTest,
 							},

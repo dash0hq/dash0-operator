@@ -16,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
@@ -698,16 +697,16 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	// Map annotations resource.opentelemetry.io/your-key: "your-value" to resource attributes.
 	resourceAttributes := map[string]string{}
 	for annotationName, annotationValue := range workloadMeta.Annotations {
-		if strings.HasPrefix(annotationName, "resource.opentelemetry.io/") {
-			resourceAttributeKey := strings.TrimPrefix(annotationName, "resource.opentelemetry.io/")
+		if after, ok := strings.CutPrefix(annotationName, "resource.opentelemetry.io/"); ok {
+			resourceAttributeKey := after
 			resourceAttributes[resourceAttributeKey] = annotationValue
 		}
 	}
 	// By iterating over the pod annotations _after_ the workload annotations, we ensure that the pod annotations take
 	// precedence over the workload annotations.
 	for annotationName, annotationValue := range podMeta.Annotations {
-		if strings.HasPrefix(annotationName, "resource.opentelemetry.io/") {
-			resourceAttributeKey := strings.TrimPrefix(annotationName, "resource.opentelemetry.io/")
+		if after, ok := strings.CutPrefix(annotationName, "resource.opentelemetry.io/"); ok {
+			resourceAttributeKey := after
 			resourceAttributes[resourceAttributeKey] = annotationValue
 		}
 	}
@@ -887,7 +886,7 @@ func (m *ResourceModifier) addOTelPropagatorsEnvVar(container *corev1.Container)
 
 func otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers []corev1.Container, namespaceInstrumentationConfig util.NamespaceInstrumentationConfig) bool {
 	for _, container := range containers {
-		if otelPropagatorsCanBeUpdatedForContainer(ptr.To(container), namespaceInstrumentationConfig) {
+		if otelPropagatorsCanBeUpdatedForContainer(new(container), namespaceInstrumentationConfig) {
 			return true
 		}
 	}
@@ -984,7 +983,7 @@ func otelInjectorConfEnvVarWillBeUpdatedForAtLeastOneContainer(
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 ) bool {
 	for _, container := range containers {
-		envVarOnContainer := util.GetEnvVar(ptr.To(container), envVarOtelInjectorConfigFileName)
+		envVarOnContainer := util.GetEnvVar(new(container), envVarOtelInjectorConfigFileName)
 		if envVarOnContainer != nil && envVarOnContainer.ValueFrom != nil {
 			// The environment variable OTEL_INJECTOR_CONFIG_FILE is set via ValueFrom for this container, which is basically
 			// impossible because only the operator should ever set this variable, and it never uses ValueFrom. Anyway, we
@@ -1476,11 +1475,11 @@ func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Conta
 // added in the future.)
 func (m *ResourceModifier) checkEligibleForModification(podSpec *corev1.PodSpec) *ModificationResult {
 	if podSpec.OS != nil && podSpec.OS.Name != "" && podSpec.OS.Name != corev1.Linux {
-		return ptr.To(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf("pod.spec.os.name: \"%s\"", podSpec.OS.Name)))
+		return new(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf("pod.spec.os.name: \"%s\"", podSpec.OS.Name)))
 	}
 	for key, value := range podSpec.NodeSelector {
 		if key == util.KubernetesIoOs && value != "linux" {
-			return ptr.To(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf("pod.spec.nodeSelector: \"%s=%s\"", key, value)))
+			return new(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf("pod.spec.nodeSelector: \"%s=%s\"", key, value)))
 		}
 	}
 	if podSpec.Affinity != nil &&
@@ -1491,7 +1490,7 @@ func (m *ResourceModifier) checkEligibleForModification(podSpec *corev1.PodSpec)
 				if matchExpression.Key == util.KubernetesIoOs &&
 					((matchExpression.Operator == corev1.NodeSelectorOpIn && !slices.Contains(matchExpression.Values, "linux")) ||
 						(matchExpression.Operator == corev1.NodeSelectorOpNotIn && slices.Contains(matchExpression.Values, "linux"))) {
-					return ptr.To(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf(
+					return new(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf(
 						"pod.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution."+
 							"nodeSelectorTerms.matchExpression: key: \"%s\", operator: \"%s\", values: \"%v\"",
 						matchExpression.Key,

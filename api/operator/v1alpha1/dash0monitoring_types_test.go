@@ -123,16 +123,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Export:              testExport(),
 					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Filter:                      testFilter(),
 					Transform:                   testTransform(),
 					NormalizedTransformSpec:     testNormalizedTransform(),
-					SynchronizePersesDashboards: ptr.To(false),
-					SynchronizePrometheusRules:  ptr.To(false),
+					SynchronizePersesDashboards: new(false),
+					SynchronizePrometheusRules:  new(false),
 				},
 				srcStatus: Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
@@ -151,16 +151,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Filter:                      testFilter(),
 					Transform:                   testTransform(),
 					NormalizedTransformSpec:     testNormalizedTransform(),
-					SynchronizePersesDashboards: ptr.To(false),
-					SynchronizePrometheusRules:  ptr.To(false),
+					SynchronizePersesDashboards: new(false),
+					SynchronizePrometheusRules:  new(false),
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
@@ -181,16 +181,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Exports:             []dash0common.Export{*testExport()},
 					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Filter:                      testFilter(),
 					Transform:                   testTransform(),
 					NormalizedTransformSpec:     testNormalizedTransform(),
-					SynchronizePersesDashboards: ptr.To(false),
-					SynchronizePrometheusRules:  ptr.To(false),
+					SynchronizePersesDashboards: new(false),
+					SynchronizePrometheusRules:  new(false),
 				},
 				srcStatus: Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
@@ -209,16 +209,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Filter:                      testFilter(),
 					Transform:                   testTransform(),
 					NormalizedTransformSpec:     testNormalizedTransform(),
-					SynchronizePersesDashboards: ptr.To(false),
-					SynchronizePrometheusRules:  ptr.To(false),
+					SynchronizePersesDashboards: new(false),
+					SynchronizePrometheusRules:  new(false),
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
@@ -236,7 +236,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 			Entry("convert legacy prometheus scraping setting (disabled only via legacy setting)", convertToTestCase{
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: Dash0MonitoringSpec{
-					PrometheusScrapingEnabled: ptr.To(false),
+					PrometheusScrapingEnabled: new(false),
 				},
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
@@ -244,7 +244,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -257,9 +257,9 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
-					PrometheusScrapingEnabled: ptr.To(false),
+					PrometheusScrapingEnabled: new(false),
 				},
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
@@ -267,7 +267,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -280,9 +280,9 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
-					PrometheusScrapingEnabled: ptr.To(false),
+					PrometheusScrapingEnabled: new(false),
 				},
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
@@ -290,7 +290,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -303,9 +303,9 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
-					PrometheusScrapingEnabled: ptr.To(true),
+					PrometheusScrapingEnabled: new(true),
 				},
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
@@ -313,7 +313,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -341,7 +341,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,xray"),
+							Propagators: new("tracecontext,xray"),
 						},
 					},
 				},
@@ -375,7 +375,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,xray"),
+							Propagators: new("tracecontext,xray"),
 						},
 					},
 				},
@@ -452,7 +452,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					EventCollection: dash0common.EventCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -481,7 +481,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					EventCollection: dash0common.EventCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -539,18 +539,18 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						LabelSelector: "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,xray"),
+							Propagators: new("tracecontext,xray"),
 						},
 					},
 					EventCollection: dash0common.EventCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						LabelSelector: "dash0-auto-instrument=yes-please",
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("xray"),
+							Propagators: new("xray"),
 						},
 					},
 				},
@@ -628,16 +628,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					},
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Filter:                      testFilter(),
 					Transform:                   testTransform(),
 					NormalizedTransformSpec:     testNormalizedTransform(),
-					SynchronizePersesDashboards: ptr.To(false),
-					SynchronizePrometheusRules:  ptr.To(false),
+					SynchronizePersesDashboards: new(false),
+					SynchronizePrometheusRules:  new(false),
 				},
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
@@ -655,16 +655,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Export:              testExport(),
 					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Filter:                      testFilter(),
 					Transform:                   testTransform(),
 					NormalizedTransformSpec:     testNormalizedTransform(),
-					SynchronizePersesDashboards: ptr.To(false),
-					SynchronizePrometheusRules:  ptr.To(false),
+					SynchronizePersesDashboards: new(false),
+					SynchronizePrometheusRules:  new(false),
 				},
 				expectedDstStatus: Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
@@ -684,16 +684,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					},
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Filter:                      testFilter(),
 					Transform:                   testTransform(),
 					NormalizedTransformSpec:     testNormalizedTransform(),
-					SynchronizePersesDashboards: ptr.To(false),
-					SynchronizePrometheusRules:  ptr.To(false),
+					SynchronizePersesDashboards: new(false),
+					SynchronizePrometheusRules:  new(false),
 				},
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
@@ -711,16 +711,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Exports:             []dash0common.Export{*testExport()},
 					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Filter:                      testFilter(),
 					Transform:                   testTransform(),
 					NormalizedTransformSpec:     testNormalizedTransform(),
-					SynchronizePersesDashboards: ptr.To(false),
-					SynchronizePrometheusRules:  ptr.To(false),
+					SynchronizePersesDashboards: new(false),
+					SynchronizePrometheusRules:  new(false),
 				},
 				expectedDstStatus: Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
@@ -737,7 +737,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,xray"),
+							Propagators: new("tracecontext,xray"),
 						},
 					},
 				},
@@ -762,7 +762,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("xray"),
+							Propagators: new("xray"),
 						},
 					},
 				},
@@ -832,7 +832,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,xray"),
+							Propagators: new("tracecontext,xray"),
 						},
 					},
 				},
@@ -856,7 +856,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("xray"),
+							Propagators: new("xray"),
 						},
 					},
 				},
@@ -878,14 +878,14 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,xray"),
+							Propagators: new("tracecontext,xray"),
 						},
 					},
 				},
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("xray"),
+							Propagators: new("xray"),
 						},
 					},
 				},
@@ -904,7 +904,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					EventCollection: dash0common.EventCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
@@ -926,7 +926,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					EventCollection: dash0common.EventCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
@@ -950,18 +950,18 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						LabelSelector: "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,xray"),
+							Propagators: new("tracecontext,xray"),
 						},
 					},
 					EventCollection: dash0common.EventCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						LabelSelector: "dash0-auto-instrument=affirmative",
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("xray"),
+							Propagators: new("xray"),
 						},
 					},
 				},
@@ -1005,7 +1005,7 @@ func testExport() *dash0common.Export {
 		Dash0: &dash0common.Dash0Configuration{
 			Endpoint: EndpointDash0Test,
 			Authorization: dash0common.Authorization{
-				Token: ptr.To(AuthorizationTokenTest),
+				Token: new(AuthorizationTokenTest),
 			},
 		},
 	}
@@ -1066,7 +1066,7 @@ func testNormalizedTransform() *dash0common.NormalizedTransformSpec {
 		ErrorMode: ptr.To(dash0common.FilterTransformErrorModePropagate),
 		Traces: []dash0common.NormalizedTransformGroup{
 			{
-				Context:   ptr.To("trace-transform-context"),
+				Context:   new("trace-transform-context"),
 				ErrorMode: ptr.To(dash0common.FilterTransformErrorModePropagate),
 				Conditions: []string{
 					"trace-transform-condition-1",
@@ -1080,7 +1080,7 @@ func testNormalizedTransform() *dash0common.NormalizedTransformSpec {
 		},
 		Metrics: []dash0common.NormalizedTransformGroup{
 			{
-				Context:   ptr.To("metric-transform-context"),
+				Context:   new("metric-transform-context"),
 				ErrorMode: ptr.To(dash0common.FilterTransformErrorModePropagate),
 				Conditions: []string{
 					"metric-transform-condition-1",
@@ -1094,7 +1094,7 @@ func testNormalizedTransform() *dash0common.NormalizedTransformSpec {
 		},
 		Logs: []dash0common.NormalizedTransformGroup{
 			{
-				Context:   ptr.To("log-transform-context"),
+				Context:   new("log-transform-context"),
 				ErrorMode: ptr.To(dash0common.FilterTransformErrorModePropagate),
 				Conditions: []string{
 					"log-transform-condition-1",

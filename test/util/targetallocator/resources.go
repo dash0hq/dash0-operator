@@ -11,7 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
@@ -100,7 +99,7 @@ func EnsureMonitoringResourceWithPrometheusScrapingExistsInNamespaceAndIsAvailab
 ) *dash0v1beta1.Dash0Monitoring {
 	spec := dash0v1beta1.Dash0MonitoringSpec{
 		PrometheusScraping: common.PrometheusScraping{
-			Enabled: ptr.To(true),
+			Enabled: new(true),
 		},
 	}
 	return testutil.EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
@@ -120,10 +119,10 @@ func CreateDefaultOperatorConfigurationResourceWithPrometheusCrdSupport(
 		k8sClient,
 		dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-				Enabled: ptr.To(true),
+				Enabled: new(true),
 			},
 			PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-				Enabled: ptr.To(true),
+				Enabled: new(true),
 			},
 		},
 	)
@@ -208,18 +207,18 @@ func VerifyTargetAllocatorConfigMapContainsNamespaces(
 	cm := VerifyTargetAllocatorConfigMap(ctx, k8sClient, operatorNamespace)
 	config := cm.Data["targetallocator.yaml"]
 
-	var configMap map[string]interface{}
+	var configMap map[string]any
 	err := yaml.Unmarshal([]byte(config), &configMap)
 	Expect(err).ToNot(HaveOccurred())
 
-	prometheusCr, ok := configMap["prometheus_cr"].(map[string]interface{})
+	prometheusCr, ok := configMap["prometheus_cr"].(map[string]any)
 	Expect(ok).To(BeTrue(), "prometheus_cr should be a map")
 
 	if len(expectedNamespaces) > 0 {
 		allowNamespacesRaw, exists := prometheusCr["allow_namespaces"]
 		Expect(exists).To(BeTrue(), "allow_namespaces should exist when namespaces are expected")
 
-		allowNamespaces, ok := allowNamespacesRaw.([]interface{})
+		allowNamespaces, ok := allowNamespacesRaw.([]any)
 		Expect(ok).To(BeTrue(), "allow_namespaces should be an array")
 
 		actualNamespaces := make([]string, len(allowNamespaces))

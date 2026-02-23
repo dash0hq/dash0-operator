@@ -18,18 +18,18 @@ var (
 	sequenceIndexRegex      = regexp.MustCompile(`^(\d+)$`)
 )
 
-func ParseConfigMapContent(configMap *corev1.ConfigMap, dataKey string) map[string]interface{} {
+func ParseConfigMapContent(configMap *corev1.ConfigMap, dataKey string) map[string]any {
 	configMapContent := configMap.Data[dataKey]
-	configMapParsed := &map[string]interface{}{}
+	configMapParsed := &map[string]any{}
 	err := yaml.Unmarshal([]byte(configMapContent), configMapParsed)
 	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Cannot parse config map content:\n%s\n", configMapContent))
 	return *configMapParsed
 }
 
 //nolint:lll
-func ReadFromMap(object interface{}, path []string) interface{} {
+func ReadFromMap(object any, path []string) any {
 	key := path[0]
-	var sub interface{}
+	var sub any
 
 	sequenceOfMappingsMatches := sequenceOfMappingsRegex.FindStringSubmatch(key)
 	sequenceIndexMatches := sequenceIndexRegex.FindStringSubmatch(key)
@@ -39,10 +39,10 @@ func ReadFromMap(object interface{}, path []string) interface{} {
 		attributeName := sequenceOfMappingsMatches[1]
 		attributeValue := sequenceOfMappingsMatches[2]
 
-		s, isSlice := object.([]interface{})
+		s, isSlice := object.([]any)
 		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key \"%s\", got %T", key, object))
 		for _, item := range s {
-			m, isMapInSlice := item.(map[string]interface{})
+			m, isMapInSlice := item.(map[string]any)
 			Expect(isMapInSlice).To(BeTrue(), fmt.Sprintf("expected a map[string]interface{} when checking an item in the slice read via key \"%s\", got %T", key, object))
 			val := m[attributeName]
 			if val == attributeValue {
@@ -55,13 +55,13 @@ func ReadFromMap(object interface{}, path []string) interface{} {
 		indexRaw := sequenceIndexMatches[1]
 		index, err := strconv.Atoi(indexRaw)
 		Expect(err).ToNot(HaveOccurred())
-		s, isSlice := object.([]interface{})
+		s, isSlice := object.([]any)
 		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key \"%s\", got %T", key, object))
 		Expect(len(s) > index).To(BeTrue())
 		sub = s[index]
 	} else {
 		// assume we have a regular map, read by key
-		m, isMap := object.(map[string]interface{})
+		m, isMap := object.(map[string]any)
 		Expect(isMap).To(BeTrue(), fmt.Sprintf("expected a map[string]interface{} when reading key \"%s\", got %T", key, object))
 		sub = m[key]
 	}

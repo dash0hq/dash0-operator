@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -568,7 +569,7 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 					Port:        otlpGrpcPort,
 					TargetPort:  intstr.FromInt32(otlpGrpcPort),
 					Protocol:    corev1.ProtocolTCP,
-					AppProtocol: ptr.To("grpc"),
+					AppProtocol: new("grpc"),
 				},
 				{
 					Name:       "otlp-http",
@@ -616,16 +617,16 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		Tolerations:        extraConfig.DaemonSetTolerations,
 		ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
 		SecurityContext: &corev1.PodSecurityContext{
-			RunAsNonRoot: ptr.To(true),
+			RunAsNonRoot: new(true),
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
-			RunAsUser:  ptr.To(defaultUser),
-			RunAsGroup: ptr.To(defaultGroup),
+			RunAsUser:  new(defaultUser),
+			RunAsGroup: new(defaultGroup),
 		},
 		// This setting is required to enable the configuration reloader process to send Unix signals to the
 		// collector process.
-		ShareProcessNamespace: ptr.To(true),
+		ShareProcessNamespace: new(true),
 
 		Containers: []corev1.Container{
 			collectorContainer,
@@ -725,9 +726,9 @@ func assembleFileLogOffsetSyncContainer(
 		Name: fileLogOffsetSync,
 		Args: []string{"--mode=sync"},
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(false),
-			RunAsNonRoot:             ptr.To(true),
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(false),
+			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},
@@ -1014,9 +1015,9 @@ func assembleDaemonSetCollectorContainer(
 			"--config=file:" + collectorConfigurationFilePath,
 		},
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(false),
-			RunAsNonRoot:             ptr.To(true),
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(false),
+			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},
@@ -1053,9 +1054,9 @@ func assembleConfigurationReloaderContainer(
 			collectorConfigurationFilePath,
 		},
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(false),
-			RunAsNonRoot:             ptr.To(true),
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(false),
+			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},
@@ -1101,9 +1102,9 @@ func assembleFileLogOffsetSyncInitContainer(
 		Name: "filelog-offset-init",
 		Args: []string{"--mode=init"},
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(false),
-			RunAsNonRoot:             ptr.To(true),
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(false),
+			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},
@@ -1165,11 +1166,11 @@ func assembleFileLogVolumeOwnershipInitContainer(
 		},
 		SecurityContext: &corev1.SecurityContext{
 			// this container needs to run as root
-			RunAsUser:                ptr.To(int64(0)),
-			RunAsNonRoot:             ptr.To(false),
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(false),
-			Privileged:               ptr.To(false),
+			RunAsUser:                new(int64(0)),
+			RunAsNonRoot:             new(false),
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(false),
+			Privileged:               new(false),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 				Add:  []corev1.Capability{"CHOWN"},
@@ -1347,14 +1348,14 @@ func assembleCollectorDeployment(
 		Tolerations:        extraConfig.DeploymentTolerations,
 		ServiceAccountName: deploymentServiceAccountName(config.NamePrefix),
 		SecurityContext: &corev1.PodSecurityContext{
-			RunAsNonRoot: ptr.To(true),
+			RunAsNonRoot: new(true),
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
 		// This setting is required to enable the configuration reloader process to send Unix signals to the
 		// collector process.
-		ShareProcessNamespace: ptr.To(true),
+		ShareProcessNamespace: new(true),
 		Containers: []corev1.Container{
 			collectorContainer,
 			assembleConfigurationReloaderContainer(
@@ -1465,9 +1466,9 @@ func assembleDeploymentCollectorContainer(
 		Name: openTelemetryCollector,
 		Args: []string{"--config=file:" + collectorConfigurationFilePath},
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(false),
-			RunAsNonRoot:             ptr.To(true),
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(false),
+			RunAsNonRoot:             new(true),
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},
@@ -1599,9 +1600,7 @@ func addGkeAutopilotAllowListMatchLabel(
 		return originalLabels
 	}
 	modifiedLabels := make(map[string]string, len(originalLabels)+1)
-	for k, v := range originalLabels {
-		modifiedLabels[k] = v
-	}
+	maps.Copy(modifiedLabels, originalLabels)
 	modifiedLabels[gkeAutopilotAllowlistLabelKey] = gkeAutopilotAllowlistLabelValue
 	return modifiedLabels
 }

@@ -17,7 +17,7 @@ import (
 	"github.com/onsi/gomega/format"
 )
 
-func MatchEnvVar(name string, value string, args ...interface{}) gomega.OmegaMatcher {
+func MatchEnvVar(name string, value string, args ...any) gomega.OmegaMatcher {
 	return &MatchEnvVarMatcher{
 		Name:  name,
 		Value: value,
@@ -28,10 +28,10 @@ func MatchEnvVar(name string, value string, args ...interface{}) gomega.OmegaMat
 type MatchEnvVarMatcher struct {
 	Name  string
 	Value string
-	Args  []interface{}
+	Args  []any
 }
 
-func (matcher *MatchEnvVarMatcher) Match(actual interface{}) (success bool, err error) {
+func (matcher *MatchEnvVarMatcher) Match(actual any) (success bool, err error) {
 	envVar, ok := actual.(corev1.EnvVar)
 	if !ok {
 		return false, fmt.Errorf("MatchEnvVar matcher requires a corev1.EnvVar. Got:\n%s", format.Object(actual, 1))
@@ -39,7 +39,7 @@ func (matcher *MatchEnvVarMatcher) Match(actual interface{}) (success bool, err 
 	return matcher.Name == envVar.Name && matcher.Value == envVar.Value, nil
 }
 
-func (matcher *MatchEnvVarMatcher) FailureMessage(actual interface{}) (message string) {
+func (matcher *MatchEnvVarMatcher) FailureMessage(actual any) (message string) {
 	return format.Message(actual, matcher.message())
 }
 
@@ -47,7 +47,7 @@ func (matcher *MatchEnvVarMatcher) message() string {
 	return fmt.Sprintf("to contain env var with name %s and value %s", matcher.Name, matcher.Value)
 }
 
-func (matcher *MatchEnvVarMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+func (matcher *MatchEnvVarMatcher) NegatedFailureMessage(actual any) (message string) {
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
@@ -55,10 +55,10 @@ type MatchEnvVarValueFromSecretMatcher struct {
 	Name       string
 	SecretName string
 	SecretKey  string
-	Args       []interface{}
+	Args       []any
 }
 
-func (matcher *MatchEnvVarValueFromSecretMatcher) Match(actual interface{}) (success bool, err error) {
+func (matcher *MatchEnvVarValueFromSecretMatcher) Match(actual any) (success bool, err error) {
 	envVar, ok := actual.(corev1.EnvVar)
 	if !ok {
 		return false,
@@ -75,7 +75,7 @@ func (matcher *MatchEnvVarValueFromSecretMatcher) Match(actual interface{}) (suc
 		nil
 }
 
-func (matcher *MatchEnvVarValueFromSecretMatcher) FailureMessage(actual interface{}) (message string) {
+func (matcher *MatchEnvVarValueFromSecretMatcher) FailureMessage(actual any) (message string) {
 	return format.Message(actual, matcher.message())
 }
 
@@ -88,11 +88,11 @@ func (matcher *MatchEnvVarValueFromSecretMatcher) message() string {
 	)
 }
 
-func (matcher *MatchEnvVarValueFromSecretMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+func (matcher *MatchEnvVarValueFromSecretMatcher) NegatedFailureMessage(actual any) (message string) {
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
-func MatchVolume(name string, args ...interface{}) gomega.OmegaMatcher {
+func MatchVolume(name string, args ...any) gomega.OmegaMatcher {
 	return &MatchVolumeMatcher{
 		Name: name,
 		Args: args,
@@ -101,10 +101,10 @@ func MatchVolume(name string, args ...interface{}) gomega.OmegaMatcher {
 
 type MatchVolumeMatcher struct {
 	Name string
-	Args []interface{}
+	Args []any
 }
 
-func (matcher *MatchVolumeMatcher) Match(actual interface{}) (success bool, err error) {
+func (matcher *MatchVolumeMatcher) Match(actual any) (success bool, err error) {
 	volume, ok := actual.(corev1.Volume)
 	if !ok {
 		return false, fmt.Errorf(
@@ -114,7 +114,7 @@ func (matcher *MatchVolumeMatcher) Match(actual interface{}) (success bool, err 
 	return matcher.Name == volume.Name, nil
 }
 
-func (matcher *MatchVolumeMatcher) FailureMessage(actual interface{}) (message string) {
+func (matcher *MatchVolumeMatcher) FailureMessage(actual any) (message string) {
 	return format.Message(actual, matcher.message())
 }
 
@@ -122,11 +122,11 @@ func (matcher *MatchVolumeMatcher) message() string {
 	return fmt.Sprintf("to contain volume with name %s", matcher.Name)
 }
 
-func (matcher *MatchVolumeMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+func (matcher *MatchVolumeMatcher) NegatedFailureMessage(actual any) (message string) {
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
-func MatchVolumeMount(name string, mountPath string, args ...interface{}) gomega.OmegaMatcher {
+func MatchVolumeMount(name string, mountPath string, args ...any) gomega.OmegaMatcher {
 	return &MatchVolumeMountMatcher{
 		Name:      name,
 		MountPath: mountPath,
@@ -137,10 +137,10 @@ func MatchVolumeMount(name string, mountPath string, args ...interface{}) gomega
 type MatchVolumeMountMatcher struct {
 	Name      string
 	MountPath string
-	Args      []interface{}
+	Args      []any
 }
 
-func (matcher *MatchVolumeMountMatcher) Match(actual interface{}) (success bool, err error) {
+func (matcher *MatchVolumeMountMatcher) Match(actual any) (success bool, err error) {
 	volume, ok := actual.(corev1.VolumeMount)
 	if !ok {
 		return false, fmt.Errorf(
@@ -150,7 +150,7 @@ func (matcher *MatchVolumeMountMatcher) Match(actual interface{}) (success bool,
 	return matcher.Name == volume.Name && matcher.MountPath == volume.MountPath, nil
 }
 
-func (matcher *MatchVolumeMountMatcher) FailureMessage(actual interface{}) (message string) {
+func (matcher *MatchVolumeMountMatcher) FailureMessage(actual any) (message string) {
 	return format.Message(actual, matcher.message())
 }
 
@@ -158,7 +158,7 @@ func (matcher *MatchVolumeMountMatcher) message() string {
 	return fmt.Sprintf("to contain volume mount with name %s and mount path %s", matcher.Name, matcher.MountPath)
 }
 
-func (matcher *MatchVolumeMountMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+func (matcher *MatchVolumeMountMatcher) NegatedFailureMessage(actual any) (message string) {
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
@@ -169,7 +169,7 @@ func MatchEvent(
 	reason util.Reason,
 	action util.Action,
 	note string,
-	args ...interface{},
+	args ...any,
 ) gomega.OmegaMatcher {
 	return &MatchEventMatcher{
 		Namespace:    namespace,
@@ -189,10 +189,10 @@ type MatchEventMatcher struct {
 	Reason       util.Reason
 	Action       util.Action
 	Note         string
-	Args         []interface{}
+	Args         []any
 }
 
-func (matcher *MatchEventMatcher) Match(actual interface{}) (success bool, err error) {
+func (matcher *MatchEventMatcher) Match(actual any) (success bool, err error) {
 	event, ok := actual.(eventsv1.Event)
 	if !ok {
 		return false, fmt.Errorf(
@@ -208,7 +208,7 @@ func (matcher *MatchEventMatcher) Match(actual interface{}) (success bool, err e
 		nil
 }
 
-func (matcher *MatchEventMatcher) FailureMessage(actual interface{}) (message string) {
+func (matcher *MatchEventMatcher) FailureMessage(actual any) (message string) {
 	return format.Message(actual, matcher.message())
 }
 
@@ -223,7 +223,7 @@ func (matcher *MatchEventMatcher) message() string {
 	)
 }
 
-func (matcher *MatchEventMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+func (matcher *MatchEventMatcher) NegatedFailureMessage(actual any) (message string) {
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
@@ -241,7 +241,7 @@ type MatchServicePortMatcher struct {
 	TargetPort intstr.IntOrString
 }
 
-func (matcher *MatchServicePortMatcher) Match(actual interface{}) (success bool, err error) {
+func (matcher *MatchServicePortMatcher) Match(actual any) (success bool, err error) {
 	servicePort, ok := actual.(corev1.ServicePort)
 	if !ok {
 		return false, fmt.Errorf(
@@ -253,7 +253,7 @@ func (matcher *MatchServicePortMatcher) Match(actual interface{}) (success bool,
 		matcher.TargetPort == servicePort.TargetPort, nil
 }
 
-func (matcher *MatchServicePortMatcher) FailureMessage(actual interface{}) (message string) {
+func (matcher *MatchServicePortMatcher) FailureMessage(actual any) (message string) {
 	return format.Message(actual, matcher.message())
 }
 
@@ -263,7 +263,7 @@ func (matcher *MatchServicePortMatcher) message() string {
 		matcher.Name, matcher.Port, matcher.TargetPort)
 }
 
-func (matcher *MatchServicePortMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+func (matcher *MatchServicePortMatcher) NegatedFailureMessage(actual any) (message string) {
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
@@ -279,7 +279,7 @@ type MatchContainerPortMatcher struct {
 	Port int32
 }
 
-func (matcher *MatchContainerPortMatcher) Match(actual interface{}) (success bool, err error) {
+func (matcher *MatchContainerPortMatcher) Match(actual any) (success bool, err error) {
 	containerPort, ok := actual.(corev1.ContainerPort)
 	if !ok {
 		return false, fmt.Errorf(
@@ -289,7 +289,7 @@ func (matcher *MatchContainerPortMatcher) Match(actual interface{}) (success boo
 	return matcher.Name == containerPort.Name && matcher.Port == containerPort.ContainerPort, nil
 }
 
-func (matcher *MatchContainerPortMatcher) FailureMessage(actual interface{}) (message string) {
+func (matcher *MatchContainerPortMatcher) FailureMessage(actual any) (message string) {
 	return format.Message(actual, matcher.message())
 }
 
@@ -299,6 +299,6 @@ func (matcher *MatchContainerPortMatcher) message() string {
 		matcher.Name, matcher.Port)
 }
 
-func (matcher *MatchContainerPortMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+func (matcher *MatchContainerPortMatcher) NegatedFailureMessage(actual any) (message string) {
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }

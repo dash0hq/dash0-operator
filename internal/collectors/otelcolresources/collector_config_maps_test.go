@@ -166,7 +166,7 @@ func cmTestDash0GrpcAndHttpExporters() otlpExporters {
 func cmTestGrpcExporterWithInsecure() otlpExporters {
 	grpcExporter, err := convertGrpcExporterToOtlpExporter(&dash0common.GrpcConfiguration{
 		Endpoint: grpcEndpointTest,
-		Insecure: ptr.To(true),
+		Insecure: new(true),
 		Headers: []dash0common.Header{{
 			Name:  "Key",
 			Value: "Value",
@@ -359,17 +359,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(1))
 
 			exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
-			dash0OtlpExporter := exporter.(map[string]interface{})
+			dash0OtlpExporter := exporter.(map[string]any)
 			Expect(dash0OtlpExporter).ToNot(BeNil())
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 			headersRaw := dash0OtlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
+			headers := headersRaw.(map[string]any)
 			Expect(headers).To(HaveLen(1))
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
 			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
@@ -389,17 +389,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(1))
 
 			exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
-			dash0OtlpExporter := exporter.(map[string]interface{})
+			dash0OtlpExporter := exporter.(map[string]any)
 			Expect(dash0OtlpExporter).ToNot(BeNil())
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 			headersRaw := dash0OtlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
+			headers := headersRaw.(map[string]any)
 			Expect(headers).To(HaveLen(2))
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
 			Expect(headers[util.Dash0DatasetHeaderName]).To(Equal(DatasetCustomTest))
@@ -419,22 +419,22 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(2))
 
 			debugExporterRaw := exporters["debug"]
 			Expect(debugExporterRaw).ToNot(BeNil())
-			debugExporter := debugExporterRaw.(map[string]interface{})
+			debugExporter := debugExporterRaw.(map[string]any)
 			Expect(debugExporter).To(HaveLen(0))
 
 			exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(exporter).ToNot(BeNil())
-			dash0OtlpExporter := exporter.(map[string]interface{})
+			dash0OtlpExporter := exporter.(map[string]any)
 			Expect(dash0OtlpExporter).ToNot(BeNil())
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 			headersRaw := dash0OtlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
+			headers := headersRaw.(map[string]any)
 			Expect(headers).To(HaveLen(1))
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
 			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
@@ -456,12 +456,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(2))
 
 			debugExporterRaw := exporters["debug"]
 			Expect(debugExporterRaw).ToNot(BeNil())
-			debugExporter := debugExporterRaw.(map[string]interface{})
+			debugExporter := debugExporterRaw.(map[string]any)
 			Expect(debugExporter).To(HaveLen(1))
 			Expect(debugExporter["verbosity"]).To(Equal("detailed"))
 
@@ -479,7 +479,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			extensionsRaw := collectorConfig["extensions"]
 			Expect(extensionsRaw).ToNot(BeNil())
-			extensions := extensionsRaw.(map[string]interface{})
+			extensions := extensionsRaw.(map[string]any)
 			Expect(maps.Keys(extensions)).ToNot(ContainElement("pprof"))
 
 			serviceExtensions := ReadFromMap(collectorConfig, []string{"service", "extensions"})
@@ -499,7 +499,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			extensionsRaw := collectorConfig["extensions"]
 			Expect(extensionsRaw).ToNot(BeNil())
-			extensions := extensionsRaw.(map[string]interface{})
+			extensions := extensionsRaw.(map[string]any)
 			Expect(maps.Keys(extensions)).To(ContainElement("pprof"))
 
 			serviceExtensions := ReadFromMap(collectorConfig, []string{"service", "extensions"})
@@ -519,27 +519,27 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(2))
 
 			// Verify Dash0 exporter
 			dash0Exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(dash0Exporter).ToNot(BeNil())
-			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
+			dash0OtlpExporter := dash0Exporter.(map[string]any)
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 			headersRaw := dash0OtlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
-			headers := headersRaw.(map[string]interface{})
+			headers := headersRaw.(map[string]any)
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
 
 			// Verify gRPC exporter
 			grpcExporter := exporters["otlp_grpc/default"]
 			Expect(grpcExporter).ToNot(BeNil())
-			grpcOtlpExporter := grpcExporter.(map[string]interface{})
+			grpcOtlpExporter := grpcExporter.(map[string]any)
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
 			grpcHeadersRaw := grpcOtlpExporter["headers"]
 			Expect(grpcHeadersRaw).ToNot(BeNil())
-			grpcHeaders := grpcHeadersRaw.(map[string]interface{})
+			grpcHeaders := grpcHeadersRaw.(map[string]any)
 			Expect(grpcHeaders["Key"]).To(Equal("Value"))
 		}, daemonSetAndDeployment)
 
@@ -555,24 +555,24 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(2))
 
 			// Verify Dash0 exporter
 			dash0Exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(dash0Exporter).ToNot(BeNil())
-			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
+			dash0OtlpExporter := dash0Exporter.(map[string]any)
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 
 			// Verify HTTP exporter
 			httpExporter := exporters["otlp_http/default/proto"]
 			Expect(httpExporter).ToNot(BeNil())
-			httpOtlpExporter := httpExporter.(map[string]interface{})
+			httpOtlpExporter := httpExporter.(map[string]any)
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
 			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
 			httpHeadersRaw := httpOtlpExporter["headers"]
 			Expect(httpHeadersRaw).ToNot(BeNil())
-			httpHeaders := httpHeadersRaw.(map[string]interface{})
+			httpHeaders := httpHeadersRaw.(map[string]any)
 			Expect(httpHeaders["Key"]).To(Equal("Value"))
 		}, daemonSetAndDeployment)
 
@@ -588,25 +588,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(3))
 
 			// Verify Dash0 exporter
 			dash0Exporter := exporters["otlp_grpc/dash0/default"]
 			Expect(dash0Exporter).ToNot(BeNil())
-			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
+			dash0OtlpExporter := dash0Exporter.(map[string]any)
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 
 			// Verify gRPC exporter
 			grpcExporter := exporters["otlp_grpc/default"]
 			Expect(grpcExporter).ToNot(BeNil())
-			grpcOtlpExporter := grpcExporter.(map[string]interface{})
+			grpcOtlpExporter := grpcExporter.(map[string]any)
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
 
 			// Verify HTTP exporter
 			httpExporter := exporters["otlp_http/default/proto"]
 			Expect(httpExporter).ToNot(BeNil())
-			httpOtlpExporter := httpExporter.(map[string]interface{})
+			httpOtlpExporter := httpExporter.(map[string]any)
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
 			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
 		}, daemonSetAndDeployment)
@@ -623,19 +623,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(1))
 
 			// Verify gRPC exporter with insecure flag
 			grpcExporter := exporters["otlp_grpc/default"]
 			Expect(grpcExporter).ToNot(BeNil())
-			grpcOtlpExporter := grpcExporter.(map[string]interface{})
+			grpcOtlpExporter := grpcExporter.(map[string]any)
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(grpcEndpointTest))
 
 			// Verify tls config with insecure = true
 			tlsRaw := grpcOtlpExporter["tls"]
 			Expect(tlsRaw).ToNot(BeNil())
-			tls := tlsRaw.(map[string]interface{})
+			tls := tlsRaw.(map[string]any)
 			Expect(tls["insecure"]).To(Equal(true))
 		}, daemonSetAndDeployment)
 
@@ -651,13 +651,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(1))
 
 			// Verify HTTP exporter with insecure endpoint
 			httpExporter := exporters["otlp_http/default/proto"]
 			Expect(httpExporter).ToNot(BeNil())
-			httpOtlpExporter := httpExporter.(map[string]interface{})
+			httpOtlpExporter := httpExporter.(map[string]any)
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(httpInsecureEndpointTest))
 			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
 		}, daemonSetAndDeployment)
@@ -674,7 +674,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(3))
 
 			// Verify default Dash0 exporter
@@ -684,13 +684,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify namespaced gRPC exporter for namespace1
 			grpcExporterNs1 := exporters["otlp_grpc/ns/"+namespace1]
 			Expect(grpcExporterNs1).ToNot(BeNil())
-			grpcOtlpExporter := grpcExporterNs1.(map[string]interface{})
+			grpcOtlpExporter := grpcExporterNs1.(map[string]any)
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
 
 			// Verify namespaced HTTP exporter for namespace2
 			httpExporterNs2 := exporters["otlp_http/ns/"+namespace2+"/proto"]
 			Expect(httpExporterNs2).ToNot(BeNil())
-			httpOtlpExporter := httpExporterNs2.(map[string]interface{})
+			httpOtlpExporter := httpExporterNs2.(map[string]any)
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
 			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
 		}, daemonSetAndDeployment)
@@ -707,7 +707,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(4))
 
 			// Verify default Dash0 exporter
@@ -724,7 +724,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify namespace2 has a Dash0 exporter
 			dash0ExporterNs2 := exporters["otlp_grpc/dash0/ns/"+namespace2]
 			Expect(dash0ExporterNs2).ToNot(BeNil())
-			dash0OtlpExporter := dash0ExporterNs2.(map[string]interface{})
+			dash0OtlpExporter := dash0ExporterNs2.(map[string]any)
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0TestAlternative))
 		}, daemonSetAndDeployment)
 
@@ -740,24 +740,24 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(2))
 
 			// Verify first Dash0 exporter
 			dash0Exporter1 := exporters["otlp_grpc/dash0/default_0"]
 			Expect(dash0Exporter1).ToNot(BeNil())
-			dash0OtlpExporter1 := dash0Exporter1.(map[string]interface{})
+			dash0OtlpExporter1 := dash0Exporter1.(map[string]any)
 			Expect(dash0OtlpExporter1["endpoint"]).To(Equal(EndpointDash0Test))
-			headers1 := dash0OtlpExporter1["headers"].(map[string]interface{})
+			headers1 := dash0OtlpExporter1["headers"].(map[string]any)
 			Expect(headers1[util.AuthorizationHeaderName]).To(
 				Equal(fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(0))))
 
 			// Verify second Dash0 exporter (different endpoint and auth)
 			dash0Exporter2 := exporters["otlp_grpc/dash0/default_1"]
 			Expect(dash0Exporter2).ToNot(BeNil())
-			dash0OtlpExporter2 := dash0Exporter2.(map[string]interface{})
+			dash0OtlpExporter2 := dash0Exporter2.(map[string]any)
 			Expect(dash0OtlpExporter2["endpoint"]).To(Equal(EndpointDash0TestAlternative))
-			headers2 := dash0OtlpExporter2["headers"].(map[string]interface{})
+			headers2 := dash0OtlpExporter2["headers"].(map[string]any)
 			Expect(headers2[util.AuthorizationHeaderName]).To(
 				Equal(fmt.Sprintf("Bearer ${env:%s}", authEnvVarNameDefaultIndexed(1))))
 		}, daemonSetAndDeployment)
@@ -774,25 +774,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			Expect(exporters).To(HaveLen(3))
 
 			// Verify Dash0 exporter (index 0)
 			dash0Exporter := exporters["otlp_grpc/dash0/default_0"]
 			Expect(dash0Exporter).ToNot(BeNil())
-			dash0OtlpExporter := dash0Exporter.(map[string]interface{})
+			dash0OtlpExporter := dash0Exporter.(map[string]any)
 			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 
 			// Verify gRPC exporter (index 1)
 			grpcExporter := exporters["otlp_grpc/default_1"]
 			Expect(grpcExporter).ToNot(BeNil())
-			grpcOtlpExporter := grpcExporter.(map[string]interface{})
+			grpcOtlpExporter := grpcExporter.(map[string]any)
 			Expect(grpcOtlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
 
 			// Verify HTTP exporter (index 2)
 			httpExporter := exporters["otlp_http/default_2/proto"]
 			Expect(httpExporter).ToNot(BeNil())
-			httpOtlpExporter := httpExporter.(map[string]interface{})
+			httpOtlpExporter := httpExporter.(map[string]any)
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
 			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
 		}, daemonSetAndDeployment)
@@ -865,7 +865,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			exportersRaw := collectorConfig["exporters"]
 			Expect(exportersRaw).ToNot(BeNil())
-			exporters := exportersRaw.(map[string]interface{})
+			exporters := exportersRaw.(map[string]any)
 			// 1 default + 2 for namespace1 + 2 for namespace2 = 5
 			Expect(exporters).To(HaveLen(5))
 
@@ -876,23 +876,23 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify namespace-1 exporters (Dash0 + gRPC)
 			dash0ExporterNs1 := exporters["otlp_grpc/dash0/ns/"+namespace1+"_0"]
 			Expect(dash0ExporterNs1).ToNot(BeNil())
-			dash0OtlpExporterNs1 := dash0ExporterNs1.(map[string]interface{})
+			dash0OtlpExporterNs1 := dash0ExporterNs1.(map[string]any)
 			Expect(dash0OtlpExporterNs1["endpoint"]).To(Equal(EndpointDash0Test))
 
 			grpcExporterNs1 := exporters["otlp_grpc/ns/"+namespace1+"_1"]
 			Expect(grpcExporterNs1).ToNot(BeNil())
-			grpcOtlpExporterNs1 := grpcExporterNs1.(map[string]interface{})
+			grpcOtlpExporterNs1 := grpcExporterNs1.(map[string]any)
 			Expect(grpcOtlpExporterNs1["endpoint"]).To(Equal(EndpointGrpcTest))
 
 			// Verify namespace-2 exporters (HTTP + Dash0)
 			httpExporterNs2 := exporters["otlp_http/ns/"+namespace2+"_0/proto"]
 			Expect(httpExporterNs2).ToNot(BeNil())
-			httpOtlpExporterNs2 := httpExporterNs2.(map[string]interface{})
+			httpOtlpExporterNs2 := httpExporterNs2.(map[string]any)
 			Expect(httpOtlpExporterNs2["endpoint"]).To(Equal(EndpointHttpTest))
 
 			dash0ExporterNs2 := exporters["otlp_grpc/dash0/ns/"+namespace2+"_1"]
 			Expect(dash0ExporterNs2).ToNot(BeNil())
-			dash0OtlpExporterNs2 := dash0ExporterNs2.(map[string]interface{})
+			dash0OtlpExporterNs2 := dash0ExporterNs2.(map[string]any)
 			Expect(dash0OtlpExporterNs2["endpoint"]).To(Equal(EndpointDash0TestAlternative))
 		}, daemonSetAndDeployment)
 
@@ -980,30 +980,30 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify routing connectors are created
 			connectorsRaw := collectorConfig["connectors"]
 			Expect(connectorsRaw).ToNot(BeNil())
-			connectors := connectorsRaw.(map[string]interface{})
+			connectors := connectorsRaw.(map[string]any)
 
 			// Verify routing connector for traces
 			routingTracesRaw := connectors["routing/traces"]
 			Expect(routingTracesRaw).ToNot(BeNil())
-			routingTraces := routingTracesRaw.(map[string]interface{})
+			routingTraces := routingTracesRaw.(map[string]any)
 			Expect(routingTraces["error_mode"]).To(Equal("ignore"))
-			defaultPipelinesTraces := routingTraces["default_pipelines"].([]interface{})
+			defaultPipelinesTraces := routingTraces["default_pipelines"].([]any)
 			Expect(defaultPipelinesTraces).To(ContainElement("traces/export/default"))
 
 			// Verify routing connector for metrics
 			routingMetricsRaw := connectors["routing/metrics"]
 			Expect(routingMetricsRaw).ToNot(BeNil())
-			routingMetrics := routingMetricsRaw.(map[string]interface{})
+			routingMetrics := routingMetricsRaw.(map[string]any)
 			Expect(routingMetrics["error_mode"]).To(Equal("ignore"))
-			defaultPipelinesMetrics := routingMetrics["default_pipelines"].([]interface{})
+			defaultPipelinesMetrics := routingMetrics["default_pipelines"].([]any)
 			Expect(defaultPipelinesMetrics).To(ContainElement("metrics/export/default"))
 
 			// Verify routing connector for logs
 			routingLogsRaw := connectors["routing/logs"]
 			Expect(routingLogsRaw).ToNot(BeNil())
-			routingLogs := routingLogsRaw.(map[string]interface{})
+			routingLogs := routingLogsRaw.(map[string]any)
 			Expect(routingLogs["error_mode"]).To(Equal("ignore"))
-			defaultPipelinesLogs := routingLogs["default_pipelines"].([]interface{})
+			defaultPipelinesLogs := routingLogs["default_pipelines"].([]any)
 			Expect(defaultPipelinesLogs).To(ContainElement("logs/export/default"))
 		})
 
@@ -1021,22 +1021,22 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify routing connectors are created
 			connectorsRaw := collectorConfig["connectors"]
 			Expect(connectorsRaw).ToNot(BeNil())
-			connectors := connectorsRaw.(map[string]interface{})
+			connectors := connectorsRaw.(map[string]any)
 
 			// Verify routing connector for metrics
 			routingMetricsRaw := connectors["routing/metrics"]
 			Expect(routingMetricsRaw).ToNot(BeNil())
-			routingMetrics := routingMetricsRaw.(map[string]interface{})
+			routingMetrics := routingMetricsRaw.(map[string]any)
 			Expect(routingMetrics["error_mode"]).To(Equal("ignore"))
-			defaultPipelinesMetrics := routingMetrics["default_pipelines"].([]interface{})
+			defaultPipelinesMetrics := routingMetrics["default_pipelines"].([]any)
 			Expect(defaultPipelinesMetrics).To(ContainElement("metrics/export/default"))
 
 			// Verify routing connector for logs
 			routingLogsRaw := connectors["routing/logs"]
 			Expect(routingLogsRaw).ToNot(BeNil())
-			routingLogs := routingLogsRaw.(map[string]interface{})
+			routingLogs := routingLogsRaw.(map[string]any)
 			Expect(routingLogs["error_mode"]).To(Equal("ignore"))
-			defaultPipelinesLogs := routingLogs["default_pipelines"].([]interface{})
+			defaultPipelinesLogs := routingLogs["default_pipelines"].([]any)
 			Expect(defaultPipelinesLogs).To(ContainElement("logs/export/default"))
 		})
 
@@ -1053,25 +1053,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			connectorsRaw := collectorConfig["connectors"]
 			Expect(connectorsRaw).ToNot(BeNil())
-			connectors := connectorsRaw.(map[string]interface{})
+			connectors := connectorsRaw.(map[string]any)
 
 			// Verify routing table entries for traces
-			routingTraces := connectors["routing/traces"].(map[string]interface{})
-			tracesTable := routingTraces["table"].([]interface{})
+			routingTraces := connectors["routing/traces"].(map[string]any)
+			tracesTable := routingTraces["table"].([]any)
 			Expect(tracesTable).To(HaveLen(2)) // namespace1 and namespace2
 			verifyRoutingTableEntry(tracesTable, namespace1, "traces/export/ns/"+namespace1)
 			verifyRoutingTableEntry(tracesTable, namespace2, "traces/export/ns/"+namespace2)
 
 			// Verify routing table entries for metrics
-			routingMetrics := connectors["routing/metrics"].(map[string]interface{})
-			metricsTable := routingMetrics["table"].([]interface{})
+			routingMetrics := connectors["routing/metrics"].(map[string]any)
+			metricsTable := routingMetrics["table"].([]any)
 			Expect(metricsTable).To(HaveLen(2))
 			verifyRoutingTableEntry(metricsTable, namespace1, "metrics/export/ns/"+namespace1)
 			verifyRoutingTableEntry(metricsTable, namespace2, "metrics/export/ns/"+namespace2)
 
 			// Verify routing table entries for logs
-			routingLogs := connectors["routing/logs"].(map[string]interface{})
-			logsTable := routingLogs["table"].([]interface{})
+			routingLogs := connectors["routing/logs"].(map[string]any)
+			logsTable := routingLogs["table"].([]any)
 			Expect(logsTable).To(HaveLen(2))
 			verifyRoutingTableEntry(logsTable, namespace1, "logs/export/ns/"+namespace1)
 			verifyRoutingTableEntry(logsTable, namespace2, "logs/export/ns/"+namespace2)
@@ -1090,18 +1090,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			connectorsRaw := collectorConfig["connectors"]
 			Expect(connectorsRaw).ToNot(BeNil())
-			connectors := connectorsRaw.(map[string]interface{})
+			connectors := connectorsRaw.(map[string]any)
 
 			// Verify routing table entries for metrics
-			routingMetrics := connectors["routing/metrics"].(map[string]interface{})
-			metricsTable := routingMetrics["table"].([]interface{})
+			routingMetrics := connectors["routing/metrics"].(map[string]any)
+			metricsTable := routingMetrics["table"].([]any)
 			Expect(metricsTable).To(HaveLen(2))
 			verifyRoutingTableEntry(metricsTable, namespace1, "metrics/export/ns/"+namespace1)
 			verifyRoutingTableEntry(metricsTable, namespace2, "metrics/export/ns/"+namespace2)
 
 			// Verify routing table entries for logs
-			routingLogs := connectors["routing/logs"].(map[string]interface{})
-			logsTable := routingLogs["table"].([]interface{})
+			routingLogs := connectors["routing/logs"].(map[string]any)
+			logsTable := routingLogs["table"].([]any)
 			Expect(logsTable).To(HaveLen(2))
 			verifyRoutingTableEntry(logsTable, namespace1, "logs/export/ns/"+namespace1)
 			verifyRoutingTableEntry(logsTable, namespace2, "logs/export/ns/"+namespace2)
@@ -1304,7 +1304,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify routing connectors are NOT created
 			connectorsRaw := collectorConfig["connectors"]
 			Expect(connectorsRaw).ToNot(BeNil())
-			connectors := connectorsRaw.(map[string]interface{})
+			connectors := connectorsRaw.(map[string]any)
 			Expect(connectors["routing/traces"]).To(BeNil())
 			Expect(connectors["routing/metrics"]).To(BeNil())
 			Expect(connectors["routing/logs"]).To(BeNil())
@@ -1397,7 +1397,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		collectorConfig := parseConfigMapContent(configMap)
 		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
 		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]interface{})
+		batchProcessor := batchProcessorRaw.(map[string]any)
 		Expect(batchProcessor).To(HaveLen(0))
 	}, daemonSetAndDeployment)
 
@@ -1407,14 +1407,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			NamePrefix:        namePrefix,
 			Exporters:         cmTestSingleDefaultOtlpExporter(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchMaxSize: ptr.To(uint32(16384)),
+			SendBatchMaxSize: new(uint32(16384)),
 		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
 		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
 		Expect(batchProcessorRaw).ToNot(BeNil())
-		batchProcessor := batchProcessorRaw.(map[string]interface{})
+		batchProcessor := batchProcessorRaw.(map[string]any)
 		Expect(batchProcessor).To(HaveLen(1))
 		sendBatchMaxSize := ReadFromMap(batchProcessor, []string{"send_batch_max_size"})
 		Expect(sendBatchMaxSize).To(Equal(16384))
@@ -1450,10 +1450,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(resourceProcessor).ToNot(BeNil())
 		attributes := ReadFromMap(resourceProcessor, []string{"attributes"})
 		Expect(attributes).To(HaveLen(1))
-		attrs := attributes.([]interface{})
-		Expect(attrs[0].(map[string]interface{})["key"]).To(Equal("k8s.cluster.name"))
-		Expect(attrs[0].(map[string]interface{})["value"]).To(Equal("cluster-name"))
-		Expect(attrs[0].(map[string]interface{})["action"]).To(Equal("insert"))
+		attrs := attributes.([]any)
+		Expect(attrs[0].(map[string]any)["key"]).To(Equal("k8s.cluster.name"))
+		Expect(attrs[0].(map[string]any)["value"]).To(Equal("cluster-name"))
+		Expect(attrs[0].(map[string]any)["action"]).To(Equal("insert"))
 		pipelines := readPipelines(collectorConfig)
 		metricsProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
 		Expect(metricsProcessors).ToNot(BeNil())
@@ -1512,7 +1512,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				collectorConfig := parseConfigMapContent(configMap)
 				kubeletstatsReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
 				Expect(kubeletstatsReceiverRaw).ToNot(BeNil())
-				kubeletstatsReceiver := kubeletstatsReceiverRaw.(map[string]interface{})
+				kubeletstatsReceiver := kubeletstatsReceiverRaw.(map[string]any)
 				endpoint := kubeletstatsReceiver["endpoint"]
 				Expect(endpoint).To(Equal(testConfig.wanted.endpoint))
 				authType := kubeletstatsReceiver["auth_type"]
@@ -1599,14 +1599,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
 			Expect(deploymentNameFromReplicasetRaw).ToNot(BeNil())
 			deploymentNameFromReplicaset := deploymentNameFromReplicasetRaw.(bool)
 			Expect(deploymentNameFromReplicaset).To(BeTrue())
 			metadataListRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
 			Expect(metadataListRaw).ToNot(BeNil())
-			metadataList := metadataListRaw.([]interface{})
+			metadataList := metadataListRaw.([]any)
 			Expect(metadataList).ToNot(ContainElement("k8s.deployment.uid"))
 		}, daemonSetAndDeployment)
 
@@ -1621,12 +1621,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
 			Expect(deploymentNameFromReplicasetRaw).To(BeNil())
 			metadataListRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
 			Expect(metadataListRaw).ToNot(BeNil())
-			metadataList := metadataListRaw.([]interface{})
+			metadataList := metadataListRaw.([]any)
 			Expect(metadataList).To(ContainElement("k8s.deployment.uid"))
 		}, daemonSetAndDeployment)
 	})
@@ -1645,7 +1645,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
 			Expect(labelsSnippet).To(BeNil())
 			annotationsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "annotations"})
@@ -1665,7 +1665,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
 			Expect(labelsSnippet).ToNot(BeNil())
 			Expect(labelsSnippet).To(HaveLen(2))
@@ -1695,7 +1695,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
 			Expect(labelsSnippet).ToNot(BeNil())
 			Expect(labelsSnippet).To(HaveLen(1))
@@ -1721,7 +1721,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]interface{})
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
 			Expect(labelsSnippet).ToNot(BeNil())
 			Expect(labelsSnippet).To(HaveLen(1))
@@ -1788,7 +1788,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(filterProcessor).ToNot(BeNil())
 			filters := ReadFromMap(filterProcessor, []string{"metrics", "metric"})
 			Expect(filters).To(HaveLen(1))
-			filterString := filters.([]interface{})[0].(string)
+			filterString := filters.([]any)[0].(string)
 			Expect(filterString).To(Equal(`resource.attributes["k8s.namespace.name"] != nil and resource.attributes["k8s.namespace.name"] != "namespace-1" and resource.attributes["k8s.namespace.name"] != "namespace-2"`))
 			pipelines := readPipelines(collectorConfig)
 			metricsProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
@@ -1889,8 +1889,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			fileLogReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "filelog"})
 			Expect(fileLogReceiverRaw).ToNot(BeNil())
-			fileLogReceiver := fileLogReceiverRaw.(map[string]interface{})
-			filePatterns := fileLogReceiver["include"].([]interface{})
+			fileLogReceiver := fileLogReceiverRaw.(map[string]any)
+			filePatterns := fileLogReceiver["include"].([]any)
 			Expect(filePatterns).To(HaveLen(2))
 			Expect(filePatterns).To(ContainElement("/var/log/pods/namespace-1_*/*/*.log"))
 			Expect(filePatterns).To(ContainElement("/var/log/pods/namespace-2_*/*/*.log"))
@@ -2033,8 +2033,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				collectorConfig := parseConfigMapContent(configMap)
 				k8sEventsReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "k8s_events"})
 				Expect(k8sEventsReceiverRaw).ToNot(BeNil())
-				k8sEventsReceiver := k8sEventsReceiverRaw.(map[string]interface{})
-				namespaces := k8sEventsReceiver["namespaces"].([]interface{})
+				k8sEventsReceiver := k8sEventsReceiverRaw.(map[string]any)
+				namespaces := k8sEventsReceiver["namespaces"].([]any)
 				Expect(namespaces).To(HaveLen(2))
 				Expect(namespaces).To(ContainElement("namespace-1"))
 				Expect(namespaces).To(ContainElement("namespace-2"))
@@ -2406,7 +2406,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				)
 				Expect(filterProcessorRaw).ToNot(BeNil(),
 					fmt.Sprintf("expected filter processor %s to exist, but it didn't", filterProcessorName))
-				filterProcessor := filterProcessorRaw.(map[string]interface{})
+				filterProcessor := filterProcessorRaw.(map[string]any)
 				Expect(filterProcessor["error_mode"]).To(Equal("ignore"))
 
 				for objectType, expectedConditionsForObjectType := range expectations.conditions[signal] {
@@ -2418,7 +2418,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Expect(filterConditionsRaw).ToNot(BeNil(),
 						"expected %d filter conditions but there were none for signal \"%s\" and object type \"%s\"",
 						len(expectedConditionsForObjectType), signal, objectType)
-					actualFilterConditions := filterConditionsRaw.([]interface{})
+					actualFilterConditions := filterConditionsRaw.([]any)
 					Expect(actualFilterConditions).To(HaveLen(len(expectedConditionsForObjectType)))
 					for i, expectedCondition := range expectedConditionsForObjectType {
 						Expect(actualFilterConditions[i]).To(Equal(expectedCondition))
@@ -2850,7 +2850,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				)
 				Expect(transformProcessorRaw).ToNot(BeNil(),
 					fmt.Sprintf("expected transform processor %s to exist, but it didn't", transformProcessorName))
-				transformProcessor := transformProcessorRaw.(map[string]interface{})
+				transformProcessor := transformProcessorRaw.(map[string]any)
 				Expect(transformProcessor["error_mode"]).To(Equal("ignore"))
 
 				signalGroupsLabel := ""
@@ -2870,7 +2870,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(groupsRaw).ToNot(BeNil(),
 					"expected %d transform group(s) but there were none for signal \"%s\"",
 					len(expectedGroups), signal)
-				groups := groupsRaw.([]interface{})
+				groups := groupsRaw.([]any)
 				Expect(groups).To(HaveLen(len(expectedGroups)))
 
 				for i, expectedGroup := range expectedGroups {
@@ -2879,7 +2879,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Expect(actualStatementsRaw).ToNot(BeNil(),
 						"expected %d transform statement(s) but there were none for signal \"%s\"",
 						len(expectedStatements), signal)
-					actualTransformStatements := actualStatementsRaw.([]interface{})
+					actualTransformStatements := actualStatementsRaw.([]any)
 					Expect(actualTransformStatements).To(HaveLen(len(expectedStatements)))
 					for i, expectedStatement := range expectedStatements {
 						Expect(actualTransformStatements[i]).To(Equal(expectedStatement))
@@ -2890,7 +2890,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Expect(actualConditionsRaw).ToNot(BeNil(),
 						"expected %d transform condition(s) but there were none for signal \"%s\"",
 						len(expectedConditions), signal)
-					actualTransformConditions := actualConditionsRaw.([]interface{})
+					actualTransformConditions := actualConditionsRaw.([]any)
 					Expect(actualTransformConditions).To(HaveLen(len(expectedConditions)))
 					for i, expectedCondition := range expectedConditions {
 						Expect(actualTransformConditions[i]).To(Equal(expectedCondition))
@@ -2928,7 +2928,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				transforms = append(transforms, NamespacedTransform{
 					Namespace: namespace1,
 					Transform: dash0common.NormalizedTransformSpec{
-						ErrorMode: ptr.To(errorMode),
+						ErrorMode: new(errorMode),
 						Traces: []dash0common.NormalizedTransformGroup{
 							{Statements: []string{"statement"}},
 						},
@@ -3050,28 +3050,28 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			selfMonitoringLogsPipelineRaw := readSelfMonitoringLogsPipeline(collectorConfig)
 			Expect(selfMonitoringLogsPipelineRaw).ToNot(BeNil())
-			selfMonitoringLogsPipeline, ok := selfMonitoringLogsPipelineRaw.(map[string]interface{})
+			selfMonitoringLogsPipeline, ok := selfMonitoringLogsPipelineRaw.(map[string]any)
 			Expect(ok).To(BeTrue())
 			otlpExporter := readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline)
 			Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolGrpc))
 			Expect(otlpExporter["endpoint"]).To(Equal(EndpointDash0WithProtocolTest))
 			headersRaw := otlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
-			headers, ok := headersRaw.(map[string]interface{})
+			headers, ok := headersRaw.(map[string]any)
 			Expect(ok).To(BeTrue())
 			Expect(headers).To(HaveLen(1))
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal("Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"))
 
 			selfMonitoringMetricsPipelineRaw := readSelfMonitoringMetricsPipeline(collectorConfig)
 			Expect(selfMonitoringMetricsPipelineRaw).ToNot(BeNil())
-			selfMonitoringMetricsPipeline, ok := selfMonitoringMetricsPipelineRaw.(map[string]interface{})
+			selfMonitoringMetricsPipeline, ok := selfMonitoringMetricsPipelineRaw.(map[string]any)
 			Expect(ok).To(BeTrue())
 			otlpExporter = readOtlpExporterFromSelfMonitoringMetricsPipeline(selfMonitoringMetricsPipeline)
 			Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolGrpc))
 			Expect(otlpExporter["endpoint"]).To(Equal(EndpointDash0WithProtocolTest))
 			headersRaw = otlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
-			headers, ok = headersRaw.(map[string]interface{})
+			headers, ok = headersRaw.(map[string]any)
 			Expect(ok).To(BeTrue())
 			Expect(headers).To(HaveLen(1))
 			Expect(headers[util.AuthorizationHeaderName]).To(Equal("Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"))
@@ -3121,7 +3121,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(ok).To(BeTrue())
 			Expect(endpoint).To(HavePrefix("https://"))
 
-			tlsConfig, ok := ReadFromMap(taConfig, []string{"tls"}).(map[string]interface{})
+			tlsConfig, ok := ReadFromMap(taConfig, []string{"tls"}).(map[string]any)
 			Expect(ok).To(BeTrue())
 			Expect(tlsConfig["ca_file"]).To(Equal(fmt.Sprintf("%s/ca.crt", targetAllocatorCertsVolumeDir)))
 			Expect(tlsConfig["cert_file"]).To(Equal(fmt.Sprintf("%s/tls.crt", targetAllocatorCertsVolumeDir)))
@@ -3189,12 +3189,12 @@ func assembleDeploymentCollectorConfigMapForTest(
 	)
 }
 
-func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]interface{} {
+func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]any {
 	return ParseConfigMapContent(configMap, "config.yaml")
 }
 
 func verifyProcessorDoesNotAppearInAnyPipeline(
-	collectorConfig map[string]interface{},
+	collectorConfig map[string]any,
 	processorName string,
 ) {
 	pipelines := readPipelines(collectorConfig)
@@ -3206,13 +3206,13 @@ func verifyProcessorDoesNotAppearInAnyPipeline(
 	}
 }
 
-func verifyScrapeJobHasNamespaces(collectorConfig map[string]interface{}, jobName string) {
+func verifyScrapeJobHasNamespaces(collectorConfig map[string]any, jobName string) {
 	namespacesKubernetesPodsRaw :=
 		ReadFromMap(
 			collectorConfig,
 			pathToScrapeJob(jobName),
 		)
-	namespacesKubernetesPods := namespacesKubernetesPodsRaw.([]interface{})
+	namespacesKubernetesPods := namespacesKubernetesPodsRaw.([]any)
 	Expect(namespacesKubernetesPods).To(ContainElements("namespace-1", "namespace-2"))
 }
 
@@ -3229,34 +3229,34 @@ func pathToScrapeJob(jobName string) []string {
 	}
 }
 
-func readPipelines(collectorConfig map[string]interface{}) map[string]interface{} {
-	return ((collectorConfig["service"]).(map[string]interface{})["pipelines"]).(map[string]interface{})
+func readPipelines(collectorConfig map[string]any) map[string]any {
+	return ((collectorConfig["service"]).(map[string]any)["pipelines"]).(map[string]any)
 }
 
-func readPipelineReceivers(pipelines map[string]interface{}, pipelineName string) []interface{} {
+func readPipelineReceivers(pipelines map[string]any, pipelineName string) []any {
 	return readPipelineList(pipelines, pipelineName, "receivers")
 }
 
-func readPipelineProcessors(pipelines map[string]interface{}, pipelineName string) []interface{} {
+func readPipelineProcessors(pipelines map[string]any, pipelineName string) []any {
 	return readPipelineList(pipelines, pipelineName, "processors")
 }
 
-func readPipelineExporters(pipelines map[string]interface{}, pipelineName string) []interface{} {
+func readPipelineExporters(pipelines map[string]any, pipelineName string) []any {
 	return readPipelineList(pipelines, pipelineName, "exporters")
 }
 
-func readPipelineList(pipelines map[string]interface{}, pipelineName string, listName string) []interface{} {
+func readPipelineList(pipelines map[string]any, pipelineName string, listName string) []any {
 	pipelineRaw := pipelines[pipelineName]
 	Expect(pipelineRaw).ToNot(BeNil(), fmt.Sprintf("pipeline %s was nil", pipelineName))
-	pipeline := pipelineRaw.(map[string]interface{})
+	pipeline := pipelineRaw.(map[string]any)
 	listRaw := pipeline[listName]
 	if listRaw == nil {
 		return nil
 	}
-	return listRaw.([]interface{})
+	return listRaw.([]any)
 }
 
-func readSelfMonitoringTelemetry(collectorConfig map[string]interface{}) interface{} {
+func readSelfMonitoringTelemetry(collectorConfig map[string]any) any {
 	return ReadFromMap(
 		collectorConfig,
 		[]string{
@@ -3265,7 +3265,7 @@ func readSelfMonitoringTelemetry(collectorConfig map[string]interface{}) interfa
 		})
 }
 
-func readSelfMonitoringMetricsPipeline(collectorConfig map[string]interface{}) interface{} {
+func readSelfMonitoringMetricsPipeline(collectorConfig map[string]any) any {
 	return ReadFromMap(
 		collectorConfig,
 		[]string{
@@ -3275,7 +3275,7 @@ func readSelfMonitoringMetricsPipeline(collectorConfig map[string]interface{}) i
 		})
 }
 
-func readOtlpExporterFromSelfMonitoringMetricsPipeline(selfMonitoringLogsPipeline map[string]interface{}) map[string]interface{} {
+func readOtlpExporterFromSelfMonitoringMetricsPipeline(selfMonitoringLogsPipeline map[string]any) map[string]any {
 	otlpExporterRaw := ReadFromMap(
 		selfMonitoringLogsPipeline,
 		[]string{
@@ -3287,12 +3287,12 @@ func readOtlpExporterFromSelfMonitoringMetricsPipeline(selfMonitoringLogsPipelin
 		},
 	)
 	Expect(otlpExporterRaw).ToNot(BeNil())
-	otlpExporter, ok := otlpExporterRaw.(map[string]interface{})
+	otlpExporter, ok := otlpExporterRaw.(map[string]any)
 	Expect(ok).To(BeTrue())
 	return otlpExporter
 }
 
-func readSelfMonitoringLogsPipeline(collectorConfig map[string]interface{}) interface{} {
+func readSelfMonitoringLogsPipeline(collectorConfig map[string]any) any {
 	return ReadFromMap(
 		collectorConfig,
 		[]string{
@@ -3302,7 +3302,7 @@ func readSelfMonitoringLogsPipeline(collectorConfig map[string]interface{}) inte
 		})
 }
 
-func readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline map[string]interface{}) map[string]interface{} {
+func readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline map[string]any) map[string]any {
 	otlpExporterRaw := ReadFromMap(
 		selfMonitoringLogsPipeline,
 		[]string{
@@ -3314,7 +3314,7 @@ func readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline m
 		},
 	)
 	Expect(otlpExporterRaw).ToNot(BeNil())
-	otlpExporter, ok := otlpExporterRaw.(map[string]interface{})
+	otlpExporter, ok := otlpExporterRaw.(map[string]any)
 	Expect(ok).To(BeTrue())
 	return otlpExporter
 }
@@ -3640,16 +3640,16 @@ func emptyTransformExpectations() transformExpectations {
 	}
 }
 
-func verifyRoutingTableEntry(table []interface{}, namespace string, expectedPipeline string) {
+func verifyRoutingTableEntry(table []any, namespace string, expectedPipeline string) {
 	expectedCondition := fmt.Sprintf(`attributes["k8s.namespace.name"] == "%s"`, namespace)
 	found := false
 	for _, entryRaw := range table {
-		entry := entryRaw.(map[string]interface{})
+		entry := entryRaw.(map[string]any)
 		condition := entry["condition"].(string)
 		if condition == expectedCondition {
 			found = true
 			Expect(entry["context"]).To(Equal("resource"))
-			pipelines := entry["pipelines"].([]interface{})
+			pipelines := entry["pipelines"].([]any)
 			Expect(pipelines).To(ContainElement(expectedPipeline))
 			break
 		}

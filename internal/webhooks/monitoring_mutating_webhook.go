@@ -13,7 +13,6 @@ import (
 	"github.com/go-logr/logr"
 	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -167,18 +166,18 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	}
 	if monitoringSpec.LogCollection.Enabled == nil {
 		if request.Namespace == h.operatorNamespace {
-			monitoringSpec.LogCollection.Enabled = ptr.To(false)
+			monitoringSpec.LogCollection.Enabled = new(false)
 		} else {
-			monitoringSpec.LogCollection.Enabled = ptr.To(telemetryCollectionEnabled)
+			monitoringSpec.LogCollection.Enabled = new(telemetryCollectionEnabled)
 		}
 		patchRequired = true
 	}
 	if monitoringSpec.EventCollection.Enabled == nil {
-		monitoringSpec.EventCollection.Enabled = ptr.To(telemetryCollectionEnabled)
+		monitoringSpec.EventCollection.Enabled = new(telemetryCollectionEnabled)
 		patchRequired = true
 	}
 	if monitoringSpec.PrometheusScraping.Enabled == nil {
-		monitoringSpec.PrometheusScraping.Enabled = ptr.To(telemetryCollectionEnabled)
+		monitoringSpec.PrometheusScraping.Enabled = new(telemetryCollectionEnabled)
 		patchRequired = true
 	}
 	return patchRequired
@@ -200,7 +199,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 					"by explicitly disabling log collection for this namespace, see "+
 					"https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#monitoringresource.spec.logCollection.enabled.",
 				h.operatorNamespace))
-		monitoringSpec.LogCollection.Enabled = ptr.To(false)
+		monitoringSpec.LogCollection.Enabled = new(false)
 		return true
 	}
 	return false
@@ -272,7 +271,7 @@ func normalizeTransformGroupsForOneSignal(
 			return nil, http.StatusInternalServerError, fmt.Errorf("extracting the JSON payload for spec.transform.%s[%d] failed: %w", signalTypeKey, ctxIdx, err)
 		}
 
-		var groupUnmarshalled interface{}
+		var groupUnmarshalled any
 		if err = json.Unmarshal(jsonPayload, &groupUnmarshalled); err != nil {
 			return nil,
 				http.StatusBadRequest,
@@ -286,7 +285,7 @@ func normalizeTransformGroupsForOneSignal(
 			continue
 		}
 
-		groupAsMap, isMap := groupUnmarshalled.(map[string]interface{})
+		groupAsMap, isMap := groupUnmarshalled.(map[string]any)
 		if isMap {
 			normalizedGroup := dash0common.NormalizedTransformGroup{}
 			if contextSpec, hasContext := groupAsMap["context"]; hasContext && contextSpec != nil {
@@ -309,7 +308,7 @@ func normalizeTransformGroupsForOneSignal(
 				}
 			}
 			if conditionsRaw, hasConditions := groupAsMap["conditions"]; hasConditions {
-				if conditionsI, listOk := conditionsRaw.([]interface{}); listOk {
+				if conditionsI, listOk := conditionsRaw.([]any); listOk {
 					conditions := make([]string, len(conditionsI))
 					for conditionIdx, condition := range conditionsI {
 						if conditionS, elemOk := condition.(string); elemOk {
@@ -337,7 +336,7 @@ func normalizeTransformGroupsForOneSignal(
 				}
 			}
 			if statementsRaw, hasStatements := groupAsMap["statements"]; hasStatements {
-				if statementsI, listOk := statementsRaw.([]interface{}); listOk {
+				if statementsI, listOk := statementsRaw.([]any); listOk {
 					statements := make([]string, len(statementsI))
 					for statementIdx, statement := range statementsI {
 						if statementS, elemOk := statement.(string); elemOk {

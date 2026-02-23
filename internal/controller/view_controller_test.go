@@ -689,7 +689,7 @@ var _ = Describe(
 							MatchParam("dataset", DatasetCustomTest).
 							Times(2).
 							Reply(503).
-							JSON(map[string]interface{}{})
+							JSON(map[string]any{})
 						expectViewPutRequest(clusterId, defaultExpectedPathView)
 						defer gock.Off()
 
@@ -898,7 +898,7 @@ var _ = Describe(
 
 				DescribeTable(
 					"maps views", func(testConfig viewToRequestTestConfig) {
-						view := map[string]interface{}{}
+						view := map[string]any{}
 						Expect(yaml.Unmarshal([]byte(testConfig.view), &view)).To(Succeed())
 						apiConfig := ApiConfig{
 							Endpoint: ApiEndpointTest,
@@ -929,7 +929,7 @@ var _ = Describe(
 						}()
 						body, err := io.ReadAll(req.Body)
 						Expect(err).ToNot(HaveOccurred())
-						resultingViewInRequest := map[string]interface{}{}
+						resultingViewInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingViewInRequest)).To(Succeed())
 						Expect(resultingViewInRequest["spec"]).ToNot(BeNil())
 
@@ -939,7 +939,7 @@ var _ = Describe(
 						if testConfig.expectedAnnotations != nil {
 							annotationsRaw := ReadFromMap(resultingViewInRequest, []string{"metadata", "annotations"})
 							Expect(annotationsRaw).ToNot(BeNil())
-							annotations := annotationsRaw.(map[string]interface{})
+							annotations := annotationsRaw.(map[string]any)
 							Expect(annotations).To(HaveLen(len(testConfig.expectedAnnotations)))
 							for expectedKey, expectedValue := range testConfig.expectedAnnotations {
 								value, ok := annotations[expectedKey]
@@ -1041,10 +1041,10 @@ func expectViewPutRequest(clusterId string, expectedPath string) {
 	)
 }
 
-func viewPutResponse(clusterId string, originPattern string, dataset string) map[string]interface{} {
-	return map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"labels": map[string]interface{}{
+func viewPutResponse(clusterId string, originPattern string, dataset string) map[string]any {
+	return map[string]any{
+		"metadata": map[string]any{
+			"labels": map[string]any{
 				"dash0.com/id":      viewId,
 				"dash0.com/origin":  fmt.Sprintf(originPattern, clusterId),
 				"dash0.com/dataset": dataset,
