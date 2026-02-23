@@ -105,31 +105,31 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 					Mode:          dash0common.InstrumentWorkloadsModeAll,
 				},
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 				EventCollection: dash0common.EventCollection{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
-				SynchronizePersesDashboards: ptr.To(true),
-				SynchronizePrometheusRules:  ptr.To(true),
+				SynchronizePersesDashboards: new(true),
+				SynchronizePrometheusRules:  new(true),
 			},
 		}),
 		Entry("full spec", convertToTestCase{
 			srcSpec: dash0v1alpha1.Dash0MonitoringSpec{
 				InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				Filter:                      testFilter(),
 				Transform:                   testTransform(),
-				SynchronizePersesDashboards: ptr.To(false),
-				SynchronizePrometheusRules:  ptr.To(false),
+				SynchronizePersesDashboards: new(false),
+				SynchronizePrometheusRules:  new(false),
 			},
 			expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 				InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
@@ -137,20 +137,20 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 					Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 				},
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				Filter:                      testFilter(),
 				Transform:                   testTransform(),
-				SynchronizePersesDashboards: ptr.To(false),
-				SynchronizePrometheusRules:  ptr.To(false),
+				SynchronizePersesDashboards: new(false),
+				SynchronizePrometheusRules:  new(false),
 			},
 		}),
 		Entry("convert legacy prometheus scraping setting (disabled only via legacy setting)", convertToTestCase{
 			srcSpec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScrapingEnabled: ptr.To(false),
+				PrometheusScrapingEnabled: new(false),
 			},
 			check: func(convertedSpec dash0v1beta1.Dash0MonitoringSpec) {
 				Expect(*convertedSpec.PrometheusScraping.Enabled).To(BeFalse())
@@ -159,9 +159,9 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 		Entry("convert legacy prometheus scraping setting (disabled via both settings)", convertToTestCase{
 			srcSpec: dash0v1alpha1.Dash0MonitoringSpec{
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
-				PrometheusScrapingEnabled: ptr.To(false),
+				PrometheusScrapingEnabled: new(false),
 			},
 			check: func(convertedSpec dash0v1beta1.Dash0MonitoringSpec) {
 				Expect(*convertedSpec.PrometheusScraping.Enabled).To(BeFalse())
@@ -170,9 +170,9 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 		Entry("convert legacy prometheus scraping setting (legacy false, new setting true)", convertToTestCase{
 			srcSpec: dash0v1alpha1.Dash0MonitoringSpec{
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
-				PrometheusScrapingEnabled: ptr.To(false),
+				PrometheusScrapingEnabled: new(false),
 			},
 			check: func(convertedSpec dash0v1beta1.Dash0MonitoringSpec) {
 				Expect(*convertedSpec.PrometheusScraping.Enabled).To(BeFalse())
@@ -181,9 +181,9 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 		Entry("convert legacy prometheus scraping setting (legacy true, new setting false)", convertToTestCase{
 			srcSpec: dash0v1alpha1.Dash0MonitoringSpec{
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
-				PrometheusScrapingEnabled: ptr.To(true),
+				PrometheusScrapingEnabled: new(true),
 			},
 			check: func(convertedSpec dash0v1beta1.Dash0MonitoringSpec) {
 				Expect(*convertedSpec.PrometheusScraping.Enabled).To(BeFalse())
@@ -246,13 +246,13 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 			expectedDstSpec: dash0v1alpha1.Dash0MonitoringSpec{
 				InstrumentWorkloads: dash0common.InstrumentWorkloadsModeAll,
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
-				SynchronizePersesDashboards: ptr.To(true),
-				SynchronizePrometheusRules:  ptr.To(true),
+				SynchronizePersesDashboards: new(true),
+				SynchronizePrometheusRules:  new(true),
 			},
 			expectedDstExtraAnnotations: map[string]string{
 				"dash0.com/spec.eventCollection.enabled": "true",
@@ -264,28 +264,28 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 					Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 				},
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				Filter:                      testFilter(),
 				Transform:                   testTransform(),
-				SynchronizePersesDashboards: ptr.To(false),
-				SynchronizePrometheusRules:  ptr.To(false),
+				SynchronizePersesDashboards: new(false),
+				SynchronizePrometheusRules:  new(false),
 			},
 			expectedDstSpec: dash0v1alpha1.Dash0MonitoringSpec{
 				InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				Filter:                      testFilter(),
 				Transform:                   testTransform(),
-				SynchronizePersesDashboards: ptr.To(false),
-				SynchronizePrometheusRules:  ptr.To(false),
+				SynchronizePersesDashboards: new(false),
+				SynchronizePrometheusRules:  new(false),
 			},
 			expectedDstExtraAnnotations: map[string]string{
 				"dash0.com/spec.eventCollection.enabled": "true",

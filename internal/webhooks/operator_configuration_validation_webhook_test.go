@@ -5,7 +5,6 @@ package webhooks
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -88,7 +87,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			})
@@ -107,7 +106,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			})
@@ -134,10 +133,10 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			})
@@ -157,9 +156,9 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
-					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					KubernetesInfrastructureMetricsCollectionEnabled: new(true),
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			})
@@ -181,10 +180,10 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			})
@@ -205,10 +204,10 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			})
@@ -229,10 +228,10 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			})
@@ -250,8 +249,8 @@ var _ = Describe("The validation webhook for the operator configuration resource
 						{
 							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint:           EndpointGrpcTest,
-								Insecure:           ptr.To(true),
-								InsecureSkipVerify: ptr.To(true),
+								Insecure:           new(true),
+								InsecureSkipVerify: new(true),
 							},
 						},
 					},
@@ -268,13 +267,13 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			})
 		Expect(err).ToNot(HaveOccurred())
 
-		operatorConfiguration.Spec.SelfMonitoring.Enabled = ptr.To(true)
+		operatorConfiguration.Spec.SelfMonitoring.Enabled = new(true)
 		operatorConfiguration.Spec.Exports = []dash0common.Export{
 			{
 				Dash0: &dash0common.Dash0Configuration{
@@ -298,7 +297,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				},
@@ -314,7 +313,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					Export: Dash0ExportWithEndpointAndToken(),
 				},

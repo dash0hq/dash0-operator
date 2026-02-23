@@ -182,7 +182,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			)
@@ -377,7 +377,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 
-			operatorConfiguration.Spec.TelemetryCollection.Enabled = ptr.To(false)
+			operatorConfiguration.Spec.TelemetryCollection.Enabled = new(false)
 			Expect(k8sClient.Update(ctx, operatorConfiguration)).To(Succeed())
 
 			hasBeenReconciled, err = collectorManager.ReconcileOpenTelemetryCollector(

@@ -12,7 +12,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -1398,7 +1397,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Namespace: "namespace-1",
 				},
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)},
+					LogCollection: dash0common.LogCollection{Enabled: new(true)},
 				},
 			},
 			{
@@ -1407,7 +1406,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Namespace: OperatorNamespace,
 				},
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)},
+					LogCollection: dash0common.LogCollection{Enabled: new(true)},
 				},
 			},
 			{
@@ -1416,7 +1415,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Namespace: "namespace-2",
 				},
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)},
+					LogCollection: dash0common.LogCollection{Enabled: new(true)},
 				},
 			},
 		}
@@ -1458,7 +1457,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Namespace: "namespace-1",
 				},
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					EventCollection: dash0common.EventCollection{Enabled: ptr.To(true)},
+					EventCollection: dash0common.EventCollection{Enabled: new(true)},
 				},
 			},
 			{
@@ -1467,7 +1466,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Namespace: "namespace-2",
 				},
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					EventCollection: dash0common.EventCollection{Enabled: ptr.To(false)},
+					EventCollection: dash0common.EventCollection{Enabled: new(false)},
 				},
 			},
 			{
@@ -1476,7 +1475,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Namespace: "namespace-3",
 				},
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					EventCollection: dash0common.EventCollection{Enabled: ptr.To(true)},
+					EventCollection: dash0common.EventCollection{Enabled: new(true)},
 				},
 			},
 		}
@@ -1510,7 +1509,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Namespace: "explicitly-set",
 				},
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(true)},
+					PrometheusScraping: dash0common.PrometheusScraping{Enabled: new(true)},
 				},
 			},
 			{
@@ -1519,7 +1518,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Namespace: "new-setting-false",
 				},
 				Spec: dash0v1beta1.Dash0MonitoringSpec{
-					PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(false)},
+					PrometheusScraping: dash0common.PrometheusScraping{Enabled: new(false)},
 				},
 			},
 		}
@@ -2006,10 +2005,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 			Spec: dash0v1beta1.Dash0MonitoringSpec{
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 			},
 		}
@@ -2020,10 +2019,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 			Spec: dash0v1beta1.Dash0MonitoringSpec{
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 			},
 		}
@@ -2034,10 +2033,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 			Spec: dash0v1beta1.Dash0MonitoringSpec{
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 			},
 		}
@@ -2048,10 +2047,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 			Spec: dash0v1beta1.Dash0MonitoringSpec{
 				PrometheusScraping: dash0common.PrometheusScraping{
-					Enabled: ptr.To(false),
+					Enabled: new(false),
 				},
 				LogCollection: dash0common.LogCollection{
-					Enabled: ptr.To(true),
+					Enabled: new(true),
 				},
 			},
 		}
@@ -2220,8 +2219,8 @@ func parseHeadersFromEnvVar(envVars []corev1.EnvVar) map[string]string {
 	if otelExporterOtlpHeadersEnvVarIdx :=
 		slices.IndexFunc(envVars, matchOtelExporterOtlpHeadersEnvVar); otelExporterOtlpHeadersEnvVarIdx >= 0 {
 		otelExporterOtlpHeadersEnvVarValue = envVars[otelExporterOtlpHeadersEnvVarIdx].Value
-		keyValuePairs := strings.Split(otelExporterOtlpHeadersEnvVarValue, ",")
-		for _, keyValuePair := range keyValuePairs {
+		keyValuePairs := strings.SplitSeq(otelExporterOtlpHeadersEnvVarValue, ",")
+		for keyValuePair := range keyValuePairs {
 			parts := strings.Split(keyValuePair, "=")
 			if len(parts) == 2 {
 				headers[parts[0]] = parts[1]

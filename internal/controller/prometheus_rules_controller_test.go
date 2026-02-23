@@ -407,7 +407,7 @@ var _ = Describe(
 					"it ignores Prometheus rule resource changes if synchronization is disabled via the Dash0 monitoring resource",
 					func() {
 						monitoringResource := EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
-						monitoringResource.Spec.SynchronizePrometheusRules = ptr.To(false)
+						monitoringResource.Spec.SynchronizePrometheusRules = new(false)
 						Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
 						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
@@ -1722,7 +1722,7 @@ var _ = Describe(
 
 				It(
 					"should create unique origins even if alert names are not unique", func() {
-						prometheusRule := map[string]interface{}{}
+						prometheusRule := map[string]any{}
 						prometheusRuleYaml := `
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -2246,7 +2246,7 @@ func expectRulePutRequestsCustom(
 			Times(1).
 			Reply(200).
 			JSON(
-				map[string]interface{}{
+				map[string]any{
 					"id":      origin,
 					"dataset": dataset,
 				},

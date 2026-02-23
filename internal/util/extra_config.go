@@ -25,9 +25,9 @@ type ResourceRequirementsWithGoMemLimit struct {
 }
 
 type CollectorProbes struct {
-	Liveness  corev1.Probe `json:"liveness,omitempty"`
-	Readiness corev1.Probe `json:"readiness,omitempty"`
-	Startup   corev1.Probe `json:"startup,omitempty"`
+	Liveness  corev1.Probe `json:"liveness"`
+	Readiness corev1.Probe `json:"readiness"`
+	Startup   corev1.Probe `json:"startup"`
 }
 
 // ExtraConfig holds the additional configuration values for the operator, which the operator reads from
@@ -38,9 +38,9 @@ type ExtraConfig struct {
 
 	CollectorFilelogOffsetStorageVolume *corev1.Volume `json:"collectorFilelogOffsetStorageVolume,omitempty"`
 
-	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources,omitempty"`
-	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources,omitempty"`
-	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources,omitempty"`
+	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources"`
+	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources"`
+	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources"`
 
 	DaemonSetTolerations  []corev1.Toleration  `json:"daemonSetTolerations,omitempty"`
 	DaemonSetNodeAffinity *corev1.NodeAffinity `json:"daemonSetNodeAffinity,omitempty"`
@@ -49,8 +49,8 @@ type ExtraConfig struct {
 
 	DaemonSetProbes CollectorProbes `json:"daemonSetProbes"`
 
-	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources,omitempty"`
-	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources,omitempty"`
+	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources"`
+	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources"`
 
 	DeploymentTolerations  []corev1.Toleration  `json:"deploymentTolerations,omitempty"`
 	DeploymentNodeAffinity *corev1.NodeAffinity `json:"deploymentNodeAffinity,omitempty"`
@@ -62,7 +62,7 @@ type ExtraConfig struct {
 	TargetAllocatorMtlsEnabled              bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
 	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
 	TargetAllocatorMtlsClientCertSecretName string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
-	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources,omitempty"`
+	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
 	TargetAllocatorTolerations              []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
 	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 }

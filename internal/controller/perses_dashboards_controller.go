@@ -484,7 +484,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		specOrConfig := r.normalizeV1Alpha1V1Alpha2(dashboard)
 		displayRaw := specOrConfig["display"]
 		displayRaw = r.addDisplaySectionIfMissing(displayRaw, specOrConfig)
-		display, ok := displayRaw.(map[string]interface{})
+		display, ok := displayRaw.(map[string]any)
 		if !ok {
 			logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
 			return NewResourceToRequestsResultSingleItemValidationIssue(apiConfig, itemName, "spec.display is not a map")
@@ -532,15 +532,15 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	return NewResourceToRequestsResultSingleItemSuccess(apiConfig, req, itemName, dashboardOrigin)
 }
 
-func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[string]interface{}) map[string]interface{} {
-	specOrConfig := (dashboard["spec"]).(map[string]interface{})
+func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[string]any) map[string]any {
+	specOrConfig := (dashboard["spec"]).(map[string]any)
 	configRaw := specOrConfig["config"]
 	if configRaw != nil {
 		// See https://github.com/perses/perses-operator/pull/128, the CRD spec has been changed, a new wrapper
 		// object "config" has been added around the dashboard spec. This has later been reverted for version
 		// v1alpha1 and added as a new CRD version v1alpha2, see
 		// https://github.com/perses/perses-operator/blob/main/api/v1alpha2.
-		if config, ok := configRaw.(map[string]interface{}); ok {
+		if config, ok := configRaw.(map[string]any); ok {
 			specOrConfig = config
 			dashboard["spec"] = specOrConfig
 		}
@@ -549,11 +549,11 @@ func (r *PersesDashboardReconciler) normalizeV1Alpha1V1Alpha2(dashboard map[stri
 }
 
 func (r *PersesDashboardReconciler) addDisplaySectionIfMissing(
-	displayRaw interface{},
-	specOrConfig map[string]interface{},
-) interface{} {
+	displayRaw any,
+	specOrConfig map[string]any,
+) any {
 	if displayRaw == nil {
-		specOrConfig["display"] = map[string]interface{}{}
+		specOrConfig["display"] = map[string]any{}
 		displayRaw = specOrConfig["display"]
 	}
 	return displayRaw
@@ -561,7 +561,7 @@ func (r *PersesDashboardReconciler) addDisplaySectionIfMissing(
 
 func (r *PersesDashboardReconciler) setDisplayNameIfMissing(
 	preconditionChecksResult *preconditionValidationResult,
-	display map[string]interface{},
+	display map[string]any,
 ) {
 	displayName, ok := display["name"]
 	if !ok || displayName == "" {
@@ -628,7 +628,7 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,
 	syncResults synchronizationResults,
-) interface{} {
+) any {
 	previousResults := monitoringResource.Status.PersesDashboardSynchronizationResults
 	if previousResults == nil {
 		previousResults = make(map[string]dash0common.PersesDashboardSynchronizationResults)

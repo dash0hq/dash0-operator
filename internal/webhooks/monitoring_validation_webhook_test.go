@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -130,7 +129,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			)
@@ -157,7 +156,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			)
@@ -215,8 +214,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					Export: &dash0common.Export{
 						Grpc: &dash0common.GrpcConfiguration{
 							Endpoint:           "https://example.com:1234",
-							Insecure:           ptr.To(true),
-							InsecureSkipVerify: ptr.To(true),
+							Insecure:           new(true),
+							InsecureSkipVerify: new(true),
 						},
 					},
 				},
@@ -232,7 +231,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					Export: Dash0ExportWithEndpointAndToken(),
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			)
@@ -276,7 +275,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Entry("logCollection.enabled=true", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					LogCollection: dash0common.LogCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
@@ -288,7 +287,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Entry("prometheusScraping.enabled=true", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
@@ -448,7 +447,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
 							// setting will be ignored during workload modifications
-							Propagators: ptr.To(""),
+							Propagators: new(""),
 						},
 					},
 				},
@@ -459,7 +458,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
 							// setting will be ignored during workload modifications
-							Propagators: ptr.To("   "),
+							Propagators: new("   "),
 						},
 					},
 				},
@@ -469,7 +468,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("xray"),
+							Propagators: new("xray"),
 						},
 					},
 				},
@@ -479,7 +478,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,baggage,b3,b3multi,jaeger,xray,ottrace,none"),
+							Propagators: new("tracecontext,baggage,b3,b3multi,jaeger,xray,ottrace,none"),
 						},
 					},
 				},
@@ -489,7 +488,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("unknown"),
+							Propagators: new("unknown"),
 						},
 					},
 				},
@@ -502,7 +501,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,baggage,b3,unknown,b3multi,jaeger,xray,ottrace,none"),
+							Propagators: new("tracecontext,baggage,b3,unknown,b3multi,jaeger,xray,ottrace,none"),
 						},
 					},
 				},
@@ -516,7 +515,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To(","),
+							Propagators: new(","),
 						},
 					},
 				},

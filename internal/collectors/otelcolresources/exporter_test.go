@@ -908,7 +908,7 @@ var _ = Describe("Exporter Conversion", func() {
 			}
 
 			reference := exporters.allExporters()
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				Expect(exporters.allExporters()).To(Equal(reference))
 			}
 		})

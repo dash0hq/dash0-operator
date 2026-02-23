@@ -11,7 +11,6 @@ import (
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -285,20 +284,20 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 		},
 		Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-				Enabled: ptr.To(operatorConfigurationValues.SelfMonitoringEnabled),
+				Enabled: new(operatorConfigurationValues.SelfMonitoringEnabled),
 			},
 			Exports: dash0Exports,
 			KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-				Enabled: ptr.To(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
+				Enabled: new(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
 			},
 			CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-				Enabled: ptr.To(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),
+				Enabled: new(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),
 			},
 			CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-				Enabled: ptr.To(operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled),
+				Enabled: new(operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled),
 			},
 			PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-				Enabled: ptr.To(operatorConfigurationValues.PrometheusCrdSupportEnabled),
+				Enabled: new(operatorConfigurationValues.PrometheusCrdSupportEnabled),
 			},
 			ClusterName: operatorConfigurationValues.ClusterName,
 		},

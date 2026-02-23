@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -43,10 +42,10 @@ var (
 			Value: "/__otel_auto_instrumentation",
 		}},
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			Privileged:               ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(true),
-			RunAsNonRoot:             ptr.To(false),
+			AllowPrivilegeEscalation: new(false),
+			Privileged:               new(false),
+			ReadOnlyRootFilesystem:   new(true),
+			RunAsNonRoot:             new(false),
 			RunAsUser:                &ArbitraryNumer,
 			RunAsGroup:               &ArbitraryNumer,
 		},
@@ -1226,7 +1225,7 @@ func AddManagedFields(meta *metav1.ObjectMeta) {
 	meta.ManagedFields = append(meta.ManagedFields, metav1.ManagedFieldsEntry{
 		Manager:    util.FieldManager,
 		Operation:  metav1.ManagedFieldsOperationUpdate,
-		Time:       ptr.To(metav1.Now()),
+		Time:       new(metav1.Now()),
 		FieldsType: "FieldsV1",
 		FieldsV1: &metav1.FieldsV1{
 			//nolint:lll
@@ -1354,13 +1353,13 @@ func WebhookServiceEndpointSlice(withPort bool, withReadyCondition bool) discove
 
 	if withPort {
 		endpointSlice.Ports = []discoveryv1.EndpointPort{{
-			Port: ptr.To(int32(9443)),
+			Port: new(int32(9443)),
 		}}
 	}
 
 	if withReadyCondition {
 		endpointSlice.Endpoints[0].Conditions = discoveryv1.EndpointConditions{
-			Ready: ptr.To(true),
+			Ready: new(true),
 		}
 	}
 

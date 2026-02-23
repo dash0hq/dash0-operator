@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -1594,7 +1593,7 @@ var _ = Describe(
 								VerifyNoEvents(ctx, clientset, namespace)
 								config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, ptr.To("tracecontext,xray"))
+								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, new("tracecontext,xray"))
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
 								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
@@ -1741,11 +1740,11 @@ var _ = Describe(
 								workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
-								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, ptr.To("tracecontext"))
+								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, new("tracecontext"))
 								triggerReconcileRequest(ctx, monitoringReconciler)
 								config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, ptr.To("tracecontext,xray"))
+								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, new("tracecontext,xray"))
 								triggerReconcileRequest(ctx, monitoringReconciler)
 								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
@@ -1916,7 +1915,7 @@ var _ = Describe(
 								workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
-								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, ptr.To("tracecontext,xray"))
+								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, new("tracecontext,xray"))
 								triggerReconcileRequest(ctx, monitoringReconciler)
 								config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 

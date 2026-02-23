@@ -260,8 +260,8 @@ func (h *MonitoringValidationWebhookHandler) validateTraceContextPropagators(mon
 	if propagatorsRaw == nil || strings.TrimSpace(*propagatorsRaw) == "" {
 		return admission.Response{}, false
 	}
-	propagators := strings.Split(*propagatorsRaw, ",")
-	for _, propagatorRaw := range propagators {
+	propagators := strings.SplitSeq(*propagatorsRaw, ",")
+	for propagatorRaw := range propagators {
 		propagator := strings.TrimSpace(propagatorRaw)
 		if propagator == "" {
 			return admission.Denied(

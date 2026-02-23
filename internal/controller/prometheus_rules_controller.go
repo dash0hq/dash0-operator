@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -704,9 +705,9 @@ func (r *PrometheusRuleReconciler) renderCheckRuleOriginPrefix(
 func readTopLevelAnnotations(preconditionChecksResult *preconditionValidationResult) map[string]string {
 	var metadataAnnotations map[string]string
 	if metadataRaw, ok := preconditionChecksResult.resource["metadata"]; ok {
-		if metadata, ok := metadataRaw.(map[string]interface{}); ok {
+		if metadata, ok := metadataRaw.(map[string]any); ok {
 			if annotationsRaw, ok := metadata["annotations"]; ok {
-				if annotations, ok := annotationsRaw.(map[string]interface{}); ok {
+				if annotations, ok := annotationsRaw.(map[string]any); ok {
 					metadataAnnotations = make(map[string]string, len(annotations))
 					for key, value := range annotations {
 						if strValue, ok := value.(string); ok {
@@ -966,15 +967,11 @@ func mergeAnnotations(metadataAnnotations map[string]string, ruleAnnotations map
 	}
 
 	merged := make(map[string]string, len(metadataAnnotations)+len(ruleAnnotations))
-	for key, value := range metadataAnnotations {
-		merged[key] = value
-	}
+	maps.Copy(merged, metadataAnnotations)
 
 	// override metadata annotations with individual rule annotations, i.e. annotations from individual rules take
 	// priority
-	for key, value := range ruleAnnotations {
-		merged[key] = value
-	}
+	maps.Copy(merged, ruleAnnotations)
 
 	return merged
 }
@@ -1040,7 +1037,7 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,
 	syncResults synchronizationResults,
-) interface{} {
+) any {
 	previousResults := monitoringResource.Status.PrometheusRuleSynchronizationResults
 	if previousResults == nil {
 		previousResults = make(map[string]dash0common.PrometheusRuleSynchronizationResult)

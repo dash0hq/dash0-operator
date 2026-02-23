@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -123,10 +122,10 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 				},
 			)
@@ -151,10 +150,10 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-						Enabled: ptr.To(true),
+						Enabled: new(true),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 			)
@@ -184,7 +183,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 				k8sClient,
 				dash0v1beta1.Dash0MonitoringSpec{
 					PrometheusScraping: common.PrometheusScraping{
-						Enabled: ptr.To(false),
+						Enabled: new(false),
 					},
 				},
 				nsName,
@@ -249,7 +248,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			Expect(hasBeenReconciled).To(BeTrue())
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
 
-			operatorConfigurationResource.Spec.TelemetryCollection.Enabled = ptr.To(false)
+			operatorConfigurationResource.Spec.TelemetryCollection.Enabled = new(false)
 			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
 
 			hasBeenReconciled, err = targetAllocatorManager.ReconcileTargetAllocator(
@@ -280,7 +279,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			Expect(hasBeenReconciled).To(BeTrue())
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
 
-			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled = ptr.To(false)
+			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled = new(false)
 			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
 
 			hasBeenReconciled, err = targetAllocatorManager.ReconcileTargetAllocator(
@@ -312,7 +311,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
 
 			monitoringResource.Spec.PrometheusScraping = common.PrometheusScraping{
-				Enabled: ptr.To(false),
+				Enabled: new(false),
 			}
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
@@ -372,7 +371,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
 
 			firstMonitoringResource.Spec.PrometheusScraping = common.PrometheusScraping{
-				Enabled: ptr.To(false),
+				Enabled: new(false),
 			}
 			Expect(k8sClient.Update(ctx, firstMonitoringResource)).To(Succeed())
 

@@ -21,7 +21,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -201,7 +200,7 @@ func assembleServiceAccount(c *targetAllocatorConfig) *corev1.ServiceAccount {
 			Namespace: c.OperatorNamespace,
 			Labels:    labels(),
 		},
-		AutomountServiceAccountToken: ptr.To(false),
+		AutomountServiceAccountToken: new(false),
 	}
 }
 
@@ -481,7 +480,7 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 
 	taPodSpec := corev1.PodSpec{
 		ServiceAccountName:           ServiceAccountName(c.NamePrefix),
-		AutomountServiceAccountToken: ptr.To(false),
+		AutomountServiceAccountToken: new(false),
 		Tolerations:                  extraConfig.TargetAllocatorTolerations,
 		Containers: []corev1.Container{
 			taContainer,

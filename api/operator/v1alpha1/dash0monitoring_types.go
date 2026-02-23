@@ -481,7 +481,7 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 		propagators, propagatorsFound :=
 			src.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators]
 		if propagatorsFound && strings.TrimSpace(propagators) != "" {
-			dst.Spec.InstrumentWorkloads.TraceContext.Propagators = ptr.To(propagators)
+			dst.Spec.InstrumentWorkloads.TraceContext.Propagators = new(propagators)
 		}
 		delete(dst.Annotations, annotationNameSpecInstrumentWorkloadsTraceContextPropagators)
 
@@ -525,7 +525,7 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 		previousPropagators, previousPropagatorsFound :=
 			src.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators]
 		if previousPropagatorsFound && strings.TrimSpace(previousPropagators) != "" {
-			dst.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = ptr.To(previousPropagators)
+			dst.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = new(previousPropagators)
 		}
 		delete(dst.Annotations, annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators)
 	}

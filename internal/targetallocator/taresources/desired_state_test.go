@@ -183,7 +183,7 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 
 			Expect(configMap).ToNot(BeNil())
 			taConfig := parseConfigMapContent(configMap)
-			httpsConfig, ok := ReadFromMap(taConfig, []string{"https"}).(map[string]interface{})
+			httpsConfig, ok := ReadFromMap(taConfig, []string{"https"}).(map[string]any)
 			Expect(ok).To(BeTrue())
 			Expect(httpsConfig["enabled"]).To(Equal(true))
 			Expect(httpsConfig["ca_file_path"]).To(Equal(fmt.Sprintf("%s/ca.crt", targetAllocatorCertsVolumeDir)))
@@ -223,6 +223,6 @@ func findObjectByName(desiredState []clientObject, name string) client.Object {
 	return nil
 }
 
-func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]interface{} {
+func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]any {
 	return ParseConfigMapContent(configMap, "targetallocator.yaml")
 }

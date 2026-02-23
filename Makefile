@@ -144,6 +144,10 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: go-fix
+go-fix: ## Run go fix against code.
+	go fix ./...
+
 .PHONY: test
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 

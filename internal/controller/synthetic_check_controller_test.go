@@ -14,7 +14,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -721,7 +720,7 @@ var _ = Describe(
 
 				DescribeTable(
 					"maps synthetic checks", func(testConfig syntheticCheckToRequestTestConfig) {
-						syntheticCheck := map[string]interface{}{}
+						syntheticCheck := map[string]any{}
 						Expect(yaml.Unmarshal([]byte(testConfig.syntheticCheck), &syntheticCheck)).To(Succeed())
 						apiConfig := ApiConfig{
 							Endpoint: ApiEndpointTest,
@@ -757,7 +756,7 @@ var _ = Describe(
 						}()
 						body, err := io.ReadAll(req.Body)
 						Expect(err).ToNot(HaveOccurred())
-						resultingSyntheticCheckInRequest := map[string]interface{}{}
+						resultingSyntheticCheckInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingSyntheticCheckInRequest)).To(Succeed())
 						Expect(resultingSyntheticCheckInRequest["spec"]).ToNot(BeNil())
 
@@ -772,7 +771,7 @@ var _ = Describe(
 						if testConfig.expectedAnnotations != nil {
 							annotationsRaw := ReadFromMap(resultingSyntheticCheckInRequest, []string{"metadata", "annotations"})
 							Expect(annotationsRaw).ToNot(BeNil())
-							annotations := annotationsRaw.(map[string]interface{})
+							annotations := annotationsRaw.(map[string]any)
 							Expect(annotations).To(HaveLen(len(testConfig.expectedAnnotations)))
 							for expectedKey, expectedValue := range testConfig.expectedAnnotations {
 								value, ok := annotations[expectedKey]
@@ -864,10 +863,10 @@ func expectSyntheticCheckPutRequest(clusterId string, expectedPath string) {
 	)
 }
 
-func syntheticCheckPutResponse(clusterId string, originPattern string, dataset string) map[string]interface{} {
-	return map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"labels": map[string]interface{}{
+func syntheticCheckPutResponse(clusterId string, originPattern string, dataset string) map[string]any {
+	return map[string]any{
+		"metadata": map[string]any{
+			"labels": map[string]any{
 				"dash0.com/id":      syntheticCheckId,
 				"dash0.com/origin":  fmt.Sprintf(originPattern, clusterId),
 				"dash0.com/dataset": dataset,
@@ -938,8 +937,8 @@ func createSyntheticCheckResourceWithEnableLabel(
 							{
 								Kind: "status_code",
 								Spec: dash0v1alpha1.Dash0SyntheticCheckAssertionSpec{
-									Operator: ptr.To("is"),
-									Value:    ptr.To("200"),
+									Operator: new("is"),
+									Value:    new("200"),
 								},
 							},
 						},
