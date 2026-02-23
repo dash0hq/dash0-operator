@@ -90,6 +90,7 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	marshalled, err := json.Marshal(monitoringResource)
 	if err != nil {
 		wrappedErr := fmt.Errorf("error when marshalling modfied monitoring resource to JSON: %w", err)
+		logger.Error(wrappedErr, "JSON marshalling error")
 		return admission.Errored(http.StatusInternalServerError, wrappedErr)
 	}
 
@@ -117,7 +118,7 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 		if len(monitoringSpec.Exports) == 0 {
 			monitoringSpec.Exports = []dash0common.Export{*monitoringSpec.Export}
 		} else {
-			unchanged, errorResponse := isExportsUnchangedFromOldMonitoringResource(request, monitoringSpec.Exports)
+			unchanged, errorResponse := isExportsUnchangedFromOldMonitoringResource(request, monitoringSpec.Exports, logger)
 			if errorResponse != nil {
 				return false, errorResponse
 			}
@@ -213,6 +214,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 func isExportsUnchangedFromOldMonitoringResource(
 	request admission.Request,
 	incomingExports []dash0common.Export,
+	logger logr.Logger,
 ) (bool, *admission.Response) {
 	if request.Operation != admissionv1.Update {
 		return false, nil
@@ -222,9 +224,11 @@ func isExportsUnchangedFromOldMonitoringResource(
 	}
 	oldResource := &dash0v1beta1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
+		msg := "could not decode OldObject for export migration"
+		logger.Error(err, msg)
 		errResponse := admission.Errored(
 			http.StatusBadRequest,
-			fmt.Errorf("could not decode OldObject for export migration: %w", err),
+			fmt.Errorf("%s: %w", msg, err),
 		)
 		return false, &errResponse
 	}
@@ -380,6 +384,7 @@ func loadAvailableOperatorConfigurationResources(
 	operatorConfigurationList := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 	if err := k8sClient.List(ctx, operatorConfigurationList, &client.ListOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
+			log.FromContext(ctx).Error(err, "failed to list operator configuration resources")
 			errorResponse := admission.Errored(http.StatusInternalServerError, err)
 			return nil, &errorResponse
 		}
