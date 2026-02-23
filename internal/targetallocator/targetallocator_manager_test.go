@@ -431,7 +431,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			_, err := targetAllocatorManager.targetAllocatorResourceManager.DeleteResources(
 				ctx,
 				util.ExtraConfigDefaults,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -447,7 +447,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 			Expect(hasBeenReconciled).To(BeTrue())
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
 
-			targetAllocatorManager.UpdateExtraConfig(ctx, util.ExtraConfigDefaults, &logger)
+			targetAllocatorManager.UpdateExtraConfig(ctx, util.ExtraConfigDefaults, logger)
 			tatest.VerifyTargetAllocatorResources(ctx, k8sClient, operatorNamespace)
 		})
 
@@ -477,7 +477,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			}
-			targetAllocatorManager.UpdateExtraConfig(ctx, changedConfig, &logger)
+			targetAllocatorManager.UpdateExtraConfig(ctx, changedConfig, logger)
 
 			deployment := tatest.VerifyTargetAllocatorDeploymentExists(ctx, k8sClient, operatorNamespace)
 			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))

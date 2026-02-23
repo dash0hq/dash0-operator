@@ -72,7 +72,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		_, err := oTelColResourceManager.DeleteResources(
 			ctx,
 			util.ExtraConfigDefaults,
-			&logger,
+			logger,
 		)
 		Expect(err).ToNot(HaveOccurred())
 		Eventually(func(g Gomega) {
@@ -83,7 +83,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Describe("when dealing with individual resources", func() {
 		It("should create a single resource", func() {
-			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, testResource.DeepCopy(), &logger)
+			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, testResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeTrue())
 			Expect(isChanged).To(BeFalse())
@@ -91,12 +91,12 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 
 		It("should update a single object", func() {
-			err := oTelColResourceManager.createResource(ctx, testResource.DeepCopy(), &logger)
+			err := oTelColResourceManager.createResource(ctx, testResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			updated := testResource.DeepCopy()
 			updated.Data["key"] = "updated value"
-			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, updated, &logger)
+			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, updated, logger)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeFalse())
@@ -105,13 +105,13 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 
 		It("should report that nothing has changed for a single object", func() {
-			err := oTelColResourceManager.createResource(ctx, testResource.DeepCopy(), &logger)
+			err := oTelColResourceManager.createResource(ctx, testResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(
 				ctx,
 				testResource.DeepCopy(),
-				&logger,
+				logger,
 			)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -134,7 +134,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
@@ -153,7 +153,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
@@ -185,7 +185,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
@@ -218,7 +218,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -241,7 +241,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -305,7 +305,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -335,7 +335,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -375,7 +375,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
@@ -394,7 +394,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -416,7 +416,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
@@ -435,7 +435,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.ExtraConfigDefaults,
 				operatorConfiguration,
 				nil,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -447,7 +447,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.ExtraConfigDefaults,
 				operatorConfiguration,
 				nil,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
@@ -461,7 +461,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
-					&logger,
+					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
@@ -481,7 +481,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.ExtraConfigDefaults,
 				operatorConfiguration,
 				nil,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
@@ -490,7 +490,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenDeleted, err := oTelColResourceManager.DeleteResources(
 				ctx,
 				util.ExtraConfigDefaults,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenDeleted).To(BeTrue())
@@ -502,7 +502,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenDeleted, err = oTelColResourceManager.DeleteResources(
 				ctx,
 				util.ExtraConfigDefaults,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenDeleted).To(BeFalse())

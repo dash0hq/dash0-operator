@@ -117,7 +117,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			_, err := collectorManager.oTelColResourceManager.DeleteResources(
 				ctx,
 				util.ExtraConfigDefaults,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -267,7 +267,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			_, err := collectorManager.oTelColResourceManager.DeleteResources(
 				ctx,
 				util.ExtraConfigDefaults,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -459,7 +459,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			_, err := collectorManager.oTelColResourceManager.DeleteResources(
 				ctx,
 				util.ExtraConfigDefaults,
-				&logger,
+				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -474,7 +474,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 
-			collectorManager.UpdateExtraConfig(ctx, util.ExtraConfigDefaults, &logger)
+			collectorManager.UpdateExtraConfig(ctx, util.ExtraConfigDefaults, logger)
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
 		})
 
@@ -513,7 +513,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			}
-			collectorManager.UpdateExtraConfig(ctx, changedConfig, &logger)
+			collectorManager.UpdateExtraConfig(ctx, changedConfig, logger)
 
 			ds_ := VerifyResourceExists(
 				ctx,

@@ -12,7 +12,7 @@ import (
 )
 
 type LeaderElectionClient interface {
-	NotifiyOperatorManagerJustBecameLeader(context.Context, *logr.Logger)
+	NotifiyOperatorManagerJustBecameLeader(context.Context, logr.Logger)
 }
 
 type LeaderElectionAware interface {
@@ -46,7 +46,7 @@ func (r *LeaderElectionAwareRunnable) Start(ctx context.Context) error {
 	logger.Info("This operator manager replica has just become leader.")
 	r.isLeader.Store(true)
 	for _, client := range r.clients {
-		client.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+		client.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 	}
 	return nil
 }

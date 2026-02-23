@@ -52,7 +52,7 @@ func NewTargetAllocatorManager(
 	return m
 }
 
-func (m *TargetAllocatorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger *logr.Logger) {
+func (m *TargetAllocatorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logr.Logger) {
 	previousConfig := m.extraConfig.Swap(&newConfig)
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
 		hasBeenReconciled, err := m.ReconcileTargetAllocator(ctx, TriggeredByWatchEvent)
@@ -95,11 +95,11 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 		m.updateInProgress.Store(false)
 	}()
 
-	operatorConfigurationResource, err := resources.FindOperatorConfigurationResource(ctx, m.Client, &logger)
+	operatorConfigurationResource, err := resources.FindOperatorConfigurationResource(ctx, m.Client, logger)
 	if err != nil {
 		return false, err
 	}
-	allMonitoringResources, err := resources.FindAllMonitoringResources(ctx, m.Client, &logger)
+	allMonitoringResources, err := resources.FindAllMonitoringResources(ctx, m.Client, logger)
 	if err != nil {
 		return false, err
 	}
@@ -123,7 +123,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 			"target-allocator will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will " +
 			"be removed.",
 		)
-		err = m.removeTargetAllocator(ctx, *extraConfig, &logger)
+		err = m.removeTargetAllocator(ctx, *extraConfig, logger)
 		return err == nil, err
 	}
 
@@ -134,7 +134,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 				"will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will be removed.",
 				operatorConfigurationResource.Name),
 		)
-		err = m.removeTargetAllocator(ctx, *extraConfig, &logger)
+		err = m.removeTargetAllocator(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else if !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled, false) {
 		logger.Info(
@@ -143,7 +143,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 				"will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will be removed.",
 				operatorConfigurationResource.Name),
 		)
-		err = m.removeTargetAllocator(ctx, *extraConfig, &logger)
+		err = m.removeTargetAllocator(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else if !hasPrometheusScrapingEnabledForAtLeastOneNamespace {
 		logger.Info(
@@ -153,7 +153,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 				"will be created, the existing Dash0 OpenTelemetry target-allocator (if present) will be removed.",
 				operatorConfigurationResource.Name),
 		)
-		err = m.removeTargetAllocator(ctx, *extraConfig, &logger)
+		err = m.removeTargetAllocator(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else {
 		logger.Info(
@@ -165,7 +165,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 			ctx,
 			namespacesWithPrometheusScraping,
 			*extraConfig,
-			&logger,
+			logger,
 		)
 		return err == nil, err
 	}
@@ -175,7 +175,7 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 	ctx context.Context,
 	namespacesWithPrometheusScraping []string,
 	extraConfig util.ExtraConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.targetAllocatorResourceManager.CreateOrUpdateTargetAllocatorResources(
@@ -207,7 +207,7 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 func (m *TargetAllocatorManager) removeTargetAllocator(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	resourcesHaveBeenDeleted, err := m.targetAllocatorResourceManager.DeleteResources(
 		ctx,

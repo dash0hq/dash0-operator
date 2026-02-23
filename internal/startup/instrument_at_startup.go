@@ -40,6 +40,6 @@ func (r *InstrumentAtStartupRunnable) NeedLeaderElection() bool {
 func (r *InstrumentAtStartupRunnable) Start(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 	r.instrumenter.Client = r.manager.GetClient()
-	r.instrumenter.InstrumentAtStartup(ctx, &logger)
+	r.instrumenter.InstrumentAtStartup(ctx, logger)
 	return nil
 }

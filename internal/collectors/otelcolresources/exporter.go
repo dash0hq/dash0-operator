@@ -85,7 +85,7 @@ func getDefaultOtlpExporters(dash0Config *dash0v1alpha1.Dash0OperatorConfigurati
 // remaining namespaces will still be handled correctly. For the invalid namespace, the default exporters will be used.
 func getNamespacedOtlpExporters(
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) namespacedOtlpExporters {
 	nsExporters := make(map[string][]otlpExporter, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {

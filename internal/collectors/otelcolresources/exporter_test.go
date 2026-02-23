@@ -586,7 +586,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(BeEmpty())
 		})
@@ -613,7 +613,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(HaveLen(2))
 			Expect(exporters).To(HaveKey("namespace-1"))
@@ -644,7 +644,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(HaveLen(1))
 			Expect(exporters).To(HaveKey("namespace-with-export"))
@@ -673,7 +673,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(HaveLen(1))
 			Expect(exporters).To(HaveKey("valid-namespace"))
@@ -696,7 +696,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(HaveLen(1))
 			Expect(exporters).To(HaveKey("multi-export-namespace"))
@@ -733,7 +733,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(HaveLen(1))
 			Expect(exporters).To(HaveKey("namespace-with-combined"))
@@ -781,7 +781,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(HaveLen(2))
 
@@ -830,7 +830,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			// The valid namespace should still have its exporters
 			Expect(exporters).To(HaveKey("valid-namespace"))
@@ -861,7 +861,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(HaveLen(1))
 			Expect(exporters).To(HaveKey("triple-export-namespace"))
@@ -888,7 +888,7 @@ var _ = Describe("Exporter Conversion", func() {
 				},
 			}
 
-			exporters := getNamespacedOtlpExporters(monitoringResources, &logger)
+			exporters := getNamespacedOtlpExporters(monitoringResources, logger)
 
 			Expect(exporters).To(HaveLen(1))
 			Expect(exporters).To(HaveKey("namespace-1"))

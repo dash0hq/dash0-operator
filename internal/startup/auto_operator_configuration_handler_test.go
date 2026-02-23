@@ -70,11 +70,11 @@ var _ = Describe(
 
 		It(
 			"should fail validation if no endpoint has been provided", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 					ctx, &OperatorConfigurationValues{
 						Token: AuthorizationTokenTest,
-					}, &logger,
+					}, logger,
 				)
 				Expect(err).To(
 					MatchError(
@@ -88,11 +88,11 @@ var _ = Describe(
 
 		It(
 			"should fail validation if no token and no secret reference have been provided", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 					ctx, &OperatorConfigurationValues{
 						Endpoint: AuthorizationTokenTest,
-					}, &logger,
+					}, logger,
 				)
 				Expect(err).To(
 					MatchError(
@@ -113,7 +113,7 @@ var _ = Describe(
 						SecretRef: SecretRef{
 							Name: "test-secret",
 						},
-					}, &logger,
+					}, logger,
 				)
 				Expect(err).To(
 					MatchError(
@@ -128,11 +128,11 @@ var _ = Describe(
 
 		It(
 			"should create a new operator configuration resource with a token", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 					ctx,
 					&operatorConfigurationValuesWithToken,
-					&logger,
+					logger,
 				)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -182,11 +182,11 @@ var _ = Describe(
 
 		It(
 			"should create a new operator configuration resource with a secret reference", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 					ctx,
 					&operatorConfigurationValuesWithSecretRef,
-					&logger,
+					logger,
 				)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -226,7 +226,7 @@ var _ = Describe(
 					autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 						ctx,
 						&operatorConfigurationValuesWithToken,
-						&logger,
+						logger,
 					)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -245,7 +245,7 @@ var _ = Describe(
 				).Should(Succeed())
 
 				// now make this replica the leader, which should allow the autoOperatorConfigurationResourceHandler to proceed
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 
 				Eventually(
 					func(g Gomega) {
@@ -263,13 +263,13 @@ var _ = Describe(
 
 		It(
 			"should wait for the webhook service endpoint ready check", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				readyCheckExecuter.bypassWebhookCheck = false
 				_, err :=
 					autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 						ctx,
 						&operatorConfigurationValuesWithToken,
-						&logger,
+						logger,
 					)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -291,13 +291,13 @@ var _ = Describe(
 
 		It(
 			"should set the API endpoint", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 					ctx, &OperatorConfigurationValues{
 						Endpoint:    EndpointDash0Test,
 						Token:       AuthorizationTokenTest,
 						ApiEndpoint: ApiEndpointTest,
-					}, &logger,
+					}, logger,
 				)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -327,13 +327,13 @@ var _ = Describe(
 
 		It(
 			"should set a custom dataset", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 					ctx, &OperatorConfigurationValues{
 						Endpoint: EndpointDash0Test,
 						Token:    AuthorizationTokenTest,
 						Dataset:  "custom",
-					}, &logger,
+					}, logger,
 				)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -363,13 +363,13 @@ var _ = Describe(
 
 		It(
 			"should set the cluster name", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 					ctx, &OperatorConfigurationValues{
 						Endpoint:    EndpointDash0Test,
 						Token:       AuthorizationTokenTest,
 						ClusterName: "cluster-name",
-					}, &logger,
+					}, logger,
 				)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -400,7 +400,7 @@ var _ = Describe(
 
 		It(
 			"should update the existing resource if there already is an auto-operator-configuration-resource", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 					ctx, &OperatorConfigurationValues{
 						Endpoint:              "endpoint-1.dash0.com:4317",
@@ -411,7 +411,7 @@ var _ = Describe(
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
 						CollectPodLabelsAndAnnotationsEnabled:            true,
 						PrometheusCrdSupportEnabled:                      false,
-					}, &logger,
+					}, logger,
 				)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -458,7 +458,7 @@ var _ = Describe(
 						KubernetesInfrastructureMetricsCollectionEnabled: false,
 						CollectPodLabelsAndAnnotationsEnabled:            false,
 						PrometheusCrdSupportEnabled:                      true,
-					}, &logger,
+					}, logger,
 				)
 				Expect(err).ToNot(HaveOccurred())
 

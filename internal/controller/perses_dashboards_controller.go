@@ -141,7 +141,7 @@ func (r *PersesDashboardCrdReconciler) SetupWithManager(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	startupK8sClient client.Client,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	r.mgr = mgr
 	return SetupThirdPartyCrdReconcilerWithManager(
@@ -162,7 +162,7 @@ func (r *PersesDashboardCrdReconciler) Create(
 	}
 	logger := log.FromContext(ctx)
 	r.persesDashboardCrdExists.Store(true)
-	maybeStartWatchingThirdPartyResources(r, &logger)
+	maybeStartWatchingThirdPartyResources(r, logger)
 }
 
 func (r *PersesDashboardCrdReconciler) Update(
@@ -186,7 +186,7 @@ func (r *PersesDashboardCrdReconciler) Delete(
 	logger.Info("The PersesDashboard custom resource definition has been deleted.")
 	r.persesDashboardCrdExists.Store(false)
 
-	stopWatchingThirdPartyResources(ctx, r, &logger)
+	stopWatchingThirdPartyResources(ctx, r, logger)
 }
 
 func (r *PersesDashboardCrdReconciler) Generic(
@@ -210,7 +210,7 @@ func (r *PersesDashboardCrdReconciler) Reconcile(
 func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "persesdashboardcrd.reconcile_requests")
 	var err error
@@ -232,7 +232,7 @@ func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
 func (r *PersesDashboardCrdReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
 	apiConfigs []ApiConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	r.persesDashboardReconciler.defaultApiConfigs.Set(apiConfigs)
 	if len(filterValidApiConfigs(apiConfigs, logger, "default operator configuration")) > 0 {
@@ -242,7 +242,7 @@ func (r *PersesDashboardCrdReconciler) SetDefaultApiConfigs(
 	}
 }
 
-func (r *PersesDashboardCrdReconciler) RemoveDefaultApiConfigs(ctx context.Context, logger *logr.Logger) {
+func (r *PersesDashboardCrdReconciler) RemoveDefaultApiConfigs(ctx context.Context, logger logr.Logger) {
 	r.persesDashboardReconciler.defaultApiConfigs.Clear()
 	stopWatchingThirdPartyResources(ctx, r, logger)
 }
@@ -251,7 +251,7 @@ func (r *PersesDashboardCrdReconciler) SetNamespacedApiConfigs(
 	ctx context.Context,
 	namespace string,
 	updatedApiConfigs []ApiConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	if len(updatedApiConfigs) > 0 {
 		previousApiConfigs, _ := r.persesDashboardReconciler.namespacedApiConfigs.Get(namespace)
@@ -267,7 +267,7 @@ func (r *PersesDashboardCrdReconciler) SetNamespacedApiConfigs(
 func (r *PersesDashboardCrdReconciler) RemoveNamespacedApiConfigs(
 	ctx context.Context,
 	namespace string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	if _, exists := r.persesDashboardReconciler.namespacedApiConfigs.Get(namespace); exists {
 		r.persesDashboardReconciler.namespacedApiConfigs.Delete(namespace)
@@ -278,7 +278,7 @@ func (r *PersesDashboardCrdReconciler) RemoveNamespacedApiConfigs(
 func (r *PersesDashboardReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "persesdashboard.reconcile_requests")
 	var err error
@@ -467,7 +467,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
 
@@ -597,7 +597,7 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	_ ApiConfig,
 	_ []string,
 	_ []string,
-	_ *logr.Logger,
+	_ logr.Logger,
 ) ([]WrappedApiRequest, map[string]string) {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
@@ -608,7 +608,7 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 
 func (r *PersesDashboardReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (id string, err error) {
 	objectWithMetadata := Dash0ApiObjectWithMetadata{}
 	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
@@ -677,7 +677,7 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 	ctx context.Context,
 	namespace string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	// do nothing if we are not currently watching the CRDs
 	if !r.IsWatching() {

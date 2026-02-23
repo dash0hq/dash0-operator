@@ -68,7 +68,7 @@ type ExtraConfig struct {
 }
 
 type ExtraConfigClient interface {
-	UpdateExtraConfig(context.Context, ExtraConfig, *logr.Logger)
+	UpdateExtraConfig(context.Context, ExtraConfig, logr.Logger)
 }
 
 const (
@@ -232,7 +232,7 @@ func NewExtraConfigWatcher() *ExtraConfigWatcher {
 	}
 }
 
-func (w *ExtraConfigWatcher) StartWatch(logger *logr.Logger) error {
+func (w *ExtraConfigWatcher) StartWatch(logger logr.Logger) error {
 	return w.watchConfigurationDirectory(extraConfigDir, extraConfigFile, logger)
 }
 
@@ -243,7 +243,7 @@ func (w *ExtraConfigWatcher) AddClient(client ExtraConfigClient) {
 func (w *ExtraConfigWatcher) watchConfigurationDirectory(
 	configurationDir string,
 	extraConfigFile string,
-	setupLogger *logr.Logger,
+	setupLogger logr.Logger,
 ) error {
 	var err error
 	w.watcher, err = fsnotify.NewWatcher()
@@ -273,7 +273,7 @@ func (w *ExtraConfigWatcher) watchConfigurationDirectory(
 						return
 					}
 					for _, client := range w.clients {
-						client.UpdateExtraConfig(ctx, extraConfig, &logger)
+						client.UpdateExtraConfig(ctx, extraConfig, logger)
 					}
 				})
 			case fsnotifyErr, ok := <-w.watcher.Errors:

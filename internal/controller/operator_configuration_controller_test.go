@@ -1402,12 +1402,12 @@ type DummyApiClient struct {
 	defaultApiConfigs             []ApiConfig
 }
 
-func (c *DummyApiClient) SetDefaultApiConfigs(_ context.Context, apiConfigs []ApiConfig, _ *logr.Logger) {
+func (c *DummyApiClient) SetDefaultApiConfigs(_ context.Context, apiConfigs []ApiConfig, _ logr.Logger) {
 	c.setDefaultApiEndpointCalls++
 	c.defaultApiConfigs = apiConfigs
 }
 
-func (c *DummyApiClient) RemoveDefaultApiConfigs(_ context.Context, _ *logr.Logger) {
+func (c *DummyApiClient) RemoveDefaultApiConfigs(_ context.Context, _ logr.Logger) {
 	c.removeDefaultApiEndpointCalls++
 	c.defaultApiConfigs = nil
 }
@@ -1438,13 +1438,13 @@ func (c *DummyNamespacedApiClient) SetNamespacedApiConfigs(
 	_ context.Context,
 	namespace string,
 	apiConfigs []ApiConfig,
-	_ *logr.Logger,
+	_ logr.Logger,
 ) {
 	c.setNamespacedApiEndpointCalls++
 	c.namespacedApiconfigs[namespace] = apiConfigs
 }
 
-func (c *DummyNamespacedApiClient) RemoveNamespacedApiConfigs(_ context.Context, namespace string, _ *logr.Logger) {
+func (c *DummyNamespacedApiClient) RemoveNamespacedApiConfigs(_ context.Context, namespace string, _ logr.Logger) {
 	c.removeNamespacedApiEndpointCalls++
 	delete(c.namespacedApiconfigs, namespace)
 }

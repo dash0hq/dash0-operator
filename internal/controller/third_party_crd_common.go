@@ -87,7 +87,7 @@ type ThirdPartyResourceReconciler interface {
 	// resource (say, a PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks).
 	// Controllers which manage objects with a one-to-one relation (like Perses dashboards, synthetic checks, view)
 	// should return nil, nil.
-	CreateDeleteRequests(ApiConfig, []string, []string, *logr.Logger) ([]WrappedApiRequest, map[string]string)
+	CreateDeleteRequests(ApiConfig, []string, []string, logr.Logger) ([]WrappedApiRequest, map[string]string)
 
 	// UpdateSynchronizationResultsInDash0MonitoringStatus Modifies the status of the provided Dash0Monitoring resource
 	// to reflect the results of the synchronization operation for one third-party Kubernetes resource.
@@ -120,7 +120,7 @@ func SetupThirdPartyCrdReconcilerWithManager(
 	ctx context.Context,
 	k8sClient client.Client,
 	crdReconciler ThirdPartyCrdReconciler,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	pseudoClusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, k8sClient, logger)
 	if err != nil {
@@ -224,7 +224,7 @@ func isMatchingCrd(group string, kind string, crd client.Object) bool {
 // the third-party resource type.
 func maybeStartWatchingThirdPartyResources(
 	crdReconciler ThirdPartyCrdReconciler,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	resourceReconciler := crdReconciler.ThirdPartyResourceReconciler()
 
@@ -353,7 +353,7 @@ func maybeStartWatchingThirdPartyResources(
 func stopWatchingThirdPartyResources(
 	ctx context.Context,
 	crdReconciler ThirdPartyCrdReconciler,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	resourceReconciler := crdReconciler.ThirdPartyResourceReconciler()
 	resourceReconciler.ControllerStopFunctionLock().Lock()
@@ -382,7 +382,7 @@ func stopWatchingThirdPartyResources(
 	resourceReconciler.SetControllerStopFunction(nil)
 }
 
-func filterValidApiConfigs(apiConfigs []ApiConfig, logger *logr.Logger, configContext string) []ApiConfig {
+func filterValidApiConfigs(apiConfigs []ApiConfig, logger logr.Logger, configContext string) []ApiConfig {
 	if len(apiConfigs) == 0 {
 		return nil
 	}
@@ -455,7 +455,7 @@ func deleteViaApi(
 
 func StartProcessingThirdPartySynchronizationQueue(
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
-	setupLog *logr.Logger,
+	setupLog logr.Logger,
 ) {
 	setupLog.Info("Starting the Dash0 API resource synchronization queue.")
 	go func() {
@@ -482,7 +482,7 @@ func StartProcessingThirdPartySynchronizationQueue(
 				item.dash0ApiResource,
 				nil,
 				item.action,
-				&logger,
+				logger,
 			)
 			logger.Info(
 				fmt.Sprintf(
@@ -499,7 +499,7 @@ func StartProcessingThirdPartySynchronizationQueue(
 
 func StopProcessingThirdPartySynchronizationQueue(
 	resourceReconcileQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	logger.Info("Shutting down the Dash0 API resource synchronization queue.")
 	resourceReconcileQueue.ShutDown()
@@ -511,7 +511,7 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	thirdPartyResource *unstructured.Unstructured,
 	syncResults synchronizationResults,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	qualifiedName := fmt.Sprintf("%s/%s", thirdPartyResource.GetNamespace(), thirdPartyResource.GetName())
 

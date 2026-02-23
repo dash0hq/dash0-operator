@@ -230,14 +230,14 @@ type ResourceModifier struct {
 	actor util.WorkloadModifierActor
 
 	// the logger to use for logging messages during the resource modification process
-	logger *logr.Logger
+	logger logr.Logger
 }
 
 func NewResourceModifier(
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	actor util.WorkloadModifierActor,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) *ResourceModifier {
 	return &ResourceModifier{
 		clusterInstrumentationConfig:   clusterInstrumentationConfig,

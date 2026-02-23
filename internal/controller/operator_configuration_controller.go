@@ -95,7 +95,7 @@ func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) err
 func (r *OperatorConfigurationReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "operatorconfiguration.reconcile_requests")
 	var err error
@@ -133,7 +133,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		r.Client,
 		req,
 		&dash0v1alpha1.Dash0OperatorConfiguration{},
-		&logger,
+		logger,
 	)
 	if err != nil {
 		logger.Error(err, "operator configuration resource existence check failed")
@@ -148,10 +148,10 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	if resourceDeleted {
 		logger.Info("Reconciling the deletion of the operator configuration resource", "name", req.Name)
 		r.removeAllOperatorConfigurationSettings(ctx, logger)
-		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
+		if r.reconcileOpenTelemetryCollector(ctx, logger) != nil {
 			return ctrl.Result{}, err
 		}
-		if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
+		if r.reconcileOpenTelemetryTargetAllocator(ctx, logger) != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -166,7 +166,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			req,
 			operatorConfigurationResource,
 			updateStatusFailedMessageOperatorConfiguration,
-			&logger,
+			logger,
 		)
 	if err != nil {
 		logger.Error(err, "error in operator configuration resource uniqueness check")
@@ -181,7 +181,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		r.Client,
 		operatorConfigurationResource,
 		operatorConfigurationResource.Status.Conditions,
-		&logger,
+		logger,
 	); err != nil {
 		logger.Error(err, "error when initializing operator configuration resource status conditions")
 		return ctrl.Result{}, err
@@ -193,14 +193,14 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			r.Client,
 			r.operatorNamespace,
 			operatorConfigurationResource,
-			&logger,
+			logger,
 		)
 	if err != nil {
 		logger.Error(
 			err,
 			"cannot generate self-monitoring configuration from operator configuration resource",
 		)
-		r.oTelSdkStarter.RemoveOTelSdkParameters(ctx, &logger)
+		r.oTelSdkStarter.RemoveOTelSdkParameters(ctx, logger)
 		return ctrl.Result{}, err
 	}
 
@@ -214,11 +214,11 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 
 	r.applyApiAccessSettings(ctx, operatorConfigurationResource, logger)
 
-	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
+	if r.reconcileOpenTelemetryCollector(ctx, logger) != nil {
 		return ctrl.Result{}, err
 	}
 
-	if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
+	if r.reconcileOpenTelemetryTargetAllocator(ctx, logger) != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -249,12 +249,12 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 			r.operatorDeploymentName,
 			r.images.GetOperatorVersion(),
 			r.developmentMode,
-			&logger,
+			logger,
 		)
 	} else {
 		r.oTelSdkStarter.RemoveOTelSdkParameters(
 			ctx,
-			&logger,
+			logger,
 		)
 	}
 }
@@ -271,7 +271,7 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 				"in Dash0.",
 		)
 		for _, apiClient := range r.apiClients {
-			apiClient.RemoveDefaultApiConfigs(ctx, &logger)
+			apiClient.RemoveDefaultApiConfigs(ctx, logger)
 		}
 		return
 	}
@@ -314,13 +314,13 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 				"The operator will not update dashboards, check rules, synthetic checks or views in Dash0.",
 		)
 		for _, apiClient := range r.apiClients {
-			apiClient.RemoveDefaultApiConfigs(ctx, &logger)
+			apiClient.RemoveDefaultApiConfigs(ctx, logger)
 		}
 		return
 	}
 
 	for _, apiClient := range r.apiClients {
-		apiClient.SetDefaultApiConfigs(ctx, apiConfigs, &logger)
+		apiClient.SetDefaultApiConfigs(ctx, apiConfigs, logger)
 	}
 }
 
@@ -329,17 +329,17 @@ func (r *OperatorConfigurationReconciler) removeAllOperatorConfigurationSettings
 	logger logr.Logger,
 ) {
 	for _, apiClient := range r.apiClients {
-		apiClient.RemoveDefaultApiConfigs(ctx, &logger)
+		apiClient.RemoveDefaultApiConfigs(ctx, logger)
 	}
 	r.oTelSdkStarter.RemoveOTelSdkParameters(
 		ctx,
-		&logger,
+		logger,
 	)
 }
 
 func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	if _, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
@@ -352,7 +352,7 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 
 func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 	ctx context.Context,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	logger.Info("Reconciling OpenTelemetry target allocator.")
 	if _, err := r.targetAllocatorManager.ReconcileTargetAllocator(

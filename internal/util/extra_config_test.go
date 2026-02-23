@@ -1136,7 +1136,7 @@ collectorDaemonSetConfigurationReloaderContainerResources:
 
 		It("without clients", func() {
 			watcher = NewExtraConfigWatcher()
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), &logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), logger))
 
 			_, err := tmpFile.WriteString(`
 collectorFilelogOffsetStorageVolume:
@@ -1157,7 +1157,7 @@ collectorFilelogOffsetStorageVolume:
 			clients := []*DummyExtraConfigClient{
 				client1, client2,
 			}
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), &logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), logger))
 
 			for _, c := range clients {
 				Expect(c.updatedConfig).To(BeNil())
@@ -1192,7 +1192,7 @@ collectorFilelogOffsetStorageVolume:
 			watcher = NewExtraConfigWatcher()
 			client := &DummyExtraConfigClient{}
 			watcher.AddClient(client)
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), &logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), logger))
 
 			// Make three file updates in quick succession, the code to read and parse the new config map should only be
 			// called once, after the last update.
@@ -1241,7 +1241,7 @@ collectorFilelogOffsetStorageVolume:
 			watcher = NewExtraConfigWatcher()
 			client := &DummyExtraConfigClient{}
 			watcher.AddClient(client)
-			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), &logger))
+			Expect(watcher.watchConfigurationDirectory(tmpDir, tmpFile.Name(), logger))
 
 			// deliberately write invalid yaml to the file
 			_, err := tmpFile.WriteString(`
@@ -1262,7 +1262,7 @@ type DummyExtraConfigClient struct {
 	updatedConfig          *ExtraConfig
 }
 
-func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ *logr.Logger) {
+func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ logr.Logger) {
 	c.updateExtraConfigCalls += 1
 	c.updatedConfig = &updatedConfig
 }

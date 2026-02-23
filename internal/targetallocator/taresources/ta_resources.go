@@ -44,7 +44,7 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
 	namespacesWithPrometheusScraping []string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, bool, error) {
 	config := &targetAllocatorConfig{
 		OperatorNamespace:  m.targetAllocatorConfig.OperatorNamespace,
@@ -84,7 +84,7 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 func (m *TargetAllocatorResourceManager) createOrUpdateResource(
 	ctx context.Context,
 	desiredResource client.Object,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, bool, error) {
 	existingResource, err := resources.CreateEmptyReceiverFor(desiredResource)
 	if err != nil {
@@ -113,7 +113,7 @@ func (m *TargetAllocatorResourceManager) createOrUpdateResource(
 func (m *TargetAllocatorResourceManager) createResource(
 	ctx context.Context,
 	desiredResource client.Object,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
 		return err
@@ -137,7 +137,7 @@ func (m *TargetAllocatorResourceManager) updateResource(
 	ctx context.Context,
 	existingResource client.Object,
 	desiredResource client.Object,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, error) {
 	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
 		return false, err
@@ -183,7 +183,7 @@ func (m *TargetAllocatorResourceManager) updateResource(
 func (m *TargetAllocatorResourceManager) DeleteResources(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, error) {
 	logger.Info(
 		fmt.Sprintf(

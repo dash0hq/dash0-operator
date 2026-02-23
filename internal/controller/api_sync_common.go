@@ -53,13 +53,13 @@ func NewValidatedApiConfigAndToken(endpoint string, dataset string, token string
 }
 
 type ApiClient interface {
-	SetDefaultApiConfigs(context.Context, []ApiConfig, *logr.Logger)
-	RemoveDefaultApiConfigs(context.Context, *logr.Logger)
+	SetDefaultApiConfigs(context.Context, []ApiConfig, logr.Logger)
+	RemoveDefaultApiConfigs(context.Context, logr.Logger)
 }
 
 type NamespacedApiClient interface {
-	SetNamespacedApiConfigs(context.Context, string, []ApiConfig, *logr.Logger)
-	RemoveNamespacedApiConfigs(context.Context, string, *logr.Logger)
+	SetNamespacedApiConfigs(context.Context, string, []ApiConfig, logr.Logger)
+	RemoveNamespacedApiConfigs(context.Context, string, logr.Logger)
 }
 
 type ResourceToRequestsResult struct {
@@ -186,11 +186,11 @@ type ApiSyncReconciler interface {
 	// - the request objects for which the conversion was successful,
 	// - validation issues for items that were invalid and
 	// - synchronization errors that occurred during the conversion.
-	MapResourceToHttpRequests(*preconditionValidationResult, ApiConfig, apiAction, *logr.Logger) *ResourceToRequestsResult
+	MapResourceToHttpRequests(*preconditionValidationResult, ApiConfig, apiAction, logr.Logger) *ResourceToRequestsResult
 
 	ExtractIdFromResponseBody(
 		responseBytes []byte,
-		logger *logr.Logger,
+		logger logr.Logger,
 	) (string, error)
 }
 
@@ -206,7 +206,7 @@ type OwnedResourceReconciler interface {
 		context.Context,
 		client.Object,
 		synchronizationResults,
-		*logr.Logger,
+		logr.Logger,
 	)
 }
 
@@ -338,7 +338,7 @@ func synchronizeViaApiAndUpdateStatus(
 	dash0ApiResource *unstructured.Unstructured,
 	ownedResource client.Object,
 	action apiAction,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	preconditionChecksResult := validatePreconditionsAndPreprocess(
 		ctx,
@@ -519,7 +519,7 @@ func validatePreconditionsAndPreprocess(
 	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
 	dash0ApiResource *unstructured.Unstructured,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) *preconditionValidationResult {
 	namespace := dash0ApiResource.GetNamespace()
 	name := dash0ApiResource.GetName()
@@ -764,7 +764,7 @@ func fetchExistingOrigins(
 	apiSyncReconciler ApiSyncReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) ([]string, error) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
@@ -824,7 +824,7 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	apiConfig ApiConfig,
 	existingOriginsFromApi []string,
 	resourceToRequestsResult *ResourceToRequestsResult,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
@@ -868,7 +868,7 @@ func addAuthorizationHeader(req *http.Request, token string) {
 func executeAllHttpRequests(
 	apiSyncReconciler ApiSyncReconciler,
 	allRequests []WrappedApiRequest,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) ([]SuccessfulSynchronizationResult, map[string]string) {
 	successfullySynchronized := make([]SuccessfulSynchronizationResult, 0)
 	httpErrors := make(map[string]string)
@@ -924,7 +924,7 @@ func executeSingleHttpRequestWithRetryAndReadBody(
 	req *http.Request,
 	actionLabel string,
 	expectBody bool,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) ([]byte, error) {
 	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
 	responseBody := &[]byte{}
@@ -963,7 +963,7 @@ func executeSingleHttpRequestAndReadBody(
 	req *http.Request,
 	responseBody *[]byte,
 	actionLabel string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	res, err := apiSyncReconciler.HttpClient().Do(req)
 	if err != nil {
@@ -1057,7 +1057,7 @@ func writeSynchronizationResult(
 	ownedResource client.Object,
 	syncResults synchronizationResults,
 	resourceHasBeenDeleted bool,
-	logger *logr.Logger,
+	logger logr.Logger,
 
 ) {
 	ownedResourceReconciler, ok := apiSyncReconciler.(OwnedResourceReconciler)

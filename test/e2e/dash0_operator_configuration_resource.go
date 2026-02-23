@@ -105,7 +105,7 @@ func deployRenderedOperatorConfigurationResourceWithRetry(
 		},
 		true,
 		true,
-		&retryLogger,
+		retryLogger,
 	)
 	Expect(err).ToNot(HaveOccurred())
 

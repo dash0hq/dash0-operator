@@ -43,7 +43,7 @@ var _ = Describe("Uninstalling the Dash0 operator (post-delete hook)", Ordered, 
 
 		Describe("CRD does not exist", func() {
 			It("should do nothing if the AllowlistSynchronizer CRD does not exist", func() {
-				Expect(postDeleteHandler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, &mockLogger)).To(Succeed())
+				Expect(postDeleteHandler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, mockLogger)).To(Succeed())
 				capturingLogSink.HasNoLogMessages(Default)
 			})
 		})
@@ -59,14 +59,14 @@ var _ = Describe("Uninstalling the Dash0 operator (post-delete hook)", Ordered, 
 			})
 
 			It("should do nothing if the AllowlistSynchronizer CRD exists but the dash0-allowlist-synchronizer does not", func() {
-				Expect(postDeleteHandler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, &mockLogger)).To(Succeed())
+				Expect(postDeleteHandler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, mockLogger)).To(Succeed())
 				capturingLogSink.HasNoLogMessages(Default)
 			})
 
 			It("should delete the Dash0 AllowlistSynchronizer if it exists", func() {
 				createAllowlistSynchronizer(ctx, dash0AllowlistSynchronizerName)
 
-				Expect(postDeleteHandler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, &mockLogger)).To(Succeed())
+				Expect(postDeleteHandler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, mockLogger)).To(Succeed())
 				capturingLogSink.HasNoLogMessages(Default)
 
 				VerifyResourceDoesNotExist(
@@ -87,7 +87,7 @@ var _ = Describe("Uninstalling the Dash0 operator (post-delete hook)", Ordered, 
 				name := "unrelated-allowlist-synchronizer"
 				createAllowlistSynchronizer(ctx, name)
 
-				Expect(postDeleteHandler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, &mockLogger)).To(Succeed())
+				Expect(postDeleteHandler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, mockLogger)).To(Succeed())
 				capturingLogSink.HasNoLogMessages(Default)
 
 				VerifyResourceExists(

@@ -74,7 +74,7 @@ var _ = Describe(
 			func() {
 				EnsureTestNamespaceExists(ctx, k8sClient)
 				EnsureOperatorNamespaceExists(ctx, k8sClient)
-				clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, &logger))
+				clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, logger))
 			},
 		)
 
@@ -91,7 +91,7 @@ var _ = Describe(
 					"does not start watching Prometheus rules if the CRD does not exist and neither API endpoint nor auth token have been provided",
 					func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 					},
 				)
@@ -100,14 +100,14 @@ var _ = Describe(
 					"does not start watching Prometheus rules if the CRD does not exist and the auth token has not been provided",
 					func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
 									Endpoint: ApiEndpointTest,
 									Dataset:  DatasetCustomTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 					},
@@ -117,13 +117,13 @@ var _ = Describe(
 					"does not start watching Prometheus rules if the CRD does not exist and the API endpoint has not been provided",
 					func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
 									Token: AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 					},
@@ -133,7 +133,7 @@ var _ = Describe(
 					"does not start watching Prometheus rules if the API endpoint & auth token have been provided but the CRD does not exist",
 					func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
@@ -141,7 +141,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 					},
@@ -152,14 +152,14 @@ var _ = Describe(
 					func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 						ensurePrometheusRuleCrdExists(ctx)
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
 									Endpoint: ApiEndpointTest,
 									Dataset:  DatasetCustomTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 					},
@@ -170,13 +170,13 @@ var _ = Describe(
 					func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 						ensurePrometheusRuleCrdExists(ctx)
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
 									Token: AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 					},
@@ -187,7 +187,7 @@ var _ = Describe(
 					func() {
 						ensurePrometheusRuleCrdExists(ctx)
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
@@ -196,7 +196,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 					},
@@ -206,7 +206,7 @@ var _ = Describe(
 					"starts watching Prometheus rules if the API endpoint and auth token have been provided and the CRD is created later on",
 					func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 
 						// provide the API endpoint and the auth token first
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
@@ -216,7 +216,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						// create the CRD a bit later
@@ -245,7 +245,7 @@ var _ = Describe(
 					"stops watching Prometheus rules if the CRD is deleted", func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 						ensurePrometheusRuleCrdExists(ctx)
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
@@ -254,7 +254,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 
@@ -278,7 +278,7 @@ var _ = Describe(
 				It(
 					"can cope with multiple consecutive create & delete events", func() {
 						prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
@@ -286,7 +286,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
@@ -346,9 +346,9 @@ var _ = Describe(
 						prometheusRuleCrdReconciler = createPrometheusRuleCrdReconciler()
 						ensurePrometheusRuleCrdExists(ctx)
 
-						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 
-						StartProcessingThirdPartySynchronizationQueue(testQueuePrometheusRules, &logger)
+						StartProcessingThirdPartySynchronizationQueue(testQueuePrometheusRules, logger)
 					},
 				)
 
@@ -361,7 +361,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 						prometheusRuleReconciler = prometheusRuleCrdReconciler.prometheusRuleReconciler
@@ -373,14 +373,14 @@ var _ = Describe(
 				AfterEach(
 					func() {
 						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
-						prometheusRuleCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, &logger)
+						prometheusRuleCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, logger)
 					},
 				)
 
 				AfterAll(
 					func() {
 						deletePrometheusRuleCrdIfItExists(ctx)
-						StopProcessingThirdPartySynchronizationQueue(testQueuePrometheusRules, &logger)
+						StopProcessingThirdPartySynchronizationQueue(testQueuePrometheusRules, logger)
 					},
 				)
 
@@ -434,7 +434,7 @@ var _ = Describe(
 						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
 						defer gock.Off()
 
-						prometheusRuleCrdReconciler.RemoveDefaultApiConfigs(ctx, &logger)
+						prometheusRuleCrdReconciler.RemoveDefaultApiConfigs(ctx, logger)
 
 						ruleResource := createDefaultRuleResource()
 						prometheusRuleReconciler.Create(
@@ -508,7 +508,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTestAlternative,
 									Token:    AuthorizationTokenTestAlternative,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						ruleResource := createDefaultRuleResource()
@@ -568,7 +568,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTestAlternative,
 									Token:    AuthorizationTokenTestAlternative,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						ruleResource := createDefaultRuleResource()
@@ -685,7 +685,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTestAlternative,
 									Token:    AuthorizationTokenTestAlternative,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						ruleResource := createDefaultRuleResource()
@@ -743,7 +743,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTestAlternative,
 									Token:    AuthorizationTokenTestAlternative,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						ruleResource := createDefaultRuleResource()
@@ -1423,7 +1423,7 @@ var _ = Describe(
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeFalse())
@@ -1440,7 +1440,7 @@ var _ = Describe(
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeFalse())
@@ -1462,7 +1462,7 @@ var _ = Describe(
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeFalse())
@@ -1482,7 +1482,7 @@ var _ = Describe(
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeTrue())
@@ -1517,7 +1517,7 @@ var _ = Describe(
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeTrue())
@@ -1546,7 +1546,7 @@ var _ = Describe(
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeTrue())
@@ -1574,7 +1574,7 @@ var _ = Describe(
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						if config.expectedValidationIssues == nil {
@@ -1762,7 +1762,7 @@ spec:
 								preconditionValidationResult,
 								apiConfig,
 								upsertAction,
-								&logger,
+								logger,
 							)
 						Expect(resourceToRequestsResult.ItemsTotal).To(Equal(5))
 						Expect(resourceToRequestsResult.OriginsInResource).To(HaveLen(5))
@@ -1840,7 +1840,7 @@ spec:
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeFalse())
@@ -1860,7 +1860,7 @@ spec:
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeFalse())
@@ -1885,7 +1885,7 @@ spec:
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeFalse())
@@ -1909,7 +1909,7 @@ spec:
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeFalse())
@@ -1932,7 +1932,7 @@ spec:
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeTrue())
@@ -1966,7 +1966,7 @@ spec:
 							"group",
 							ptr.To(prometheusv1.Duration("10m")),
 							nil,
-							&logger,
+							logger,
 						)
 
 						Expect(ok).To(BeTrue())
@@ -1993,7 +1993,7 @@ spec:
 									"group",
 									ptr.To(prometheusv1.Duration("10m")),
 									nil,
-									&logger,
+									logger,
 								)
 
 								Expect(ok).To(BeTrue())
@@ -2017,7 +2017,7 @@ spec:
 									map[string]string{
 										"metadata-key": "metadata-value",
 									},
-									&logger,
+									logger,
 								)
 
 								Expect(ok).To(BeTrue())
@@ -2041,7 +2041,7 @@ spec:
 									map[string]string{
 										"metadata-key": "metadata-value",
 									},
-									&logger,
+									logger,
 								)
 
 								Expect(ok).To(BeTrue())
@@ -2067,7 +2067,7 @@ spec:
 									map[string]string{
 										"metadata-key": "metadata-value",
 									},
-									&logger,
+									logger,
 								)
 
 								Expect(ok).To(BeTrue())
@@ -2096,7 +2096,7 @@ spec:
 										"common-key":   "metadata-value",
 										"metadata-key": "metadata-value",
 									},
-									&logger,
+									logger,
 								)
 
 								Expect(ok).To(BeTrue())
@@ -2120,7 +2120,7 @@ spec:
 									"group",
 									ptr.To(prometheusv1.Duration("10m")),
 									nil,
-									&logger,
+									logger,
 								)
 
 								Expect(ok).To(BeTrue())
@@ -2146,7 +2146,7 @@ spec:
 									map[string]string{
 										"common-key": "metadata-value",
 									},
-									&logger,
+									logger,
 								)
 
 								Expect(ok).To(BeTrue())

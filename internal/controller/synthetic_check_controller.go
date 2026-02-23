@@ -82,7 +82,7 @@ func (r *SyntheticCheckReconciler) SetupWithManager(mgr manager.Manager) error {
 func (r *SyntheticCheckReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "syntheticcheck.reconcile_requests")
 	var err error
@@ -135,13 +135,13 @@ func (r *SyntheticCheckReconciler) overrideHttpRetryDelay(delay time.Duration) {
 func (r *SyntheticCheckReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
 	apiConfigs []ApiConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	r.defaultApiConfigs.Set(apiConfigs)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *SyntheticCheckReconciler) RemoveDefaultApiConfigs(_ context.Context, _ *logr.Logger) {
+func (r *SyntheticCheckReconciler) RemoveDefaultApiConfigs(_ context.Context, _ logr.Logger) {
 	r.defaultApiConfigs.Clear()
 }
 
@@ -149,7 +149,7 @@ func (r *SyntheticCheckReconciler) SetNamespacedApiConfigs(
 	ctx context.Context,
 	namespace string,
 	updatedApiConfigs []ApiConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	if updatedApiConfigs != nil {
 		previousApiConfigs, _ := r.namespacedApiConfigs.Get(namespace)
@@ -165,7 +165,7 @@ func (r *SyntheticCheckReconciler) SetNamespacedApiConfigs(
 func (r *SyntheticCheckReconciler) RemoveNamespacedApiConfigs(
 	ctx context.Context,
 	namespace string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	if _, exists := r.namespacedApiConfigs.Get(namespace); exists {
 		r.namespacedApiConfigs.Delete(namespace)
@@ -173,13 +173,13 @@ func (r *SyntheticCheckReconciler) RemoveNamespacedApiConfigs(
 	}
 }
 
-func (r *SyntheticCheckReconciler) NotifiyOperatorManagerJustBecameLeader(ctx context.Context, logger *logr.Logger) {
+func (r *SyntheticCheckReconciler) NotifiyOperatorManagerJustBecameLeader(ctx context.Context, logger logr.Logger) {
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
 func (r *SyntheticCheckReconciler) maybeDoInitialSynchronizationOfAllResources(
 	ctx context.Context,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	r.initialSyncMutex.Lock()
 	defer r.initialSyncMutex.Unlock()
@@ -240,7 +240,7 @@ func (r *SyntheticCheckReconciler) maybeDoInitialSynchronizationOfAllResources(
 func (r *SyntheticCheckReconciler) synchronizeNamespacedResources(
 	ctx context.Context,
 	namespace string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	// The namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
 	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
@@ -331,7 +331,7 @@ func (r *SyntheticCheckReconciler) Reconcile(ctx context.Context, req reconcile.
 				ctx,
 				syntheticCheckResource,
 				synchronizationResults{},
-				&logger,
+				logger,
 			)
 		}
 		return reconcile.Result{}, nil
@@ -343,7 +343,7 @@ func (r *SyntheticCheckReconciler) Reconcile(ctx context.Context, req reconcile.
 		unstructuredResource,
 		syntheticCheckResource,
 		action,
-		&logger,
+		logger,
 	)
 
 	return reconcile.Result{}, nil
@@ -353,7 +353,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
 	syntheticCheckUrl, syntheticCheckOrigin := r.renderSyntheticCheckUrl(
@@ -439,7 +439,7 @@ func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(
 
 func (r *SyntheticCheckReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (id string, err error) {
 	objectWithMetadata := Dash0ApiObjectWithMetadata{}
 	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
@@ -458,7 +458,7 @@ func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResou
 	ctx context.Context,
 	synchronizedResource client.Object,
 	syncResults synchronizationResults,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	syntheticCheck := synchronizedResource.(*dash0v1alpha1.Dash0SyntheticCheck)
 
