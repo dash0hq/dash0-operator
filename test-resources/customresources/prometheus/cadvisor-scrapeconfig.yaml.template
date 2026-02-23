@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-cadvisor
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-cadvisor
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [list, watch, get]
+  - apiGroups: [""]
+    resources: [nodes/proxy]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-cadvisor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-cadvisor
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-cadvisor
+    namespace: $TARGET_NAMESPACE
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-sa-token
+  annotations:
+    kubernetes.io/service-account.name: prometheus-cadvisor
+type: kubernetes.io/service-account-token
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: cadvisor
+spec:
+  scheme: https
+  scrapeInterval: 30s
+
+  authorization:
+    type: Bearer
+    credentials:
+      name: prometheus-sa-token
+      key: token
+
+  tlsConfig:
+    ca:
+      secret:
+        name: prometheus-sa-token
+        key: ca.crt
+    insecureSkipVerify: true
+
+  kubernetesSDConfigs:
+    - role: Node
+
+  relabelings:
+    - action: labelmap
+      regex: __meta_kubernetes_node_label_(.+)
+
+    - targetLabel: __address__
+      replacement: kubernetes.default.svc:443
+
+    - sourceLabels: [__meta_kubernetes_node_name]
+      regex: (.+)
+      targetLabel: __metrics_path__
+      replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+
+    - sourceLabels: [__meta_kubernetes_node_name]
+      targetLabel: instance

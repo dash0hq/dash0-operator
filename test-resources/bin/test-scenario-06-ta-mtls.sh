@@ -23,14 +23,16 @@ kind="deployment"
 runtime_under_test="nodejs" # nodejs is currently the only runtime with a /metrics endpoint
 additional_namespaces="false"
 USE_CERT_MANAGER="true"
+PROMETHEUS_CRD_SUPPORT_ENABLED="true"
 TA_MTLS_ENABLED="true"
+DEPLOY_CADVISOR_SCRAPECONFIG="true"
 
 # shellcheck source=./lib/util
 source "$scripts_lib/util"
 
 load_env_file
 verify_kubectx
-setup_test_environment
+setup_test_environment "$target_namespace"
 
 step_counter=1
 
@@ -74,6 +76,10 @@ finish_step
 
 echo "STEP $step_counter: deploy nodejs app with servicemonitor (or podmonitor)"
 deploy_application_under_monitoring "$runtime_under_test" "$nodejs_values_with_service_monitor"
+finish_step
+
+echo "STEP $step_counter: deploy scrapeconfig for scraping cadvisor metrics"
+deploy_cadvisor_scrapeconfig
 finish_step
 
 if [[ "${DEPLOY_MONITORING_RESOURCE:-}" != "false" ]]; then
