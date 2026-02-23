@@ -72,7 +72,7 @@ var _ = Describe(
 			func() {
 				EnsureTestNamespaceExists(ctx, k8sClient)
 				EnsureOperatorNamespaceExists(ctx, k8sClient)
-				clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, &logger))
+				clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, logger))
 			},
 		)
 
@@ -89,7 +89,7 @@ var _ = Describe(
 					"does not start watching Perses dashboard resources if the CRD does not exist and neither API endpoint nor auth token have been provided",
 					func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 					},
 				)
@@ -98,14 +98,14 @@ var _ = Describe(
 					"does not start watching Perses dashboard resources if the CRD does not exist and the auth token has not been provided",
 					func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
 									Endpoint: ApiEndpointTest,
 									Dataset:  DatasetCustomTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 					},
@@ -115,13 +115,13 @@ var _ = Describe(
 					"does not start watching Perses dashboards if the CRD does not exist and the API endpoint has not been provided",
 					func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
 									Token: AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 					},
@@ -131,7 +131,7 @@ var _ = Describe(
 					"does not start watching Perses dashboards if the API endpoint & auth token have been provided but the CRD does not exist",
 					func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
@@ -139,7 +139,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 					},
@@ -150,14 +150,14 @@ var _ = Describe(
 					func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 						ensurePersesDashboardCrdExists(ctx)
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
 									Endpoint: ApiEndpointTest,
 									Dataset:  DatasetCustomTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 					},
@@ -168,13 +168,13 @@ var _ = Describe(
 					func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 						ensurePersesDashboardCrdExists(ctx)
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
 									Token: AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 					},
@@ -184,7 +184,7 @@ var _ = Describe(
 					"starts watching Perses dashboards if the CRD exists and the API endpoint has been provided", func() {
 						ensurePersesDashboardCrdExists(ctx)
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
@@ -193,7 +193,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeTrue())
 					},
@@ -202,7 +202,7 @@ var _ = Describe(
 				It(
 					"starts watching Perses dashboards if API endpoint is provided and the CRD is created later on", func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 
 						// provide the API endpoint first
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
@@ -212,7 +212,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						// create the CRD a bit later
@@ -241,7 +241,7 @@ var _ = Describe(
 					"stops watching Perses dashboards if the CRD is deleted", func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
 						ensurePersesDashboardCrdExists(ctx)
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
@@ -250,7 +250,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeTrue())
 
@@ -274,7 +274,7 @@ var _ = Describe(
 				It(
 					"can cope with multiple consecutive create & delete events", func() {
 						persesDashboardCrdReconciler := createPersesDashboardCrdReconciler()
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 						persesDashboardCrdReconciler.SetDefaultApiConfigs(
 							ctx, []ApiConfig{
 								{
@@ -282,7 +282,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
@@ -342,9 +342,9 @@ var _ = Describe(
 						persesDashboardCrdReconciler = createPersesDashboardCrdReconciler()
 						ensurePersesDashboardCrdExists(ctx)
 
-						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 
-						StartProcessingThirdPartySynchronizationQueue(testQueuePersesDashboards, &logger)
+						StartProcessingThirdPartySynchronizationQueue(testQueuePersesDashboards, logger)
 					},
 				)
 
@@ -357,7 +357,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTest,
 									Token:    AuthorizationTokenTest,
 								},
-							}, &logger,
+							}, logger,
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeTrue())
 						persesDashboardReconciler = persesDashboardCrdReconciler.persesDashboardReconciler
@@ -369,14 +369,14 @@ var _ = Describe(
 				AfterEach(
 					func() {
 						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
-						persesDashboardCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, &logger)
+						persesDashboardCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, logger)
 					},
 				)
 
 				AfterAll(
 					func() {
 						deletePersesDashboardCrdIfItExists(ctx)
-						StopProcessingThirdPartySynchronizationQueue(testQueuePersesDashboards, &logger)
+						StopProcessingThirdPartySynchronizationQueue(testQueuePersesDashboards, logger)
 					},
 				)
 
@@ -430,7 +430,7 @@ var _ = Describe(
 						expectDashboardPutRequest(clusterId, defaultExpectedPathDashboard)
 						defer gock.Off()
 
-						persesDashboardCrdReconciler.RemoveDefaultApiConfigs(ctx, &logger)
+						persesDashboardCrdReconciler.RemoveDefaultApiConfigs(ctx, logger)
 
 						dashboardResource := createDashboardResource()
 						persesDashboardReconciler.Create(
@@ -498,7 +498,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTestAlternative,
 									Token:    AuthorizationTokenTestAlternative,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						dashboardResource := createDashboardResource()
@@ -762,7 +762,7 @@ var _ = Describe(
 								preconditionValidationResult,
 								apiConfig,
 								upsertAction,
-								&logger,
+								logger,
 							)
 						Expect(resourceToRequestsResult.ItemsTotal).To(Equal(1))
 						Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())

@@ -138,7 +138,7 @@ func deployRenderedMonitoringResourceWithRetry(
 		},
 		true,
 		true,
-		&retryLogger,
+		retryLogger,
 	)
 	Expect(err).ToNot(HaveOccurred())
 

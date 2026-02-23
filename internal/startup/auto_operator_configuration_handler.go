@@ -63,7 +63,7 @@ func NewAutoOperatorConfigurationResourceHandler(
 
 func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBecameLeader(
 	_ context.Context,
-	_ *logr.Logger,
+	_ logr.Logger,
 ) {
 	close(r.hasBecomeLeaderChan)
 }
@@ -76,7 +76,7 @@ func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBec
 func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigurationResource(
 	ctx context.Context,
 	operatorConfigurationValues *OperatorConfigurationValues,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
 	logger.Info("creating/updating the Dash0 operator configuration resource")
 	if err := r.validateOperatorConfiguration(operatorConfigurationValues); err != nil {
@@ -108,7 +108,7 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 		)
 		if webhookServiceIsAvailable, err := r.readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(
 			ctx,
-			&setupLog,
+			setupLog,
 		); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
 			return
@@ -163,7 +163,7 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceWithRetry(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	return util.RetryWithCustomBackoff(
 		"create/update operator configuration resource at startup",
@@ -184,7 +184,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceOnce(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 	if err := r.List(ctx, allOperatorConfigurationResources); err != nil {

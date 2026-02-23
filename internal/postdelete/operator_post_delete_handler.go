@@ -46,7 +46,7 @@ var (
 
 type OperatorPostDeleteHandler struct {
 	client  client.WithWatch
-	logger  *logr.Logger
+	logger  logr.Logger
 	timeout time.Duration
 }
 
@@ -76,7 +76,7 @@ func NewOperatorPostDeleteHandlerFromConfig(config *rest.Config) (*OperatorPostD
 
 	return &OperatorPostDeleteHandler{
 		client:  k8sClient,
-		logger:  &logger,
+		logger:  logger,
 		timeout: defaultTimeout,
 	}, nil
 }
@@ -85,7 +85,7 @@ func (h *OperatorPostDeleteHandler) setTimeout(timeout time.Duration) {
 	h.timeout = timeout
 }
 
-func (h *OperatorPostDeleteHandler) DeleteGkeAutopilotAllowlistSynchronizer(ctx context.Context, logger *logr.Logger) error {
+func (h *OperatorPostDeleteHandler) DeleteGkeAutopilotAllowlistSynchronizer(ctx context.Context, logger logr.Logger) error {
 	if err := h.client.Get(ctx, client.ObjectKey{
 		Name: gkeAutopilotAllowlistSynchronizerCrdName,
 	}, &apiextensionsv1.CustomResourceDefinition{}); err != nil {

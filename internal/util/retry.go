@@ -54,7 +54,7 @@ var (
 	}
 )
 
-func Retry(operationLabel string, operation func() error, logger *logr.Logger) error {
+func Retry(operationLabel string, operation func() error, logger logr.Logger) error {
 	return RetryWithCustomBackoff(operationLabel, operation, defaultRetryBackoff, true, true, logger)
 }
 
@@ -64,7 +64,7 @@ func RetryWithCustomBackoff(
 	backoff wait.Backoff,
 	logAttempts bool,
 	logFinalFailureAsError bool,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	attempt := 0
 	return retry.OnError(

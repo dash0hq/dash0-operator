@@ -27,7 +27,7 @@ const (
 
 type OperatorPreDeleteHandler struct {
 	client  client.WithWatch
-	logger  *logr.Logger
+	logger  logr.Logger
 	timeout time.Duration
 }
 
@@ -54,7 +54,7 @@ func NewOperatorPreDeleteHandlerFromConfig(config *rest.Config) (*OperatorPreDel
 
 	return &OperatorPreDeleteHandler{
 		client:  k8sClient,
-		logger:  &logger,
+		logger:  logger,
 		timeout: defaultTimeout,
 	}, nil
 }

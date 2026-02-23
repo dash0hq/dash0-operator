@@ -50,7 +50,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		clusterInstrumentationConfig,
 		DefaultNamespaceInstrumentationConfig,
 		testActor,
-		&logger,
+		logger,
 	)
 
 	type envVarModificationTest struct {
@@ -97,7 +97,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					),
 					DefaultNamespaceInstrumentationConfig,
 					testActor,
-					&logger,
+					logger,
 				).ModifyDeployment(workload)
 
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
@@ -648,7 +648,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			clusterInstrumentationConfig,
 			DefaultNamespaceInstrumentationConfig,
 			testActor,
-			&logger,
+			logger,
 		)
 
 		type detectNonLinuxPodTest struct {
@@ -2007,7 +2007,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					clusterInstrumentationConfig,
 					testConfig.namespaceInstrumentationConfig,
 					testActor,
-					&logger,
+					logger,
 				).addEnvironmentVariables(
 					container,
 					&metav1.ObjectMeta{},
@@ -2192,7 +2192,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					clusterInstrumentationConfig,
 					testConfig.namespaceInstrumentationConfig,
 					testActor,
-					&logger,
+					logger,
 				).removeEnvironmentVariables(container)
 
 				envVars := container.Env
@@ -2282,7 +2282,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					testConfig.clusterInstrumentationConfig,
 					util.NamespaceInstrumentationConfig{},
 					testActor,
-					&logger,
+					logger,
 				).addEnvironmentVariables(
 					container,
 					&metav1.ObjectMeta{},

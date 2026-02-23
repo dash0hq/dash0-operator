@@ -46,7 +46,7 @@ func CheckIfNamespaceExists(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
 	namespace string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, error) {
 	_, err := clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
 	if err != nil {
@@ -88,7 +88,7 @@ func VerifyThatUniqueNonDegradedResourceExists(
 	req ctrl.Request,
 	resourcePrototype dash0operator.Dash0Resource,
 	updateStatusFailedMessage string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (CheckResourceResult, error) {
 	checkResourceResult, err := VerifyThatResourceExists(
 		ctx,
@@ -121,7 +121,7 @@ func VerifyThatResourceExists(
 	k8sClient client.Client,
 	req ctrl.Request,
 	resourcePrototype dash0operator.Dash0Resource,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (CheckResourceResult, error) {
 	resource := resourcePrototype.GetReceiver()
 	if err := k8sClient.Get(ctx, req.NamespacedName, resource); err != nil {
@@ -165,7 +165,7 @@ func VerifyThatResourceIsUniqueInScope(
 	req ctrl.Request,
 	resource dash0operator.Dash0Resource,
 	updateStatusFailedMessage string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, error) {
 	scope, allResourcesInScope, err :=
 		findAllResourceInstancesInScope(ctx, k8sClient, req, resource, logger)
@@ -266,7 +266,7 @@ func VerifyThatResourceIsUniqueInScope(
 	}
 }
 
-func markAsDegradedDueToNonUniqueResource(resource dash0operator.Dash0Resource, scope string, logger *logr.Logger) {
+func markAsDegradedDueToNonUniqueResource(resource dash0operator.Dash0Resource, scope string, logger logr.Logger) {
 	logger.Info(fmt.Sprintf("Marking %s (%s) as degraded.", resource.GetName(), resource.GetUID()))
 	resource.EnsureResourceIsMarkedAsDegraded(
 		"NewerResourceIsPresent",
@@ -282,7 +282,7 @@ func findAllResourceInstancesInScope(
 	k8sClient client.Client,
 	req ctrl.Request,
 	resource dash0operator.Dash0Resource,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (string, client.ObjectList, error) {
 	scope := "namespace"
 	listOptions := client.ListOptions{
@@ -319,7 +319,7 @@ func FindUniqueOrMostRecentResourceInScope(
 	k8sClient client.Client,
 	namespace string,
 	resourcePrototype dash0operator.Dash0Resource,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (dash0operator.Dash0Resource, error) {
 	_, allResourcesInScope, err := findAllResourceInstancesInScope(
 		ctx,
@@ -373,7 +373,7 @@ func InitStatusConditions(
 	k8sClient client.Client,
 	resource dash0operator.Dash0Resource,
 	conditions []metav1.Condition,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, error) {
 	firstReconcile := false
 	needsRefresh := false
@@ -403,7 +403,7 @@ func updateResourceStatus(
 	ctx context.Context,
 	k8sClient client.Client,
 	resource dash0operator.Dash0Resource,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	if err := k8sClient.Status().Update(ctx, resource.Get()); err != nil {
 		logger.Error(err,
@@ -429,7 +429,7 @@ func CheckImminentDeletionAndHandleFinalizers(
 	k8sClient client.Client,
 	resource dash0operator.Dash0Resource,
 	finalizerId string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (bool, bool, error) {
 	isMarkedForDeletion := resource.IsMarkedForDeletion()
 	if !isMarkedForDeletion {

@@ -28,7 +28,7 @@ import (
 func FindOperatorConfigurationResource(
 	ctx context.Context,
 	k8sClient client.Client,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
 	operatorConfigurationResource, err := resources.FindUniqueOrMostRecentResourceInScope(
 		ctx,
@@ -49,7 +49,7 @@ func FindOperatorConfigurationResource(
 func FindAllMonitoringResources(
 	ctx context.Context,
 	k8sClient client.Client,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) ([]dash0v1beta1.Dash0Monitoring, error) {
 	monitoringResourceList := dash0v1beta1.Dash0MonitoringList{}
 	if err := k8sClient.List(
@@ -94,7 +94,7 @@ func SetOwnerReference(
 	operatorManagerDeployment *appsv1.Deployment,
 	scheme *runtime.Scheme,
 	object client.Object,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	if object.GetNamespace() == "" {
 		// cluster scoped resources like ClusterRole and ClusterRoleBinding cannot have a namespace-scoped owner.

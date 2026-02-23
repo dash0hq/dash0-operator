@@ -65,7 +65,7 @@ func NewCollectorManager(
 	return m
 }
 
-func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger *logr.Logger) {
+func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logr.Logger) {
 	previousConfig := m.extraConfig.Swap(&newConfig)
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
 		hasBeenReconciled, err := m.ReconcileOpenTelemetryCollector(ctx)
@@ -108,11 +108,11 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		m.updateInProgress.Store(false)
 	}()
 
-	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, &logger)
+	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, logger)
 	if err != nil {
 		return false, err
 	}
-	allMonitoringResources, err := m.findAllMonitoringResources(ctx, &logger)
+	allMonitoringResources, err := m.findAllMonitoringResources(ctx, logger)
 	if err != nil {
 		return false, err
 	}
@@ -124,15 +124,15 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 
 	if operatorConfigurationResource == nil {
 		logger.Info(logMsgOperatorConfigMissing)
-		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, &logger)
+		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else if !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
 		logger.Info(fmt.Sprintf(logMsgTelemetryDisabled, operatorConfigurationResource.Name))
-		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, &logger)
+		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else if !operatorConfigurationResource.HasExportsConfigured() {
 		logger.Info(fmt.Sprintf(logMsgDefaultExportMissing, operatorConfigurationResource.Name))
-		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, &logger)
+		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else {
 		err = m.createOrUpdateOpenTelemetryCollector(
@@ -140,7 +140,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 			operatorConfigurationResource,
 			allMonitoringResources,
 			*extraConfig,
-			&logger,
+			logger,
 		)
 		return err == nil, err
 	}
@@ -151,7 +151,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
 	extraConfig util.ExtraConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	slices.SortFunc(
 		allMonitoringResources,
@@ -188,7 +188,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 func (m *CollectorManager) removeOpenTelemetryCollector(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	resourcesHaveBeenDeleted, err := m.oTelColResourceManager.DeleteResources(
 		ctx,
@@ -210,7 +210,7 @@ func (m *CollectorManager) removeOpenTelemetryCollector(
 
 func (m *CollectorManager) findOperatorConfigurationResource(
 	ctx context.Context,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
 	operatorConfigurationResource, err := resources.FindUniqueOrMostRecentResourceInScope(
 		ctx,
@@ -230,7 +230,7 @@ func (m *CollectorManager) findOperatorConfigurationResource(
 
 func (m *CollectorManager) findAllMonitoringResources(
 	ctx context.Context,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) ([]dash0v1beta1.Dash0Monitoring, error) {
 	monitoringResourceList := dash0v1beta1.Dash0MonitoringList{}
 	if err := m.List(

@@ -72,7 +72,7 @@ var _ = Describe(
 			func() {
 				EnsureTestNamespaceExists(ctx, k8sClient)
 				EnsureOperatorNamespaceExists(ctx, k8sClient)
-				clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, &logger))
+				clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, logger))
 			},
 		)
 
@@ -153,7 +153,7 @@ var _ = Describe(
 						expectViewPutRequest(clusterId, defaultExpectedPathView)
 						defer gock.Off()
 
-						viewReconciler.RemoveDefaultApiConfigs(ctx, &logger)
+						viewReconciler.RemoveDefaultApiConfigs(ctx, logger)
 
 						viewResource := createViewResource(TestNamespaceName, viewName)
 						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
@@ -186,7 +186,7 @@ var _ = Describe(
 						defer gock.Off()
 
 						// Remove API configs which also removes the auth tokens (since tokens are now part of ApiConfig)
-						viewReconciler.RemoveDefaultApiConfigs(ctx, &logger)
+						viewReconciler.RemoveDefaultApiConfigs(ctx, logger)
 
 						viewResource := createViewResource(TestNamespaceName, viewName)
 						Expect(k8sClient.Create(ctx, viewResource)).To(Succeed())
@@ -280,7 +280,7 @@ var _ = Describe(
 									Dataset:  DatasetCustomTestAlternative,
 									Token:    AuthorizationTokenTestAlternative,
 								},
-							}, &logger,
+							}, logger,
 						)
 
 						// note: we don't trigger reconcile here because setting the API config and token already triggers a reconciliation
@@ -801,7 +801,7 @@ var _ = Describe(
 					Entry(
 						"when the auth token becomes available", maybeDoInitialSynchronizationOfAllResourcesTest{
 							disableSync: func() {
-								viewReconciler.RemoveDefaultApiConfigs(ctx, &logger)
+								viewReconciler.RemoveDefaultApiConfigs(ctx, logger)
 							},
 							enabledSync: func() {
 								viewReconciler.SetDefaultApiConfigs(
@@ -811,7 +811,7 @@ var _ = Describe(
 											Dataset:  DatasetCustomTest,
 											Token:    AuthorizationTokenTest,
 										},
-									}, &logger,
+									}, logger,
 								)
 							},
 						},
@@ -819,7 +819,7 @@ var _ = Describe(
 					Entry(
 						"when the api endpoint becomes available", maybeDoInitialSynchronizationOfAllResourcesTest{
 							disableSync: func() {
-								viewReconciler.RemoveDefaultApiConfigs(ctx, &logger)
+								viewReconciler.RemoveDefaultApiConfigs(ctx, logger)
 							},
 							enabledSync: func() {
 								viewReconciler.SetDefaultApiConfigs(
@@ -831,7 +831,7 @@ var _ = Describe(
 											Token:    AuthorizationTokenTest,
 										},
 									},
-									&logger,
+									logger,
 								)
 							},
 						},
@@ -843,7 +843,7 @@ var _ = Describe(
 							},
 							enabledSync: func() {
 								viewLeaderElectionAware.SetLeader(true)
-								viewReconciler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+								viewReconciler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 							},
 						},
 					),
@@ -851,7 +851,7 @@ var _ = Describe(
 						"only sync once even if the the auth token is set multiple times",
 						maybeDoInitialSynchronizationOfAllResourcesTest{
 							disableSync: func() {
-								viewReconciler.RemoveDefaultApiConfigs(ctx, &logger)
+								viewReconciler.RemoveDefaultApiConfigs(ctx, logger)
 							},
 							enabledSync: func() {
 								// gock only expects two PUT requests, so if we would synchronize twice, the test would fail
@@ -862,7 +862,7 @@ var _ = Describe(
 											Dataset:  DatasetCustomTest,
 											Token:    AuthorizationTokenTest,
 										},
-									}, &logger,
+									}, logger,
 								)
 								viewReconciler.SetDefaultApiConfigs(
 									ctx, []ApiConfig{
@@ -871,7 +871,7 @@ var _ = Describe(
 											Dataset:  DatasetCustomTest,
 											Token:    AuthorizationTokenTest,
 										},
-									}, &logger,
+									}, logger,
 								)
 							},
 						},
@@ -914,7 +914,7 @@ var _ = Describe(
 							},
 						}
 						resourceToRequestsResult :=
-							viewReconciler.MapResourceToHttpRequests(preconditionValidationResult, apiConfig, upsertAction, &logger)
+							viewReconciler.MapResourceToHttpRequests(preconditionValidationResult, apiConfig, upsertAction, logger)
 						Expect(resourceToRequestsResult.ItemsTotal).To(Equal(1))
 						Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())

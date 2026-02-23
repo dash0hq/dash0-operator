@@ -25,7 +25,7 @@ func HandlePotentiallySuccessfulInstrumentationEvent(
 	eventSource WorkloadModifierActor,
 	containersTotal int,
 	instrumentationIssuesPerContainer map[string][]string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	if len(instrumentationIssuesPerContainer) == 0 {
 		// All containers have been instrumented, no container had instrumentation issues.

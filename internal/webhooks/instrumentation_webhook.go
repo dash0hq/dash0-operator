@@ -40,7 +40,7 @@ type resourceHandler func(
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response
 type routing map[string]map[string]map[string]resourceHandler
 
@@ -90,7 +90,7 @@ var (
 		request admission.Request,
 		gvkLabel string,
 		namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-		logger *logr.Logger,
+		logger logr.Logger,
 	) admission.Response {
 		return logAndReturnAllowed(fmt.Sprintf("resource type not supported: %s", gvkLabel), logger)
 	}
@@ -125,7 +125,7 @@ func (h *InstrumentationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager
 	return nil
 }
 
-func (h *InstrumentationWebhookHandler) UpdateExtraConfig(_ context.Context, extraConfig util.ExtraConfig, _ *logr.Logger) {
+func (h *InstrumentationWebhookHandler) UpdateExtraConfig(_ context.Context, extraConfig util.ExtraConfig, _ logr.Logger) {
 	h.ClusterInstrumentationConfig.ExtraConfig.Store(&extraConfig)
 }
 
@@ -162,7 +162,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 					targetNamespace,
 					err,
 				),
-				&logger,
+				logger,
 			)
 		}
 	}
@@ -187,7 +187,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 		return logAndReturnAllowed(
 			fmt.Sprintf(
 				"The Dash0 monitoring resource in the namespace %s is about to be deleted, this workload will not be "+
-					"modified to send telemetry to Dash0.", targetNamespace), &logger)
+					"modified to send telemetry to Dash0.", targetNamespace), logger)
 	}
 
 	actionPartial := "newly deployed"
@@ -217,7 +217,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 		request,
 		gvkLabel,
 		dash0MonitoringResource.GetNamespaceInstrumentationConfig(),
-		&logger,
+		logger,
 	)
 }
 
@@ -225,7 +225,7 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	cronJob := &batchv1.CronJob{}
 	responseIfFailed, failed := h.preProcess(request, gvkLabel, cronJob, logger)
@@ -267,7 +267,7 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	daemonSet := &appsv1.DaemonSet{}
 	responseIfFailed, failed := h.preProcess(request, gvkLabel, daemonSet, logger)
@@ -303,7 +303,7 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	deployment := &appsv1.Deployment{}
 	responseIfFailed, failed := h.preProcess(request, gvkLabel, deployment, logger)
@@ -339,7 +339,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	job := &batchv1.Job{}
 	responseIfFailed, failed := h.preProcess(request, gvkLabel, job, logger)
@@ -377,7 +377,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	pod := &corev1.Pod{}
 	responseIfFailed, failed := h.preProcess(request, gvkLabel, pod, logger)
@@ -416,7 +416,7 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	replicaSet := &appsv1.ReplicaSet{}
 	responseIfFailed, failed := h.preProcess(request, gvkLabel, replicaSet, logger)
@@ -452,7 +452,7 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	request admission.Request,
 	gvkLabel string,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	statefulSet := &appsv1.StatefulSet{}
 	responseIfFailed, failed := h.preProcess(request, gvkLabel, statefulSet, logger)
@@ -488,7 +488,7 @@ func (h *InstrumentationWebhookHandler) preProcess(
 	request admission.Request,
 	gvkLabel string,
 	resource runtime.Object,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (admission.Response, bool) {
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, resource); err != nil {
 		wrappedErr := fmt.Errorf("cannot parse resource into a %s: %w", gvkLabel, err)
@@ -503,7 +503,7 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	resource runtime.Object,
 	modificationResult workloads.ModificationResult,
 	isPod bool,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	if !modificationResult.IgnoredOnce && !modificationResult.HasBeenModified {
 		msg := modificationResult.RenderReasonMessage(actor)
@@ -546,7 +546,7 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 	request admission.Request,
 	resource runtime.Object,
 	modificationResult workloads.ModificationResult,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) admission.Response {
 	if modificationResult.ImmutableWorkload {
 		err := errors.New(modificationResult.RenderReasonMessage(actor))
@@ -577,7 +577,7 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 
 func (h *InstrumentationWebhookHandler) newWorkloadModifier(
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		h.ClusterInstrumentationConfig,
@@ -603,12 +603,12 @@ func (r *routing) routeFor(group, kind, version string) resourceHandler {
 	return routesForVersion
 }
 
-func logAndReturnAllowed(message string, logger *logr.Logger) admission.Response {
+func logAndReturnAllowed(message string, logger logr.Logger) admission.Response {
 	logger.Info(message)
 	return admission.Allowed(message)
 }
 
-func logErrorAndReturnAllowed(err error, logger *logr.Logger) admission.Response {
+func logErrorAndReturnAllowed(err error, logger logr.Logger) admission.Response {
 	logger.Error(err, "an error occurred while processing the admission request")
 
 	// Note: We never return admission.Errored or admission.Denied, even in case an error happens, because we do not

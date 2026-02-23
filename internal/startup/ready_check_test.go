@@ -59,7 +59,7 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 
 	Describe("start", func() {
 		It("should stop polling and give up at some point if the endpoint does not exist", func() {
-			readyCheckExecuter.start(ctx, &logger)
+			readyCheckExecuter.start(ctx, logger)
 
 			Eventually(func(g Gomega) {
 				capturingLogSink.HasLogMessage(g, "failed to poll the webhook service endpoint, the pod will not be marked as ready")
@@ -77,7 +77,7 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 			Expect(k8sClient.Create(ctx, &endpointSlice)).To(Succeed())
 			createdObjects = append(createdObjects, &endpointSlice)
 
-			readyCheckExecuter.start(ctx, &logger)
+			readyCheckExecuter.start(ctx, logger)
 
 			Eventually(func(g Gomega) {
 				capturingLogSink.HasLogMessage(g, "failed to poll the webhook service endpoint, the pod will not be marked as ready")
@@ -95,7 +95,7 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 			Expect(k8sClient.Create(ctx, &endpointSlice)).To(Succeed())
 			createdObjects = append(createdObjects, &endpointSlice)
 
-			readyCheckExecuter.start(ctx, &logger)
+			readyCheckExecuter.start(ctx, logger)
 
 			Eventually(func(g Gomega) {
 				capturingLogSink.HasLogMessage(g, "the webhook service endpoint is ready (it has a port assigned)")
@@ -112,7 +112,7 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 
 			go func() {
 				defer GinkgoRecover()
-				ready, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, &logger)
+				ready, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
 				Expect(ready).To(BeFalse())
 				Expect(err).To(MatchError(
 					"waiting for the webhook service endpoint has timed out (no more retries left): the webhook service endpoint is not ready yet",
@@ -144,7 +144,7 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 
 			go func() {
 				defer GinkgoRecover()
-				ready, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, &logger)
+				ready, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
 				Expect(ready).To(BeFalse())
 				Expect(err).To(MatchError(
 					"waiting for the webhook service endpoint has timed out (no more retries left): the webhook service endpoint is not ready yet",
@@ -171,7 +171,7 @@ var _ = Describe("operator manager pod ready check", Ordered, func() {
 			Expect(k8sClient.Create(ctx, &endpointSlice)).To(Succeed())
 			createdObjects = append(createdObjects, &endpointSlice)
 
-			ready, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, &logger)
+			ready, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
 			Expect(ready).To(BeTrue())
 			Expect(err).To(Succeed())
 		})

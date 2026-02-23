@@ -24,7 +24,7 @@ import (
 // configuration auto resource becomes available.
 type OperatorPostInstallHandler struct {
 	client       client.WithWatch
-	logger       *logr.Logger
+	logger       logr.Logger
 	retryBackoff wait.Backoff
 }
 
@@ -59,7 +59,7 @@ func NewOperatorPostInstallHandlerFromConfig(config *rest.Config) (*OperatorPost
 
 	return &OperatorPostInstallHandler{
 		client:       k8sClient,
-		logger:       &logger,
+		logger:       logger,
 		retryBackoff: defaultRetryBackoff,
 	}, nil
 }

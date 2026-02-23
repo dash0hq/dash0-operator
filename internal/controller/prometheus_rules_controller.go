@@ -165,7 +165,7 @@ func (r *PrometheusRuleCrdReconciler) SetupWithManager(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	startupK8sClient client.Client,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	r.mgr = mgr
 	return SetupThirdPartyCrdReconcilerWithManager(
@@ -186,7 +186,7 @@ func (r *PrometheusRuleCrdReconciler) Create(
 	}
 	logger := log.FromContext(ctx)
 	r.prometheusRuleCrdExists.Store(true)
-	maybeStartWatchingThirdPartyResources(r, &logger)
+	maybeStartWatchingThirdPartyResources(r, logger)
 }
 
 func (r *PrometheusRuleCrdReconciler) Update(
@@ -210,7 +210,7 @@ func (r *PrometheusRuleCrdReconciler) Delete(
 	logger.Info("The PrometheusRule custom resource definition has been deleted.")
 	r.prometheusRuleCrdExists.Store(false)
 
-	stopWatchingThirdPartyResources(ctx, r, &logger)
+	stopWatchingThirdPartyResources(ctx, r, logger)
 }
 
 func (r *PrometheusRuleCrdReconciler) Generic(
@@ -234,7 +234,7 @@ func (r *PrometheusRuleCrdReconciler) Reconcile(
 func (r *PrometheusRuleCrdReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "prometheusrulecrd.reconcile_requests")
 	var err error
@@ -256,7 +256,7 @@ func (r *PrometheusRuleCrdReconciler) InitializeSelfMonitoringMetrics(
 func (r *PrometheusRuleCrdReconciler) SetDefaultApiConfigs(
 	ctx context.Context,
 	apiConfig []ApiConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	r.prometheusRuleReconciler.defaultApiConfigs.Set(apiConfig)
 	if len(filterValidApiConfigs(apiConfig, logger, "default operator configuration")) > 0 {
@@ -266,7 +266,7 @@ func (r *PrometheusRuleCrdReconciler) SetDefaultApiConfigs(
 	}
 }
 
-func (r *PrometheusRuleCrdReconciler) RemoveDefaultApiConfigs(ctx context.Context, logger *logr.Logger) {
+func (r *PrometheusRuleCrdReconciler) RemoveDefaultApiConfigs(ctx context.Context, logger logr.Logger) {
 	r.prometheusRuleReconciler.defaultApiConfigs.Set(nil)
 	stopWatchingThirdPartyResources(ctx, r, logger)
 }
@@ -275,7 +275,7 @@ func (r *PrometheusRuleCrdReconciler) SetNamespacedApiConfigs(
 	ctx context.Context,
 	namespace string,
 	updatedApiConfig []ApiConfig,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	if updatedApiConfig != nil {
 		previousApiConfig, _ := r.prometheusRuleReconciler.namespacedApiConfigs.Get(namespace)
@@ -291,7 +291,7 @@ func (r *PrometheusRuleCrdReconciler) SetNamespacedApiConfigs(
 func (r *PrometheusRuleCrdReconciler) RemoveNamespacedApiConfigs(
 	ctx context.Context,
 	namespace string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	if _, exists := r.prometheusRuleReconciler.namespacedApiConfigs.Get(namespace); exists {
 		r.prometheusRuleReconciler.namespacedApiConfigs.Delete(namespace)
@@ -302,7 +302,7 @@ func (r *PrometheusRuleCrdReconciler) RemoveNamespacedApiConfigs(
 func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "prometheusrule.reconcile_requests")
 	var err error
@@ -494,7 +494,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) *ResourceToRequestsResult {
 	specRaw := preconditionChecksResult.resource["spec"]
 	// convert the untyped spec to a value of type prometheusv1.PrometheusRuleSpec by marshalling and then unmarshalling
@@ -733,7 +733,7 @@ func convertRuleToRequest(
 	groupName string,
 	interval *prometheusv1.Duration,
 	metadataAnnotations map[string]string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (*http.Request, []string, error, bool) {
 	checkRule, validationIssues, ok := convertRuleToCheckRule(
 		rule,
@@ -809,7 +809,7 @@ func convertRuleToCheckRule(
 	groupName string,
 	interval *prometheusv1.Duration,
 	metadataAnnotations map[string]string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (*CheckRule, []string, bool) {
 	if rule.Record != "" {
 		logger.Info("Skipping rule with record attribute", "record", rule.Record)
@@ -983,7 +983,7 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	apiConfig ApiConfig,
 	existingOriginsFromApi []string,
 	originsInResource []string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) ([]WrappedApiRequest, map[string]string) {
 	var deleteRequests []WrappedApiRequest
 	allSynchronizationErrors := make(map[string]string)
@@ -1020,7 +1020,7 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 
 func (r *PrometheusRuleReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (id string, err error) {
 	objectWithMetadata := Dash0ApiObjectWithMetadata{}
 	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
@@ -1090,7 +1090,7 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 func (r *PrometheusRuleReconciler) synchronizeNamespacedResources(
 	ctx context.Context,
 	namespace string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	// do nothing if we are not currently watching the CRDs
 	if !r.IsWatching() {

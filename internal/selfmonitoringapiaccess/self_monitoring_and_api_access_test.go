@@ -27,7 +27,7 @@ var _ = Describe(
 	"self monitoring and API access", Ordered, func() {
 
 		ctx := context.Background()
-		logger := ptr.To(log.FromContext(ctx))
+		logger := log.FromContext(ctx)
 
 		Describe(
 			"convert operator configuration resource to self monitoring settings", func() {
@@ -1186,7 +1186,7 @@ var _ = Describe(
 							k8sClient,
 							OperatorNamespace,
 							testConfig.dash0Export,
-							*logger,
+							logger,
 						)
 						if testConfig.expectedError != "" {
 							Expect(err).To(HaveOccurred())

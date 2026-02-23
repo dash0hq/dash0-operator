@@ -216,21 +216,21 @@ func Start() {
 	}
 
 	if cliArgs.isUninstrumentAll {
-		if err := deleteMonitoringResourcesInAllNamespaces(&setupLog); err != nil {
+		if err := deleteMonitoringResourcesInAllNamespaces(setupLog); err != nil {
 			setupLog.Error(err, "deleting the Dash0 monitoring resources in all namespaces failed")
 			os.Exit(1)
 		}
 		os.Exit(0)
 	}
 	if cliArgs.autoOperatorConfigurationResourceAvailableCheck {
-		if err := waitForOperatorConfigurationResourceAvailability(&setupLog); err != nil {
+		if err := waitForOperatorConfigurationResourceAvailability(setupLog); err != nil {
 			setupLog.Error(err, "waiting for the Dash0 operator configuration resource to become available has failed")
 			os.Exit(1)
 		}
 		os.Exit(0)
 	}
 	if cliArgs.deleteAllowlistSynchronizer {
-		if err := deleteDash0AllowlistSynchronizer(ctx, &setupLog); err != nil {
+		if err := deleteDash0AllowlistSynchronizer(ctx, setupLog); err != nil {
 			setupLog.Error(err, "deleting the AllowlistSynchronizer resource failed")
 			os.Exit(1)
 		}
@@ -260,7 +260,7 @@ func Start() {
 	)
 
 	var err error
-	if err = readEnvironmentVariables(&setupLog); err != nil {
+	if err = readEnvironmentVariables(setupLog); err != nil {
 		setupLog.Error(err, "cannot read environment variables")
 		os.Exit(1)
 	}
@@ -268,25 +268,25 @@ func Start() {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
-	if err = extraConfigMapWatcher.StartWatch(&setupLog); err != nil {
+	if err = extraConfigMapWatcher.StartWatch(setupLog); err != nil {
 		setupLog.Error(err, "cannot establish file watch for extra config map")
 		os.Exit(1)
 	}
 
-	if err = initStartupTasksK8sClient(&setupLog); err != nil {
+	if err = initStartupTasksK8sClient(setupLog); err != nil {
 		os.Exit(1)
 	}
 	detectDocker(
 		ctx,
 		startupTasksK8sClient,
-		&setupLog,
+		setupLog,
 	)
 	if operatorDeploymentSelfReference, err = findDeploymentReference(
 		ctx,
 		startupTasksK8sClient,
 		envVars.operatorNamespace,
 		envVars.deploymentName,
-		&setupLog,
+		setupLog,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager lookup for its own deployment failed.")
 		os.Exit(1)
@@ -558,7 +558,7 @@ func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 	return delegatingZapCoreWrapper
 }
 
-func readEnvironmentVariables(logger *logr.Logger) error {
+func readEnvironmentVariables(logger logr.Logger) error {
 	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorNamespaceEnvVarName)
@@ -733,7 +733,7 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 	return ""
 }
 
-func initStartupTasksK8sClient(logger *logr.Logger) error {
+func initStartupTasksK8sClient(logger logr.Logger) error {
 	cfg := ctrl.GetConfigOrDie()
 	var err error
 	if startupTasksK8sClient, err = client.New(
@@ -750,7 +750,7 @@ func initStartupTasksK8sClient(logger *logr.Logger) error {
 func detectDocker(
 	ctx context.Context,
 	k8sClient client.Client,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	nodeList := &corev1.NodeList{}
 	err := k8sClient.List(ctx, nodeList, &client.ListOptions{Limit: 1})
@@ -876,7 +876,7 @@ func startOperatorManager(
 
 	defer func() {
 		if thirdPartyResourceSynchronizationQueue != nil {
-			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
+			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, setupLog)
 		}
 	}()
 
@@ -889,7 +889,7 @@ func startOperatorManager(
 	extraConfigMapWatcher.CloseWatch()
 
 	if oTelSdkStarter != nil {
-		oTelSdkStarter.ShutDown(ctx, &setupLog)
+		oTelSdkStarter.ShutDown(ctx, setupLog)
 	}
 
 	return nil
@@ -957,7 +957,7 @@ func startDash0Controllers(
 		ctx,
 		readyCheckExecuter,
 		operatorConfigurationValues,
-		&setupLog,
+		setupLog,
 	)
 
 	k8sClient := mgr.GetClient()
@@ -975,7 +975,7 @@ func startDash0Controllers(
 	// is useless.
 	extraConfigMapWatcher.AddClient(instrumenter)
 
-	pseudoClusterUid := util.ReadPseudoClusterUid(ctx, startupTasksK8sClient, &setupLog)
+	pseudoClusterUid := util.ReadPseudoClusterUid(ctx, startupTasksK8sClient, setupLog)
 	collectorConfig := util.CollectorConfig{
 		Images:                    images,
 		OperatorNamespace:         envVars.operatorNamespace,
@@ -1058,7 +1058,7 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
 	}
 
-	clusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, &setupLog)
+	clusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, setupLog)
 	if err != nil {
 		return err
 	}
@@ -1098,7 +1098,7 @@ func startDash0Controllers(
 		leaderElectionAwareRunnable,
 		httpClient,
 	)
-	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
+	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
 	}
 
@@ -1108,11 +1108,11 @@ func startDash0Controllers(
 		leaderElectionAwareRunnable,
 		httpClient,
 	)
-	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
+	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
 	}
 
-	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
+	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, setupLog)
 
 	setupLog.Info("Creating the self-monitoring OTel SDK starter.")
 	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
@@ -1234,7 +1234,7 @@ func registerHealthAndReadyChecks(ctx context.Context, mgr manager.Manager) (*Re
 		envVars.operatorNamespace,
 		envVars.webhookServiceName,
 	)
-	readyCheckExecuter.start(ctx, &setupLog)
+	readyCheckExecuter.start(ctx, setupLog)
 	if err := mgr.AddReadyzCheck("readyz", readyCheckExecuter.isReady); err != nil {
 		return readyCheckExecuter, fmt.Errorf("unable to set up the operator manager ready check: %w", err)
 	}
@@ -1286,7 +1286,7 @@ func findDeploymentReference(
 	k8sClient client.Client,
 	operatorNamespace string,
 	deploymentName string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (*appsv1.Deployment, error) {
 	deploymentReference := &appsv1.Deployment{}
 	fullyQualifiedName := fmt.Sprintf("%s/%s", operatorNamespace, deploymentName)
@@ -1312,7 +1312,7 @@ func createOrUpdateAutoOperatorConfigurationResource(
 	ctx context.Context,
 	readyCheckExecuter *ReadyCheckExecuter,
 	operatorConfigurationValues *OperatorConfigurationValues,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
 	if operatorConfigurationValues == nil {
 		return nil
@@ -1369,7 +1369,7 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 			k8sClient,
 			operatorNamespace,
 			operatorConfigurationResource,
-			&setupLog,
+			setupLog,
 		)
 	if err != nil {
 		setupLog.Error(
@@ -1390,11 +1390,11 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		operatorDeploymentSelfReference.Name,
 		operatorVersion,
 		developmentMode,
-		&setupLog,
+		setupLog,
 	)
 }
 
-func deleteMonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
+func deleteMonitoringResourcesInAllNamespaces(logger logr.Logger) error {
 	handler, err := predelete.NewOperatorPreDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the pre-delete handler.")
@@ -1407,7 +1407,7 @@ func deleteMonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
 	return nil
 }
 
-func waitForOperatorConfigurationResourceAvailability(logger *logr.Logger) error {
+func waitForOperatorConfigurationResourceAvailability(logger logr.Logger) error {
 	handler, err := postinstall.NewOperatorPostInstallHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the post-install handler.")
@@ -1420,7 +1420,7 @@ func waitForOperatorConfigurationResourceAvailability(logger *logr.Logger) error
 	return nil
 }
 
-func deleteDash0AllowlistSynchronizer(ctx context.Context, logger *logr.Logger) error {
+func deleteDash0AllowlistSynchronizer(ctx context.Context, logger logr.Logger) error {
 	handler, err := postdelete.NewOperatorPostDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the post-delete handler.")

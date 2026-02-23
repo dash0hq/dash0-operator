@@ -102,7 +102,7 @@ func (r *MonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *MonitoringReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "monitoring.reconcile_requests")
 	var err error
@@ -134,7 +134,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for a monitoring resource")
 
-	namespaceStillExists, err := resources.CheckIfNamespaceExists(ctx, r.clientset, req.Namespace, &logger)
+	namespaceStillExists, err := resources.CheckIfNamespaceExists(ctx, r.clientset, req.Namespace, logger)
 	if err != nil {
 		// The error has already been logged in checkIfNamespaceExists.
 		return ctrl.Result{}, err
@@ -152,7 +152,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		req,
 		&dash0v1beta1.Dash0Monitoring{},
 		updateStatusFailedMessageMonitoring,
-		&logger,
+		logger,
 	)
 	if err != nil {
 		// For all errors, we assume it is a temporary error and requeue the request.
@@ -163,10 +163,10 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// prometheus scraping) after removing the monitoring resource from this namespace. Or, to be more precise,
 		// when r.reconcileOpenTelemetryCollector runs, the monitoring resource in this namespace is still present, but
 		// it is no longer marked as available.
-		if err = r.reconcileOpenTelemetryCollector(ctx, &logger); err != nil {
+		if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
-		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, &logger); err != nil {
+		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 
@@ -182,7 +182,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		r.Client,
 		monitoringResource,
 		monitoringResource.Status.Conditions,
-		&logger,
+		logger,
 	)
 	if err != nil {
 		// The error has already been logged in initStatusConditions
@@ -194,14 +194,14 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		r.Client,
 		monitoringResource,
 		dash0common.MonitoringFinalizerId,
-		&logger,
+		logger,
 	)
 	if err != nil {
 		// The error has already been logged in checkImminentDeletionAndHandleFinalizers
 		return ctrl.Result{}, err
 	} else if runCleanupActions {
 		// r.runCleanupActions will uninstrument workloads and then remove the finalizer.
-		err = r.runCleanupActions(ctx, monitoringResource, &logger)
+		err = r.runCleanupActions(ctx, monitoringResource, logger)
 		if err != nil {
 			// error has already been logged in runCleanupActions
 			return ctrl.Result{}, err
@@ -218,10 +218,10 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// resources.VerifyThatUniqueNonDegradedResourceExists check, due to checkResourceResult.ResourceDoesNotExist
 		// being true. We still want to handle this case correctly for good measure (reconcile the otel collector, then
 		// stop the reconcile of the monitoring resource).
-		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
+		if r.reconcileOpenTelemetryCollector(ctx, logger) != nil {
 			return ctrl.Result{}, err
 		}
-		if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
+		if r.reconcileOpenTelemetryTargetAllocator(ctx, logger) != nil {
 			return ctrl.Result{}, err
 		}
 		// The Dash0 monitoring resource is slated for deletion, the finalizer has already been removed in the last
@@ -232,35 +232,35 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	var requiredAction util.ModificationMode
 	monitoringResource, requiredAction, statusUpdate :=
-		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, &logger)
+		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, logger)
 
 	if isFirstReconcile || requiredAction == util.ModificationModeInstrumentation {
-		if err = r.instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, &logger); err != nil {
+		if err = r.instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, logger); err != nil {
 			// The error has already been logged in checkSettingsAndInstrumentExistingWorkloads
 			logger.Info("Requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
 	} else if requiredAction == util.ModificationModeUninstrumentation {
-		if err = r.instrumenter.UninstrumentWorkloadsIfAvailable(ctx, monitoringResource, &logger); err != nil {
+		if err = r.instrumenter.UninstrumentWorkloadsIfAvailable(ctx, monitoringResource, logger); err != nil {
 			logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
 	}
 
-	r.scheduleAttachDanglingEvents(ctx, monitoringResource, &logger)
+	r.scheduleAttachDanglingEvents(ctx, monitoringResource, logger)
 
-	if err = r.updateStatusAfterReconcile(ctx, monitoringResource, statusUpdate, &logger); err != nil {
+	if err = r.updateStatusAfterReconcile(ctx, monitoringResource, statusUpdate, logger); err != nil {
 		// The error has already been logged in updateStatusAfterReconcile
 		return ctrl.Result{}, err
 	}
 
 	r.applyApiAccessSettings(ctx, monitoringResource, logger)
 
-	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
+	if r.reconcileOpenTelemetryCollector(ctx, logger) != nil {
 		return ctrl.Result{}, err
 	}
 
-	if r.reconcileOpenTelemetryTargetAllocator(ctx, &logger) != nil {
+	if r.reconcileOpenTelemetryTargetAllocator(ctx, logger) != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -310,7 +310,7 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 				),
 			)
 			for _, apiClient := range r.namespacedApiClients {
-				apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, &logger)
+				apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, logger)
 			}
 			return
 		}
@@ -319,7 +319,7 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 				ctx,
 				monitoringResource.Namespace,
 				apiConfigs,
-				&logger,
+				logger,
 			)
 		}
 	} else {
@@ -331,7 +331,7 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 			),
 		)
 		for _, apiClient := range r.namespacedApiClients {
-			apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, &logger)
+			apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, logger)
 		}
 	}
 }
@@ -339,7 +339,7 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	isFirstReconcile bool,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (*dash0v1beta1.Dash0Monitoring, util.ModificationMode, statusUpdateInfo) {
 	previousInstrumentWorkloadsMode := monitoringResource.Status.PreviousInstrumentWorkloads.Mode
 	currentInstrumentWorkloadsMode := monitoringResource.ReadInstrumentWorkloadsMode()
@@ -401,7 +401,7 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 func (r *MonitoringReconciler) runCleanupActions(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	if err := r.instrumenter.UninstrumentWorkloadsIfAvailable(
 		ctx,
@@ -450,7 +450,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	// execute the event attaching in a separate go routine to not block the main reconcile loop
 	go func() {
@@ -476,7 +476,7 @@ func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 func (r *MonitoringReconciler) attachDanglingEvents(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	namespace := monitoringResource.Namespace
 	legacyEventApi := r.clientset.CoreV1().Events(namespace)
@@ -546,7 +546,7 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 
 func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
@@ -562,7 +562,7 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 
 func (r *MonitoringReconciler) reconcileOpenTelemetryTargetAllocator(
 	ctx context.Context,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
@@ -581,7 +581,7 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	statusUpdate statusUpdateInfo,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) error {
 	monitoringResource.EnsureResourceIsMarkedAsAvailable()
 	if statusUpdate.previousInstrumentWorkloadsMode != statusUpdate.currentInstrumentWorkloadsMode {

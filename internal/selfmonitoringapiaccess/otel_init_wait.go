@@ -21,7 +21,7 @@ import (
 )
 
 type SelfMonitoringMetricsClient interface {
-	InitializeSelfMonitoringMetrics(otelmetric.Meter, string, *logr.Logger)
+	InitializeSelfMonitoringMetrics(otelmetric.Meter, string, logr.Logger)
 }
 
 type OTelSdkConfigInput struct {
@@ -89,7 +89,7 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	operatorManagerDeploymentName string,
 	operatorVersion string,
 	developmentMode bool,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) {
 	s.oTelSdkConfigInput.Store(
 		&OTelSdkConfigInput{
@@ -107,7 +107,7 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	s.onParametersHaveChanged(ctx, logger)
 }
 
-func (s *OTelSdkStarter) RemoveOTelSdkParameters(ctx context.Context, logger *logr.Logger) {
+func (s *OTelSdkStarter) RemoveOTelSdkParameters(ctx context.Context, logger logr.Logger) {
 	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{})
 	s.onParametersHaveChanged(ctx, logger)
 }
@@ -128,7 +128,7 @@ func (s *OTelSdkStarter) waitForCompleteOTelSDKConfiguration(
 	}
 }
 
-func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger *logr.Logger) {
+func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger logr.Logger) {
 	sdkIsActive := s.sdkIsActive.Load()
 	newOTelSDKConfig, configComplete :=
 		convertExportConfigurationToOTelSDKConfig(
@@ -282,12 +282,12 @@ func startOTelSDK(
 		client.InitializeSelfMonitoringMetrics(
 			meter,
 			metricNamePrefix,
-			&logger,
+			logger,
 		)
 	}
 }
 
-func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger *logr.Logger) {
+func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger logr.Logger) {
 	sdkIsActive := s.sdkIsActive.Load()
 	if sdkIsActive {
 		s.delegatingZapCoreWrapper.RootDelegatingZapCore.UnsetDelegate()
@@ -302,7 +302,7 @@ func (s *OTelSdkStarter) ForTestOnlyGetState() (bool, *common.OTelSdkConfig) {
 	return s.sdkIsActive.Load(), s.activeOTelSdkConfig.Load()
 }
 
-func (s *OTelSdkStarter) ShutDown(ctx context.Context, logger *logr.Logger) {
+func (s *OTelSdkStarter) ShutDown(ctx context.Context, logger logr.Logger) {
 	s.ShutDownOTelSdk(ctx, logger)
 	s.shutDownChannel <- true
 }

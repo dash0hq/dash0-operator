@@ -124,7 +124,7 @@ var _ = Describe("resource util functions", Ordered, func() {
 			reconcileRequest,
 			reconciledResource,
 			updateStatusFailedMessage,
-			&logger,
+			logger,
 		)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(stopRecconile).To(Equal(testConfig.expectedStopReconcile))

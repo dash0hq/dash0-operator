@@ -69,7 +69,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	k8sClient client.Client,
 	operatorNamespace string,
 	resource *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (SelfMonitoringConfiguration, error) {
 	if resource == nil {
 		return SelfMonitoringConfiguration{}, nil
@@ -91,7 +91,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	// for self-monitoring we only send telemetry to a single backend
 	export := resource.EffectiveExports()[0]
 	if export.Dash0 != nil {
-		token, err := GetAuthTokenForDash0Export(ctx, k8sClient, operatorNamespace, *export.Dash0, *logger)
+		token, err := GetAuthTokenForDash0Export(ctx, k8sClient, operatorNamespace, *export.Dash0, logger)
 		if err != nil || token == nil {
 			logger.Info(
 				"Self-monitoring is enabled but either no authorization is defined or the token could not be retrieved. " +
@@ -127,7 +127,7 @@ func convertResourceToDash0ExportConfiguration(
 	export *dash0common.Export,
 	token *string,
 	selfMonitoringEnabled bool,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (SelfMonitoringConfiguration, error) {
 	if export.Grpc != nil {
 		logger.Info(
@@ -164,7 +164,7 @@ func convertResourceToDash0ExportConfiguration(
 func convertResourceToGrpcExportConfiguration(
 	export *dash0common.Export,
 	selfMonitoringEnabled bool,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (SelfMonitoringConfiguration, error) {
 	if export.Http != nil {
 		logger.Info(
@@ -607,7 +607,7 @@ func GetAuthTokenForDash0Export(
 			k8sClient,
 			operatorNamespace,
 			dash0Export,
-			&logger,
+			logger,
 		)
 		if err != nil {
 			logger.Error(err, "cannot exchange secret ref for token")
@@ -630,7 +630,7 @@ func ExchangeSecretRefForToken(
 	k8sClient client.Client,
 	operatorNamespace string, // we always look up the auth secrets in the operator namespace
 	dash0Config dash0common.Dash0Configuration,
-	logger *logr.Logger,
+	logger logr.Logger,
 ) (*string, error) {
 	if dash0Config.Authorization.SecretRef == nil {
 		return nil, fmt.Errorf("dash0Config has no secret ref")

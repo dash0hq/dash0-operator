@@ -54,7 +54,7 @@ func NewReadyCheckExecuter(
 
 // start begins polling the webhook endpoint until it gets a port assigned, in a separate Goroutine. It returns
 // immediately. Clients can check the result of the polling via the isReady method.
-func (c *ReadyCheckExecuter) start(ctx context.Context, logger *logr.Logger) {
+func (c *ReadyCheckExecuter) start(ctx context.Context, logger logr.Logger) {
 	go func() {
 		if err := c.pollWebhookServiceEndpoint(ctx, logger, false); err != nil {
 			logger.Error(err, "failed to poll the webhook service endpoint, the pod will not be marked as ready")
@@ -73,7 +73,7 @@ func (c *ReadyCheckExecuter) isReady(_ *http.Request) error {
 
 // waitForWebhookServiceEndpointToBecomeReady blocks until the webhook service endpoint has become ready, or until the
 // polling routine for the webhook service gives up.
-func (c *ReadyCheckExecuter) waitForWebhookServiceEndpointToBecomeReady(ctx context.Context, logger *logr.Logger) (bool, error) {
+func (c *ReadyCheckExecuter) waitForWebhookServiceEndpointToBecomeReady(ctx context.Context, logger logr.Logger) (bool, error) {
 	if err := c.pollWebhookServiceEndpoint(ctx, logger, true); err != nil {
 		return false, err
 	}
@@ -85,7 +85,7 @@ func (c *ReadyCheckExecuter) waitForWebhookServiceEndpointToBecomeReady(ctx cont
 // (This check needs to be skipped for the operator manager pod's readyness check, since a service endpoint only will be
 // marked ready when its underlying pod is marked as ready). The function also returns when the polling times out after
 // one minute.
-func (c *ReadyCheckExecuter) pollWebhookServiceEndpoint(ctx context.Context, logger *logr.Logger, waitForReadyCondition bool) error {
+func (c *ReadyCheckExecuter) pollWebhookServiceEndpoint(ctx context.Context, logger logr.Logger, waitForReadyCondition bool) error {
 	if c.bypassWebhookCheck {
 		logger.Info("bypassing the webhook service endpoint check")
 		c.webhookEndpointHasPortAssigned.Store(true)
