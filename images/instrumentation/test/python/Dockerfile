@@ -14,7 +14,7 @@ WORKDIR /
 # Note: The individual pip install commands from each test case will all install dependencies into the system-wide
 # PYTHONHOME. Depencies of test cases are not isolated from each other.
 RUN for test in /test-cases/*; do \
-  cd "/${test}" && \
+  cd "${test}" && \
   if [ -f requirements.txt ]; then \
     pip install --no-cache-dir -r requirements.txt; \
   fi \

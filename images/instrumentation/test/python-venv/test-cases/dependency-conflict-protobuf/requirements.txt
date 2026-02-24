@@ -1,0 +1,3 @@
+# Deliberately importing an old version of protobuf, app.py verifies that this version is used and not the version that
+# might be brought in by the Dash0 instrumentation image (which is 6.x).
+protobuf==4.25.8
