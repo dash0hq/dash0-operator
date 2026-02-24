@@ -25,7 +25,7 @@ source "$scripts_lib/util"
 
 load_env_file
 verify_kubectx
-setup_test_environment
+setup_test_environment "$target_namespace"
 
 step_counter=1
 

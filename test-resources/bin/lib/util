@@ -61,12 +61,13 @@ verify_kubectx() {
 }
 
 setup_test_environment () {
+  local target_namespace="${1:-$default_target_ns}"
   if ! docker info > /dev/null 2>&1; then
     echo "This script uses docker, but it looks like Docker is not running. Please start docker and try again."
     exit 1
   fi
 
-  test-resources/bin/render-templates.sh
+  test-resources/bin/render-templates.sh "$target_namespace"
   determine_container_images
   determine_test_app_images
 
@@ -942,6 +943,15 @@ install_prometheus_crds() {
     --set crds.prometheusrules.enabled=false \
     prometheus-crds \
     prometheus-community/prometheus-operator-crds
+}
+
+deploy_cadvisor_scrapeconfig() {
+  if [[ "${DEPLOY_CADVISOR_SCRAPECONFIG:-}" != "true" ]]; then
+    return
+  fi
+  echo "STEP $step_counter: deploy a ScrapeConfig for scraping cadvisor metrics to ${target_namespace}"
+  kubectl apply -n "$target_namespace" -f test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml
+  finish_step
 }
 
 deploy_dash0_api_sync_resources() {

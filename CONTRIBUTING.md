@@ -269,6 +269,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `PROMETHEUS_SCRAPING_ENABLED`: Set this to "false" to disable Prometheus scraping in the test namespace via the
       monitoring resource.
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
+    * `PROMETHEUS_CRD_SUPPORT_ENABLED`: Set this to `true` to enable support for Prometheus CRDs (e.g. ServiceMonitor).
+      If at least one namespace has a monitoring resource with Prometheus scraping enabled, the OpenTelemetry
+      target-allocator will be deployed.
     * `SELF_MONITORING_ENABLED`: Set this to "false" to disable the operator's self monitoring.
       This defaults to "true".
     * `SYNCHRONIZE_PERSES_DASHBOARDS`: Set this to "false" to disable synchronizing Perses dashboard resources via the

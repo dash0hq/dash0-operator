@@ -10,8 +10,12 @@ scripts_lib="test-resources/bin/lib"
 
 cd "$project_root"
 
+# shellcheck source=./lib/constants
+source "$scripts_lib/constants"
 # shellcheck source=./lib/util
 source "$scripts_lib/util"
+
+target_namespace="${1:-$default_target_ns}"
 
 load_env_file
 
@@ -153,3 +157,10 @@ cat \
   OPERATOR_NAMESPACE="$operator_namespace" \
   envsubst > \
   test-resources/cert-manager/helm-values.yaml
+
+# shellcheck disable=SC2002
+cat \
+  test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml.template | \
+  TARGET_NAMESPACE="$target_namespace" \
+  envsubst > \
+  test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml
