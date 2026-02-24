@@ -322,7 +322,7 @@ func resourceAttributeMatcherSelfMonitoringOperatorManager(operatorNamespace str
 			)
 		} else {
 			// We are deliberately not requesting the namespace to be set to produce a match; the self-monitoring
-			// telemetry does not go through the k8sattributes processor, in fact it does neither go through the
+			// telemetry does not go through the k8s_attributes processor, in fact it does neither go through the
 			// daemonset collector nor the cluster metrics collector, instead it is sent directly to the export
 			// endpoint, hence it does not have extended Kubernetes resource attributes attached.
 			matchResult.addPassedAssertion(namespaceNameKey)

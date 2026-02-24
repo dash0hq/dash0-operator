@@ -73,7 +73,7 @@ processors:
   batch: {}
 {{- end }}
 
-  k8sattributes:
+  k8s_attributes:
     extract:
       {{- if .DisableReplicasetInformer }}
       deployment_name_from_replicaset: true
@@ -426,7 +426,7 @@ service:
         - k8s_cluster
       processors:
         - memory_limiter
-        - k8sattributes
+        - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
@@ -486,7 +486,7 @@ service:
       processors:
         - memory_limiter
         - transform/k8s_events
-        - k8sattributes
+        - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
