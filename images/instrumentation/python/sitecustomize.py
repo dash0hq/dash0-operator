@@ -37,7 +37,7 @@ def _print_debug_msg(message):
         _print_to_stderr(message)
 
 
-_print_debug_msg("running usercustomize.py")
+_print_debug_msg("running sitecustomize.py")
 _print_debug_msg("PYTHONPATH: {}".format(os.environ.get("PYTHONPATH")))
 
 
@@ -54,16 +54,16 @@ def _self_deactivate(current_site):
     # Starting child processes is quite common in Python (e.g. gunicorn etc.), and in particular, the OpenTelemetry
     # instrumentation wrapper (e.g. opentelemetry-instrument python app.py, see
     # https://opentelemetry.io/docs/zero-code/python) does this. When self-deactivating, we need to make sure that we
-    # do not only self-deactivate for the current process, but also directly deactivate the OpenTelemetry injector's
+    # do not only self-deactivate for the current process but also directly deactivate the OpenTelemetry injector's
     # auto-instrumentation for Python for child processes.
     # Failing to do so, in particular when the application is already instrumented with the opentelemetry-instrument
     # wrapper, might crash the child process in case of conflicting opentelemetry-* dependency versions. The reason is
     # that the child process started by opentelemetry-instrument will run e.g.
     # https://github.com/open-telemetry/opentelemetry-python-contrib/blob/v0.53b0/opentelemetry-instrumentation/src/opentelemetry/instrumentation/auto_instrumentation/_load.py
-    # in the version brought in by the application, but _load.py then loads other opentelemetry-* dependencies from
+    # in the version brought in by the application. But _load.py then loads other opentelemetry-* dependencies from
     # /__otel_auto_instrumentation/agents/python/glibc/opentelemetry/instrumentation/auto_instrumentation/_load.py,
-    # that is, from the packages that we provide. This happens _before_ this usercustomize.py script runs in the child
-    # process. Hence, we cannot rely on usercustomize.py to self-deactivate in the child process, but must enforce
+    # that is, from the packages that we provide. This happens _before_ this sitecustomize.py script runs in the child
+    # process. Hence, we cannot rely on sitecustomize.py to self-deactivate in the child process, but must enforce
     # self-deactivation via environment variables.
 
     # Remove this site from PYTHONPATH so child processes do not attempt to load packages from us.

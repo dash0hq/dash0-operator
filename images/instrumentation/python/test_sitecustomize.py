@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Unit tests for usercustomize.py
+# Unit tests for sitecustomize.py
 # This file tests the OpenTelemetry Python instrumentation initialization logic.
 
 from __future__ import print_function
@@ -18,14 +18,14 @@ from packaging.version import Version  # noqa: F401
 
 # Determine the absolute path to the directory containing this test file
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
-USERCUSTOMIZE_PATH = os.path.join(TEST_DIR, 'usercustomize.py')
+SITECUSTOMIZE_PATH = os.path.join(TEST_DIR, 'sitecustomize.py')
 
 
-def load_usercustomize_module():
-    """Helper to load the usercustomize module."""
+def load_sitecustomize_module():
+    """Helper to load the sitecustomize module."""
     spec = importlib.util.spec_from_file_location(
-        "usercustomize_for_test",
-        USERCUSTOMIZE_PATH
+        "sitecustomize_for_test",
+        SITECUSTOMIZE_PATH
     )
     module = importlib.util.module_from_spec(spec)
     return module, spec
@@ -47,7 +47,7 @@ def create_dirname_side_effect(mock_site):
 
 
 class TestImportDistro(unittest.TestCase):
-    """Test suite for the import_distro function in usercustomize.py."""
+    """Test suite for the import_distro function in sitecustomize.py."""
 
     def setUp(self):
         """Set up test fixtures before each test method."""
@@ -76,7 +76,7 @@ class TestImportDistro(unittest.TestCase):
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                module, spec = load_usercustomize_module()
+                module, spec = load_sitecustomize_module()
                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -92,7 +92,7 @@ class TestImportDistro(unittest.TestCase):
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                module, spec = load_usercustomize_module()
+                module, spec = load_sitecustomize_module()
                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -109,7 +109,7 @@ class TestImportDistro(unittest.TestCase):
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                module, spec = load_usercustomize_module()
+                module, spec = load_sitecustomize_module()
                 spec.loader.exec_module(module)
 
         self.assertEqual(os.environ.get("PYTHONPATH"), "")
@@ -125,7 +125,7 @@ class TestImportDistro(unittest.TestCase):
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                module, spec = load_usercustomize_module()
+                module, spec = load_sitecustomize_module()
                 spec.loader.exec_module(module)
 
         self.assertEqual(os.environ.get("PYTHONPATH"), "/other/path,/another/path")
@@ -140,7 +140,7 @@ class TestImportDistro(unittest.TestCase):
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                module, spec = load_usercustomize_module()
+                module, spec = load_sitecustomize_module()
                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -156,7 +156,7 @@ class TestImportDistro(unittest.TestCase):
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                module, spec = load_usercustomize_module()
+                module, spec = load_sitecustomize_module()
                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -190,7 +190,7 @@ class TestImportDistro(unittest.TestCase):
 
                         mock_dist.side_effect = dist_side_effect
 
-                        module, spec = load_usercustomize_module()
+                        module, spec = load_sitecustomize_module()
                         spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -222,7 +222,7 @@ class TestImportDistro(unittest.TestCase):
                             'opentelemetry.instrumentation': MagicMock(),
                             'opentelemetry.instrumentation.auto_instrumentation': MagicMock()
                         }):
-                            module, spec = load_usercustomize_module()
+                            module, spec = load_sitecustomize_module()
                             spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -251,7 +251,7 @@ class TestImportDistro(unittest.TestCase):
 
                         mock_dist.side_effect = dist_side_effect
 
-                        module, spec = load_usercustomize_module()
+                        module, spec = load_sitecustomize_module()
                         spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -272,7 +272,7 @@ class TestImportDistro(unittest.TestCase):
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
                 with patch('importlib.metadata.distributions', return_value=[mock_dist]):
-                    module, spec = load_usercustomize_module()
+                    module, spec = load_sitecustomize_module()
                     spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -301,7 +301,7 @@ class TestImportDistro(unittest.TestCase):
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
                 with patch('importlib.metadata.distributions', return_value=[mock_dist_sdk, mock_dist_distro]):
-                    module, spec = load_usercustomize_module()
+                    module, spec = load_sitecustomize_module()
                     spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
@@ -337,7 +337,7 @@ class TestImportDistro(unittest.TestCase):
                                 'opentelemetry.instrumentation': MagicMock(),
                                 'opentelemetry.instrumentation.auto_instrumentation': MagicMock()
                             }):
-                                module, spec = load_usercustomize_module()
+                                module, spec = load_sitecustomize_module()
                                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()

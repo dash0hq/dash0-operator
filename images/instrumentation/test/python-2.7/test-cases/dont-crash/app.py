@@ -11,7 +11,7 @@ except ImportError:
 
 try:
     pkg_resources.get_distribution('opentelemetry-distro')
-    # If we reach here, the package is loaded, which is unexpected, as usercustomize.py should have prevented that.
+    # If we reach here, the package is loaded, which is unexpected, as sitecustomize.py should have prevented that.
     print >> sys.stderr, "error: opentelemetry-distro has been loaded in Python 2.7, although it should not have been loaded"
     sys.exit(1)
 except pkg_resources.DistributionNotFound:

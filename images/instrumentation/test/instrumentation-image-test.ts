@@ -561,6 +561,13 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
       case 'python-double-instrumentation':
         testCmd = ['opentelemetry-instrument', 'python', `/test-cases/${testCase}/app.py`];
         break;
+      case 'python-venv':
+        testCmd = [
+          '/bin/bash',
+          '-c',
+          `. /test-cases/${testCase}/venv/bin/activate && python /test-cases/${testCase}/app.py`,
+        ];
+        break;
 
       case 'node':
         testCmd = ['node', `/test-cases/${testCase}/index.js`];
