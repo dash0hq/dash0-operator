@@ -197,13 +197,13 @@ GOLANGCI_LINT_VERSION ?= v2.9.0
 golangci-lint-install:
 	@[ -f $(GOLANGCI_LINT) ] || { \
 	set -e ;\
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell dirname $(GOLANGCI_LINT)) $(GOLANGCI_LINT_VERSION) ;\
+	time curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell dirname $(GOLANGCI_LINT)) $(GOLANGCI_LINT_VERSION) ;\
 	}
 
 .PHONY: golangci-lint
 golangci-lint: golangci-lint-install ## Run static code analysis for Go code.
 	@echo "-------------------------------- (linting Go code)"
-	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run; popd > /dev/null'
+	@time find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run; popd > /dev/null'
 
 .PHONY: golangci-lint-fix
 golangci-lint-fix: golangci-lint-install ## Run static code analysis for Go code and fix issues automatically.
@@ -226,7 +226,7 @@ internal-config-map-lint: ## Verify config map templates for resources managed b
 	fi
 
 define lint_helm_chart
-$(eval HELM_LINT_OUTPUT=$(shell helm lint --quiet $(1)))
+$(eval HELM_LINT_OUTPUT=$(shell time helm lint --quiet $(1)))
 if [ -n "$(HELM_LINT_OUTPUT)" ]; then \
   echo helm lint found issues: ; \
   echo "$(HELM_LINT_OUTPUT)" ; \
@@ -256,7 +256,7 @@ shellcheck-check-installed:
 .PHONY: shellcheck-lint
 shellcheck-lint: shellcheck-check-installed ## Run static code analysis for all shell scripts.
 	@echo "-------------------------------- (linting shell scripts)"
-	find . -name \*.sh | xargs shellcheck -x
+	time find . -name \*.sh | xargs shellcheck -x
 
 .PHONY: npm-installed
 npm-installed:
@@ -269,17 +269,17 @@ npm-installed:
 .PHONY: instrumentation-test-lint
 instrumentation-test-lint: npm-installed
 	@echo "-------------------------------- (linting the instrumentation tests)"
-	cd images/instrumentation/test && npm ci && npm run lint
+	cd images/instrumentation/test && time npm ci && time npm run lint
 
 .PHONY: prometheus-crd-version-check
 prometheus-crd-version-check: ## Check whether all references to the PrometheusRule CRD are in sync.
 	@echo "-------------------------------- (verifying the Prometheus CRD version is in sync)"
-	./test-resources/bin/prometheus-crd-version-check.sh
+	time ./test-resources/bin/prometheus-crd-version-check.sh
 
 .PHONY: perses-crd-version-check
 perses-crd-version-check: ## Check whether all references to the PersesDashboard CRD are in sync.
 	@echo "-------------------------------- (verifying the Perses CRD version is in sync)"
-	./test-resources/bin/perses-crd-version-check.sh
+	time ./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
 lint: golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
