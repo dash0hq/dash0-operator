@@ -203,7 +203,14 @@ golangci-lint-install:
 .PHONY: golangci-lint
 golangci-lint: golangci-lint-install ## Run static code analysis for Go code.
 	@echo "-------------------------------- (linting Go code)"
-	@time find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run; popd > /dev/null'
+	cd ./ && time $(GOLANGCI_LINT) run
+	cd ./test/e2e/ && time $(GOLANGCI_LINT) run
+	cd ./test/e2e/otlp-sink/telemetrymatcher && time $(GOLANGCI_LINT) run
+	cd ./test/e2e/dash0-api-mock/ && time $(GOLANGCI_LINT) run
+	cd ./test/e2e/pkg/shared/ && time $(GOLANGCI_LINT) run
+	cd ./images/configreloader/src/ && time $(GOLANGCI_LINT) run
+	cd ./images/filelogoffsetsync/src/ && time $(GOLANGCI_LINT) run
+	cd ./images/pkg/common/ && $(GOLANGCI_LINT) run
 
 .PHONY: golangci-lint-fix
 golangci-lint-fix: golangci-lint-install ## Run static code analysis for Go code and fix issues automatically.
