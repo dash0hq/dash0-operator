@@ -127,6 +127,25 @@ receivers:
     {{- end }}
     k8s_api_config:
       auth_type: serviceAccount
+    {{- /*
+    As of version v0.146.0, the following volume-related resource attributes are deprecated but still enabled by
+    default. See for example
+    https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.146.0/receiver/kubeletstatsreceiver/metadata.yaml#L14
+    We have to disable them explicitly to avoid the associated warning log messages at collector startup.
+    */}}
+    resource_attributes:
+      aws.volume.id:
+        enabled: false
+      fs.type:
+        enabled: false
+      gce.pd.name:
+        enabled: false
+      glusterfs.endpoints.name:
+        enabled: false
+      glusterfs.path:
+        enabled: false
+      partition:
+        enabled: false
     metrics:
       container.cpu.usage:
         enabled: true
