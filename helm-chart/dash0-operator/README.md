@@ -147,6 +147,10 @@ The operator supports the following CRDs
 - `PodMonitor`
 - `ScrapeConfig` with `kubernetesSDConfigs`
 
+The Dash0 Operator uses the
+[OpenTelemetry Target Allocator](https://github.com/open-telemetry/opentelemetry-operator/tree/main/cmd/otel-allocator)
+to watch Prometheus CRDs and assign targets to the collector running on the same node as the monitored workload.
+
 #### Authorization
 
 If the scraped endpoints require authorization, it is mandatory to configure mTLS for the communication between the
@@ -167,12 +171,33 @@ Once you have created the required secrets holding the certificates, you can ena
 via the Helm chart:
 
 ```yaml
+operator:
   targetAllocator:
     mTls:
       enabled: true
       serverCertSecretName: "ta-mtls-server-cert-secret"
       clientCertSecretName: "ta-mtls-client-cert-secret"
 ```
+
+#### Configuring the resource requests/limits for the target-allocator
+
+Depending on individual requirements (like the number of watched resources), it might be necessary to increase the
+resource requests/limits of the target-allocator. This can be achieved by setting the respective fields via Helm:
+
+```yaml
+operator:
+  targetAllocator:
+    containerResources:
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      gomemlimit: 400MiB
+      requests:
+        cpu: 200m
+        memory: 128Mi
+```
+
+
 
 ## Configuration
 
