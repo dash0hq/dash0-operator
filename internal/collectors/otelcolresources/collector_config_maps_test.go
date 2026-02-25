@@ -41,7 +41,13 @@ const (
 
 type configMapTypeDefinition struct {
 	cmType                    configMapType
-	assembleConfigMapFunction func(*oTelColConfig, []string, []NamespacedFilter, []NamespacedTransform, bool) (*corev1.ConfigMap, error)
+	assembleConfigMapFunction func(
+		*oTelColConfig,
+		[]string,
+		[]NamespacedFilter,
+		[]NamespacedTransform,
+		bool,
+	) (*corev1.ConfigMap, error)
 }
 
 type conditionExpectationsPerObjectType map[signalType]map[objectType][]string
@@ -183,10 +189,12 @@ func cmTestHttpExporterWithInsecure() otlpExporters {
 	httpExporter, err := convertHttpExporterToOtlpExporter(&dash0common.HttpConfiguration{
 		Endpoint: httpInsecureEndpointTest,
 		Encoding: dash0common.Proto,
-		Headers: []dash0common.Header{{
-			Name:  "Key",
-			Value: "Value",
-		}},
+		Headers: []dash0common.Header{
+			{
+				Name:  "Key",
+				Value: "Value",
+			},
+		},
 	}, "default")
 	Expect(err).ToNot(HaveOccurred())
 	return otlpExporters{
@@ -1738,12 +1746,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	Describe("discard metrics from unmonitored namespaces", func() {
 
 		type ottlFilterExpressionTestConfig struct {
-			monitoredNamespaces []string
-			expectedExpression  string
+			monitoredNamespaces         []string
+			selfMonitoringEnabled       bool
+			prometheusCrdSupportEnabled bool
+			expectedExpression          string
 		}
 
 		DescribeTable("should render the namespace filter ottl expression", func(testConfig ottlFilterExpressionTestConfig) {
-			expression := renderOttlNamespaceFilter(testConfig.monitoredNamespaces)
+			expression := renderOttlNamespaceFilter(
+				testConfig.monitoredNamespaces,
+				testConfig.selfMonitoringEnabled,
+				testConfig.prometheusCrdSupportEnabled,
+			)
 			Expect(expression).To(Equal(testConfig.expectedExpression))
 		},
 			Entry("with nil", ottlFilterExpressionTestConfig{
@@ -1772,6 +1786,33 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-3\"\n",
 			}),
+			Entry("with no namespaces and self-monitoring enabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:         nil,
+				selfMonitoringEnabled:       true,
+				prometheusCrdSupportEnabled: true,
+				expectedExpression: "(resource.attributes[\"k8s.pod.label.app.kubernetes.io/instance\"] != \"dash0-operator\" " +
+					"and resource.attributes[\"k8s.pod.label.app.kubernetes.io/name\"] != \"opentelemetry-target-allocator\") " +
+					"and resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
+			Entry("with one namespace and self-monitoring enabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:         []string{namespace1},
+				selfMonitoringEnabled:       true,
+				prometheusCrdSupportEnabled: true,
+				expectedExpression: "(resource.attributes[\"k8s.pod.label.app.kubernetes.io/instance\"] != \"dash0-operator\" " +
+					"and resource.attributes[\"k8s.pod.label.app.kubernetes.io/name\"] != \"opentelemetry-target-allocator\") " +
+					"and resource.attributes[\"k8s.namespace.name\"] != nil\n" +
+					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n",
+			}),
+			Entry("with two namespaces and self-monitoring enabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:         []string{namespace1, namespace2},
+				selfMonitoringEnabled:       true,
+				prometheusCrdSupportEnabled: true,
+				expectedExpression: "(resource.attributes[\"k8s.pod.label.app.kubernetes.io/instance\"] != \"dash0-operator\" " +
+					"and resource.attributes[\"k8s.pod.label.app.kubernetes.io/name\"] != \"opentelemetry-target-allocator\") " +
+					"and resource.attributes[\"k8s.namespace.name\"] != nil\n" +
+					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n" +
+					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n",
+			}),
 		)
 
 		DescribeTable("should render the namespace filter and add it to the metrics pipeline", func(cmTypeDef configMapTypeDefinition) {
@@ -1784,7 +1825,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			filterProcessor := ReadFromMap(collectorConfig, []string{"processors", "filter/metrics/only_monitored_namespaces"})
+			filterProcessor := ReadFromMap(collectorConfig, []string{
+				"processors",
+				"filter/metrics/only_monitored_namespaces",
+			})
 			Expect(filterProcessor).ToNot(BeNil())
 			filters := ReadFromMap(filterProcessor, []string{"metrics", "metric"})
 			Expect(filters).To(HaveLen(1))
@@ -1846,6 +1890,143 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			prometheusMetricsExporters := readPipelineExporters(pipelines, "metrics/prometheus-to-forwarder")
 			Expect(prometheusMetricsExporters).ToNot(BeNil())
 			Expect(prometheusMetricsExporters).To(ContainElement("forward/metrics-processors"))
+		})
+
+		It("should render the target-allocator self-monitoring scrape job when self-monitoring and Prometheus CRD support are enabled", func() {
+			taConfig := &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Exporters:                   cmTestSingleDefaultOtlpExporter(),
+				PrometheusCrdSupportEnabled: true,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(taConfig, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "prometheus"})).ToNot(BeNil())
+
+			// verify the ta scrape job exists with correct label selector and namespace targeting
+			taJobNamespaceNames := ReadFromMap(collectorConfig, []string{
+				"receivers", "prometheus", "config", "scrape_configs",
+				"job_name=dash0-target-allocator-selfmonitoring",
+				"kubernetes_sd_configs", "role=pod", "namespaces", "names",
+			})
+			Expect(taJobNamespaceNames).ToNot(BeNil())
+			Expect(taJobNamespaceNames.([]interface{})).To(ContainElement(OperatorNamespace))
+
+			taJobLabelSelector := ReadFromMap(collectorConfig, []string{
+				"receivers", "prometheus", "config", "scrape_configs",
+				"job_name=dash0-target-allocator-selfmonitoring",
+				"kubernetes_sd_configs", "role=pod", "selectors", "0", "label",
+			})
+			Expect(taJobLabelSelector).To(Equal(
+				"app.kubernetes.io/instance=dash0-operator,app.kubernetes.io/name=opentelemetry-target-allocator",
+			))
+
+			// verify the transform processor is defined
+			Expect(ReadFromMap(collectorConfig, []string{
+				"processors",
+				"transform/metrics/prometheus_service_attributes",
+			})).ToNot(BeNil())
+
+			pipelines := readPipelines(collectorConfig)
+			prometheusMetricsReceivers := readPipelineReceivers(pipelines, "metrics/prometheus-to-forwarder")
+			Expect(prometheusMetricsReceivers).ToNot(BeNil())
+			Expect(prometheusMetricsReceivers).To(ContainElement("prometheus"))
+			prometheusMetricsProcessors := readPipelineProcessors(pipelines, "metrics/prometheus-to-forwarder")
+			Expect(prometheusMetricsProcessors).ToNot(BeNil())
+			Expect(prometheusMetricsProcessors).To(ContainElement("transform/metrics/prometheus_service_attributes"))
+		})
+
+		It("should render the target-allocator self-monitoring scrape job alongside namespace scrape jobs", func() {
+			taConfig := &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Exporters:                   cmTestSingleDefaultOtlpExporter(),
+				PrometheusCrdSupportEnabled: true,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(
+				taConfig,
+				[]string{namespace1, namespace2},
+				nil,
+				[]string{namespace1, namespace2},
+				nil,
+				nil,
+				emptyTargetAllocatorMtlsConfig,
+				false,
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			scrapeConfigs := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "config", "scrape_configs"})
+			Expect(scrapeConfigs).ToNot(BeNil())
+
+			// verify the ta self-monitoring job is present
+			taJob := ReadFromMap(scrapeConfigs, []string{"job_name=dash0-target-allocator-selfmonitoring"})
+			Expect(taJob).ToNot(BeNil())
+
+			// verify the regular namespace scrape jobs are also present
+			for _, jobName := range []string{
+				"dash0-kubernetes-pods-scrape-config",
+				"dash0-kubernetes-pods-scrape-config-slow",
+			} {
+				verifyScrapeJobHasNamespaces(collectorConfig, jobName)
+			}
+		})
+
+		It("should not render the target-allocator self-monitoring scrape job when self-monitoring is disabled", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(
+				config,
+				[]string{namespace1},
+				nil,
+				[]string{namespace1},
+				nil,
+				nil,
+				emptyTargetAllocatorMtlsConfig,
+				false,
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			scrapeConfigs := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "config", "scrape_configs"})
+			Expect(scrapeConfigs).ToNot(BeNil())
+			taJob := ReadFromMap(scrapeConfigs, []string{"job_name=dash0-target-allocator-selfmonitoring"})
+			Expect(taJob).To(BeNil())
+		})
+
+		It("should not render the target-allocator self-monitoring scrape job when Prometheus CRD support is disabled", func() {
+			taConfig := &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(
+				taConfig,
+				[]string{namespace1},
+				nil,
+				[]string{namespace1},
+				nil,
+				nil,
+				emptyTargetAllocatorMtlsConfig,
+				false,
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			scrapeConfigs := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "config", "scrape_configs"})
+			Expect(scrapeConfigs).ToNot(BeNil())
+			taJob := ReadFromMap(scrapeConfigs, []string{"job_name=dash0-target-allocator-selfmonitoring"})
+			Expect(taJob).To(BeNil())
 		})
 	})
 
@@ -3151,6 +3332,89 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(tlsConfig).To(BeNil())
 		})
 	})
+
+	Describe("target-allocator self-monitoring", func() {
+		It("should render the filelog/selfmonitoring receiver and pipeline when both SelfMonitoringEnabled and PrometheusCrdSupportEnabled are true", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Exporters:                   cmTestSingleDefaultOtlpExporter(),
+				PrometheusCrdSupportEnabled: true,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			filelogReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "filelog/selfmonitoring"})
+			Expect(filelogReceiverRaw).ToNot(BeNil())
+			filelogReceiver, ok := filelogReceiverRaw.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			includeRaw := filelogReceiver["include"]
+			Expect(includeRaw).ToNot(BeNil())
+			include, ok := includeRaw.([]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(include).To(HaveLen(1))
+			Expect(include[0].(string)).To(ContainSubstring(
+				fmt.Sprintf("%s_%s-opentelemetry-target-allocator", OperatorNamespace, namePrefix),
+			))
+			Expect(filelogReceiver["start_at"]).To(Equal("beginning"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineReceivers(pipelines, "logs/selfmonitoring-filelog-to-forwarder")).To(ConsistOf("filelog/selfmonitoring"))
+			Expect(readPipelineProcessors(pipelines, "logs/selfmonitoring-filelog-to-forwarder")).To(ConsistOf("memory_limiter"))
+			Expect(readPipelineExporters(pipelines, "logs/selfmonitoring-filelog-to-forwarder")).To(ConsistOf("forward/logs-processors"))
+		})
+
+		It("should not render the filelog/selfmonitoring receiver and pipeline when SelfMonitoringEnabled is false", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Exporters:                   cmTestSingleDefaultOtlpExporter(),
+				PrometheusCrdSupportEnabled: true,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: false,
+				},
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "filelog/selfmonitoring"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{
+				"service",
+				"pipelines",
+				"logs/selfmonitoring-filelog-to-forwarder",
+			})).To(BeNil())
+		})
+
+		It("should not render the filelog/selfmonitoring receiver and pipeline when PrometheusCrdSupportEnabled is false", func() {
+			config := &oTelColConfig{
+				OperatorNamespace:           OperatorNamespace,
+				NamePrefix:                  namePrefix,
+				Exporters:                   cmTestSingleDefaultOtlpExporter(),
+				PrometheusCrdSupportEnabled: false,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "filelog/selfmonitoring"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{
+				"service",
+				"pipelines",
+				"logs/selfmonitoring-filelog-to-forwarder",
+			})).To(BeNil())
+		})
+	})
 })
 
 func assembleDaemonSetCollectorConfigMapForTest(
@@ -3217,7 +3481,8 @@ func verifyScrapeJobHasNamespaces(collectorConfig map[string]any, jobName string
 }
 
 func pathToScrapeJob(jobName string) []string {
-	return []string{"receivers",
+	return []string{
+		"receivers",
 		"prometheus",
 		"config",
 		"scrape_configs",
@@ -3568,7 +3833,8 @@ func createTransformTestForSingleObjectType(
 						fmt.Sprintf(
 							`resource.attributes["k8s.namespace.name"] == "%s"`,
 							namespace1,
-						)},
+						),
+					},
 					statements: statementsNamespace1,
 				},
 				{
@@ -3576,7 +3842,8 @@ func createTransformTestForSingleObjectType(
 						fmt.Sprintf(
 							`resource.attributes["k8s.namespace.name"] == "%s"`,
 							namespace2,
-						)},
+						),
+					},
 					statements: statementsNamespace2,
 				},
 			},
@@ -3594,7 +3861,8 @@ func createTransformTestForSingleObjectType(
 							fmt.Sprintf(
 								`resource.attributes["k8s.namespace.name"] == "%s"`,
 								namespace1,
-							)},
+							),
+						},
 						statements: statementsNamespace1,
 					},
 					{
@@ -3602,7 +3870,8 @@ func createTransformTestForSingleObjectType(
 							fmt.Sprintf(
 								`resource.attributes["k8s.namespace.name"] == "%s"`,
 								namespace2,
-							)},
+							),
+						},
 						statements: statementsNamespace2,
 					},
 				},

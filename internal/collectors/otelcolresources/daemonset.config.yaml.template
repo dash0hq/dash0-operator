@@ -249,9 +249,9 @@ receivers:
 
   {{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
 
-  {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
+  {{- if or $hasPrometheusScrapingEnabledForAtLeastOneNamespace (and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled) }}
   prometheus:
-    {{- if .PrometheusCrdSupportEnabled }}
+    {{- if and .PrometheusCrdSupportEnabled $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
     target_allocator:
       {{- if .TargetAllocatorMtlsEnabled }}
       endpoint: https://{{ .TargetAllocatorServiceName }}:443
@@ -268,14 +268,14 @@ receivers:
       {{- end }}
     {{- end }}
     config:
+      scrape_configs:
+      {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
       {{- /*
       This particular set of scrape config jobs (dash0-kubernetes-pods-scrape-config and
       dash0-kubernetes-pods-scrape-config-slow) is mostly a copy of
       https://github.com/prometheus-community/helm-charts/blob/5adf0ee898e8e5430471cb43a5f9532745c22f81/charts/prometheus/values.yaml
       to be compatible with the well-known configuration via annotations.
       */}}
-      scrape_configs:
-
       # The relabeling allows the actual pod scrape endpoint to be configured via the
       # following annotations:
       #
@@ -413,6 +413,56 @@ receivers:
           - source_labels: [__meta_kubernetes_pod_node_name]
             action: replace
             target_label: node
+      {{- end }}
+
+      # This job scrapes the prometheus endpoint exposed by the target-allocator.
+      # It is only enabled if both self-monitoring and support for Prometheus CRDs are enabled.
+      {{- if and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled }}
+      - job_name: 'dash0-target-allocator-selfmonitoring'
+        honor_labels: true
+
+        kubernetes_sd_configs:
+          - role: pod
+            selectors:
+              - role: pod
+                label: {{ printf "app.kubernetes.io/instance=%s,app.kubernetes.io/name=%s" .TargetAllocatorAppKubernetesIoInstance .TargetAllocatorAppKubernetesIoName }}
+                field: "spec.nodeName=${K8S_NODE_NAME}"
+            namespaces:
+              names:
+                - "{{ .OperatorNamespace }}"
+
+        relabel_configs:
+          # set the scrape address from the pod IP and use the static port from the target-allocator
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: '$1:8080'
+          # labels to keep
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+
+        metric_relabel_configs:
+          # drop selected metrics
+          # note about opentelemetry_allocator_targets_unassigned: this would be an interesting metric, but it looks
+          # like its gauge does not get reset correctly atm, making it really misleading -> temporarily disabling it
+          - source_labels: [__name__]
+            regex: "go_.*|\
+              prometheus_sd_azure_.*|\
+              prometheus_sd_consul_.*|\
+              prometheus_sd_dns_.*|\
+              prometheus_sd_file_.*|\
+              prometheus_treecache_zookeeper.*|\
+              prometheus_sd_kuma_.*|\
+              prometheus_sd_linode.*|\
+              prometheus_sd_nomad_.*|\
+              opentelemetry_allocator_targets_unassigned"
+            action: drop
+      {{- end }}
   {{- end }}
 
   {{- if .NamespacesWithLogCollection }}
@@ -421,6 +471,25 @@ receivers:
     {{- range $i, $namespace := .NamespacesWithLogCollection }}
       - /var/log/pods/{{ $namespace }}_*/*/*.log
     {{- end}}
+    storage: file_storage/filelogreceiver_offsets
+    include_file_path: true
+    include_file_name: false
+    include_file_record_number: true
+    operators:
+    - id: container-parser
+      max_log_size: 102400
+      type: container
+  {{- end}}
+
+  # deliberately not checking $hasPrometheusScrapingEnabledForAtLeastOneNamespace here,to have logs in case the
+  # target-allocator is running even though it shouldn't
+  {{- if and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled }}
+  filelog/selfmonitoring:
+    include:
+      - /var/log/pods/{{ .OperatorNamespace }}_{{ .OperatorResourcesNamePrefix }}-opentelemetry-target-allocator*/*/*.log
+    # the target-allocator starts faster than the collectors are created, we therefore need to read its logs from the
+    # beginning or we will miss the logs it prints during startup
+    start_at: beginning
     storage: file_storage/filelogreceiver_offsets
     include_file_path: true
     include_file_name: false
@@ -547,7 +616,7 @@ processors:
         statements:
         - truncate_all(resource.attributes, 2048)
 
-  {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
+  {{- if or $hasPrometheusScrapingEnabledForAtLeastOneNamespace (and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled) }}
   transform/metrics/prometheus_service_attributes:
     error_mode: ignore
     metric_statements:
@@ -571,7 +640,7 @@ processors:
 
       # If the two rules above did not yield a result, remove the prometheus service name. Otherwise the service name
       # would become the name of the scrape job, e.g. "dash0-kubernetes-pods-scrape-config". It is better to not have
-      # any service name set as all than that, and let the backend merge the pod data with other telemetry for the pod,
+      # any service name set at all than that, and let the backend merge the pod data with other telemetry for the pod,
       # as other telemetry might have a service name. We also remove the service.instance.id that was potentially set by
       # the prometheus receiver, since its value (<host>:<port> of the scraped URL) is not useful either.
       - delete_key(resource.attributes, "service.instance.id") where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
@@ -870,7 +939,7 @@ service:
       exporters:
         - forward/metrics-processors
 
-    {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
+    {{- if or $hasPrometheusScrapingEnabledForAtLeastOneNamespace (and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled) }}
     metrics/prometheus-to-forwarder:
       receivers:
         - prometheus
@@ -949,6 +1018,16 @@ service:
     logs/filelog-to-forwarder:
       receivers:
         - filelog
+      processors:
+        - memory_limiter
+      exporters:
+        - forward/logs-processors
+    {{- end }}
+
+    {{- if and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled }}
+    logs/selfmonitoring-filelog-to-forwarder:
+      receivers:
+        - filelog/selfmonitoring
       processors:
         - memory_limiter
       exporters:
