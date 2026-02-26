@@ -251,6 +251,12 @@ receivers:
 
   {{- if or $hasPrometheusScrapingEnabledForAtLeastOneNamespace (and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled) }}
   prometheus:
+    {{- if .DevelopmentMode }}
+    api_server:
+      enabled: true
+      server_config:
+        endpoint: "localhost:9191"
+    {{- end }}
     {{- if and .PrometheusCrdSupportEnabled $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
     target_allocator:
       {{- if .TargetAllocatorMtlsEnabled }}

@@ -2028,6 +2028,55 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			taJob := ReadFromMap(scrapeConfigs, []string{"job_name=dash0-target-allocator-selfmonitoring"})
 			Expect(taJob).To(BeNil())
 		})
+
+		It("should render the prometheus api_server config when development mode is enabled", func() {
+			devConfig := &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				DevelopmentMode:   true,
+			}
+			configMap, err := assembleDaemonSetCollectorConfigMap(
+				devConfig,
+				[]string{namespace1, namespace2},
+				nil,
+				[]string{namespace1},
+				nil,
+				nil,
+				emptyTargetAllocatorMtlsConfig,
+				false,
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "prometheus"})).ToNot(BeNil())
+			apiServer := ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "api_server"})
+			Expect(apiServer).ToNot(BeNil())
+			apiServerMap := apiServer.(map[string]any)
+			Expect(apiServerMap["enabled"]).To(Equal(true))
+			serverConfig := apiServerMap["server_config"]
+			Expect(serverConfig).ToNot(BeNil())
+			serverConfigMap := serverConfig.(map[string]any)
+			Expect(serverConfigMap["endpoint"]).To(Equal("localhost:9191"))
+		})
+
+		It("should not render the prometheus api_server config when development mode is disabled", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(
+				config,
+				[]string{namespace1, namespace2},
+				nil,
+				[]string{namespace1},
+				nil,
+				nil,
+				emptyTargetAllocatorMtlsConfig,
+				false,
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "prometheus"})).ToNot(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "prometheus", "api_server"})).To(BeNil())
+		})
 	})
 
 	Describe("log collection", func() {
