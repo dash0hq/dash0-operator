@@ -707,7 +707,7 @@ operator:
         memory: 128Mi
 
     # An array of tolerations for the target-allocator deployment pods managed by the operator.
-    # This can be used to make sure that target-allocator pod can be scheduled on nodes where it would not be scheduled
+    # This can be used to make sure the target-allocator pod can be scheduled on nodes where it would not be scheduled
     # otherwise due to Kubernetes taints.
     # Example:
     # deploymentTolerations:
