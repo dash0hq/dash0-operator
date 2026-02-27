@@ -166,7 +166,7 @@ func getPodNames(namespace string) []string {
 
 func executeCommandAndStoreOutput(fullCommandLine string, outputPath string) {
 	commandParts := strings.Split(fullCommandLine, " ")
-	fileName := strings.Join(commandParts, "_")
+	fileName := strings.Join(commandParts, "_") + ".txt"
 
 	output, err := run(exec.Command(commandParts[0], commandParts[1:]...), false)
 	if err != nil {

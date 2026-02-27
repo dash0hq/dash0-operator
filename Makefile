@@ -172,7 +172,7 @@ helm-unit-tests: ## Run the Helm chart unit tests.
 
 .PHONY: python-instrumentation-unit-tests
 python-instrumentation-unit-tests:
-	cd images/instrumentation/python && python -m unittest test_usercustomize.py -v
+	cd images/instrumentation/python && python -m unittest test_sitecustomize.py -v
 
 .PHONY: build-all-test-e2e
 build-all-test-e2e: all-images test-e2e ## Builds (but does not push) all container images, then runs the end-to-end tests.

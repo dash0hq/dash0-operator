@@ -60,7 +60,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh
-COPY python/usercustomize.py .
+COPY python/sitecustomize.py .
 
 # install Python artifacts (musl)
 FROM python:3.14.3-alpine3.23 AS build-python-musl
@@ -72,7 +72,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh
-COPY python/usercustomize.py .
+COPY python/sitecustomize.py .
 
 # build the final instrumentation image
 FROM alpine:3.23.3

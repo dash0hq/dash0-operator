@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image=python:3.14.3-slim-trixie
+ARG base_image=python:3.14.2-slim-trixie
 
 FROM ${instrumentation_image} AS init
 
@@ -11,10 +11,12 @@ FROM ${base_image}
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 COPY test-cases /test-cases
 WORKDIR /
-# Note: The individual pip install commands from each test case will all install dependencies into the system-wide
-# PYTHONHOME. Depencies of test cases are not isolated from each other.
+
 RUN for test in /test-cases/*; do \
   cd "${test}" && \
+  mkdir venv && \
+  python -m venv "${test}/venv" && \
+  . "${test}/venv/bin/activate" && \
   if [ -f requirements.txt ]; then \
     pip install --no-cache-dir -r requirements.txt; \
   fi \
