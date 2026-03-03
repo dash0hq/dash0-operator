@@ -472,7 +472,7 @@ tests:
                     - linux
             daemonSetProbes:
               liveness:
-                failureThreshold: 3
+                failureThreshold: 20
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
@@ -518,7 +518,7 @@ tests:
                     - linux
             deploymentProbes:
               liveness:
-                failureThreshold: 3
+                failureThreshold: 20
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1

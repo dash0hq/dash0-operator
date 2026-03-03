@@ -494,7 +494,7 @@ architecture of the machine running `make build-all-push-all-test-e2e` and the c
 
 Assuming worloads in the cluster can be reached, running the end-to-end tests can be done as follows:
 
-**With locally build images and the local Helm chart:**
+**With locally built images and the local Helm chart:**
 
 These require a remote registry that you can push to, which is network-reachable from the test cluster.
 If the registry requires authentication, additional steps are necessary.

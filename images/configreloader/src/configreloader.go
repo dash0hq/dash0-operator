@@ -72,9 +72,18 @@ func main() {
 		"",
 		"path to the collector's pid file, which contains the PID of the collector's process",
 	)
+
+	// Note: The checkFrequency of the configreloader is not the determining factor in how fast a changed config map will
+	// be noticed and a config update in the collector process will be triggered. Instead, this is mostly determined by
+	// the kubelet sync loop - the kubelet periodically polls the API server to detect changes to ConfigMaps/Secrets.
+	// This interval is controlled by the kubelet's syncFrequency setting, see
+	//nolint:lll
+	// https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/#kubelet-config-k8s-io-v1beta1-KubeletConfiguration
+	// This defaults to 1 minute. So it might take up to a minute from changing the config map content until the
+	// configreloader can see the config change.
 	checkFrequency := flag.Duration(
 		"frequency",
-		1*time.Second,
+		5*time.Second,
 		"how often to check for changes in the configuration files",
 	)
 
