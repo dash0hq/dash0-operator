@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type containerHasServiceAttributes struct {
@@ -229,14 +229,14 @@ type ResourceModifier struct {
 	actor util.WorkloadModifierActor
 
 	// the logger to use for logging messages during the resource modification process
-	logger logr.Logger
+	logger logd.Logger
 }
 
 func NewResourceModifier(
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	actor util.WorkloadModifierActor,
-	logger logr.Logger,
+	logger logd.Logger,
 ) *ResourceModifier {
 	return &ResourceModifier{
 		clusterInstrumentationConfig:   clusterInstrumentationConfig,
@@ -530,7 +530,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	container *corev1.Container,
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
-	perContainerLogger logr.Logger,
+	perContainerLogger logd.Logger,
 ) []string {
 	var instrumentationIssues []string
 	if container.Env == nil {
@@ -765,7 +765,7 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 	container *corev1.Container,
 	otelExporterOtlpEndpointValue string,
 	instrumentationIssues []string,
-	perContainerLogger logr.Logger,
+	perContainerLogger logd.Logger,
 ) []string {
 	otelExporterOtlpEndpointIsSet, otelExporterOtlpEndpointIdx :=
 		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpEndpointName)
@@ -835,7 +835,7 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 	container *corev1.Container,
 	instrumentationIssues []string,
-	perContainerLogger logr.Logger,
+	perContainerLogger logd.Logger,
 ) []string {
 	idx := findEnvVarIdx(container, envVarLdPreloadName)
 	if idx < 0 {

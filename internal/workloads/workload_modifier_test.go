@@ -11,10 +11,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -44,7 +44,7 @@ var (
 var _ = Describe("Dash0 Workload Modification", func() {
 
 	ctx := context.Background()
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	workloadModifier := NewResourceModifier(
 		clusterInstrumentationConfig,
 		DefaultNamespaceInstrumentationConfig,
@@ -642,7 +642,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 	Describe("individual modification functions", func() {
 		ctx := context.Background()
-		logger := log.FromContext(ctx)
+		logger := logd.FromContext(ctx)
 		workloadModifier := NewResourceModifier(
 			clusterInstrumentationConfig,
 			DefaultNamespaceInstrumentationConfig,

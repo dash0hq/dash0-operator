@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -16,7 +17,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -124,7 +124,7 @@ func (r *TargetAllocatorReconciler) Reconcile(
 	ctx context.Context,
 	request reconcile.Request,
 ) (reconcile.Result, error) {
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	logger.Info("reconciling target-allocator resources triggered by watch event", "request", request)
 
 	hasBeenReconciled, err := r.targetAllocatorManager.ReconcileTargetAllocator(

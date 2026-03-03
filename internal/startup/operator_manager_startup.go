@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -52,6 +51,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
 )
@@ -157,7 +157,7 @@ const (
 )
 
 var (
-	setupLog logr.Logger
+	setupLog logd.Logger
 
 	leaderElectionAwareRunnable     = util.NewLeaderElectionAwareRunnable()
 	startupTasksK8sClient           client.Client
@@ -198,8 +198,10 @@ func Start() {
 	crZapOpts := crzap.UseFlagOptions(&opts)
 
 	// Maintenance note: setupLog is not yet initialized before the call to setUpLogging.
-	delegatingZapCoreWrapper := setUpLogging(crZapOpts)
+	delegatingZapCoreWrapper := setUpLogging(crZapOpts, developmentMode)
 	// setupLog is initialized after this point and can be used
+
+	setupLog.Debug("development/debug mode enabled")
 
 	pprofPort := os.Getenv(pprofPortEnvVarName)
 	if pprofPort != "" {
@@ -528,7 +530,7 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 	return opts
 }
 
-func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
+func setUpLogging(crZapOpts crzap.Opts, developmentMode bool) *zaputil.DelegatingZapCoreWrapper {
 	o := zaputil.ConvertOptions([]crzap.Opts{crZapOpts})
 
 	// this basically mimics New<type>Config, but with a custom sink
@@ -538,6 +540,9 @@ func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 	defaultZapCore := zapcore.NewCore(&crzap.KubeAwareEncoder{Encoder: o.Encoder, Verbose: o.Development}, sink, o.Level)
 
 	delegatingZapCoreWrapper := zaputil.NewDelegatingZapCoreWrapper()
+	if developmentMode {
+		delegatingZapCoreWrapper.RootDelegatingZapCore.SetBufferingLevel(zapcore.DebugLevel)
+	}
 
 	// Send log records to stdout (defaultZapCore) and also to the OTel log SDK (delegatingZapCore). Additional plot
 	// twist: The OTel logger will only be initialized later, potentially after the operator configuration has been
@@ -553,12 +558,12 @@ func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 	// Set the created tee logger as the logger for the controller-runtime package.
 	ctrl.SetLogger(zapLogger)
 
-	setupLog = ctrl.Log.WithName("setup")
+	setupLog = logd.NewLogger(ctrl.Log.WithName("setup"))
 
 	return delegatingZapCoreWrapper
 }
 
-func readEnvironmentVariables(logger logr.Logger) error {
+func readEnvironmentVariables(logger logd.Logger) error {
 	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorNamespaceEnvVarName)
@@ -733,7 +738,7 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 	return ""
 }
 
-func initStartupTasksK8sClient(logger logr.Logger) error {
+func initStartupTasksK8sClient(logger logd.Logger) error {
 	cfg := ctrl.GetConfigOrDie()
 	var err error
 	if startupTasksK8sClient, err = client.New(
@@ -750,7 +755,7 @@ func initStartupTasksK8sClient(logger logr.Logger) error {
 func detectDocker(
 	ctx context.Context,
 	k8sClient client.Client,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	nodeList := &corev1.NodeList{}
 	err := k8sClient.List(ctx, nodeList, &client.ListOptions{Limit: 1})
@@ -1290,7 +1295,7 @@ func findDeploymentReference(
 	k8sClient client.Client,
 	operatorNamespace string,
 	deploymentName string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (*appsv1.Deployment, error) {
 	deploymentReference := &appsv1.Deployment{}
 	fullyQualifiedName := fmt.Sprintf("%s/%s", operatorNamespace, deploymentName)
@@ -1309,6 +1314,7 @@ func findDeploymentReference(
 		logger.Error(err, msg)
 		return nil, err
 	}
+	logger.Debug(fmt.Sprintf("found deployment reference with UID: %s", deploymentReference.UID))
 	return deploymentReference, nil
 }
 
@@ -1316,7 +1322,7 @@ func createOrUpdateAutoOperatorConfigurationResource(
 	ctx context.Context,
 	readyCheckExecuter *ReadyCheckExecuter,
 	operatorConfigurationValues *OperatorConfigurationValues,
-	logger logr.Logger,
+	logger logd.Logger,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
 	if operatorConfigurationValues == nil {
 		return nil
@@ -1398,7 +1404,7 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	)
 }
 
-func deleteMonitoringResourcesInAllNamespaces(logger logr.Logger) error {
+func deleteMonitoringResourcesInAllNamespaces(logger logd.Logger) error {
 	handler, err := predelete.NewOperatorPreDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the pre-delete handler.")
@@ -1411,7 +1417,7 @@ func deleteMonitoringResourcesInAllNamespaces(logger logr.Logger) error {
 	return nil
 }
 
-func waitForOperatorConfigurationResourceAvailability(logger logr.Logger) error {
+func waitForOperatorConfigurationResourceAvailability(logger logd.Logger) error {
 	handler, err := postinstall.NewOperatorPostInstallHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the post-install handler.")
@@ -1424,7 +1430,7 @@ func waitForOperatorConfigurationResourceAvailability(logger logr.Logger) error 
 	return nil
 }
 
-func deleteDash0AllowlistSynchronizer(ctx context.Context, logger logr.Logger) error {
+func deleteDash0AllowlistSynchronizer(ctx context.Context, logger logd.Logger) error {
 	handler, err := postdelete.NewOperatorPostDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the post-delete handler.")

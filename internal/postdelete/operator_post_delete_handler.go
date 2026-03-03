@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -21,6 +20,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 const (
@@ -46,7 +46,7 @@ var (
 
 type OperatorPostDeleteHandler struct {
 	client  client.WithWatch
-	logger  logr.Logger
+	logger  logd.Logger
 	timeout time.Duration
 }
 
@@ -56,7 +56,7 @@ func NewOperatorPostDeleteHandler() (*OperatorPostDeleteHandler, error) {
 }
 
 func NewOperatorPostDeleteHandlerFromConfig(config *rest.Config) (*OperatorPostDeleteHandler, error) {
-	logger := ctrl.Log.WithName("dash0-remove-allowlist-synchronizer")
+	logger := logd.NewLogger(ctrl.Log.WithName("dash0-remove-allowlist-synchronizer"))
 	s := runtime.NewScheme()
 	if err := dash0v1alpha1.AddToScheme(s); err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func (h *OperatorPostDeleteHandler) setTimeout(timeout time.Duration) {
 	h.timeout = timeout
 }
 
-func (h *OperatorPostDeleteHandler) DeleteGkeAutopilotAllowlistSynchronizer(ctx context.Context, logger logr.Logger) error {
+func (h *OperatorPostDeleteHandler) DeleteGkeAutopilotAllowlistSynchronizer(ctx context.Context, logger logd.Logger) error {
 	if err := h.client.Get(ctx, client.ObjectKey{
 		Name: gkeAutopilotAllowlistSynchronizerCrdName,
 	}, &apiextensionsv1.CustomResourceDefinition{}); err != nil {

@@ -8,11 +8,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -20,7 +19,7 @@ import (
 var _ = Describe("extra config map", func() {
 
 	ctx := context.Background()
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 
 	type applyDefaultsTest struct {
 		input    *ResourceRequirementsWithGoMemLimit
@@ -1262,7 +1261,7 @@ type DummyExtraConfigClient struct {
 	updatedConfig          *ExtraConfig
 }
 
-func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ logr.Logger) {
+func (c *DummyExtraConfigClient) UpdateExtraConfig(_ context.Context, updatedConfig ExtraConfig, _ logd.Logger) {
 	c.updateExtraConfigCalls += 1
 	c.updatedConfig = &updatedConfig
 }

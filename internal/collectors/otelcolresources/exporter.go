@@ -11,7 +11,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/go-logr/logr"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type otlpExporter struct {
@@ -85,7 +85,7 @@ func getDefaultOtlpExporters(dash0Config *dash0v1alpha1.Dash0OperatorConfigurati
 // remaining namespaces will still be handled correctly. For the invalid namespace, the default exporters will be used.
 func getNamespacedOtlpExporters(
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
-	logger logr.Logger,
+	logger logd.Logger,
 ) namespacedOtlpExporters {
 	nsExporters := make(map[string][]otlpExporter, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {

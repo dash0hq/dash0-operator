@@ -16,7 +16,6 @@ import (
 	"sync/atomic"
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
-	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -28,6 +27,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
@@ -91,7 +91,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	extraConfig util.ExtraConfig,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (bool, bool, error) {
 	selfMonitoringConfiguration, err :=
 		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
@@ -222,7 +222,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 func (m *OTelColResourceManager) createOrUpdateResource(
 	ctx context.Context,
 	desiredResource client.Object,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (bool, bool, error) {
 	existingResource, err := resources.CreateEmptyReceiverFor(desiredResource)
 	if err != nil {
@@ -251,7 +251,7 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 func (m *OTelColResourceManager) createResource(
 	ctx context.Context,
 	desiredResource client.Object,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
 		return err
@@ -275,7 +275,7 @@ func (m *OTelColResourceManager) updateResource(
 	ctx context.Context,
 	existingResource client.Object,
 	desiredResource client.Object,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (bool, error) {
 	if err := resources.SetOwnerReference(m.operatorManagerDeployment, m.scheme, desiredResource, logger); err != nil {
 		return false, err
@@ -365,7 +365,7 @@ func addSelfReferenceUidToAllContainers(containers *[]corev1.Container, envVarNa
 func (m *OTelColResourceManager) DeleteResources(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (bool, error) {
 	logger.Info(
 		fmt.Sprintf(
@@ -435,7 +435,7 @@ func (m *OTelColResourceManager) deleteResourcesThatAreNoLongerDesired(
 	config oTelColConfig,
 	extraConfig util.ExtraConfig,
 	desiredState []clientObject,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	// override actual config settings with settings that will produce all possible resources
 	config.KubernetesInfrastructureMetricsCollectionEnabled = true
@@ -485,7 +485,7 @@ func (m *OTelColResourceManager) deleteResourcesThatAreNoLongerDesired(
 func (m *OTelColResourceManager) deleteObsoleteResourcesFromPreviousOperatorVersions(
 	ctx context.Context,
 	namespace string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	if m.obsoleteResourcesHaveBeenDeleted.Load() {
 		return nil
@@ -521,7 +521,7 @@ func (m *OTelColResourceManager) deleteObsoleteResourcesFromPreviousOperatorVers
 
 func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	kubernetesInfrastructureMetricsCollectionEnabled bool,
-	logger logr.Logger,
+	logger logd.Logger,
 ) KubeletStatsReceiverConfig {
 	cachedConfig := m.kubeletStatsReceiverConfig.Load()
 	if cachedConfig != nil {
@@ -705,7 +705,7 @@ func isTlsError(err error) bool {
 	return strings.Contains(err.Error(), "tls: failed to verify certificate:")
 }
 
-func (m *OTelColResourceManager) logErrorAndDisableKubeletStatsReceiver(logger logr.Logger) KubeletStatsReceiverConfig {
+func (m *OTelColResourceManager) logErrorAndDisableKubeletStatsReceiver(logger logd.Logger) KubeletStatsReceiverConfig {
 	logger.Error(
 		fmt.Errorf("cannot determine viable endpoint for kubeletstats receiver endpoint, see above"),
 		"The operator ran out of options when trying to find a viable kubeletstats receiver endpoint. The "+

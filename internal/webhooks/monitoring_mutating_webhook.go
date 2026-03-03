@@ -10,18 +10,17 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/go-logr/logr"
 	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type MonitoringMutatingWebhookHandler struct {
@@ -60,7 +59,7 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	// api/operator/v1alpha1/dash0monitoring_types.go have already been applied by the time this webhook
 	// is called.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 
 	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
@@ -102,7 +101,7 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	request admission.Request,
 	operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
 	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (bool, *admission.Response) {
 	patchRequired := h.setTelemetryCollectionRelatedDefaults(request, operatorConfigurationSpec, monitoringSpec)
 	patchRequiredForLogCollection := h.overrideLogCollectionDefault(request, monitoringSpec, logger)
@@ -187,7 +186,7 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 	request admission.Request,
 	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
-	logger logr.Logger,
+	logger logd.Logger,
 ) bool {
 	if request.Namespace == h.operatorNamespace &&
 		util.ReadBoolPointerWithDefault(monitoringSpec.LogCollection.Enabled, true) {
@@ -214,7 +213,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 func isExportsUnchangedFromOldMonitoringResource(
 	request admission.Request,
 	incomingExports []dash0common.Export,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (bool, *admission.Response) {
 	if request.Operation != admissionv1.Update {
 		return false, nil
@@ -235,7 +234,7 @@ func isExportsUnchangedFromOldMonitoringResource(
 	return reflect.DeepEqual(incomingExports, oldResource.Spec.Exports), nil
 }
 
-func normalizeTransform(transform *dash0common.Transform, logger logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
+func normalizeTransform(transform *dash0common.Transform, logger logd.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
 	traceTransformGroups, responseStatus, err :=
 		normalizeTransformGroupsForOneSignal(transform.Traces, "trace_statements", logger)
 	if err != nil {
@@ -266,7 +265,7 @@ func normalizeTransform(transform *dash0common.Transform, logger logr.Logger) (*
 func normalizeTransformGroupsForOneSignal(
 	signalTransformSpec []json.RawMessage,
 	signalTypeKey string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) ([]dash0common.NormalizedTransformGroup, int32, error) {
 	var allGroups []dash0common.NormalizedTransformGroup
 	for ctxIdx, transformGroup := range signalTransformSpec {
@@ -384,7 +383,7 @@ func loadAvailableOperatorConfigurationResources(
 	operatorConfigurationList := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 	if err := k8sClient.List(ctx, operatorConfigurationList, &client.ListOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
-			log.FromContext(ctx).Error(err, "failed to list operator configuration resources")
+			logd.FromContext(ctx).Error(err, "failed to list operator configuration resources")
 			errorResponse := admission.Errored(http.StatusInternalServerError, err)
 			return nil, &errorResponse
 		}

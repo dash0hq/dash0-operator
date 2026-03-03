@@ -7,7 +7,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/pager"
@@ -16,6 +15,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 const (
@@ -59,12 +59,12 @@ func (r *LogConfigurationResourcesRunnable) Start(ctx context.Context) error {
 }
 
 func (r *LogConfigurationResourcesRunnable) logAllResources(ctx context.Context) {
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	r.logOperatorConfigurationResources(ctx, logger)
 	r.logMonitoringResources(ctx, logger)
 }
 
-func (r *LogConfigurationResourcesRunnable) logOperatorConfigurationResources(ctx context.Context, logger logr.Logger) {
+func (r *LogConfigurationResourcesRunnable) logOperatorConfigurationResources(ctx context.Context, logger logd.Logger) {
 	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 	if err := r.client.List(ctx, allOperatorConfigurationResources); err != nil {
 		logger.Error(err, "failed to list Dash0OperatorConfiguration resources for logging")
@@ -75,7 +75,7 @@ func (r *LogConfigurationResourcesRunnable) logOperatorConfigurationResources(ct
 	}
 }
 
-func (r *LogConfigurationResourcesRunnable) logMonitoringResources(ctx context.Context, logger logr.Logger) {
+func (r *LogConfigurationResourcesRunnable) logMonitoringResources(ctx context.Context, logger logd.Logger) {
 	pgr := pager.New(pager.SimplePageFunc(
 		func(opts metav1.ListOptions) (runtime.Object, error) {
 			list := &dash0v1beta1.Dash0MonitoringList{}

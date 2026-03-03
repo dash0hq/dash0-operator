@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
-	"github.com/go-logr/logr"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -19,7 +19,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -102,7 +101,7 @@ func (r *MonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *MonitoringReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "monitoring.reconcile_requests")
 	var err error
@@ -122,7 +121,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		monitoringReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	logger.Info("processing reconcile request for a monitoring resource")
 
 	namespaceStillExists, err := resources.CheckIfNamespaceExists(ctx, r.clientset, req.Namespace, logger)
@@ -258,13 +257,15 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
+	logger.Debug("reconciliations triggered by monitoring resource were successful")
+
 	return ctrl.Result{}, nil
 }
 
 func (r *MonitoringReconciler) applyApiAccessSettings(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	if monitoringResource.HasDash0ApiAccessConfigured() {
 		var apiConfigs []ApiConfig
@@ -333,7 +334,7 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	isFirstReconcile bool,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (*dash0v1beta1.Dash0Monitoring, util.ModificationMode, statusUpdateInfo) {
 	previousInstrumentWorkloadsMode := monitoringResource.Status.PreviousInstrumentWorkloads.Mode
 	currentInstrumentWorkloadsMode := monitoringResource.ReadInstrumentWorkloadsMode()
@@ -395,7 +396,7 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 func (r *MonitoringReconciler) runCleanupActions(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	if err := r.instrumenter.UninstrumentWorkloadsIfAvailable(
 		ctx,
@@ -444,7 +445,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	// execute the event attaching in a separate go routine to not block the main reconcile loop
 	go func() {
@@ -470,7 +471,7 @@ func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 func (r *MonitoringReconciler) attachDanglingEvents(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	namespace := monitoringResource.Namespace
 	legacyEventApi := r.clientset.CoreV1().Events(namespace)
@@ -540,7 +541,7 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 
 func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
@@ -556,7 +557,7 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 
 func (r *MonitoringReconciler) reconcileOpenTelemetryTargetAllocator(
 	ctx context.Context,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
@@ -575,7 +576,7 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 	ctx context.Context,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	statusUpdate statusUpdateInfo,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	monitoringResource.EnsureResourceIsMarkedAsAvailable()
 	if statusUpdate.previousInstrumentWorkloadsMode != statusUpdate.currentInstrumentWorkloadsMode {

@@ -11,12 +11,10 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -24,6 +22,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type CollectorManager struct {
@@ -65,7 +64,7 @@ func NewCollectorManager(
 	return m
 }
 
-func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logr.Logger) {
+func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logd.Logger) {
 	previousConfig := m.extraConfig.Swap(&newConfig)
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
 		hasBeenReconciled, err := m.ReconcileOpenTelemetryCollector(ctx)
@@ -94,12 +93,10 @@ func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util
 func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
 ) (bool, error) {
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	if m.updateInProgress.Load() {
-		if m.developmentMode {
-			logger.Info("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +
-				"additional reconciliation request.")
-		}
+		logger.Debug("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +
+			"additional reconciliation request.")
 		return false, nil
 	}
 
@@ -151,7 +148,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
 	extraConfig util.ExtraConfig,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	slices.SortFunc(
 		allMonitoringResources,
@@ -188,7 +185,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 func (m *CollectorManager) removeOpenTelemetryCollector(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	resourcesHaveBeenDeleted, err := m.oTelColResourceManager.DeleteResources(
 		ctx,
@@ -210,7 +207,7 @@ func (m *CollectorManager) removeOpenTelemetryCollector(
 
 func (m *CollectorManager) findOperatorConfigurationResource(
 	ctx context.Context,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
 	operatorConfigurationResource, err := resources.FindUniqueOrMostRecentResourceInScope(
 		ctx,
@@ -230,7 +227,7 @@ func (m *CollectorManager) findOperatorConfigurationResource(
 
 func (m *CollectorManager) findAllMonitoringResources(
 	ctx context.Context,
-	logger logr.Logger,
+	logger logd.Logger,
 ) ([]dash0v1beta1.Dash0Monitoring, error) {
 	monitoringResourceList := dash0v1beta1.Dash0MonitoringList{}
 	if err := m.List(

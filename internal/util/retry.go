@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-logr/logr"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 )
@@ -54,7 +54,7 @@ var (
 	}
 )
 
-func Retry(operationLabel string, operation func() error, logger logr.Logger) error {
+func Retry(operationLabel string, operation func() error, logger logd.Logger) error {
 	return RetryWithCustomBackoff(operationLabel, operation, defaultRetryBackoff, true, true, logger)
 }
 
@@ -64,7 +64,7 @@ func RetryWithCustomBackoff(
 	backoff wait.Backoff,
 	logAttempts bool,
 	logFinalFailureAsError bool,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	attempt := 0
 	return retry.OnError(

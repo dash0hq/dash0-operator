@@ -9,19 +9,18 @@ import (
 	"reflect"
 	"sync/atomic"
 
-	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 )
 
 type SelfMonitoringMetricsClient interface {
-	InitializeSelfMonitoringMetrics(otelmetric.Meter, string, logr.Logger)
+	InitializeSelfMonitoringMetrics(otelmetric.Meter, string, logd.Logger)
 }
 
 type OTelSdkConfigInput struct {
@@ -89,7 +88,7 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	operatorManagerDeploymentName string,
 	operatorVersion string,
 	developmentMode bool,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	s.oTelSdkConfigInput.Store(
 		&OTelSdkConfigInput{
@@ -107,7 +106,7 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	s.onParametersHaveChanged(ctx, logger)
 }
 
-func (s *OTelSdkStarter) RemoveOTelSdkParameters(ctx context.Context, logger logr.Logger) {
+func (s *OTelSdkStarter) RemoveOTelSdkParameters(ctx context.Context, logger logd.Logger) {
 	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{})
 	s.onParametersHaveChanged(ctx, logger)
 }
@@ -128,7 +127,7 @@ func (s *OTelSdkStarter) waitForCompleteOTelSDKConfiguration(
 	}
 }
 
-func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger logr.Logger) {
+func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger logd.Logger) {
 	sdkIsActive := s.sdkIsActive.Load()
 	newOTelSDKConfig, configComplete :=
 		convertExportConfigurationToOTelSDKConfig(
@@ -258,7 +257,7 @@ func startOTelSDK(
 	oTelSdkConfig *common.OTelSdkConfig,
 ) {
 	ctx := context.Background()
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	logger.Info("starting (or restarting) the OpenTelemetry SDK for self-monitoring")
 	zapOTelBridge, meter :=
 		common.InitOTelSdkWithConfig(
@@ -287,7 +286,7 @@ func startOTelSDK(
 	}
 }
 
-func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger logr.Logger) {
+func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger logd.Logger) {
 	sdkIsActive := s.sdkIsActive.Load()
 	if sdkIsActive {
 		s.delegatingZapCoreWrapper.RootDelegatingZapCore.UnsetDelegate()
@@ -302,7 +301,7 @@ func (s *OTelSdkStarter) ForTestOnlyGetState() (bool, *common.OTelSdkConfig) {
 	return s.sdkIsActive.Load(), s.activeOTelSdkConfig.Load()
 }
 
-func (s *OTelSdkStarter) ShutDown(ctx context.Context, logger logr.Logger) {
+func (s *OTelSdkStarter) ShutDown(ctx context.Context, logger logd.Logger) {
 	s.ShutDownOTelSdk(ctx, logger)
 	s.shutDownChannel <- true
 }

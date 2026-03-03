@@ -9,13 +9,12 @@ import (
 	"reflect"
 	"sync/atomic"
 
-	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	taresources "github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
@@ -52,7 +51,7 @@ func NewTargetAllocatorManager(
 	return m
 }
 
-func (m *TargetAllocatorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logr.Logger) {
+func (m *TargetAllocatorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logd.Logger) {
 	previousConfig := m.extraConfig.Swap(&newConfig)
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
 		hasBeenReconciled, err := m.ReconcileTargetAllocator(ctx, TriggeredByWatchEvent)
@@ -80,7 +79,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 	ctx context.Context,
 	trigger TargetAllocatorReconcileTrigger,
 ) (bool, error) {
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	logger.Info("ReconcileTargetAllocator", "trigger", trigger)
 
 	if m.updateInProgress.Load() {
@@ -175,7 +174,7 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 	ctx context.Context,
 	namespacesWithPrometheusScraping []string,
 	extraConfig util.ExtraConfig,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.targetAllocatorResourceManager.CreateOrUpdateTargetAllocatorResources(
@@ -207,7 +206,7 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 func (m *TargetAllocatorManager) removeTargetAllocator(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	resourcesHaveBeenDeleted, err := m.targetAllocatorResourceManager.DeleteResources(
 		ctx,

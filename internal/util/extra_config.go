@@ -10,11 +10,10 @@ import (
 	"time"
 
 	"github.com/bep/debounce"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/fsnotify/fsnotify"
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
 )
 
@@ -68,7 +67,7 @@ type ExtraConfig struct {
 }
 
 type ExtraConfigClient interface {
-	UpdateExtraConfig(context.Context, ExtraConfig, logr.Logger)
+	UpdateExtraConfig(context.Context, ExtraConfig, logd.Logger)
 }
 
 const (
@@ -232,7 +231,7 @@ func NewExtraConfigWatcher() *ExtraConfigWatcher {
 	}
 }
 
-func (w *ExtraConfigWatcher) StartWatch(logger logr.Logger) error {
+func (w *ExtraConfigWatcher) StartWatch(logger logd.Logger) error {
 	return w.watchConfigurationDirectory(extraConfigDir, extraConfigFile, logger)
 }
 
@@ -243,7 +242,7 @@ func (w *ExtraConfigWatcher) AddClient(client ExtraConfigClient) {
 func (w *ExtraConfigWatcher) watchConfigurationDirectory(
 	configurationDir string,
 	extraConfigFile string,
-	setupLogger logr.Logger,
+	setupLogger logd.Logger,
 ) error {
 	var err error
 	w.watcher, err = fsnotify.NewWatcher()
@@ -265,7 +264,7 @@ func (w *ExtraConfigWatcher) watchConfigurationDirectory(
 					return
 				}
 				ctx := context.Background()
-				logger := log.FromContext(ctx)
+				logger := logd.FromContext(ctx)
 				debouncedFileWatchEvents(func() {
 					extraConfig, err := readExtraConfigurationFromFile(extraConfigFile)
 					if err != nil {
@@ -281,7 +280,7 @@ func (w *ExtraConfigWatcher) watchConfigurationDirectory(
 					return
 				}
 				ctx := context.Background()
-				logger := log.FromContext(ctx)
+				logger := logd.FromContext(ctx)
 				logger.Error(fsnotifyErr, "extra config map file watcher error")
 			}
 		}

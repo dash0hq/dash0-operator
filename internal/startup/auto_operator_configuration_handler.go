@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -16,6 +15,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type SecretRef struct {
@@ -62,7 +62,7 @@ func NewAutoOperatorConfigurationResourceHandler(
 
 func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBecameLeader(
 	_ context.Context,
-	_ logr.Logger,
+	_ logd.Logger,
 ) {
 	close(r.hasBecomeLeaderChan)
 }
@@ -75,7 +75,7 @@ func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBec
 func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigurationResource(
 	ctx context.Context,
 	operatorConfigurationValues *OperatorConfigurationValues,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
 	logger.Info("creating/updating the Dash0 operator configuration resource")
 	if err := r.validateOperatorConfiguration(operatorConfigurationValues); err != nil {
@@ -162,7 +162,7 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceWithRetry(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	return util.RetryWithCustomBackoff(
 		"create/update operator configuration resource at startup",
@@ -183,7 +183,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceOnce(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 	if err := r.List(ctx, allOperatorConfigurationResources); err != nil {

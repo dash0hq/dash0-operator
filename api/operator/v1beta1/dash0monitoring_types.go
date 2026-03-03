@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -18,6 +17,7 @@ import (
 	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 // Dash0Monitoring is the schema for the Dash0Monitoring API
@@ -501,7 +501,7 @@ func (d *Dash0Monitoring) GetDash0Exports() []dash0common.Dash0Configuration {
 	return res
 }
 
-func (d *Dash0Monitoring) LogResourceAsEvent(logger logr.Logger) {
+func (d *Dash0Monitoring) LogResourceAsEvent(logger logd.Logger) {
 	redactedMonitoringResource := d.cloneAndRedact()
 	if redactedMonitoringResourceMarshalled, err := json.Marshal(redactedMonitoringResource); err != nil {
 		logger.Error(err, "cannot marshal Dash0Monitoring resource for dash0.monitoring_resource event")

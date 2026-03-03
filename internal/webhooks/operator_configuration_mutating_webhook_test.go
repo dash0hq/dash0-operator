@@ -9,11 +9,11 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -34,7 +34,7 @@ type migrateOperatorConfigExportToExportsTestConfig struct {
 }
 
 var _ = Describe("The mutating webhook for the operator configuration resource", func() {
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 
 	Describe("when a new operator configuration resource is created", Ordered, func() {
 		AfterEach(func() {

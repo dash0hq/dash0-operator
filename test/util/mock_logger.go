@@ -3,18 +3,18 @@ package util
 import (
 	"log/slog"
 
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/go-logr/logr"
-
 	. "github.com/onsi/gomega"
 )
 
-func NewCapturingLogger() (logr.Logger, *CapturingLogSink) {
+func NewCapturingLogger() (logd.Logger, *CapturingLogSink) {
 	logSink := &CapturingLogSink{
 		runtimeInfo: logr.RuntimeInfo{
 			CallDepth: 1,
 		},
 	}
-	return logr.New(logSink), logSink
+	return logd.NewLogger(logr.New(logSink)), logSink
 }
 
 type CapturingLogSink struct {

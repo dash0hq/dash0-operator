@@ -7,13 +7,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
@@ -21,6 +19,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type OperatorConfigurationReconciler struct {
@@ -95,7 +94,7 @@ func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) err
 func (r *OperatorConfigurationReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "operatorconfiguration.reconcile_requests")
 	var err error
@@ -115,7 +114,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		operatorReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	logger.Info("processing reconcile request for an operator configuration resource")
 
 	resourceDeleted := false
@@ -222,6 +221,8 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, fmt.Errorf("cannot mark the Dash0 operator configuration resource as available: %w", err)
 	}
 
+	logger.Debug("reconciliations triggered by operator configuration were successful")
+
 	return ctrl.Result{}, nil
 }
 
@@ -229,7 +230,7 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 	ctx context.Context,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringConfiguration,
 	clusterName string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
 		r.oTelSdkStarter.SetOTelSdkParameters(
@@ -256,7 +257,7 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	if !operatorConfigurationResource.HasDash0ApiAccessConfigured() {
 		logger.Info(
@@ -320,7 +321,7 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 
 func (r *OperatorConfigurationReconciler) removeAllOperatorConfigurationSettings(
 	ctx context.Context,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	for _, apiClient := range r.apiClients {
 		apiClient.RemoveDefaultApiConfigs(ctx, logger)
@@ -333,7 +334,7 @@ func (r *OperatorConfigurationReconciler) removeAllOperatorConfigurationSettings
 
 func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	if _, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
@@ -346,7 +347,7 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 
 func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 	ctx context.Context,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	logger.Info("Reconciling OpenTelemetry target allocator.")
 	if _, err := r.targetAllocatorManager.ReconcileTargetAllocator(

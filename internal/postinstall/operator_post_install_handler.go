@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
@@ -18,13 +17,14 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 // OperatorPostInstallHandler handle the post-install Helm hook that is responsible for waiting until the operator
 // configuration auto resource becomes available.
 type OperatorPostInstallHandler struct {
 	client       client.WithWatch
-	logger       logr.Logger
+	logger       logd.Logger
 	retryBackoff wait.Backoff
 }
 
@@ -42,7 +42,7 @@ func NewOperatorPostInstallHandler() (*OperatorPostInstallHandler, error) {
 }
 
 func NewOperatorPostInstallHandlerFromConfig(config *rest.Config) (*OperatorPostInstallHandler, error) {
-	logger := ctrl.Log.WithName("dash0-operator-configuration-readiness")
+	logger := logd.NewLogger(ctrl.Log.WithName("dash0-operator-configuration-readiness"))
 	s := runtime.NewScheme()
 	if err := dash0v1alpha1.AddToScheme(s); err != nil {
 		return nil, err
