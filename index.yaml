@@ -2,66 +2,6 @@ apiVersion: v1
 entries:
   dash0-operator:
   - apiVersion: v2
-    appVersion: 0.130.0
-    created: "2026-03-03T12:26:48.323782526Z"
-    description: The Dash0 Operator makes observability easy for every Kubernetes
-      setup, simply install the operator into your cluster to get OpenTelemetry data
-      flowing from your applications and infrastructure to Dash0.
-    digest: e9d6b54f863c5fae2335f3103e6b38c91e395378ee94190e7d80cf29ed617d37
-    home: https://www.dash0.com/
-    icon: https://www.dash0.com/shared/logo_colors_128x128.png
-    keywords:
-    - OpenTelemetry
-    - Observability
-    - Monitoring
-    - Dash0
-    - Node.js
-    - Java
-    - JVM
-    - .NET
-    maintainers:
-    - email: bastian.krol@dash0.com
-      name: Bastian Krol
-    - email: petra.bierleutgeb@dash0.com
-      name: Petra Bierleutgeb
-    name: dash0-operator
-    sources:
-    - https://github.com/dash0hq/dash0-operator
-    type: application
-    urls:
-    - dash0-operator-0.130.0.tgz
-    version: 0.130.0
-  - apiVersion: v2
-    appVersion: 0.130.0-rc2
-    created: "2026-03-03T12:26:48.320250986Z"
-    description: The Dash0 Operator makes observability easy for every Kubernetes
-      setup, simply install the operator into your cluster to get OpenTelemetry data
-      flowing from your applications and infrastructure to Dash0.
-    digest: 65104d694c0c90a3c51d40d76e4361c6f1bb54d909e55cf7146972321babd1c5
-    home: https://www.dash0.com/
-    icon: https://www.dash0.com/shared/logo_colors_128x128.png
-    keywords:
-    - OpenTelemetry
-    - Observability
-    - Monitoring
-    - Dash0
-    - Node.js
-    - Java
-    - JVM
-    - .NET
-    maintainers:
-    - email: bastian.krol@dash0.com
-      name: Bastian Krol
-    - email: petra.bierleutgeb@dash0.com
-      name: Petra Bierleutgeb
-    name: dash0-operator
-    sources:
-    - https://github.com/dash0hq/dash0-operator
-    type: application
-    urls:
-    - dash0-operator-0.130.0-rc2.tgz
-    version: 0.130.0-rc2
-  - apiVersion: v2
     appVersion: 0.103.0
     created: "2026-03-03T12:26:48.314578258Z"
     description: The Dash0 Operator makes observability easy for every Kubernetes
@@ -181,6 +121,66 @@ entries:
     urls:
     - dash0-operator-0.102.1.tgz
     version: 0.102.1
+  - apiVersion: v2
+    appVersion: 0.130.0
+    created: "2026-03-03T12:26:48.323782526Z"
+    description: The Dash0 Operator makes observability easy for every Kubernetes
+      setup, simply install the operator into your cluster to get OpenTelemetry data
+      flowing from your applications and infrastructure to Dash0.
+    digest: e9d6b54f863c5fae2335f3103e6b38c91e395378ee94190e7d80cf29ed617d37
+    home: https://www.dash0.com/
+    icon: https://www.dash0.com/shared/logo_colors_128x128.png
+    keywords:
+    - OpenTelemetry
+    - Observability
+    - Monitoring
+    - Dash0
+    - Node.js
+    - Java
+    - JVM
+    - .NET
+    maintainers:
+    - email: bastian.krol@dash0.com
+      name: Bastian Krol
+    - email: petra.bierleutgeb@dash0.com
+      name: Petra Bierleutgeb
+    name: dash0-operator
+    sources:
+    - https://github.com/dash0hq/dash0-operator
+    type: application
+    urls:
+    - dash0-operator-0.130.0.tgz
+    version: 0.130.0
+  - apiVersion: v2
+    appVersion: 0.130.0-rc2
+    created: "2026-03-03T12:26:48.320250986Z"
+    description: The Dash0 Operator makes observability easy for every Kubernetes
+      setup, simply install the operator into your cluster to get OpenTelemetry data
+      flowing from your applications and infrastructure to Dash0.
+    digest: 65104d694c0c90a3c51d40d76e4361c6f1bb54d909e55cf7146972321babd1c5
+    home: https://www.dash0.com/
+    icon: https://www.dash0.com/shared/logo_colors_128x128.png
+    keywords:
+    - OpenTelemetry
+    - Observability
+    - Monitoring
+    - Dash0
+    - Node.js
+    - Java
+    - JVM
+    - .NET
+    maintainers:
+    - email: bastian.krol@dash0.com
+      name: Bastian Krol
+    - email: petra.bierleutgeb@dash0.com
+      name: Petra Bierleutgeb
+    name: dash0-operator
+    sources:
+    - https://github.com/dash0hq/dash0-operator
+    type: application
+    urls:
+    - dash0-operator-0.130.0-rc2.tgz
+    version: 0.130.0-rc2
   - apiVersion: v2
     appVersion: 0.102.0
     created: "2026-03-03T12:26:48.302525089Z"
