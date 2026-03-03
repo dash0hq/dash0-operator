@@ -40,7 +40,7 @@ operator:
     endpoint:
 
     # The dataset to be used for reported telemetry and API access. This property is optional, it defaults to "default".
-    # See https://www.dash0.com/documentation/dash0/key-concepts/datasets.
+    # See https://www.dash0.com/docs/dash0/miscellaneous/glossary/datasets.
     dataset:
 
     # The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing

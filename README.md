@@ -51,7 +51,7 @@ Helm chart documentation.
 The Dash0 operator supports the [`PrometheusRule` custom resource definition](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#monitoring.coreos.com/v1.PrometheusRule)
 defined by the Prometheus operator.
 The alert rules specified in `PrometheusRule` custom resources are used to create
-[check rules](https://www.dash0.com/documentation/dash0/alerting/check-rules) in Dash0.
+[check rules](https://www.dash0.com/docs/dash0/monitoring/alerting/configure-checks) in Dash0.
 
 For more information on how the Dash0 operator synchronizes check rules based on `PrometheusRule` resources, consult the
 [Managing Dash0 Check Rules](helm-chart/dash0-operator/README.md#managing-dash0-check-rules)
@@ -62,7 +62,7 @@ section of the Dash0 operator Helm chart documentation.
 The Dash0 operator supports the `PersesDashboard` custom resource definition defined by the
 [Perses operator](https://github.com/perses/perses-operator).
 The Perses dashboards specified in `PersesDashboard` custom resources are used to create
-[dashboards](https://www.dash0.com/documentation/dash0/dashboards) in Dash0.
+[dashboards](https://www.dash0.com/docs/dash0/dashboards/about-dashboards) in Dash0.
 
 For more information on how the Dash0 operator synchronizes dashboards based on `PersesDashboard` resources, consult the
 [Managing Dash0 Check Rules](helm-chart/dash0-operator/README.md#managing-dash0-dashboards)
@@ -72,7 +72,7 @@ section of the Dash0 operator Helm chart documentation.
 
 The Dash0 operator supports the `Dash0SyntheticCheck` custom resource definition.
 Synthetic checks stored in the cluster as Dash0SyntheticCheck custom resources are used to create
-[synthetic checks](https://www.dash0.com/documentation/dash0/synthetic-monitoring) in Dash0.
+[synthetic checks](https://www.dash0.com/docs/dash0/monitoring/synthetics/synthetic-monitoring) in Dash0.
 
 For more information on how the Dash0 operator synchronizes synthetic checks based on `Dash0SyntheticCheck` resources,
 consult the [Managing Dash0 Synthetic Checks](helm-chart/dash0-operator/README.md#managing-dash0-synthetic-checks)
