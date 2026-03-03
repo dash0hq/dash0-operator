@@ -583,11 +583,17 @@ operator:
     # Parameters for the liveness, readiness and startup probes of the DaemonSet collectors.
     # See https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
     daemonSetProbes:
+      # Note: The liveness probe is also relevant for when new namespaces start to be monitored, or monitored namespaces
+      # are deleted. Both events will change the colletor config map and result in the collector reloading its
+      # configuration internally. This will make the collector fail the liveness probe temporarily. If the probe is
+      # configured too tightly, Kubernetes will restart the opentelemetry-collector container via SIGTERM. If you notice
+      # frequent collector restarts after adding or removing Dash0Monitoring resources, try to provide a higher
+      # failureThreshold value.
       liveness:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 3
+        failureThreshold: 20
       readiness:
         initialDelaySeconds: 0
         periodSeconds: 2
@@ -667,11 +673,17 @@ operator:
     # Parameters for the liveness, readiness and startup probes of the collector Deployment (cluster-metrics-collector).
     # See https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
     deploymentProbes:
+      # Note: The liveness probe is also relevant for when new namespaces start to be monitored, or monitored namespaces
+      # are deleted. Both events will change the colletor config map and result in the collector reloading its
+      # configuration internally. This will make the collector fail the liveness probe temporarily. If the probe is
+      # configured too tightly, Kubernetes will restart the opentelemetry-collector container via SIGTERM. If you notice
+      # frequent collector restarts after adding or removing Dash0Monitoring resources, try to provide a higher
+      # failureThreshold value.
       liveness:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 3
+        failureThreshold: 20
       readiness:
         initialDelaySeconds: 0
         periodSeconds: 2

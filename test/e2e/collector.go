@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -202,10 +203,11 @@ func verifyConfigMapDoesNotContainStrings(operatorNamespace string, configMapNam
 	)
 }
 
-func findMostRecentCollectorReadyLogLine(g Gomega) time.Time {
+func findMostRecentCollectorReadyLogLine(g Gomega, collectorName string) time.Time {
 	allCollectorReadyLogLines := getMatchingLogLinesFomCollectorContainerLog(
 		g,
 		operatorNamespace,
+		collectorName,
 		"opentelemetry-collector",
 		collectorReadyLogMessage,
 	)
@@ -223,12 +225,13 @@ func findMostRecentCollectorReadyLogLine(g Gomega) time.Time {
 func getMatchingLogLinesFomCollectorContainerLog(
 	g Gomega,
 	operatorNamespace string,
+	collectorName string,
 	containerName string,
 	needle string,
 ) []string {
 	matchingLines := []string{}
-	command := getLogsViaKubectl(operatorNamespace, collectorDaemonSetNameQualified, containerName)
-	logs, err := run(command, true)
+	command := getLogsViaKubectl(operatorNamespace, collectorName, containerName)
+	logs, err := run(command, false)
 	g.Expect(err).ToNot(HaveOccurred())
 	lines := strings.Split(logs, "\n")
 	for _, line := range lines {
@@ -249,4 +252,66 @@ func getLogsViaKubectl(namespace string, workloadName string, containerName stri
 		"-c",
 		containerName,
 	)
+}
+
+// getDaemonSetCollectorPodRestartCounts returns the restart counts of the opentelemetry-collector container
+// for all pods belonging to the collector daemonset, with the pod name as the key.
+func getDaemonSetCollectorPodRestartCounts(operatorNamespace string) map[string]int {
+	return getCollectorPodRestartCounts(
+		operatorNamespace,
+		"app.kubernetes.io/name=opentelemetry-collector,app.kubernetes.io/component=agent-collector",
+	)
+}
+
+// getDeploymentCollectorPodRestartCounts returns the restart counts of the opentelemetry-collector container
+// for all pods belonging to the collector deployment, with the pod name as the key.
+func getDeploymentCollectorPodRestartCounts(operatorNamespace string) map[string]int {
+	return getCollectorPodRestartCounts(
+		operatorNamespace,
+		"app.kubernetes.io/name=opentelemetry-collector,app.kubernetes.io/component=cluster-metrics-collector",
+	)
+}
+
+func getCollectorPodRestartCounts(operatorNamespace string, labelSelector string) map[string]int {
+	output, err := run(
+		exec.Command(
+			"kubectl",
+			"get",
+			"pods",
+			"--namespace",
+			operatorNamespace,
+			"-l",
+			labelSelector,
+			"-o",
+			"json",
+		),
+		false,
+	)
+	Expect(err).ToNot(HaveOccurred())
+
+	var podList struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Status struct {
+				ContainerStatuses []struct {
+					Name         string `json:"name"`
+					RestartCount int    `json:"restartCount"`
+				} `json:"containerStatuses"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+	Expect(json.Unmarshal([]byte(output), &podList)).To(Succeed())
+
+	restartCounts := map[string]int{}
+	for _, pod := range podList.Items {
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			if containerStatus.Name == "opentelemetry-collector" {
+				restartCounts[pod.Metadata.Name] = containerStatus.RestartCount
+				break
+			}
+		}
+	}
+	return restartCounts
 }

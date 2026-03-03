@@ -11,6 +11,10 @@ on:
       SLACK_CHANNEL_ID:
         required: true
   workflow_dispatch:
+    inputs:
+      focus:
+        required: false
+        description: Execute a subset of tests by providing the focus parameter.
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -103,6 +107,8 @@ jobs:
           curl -s http://localhost:5001/v2/_catalog || echo "Registry catalog endpoint responded"
 
       - name: Run e2e tests
+        env:
+          GINKGO_FOCUS: ${{ inputs.focus }}
         run: |
           make build-all-push-all-test-e2e
 
@@ -130,6 +136,8 @@ jobs:
                     text: ':seedling: <${{ github.server_url }}/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}|${{ github.head_ref || github.ref_name }}>'
                   - type: mrkdwn
                     text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
+                  - type: mrkdwn
+                    text: ":mag: ${{ inputs.focus != '' && inputs.focus || 'full test suite' }}"
 
       - name: Upload Kubernetes cluster information and pod logs for failed tests
         id: upload-k8s-logs
@@ -166,3 +174,5 @@ jobs:
                     text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
                   - type: mrkdwn
                     text: ':scroll: <${{ steps.upload-k8s-logs.outputs.artifact-url }}|K8s cluster info/pod logs>'
+                  - type: mrkdwn
+                    text: ":mag: ${{ inputs.focus != '' && inputs.focus || 'full test suite' }}"

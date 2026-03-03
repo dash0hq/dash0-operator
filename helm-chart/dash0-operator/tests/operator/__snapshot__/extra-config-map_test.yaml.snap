@@ -39,7 +39,7 @@ extra config map should match snapshot:
                 - linux
         daemonSetProbes:
           liveness:
-            failureThreshold: 3
+            failureThreshold: 20
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1
@@ -81,7 +81,7 @@ extra config map should match snapshot:
                 - linux
         deploymentProbes:
           liveness:
-            failureThreshold: 3
+            failureThreshold: 20
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1

@@ -1182,9 +1182,9 @@ traces:
 						// nolint:lll
 						`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace" and (attributes["http.route"] == "/ready")'`,
 					)
-					By("verify that the collector has restarted after the config change")
+					By("verify that the collector has reloaded its configuration")
 					Eventually(func(g Gomega) {
-						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
 						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
 					}, 90*time.Second, time.Second).Should(Succeed())
 
@@ -1254,9 +1254,9 @@ trace_statements:
 						operatorNamespace,
 						`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace"'`,
 					)
-					By("verify that the collector has restarted after the config change")
+					By("verify that the collector has reloaded its configuration")
 					Eventually(func(g Gomega) {
-						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
 						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
 					}, 90*time.Second, time.Second).Should(Succeed())
 
@@ -1631,7 +1631,7 @@ trace_statements:
 			})
 
 			//nolint:lll
-			It("should update the daemon set collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
+			It("should update and reload the collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
 				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:      false,
 					Endpoint:                   defaultEndpoint,
@@ -1650,25 +1650,76 @@ trace_statements:
 					operatorNamespace,
 				)
 
-				By("waiting for the collector to be ready")
-				var firstCollectorReadyTimeStamp time.Time
+				By("waiting for the collectors to be ready")
+				var firstDaemonSetCollectorReadyTimeStamp time.Time
+				var firstDeploymentCollectorReadyTimeStamp time.Time
 				Eventually(func(g Gomega) {
-					firstCollectorReadyTimeStamp = findMostRecentCollectorReadyLogLine(g)
+					firstDaemonSetCollectorReadyTimeStamp = findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
 				}, 30*time.Second, time.Second).Should(Succeed())
+				Eventually(func(g Gomega) {
+					firstDeploymentCollectorReadyTimeStamp = findMostRecentCollectorReadyLogLine(g, collectorDeploymentNameQualified)
+				}, 30*time.Second, time.Second).Should(Succeed())
+
+				daemonSetRestartCountsBeforeConfigChange := getDaemonSetCollectorPodRestartCounts(operatorNamespace)
+				deploymentRestartCountsBeforeConfigChange := getDeploymentCollectorPodRestartCounts(operatorNamespace)
 
 				By("updating the Dash0 operator configuration endpoint setting")
 				newEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
 				updateEndpointOfDash0OperatorConfigurationResource(newEndpoint)
 
-				By("verify that the config map has been updated by the controller")
+				By("verify that the config maps have been updated by the controller")
 				verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, newEndpoint)
+				verifyDeploymentCollectorConfigMapContainsString(operatorNamespace, newEndpoint)
 
-				By("verify that the collector has restarted and has become ready once more")
+				By("verify that the collectors have reloaded their configuration")
+				// Note: It can take up to a minute until the config change can be detected by the configreloader, due to the
+				// default of 1 minute for kubelet's syncFrequency setting, see
+				// https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/#kubelet-config-k8s-io-v1beta1-KubeletConfiguration.
+				// And then it also takes a couple of seconds until the collector has actually reloaded its configuration after
+				// receiving SIGHUB. Hence, we use a 2 minute timeout here.
 				Eventually(func(g Gomega) {
-					secondCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
-					g.Expect(secondCollectorReadyTimeStamp).To(BeTemporally(">", firstCollectorReadyTimeStamp))
+					secondDaemonSetCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
+					g.Expect(secondDaemonSetCollectorReadyTimeStamp).To(BeTemporally(">", firstDaemonSetCollectorReadyTimeStamp))
+				}, 2*time.Minute, time.Second).Should(Succeed())
+				Eventually(func(g Gomega) {
+					secondDeploymentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
+					g.Expect(secondDeploymentCollectorReadyTimeStamp).To(BeTemporally(">", firstDeploymentCollectorReadyTimeStamp))
 				}, 2*time.Minute, time.Second).Should(Succeed())
 
+				// Verify that the collector has reloaded the configuration in-process, instead of restarting the process.
+				By("verify that the collectors have not restarted")
+				daemonSetRestartCountsAfterConfigChange := getDaemonSetCollectorPodRestartCounts(operatorNamespace)
+				Expect(daemonSetRestartCountsAfterConfigChange).To(HaveLen(len(daemonSetRestartCountsBeforeConfigChange)))
+				for podName, restartCountBefore := range daemonSetRestartCountsBeforeConfigChange {
+					restartCountAfter, ok := daemonSetRestartCountsAfterConfigChange[podName]
+					Expect(ok).To(BeTrue(), "daemonset collector pod is missing after config change")
+					Expect(restartCountAfter).To(
+						Equal(restartCountBefore),
+						fmt.Sprintf(
+							"Pod %s had a restart count of %d before the config change, and now has a restart count of %d,",
+							podName,
+							restartCountBefore,
+							restartCountAfter,
+						)+". This means it has been restarted due to the config change. This is unexpected, it should have "+
+							"reloaded the configuration in-process.",
+					)
+				}
+				deploymentRestartCountsAfterConfigChange := getDeploymentCollectorPodRestartCounts(operatorNamespace)
+				Expect(deploymentRestartCountsAfterConfigChange).To(HaveLen(len(deploymentRestartCountsBeforeConfigChange)))
+				for podName, restartCountBefore := range deploymentRestartCountsBeforeConfigChange {
+					restartCountAfter, ok := deploymentRestartCountsAfterConfigChange[podName]
+					Expect(ok).To(BeTrue(), "deployment collector pod is missing after config change")
+					Expect(restartCountAfter).To(
+						Equal(restartCountBefore),
+						fmt.Sprintf(
+							"Pod %s had a restart count of %d before the config change, and now has a restart count of %d,",
+							podName,
+							restartCountBefore,
+							restartCountAfter,
+						)+". This means it has been restarted due to the config change. This is unexpected, it should have "+
+							"reloaded the configuration in-process.",
+					)
+				}
 			})
 		})
 
