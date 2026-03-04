@@ -23,8 +23,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
-	"github.com/go-logr/logr"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -1401,12 +1401,12 @@ type DummyApiClient struct {
 	defaultApiConfigs             []ApiConfig
 }
 
-func (c *DummyApiClient) SetDefaultApiConfigs(_ context.Context, apiConfigs []ApiConfig, _ logr.Logger) {
+func (c *DummyApiClient) SetDefaultApiConfigs(_ context.Context, apiConfigs []ApiConfig, _ logd.Logger) {
 	c.setDefaultApiEndpointCalls++
 	c.defaultApiConfigs = apiConfigs
 }
 
-func (c *DummyApiClient) RemoveDefaultApiConfigs(_ context.Context, _ logr.Logger) {
+func (c *DummyApiClient) RemoveDefaultApiConfigs(_ context.Context, _ logd.Logger) {
 	c.removeDefaultApiEndpointCalls++
 	c.defaultApiConfigs = nil
 }
@@ -1437,13 +1437,13 @@ func (c *DummyNamespacedApiClient) SetNamespacedApiConfigs(
 	_ context.Context,
 	namespace string,
 	apiConfigs []ApiConfig,
-	_ logr.Logger,
+	_ logd.Logger,
 ) {
 	c.setNamespacedApiEndpointCalls++
 	c.namespacedApiconfigs[namespace] = apiConfigs
 }
 
-func (c *DummyNamespacedApiClient) RemoveNamespacedApiConfigs(_ context.Context, namespace string, _ logr.Logger) {
+func (c *DummyNamespacedApiClient) RemoveNamespacedApiConfigs(_ context.Context, namespace string, _ logd.Logger) {
 	c.removeNamespacedApiEndpointCalls++
 	delete(c.namespacedApiconfigs, namespace)
 }

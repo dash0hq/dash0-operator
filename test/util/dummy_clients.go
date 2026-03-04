@@ -6,7 +6,7 @@ package util
 import (
 	"context"
 
-	"github.com/go-logr/logr"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
@@ -16,12 +16,12 @@ type DummyAuthTokenClient struct {
 	AuthToken            string
 }
 
-func (c *DummyAuthTokenClient) SetDefaultAuthToken(_ context.Context, authToken string, _ logr.Logger) {
+func (c *DummyAuthTokenClient) SetDefaultAuthToken(_ context.Context, authToken string, _ logd.Logger) {
 	c.SetAuthTokenCalls++
 	c.AuthToken = authToken
 }
 
-func (c *DummyAuthTokenClient) RemoveDefaultAuthToken(_ context.Context, _ logr.Logger) {
+func (c *DummyAuthTokenClient) RemoveDefaultAuthToken(_ context.Context, _ logd.Logger) {
 	c.RemoveAuthTokenCalls++
 	c.AuthToken = ""
 }
@@ -43,7 +43,7 @@ type DummySelfMonitoringMetricsClient struct {
 func (c *DummySelfMonitoringMetricsClient) InitializeSelfMonitoringMetrics(
 	_ otelmetric.Meter,
 	_ string,
-	_ logr.Logger,
+	_ logd.Logger,
 ) {
 	c.InitializeSelfMonitoringMetricsCalls++
 }

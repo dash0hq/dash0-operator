@@ -4,13 +4,13 @@
 package otelcolresources
 
 import (
-	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -567,10 +567,10 @@ var _ = Describe("Exporter Conversion", func() {
 	})
 
 	Describe("GetNamespacedOtlpExporters", func() {
-		var logger logr.Logger
+		var logger logd.Logger
 
 		BeforeEach(func() {
-			logger = logr.Discard()
+			logger = logd.Discard()
 		})
 
 		It("should return empty map when no monitoring resources have export", func() {

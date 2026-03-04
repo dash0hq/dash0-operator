@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,6 +18,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type OtlpProtocol string
@@ -69,7 +69,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	k8sClient client.Client,
 	operatorNamespace string,
 	resource *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (SelfMonitoringConfiguration, error) {
 	if resource == nil {
 		return SelfMonitoringConfiguration{}, nil
@@ -127,7 +127,7 @@ func convertResourceToDash0ExportConfiguration(
 	export *dash0common.Export,
 	token *string,
 	selfMonitoringEnabled bool,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (SelfMonitoringConfiguration, error) {
 	if export.Grpc != nil {
 		logger.Info(
@@ -164,7 +164,7 @@ func convertResourceToDash0ExportConfiguration(
 func convertResourceToGrpcExportConfiguration(
 	export *dash0common.Export,
 	selfMonitoringEnabled bool,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (SelfMonitoringConfiguration, error) {
 	if export.Http != nil {
 		logger.Info(
@@ -597,7 +597,7 @@ func GetAuthTokenForDash0Export(
 	k8sClient client.Client,
 	operatorNamespace string, // we always look up the auth secrets in the operator namespace
 	dash0Export dash0common.Dash0Configuration,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (*string, error) {
 	if dash0Export.Authorization.SecretRef != nil {
 		// The operator configuration resource uses a secret ref to provide the Dash0 auth token, exchange the secret
@@ -630,7 +630,7 @@ func ExchangeSecretRefForToken(
 	k8sClient client.Client,
 	operatorNamespace string, // we always look up the auth secrets in the operator namespace
 	dash0Config dash0common.Dash0Configuration,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (*string, error) {
 	if dash0Config.Authorization.SecretRef == nil {
 		return nil, fmt.Errorf("dash0Config has no secret ref")

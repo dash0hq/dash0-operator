@@ -6,7 +6,6 @@ package v1alpha1
 import (
 	"encoding/json"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -15,6 +14,7 @@ import (
 
 	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 // Dash0OperatorConfiguration is the schema for the Dash0OperatorConfiguration API
@@ -430,7 +430,7 @@ func (d *Dash0OperatorConfiguration) At(list client.ObjectList, index int) dash0
 	return &list.(*Dash0OperatorConfigurationList).Items[index]
 }
 
-func (d *Dash0OperatorConfiguration) LogResourceAsEvent(logger logr.Logger) {
+func (d *Dash0OperatorConfiguration) LogResourceAsEvent(logger logd.Logger) {
 	redactedOperatorConfiguration := d.cloneAndRedact()
 	if operatorConfigurationResourceMarshalled, err := json.Marshal(redactedOperatorConfiguration); err != nil {
 		logger.Error(err, "cannot marshal Dash0OperatorConfiguration resource for dash0.operator_configuration event")

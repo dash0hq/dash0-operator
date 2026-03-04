@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-logr/logr"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -25,7 +25,7 @@ func HandlePotentiallySuccessfulInstrumentationEvent(
 	eventSource WorkloadModifierActor,
 	containersTotal int,
 	instrumentationIssuesPerContainer map[string][]string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	if len(instrumentationIssuesPerContainer) == 0 {
 		// All containers have been instrumented, no container had instrumentation issues.

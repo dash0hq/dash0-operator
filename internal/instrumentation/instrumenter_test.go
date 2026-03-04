@@ -7,15 +7,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,7 +34,7 @@ var (
 
 var _ = Describe("The instrumenter", Ordered, func() {
 	ctx := context.Background()
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	var createdObjectsInstrumenterTest []client.Object
 
 	var instrumenter *Instrumenter
@@ -963,7 +962,7 @@ func checkSettingsAndInstrumentExistingWorkloads(
 	ctx context.Context,
 	instrumenter *Instrumenter,
 	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	Expect(
 		instrumenter.CheckSettingsAndInstrumentExistingWorkloads(
@@ -977,7 +976,7 @@ func uninstrumentWorkloadsIfAvailable(
 	ctx context.Context,
 	instrumenter *Instrumenter,
 	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	Expect(
 		instrumenter.UninstrumentWorkloadsIfAvailable(

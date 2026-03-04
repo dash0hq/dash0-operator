@@ -10,16 +10,15 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/go-logr/logr"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type OperatorConfigurationMutatingWebhookHandler struct {
@@ -55,7 +54,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context
 	// api/operator/v1alpha1/operator_configuration_types.go have already been applied by the time this webhook
 	// is called.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
 		logger.Info("rejecting invalid operator configuration resource", "error", err)
@@ -88,7 +87,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context
 func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigurationResourceSpec(
 	request admission.Request,
 	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (bool, *admission.Response) {
 	patchRequired := false
 
@@ -161,7 +160,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 func isExportsUnchangedFromOldOperatorConfigurationResource(
 	request admission.Request,
 	incomingExports []dash0common.Export,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (bool, *admission.Response) {
 	if request.Operation != admissionv1.Update {
 		return false, nil

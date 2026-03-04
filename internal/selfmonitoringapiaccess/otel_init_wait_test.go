@@ -9,11 +9,10 @@ import (
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,7 +29,7 @@ const (
 	defaultTimeout = 50 * time.Millisecond
 )
 
-func (c *DummyClient) InitializeSelfMonitoringMetrics(_ otelmetric.Meter, _ string, _ logr.Logger) {
+func (c *DummyClient) InitializeSelfMonitoringMetrics(_ otelmetric.Meter, _ string, _ logd.Logger) {
 	c.hasBeenCalled++
 }
 
@@ -38,7 +37,7 @@ var _ = Describe(
 	"The OTel SDK starter", func() {
 
 		ctx := context.Background()
-		logger := log.FromContext(ctx)
+		logger := logd.FromContext(ctx)
 
 		It(
 			"should start with empty values", func() {

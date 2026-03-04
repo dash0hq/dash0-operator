@@ -15,11 +15,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type CollectorReconciler struct {
@@ -131,7 +131,7 @@ func (r *CollectorReconciler) Reconcile(
 	ctx context.Context,
 	request reconcile.Request,
 ) (reconcile.Result, error) {
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	logger.Info("reconciling collector resources", "request", request)
 
 	hasBeenReconciled, err := r.collectorManager.ReconcileOpenTelemetryCollector(

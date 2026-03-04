@@ -31,15 +31,35 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(delegatingCore.Enabled(zapcore.ErrorLevel)).To(BeTrue())
 	})
 
-	It("Enabled with a delegate", func() {
+	It("Enabled with a delegate (default level)", func() {
 		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
 		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		e := &oddEvenEnabler{}
 		delegatingCore.SetDelegate(zapcore.NewCore(nil, nil, e))
+		// DebugLevel (-1) is below the default level (InfoLevel = 0), so Enabled short-circuits
+		// without consulting the delegate.
 		Expect(delegatingCore.Enabled(zapcore.DebugLevel)).To(BeFalse())
 		Expect(delegatingCore.Enabled(zapcore.InfoLevel)).To(BeTrue())
 		Expect(delegatingCore.Enabled(zapcore.WarnLevel)).To(BeFalse())
 		Expect(delegatingCore.Enabled(zapcore.ErrorLevel)).To(BeTrue())
+		// DebugLevel was filtered by dc.level before reaching the delegate
+		Expect(e.calledWith).To(HaveLen(3))
+		Expect(e.calledWith[0]).To(Equal(zapcore.InfoLevel))
+		Expect(e.calledWith[1]).To(Equal(zapcore.WarnLevel))
+		Expect(e.calledWith[2]).To(Equal(zapcore.ErrorLevel))
+	})
+
+	It("Enabled with a delegate (debug level)", func() {
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
+		delegatingCore.SetBufferingLevel(zapcore.DebugLevel)
+		e := &oddEvenEnabler{}
+		delegatingCore.SetDelegate(zapcore.NewCore(nil, nil, e))
+		// With DebugLevel as the configured level, all levels pass through to the delegate.
+		Expect(delegatingCore.Enabled(zapcore.DebugLevel)).To(BeFalse()) // delegate returns false (odd)
+		Expect(delegatingCore.Enabled(zapcore.InfoLevel)).To(BeTrue())   // delegate returns true (even)
+		Expect(delegatingCore.Enabled(zapcore.WarnLevel)).To(BeFalse())  // delegate returns false (odd)
+		Expect(delegatingCore.Enabled(zapcore.ErrorLevel)).To(BeTrue())  // delegate returns true (even)
 		Expect(e.calledWith).To(HaveLen(4))
 		Expect(e.calledWith[0]).To(Equal(zapcore.DebugLevel))
 		Expect(e.calledWith[1]).To(Equal(zapcore.InfoLevel))

@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -40,7 +40,7 @@ var _ = Describe(
 	"Create an operator configuration resource at startup", Ordered, func() {
 
 		ctx := context.Background()
-		logger := log.FromContext(ctx)
+		logger := logd.FromContext(ctx)
 		var readyCheckExecuter *ReadyCheckExecuter
 
 		BeforeAll(

@@ -6,10 +6,10 @@ package startup
 import (
 	"context"
 
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 // InstrumentAtStartupRunnable executes an unconditional apply/update of instrumentation for all workloads in
@@ -38,7 +38,7 @@ func (r *InstrumentAtStartupRunnable) NeedLeaderElection() bool {
 
 // Start runs the instrumentation procedure.
 func (r *InstrumentAtStartupRunnable) Start(ctx context.Context) error {
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	r.instrumenter.Client = r.manager.GetClient()
 	r.instrumenter.InstrumentAtStartup(ctx, logger)
 	return nil

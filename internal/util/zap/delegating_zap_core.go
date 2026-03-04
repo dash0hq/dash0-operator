@@ -66,7 +66,7 @@ func (dc *DelegatingZapCore) With(fields []zapcore.Field) zapcore.Core {
 func (dc *DelegatingZapCore) Enabled(lvl zapcore.Level) bool {
 	delegate := dc.delegate.Load()
 	if delegate != nil {
-		return (*delegate).Enabled(lvl)
+		return lvl >= dc.level && (*delegate).Enabled(lvl)
 	}
 
 	return lvl >= dc.level
@@ -77,6 +77,11 @@ func (dc *DelegatingZapCore) Enabled(lvl zapcore.Level) bool {
 func (dc *DelegatingZapCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
 	delegate := dc.delegate.Load()
 	if delegate != nil {
+		// Respect the configured level so that debug messages are not forwarded to the OTel pipeline when not in
+		// development mode.
+		if entry.Level < dc.level {
+			return ce
+		}
 		if !zapcore.DebugLevel.Enabled(entry.Level) { // this is equivalent to `entry.Level < -1`
 			// There is some unfortunate interaction going on between controller-runtime debug logging and the zap OTel
 			// bridge. When controller-runtime logs with a level below -1, like for example here:

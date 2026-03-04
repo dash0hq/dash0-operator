@@ -20,12 +20,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
@@ -64,7 +64,7 @@ var (
 var _ = Describe(
 	"The Perses dashboard controller", Ordered, func() {
 		ctx := context.Background()
-		logger := log.FromContext(ctx)
+		logger := logd.FromContext(ctx)
 		var clusterId string
 
 		BeforeAll(

@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -90,7 +91,7 @@ func deployRenderedOperatorConfigurationResourceWithRetry(
 	}()
 	By(fmt.Sprintf(
 		"deploying the Dash0 operator configuration resource with values %v", dash0OperatorConfigurationValues))
-	retryLogger := zap.New()
+	retryLogger := logd.NewLogger(zap.New())
 	err := util.RetryWithCustomBackoff("deploying the Dash0 operator configuration resource", func() error {
 		return runAndIgnoreOutput(exec.Command(
 			"kubectl",

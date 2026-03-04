@@ -17,6 +17,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -121,7 +122,7 @@ func deployRenderedMonitoringResourceWithRetry(
 	By(fmt.Sprintf(
 		"deploying the Dash0 monitoring resource to namespace %s with values %v from file %s, operator namespace is %s",
 		namespace, dash0MonitoringValues, renderedResourceFileName, operatorNamespace))
-	retryLogger := zap.New()
+	retryLogger := logd.NewLogger(zap.New())
 	err := util.RetryWithCustomBackoff("deploying the Dash0 monitoring resource to namespace", func() error {
 		return runAndIgnoreOutput(exec.Command(
 			"kubectl",

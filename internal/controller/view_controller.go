@@ -17,7 +17,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,7 +24,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -34,6 +32,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type ViewReconciler struct {
@@ -82,7 +81,7 @@ func (r *ViewReconciler) SetupWithManager(mgr manager.Manager) error {
 func (r *ViewReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "view.reconcile_requests")
 	var err error
@@ -132,12 +131,12 @@ func (r *ViewReconciler) overrideHttpRetryDelay(delay time.Duration) {
 	r.httpRetryDelay = delay
 }
 
-func (r *ViewReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logr.Logger) {
+func (r *ViewReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {
 	r.defaultApiConfigs.Set(apiConfigs)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *ViewReconciler) RemoveDefaultApiConfigs(_ context.Context, _ logr.Logger) {
+func (r *ViewReconciler) RemoveDefaultApiConfigs(_ context.Context, _ logd.Logger) {
 	r.defaultApiConfigs.Clear()
 }
 
@@ -145,7 +144,7 @@ func (r *ViewReconciler) SetNamespacedApiConfigs(
 	ctx context.Context,
 	namespace string,
 	updatedApiConfigs []ApiConfig,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	if updatedApiConfigs != nil {
 		previousApiConfigs, _ := r.namespacedApiConfigs.Get(namespace)
@@ -158,18 +157,18 @@ func (r *ViewReconciler) SetNamespacedApiConfigs(
 	}
 }
 
-func (r *ViewReconciler) RemoveNamespacedApiConfigs(ctx context.Context, namespace string, logger logr.Logger) {
+func (r *ViewReconciler) RemoveNamespacedApiConfigs(ctx context.Context, namespace string, logger logd.Logger) {
 	if _, exists := r.namespacedApiConfigs.Get(namespace); exists {
 		r.namespacedApiConfigs.Delete(namespace)
 		r.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
 }
 
-func (r *ViewReconciler) NotifiyOperatorManagerJustBecameLeader(ctx context.Context, logger logr.Logger) {
+func (r *ViewReconciler) NotifiyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context.Context, logger logr.Logger) {
+func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context.Context, logger logd.Logger) {
 	r.initialSyncMutex.Lock()
 	defer r.initialSyncMutex.Unlock()
 
@@ -226,7 +225,7 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 	}()
 }
 
-func (r *ViewReconciler) synchronizeNamespacedResources(ctx context.Context, namespace string, logger logr.Logger) {
+func (r *ViewReconciler) synchronizeNamespacedResources(ctx context.Context, namespace string, logger logd.Logger) {
 	// namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
 	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
 	// config and auth token at almost the same time, triggering two resyncs.
@@ -280,7 +279,7 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 	}
 
 	qualifiedName := req.NamespacedName.String() //nolint:staticcheck
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	logger.Info("processing reconcile request for a view resource", "name", qualifiedName)
 
 	action := upsertAction
@@ -333,7 +332,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
-	logger logr.Logger,
+	logger logd.Logger,
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
 
@@ -416,7 +415,7 @@ func (r *ViewReconciler) renderViewUrl(
 
 func (r *ViewReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
-	logger logr.Logger,
+	logger logd.Logger,
 ) (id string, err error) {
 	objectWithMetadata := Dash0ApiObjectWithMetadata{}
 	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
@@ -435,7 +434,7 @@ func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
 	ctx context.Context,
 	synchronizedResource client.Object,
 	syncResults synchronizationResults,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	view := synchronizedResource.(*dash0v1alpha1.Dash0View)
 

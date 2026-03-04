@@ -18,7 +18,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/go-logr/logr"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,13 +53,13 @@ func NewValidatedApiConfigAndToken(endpoint string, dataset string, token string
 }
 
 type ApiClient interface {
-	SetDefaultApiConfigs(context.Context, []ApiConfig, logr.Logger)
-	RemoveDefaultApiConfigs(context.Context, logr.Logger)
+	SetDefaultApiConfigs(context.Context, []ApiConfig, logd.Logger)
+	RemoveDefaultApiConfigs(context.Context, logd.Logger)
 }
 
 type NamespacedApiClient interface {
-	SetNamespacedApiConfigs(context.Context, string, []ApiConfig, logr.Logger)
-	RemoveNamespacedApiConfigs(context.Context, string, logr.Logger)
+	SetNamespacedApiConfigs(context.Context, string, []ApiConfig, logd.Logger)
+	RemoveNamespacedApiConfigs(context.Context, string, logd.Logger)
 }
 
 type ResourceToRequestsResult struct {
@@ -186,11 +186,11 @@ type ApiSyncReconciler interface {
 	// - the request objects for which the conversion was successful,
 	// - validation issues for items that were invalid and
 	// - synchronization errors that occurred during the conversion.
-	MapResourceToHttpRequests(*preconditionValidationResult, ApiConfig, apiAction, logr.Logger) *ResourceToRequestsResult
+	MapResourceToHttpRequests(*preconditionValidationResult, ApiConfig, apiAction, logd.Logger) *ResourceToRequestsResult
 
 	ExtractIdFromResponseBody(
 		responseBytes []byte,
-		logger logr.Logger,
+		logger logd.Logger,
 	) (string, error)
 }
 
@@ -206,7 +206,7 @@ type OwnedResourceReconciler interface {
 		context.Context,
 		client.Object,
 		synchronizationResults,
-		logr.Logger,
+		logd.Logger,
 	)
 }
 
@@ -338,7 +338,7 @@ func synchronizeViaApiAndUpdateStatus(
 	dash0ApiResource *unstructured.Unstructured,
 	ownedResource client.Object,
 	action apiAction,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	preconditionChecksResult := validatePreconditionsAndPreprocess(
 		ctx,
@@ -519,7 +519,7 @@ func validatePreconditionsAndPreprocess(
 	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
 	dash0ApiResource *unstructured.Unstructured,
-	logger logr.Logger,
+	logger logd.Logger,
 ) *preconditionValidationResult {
 	namespace := dash0ApiResource.GetNamespace()
 	name := dash0ApiResource.GetName()
@@ -764,7 +764,7 @@ func fetchExistingOrigins(
 	apiSyncReconciler ApiSyncReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
-	logger logr.Logger,
+	logger logd.Logger,
 ) ([]string, error) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
@@ -824,7 +824,7 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	apiConfig ApiConfig,
 	existingOriginsFromApi []string,
 	resourceToRequestsResult *ResourceToRequestsResult,
-	logger logr.Logger,
+	logger logd.Logger,
 ) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
@@ -868,7 +868,7 @@ func addAuthorizationHeader(req *http.Request, token string) {
 func executeAllHttpRequests(
 	apiSyncReconciler ApiSyncReconciler,
 	allRequests []WrappedApiRequest,
-	logger logr.Logger,
+	logger logd.Logger,
 ) ([]SuccessfulSynchronizationResult, map[string]string) {
 	successfullySynchronized := make([]SuccessfulSynchronizationResult, 0)
 	httpErrors := make(map[string]string)
@@ -924,7 +924,7 @@ func executeSingleHttpRequestWithRetryAndReadBody(
 	req *http.Request,
 	actionLabel string,
 	expectBody bool,
-	logger logr.Logger,
+	logger logd.Logger,
 ) ([]byte, error) {
 	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
 	responseBody := &[]byte{}
@@ -963,7 +963,7 @@ func executeSingleHttpRequestAndReadBody(
 	req *http.Request,
 	responseBody *[]byte,
 	actionLabel string,
-	logger logr.Logger,
+	logger logd.Logger,
 ) error {
 	res, err := apiSyncReconciler.HttpClient().Do(req)
 	if err != nil {
@@ -1057,7 +1057,7 @@ func writeSynchronizationResult(
 	ownedResource client.Object,
 	syncResults synchronizationResults,
 	resourceHasBeenDeleted bool,
-	logger logr.Logger,
+	logger logd.Logger,
 
 ) {
 	ownedResourceReconciler, ok := apiSyncReconciler.(OwnedResourceReconciler)

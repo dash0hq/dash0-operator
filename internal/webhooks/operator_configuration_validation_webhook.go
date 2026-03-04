@@ -11,11 +11,11 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
@@ -61,7 +61,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	// Note: The mutating webhook is called before the validating webhook, so we can assume the resource has already
 	// been normalized by the mutating webhook.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
-	logger := log.FromContext(ctx)
+	logger := logd.FromContext(ctx)
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
 		logger.Info("rejecting invalid operator configuration resource", "error", err)
