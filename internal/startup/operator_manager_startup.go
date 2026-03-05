@@ -1184,6 +1184,17 @@ func startDash0Controllers(
 	}
 	setupLog.Info("The monitoring resource reconciler has been started.")
 
+	setupLog.Info("Creating the auto-namespace-monitoring reconciler.")
+	autoNamespaceMonitoringReconciler := controller.NewAutoNamespaceMonitoringReconciler(
+		k8sClient,
+		envVars.operatorNamespace,
+	)
+	setupLog.Info("Starting the auto-namespace-monitoring reconciler.")
+	if err := autoNamespaceMonitoringReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the auto-namespace-monitoring reconciler: %w", err)
+	}
+	setupLog.Info("The auto-namespace-monitoring reconciler has been started.")
+
 	instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
 		k8sClient,
 		mgr.GetEventRecorder("dash0-instrumentation-webhook"),
@@ -1193,7 +1204,7 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
 	}
 	// For consistency, we update the extra config map in the instrumentation webhook handler as well.
-	// In case instrumentation related settings have been changed (e.g. operator.initContainerResources), _new_
+	// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), _new_
 	// workloads will be instrumented with the updated settings. Existing and already instrumented workloads will not
 	// be reinstrumented, and even if they are changed, the instrumentation webhook will not apply the new settings
 	// due to the HasBeenInstrumentedSuccessfullyByThisVersion check.
@@ -1211,7 +1222,7 @@ func startDash0Controllers(
 	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
 	}
-	if err := webhooks.NewMonitoringValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewMonitoringValidationWebhookHandler(k8sClient, envVars.operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
 	if err := webhooks.SetupDash0MonitoringConversionWebhookWithManager(mgr); err != nil {

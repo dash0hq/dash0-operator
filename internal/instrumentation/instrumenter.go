@@ -110,19 +110,19 @@ func (i *Instrumenter) InstrumentAtStartup(
 	logger logd.Logger,
 ) {
 	logger.Info("Applying/updating instrumentation at manager startup.")
-	allDash0MonitoringResouresInCluster := &dash0v1beta1.Dash0MonitoringList{}
+	allDash0MonitoringResourcesInCluster := &dash0v1beta1.Dash0MonitoringList{}
 	if err := i.List(
 		ctx,
-		allDash0MonitoringResouresInCluster,
+		allDash0MonitoringResourcesInCluster,
 		&client.ListOptions{},
 	); err != nil {
 		logger.Error(err, "Failed to list all Dash0 monitoring resources at manager startup.")
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Applying/updating instrumentation at manager startup: Found %d Dash0 monitoring resources.", len(allDash0MonitoringResouresInCluster.Items)))
+	logger.Info(fmt.Sprintf("Applying/updating instrumentation at manager startup: Found %d Dash0 monitoring resources.", len(allDash0MonitoringResourcesInCluster.Items)))
 
-	for _, dash0MonitoringResource := range allDash0MonitoringResouresInCluster.Items {
+	for _, dash0MonitoringResource := range allDash0MonitoringResourcesInCluster.Items {
 		logger.Info(
 			fmt.Sprintf(
 				"Applying/updating instrumentation at manager startup: Processing workloads in Dash0-enabled namespace %s",

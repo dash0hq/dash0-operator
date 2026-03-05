@@ -37,27 +37,27 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-var (
-	namespace                    = TestNamespaceName
-	extraMonitoringResourceNames []types.NamespacedName
-	operatorNamespace            = OperatorNamespace
-	namespacedApiClient1         *DummyNamespacedApiClient
-	namespacedApiClient2         *DummyNamespacedApiClient
-	namespacedApiClients         []NamespacedApiClient
-
-	apiConfigTest = ApiConfig{
-		Endpoint: ApiEndpointTest,
-		Dataset:  DatasetCustomTest,
-		Token:    AuthorizationTokenTest,
-	}
-)
-
 var _ = Describe(
 	"The monitoring resource controller", Ordered, func() {
-		ctx := context.Background()
-		var createdObjectsMonitoringControllerTest []client.Object
 
-		var monitoringReconciler *MonitoringReconciler
+		var (
+			extraMonitoringResourceNames []types.NamespacedName
+			namespacedApiClient1         *DummyNamespacedApiClient
+			namespacedApiClient2         *DummyNamespacedApiClient
+			namespacedApiClients         []NamespacedApiClient
+
+			apiConfigTest = ApiConfig{
+				Endpoint: ApiEndpointTest,
+				Dataset:  DatasetCustomTest,
+				Token:    AuthorizationTokenTest,
+			}
+
+			createdObjectsMonitoringControllerTest []client.Object
+
+			monitoringReconciler *MonitoringReconciler
+		)
+
+		ctx := context.Background()
 
 		BeforeAll(
 			func() {
@@ -93,7 +93,7 @@ var _ = Describe(
 					OperatorManagerDeployment,
 					util.CollectorConfig{
 						Images:                    TestImages,
-						OperatorNamespace:         operatorNamespace,
+						OperatorNamespace:         OperatorNamespace,
 						OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 						TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 					},
@@ -111,7 +111,7 @@ var _ = Describe(
 					OperatorManagerDeployment,
 					util.TargetAllocatorConfig{
 						Images:                    TestImages,
-						OperatorNamespace:         operatorNamespace,
+						OperatorNamespace:         OperatorNamespace,
 						TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 						CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 					},
@@ -131,7 +131,7 @@ var _ = Describe(
 					collectorManager,
 					targetAllocatorManager,
 					&DanglingEventsTimeoutsTest,
-					operatorNamespace,
+					OperatorNamespace,
 				)
 			},
 		)
@@ -143,7 +143,7 @@ var _ = Describe(
 					k8sClient,
 					createdObjectsMonitoringControllerTest,
 				)
-				DeleteAllEvents(ctx, clientset, namespace)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
 			},
 		)
 
@@ -178,7 +178,7 @@ var _ = Describe(
 								VerifyCollectorResources(
 									ctx,
 									k8sClient,
-									operatorNamespace,
+									OperatorNamespace,
 									EndpointDash0Test,
 									AuthorizationDefaultEnvVar,
 									AuthorizationTokenTest,
@@ -206,7 +206,7 @@ var _ = Describe(
 								VerifyCollectorResources(
 									ctx,
 									k8sClient,
-									operatorNamespace,
+									OperatorNamespace,
 									EndpointDash0Test,
 									AuthorizationDefaultEnvVar,
 									AuthorizationTokenTest,
@@ -566,7 +566,7 @@ var _ = Describe(
 
 						triggerReconcileRequest(ctx, monitoringReconciler)
 
-						verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+						verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 						config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 					}, Entry(
 						"should instrument an existing cron job", WorkloadTestConfig{
@@ -639,7 +639,7 @@ var _ = Describe(
 						By("trigger a reconcile request to revert the instrumented workload")
 						triggerReconcileRequest(ctx, monitoringReconciler)
 
-						VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+						VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
 						workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 						config.VerifyFn(workload)
 						VerifyWebhookIgnoreOnceLabelIsPresent(workload.GetObjectMeta())
@@ -724,7 +724,7 @@ var _ = Describe(
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifyNoEvents(ctx, clientset, namespace)
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeCreatedAndUpdated)
@@ -734,7 +734,7 @@ var _ = Describe(
 								// resource is created or updated, and the webhook will take care of that.
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifyNoEvents(ctx, clientset, namespace)
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 							},
 							Entry(
@@ -808,13 +808,13 @@ var _ = Describe(
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifyNoEvents(ctx, clientset, namespace)
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
 								config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeAll)
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 							},
 							Entry(
@@ -912,15 +912,15 @@ var _ = Describe(
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifyNoEvents(ctx, clientset, namespace)
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
 								config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-								DeleteAllEvents(ctx, clientset, namespace)
+								DeleteAllEvents(ctx, clientset, TestNamespaceName)
 
 								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+								VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
 								workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 								config.VerifyFn(workload)
 								VerifyWebhookIgnoreOnceLabelIsPresent(workload.GetObjectMeta())
@@ -1031,13 +1031,13 @@ var _ = Describe(
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifyNoEvents(ctx, clientset, namespace)
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
 								config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeAll)
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 							},
 							Entry(
@@ -1135,15 +1135,15 @@ var _ = Describe(
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 								config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-								DeleteAllEvents(ctx, clientset, namespace)
+								DeleteAllEvents(ctx, clientset, TestNamespaceName)
 
 								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+								VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
 								workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 								config.VerifyFn(workload)
 								VerifyWebhookIgnoreOnceLabelIsPresent(workload.GetObjectMeta())
@@ -1254,10 +1254,10 @@ var _ = Describe(
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-								DeleteAllEvents(ctx, clientset, namespace)
+								DeleteAllEvents(ctx, clientset, TestNamespaceName)
 
 								UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeCreatedAndUpdated)
 
@@ -1265,7 +1265,7 @@ var _ = Describe(
 								// Already instrumented workloads will not be uninstrumented.
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifyNoEvents(ctx, clientset, namespace)
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 							},
 							Entry(
@@ -1362,7 +1362,7 @@ var _ = Describe(
 								UpdateInstrumentWorkloadsLabelSelector(ctx, k8sClient, "another-label=true")
 								triggerReconcileRequest(ctx, monitoringReconciler)
 
-								VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+								VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
@@ -1481,7 +1481,7 @@ var _ = Describe(
 								UpdateInstrumentWorkloadsLabelSelector(ctx, k8sClient, "dash0-auto-instrument=yes")
 								triggerReconcileRequest(ctx, monitoringReconciler)
 
-								VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
+								VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
@@ -1590,13 +1590,13 @@ var _ = Describe(
 								createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								VerifyNoEvents(ctx, clientset, namespace)
+								VerifyNoEvents(ctx, clientset, TestNamespaceName)
 								config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, new("tracecontext,xray"))
 
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
@@ -1746,7 +1746,7 @@ var _ = Describe(
 
 								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, new("tracecontext,xray"))
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
@@ -1921,7 +1921,7 @@ var _ = Describe(
 
 								UpdateInstrumentWorkloadsTraceContextPropagators(ctx, k8sClient, nil)
 								triggerReconcileRequest(ctx, monitoringReconciler)
-								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+								verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 								config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 								monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
@@ -2231,7 +2231,7 @@ var _ = Describe(
 						VerifyCollectorDaemonSet(
 							ctx,
 							k8sClient,
-							operatorNamespace,
+							OperatorNamespace,
 							AuthorizationDefaultEnvVar,
 							AuthorizationTokenTest,
 						)
@@ -2255,7 +2255,7 @@ var _ = Describe(
 						VerifyCollectorDaemonSet(
 							ctx,
 							k8sClient,
-							operatorNamespace,
+							OperatorNamespace,
 							"OTELCOL_AUTH_TOKEN_NS_TEST_NAMESPACE_0",
 							AuthorizationTokenTestAlternative,
 						)
@@ -2273,13 +2273,13 @@ func verifyThatDeploymentIsInstrumented(
 ) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)
 	By("Inititalize a deployment")
-	deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
+	deployment := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
 	createdObjects = append(createdObjects, deployment)
 
 	triggerReconcileRequest(ctx, monitoringReconciler)
 
-	verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-	VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
+	verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
+	VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations())
 
 	return createdObjects
 }
@@ -2291,13 +2291,13 @@ func verifyThatDeploymentIsNotBeingInstrumented(
 ) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)
 	By("Inititalize a deployment")
-	deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
+	deployment := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
 	createdObjects = append(createdObjects, deployment)
 
 	triggerReconcileRequest(ctx, monitoringReconciler)
 
-	VerifyNoEvents(ctx, clientset, namespace)
-	VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name))
+	VerifyNoEvents(ctx, clientset, TestNamespaceName)
+	VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name))
 
 	return createdObjects
 }
@@ -2320,6 +2320,7 @@ func triggerReconcileRequestForName(
 	Expect(err).NotTo(HaveOccurred())
 }
 
+//nolint:unparam
 func verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx context.Context, namespace string, name string) {
 	verifyMonitoringResourceIsAvailable(ctx)
 	VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
