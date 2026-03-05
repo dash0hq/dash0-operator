@@ -57,7 +57,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		expectations map[string]*EnvVarExpectation
 	}
 
-	Describe("when instrumenting workloads", func() {
+	Context("when instrumenting workloads", func() {
 		It("should instrument a basic cron job", func() {
 			workload := BasicCronJob(TestNamespaceName, CronJobNamePrefix)
 			modificationResult := workloadModifier.ModifyCronJob(workload)
@@ -443,7 +443,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		})
 	})
 
-	Describe("when instrumenting workloads multiple times (instrumentation needs to be idempotent)", func() {
+	Context("when instrumenting workloads multiple times (instrumentation needs to be idempotent)", func() {
 		It("cron job instrumentation needs to be idempotent", func() {
 			workload := BasicCronJob(TestNamespaceName, CronJobNamePrefix)
 			modificationResult := workloadModifier.ModifyCronJob(workload)
@@ -535,7 +535,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		})
 	})
 
-	Describe("when reverting workloads", func() {
+	Context("when reverting workloads", func() {
 		It("should remove Dash0 from an instrumented cron job", func() {
 			workload := InstrumentedCronJob(TestNamespaceName, CronJobNamePrefix)
 			modificationResult := workloadModifier.RevertCronJob(workload)
@@ -640,7 +640,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		})
 	})
 
-	Describe("individual modification functions", func() {
+	Context("individual modification functions", func() {
 		ctx := context.Background()
 		logger := logd.FromContext(ctx)
 		workloadModifier := NewResourceModifier(
@@ -1761,6 +1761,99 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOTelInjectorServiceName:        {Value: "workload-name"},
 					envVarOTelInjectorServiceNamespace:   {Value: "workload-part-of"},
 					envVarOTelInjectorServiceVersionName: nil,
+				},
+			}),
+			XEntry("resource.opentelemetry.io/service.name should win over app.kubernetes.io/name", objectMetaResourceAttributesTest{
+				workloadLabels: map[string]string{
+					util.AppKubernetesIoNameLabel:    "app.kubernetes.io/name-value",
+					util.AppKubernetesIoPartOfLabel:  "app.kubernetes.io/part-of-value",
+					util.AppKubernetesIoVersionLabel: "app.kubernetes.io/version-value",
+				},
+				workloadAnnotations: map[string]string{
+					"resource.opentelemetry.io/service.name": "resource.opentelemetry.io/service.name-value",
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOTelInjectorServiceName:        {Value: "resource.opentelemetry.io/service.name-value"},
+					envVarOTelInjectorServiceNamespace:   {Value: "app.kubernetes.io/part-of-value"},
+					envVarOTelInjectorServiceVersionName: {Value: "app.kubernetes.io/version-value"},
+				},
+				expectedResourceAttributeEnvVar: []string{
+					"service.name=resource.opentelemetry.io/service.name-value",
+				},
+			}),
+			XEntry("resource.opentelemetry.io/service.namespace should win over app.kubernetes.io/part-of", objectMetaResourceAttributesTest{
+				workloadLabels: map[string]string{
+					util.AppKubernetesIoNameLabel:    "app.kubernetes.io/name-value",
+					util.AppKubernetesIoPartOfLabel:  "app.kubernetes.io/part-of-value",
+					util.AppKubernetesIoVersionLabel: "app.kubernetes.io/version-value",
+				},
+				workloadAnnotations: map[string]string{
+					"resource.opentelemetry.io/service.namespace": "resource.opentelemetry.io/service.namespace-value",
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOTelInjectorServiceName:        {Value: "app.kubernetes.io/name-value"},
+					envVarOTelInjectorServiceNamespace:   {Value: "resource.opentelemetry.io/service.namespace-value"},
+					envVarOTelInjectorServiceVersionName: {Value: "app.kubernetes.io/version-value"},
+				},
+				expectedResourceAttributeEnvVar: []string{
+					"service.namespace=resource.opentelemetry.io/service.namespace-value",
+				},
+			}),
+			XEntry("resource.opentelemetry.io/service.version should win over app.kubernetes.io/version", objectMetaResourceAttributesTest{
+				workloadLabels: map[string]string{
+					util.AppKubernetesIoNameLabel:    "app.kubernetes.io/name-value",
+					util.AppKubernetesIoPartOfLabel:  "app.kubernetes.io/part-of-value",
+					util.AppKubernetesIoVersionLabel: "app.kubernetes.io/version-value",
+				},
+				workloadAnnotations: map[string]string{
+					"resource.opentelemetry.io/service.version": "resource.opentelemetry.io/service.version-value",
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOTelInjectorServiceName:        {Value: "app.kubernetes.io/name-value"},
+					envVarOTelInjectorServiceNamespace:   {Value: "app.kubernetes.io/part-of-value"},
+					envVarOTelInjectorServiceVersionName: {Value: "resource.opentelemetry.io/service.version-value"},
+				},
+				expectedResourceAttributeEnvVar: []string{
+					"service.version=resource.opentelemetry.io/service.version-value",
+				},
+			}),
+			Entry("resource.opentelemetry.io/service.* should win over app.kubernetes.io/*", objectMetaResourceAttributesTest{
+				workloadLabels: map[string]string{
+					util.AppKubernetesIoNameLabel:    "app.kubernetes.io/name-value",
+					util.AppKubernetesIoPartOfLabel:  "app.kubernetes.io/part-of-value",
+					util.AppKubernetesIoVersionLabel: "app.kubernetes.io/version-value",
+				},
+				workloadAnnotations: map[string]string{
+					"resource.opentelemetry.io/service.name":      "resource.opentelemetry.io/service.name-value",
+					"resource.opentelemetry.io/service.namespace": "resource.opentelemetry.io/service.namespace-value",
+					"resource.opentelemetry.io/service.version":   "resource.opentelemetry.io/service.version-value",
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOTelInjectorServiceName:        {Value: "resource.opentelemetry.io/service.name-value"},
+					envVarOTelInjectorServiceNamespace:   {Value: "resource.opentelemetry.io/service.namespace-value"},
+					envVarOTelInjectorServiceVersionName: {Value: "resource.opentelemetry.io/service.version-value"},
+				},
+				expectedResourceAttributeEnvVar: []string{
+					"service.name=resource.opentelemetry.io/service.name-value",
+					"service.namespace=resource.opentelemetry.io/service.namespace-value",
+					"service.version=resource.opentelemetry.io/service.version-value",
+				},
+			}),
+			Entry("resource.opentelemetry.io/service.* should be set independently of app.kubernetes.io/*", objectMetaResourceAttributesTest{
+				workloadAnnotations: map[string]string{
+					"resource.opentelemetry.io/service.name":      "resource.opentelemetry.io/service.name-value",
+					"resource.opentelemetry.io/service.namespace": "resource.opentelemetry.io/service.namespace-value",
+					"resource.opentelemetry.io/service.version":   "resource.opentelemetry.io/service.version-value",
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOTelInjectorServiceName:        {Value: "resource.opentelemetry.io/service.name-value"},
+					envVarOTelInjectorServiceNamespace:   {Value: "resource.opentelemetry.io/service.namespace-value"},
+					envVarOTelInjectorServiceVersionName: {Value: "resource.opentelemetry.io/service.version-value"},
+				},
+				expectedResourceAttributeEnvVar: []string{
+					"service.name=resource.opentelemetry.io/service.name-value",
+					"service.namespace=resource.opentelemetry.io/service.namespace-value",
+					"service.version=resource.opentelemetry.io/service.version-value",
 				},
 			}),
 			Entry("should ignore workload labels if name is not set", objectMetaResourceAttributesTest{
