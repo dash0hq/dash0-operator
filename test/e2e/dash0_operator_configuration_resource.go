@@ -22,12 +22,13 @@ import (
 )
 
 type dash0OperatorConfigurationValues struct {
-	SelfMonitoringEnabled      bool
-	Endpoint                   string
-	Token                      string
-	ApiEndpoint                string
-	ClusterName                string
-	TelemetryCollectionEnabled bool
+	SelfMonitoringEnabled          bool
+	Endpoint                       string
+	Token                          string
+	ApiEndpoint                    string
+	ClusterName                    string
+	TelemetryCollectionEnabled     bool
+	AutoNamespaceMonitoringEnabled bool
 }
 
 const (
@@ -149,6 +150,17 @@ func updateEndpointOfDash0OperatorConfigurationResource(
     "path":"/spec/exports/0/dash0/endpoint",
     "value":"%s"
 	}]`, newEndpoint)
+	updateDash0OperatorConfigurationResource(jsonPatch)
+}
+
+func updateAutoNamespaceMonitoringLabelSelector(
+	newLabelSelector string,
+) {
+	jsonPatch := fmt.Sprintf(`[{
+   "op":"replace",
+   "path":"/spec/autoMonitorNamespaces/labelSelector",
+   "value":"%s"
+	}]`, newLabelSelector)
 	updateDash0OperatorConfigurationResource(jsonPatch)
 }
 

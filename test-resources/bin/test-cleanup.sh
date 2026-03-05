@@ -62,8 +62,12 @@ fi
 helm uninstall --namespace "$target_namespace" prometheus-crds --ignore-not-found || true
 
 kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
+kubectl delete -n test-namespace-1 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
+kubectl delete -n test-namespace-4 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
+kubectl delete -n test-namespace-5 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
+kubectl delete -n test-namespace-6 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 sleep 1
 # If the cluster is in a bad state because an operator image has been deployed that terminates abruptly, the monitoring
 # resource's finalizer will block the deletion of the monitoring resource, and thus also the deletion of the
@@ -84,8 +88,12 @@ if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespaces}" = "true
   kubectl delete ns "${target_namespace}" --ignore-not-found
 fi
 if [[ "${delete_namespaces}" = "true" ]]; then
+  kubectl delete ns test-namespace-1 --ignore-not-found
   kubectl delete ns test-namespace-2 --ignore-not-found
   kubectl delete ns test-namespace-3 --ignore-not-found
+  kubectl delete ns test-namespace-4 --ignore-not-found
+  kubectl delete ns test-namespace-5 --ignore-not-found
+  kubectl delete ns test-namespace-6 --ignore-not-found
 fi
 
 helm uninstall --namespace "$operator_namespace" dash0-operator --timeout 30s || true

@@ -52,18 +52,18 @@ type SelfMonitoringTestConfig struct {
 	expectedHeaders       map[string]string
 }
 
-var (
-	reconciler                                        *OperatorConfigurationReconciler
-	delegatingZapCoreWrapper                          *zaputil.DelegatingZapCoreWrapper
-	createdObjectsOperatorConfigurationControllerTest []client.Object
-	apiClient1                                        *DummyApiClient
-	apiClient2                                        *DummyApiClient
-	selfMonitoringMetricsClient1                      *DummySelfMonitoringMetricsClient
-	selfMonitoringMetricsClient2                      *DummySelfMonitoringMetricsClient
-)
-
 var _ = Describe(
 	"The operation configuration resource controller", Ordered, func() {
+
+		var (
+			reconciler                                        *OperatorConfigurationReconciler
+			createdObjectsOperatorConfigurationControllerTest []client.Object
+			apiClient1                                        *DummyApiClient
+			apiClient2                                        *DummyApiClient
+			selfMonitoringMetricsClient1                      *DummySelfMonitoringMetricsClient
+			selfMonitoringMetricsClient2                      *DummySelfMonitoringMetricsClient
+		)
+
 		ctx := context.Background()
 
 		BeforeAll(
@@ -119,7 +119,7 @@ var _ = Describe(
 							)
 						}
 
-						reconciler = createReconciler()
+						reconciler, _ = createReconciler(apiClient1, apiClient2)
 						operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 							ctx,
 							k8sClient,
@@ -443,9 +443,13 @@ var _ = Describe(
 
 		Describe(
 			"when creating the operator configuration resource", func() {
+				var (
+					delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper
+				)
+
 				BeforeEach(
 					func() {
-						reconciler = createReconciler()
+						reconciler, delegatingZapCoreWrapper = createReconciler(apiClient1, apiClient2)
 					},
 				)
 
@@ -477,7 +481,7 @@ var _ = Describe(
 								VerifyCollectorResources(
 									ctx,
 									k8sClient,
-									operatorNamespace,
+									OperatorNamespace,
 									EndpointDash0Test,
 									AuthorizationDefaultEnvVar,
 									AuthorizationTokenTest,
@@ -753,10 +757,13 @@ var _ = Describe(
 
 		Describe(
 			"when updating or deleting the existing operator configuration resource", func() {
+				var (
+					delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper
+				)
 
 				BeforeEach(
 					func() {
-						reconciler = createReconciler()
+						reconciler, delegatingZapCoreWrapper = createReconciler(apiClient1, apiClient2)
 
 						// Reconcile once with self-monitoring enabled and an export, so the tests below start in a state where the
 						// OTel SDK is already active.
@@ -791,7 +798,12 @@ var _ = Describe(
 							}, 1*time.Second, pollingInterval,
 						).Should(Succeed())
 
-						resetCallCounts()
+						resetCallCounts(
+							apiClient1,
+							apiClient2,
+							selfMonitoringMetricsClient1,
+							selfMonitoringMetricsClient2,
+						)
 					},
 				)
 
@@ -1057,7 +1069,7 @@ var _ = Describe(
 						VerifyCollectorResources(
 							ctx,
 							k8sClient,
-							operatorNamespace,
+							OperatorNamespace,
 							EndpointDash0Test,
 							AuthorizationDefaultEnvVar,
 							AuthorizationTokenTest,
@@ -1069,7 +1081,7 @@ var _ = Describe(
 						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 						VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
 
-						VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+						VerifyCollectorResourcesDoNotExist(ctx, k8sClient, OperatorNamespace)
 					},
 				)
 			},
@@ -1080,7 +1092,7 @@ var _ = Describe(
 
 				BeforeEach(
 					func() {
-						reconciler = createReconciler()
+						reconciler, _ = createReconciler(apiClient1, apiClient2)
 
 						CreateOperatorConfigurationResourceWithSpec(
 							ctx,
@@ -1124,7 +1136,7 @@ var _ = Describe(
 				It(
 					"should mark only the most recent resource as available and the other ones as degraded when multiple resources exist",
 					func() {
-						reconciler = createReconciler()
+						reconciler, _ = createReconciler(apiClient1, apiClient2)
 						firstName := types.NamespacedName{Name: "resource-1"}
 						firstResource := CreateOperatorConfigurationResourceWithName(
 							ctx,
@@ -1264,14 +1276,14 @@ func verifyOperatorManagerResourceAttributes(g Gomega, oTelSdkConfig *common.OTe
 	g.Expect(oTelSdkConfig.ContainerName).To(Equal("operator-manager"))
 }
 
-func createReconciler() *OperatorConfigurationReconciler {
+func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*OperatorConfigurationReconciler, *zaputil.DelegatingZapCoreWrapper) {
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
 		k8sClient.Scheme(),
 		OperatorManagerDeployment,
 		util.CollectorConfig{
 			Images:                    TestImages,
-			OperatorNamespace:         operatorNamespace,
+			OperatorNamespace:         OperatorNamespace,
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 		},
@@ -1289,7 +1301,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 		OperatorManagerDeployment,
 		util.TargetAllocatorConfig{
 			Images:                    TestImages,
-			OperatorNamespace:         operatorNamespace,
+			OperatorNamespace:         OperatorNamespace,
 			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
 			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 		},
@@ -1297,7 +1309,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
 		k8sClient, clientset, util.ExtraConfigDefaults, false, targetallocatorResourceManager,
 	)
-	delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
+	delegatingZapCoreWrapper := zaputil.NewDelegatingZapCoreWrapper()
 	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
 
 	operatorConfigurationReconciler := NewOperatorConfigurationReconciler(
@@ -1318,7 +1330,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 		OperatorNamespace,
 		false,
 	)
-	return operatorConfigurationReconciler
+	return operatorConfigurationReconciler, delegatingZapCoreWrapper
 }
 
 func triggerOperatorConfigurationReconcileRequest(
@@ -1383,7 +1395,12 @@ func verifyOperatorConfigurationResourceIsDegraded(ctx context.Context) {
 	).Should(Succeed())
 }
 
-func resetCallCounts() {
+func resetCallCounts(
+	apiClient1 *DummyApiClient,
+	apiClient2 *DummyApiClient,
+	selfMonitoringMetricsClient1 *DummySelfMonitoringMetricsClient,
+	selfMonitoringMetricsClient2 *DummySelfMonitoringMetricsClient,
+) {
 	for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
 		apiClient.ResetCallCounts()
 	}

@@ -1,0 +1,33 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration-resource
+spec:
+  export:
+    dash0:
+      endpoint: "$DASH0_INGRESS_ENDPOINT"
+      authorization:
+        secretRef: {}
+      apiEndpoint: "$DASH0_API_ENDPOINT"
+  selfMonitoring:
+    enabled: $SELF_MONITORING_ENABLED
+  kubernetesInfrastructureMetricsCollection:
+    enabled: $KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED
+  collectPodLabelsAndAnnotations:
+    enabled: $COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED
+  telemetryCollection:
+    enabled: $TELEMETRY_COLLECTION_ENABLED
+  autoMonitorNamespaces:
+    enabled: true
+  monitoringTemplate:
+    metadata:
+      name: monitoring-resource
+    spec:
+      instrumentWorkloads:
+        mode: $INSTRUMENT_WORKLOADS_MODE
+      logCollection:
+        enabled: $LOG_COLLECTION
+      prometheusScraping:
+        enabled: $PROMETHEUS_SCRAPING_ENABLED
+      synchronizePersesDashboards: $SYNCHRONIZE_PERSES_DASHBOARDS
+      synchronizePrometheusRules: $SYNCHRONIZE_PROMETHEUS_RULES

@@ -50,12 +50,18 @@ func determineTelemetryMatcherImage() {
 }
 
 func deployOtlpSink(cleanupSteps *neccessaryCleanupSteps) {
+	// Note: Since the otlp-sink collector is configured with a debug/verbosity=detailed exporter, if we accidentally
+	// auto-monitor otlp-sink, it gets into a feedback cycle by collecting metrics and logs in that namespace and then
+	// also logging each collected data point.
+	recreateNamespaceWithLabel(
+		otlpSinkNamespace,
+		map[string]string{"dash0.com/enable": "\"false\""},
+	)
 	//nolint:prealloc
 	helmArgs := []string{
 		"install",
 		"--namespace",
 		otlpSinkNamespace,
-		"--create-namespace",
 		"--wait",
 		"--timeout",
 		"60s",

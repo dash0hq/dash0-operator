@@ -144,7 +144,7 @@ var _ = BeforeSuite(func() {
 	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace)
 	Expect(monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
-	Expect(NewMonitoringValidationWebhookHandler(k8sClient).SetupWebhookWithManager(manager)).To(Succeed())
+	Expect(NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).SetupWebhookWithManager(manager)).To(Succeed())
 
 	//+kubebuilder:scaffold:webhook
 

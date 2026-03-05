@@ -31,6 +31,12 @@ const ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive = "T
 	"deprecated `export` and the `exports` field set. These fields are mutually exclusive. Please use only the " +
 	"`exports` field and remove the `export` field."
 
+const ErrorMessageOperatorConfigurationMonitoringTemplateWithExports = "The provided Dash0 operator configuration resource has a monitoring template with `exports`. Please use the " +
+	"`exports` field in the operator configuration and remove the `exports` from the monitoringTemplate.spec."
+
+const ErrorMessageOperatorConfigurationMonitoringTemplateWithExport = "The provided Dash0 operator configuration resource has a monitoring template with `export`. Please use the " +
+	"`exports` field in the operator configuration and remove the `export` from the monitoringTemplate.spec."
+
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client client.Client
 }
@@ -142,6 +148,22 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		if !validateGrpcExportInsecureFlags(&export) {
 			logger.Info(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
 			return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
+		}
+	}
+
+	if spec.MonitoringTemplate != nil {
+		// Defining an export in the monitoring template makes no sense, since all monitoring resources would have their
+		// individual export then, but it is the same export target over and over. Users should put the export into the
+		// operator configuration instead.
+
+		//nolint:staticcheck
+		if spec.MonitoringTemplate.Spec.Export != nil {
+			logger.Info(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
+			return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
+		}
+		if len(spec.MonitoringTemplate.Spec.Exports) > 0 {
+			logger.Info(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
+			return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
 		}
 	}
 

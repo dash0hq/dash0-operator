@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -15,6 +16,7 @@ import (
 
 const (
 	testAppHelmInstallTimeout = "120s"
+	maxLengthHelmReleaseName  = 53
 )
 
 var (
@@ -228,7 +230,7 @@ func installTestAppWorkloads(
 	// Add testIds for batch workloads
 	for _, wt := range workloadTypes {
 		if wt.isBatch {
-			if testId := getTestIdFromMap(testIds, runtime, wt); testId != "" {
+			if testId := getTestIdFromMap(testIds, runtime, wt, namespace); testId != "" {
 				helmSetParams =
 					append(
 						helmSetParams,
@@ -259,7 +261,7 @@ func runTestAppHelmInstall(
 		"--wait",
 		"--timeout",
 		testAppHelmInstallTimeout,
-		runtime.helmReleaseName,
+		helmReleaseName(runtime, namespace),
 		runtime.helmChartPath,
 	}
 	args = append(args, setValues...)
@@ -280,19 +282,19 @@ func runTestAppHelmUninstall(namespace string, releaseName string) error {
 }
 
 func uninstallDotnetRelease(namespace string) error {
-	return runTestAppHelmUninstall(namespace, runtimeTypeDotnet.helmReleaseName)
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeDotnet, namespace))
 }
 
 func uninstallJvmRelease(namespace string) error {
-	return runTestAppHelmUninstall(namespace, runtimeTypeJvm.helmReleaseName)
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeJvm, namespace))
 }
 
 func uninstallNodeJsRelease(namespace string) error {
-	return runTestAppHelmUninstall(namespace, runtimeTypeNodeJs.helmReleaseName)
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeNodeJs, namespace))
 }
 
 func uninstallPythonRelease(namespace string) error {
-	return runTestAppHelmUninstall(namespace, runtimeTypePython.helmReleaseName)
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypePython, namespace))
 }
 
 func killBatchJobsAndPods(namespace string) {
@@ -360,6 +362,15 @@ func addTestAppImageSetParams(runtime runtimeType, helmSetParams []string) []str
 }
 
 func addOptOutLabel(namespace string, workloadType string, workloadName string) error {
+	return addLabel(
+		namespace,
+		workloadType,
+		workloadName,
+		"dash0.com/enable=false",
+	)
+}
+
+func addLabel(namespace string, workloadType string, workloadName string, label string) error {
 	return runAndIgnoreOutput(
 		exec.Command(
 			"kubectl",
@@ -369,7 +380,7 @@ func addOptOutLabel(namespace string, workloadType string, workloadName string) 
 			"--overwrite",
 			workloadType,
 			workloadName,
-			"dash0.com/enable=false",
+			label,
 		))
 }
 
@@ -384,4 +395,20 @@ func removeOptOutLabel(namespace string, workloadType string, workloadName strin
 			workloadName,
 			"dash0.com/enable-",
 		))
+}
+
+func helmReleaseName(runtime runtimeType, namespace string) string {
+	return truncateHelmReleaseName(runtime.helmReleasePrefix + "-" + namespace)
+}
+
+func truncateHelmReleaseName(releaseName string) string {
+	if len(releaseName) <= maxLengthHelmReleaseName {
+		return releaseName
+	}
+	shortReleaseName := releaseName[:maxLengthHelmReleaseName]
+	if !strings.HasSuffix(shortReleaseName, "-") {
+		return shortReleaseName
+	}
+	// if the release name ends with "-" after shortening (which is invalid), remove one more character
+	return shortReleaseName[:maxLengthHelmReleaseName-1]
 }

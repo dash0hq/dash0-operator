@@ -224,7 +224,7 @@ func (d *Dash0Monitoring) ReadInstrumentWorkloadsSetting() dash0common.Instrumen
 	if instrumentWorkloads == "" {
 		return dash0common.InstrumentWorkloadsModeAll
 	}
-	if !slices.Contains(dash0common.AllInstrumentWorkloadsMode, instrumentWorkloads) {
+	if !slices.Contains(dash0common.AllInstrumentWorkloadsModes, instrumentWorkloads) {
 		return dash0common.InstrumentWorkloadsModeAll
 	}
 	return instrumentWorkloads

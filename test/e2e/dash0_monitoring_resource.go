@@ -143,10 +143,10 @@ func deployRenderedMonitoringResourceWithRetry(
 	)
 	Expect(err).ToNot(HaveOccurred())
 
-	waitForMonitoringResourceToBecomeAvailable(namespace)
+	waitForMonitoringResourceToBecomeAvailable(namespace, dash0MonitoringResourceName)
 }
 
-func waitForMonitoringResourceToBecomeAvailable(namespace string) {
+func waitForMonitoringResourceToBecomeAvailable(namespace string, name string) {
 	By("waiting for the Dash0 monitoring resource to become available")
 	Eventually(func(g Gomega) {
 		g.Expect(
@@ -155,7 +155,7 @@ func waitForMonitoringResourceToBecomeAvailable(namespace string) {
 				"get",
 				"--namespace",
 				namespace,
-				"dash0monitorings.operator.dash0.com/dash0-monitoring-resource-e2e",
+				fmt.Sprintf("dash0monitorings.operator.dash0.com/%s", name),
 			))).To(Succeed())
 	}, 60*time.Second, 1*time.Second).Should(Succeed())
 	Expect(
@@ -164,7 +164,7 @@ func waitForMonitoringResourceToBecomeAvailable(namespace string) {
 			"wait",
 			"--namespace",
 			namespace,
-			"dash0monitorings.operator.dash0.com/dash0-monitoring-resource-e2e",
+			fmt.Sprintf("dash0monitorings.operator.dash0.com/%s", name),
 			"--for",
 			"condition=Available",
 			"--timeout",
@@ -222,6 +222,7 @@ func undeployDash0MonitoringResourceIgnoringMissingCrdErrors(namespace string) e
 		namespace,
 		"dash0monitoring",
 		dash0MonitoringResourceName,
+		"--wait",
 		"--ignore-not-found",
 	))
 	if err != nil && strings.HasPrefix(output, "error: the server doesn't have a resource type \"dash0monitoring\"") {
@@ -230,7 +231,7 @@ func undeployDash0MonitoringResourceIgnoringMissingCrdErrors(namespace string) e
 	return err
 }
 
-func verifyDash0MonitoringResourceDoesNotExist(g Gomega, namespace string) {
+func verifyDash0MonitoringResourceDoesNotExist(g Gomega, namespace string, name string) {
 	output, err := run(exec.Command(
 		"kubectl",
 		"get",
@@ -238,7 +239,7 @@ func verifyDash0MonitoringResourceDoesNotExist(g Gomega, namespace string) {
 		namespace,
 		"--ignore-not-found",
 		"dash0monitoring",
-		dash0MonitoringResourceName,
+		name,
 	))
 	// We run this verification after uninstalling the operator Helm chart, naturally, the Dash0Monitoring CRD will no
 	// longer exist.

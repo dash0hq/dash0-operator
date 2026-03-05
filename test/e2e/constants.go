@@ -6,27 +6,29 @@ package e2e
 import "fmt"
 
 const (
-	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
+	applicationUnderTestNamespace = "e2e-test-ns"
 
-	runtimeTypeLabelDotnet = ".NET"
-	applicationPathDotnet  = "test-resources/dotnet"
-	workloadNameDotnet     = "dash0-operator-dotnet-test"
-	releaseNameDotnet      = "test-app-dotnet"
+	monitoringAutoResourceName = "dash0-monitoring-auto-resource"
 
-	runtimeTypeLabelJvm = "JVM"
-	applicationPathJvm  = "test-resources/jvm/spring-boot"
-	workloadNameJvm     = "dash0-operator-jvm-spring-boot-test"
-	releaseNameJvm      = "test-app-jvm"
+	runtimeTypeLabelDotnet  = ".NET"
+	applicationPathDotnet   = "test-resources/dotnet"
+	workloadNameDotnet      = "dash0-operator-dotnet-test"
+	releaseNameDotnetPrefix = "dotnet"
 
-	runtimeTypeLabelNodeJs = "Node.js"
-	applicationPathNodeJs  = "test-resources/node.js/express"
-	workloadNameNodeJs     = "dash0-operator-nodejs-20-express-test"
-	releaseNameNodeJs      = "test-app-nodejs"
+	runtimeTypeLabelJvm  = "JVM"
+	applicationPathJvm   = "test-resources/jvm/spring-boot"
+	workloadNameJvm      = "dash0-operator-jvm-spring-boot-test"
+	releaseNameJvmPrefix = "jvm"
 
-	runtimeTypeLabelPython = "Python"
-	applicationPathPython  = "test-resources/python/flask"
-	workloadNamePython     = "dash0-operator-python-flask-test"
-	releaseNamePython      = "test-app-python"
+	runtimeTypeLabelNodeJs  = "Node.js"
+	applicationPathNodeJs   = "test-resources/node.js/express"
+	workloadNameNodeJs      = "dash0-operator-nodejs-20-express-test"
+	releaseNameNodeJsPrefix = "nodejs"
+
+	runtimeTypeLabelPython  = "Python"
+	applicationPathPython   = "test-resources/python/flask"
+	workloadNamePython      = "dash0-operator-python-flask-test"
+	releaseNamePythonPrefix = "python"
 
 	defaultIngressPort = "8080"
 )

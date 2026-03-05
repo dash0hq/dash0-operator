@@ -76,7 +76,8 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 		operatorConfigurationSpec = &availableOperatorConfigurations[0].Spec
 	}
 
-	patchRequired, errorResponse := h.normalizeMonitoringResourceSpec(request, operatorConfigurationSpec, &monitoringResource.Spec, logger)
+	patchRequired, errorResponse :=
+		h.normalizeMonitoringResourceSpec(request, operatorConfigurationSpec, &monitoringResource.Spec, logger)
 
 	if errorResponse != nil {
 		return *errorResponse
@@ -157,7 +158,9 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	}
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {
-		if telemetryCollectionEnabled {
+		if request.Namespace == h.operatorNamespace {
+			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
+		} else if telemetryCollectionEnabled {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
 		} else {
 			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
