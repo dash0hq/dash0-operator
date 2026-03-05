@@ -466,6 +466,17 @@ operator:
     # after the collector troubleshooting is finished.
     enablePprofExtension: false
 
+    # If set to true, the collector configuration will be stored in the config map as gzip-compressed binary data.
+    # This can reduce the size of the config map and may help in clusters with many monitoring resources.
+    # The default is false. Set this to true if your cluster has a lot of namespaces with Dash0Monitoring resources,
+    # and you run into the Kubernetes size limitation for the collector configuration limit. E.g., you see error
+    # messages like the following
+    #   ConfigMap "dash0-operator-opentelemetry-collector-agent-cm" is invalid: []: Too long: may not be more than
+    #   1048576 bytes.
+    # You usually do not need this setting for monitoring up to around 2000 namespaces. If your Dash0Monitoring
+    # resources contain a lot of filters or transforms, this limit might be smaller.
+    compressConfigMaps: false
+
     # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
     # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
     # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in

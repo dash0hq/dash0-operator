@@ -3,6 +3,13 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+if [ -f /etc/otelcol/conf-compressed/config.yaml ]; then
+  if ! gunzip -c /etc/otelcol/conf-compressed/config.yaml > /etc/otelcol/conf/config.yaml; then
+    echo "ERROR: Failed to decompress config.yaml" >&2
+    exit 1
+  fi
+fi
+
 ./otelcol "$@" &
 
 DASH0_COLLECTOR_PID=$!

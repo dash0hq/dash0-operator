@@ -85,6 +85,7 @@ type environmentVariables struct {
 	debugVerbosityDetailed                      bool
 	disableCollectorResourceWatches             bool
 	enablePprofExtension                        bool
+	compressConfigMaps                          bool
 }
 
 type commandLineArguments struct {
@@ -149,6 +150,7 @@ const (
 	sendBatchMaxSizeEnvVarName                = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 	disableReplicasetInformerEnvVarName       = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
 	enablePprofExtensionEnvVarName            = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
+	compressConfigMapsEnvVarName              = "OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS"
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
@@ -675,6 +677,9 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	enablePprofExtensionRaw, isSet := os.LookupEnv(enablePprofExtensionEnvVarName)
 	enablePprofExtension := isSet && strings.ToLower(enablePprofExtensionRaw) == envVarValueTrue
 
+	compressConfigMapsRaw, isSet := os.LookupEnv(compressConfigMapsEnvVarName)
+	compressConfigMaps := isSet && strings.ToLower(compressConfigMapsRaw) == envVarValueTrue
+
 	envVars = environmentVariables{
 		operatorNamespace:                           operatorNamespace,
 		deploymentName:                              deploymentName,
@@ -704,6 +709,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		debugVerbosityDetailed:          debugVerbosityDetailed,
 		disableCollectorResourceWatches: disableCollectorResourceWatches,
 		enablePprofExtension:            enablePprofExtension,
+		compressConfigMaps:              compressConfigMaps,
 	}
 
 	return nil
@@ -858,6 +864,8 @@ func startOperatorManager(
 		envVars.debugVerbosityDetailed,
 		"enable pprof extension",
 		envVars.enablePprofExtension,
+		"compress config maps",
+		envVars.compressConfigMaps,
 		"instrumentation debug",
 		envVars.instrumentationDebug,
 		"Python auto-instrumentation enabled",
@@ -1002,6 +1010,7 @@ func startDash0Controllers(
 		DevelopmentMode:           developmentMode,
 		DebugVerbosityDetailed:    envVars.debugVerbosityDetailed,
 		EnableProfExtension:       envVars.enablePprofExtension,
+		CompressConfigMap:         envVars.compressConfigMaps,
 	}
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
