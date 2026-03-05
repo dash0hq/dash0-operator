@@ -51,14 +51,15 @@ func e2ePrint(format string, a ...any) {
 }
 
 type neccessaryCleanupSteps struct {
-	removeMetricsServer            bool
-	removeTestApplicationNamespace bool
-	removeOtlpSink                 bool
-	removeThirdPartyCrds           bool
-	removePrometheusCrds           bool
-	removeIngressNginx             bool
-	stopOOMDetection               bool
-	removeTestApplications         bool
+	removeMetricsServer                               bool
+	removeTestApplicationNamespace                    bool
+	removeOtlpSink                                    bool
+	removeThirdPartyCrds                              bool
+	removePrometheusCrds                              bool
+	removeIngressNginx                                bool
+	stopOOMDetection                                  bool
+	removeTestApplications                            bool
+	removeAutoMonitoringOptLabelForStandardNamespaces bool
 }
 
 // getProjectDir returns the repository's root directory
@@ -80,15 +81,16 @@ func generateNewTestId(runtime runtimeType, workloadType workloadType) string {
 
 type testIdMap = map[string]string
 
-func getTestIdFromMap(m testIdMap, runtime runtimeType, workload workloadType) string {
-	return m[getTestIdMapKey(runtime, workload)]
+func getTestIdFromMap(m testIdMap, runtime runtimeType, workload workloadType, namespace string) string {
+	return m[getTestIdMapKey(runtime, workload, namespace)]
 }
 
-func getTestIdMapKey(runtime runtimeType, workload workloadType) string {
+func getTestIdMapKey(runtime runtimeType, workload workloadType, namespace string) string {
 	return fmt.Sprintf(
-		"%s-%s",
+		"%s-%s-%s",
 		runtime.runtimeTypeLabel,
 		workload.workloadTypeString,
+		namespace,
 	)
 }
 

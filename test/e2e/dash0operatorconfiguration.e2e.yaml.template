@@ -5,14 +5,18 @@ metadata:
 spec:
   selfMonitoring:
     enabled: {{ .SelfMonitoringEnabled }}
-{{- if .Endpoint }}
+  {{- if .Endpoint }}
   exports:
     - dash0:
         endpoint: {{ .Endpoint }}
         authorization:
           token: {{ .Token }}
         apiEndpoint: {{ .ApiEndpoint }}
-{{- end }}
+  {{- end }}
   clusterName: {{ .ClusterName }}
   telemetryCollection:
     enabled: {{ .TelemetryCollectionEnabled }}
+  {{- if .AutoNamespaceMonitoringEnabled }}
+  autoMonitorNamespaces:
+    enabled: true
+  {{- end }}

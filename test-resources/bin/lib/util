@@ -73,6 +73,11 @@ setup_test_environment () {
 
   install_cert_manager_if_necessary
   install_nginx_ingress
+
+  # Do not accidentally add monitoring resources to the following namespaces when testing namespace auto-monitoring.
+  kubectl label namespace cert-manager --overwrite dash0.com/enable=false
+  kubectl label namespace default --overwrite dash0.com/enable=false
+  kubectl label namespace ingress-nginx --overwrite dash0.com/enable=false
 }
 
 ensure_namespace_exists() {
@@ -690,6 +695,11 @@ deploy_otlp_sink_if_requested() {
   echo "deploying otlp-sink"
   echo "$helm_install_command"
   $helm_install_command
+
+  # Note: Since the otlp-sink collector is configured with a debug/verbosity=detailed exporter, if we accidentally
+  # auto-monitor otlp-sink, it gets into a feedback cycle of collecting metrics by collecting logs and metrics in that
+  # namespace and then also logging each collected data point.
+  kubectl label namespace otlp-sink dash0.com/enable=false
 }
 
 install_operator_configuration_resource() {
@@ -936,7 +946,7 @@ install_third_party_crds() {
 
 install_prometheus_crds() {
   helm upgrade --install \
-    --namespace "$target_namespace" \
+    --namespace "$operator_namespace" \
     --set crds.alertmanagerconfigs.enabled=false \
     --set crds.alertmanagers.enabled=false \
     --set crds.prometheusagents.enabled=false \

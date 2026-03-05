@@ -42,7 +42,7 @@ func waitForRollout(namespace string, runtime runtimeType, workloadTp workloadTy
 					"--timeout",
 					"60s",
 				))).To(Succeed())
-		}, 60*time.Second, 1*time.Second).Should(Succeed())
+		}, 2*time.Minute, 1*time.Second).Should(Succeed())
 		By(fmt.Sprintf(
 			"%s %s: rollout complete, new pods are ready, old pods have been removed",
 			runtime.runtimeTypeLabel,

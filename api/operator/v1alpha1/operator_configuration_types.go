@@ -14,6 +14,8 @@ import (
 
 	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
@@ -44,7 +46,7 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// The configuration of the default observability backend to which telemetry data will be sent by the operator, as
 	// well as the backend that will receive the operator's self-monitoring data. This property is mandatory.
-	// This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.
+	// This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.,
 	// Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. At least
 	// one exporter has to be defined.
 	//
@@ -55,8 +57,8 @@ type Dash0OperatorConfigurationSpec struct {
 
 	// The configuration of the default observability backends to which telemetry data will be sent by the operator, as
 	// well as the backend that will receive the operator's self-monitoring data. This property is mandatory.
-	// These can either be Dash0 or another OTLP-compatible backends. Every Export entry can contain up to three distinct
-	// exporters (i.e. Dash0 plus gRPC plus HTTP).
+	// These can either be Dash0 or another OTLP-compatible backend. Every Export entry can contain up to three distinct
+	// exporters (i.e., Dash0 plus gRPC plus HTTP).
 	//
 	// The telemetry data will be sent to all backends of all Export entries. At least one exporter has to be defined.
 	//
@@ -71,7 +73,7 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:default={enabled: true}
 	SelfMonitoring SelfMonitoring `json:"selfMonitoring,omitempty"`
 
-	// Settings for collecting Kubernetes infrastructure metrics. This setting is optional, by default the operator will
+	// Settings for collecting Kubernetes infrastructure metrics. This setting is optional, by default, the operator will
 	// collect Kubernetes infrastructure metrics; unless `telemetryCollection.enabled` is set to `false`, then
 	// collecting Kubernetes infrastructure metrics is off by default as well. It is a validation error to set
 	// `telemetryCollection.enabled=false` and `kubernetesInfrastructureMetricsCollection.enabled=true` at the same time.
@@ -128,6 +130,18 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:default={enabled: true}
 	TelemetryCollection TelemetryCollection `json:"telemetryCollection,omitempty"`
+
+	// Settings for automatically monitoring namespaces. This feature is off by default and needs to be enabled
+	// explicitly.
+	//
+	// +kubebuilder:default={enabled: false, labelSelector: "dash0.com/enable!=false"}
+	AutoMonitorNamespaces AutoMonitorNamespaces `json:"autoMonitorNamespaces,omitempty"`
+
+	// MonitoringTemplate describes the Dash0Monitoring resources that will be created for namespaces in case
+	// automatic namespace monitoring is enabled.
+	//
+	// +kubebuilder:validation:Optional
+	MonitoringTemplate *MonitoringTemplate `json:"monitoringTemplate,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
@@ -191,7 +205,7 @@ type TelemetryCollection struct {
 	// If disabled, the operator will not collect any telemetry, in particular it will not deploy any OpenTelemetry
 	// collectors to the cluster. This is useful if you want to do infrastructure-as-code (dashboards, check rules) with
 	// the operator, but do not want it to deploy the OpenTelemetry collector. This setting is optional, it defaults to
-	// `true` (i.e. by default telemetry collection is enabled).
+	// `true` (i.e., by default telemetry collection is enabled).
 	//
 	// Note that setting this to false does not disable the operator's self-monitoring telemetry, use the setting
 	// selfMonitoring.enabled to disable self-monitoring if required (self-monitoring does not require an OpenTelemetry
@@ -201,9 +215,72 @@ type TelemetryCollection struct {
 	Enabled *bool `json:"enabled"`
 }
 
+type AutoMonitorNamespaces struct {
+
+	// Controls whether monitoring is set up for namespaces automatically. By default, a Dash0Monitoring resource has to
+	// be added to each namespace that you want to monitor. With automatic namespace monitoring, you can let the Dash0
+	// operator automate this. This is useful if you want to monitor all or almost all namespaces in your cluster. It is
+	// also useful if you create new namespaces frequently and want to have them monitored right away, without additional
+	// setup. It is best suited if almost all namespace should be monitored in the same fashion.
+	//
+	// If enabled, the operator will:
+	// * automatically add monitoring to all existing namespaces at startup, and
+	// * automatically add monitoring to new namespaces, as they are created.
+	//
+	// Even when enabled,, individual namespaces can opt out of automatic monitoring via label selectors
+	// (see spec.autoMonitorNamespaces.labelSelector).
+	//
+	// Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of
+	// spec.monitoringTemplate.
+	//
+	// +kubebuilder:default=false
+	Enabled *bool `json:"enabled"`
+
+	// An optional configurable label selector for controlling which namespaces are automatically monitored. Namespaces
+	// which match this label selector will be monitored automatically (if spec.autoMonitorNamespaces.enabled is also
+	// set). Namespaces which do not match this label selector will not be monitored, regardless of the value of
+	// spec.autoMonitorNamespaces.enabled.
+	//
+	// This attribute is ignored if spec.autoMonitorNamespaces.enabled has not been set to true explicitly.
+	//
+	// By default, this label selector has the value "dash0.com/enable!=false" - that is, the following namespaces will
+	// be monitored (assuming spec.autoMonitorNamespaces.enabled is true):
+	// - namespaces which do not have the label dash0.com/enable at all, or
+	// - namespaces which have the label dash0.com/enable with a value other than "false".
+	//
+	// Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of
+	// spec.monitoringTemplate.
+	//
+	// +kubebuilder:default=dash0.com/enable!=false
+	LabelSelector string `json:"labelSelector,omitempty"`
+}
+
+func (a AutoMonitorNamespaces) IsEnabled() bool {
+	return util.ReadBoolPointerWithDefault(a.Enabled, false)
+}
+
+// MonitoringTemplate describes the Dash0Monitoring resources that will be created for namespaces in case
+// automatic namespace monitoring is enabled.
+type MonitoringTemplate struct {
+	// +kubebuilder:pruning:PreserveUnknownFields
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// Specification of the desired settings for monitoring namespaces, i.e., the details of monitoring Kubernetes
+	// namespaces with Dash0
+	// +kubebuilder:validation:Optional
+	Spec dash0v1beta1.Dash0MonitoringSpec `json:"spec,omitempty"`
+}
+
 // Dash0OperatorConfigurationStatus defines the observed state of the Dash0 operator configuration resource.
 type Dash0OperatorConfigurationStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+
+	// PreviousAutoMonitorNamespacesLabelSelector records the label selector that was active when the namespace watch
+	// was last started. If it differs from the current spec.autoMonitorNamespaces.labelSelector, the namespace watch
+	// will be recreated with the new selector.
+	//
+	// +kubebuilder:validation:Optional
+	PreviousAutoMonitorNamespacesLabelSelector string `json:"previousAutoMonitorNamespacesLabelSelector,omitempty"`
 }
 
 func (d *Dash0OperatorConfiguration) IsMarkedForDeletion() bool {

@@ -63,10 +63,14 @@ var (
 
 var _ = Describe(
 	"The Synthetic Check controller", Ordered, func() {
+		var (
+			extraMonitoringResourceNames []types.NamespacedName
+			testStartedAt                time.Time
+			clusterId                    string
+		)
+
 		ctx := context.Background()
 		logger := logd.FromContext(ctx)
-		var testStartedAt time.Time
-		var clusterId string
 
 		BeforeAll(
 			func() {

@@ -8,6 +8,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -320,4 +321,59 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			})
 		Expect(err).ToNot(HaveOccurred())
 	})
+
+	It("should reject a monitoring template with exports", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					MonitoringTemplate: &dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+								Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+							},
+							LogCollection:      dash0common.LogCollection{Enabled: new(true)},
+							EventCollection:    dash0common.EventCollection{Enabled: new(true)},
+							PrometheusScraping: dash0common.PrometheusScraping{Enabled: new(true)},
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided Dash0 " +
+				"operator configuration resource has a monitoring template with `exports`. Please use the `exports` field in " +
+				"the operator configuration and remove the `exports` from the monitoringTemplate.spec.")))
+	})
+
+	It("should reject a monitoring template with legacy export", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					MonitoringTemplate: &dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							Export: Dash0ExportWithEndpointAndToken(),
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+								Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+							},
+							LogCollection:      dash0common.LogCollection{Enabled: new(true)},
+							EventCollection:    dash0common.EventCollection{Enabled: new(true)},
+							PrometheusScraping: dash0common.PrometheusScraping{Enabled: new(true)},
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided Dash0 " +
+				"operator configuration resource has a monitoring template with `export`. Please use the `exports` field in " +
+				"the operator configuration and remove the `export` from the monitoringTemplate.spec.")))
+	})
+
 })

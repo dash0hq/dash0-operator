@@ -53,6 +53,7 @@ type oTelColConfig struct {
 	IsIPv6Cluster                                    bool
 	IsGkeAutopilot                                   bool
 	OffsetStorageVolume                              *corev1.Volume
+	AutoNamespaceMonitoringEnabled                   bool
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
@@ -1091,18 +1092,27 @@ func assembleConfigurationReloaderContainer(
 	collectorPidFileMountRO := collectorPidFileMountRW
 	collectorPidFileMountRO.ReadOnly = true
 
+	checkFrequency := "--frequency=5s"
+	if config.AutoNamespaceMonitoringEnabled {
+		// With AutoNamespaceMonitoringEnabled, a lot of namespaces are sometimes added en-masse (for example when the
+		// namespace watch starts). We do not want to churn the collector pipelines over and over.
+		checkFrequency = "--frequency=60s"
+	}
+
 	var reloaderArgs []string
 	var reloaderVolumeMounts []corev1.VolumeMount
 	if config.CompressConfigMap {
 		reloaderArgs = []string{
 			"--pidfile=" + collectorPidFilePath,
 			"--decompressedoutput=" + collectorConfigurationFilePath,
+			checkFrequency,
 			collectorConfigCompressedFilePath,
 		}
 		reloaderVolumeMounts = []corev1.VolumeMount{collectorConfigCompressedVolumeMount, collectorConfigDecompressedVolumeMount, collectorPidFileMountRO}
 	} else {
 		reloaderArgs = []string{
 			"--pidfile=" + collectorPidFilePath,
+			checkFrequency,
 			collectorConfigurationFilePath,
 		}
 		reloaderVolumeMounts = []corev1.VolumeMount{collectorConfigPlainTextVolumeMount, collectorPidFileMountRO}

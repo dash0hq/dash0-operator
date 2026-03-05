@@ -76,7 +76,9 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 		ensureNginxIngressControllerIsInstalled(&cleanupSteps)
 		ensureMetricsServerIsInstalled(&cleanupSteps)
 
-		recreateNamespace(applicationUnderTestNamespace)
+		setAutoMonitoringOptOutLabelForStandardNamespaces(&cleanupSteps)
+
+		recreateNamespaceWithLabel(applicationUnderTestNamespace, map[string]string{"dash0.com/enable": "\"false\""})
 		cleanupSteps.removeTestApplicationNamespace = true
 
 		determineContainerImages()
@@ -104,6 +106,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			stopPodCrashOrOOMKillDetection <- true
 		}
 		uninstallOtlpSink(&cleanupSteps)
+		removeAutoMonitoringOptOutLabelFromStandardNamespaces(&cleanupSteps)
 		undeployNginxIngressController(&cleanupSteps)
 
 		if cleanupSteps.removeTestApplicationNamespace {
@@ -140,7 +143,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 	// setup they require. I.e. all tests that work with a pre-existing operator deployment with the same standard
 	// configuration are grouped together etc. This helps with the test execution speed.
 
-	Describe("with an existing operator deployment and operation configuration resource", func() {
+	Context("with an existing operator deployment and operation configuration resource", func() {
 		var operatorStartupTimeLowerBound time.Time
 		BeforeAll(func() {
 			operatorStartupTimeLowerBound = time.Now()
@@ -519,7 +522,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					)
 
 					//nolint:lll
-					routeRegex := "/api/synthetic-checks/dash0-operator_.*_default_e2e-application-under-test-namespace_synthetic-check-e2e-test\\?dataset=default"
+					routeRegex := "/api/synthetic-checks/dash0-operator_.*_default_e2e-test-ns_synthetic-check-e2e-test\\?dataset=default"
 
 					By("verifying the synthetic check has been synchronized to the Dash0 API via PUT")
 					req := fetchCapturedApiRequest(0)
@@ -559,7 +562,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					)
 
 					//nolint:lll
-					routeRegex := "/api/views/dash0-operator_.*_default_e2e-application-under-test-namespace_view-e2e-test\\?dataset=default"
+					routeRegex := "/api/views/dash0-operator_.*_default_e2e-test-ns_view-e2e-test\\?dataset=default"
 
 					By("verifying the view has been synchronized to the Dash0 API via PUT")
 					req := fetchCapturedApiRequest(0)
@@ -599,7 +602,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					)
 
 					//nolint:lll
-					routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-application-under-test-namespace_perses-dashboard-e2e-test\\?dataset=default"
+					routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test\\?dataset=default"
 
 					By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
 					req := fetchCapturedApiRequest(0)
@@ -638,10 +641,10 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					)
 
 					routeRegexes := []string{
-						"/api/alerting/check-rules\\?dataset=default&idPrefix=dash0-operator_.*_default_e2e-application-under-test-namespace_prometheus-rules-e2e-test_",
-						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-application-under-test-namespace_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
-						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-application-under-test-namespace_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20pod%20crash%20looping\\?dataset=default",
-						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-application-under-test-namespace_prometheus-rules-e2e-test_dash0%7Ccollector_exporter%20send%20failed%20spans\\?dataset=default",
+						"/api/alerting/check-rules\\?dataset=default&idPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20pod%20crash%20looping\\?dataset=default",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ccollector_exporter%20send%20failed%20spans\\?dataset=default",
 					}
 					substrings := []string{
 						"dash0/k8s - K8s Deployment replicas mismatch",
@@ -770,13 +773,23 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 				It("should instrument and uninstrument all workload types", func() {
 					testIds := make(testIdMap)
-					workloadTestConfigs := workloadTestConfigs()
+					workloadTestConfigs := []runtimeWorkloadTestConfig{
+						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeCronjob, runtime: runtimeTypeNodeJs},
+						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDaemonSet, runtime: runtimeTypeNodeJs},
+						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
+						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeJvm},
+						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypeDotnet},
+						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeDeployment, runtime: runtimeTypePython},
+						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
+						{namespace: applicationUnderTestNamespace, workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
+					}
+
 					for _, c := range workloadTestConfigs {
-						mapKey := getTestIdMapKey(c.runtime, c.workloadType)
+						mapKey := getTestIdMapKey(c.runtime, c.workloadType, applicationUnderTestNamespace)
 						testIds[mapKey] = generateNewTestId(c.runtime, c.workloadType)
 					}
 
-					deployWorkloadsForMultipleRuntimesInParallel(workloadTestConfigs, testIds)
+					deployWorkloadsInParallel(workloadTestConfigs, testIds)
 
 					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
@@ -793,7 +806,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 							applicationUnderTestNamespace,
 							c.runtime,
 							c.workloadType,
-							getTestIdFromMap(testIds, c.runtime, c.workloadType),
+							getTestIdFromMap(testIds, c.runtime, c.workloadType, applicationUnderTestNamespace),
 							images,
 							"controller",
 						)
@@ -813,7 +826,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 							applicationUnderTestNamespace,
 							c.runtime,
 							c.workloadType,
-							getTestIdFromMap(testIds, c.runtime, c.workloadType),
+							getTestIdFromMap(testIds, c.runtime, c.workloadType, applicationUnderTestNamespace),
 							"controller",
 						)
 					})
@@ -841,7 +854,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 							workloadTypeJob,
 							"Dash0 instrumentation of this workload by the controller has not been successful. "+
 								"Error message: Dash0 cannot instrument the existing job "+
-								"e2e-application-under-test-namespace/dash0-operator-nodejs-20-express-test-job, since "+
+								"e2e-test-ns/dash0-operator-nodejs-20-express-test-job, since "+
 								"this type of workload is immutable.",
 						)
 					}, labelChangeTimeout, pollingInterval).Should(Succeed())
@@ -918,7 +931,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 							workloadTypeJob,
 							fmt.Sprintf("The controller's attempt to remove the Dash0 instrumentation from this "+
 								"workload has not been successful. Error message: Dash0 cannot remove the "+
-								"instrumentation from the existing job e2e-application-under-test-namespace/%s-job, "+
+								"instrumentation from the existing job e2e-test-ns/%s-job, "+
 								"since this type of workload is immutable.", runtimeTypeNodeJs.workloadName),
 						)
 					}, labelChangeTimeout, pollingInterval).Should(Succeed())
@@ -1180,13 +1193,13 @@ traces:
 					verifyDaemonSetCollectorConfigMapContainsString(
 						operatorNamespace,
 						// nolint:lll
-						`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace" and (attributes["http.route"] == "/ready")'`,
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns" and (attributes["http.route"] == "/ready")'`,
 					)
 					By("verify that the collector has reloaded its configuration")
 					Eventually(func(g Gomega) {
 						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
 						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-					}, 90*time.Second, time.Second).Should(Succeed())
+					}, 2*time.Minute, time.Second).Should(Succeed())
 
 					testId := uuid.New().String()
 					timestampLowerBound := time.Now()
@@ -1252,13 +1265,13 @@ trace_statements:
 					)
 					verifyDaemonSetCollectorConfigMapContainsString(
 						operatorNamespace,
-						`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace"'`,
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns"'`,
 					)
 					By("verify that the collector has reloaded its configuration")
 					Eventually(func(g Gomega) {
 						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
 						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-					}, 90*time.Second, time.Second).Should(Succeed())
+					}, 2*time.Minute, time.Second).Should(Succeed())
 
 					testId := uuid.New().String()
 					timestampLowerBound := time.Now()
@@ -1298,7 +1311,7 @@ trace_statements:
 
 	}) // end of suite "with an existing operator deployment and operation configuration resource"
 
-	Describe("with an existing operator deployment without an operation configuration resource", func() {
+	Context("with an existing operator deployment without an operation configuration resource", func() {
 		BeforeAll(func() {
 			By("deploying the Dash0 operator")
 			deployOperatorWithoutAutoOperationConfiguration(
@@ -1327,7 +1340,7 @@ trace_statements:
 		})
 	}) // end of suite "with an existing operator deployment without an operation configuration resource"
 
-	Describe("without an existing operator deployment", func() {
+	Context("without an existing operator deployment", func() {
 
 		Describe("collect basic metrics without having a Dash0 monitoring resource", func() {
 
@@ -1830,8 +1843,8 @@ trace_statements:
 		Describe("operator removal", func() {
 
 			const (
-				namespace1 = "e2e-application-under-test-namespace-removal-1"
-				namespace2 = "e2e-application-under-test-namespace-removal-2"
+				namespace1 = "e2e-test-ns-removal-1"
+				namespace2 = "e2e-test-ns-removal-2"
 			)
 
 			BeforeAll(func() {
@@ -1855,12 +1868,12 @@ trace_statements:
 
 			configs := []removalTestNamespaceConfig{
 				{
-					namespace:    "e2e-application-under-test-namespace-removal-1",
+					namespace:    "e2e-test-ns-removal-1",
 					workloadType: workloadTypeDaemonSet,
 					runtime:      runtimeTypeNodeJs,
 				},
 				{
-					namespace:    "e2e-application-under-test-namespace-removal-2",
+					namespace:    "e2e-test-ns-removal-2",
 					workloadType: workloadTypeDeployment,
 					runtime:      runtimeTypeJvm,
 				},
@@ -1936,7 +1949,7 @@ trace_statements:
 
 					Eventually(func(g Gomega) {
 						for _, config := range configs {
-							verifyDash0MonitoringResourceDoesNotExist(g, config.namespace)
+							verifyDash0MonitoringResourceDoesNotExist(g, config.namespace, dash0MonitoringResourceName)
 						}
 						verifyDash0OperatorReleaseIsNotInstalled(g, operatorNamespace)
 					}).Should(Succeed())
@@ -1946,10 +1959,350 @@ trace_statements:
 			})
 		})
 
+		Context("auto-namespace monitoring", func() {
+
+			const (
+				namespaceExisting              = "e2e-test-ns-existing"
+				namespaceExistingAlwaysOptIn   = "e2e-test-ns-existing-opt-in"
+				namespaceExistingDefaultOptOut = "e2e-test-ns-existing-opt-out"
+				namespaceNew                   = "e2e-test-ns-new"
+				namespaceNewAlwaysOptIn        = "e2e-test-ns-new-opt-in"
+				namespaceNewDefaultOptOut      = "e2e-test-ns-new-opt-out"
+			)
+
+			var (
+				workloadTestConfigExisting = runtimeWorkloadTestConfig{
+					namespace:    namespaceExisting,
+					workloadType: workloadTypeDeployment,
+					runtime:      runtimeTypeNodeJs,
+				}
+				workloadTestConfigExistingAlwaysOptIn = runtimeWorkloadTestConfig{
+					namespace:    namespaceExistingAlwaysOptIn,
+					workloadType: workloadTypeReplicaSet,
+					runtime:      runtimeTypeNodeJs,
+				}
+				workloadTestConfigExistingDefaultOptOut = runtimeWorkloadTestConfig{
+					namespace:    namespaceExistingDefaultOptOut,
+					workloadType: workloadTypeStatefulSet,
+					runtime:      runtimeTypeNodeJs,
+				}
+				workloadTestConfigNew = runtimeWorkloadTestConfig{
+					namespace:    namespaceNew,
+					workloadType: workloadTypeDeployment,
+					runtime:      runtimeTypeDotnet,
+				}
+				workloadTestConfigNewAlwaysOptIn = runtimeWorkloadTestConfig{
+					namespace:    namespaceNewAlwaysOptIn,
+					workloadType: workloadTypeReplicaSet,
+					runtime:      runtimeTypeDotnet,
+				}
+				workloadTestConfigNewDefaultOptOut = runtimeWorkloadTestConfig{
+					namespace:    namespaceNewDefaultOptOut,
+					workloadType: workloadTypeStatefulSet,
+					runtime:      runtimeTypeDotnet,
+				}
+
+				allWorkloadTestConfigs = []runtimeWorkloadTestConfig{
+					workloadTestConfigExisting,
+					workloadTestConfigExistingAlwaysOptIn,
+					workloadTestConfigExistingDefaultOptOut,
+					workloadTestConfigNew,
+					workloadTestConfigNewAlwaysOptIn,
+					workloadTestConfigNewDefaultOptOut,
+				}
+			)
+
+			BeforeEach(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithoutAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					nil,
+				)
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(namespaceExisting)
+				undeployDash0MonitoringResource(namespaceExistingAlwaysOptIn)
+				undeployDash0MonitoringResource(namespaceExistingDefaultOptOut)
+				undeployDash0MonitoringResource(namespaceNew)
+				undeployDash0MonitoringResource(namespaceNewAlwaysOptIn)
+				undeployDash0MonitoringResource(namespaceNewDefaultOptOut)
+				removeAllTestApplications(namespaceExisting)
+				removeAllTestApplications(namespaceExistingAlwaysOptIn)
+				removeAllTestApplications(namespaceExistingDefaultOptOut)
+				removeAllTestApplications(namespaceNew)
+				removeAllTestApplications(namespaceNewAlwaysOptIn)
+				removeAllTestApplications(namespaceNewDefaultOptOut)
+				_ = runAndIgnoreOutput(
+					exec.Command("kubectl", "delete", "ns", namespaceExisting, "--ignore-not-found"))
+				_ = runAndIgnoreOutput(
+					exec.Command("kubectl", "delete", "ns", namespaceExistingAlwaysOptIn, "--ignore-not-found"))
+				_ = runAndIgnoreOutput(
+					exec.Command("kubectl", "delete", "ns", namespaceExistingDefaultOptOut, "--ignore-not-found"))
+				_ = runAndIgnoreOutput(
+					exec.Command("kubectl", "delete", "ns", namespaceNew, "--ignore-not-found"))
+				_ = runAndIgnoreOutput(
+					exec.Command("kubectl", "delete", "ns", namespaceNewAlwaysOptIn, "--ignore-not-found"))
+				_ = runAndIgnoreOutput(
+					exec.Command("kubectl", "delete", "ns", namespaceNewDefaultOptOut, "--ignore-not-found"))
+				undeployOperator(operatorNamespace)
+			})
+
+			It("automatically monitors namespaces", func() {
+				testIds := make(testIdMap)
+
+				for _, c := range allWorkloadTestConfigs {
+					mapKey := getTestIdMapKey(c.runtime, c.workloadType, applicationUnderTestNamespace)
+					testIds[mapKey] = generateNewTestId(c.runtime, c.workloadType)
+				}
+
+				// Part One: Verify that existing namespaces as well as newly created namespaces are auto-monitored according
+				// to the default label selector.
+
+				By("auto-monitoring test, part I: automatically monitor with the default label selector")
+
+				recreateNamespace(namespaceExisting)
+				recreateNamespaceWithLabel(
+					namespaceExistingAlwaysOptIn,
+					map[string]string{"dash0.com/custom-auto-opt-in": "\"true\""},
+				)
+				recreateNamespaceWithLabel(
+					namespaceExistingDefaultOptOut,
+					map[string]string{
+						"dash0.com/enable":             "\"false\"",
+						"dash0.com/custom-auto-opt-in": "\"true\"",
+					})
+
+				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
+					SelfMonitoringEnabled:          false,
+					Endpoint:                       defaultEndpoint,
+					Token:                          defaultToken,
+					ApiEndpoint:                    dash0ApiMockServiceBaseUrl,
+					ClusterName:                    e2eKubernetesContext,
+					TelemetryCollectionEnabled:     true,
+					AutoNamespaceMonitoringEnabled: true,
+				}, operatorNamespace, operatorHelmChart)
+
+				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceExistingAlwaysOptIn, monitoringAutoResourceName)
+				verifyDash0MonitoringResourceDoesNotExist(Default, namespaceExistingDefaultOptOut, monitoringAutoResourceName)
+
+				recreateNamespace(namespaceNew)
+				recreateNamespaceWithLabel(
+					namespaceNewAlwaysOptIn,
+					map[string]string{"dash0.com/custom-auto-opt-in": "\"true\""},
+				)
+				recreateNamespaceWithLabel(
+					namespaceNewDefaultOptOut,
+					map[string]string{
+						"dash0.com/enable":             "\"false\"",
+						"dash0.com/custom-auto-opt-in": "\"true\"",
+					},
+				)
+
+				waitForMonitoringResourceToBecomeAvailable(namespaceNew, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceNewAlwaysOptIn, monitoringAutoResourceName)
+				verifyDash0MonitoringResourceDoesNotExist(Default, namespaceNewDefaultOptOut, monitoringAutoResourceName)
+
+				deployWorkloadsInParallel(allWorkloadTestConfigs, testIds)
+
+				runInParallel([]runtimeWorkloadTestConfig{
+					workloadTestConfigExisting,
+					workloadTestConfigExistingAlwaysOptIn,
+					workloadTestConfigNew,
+					workloadTestConfigNewAlwaysOptIn,
+				}, func(c runtimeWorkloadTestConfig) {
+					By(fmt.Sprintf("verifying that the %s %s in namespace %s has been instrumented",
+						c.runtime.runtimeTypeLabel,
+						c.workloadType.workloadTypeString,
+						c.namespace,
+					))
+					verifyThatWorkloadHasBeenInstrumented(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						getTestIdFromMap(testIds, c.runtime, c.workloadType, c.namespace),
+						images,
+						"webhook",
+					)
+				})
+				By("the workloads in all four namespaces have been instrumented")
+
+				runInParallel([]runtimeWorkloadTestConfig{
+					workloadTestConfigExistingDefaultOptOut,
+					workloadTestConfigNewDefaultOptOut,
+				}, func(c runtimeWorkloadTestConfig) {
+					By(fmt.Sprintf("verifying that the %s %s in namespace %s has not been instrumented",
+						c.runtime.runtimeTypeLabel,
+						c.workloadType.workloadTypeString,
+						c.namespace,
+					))
+					verifyNoDash0LabelsOrOnlyOptOut(
+						Default,
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						false,
+					)
+				})
+
+				// Part Two: Change the label selector in the operator configuration and verifying that this change is applied
+				// correctly.
+
+				By("auto-monitoring test, part II: changing the auto-namespace-monitoring label selector")
+				updateAutoNamespaceMonitoringLabelSelector("dash0.com/custom-auto-opt-in==true")
+
+				// The two namespaces that had opted out via the default opt-out label should now be monitored, since they
+				// also have the custom opt-in label.
+				waitForMonitoringResourceToBecomeAvailable(namespaceExistingDefaultOptOut, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceNewDefaultOptOut, monitoringAutoResourceName)
+
+				// The two namespaces that have not opted out via the default selector but also have not opted in via the
+				// custom selector should now be unmonitored.
+				Eventually(func(g Gomega) {
+					verifyDash0MonitoringResourceDoesNotExist(g, namespaceExisting, monitoringAutoResourceName)
+					verifyDash0MonitoringResourceDoesNotExist(g, namespaceNew, monitoringAutoResourceName)
+				}, 30*time.Second, time.Second)
+
+				// Check that for the two namespaces that don't opt out via the default selector and _also_ opt-in via the
+				// custom selector, the monitoring resource is still there.
+				waitForMonitoringResourceToBecomeAvailable(namespaceExistingAlwaysOptIn, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceNewAlwaysOptIn, monitoringAutoResourceName)
+
+				// Trivially modify the workloads - we run with instrumentWorkloads.mode=created-and-updated, simulate
+				// a change so that the instrumentation webhook will instrument the workloads.
+				runInParallel([]runtimeWorkloadTestConfig{
+					workloadTestConfigExistingAlwaysOptIn,
+					workloadTestConfigExistingDefaultOptOut,
+					workloadTestConfigNewAlwaysOptIn,
+					workloadTestConfigNewDefaultOptOut,
+				}, func(c runtimeWorkloadTestConfig) {
+					Expect(addLabel(
+						c.namespace,
+						c.workloadType.workloadTypeString,
+						workloadName(c.runtime, c.workloadType),
+						"dummy-label=value",
+					)).To(Succeed())
+				})
+
+				// Verify that we receive telemetry from the apps in the namespaces that are now auto-monitored.
+				// (workloadTestConfigExistingDefaultOptOut and workloadTestConfigNewDefaultOptOut were initially not monitored
+				// before changing the label selector).
+				runInParallel([]runtimeWorkloadTestConfig{
+					workloadTestConfigExistingAlwaysOptIn,
+					workloadTestConfigExistingDefaultOptOut,
+					workloadTestConfigNewAlwaysOptIn,
+					workloadTestConfigNewDefaultOptOut,
+				}, func(c runtimeWorkloadTestConfig) {
+					By(fmt.Sprintf("verifying that the %s %s in namespace %s has been instrumented",
+						c.runtime.runtimeTypeLabel,
+						c.workloadType.workloadTypeString,
+						c.namespace,
+					))
+					verifyThatWorkloadHasBeenInstrumented(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						getTestIdFromMap(testIds, c.runtime, c.workloadType, c.namespace),
+						images,
+						"webhook",
+					)
+				})
+				By("the workloads in all four namespaces have been instrumented")
+
+				// Verify that the apps in the namespaces that are now no longer auto-monitored have been uninstrumented. Both
+				// were initially auto-monitored/instrumented.
+				runInParallel([]runtimeWorkloadTestConfig{
+					workloadTestConfigExisting,
+					workloadTestConfigNew,
+				}, func(c runtimeWorkloadTestConfig) {
+					By(fmt.Sprintf("verifying that the %s %s in namespace %s has not been instrumented",
+						c.runtime.runtimeTypeLabel,
+						c.workloadType.workloadTypeString,
+						c.namespace,
+					))
+					verifyNoDash0LabelsOrOnlyOptOut(
+						Default,
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						false,
+					)
+				})
+
+				// Part Three: Change the labels of two namespaces so that one previousyl unmonitored namespaces now becomes
+				// monitored, and a previously monitored becomes unmonitored.
+
+				By("auto-monitoring test, part III: changing the labels on two namespaces now")
+				// namespaceExistingAlwaysOptIn no longer opts in.
+				Expect(runAndIgnoreOutput(
+					exec.Command(
+						"kubectl",
+						"label",
+						"--overwrite",
+						"namespace",
+						namespaceExistingAlwaysOptIn,
+						"dash0.com/custom-auto-opt-in=false",
+					))).To(Succeed())
+				// namespaceExisting is currently unmonitored, it opts in now.
+				Expect(runAndIgnoreOutput(
+					exec.Command(
+						"kubectl",
+						"label",
+						"namespace",
+						namespaceExisting,
+						"dash0.com/custom-auto-opt-in=true",
+					))).To(Succeed())
+
+				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, monitoringAutoResourceName)
+				Eventually(func(g Gomega) {
+					verifyDash0MonitoringResourceDoesNotExist(g, namespaceExistingAlwaysOptIn, monitoringAutoResourceName)
+				}, 30*time.Second, time.Second)
+
+				// Poke the workload to make it go through the instrumentation webhook.
+				Expect(addLabel(
+					namespaceExisting,
+					workloadTestConfigExisting.workloadType.workloadTypeString,
+					workloadName(workloadTestConfigExisting.runtime, workloadTestConfigExisting.workloadType),
+					"dummy-label-1=value",
+				)).To(Succeed())
+				Expect(addLabel(
+					namespaceExisting,
+					workloadTestConfigExisting.workloadType.workloadTypeString,
+					workloadName(workloadTestConfigExisting.runtime, workloadTestConfigExisting.workloadType),
+					"dummy-label-2=value",
+				)).To(Succeed())
+
+				verifyThatWorkloadHasBeenInstrumented(
+					namespaceExisting,
+					workloadTestConfigExisting.runtime,
+					workloadTestConfigExisting.workloadType,
+					getTestIdFromMap(
+						testIds,
+						workloadTestConfigExisting.runtime,
+						workloadTestConfigExisting.workloadType,
+						namespaceExisting,
+					),
+					images,
+					"webhook",
+				)
+				verifyNoDash0LabelsOrOnlyOptOut(
+					Default,
+					namespaceExistingAlwaysOptIn,
+					workloadTestConfigExistingAlwaysOptIn.runtime,
+					workloadTestConfigExistingAlwaysOptIn.workloadType,
+					false,
+				)
+			})
+		})
+
 	}) // end of suite "without an existing operator deployment"
 
 	// Prometheus CRD tests
-	Describe("with an existing operator deployment and prometheusCrdSupport enabled", func() {
+	Context("with an existing operator deployment and prometheusCrdSupport enabled", func() {
 		BeforeAll(func() {
 			By("deploying the Dash0 operator")
 			deployOperatorWithDefaultAutoOperationConfiguration(
@@ -2051,36 +2404,25 @@ trace_statements:
 type runtimeWorkloadTestConfig struct {
 	runtime      runtimeType
 	workloadType workloadType
+	namespace    string
 }
 
 func (c runtimeWorkloadTestConfig) GetMapKey() string {
-	return getTestIdMapKey(c.runtime, c.workloadType)
+	return getTestIdMapKey(c.runtime, c.workloadType, c.namespace)
 }
 
 func (c runtimeWorkloadTestConfig) GetLabel() string {
-	return fmt.Sprintf("%s %s", c.runtime.runtimeTypeLabel, c.workloadType.workloadTypeString)
-}
-
-func workloadTestConfigs() []runtimeWorkloadTestConfig {
-	return []runtimeWorkloadTestConfig{
-		{workloadType: workloadTypeCronjob, runtime: runtimeTypeNodeJs},
-		{workloadType: workloadTypeDaemonSet, runtime: runtimeTypeNodeJs},
-		{workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
-		{workloadType: workloadTypeDeployment, runtime: runtimeTypeJvm},
-		{workloadType: workloadTypeDeployment, runtime: runtimeTypeDotnet},
-		{workloadType: workloadTypeDeployment, runtime: runtimeTypePython},
-		{workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
-		{workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
-	}
+	return fmt.Sprintf("%s %s %s", c.runtime.runtimeTypeLabel, c.workloadType.workloadTypeString, c.namespace)
 }
 
 type deployHelmChartConfig struct {
 	runtime       runtimeType
 	workloadTypes []workloadType
+	namespace     string
 }
 
 func (c deployHelmChartConfig) GetMapKey() string {
-	return fmt.Sprintf("%s", c.runtime.runtimeTypeLabel)
+	return fmt.Sprintf("%s:%s", c.runtime.runtimeTypeLabel, c.namespace)
 }
 
 func (c deployHelmChartConfig) GetLabel() string {
@@ -2089,23 +2431,26 @@ func (c deployHelmChartConfig) GetLabel() string {
 		workloadTypeStrings = append(workloadTypeStrings, wt.workloadTypeString)
 	}
 	return fmt.Sprintf(
-		"deploy %s test app (workload types: %s)",
+		"deploy %s test app (workload types: %s) to namespace %s",
 		c.runtime.runtimeTypeLabel,
 		strings.Join(workloadTypeStrings, ", "),
+		c.namespace,
 	)
 }
 
-func deployWorkloadsForMultipleRuntimesInParallel(workloadTestConfigs []runtimeWorkloadTestConfig, testIds testIdMap) {
+func deployWorkloadsInParallel(workloadTestConfigs []runtimeWorkloadTestConfig, testIds testIdMap) {
 	// group test config workloads by runtime
-	deployConfigMap := make(map[runtimeType]deployHelmChartConfig)
+	deployConfigMap := make(map[string]deployHelmChartConfig)
 	for _, testCfg := range workloadTestConfigs {
-		if deployConfig, ok := deployConfigMap[testCfg.runtime]; ok {
+		key := testCfg.runtime.runtimeTypeLabel + ":" + testCfg.namespace
+		if deployConfig, ok := deployConfigMap[key]; ok {
 			deployConfig.workloadTypes = append(deployConfig.workloadTypes, testCfg.workloadType)
-			deployConfigMap[testCfg.runtime] = deployConfig
+			deployConfigMap[key] = deployConfig
 		} else {
-			deployConfigMap[testCfg.runtime] = deployHelmChartConfig{
+			deployConfigMap[key] = deployHelmChartConfig{
 				runtime:       testCfg.runtime,
 				workloadTypes: []workloadType{testCfg.workloadType},
+				namespace:     testCfg.namespace,
 			}
 		}
 	}
@@ -2115,7 +2460,7 @@ func deployWorkloadsForMultipleRuntimesInParallel(workloadTestConfigs []runtimeW
 		Expect(installTestAppWorkloads(
 			deployConfig.runtime,
 			deployConfig.workloadTypes,
-			applicationUnderTestNamespace,
+			deployConfig.namespace,
 			testIds,
 		)).To(Succeed())
 	})
@@ -2129,7 +2474,7 @@ type removalTestNamespaceConfig struct {
 }
 
 func (c removalTestNamespaceConfig) GetMapKey() string {
-	return getTestIdMapKey(c.runtime, c.workloadType)
+	return getTestIdMapKey(c.runtime, c.workloadType, c.namespace)
 }
 
 func (c removalTestNamespaceConfig) GetLabel() string {

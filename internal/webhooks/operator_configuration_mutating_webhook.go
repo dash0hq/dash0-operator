@@ -18,7 +18,26 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+)
+
+var (
+	monitoringTemplateDefaults = dash0v1beta1.Dash0MonitoringSpec{
+		InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+			Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+			LabelSelector: "dash0.com/enable!=false",
+		},
+		LogCollection: dash0common.LogCollection{
+			Enabled: new(true),
+		},
+		EventCollection: dash0common.EventCollection{
+			Enabled: new(true),
+		},
+		PrometheusScraping: dash0common.PrometheusScraping{
+			Enabled: new(true),
+		},
+	}
 )
 
 type OperatorConfigurationMutatingWebhookHandler struct {
@@ -149,7 +168,49 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		spec.PrometheusCrdSupport.Enabled = ptr.To(false)
 		patchRequired = true
 	}
+
+	patchRequiredForMonitoringTemplate := h.setMonitoringTemplateDefaults(spec)
+	patchRequired = patchRequired || patchRequiredForMonitoringTemplate
+
 	return patchRequired, nil
+}
+
+func (h *OperatorConfigurationMutatingWebhookHandler) setMonitoringTemplateDefaults(
+	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
+) bool {
+	if !spec.AutoMonitorNamespaces.IsEnabled() {
+		// If AutoMonitorNamespaces is not enabled, we do not need to set defaults for the MonitoringTemplate.
+		return false
+	}
+
+	patchRequired := false
+
+	if spec.MonitoringTemplate == nil {
+		spec.MonitoringTemplate = new(dash0v1alpha1.MonitoringTemplate{})
+		patchRequired = true
+	}
+	monitoringTemplateSpec := &spec.MonitoringTemplate.Spec
+	if monitoringTemplateSpec.InstrumentWorkloads.Mode == "" {
+		monitoringTemplateSpec.InstrumentWorkloads.Mode = monitoringTemplateDefaults.InstrumentWorkloads.Mode
+		patchRequired = true
+	}
+	if monitoringTemplateSpec.InstrumentWorkloads.LabelSelector == "" {
+		monitoringTemplateSpec.InstrumentWorkloads.LabelSelector = monitoringTemplateDefaults.InstrumentWorkloads.LabelSelector
+		patchRequired = true
+	}
+	if monitoringTemplateSpec.LogCollection.Enabled == nil {
+		monitoringTemplateSpec.LogCollection.Enabled = monitoringTemplateDefaults.LogCollection.Enabled
+		patchRequired = true
+	}
+	if monitoringTemplateSpec.EventCollection.Enabled == nil {
+		monitoringTemplateSpec.EventCollection.Enabled = monitoringTemplateDefaults.EventCollection.Enabled
+		patchRequired = true
+	}
+	if monitoringTemplateSpec.PrometheusScraping.Enabled == nil {
+		monitoringTemplateSpec.PrometheusScraping.Enabled = monitoringTemplateDefaults.PrometheusScraping.Enabled
+		patchRequired = true
+	}
+	return patchRequired
 }
 
 // isExportsUnchangedFromOldOperatorConfigurationResource checks whether the incoming exports slice matches the

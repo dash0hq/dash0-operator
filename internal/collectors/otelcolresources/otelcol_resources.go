@@ -162,6 +162,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
+		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver#collecting-host-metrics-from-inside-a-container-linux-only.
 		// Therefore, we disable the hostmetrics receiver on platforms where this is not possible or not supported:
@@ -310,16 +311,14 @@ func (m *OTelColResourceManager) updateResource(
 		return false, err
 	}
 
-	if m.collectorConfig.DevelopmentMode {
-		logger.Info(fmt.Sprintf(
-			"resource %s/%s was out of sync and has been reconciled",
-			desiredResource.GetNamespace(),
-			desiredResource.GetName(),
-		),
-			"patch",
-			string(patchResult.Patch),
-		)
-	}
+	logger.Debug(fmt.Sprintf(
+		"resource %s/%s was out of sync and has been reconciled",
+		desiredResource.GetNamespace(),
+		desiredResource.GetName(),
+	),
+		"patch",
+		string(patchResult.Patch),
+	)
 
 	return hasChanged, nil
 }

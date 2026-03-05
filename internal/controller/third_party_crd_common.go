@@ -289,7 +289,10 @@ func maybeStartWatchingThirdPartyResources(
 
 	// Create or recreate the controller for the third-party resource type.
 	// Note: We cannot use the controller builder API here since it does not allow passing in a context for starting the
-	// controller. Instead, we create the controller manually and start it in a goroutine.
+	// controller. Instead, we create the controller manually and start it in a goroutine. We can also not use
+	// controller.NewTyped because that adds the controller to the manager internally, and the controller will be started
+	// implicitly. Using controller.NewTypedUnmanaged is the only way that allows full control over stopping and
+	// recreating/restarting it on demand.
 	resourceController, err :=
 		controller.NewTypedUnmanaged(
 			resourceReconciler.ControllerName(),

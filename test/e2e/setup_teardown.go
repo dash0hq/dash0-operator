@@ -15,6 +15,12 @@ import (
 var (
 	originalKubeContext       string
 	kubeContextHasBeenChanged bool
+
+	standardNamespaces = []string{
+		"cert-manager",
+		"default",
+		"ingress-nginx",
+	}
 )
 
 func setKubernetesContext(kubernetesContextForTest string) (bool, string) {
@@ -77,6 +83,10 @@ func revertKubernetesContext(originalCtx string) {
 }
 
 func recreateNamespace(namespace string) {
+	recreateNamespaceWithLabel(namespace, nil)
+}
+
+func recreateNamespaceWithLabel(namespace string, labels map[string]string) {
 	By(fmt.Sprintf("(re)creating namespace %s", namespace))
 	output, err := run(exec.Command("kubectl", "get", "ns", namespace))
 	if err != nil {
@@ -93,8 +103,23 @@ func recreateNamespace(namespace string) {
 				exec.Command("kubectl", "wait", "--for=delete", "ns", namespace, "--timeout=60s"))).To(Succeed())
 	}
 
-	Expect(
-		runAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
+	if labels == nil {
+		Expect(runAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
+	} else {
+		labelLines := ""
+		for k, v := range labels {
+			labelLines += fmt.Sprintf("    %s: %s\n", k, v)
+		}
+		namespaceYaml := fmt.Sprintf(`apiVersion: v1
+kind: Namespace
+metadata:
+  name: %s
+  labels:
+%s`, namespace, labelLines)
+		cmd := exec.Command("kubectl", "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(namespaceYaml)
+		Expect(runAndIgnoreOutput(cmd)).To(Succeed())
+	}
 }
 
 func ensureNamespaceExists(namespace string) {
@@ -107,4 +132,60 @@ func ensureNamespaceExists(namespace string) {
 			Fail(fmt.Sprintf("kubectl get ns %s failed with unexpected error: %v", namespace, err))
 		}
 	}
+}
+
+func setAutoMonitoringOptOutLabelForStandardNamespaces(cleanupSteps *neccessaryCleanupSteps) {
+	for _, namespace := range standardNamespaces {
+		setAutoMonitoringOptOutLabelForNamespace(namespace)
+		cleanupSteps.removeAutoMonitoringOptLabelForStandardNamespaces = true
+	}
+}
+
+func setAutoMonitoringOptOutLabelForNamespace(namespace string) {
+	output, err := run(exec.Command("kubectl", "get", "ns", namespace))
+	if err != nil {
+		if strings.Contains(output, "(NotFound)") {
+			return
+		}
+		Expect(err).NotTo(HaveOccurred())
+	}
+	By(fmt.Sprintf("setting the auto-monitoring opt-out label on namespace %s", namespace))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"namespace",
+			namespace,
+			"--overwrite",
+			"dash0.com/enable=false",
+		)),
+	).To(Succeed())
+}
+
+func removeAutoMonitoringOptOutLabelFromStandardNamespaces(cleanupSteps *neccessaryCleanupSteps) {
+	if cleanupSteps.removeAutoMonitoringOptLabelForStandardNamespaces {
+		for _, namespace := range standardNamespaces {
+			removeAutoMonitoringOptOutLabelFromNamespace(namespace)
+		}
+	}
+}
+
+func removeAutoMonitoringOptOutLabelFromNamespace(namespace string) {
+	output, err := run(exec.Command("kubectl", "get", "ns", namespace))
+	if err != nil {
+		if strings.Contains(output, "(NotFound)") {
+			return
+		}
+		Expect(err).NotTo(HaveOccurred())
+	}
+	By(fmt.Sprintf("removing the auto-monitoring opt-out label from namespace %s", namespace))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"namespace",
+			namespace,
+			"dash0.com/enable-",
+		)),
+	).To(Succeed())
 }

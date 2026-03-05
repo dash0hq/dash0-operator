@@ -59,12 +59,13 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 	executeCommandAndStoreOutput(
 		fmt.Sprintf("kubectl -n %s describe deployment e2e-tests-operator-hr-opentelemetry-target-allocator-deployment",
 			operatorNamespace), outputPath)
-	for _, namespace := range []string{
+
+	e2eTestNamespaces := getNamespacesWithPrefix("e2e-test-ns")
+	for _, namespace := range append([]string{
 		operatorNamespace,
-		applicationUnderTestNamespace,
-		"otlp-sink",
-		"dash0-api",
-	} {
+		otlpSinkNamespace,
+		dash0ApiMockNamespace,
+	}, e2eTestNamespaces...) {
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get pods", namespace), outputPath)
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s describe pods", namespace), outputPath)
 		getPodLogs(namespace, outputPath)
@@ -202,4 +203,23 @@ func writeToFile(content []byte, outputPath string, filename string) {
 			err.Error(),
 		)
 	}
+}
+
+func getNamespacesWithPrefix(prefix string) []string {
+	namespacesOutput, err := run(
+		exec.Command("kubectl", "get", "namespaces", "--output=jsonpath={.items[*].metadata.name}"))
+	if err != nil {
+		e2ePrint(
+			"Error in collectPodInfoAndLogs when running kubectl get namespaces: %s\n",
+			err.Error(),
+		)
+		return nil
+	}
+	var result []string
+	for _, ns := range strings.Fields(namespacesOutput) {
+		if strings.HasPrefix(ns, prefix) {
+			result = append(result, ns)
+		}
+	}
+	return result
 }

@@ -469,9 +469,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("12Mi"))
 		Expect(daemonSetConfigReloaderContainer.Resources.Requests.Memory().String()).To(Equal("12Mi"))
 		configReloaderContainerArgs := daemonSetConfigReloaderContainer.Args
-		Expect(configReloaderContainerArgs).To(HaveLen(2))
+		Expect(configReloaderContainerArgs).To(HaveLen(3))
 		Expect(configReloaderContainerArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
-		Expect(configReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/config.yaml"))
+		Expect(configReloaderContainerArgs[1]).To(Equal("--frequency=5s"))
+		Expect(configReloaderContainerArgs[2]).To(Equal("/etc/otelcol/conf/config.yaml"))
 		Expect(daemonSetConfigReloaderContainer.VolumeMounts).To(HaveLen(2))
 		Expect(daemonSetConfigReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
@@ -522,9 +523,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("12Mi"))
 		Expect(deploymentConfigReloaderContainer.Resources.Requests.Memory().String()).To(Equal("12Mi"))
 		deploymentConfigReloaderContainerArgs := deploymentConfigReloaderContainer.Args
-		Expect(deploymentConfigReloaderContainerArgs).To(HaveLen(2))
+		Expect(deploymentConfigReloaderContainerArgs).To(HaveLen(3))
 		Expect(deploymentConfigReloaderContainerArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
-		Expect(deploymentConfigReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/config.yaml"))
+		Expect(configReloaderContainerArgs[1]).To(Equal("--frequency=5s"))
+		Expect(deploymentConfigReloaderContainerArgs[2]).To(Equal("/etc/otelcol/conf/config.yaml"))
 		Expect(deploymentConfigReloaderContainer.VolumeMounts).To(HaveLen(2))
 		Expect(deploymentConfigReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
@@ -2037,10 +2039,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(FindVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
 		daemonSetConfigReloaderContainer := daemonSetPodSpec.Containers[1]
 		configReloaderArgs := daemonSetConfigReloaderContainer.Args
-		Expect(configReloaderArgs).To(HaveLen(3))
+		Expect(configReloaderArgs).To(HaveLen(4))
 		Expect(configReloaderArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
 		Expect(configReloaderArgs[1]).To(Equal("--decompressedoutput=/etc/otelcol/conf/config.yaml"))
-		Expect(configReloaderArgs[2]).To(Equal("/etc/otelcol/conf-compressed/config.yaml"))
+		Expect(configReloaderArgs[2]).To(Equal("--frequency=5s"))
+		Expect(configReloaderArgs[3]).To(Equal("/etc/otelcol/conf-compressed/config.yaml"))
 		Expect(FindVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 		Expect(FindVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
 
@@ -2055,10 +2058,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(FindVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
 		deploymentConfigReloaderContainer := deploymentPodSpec.Containers[1]
 		deploymentConfigReloaderArgs := deploymentConfigReloaderContainer.Args
-		Expect(deploymentConfigReloaderArgs).To(HaveLen(3))
+		Expect(deploymentConfigReloaderArgs).To(HaveLen(4))
 		Expect(deploymentConfigReloaderArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
 		Expect(deploymentConfigReloaderArgs[1]).To(Equal("--decompressedoutput=/etc/otelcol/conf/config.yaml"))
-		Expect(deploymentConfigReloaderArgs[2]).To(Equal("/etc/otelcol/conf-compressed/config.yaml"))
+		Expect(deploymentConfigReloaderArgs[2]).To(Equal("--frequency=5s"))
+		Expect(deploymentConfigReloaderArgs[3]).To(Equal("/etc/otelcol/conf-compressed/config.yaml"))
 		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
 	})

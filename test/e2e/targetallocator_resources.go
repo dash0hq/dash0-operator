@@ -20,6 +20,17 @@ var (
 )
 
 func deployPrometheusCrds(cleanupSteps *neccessaryCleanupSteps) {
+	errPodMonitors :=
+		runAndIgnoreOutput(exec.Command("kubectl", "get", "crd", "podmonitors.monitoring.coreos.com"), false)
+	errServiceMonitors :=
+		runAndIgnoreOutput(exec.Command("kubectl", "get", "crd", "servicemonitors.monitoring.coreos.com"), false)
+	errScrapeConfigs :=
+		runAndIgnoreOutput(exec.Command("kubectl", "get", "crd", "scrapeconfigs.monitoring.coreos.com"), false)
+	if errPodMonitors == nil && errServiceMonitors == nil && errScrapeConfigs == nil {
+		// All three CRDs are already installed, nothing to do.
+		return
+	}
+
 	By("deploying Prometheus ServiceMonitor, PodMonitor and ScrapeConfig")
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",

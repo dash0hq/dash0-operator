@@ -215,6 +215,16 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
+	if err := r.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: "",
+			Name:      operatorConfigurationResource.Name,
+		},
+		operatorConfigurationResource); err != nil {
+		logger.Error(err, "failed to reload the operator configuration to update its status")
+		return ctrl.Result{}, err
+	}
 	operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 	if err = r.Status().Update(ctx, operatorConfigurationResource); err != nil {
 		logger.Error(err, updateStatusFailedMessageOperatorConfiguration)
