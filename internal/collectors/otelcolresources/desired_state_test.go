@@ -4,7 +4,10 @@
 package otelcolresources
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"reflect"
 	"slices"
 	"strings"
@@ -1998,6 +2001,68 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(configMapContent).To(ContainSubstring(EndpointHttpTest))
 	})
 
+	It("should store the config map content as gzip-compressed binary data when CompressConfigMap is enabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			CompressConfigMap:                                true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetConfigMap := getDaemonSetCollectorConfigMap(desiredState)
+		Expect(daemonSetConfigMap.Data).NotTo(HaveKey("config.yaml"))
+		Expect(daemonSetConfigMap.BinaryData).To(HaveKey("config.yaml"))
+		daemonSetConfigMapContent := decompressConfigMapContent(daemonSetConfigMap.BinaryData["config.yaml"])
+		Expect(daemonSetConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+
+		deploymentConfigMap := getDeploymentCollectorConfigMap(desiredState)
+		Expect(deploymentConfigMap.Data).NotTo(HaveKey("config.yaml"))
+		Expect(deploymentConfigMap.BinaryData).To(HaveKey("config.yaml"))
+		deploymentConfigMapContent := decompressConfigMapContent(deploymentConfigMap.BinaryData["config.yaml"])
+		Expect(deploymentConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+
+		daemonSet := getDaemonSet(desiredState)
+		Expect(daemonSet).NotTo(BeNil())
+		daemonSetPodSpec := daemonSet.Spec.Template.Spec
+		Expect(daemonSetPodSpec.Volumes).To(HaveLen(7))
+		Expect(FindVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
+		daemonSetCollectorContainer := daemonSetPodSpec.Containers[0]
+		Expect(FindVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
+		daemonSetConfigReloaderContainer := daemonSetPodSpec.Containers[1]
+		configReloaderArgs := daemonSetConfigReloaderContainer.Args
+		Expect(configReloaderArgs).To(HaveLen(3))
+		Expect(configReloaderArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
+		Expect(configReloaderArgs[1]).To(Equal("--decompressedoutput=/etc/otelcol/conf/config.yaml"))
+		Expect(configReloaderArgs[2]).To(Equal("/etc/otelcol/conf-compressed/config.yaml"))
+		Expect(FindVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
+
+		deployment := getDeployment(desiredState)
+		Expect(deployment).NotTo(BeNil())
+		deploymentPodSpec := deployment.Spec.Template.Spec
+		Expect(deploymentPodSpec.Volumes).To(HaveLen(3))
+		Expect(FindVolumeByName(deploymentPodSpec.Volumes, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeByName(deploymentPodSpec.Volumes, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
+		deploymentCollectorContainer := deploymentPodSpec.Containers[0]
+		Expect(FindVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
+		deploymentConfigReloaderContainer := deploymentPodSpec.Containers[1]
+		deploymentConfigReloaderArgs := deploymentConfigReloaderContainer.Args
+		Expect(deploymentConfigReloaderArgs).To(HaveLen(3))
+		Expect(deploymentConfigReloaderArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
+		Expect(deploymentConfigReloaderArgs[1]).To(Equal("--decompressedoutput=/etc/otelcol/conf/config.yaml"))
+		Expect(deploymentConfigReloaderArgs[2]).To(Equal("/etc/otelcol/conf-compressed/config.yaml"))
+		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
+	})
+
 	It("rendered objects must be stable", func() {
 		mr1 := dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: metav1.ObjectMeta{
@@ -2118,6 +2183,15 @@ func getDaemonSetCollectorConfigMap(desiredState []clientObject) *corev1.ConfigM
 
 func getDaemonSetCollectorConfigMapContent(desiredState []clientObject) string {
 	return getDaemonSetCollectorConfigMap(desiredState).Data["config.yaml"]
+}
+
+func decompressConfigMapContent(compressed []byte) string {
+	gzReader, err := gzip.NewReader(bytes.NewReader(compressed))
+	Expect(err).ToNot(HaveOccurred(), "failed to create gzip reader for config map content")
+	defer func() { _ = gzReader.Close() }()
+	decompressed, err := io.ReadAll(gzReader)
+	Expect(err).ToNot(HaveOccurred(), "failed to decompress config map content")
+	return string(decompressed)
 }
 
 func getDeploymentCollectorConfigMap(desiredState []clientObject) *corev1.ConfigMap {

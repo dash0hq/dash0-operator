@@ -188,6 +188,45 @@ func verifyConfigMapContainsString(operatorNamespace string, configMapNameQualif
 	)
 }
 
+func verifyCollectorConfigMapsAreCompressed(operatorNamespace string) {
+	verifyConfigMapIsCompressed(operatorNamespace, collectorDaemonSetConfigMapNameQualified)
+	verifyConfigMapIsCompressed(operatorNamespace, collectorDeploymentConfigMapNameQualified)
+}
+
+func verifyConfigMapIsCompressed(operatorNamespace string, configMapNameQualified string) {
+	output, err := run(
+		exec.Command(
+			"kubectl",
+			"get",
+			"-n",
+			operatorNamespace,
+			configMapNameQualified,
+			"-o",
+			"json",
+		),
+		false,
+	)
+	Expect(err).ToNot(HaveOccurred())
+
+	var configMap struct {
+		Data       map[string]string `json:"data"`
+		BinaryData map[string]string `json:"binaryData"`
+	}
+	Expect(json.Unmarshal([]byte(output), &configMap)).To(Succeed())
+	Expect(configMap.Data).NotTo(HaveKey("config.yaml"),
+		"expected config map %s to use binaryData (compression enabled), but found config.yaml in data instead",
+		configMapNameQualified,
+	)
+	Expect(configMap.BinaryData).To(HaveKey("config.yaml"),
+		"expected config map %s to have a compressed config.yaml entry in binaryData",
+		configMapNameQualified,
+	)
+	Expect(configMap.BinaryData["config.yaml"]).NotTo(BeEmpty(),
+		"expected config map %s binaryData[\"config.yaml\"] to be non-empty",
+		configMapNameQualified,
+	)
+}
+
 func verifyConfigMapDoesNotContainStrings(operatorNamespace string, configMapNameQualified, s string) {
 	verifyCommandOutputDoesNotContainStrings(
 		exec.Command(

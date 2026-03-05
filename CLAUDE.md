@@ -33,6 +33,8 @@ Build, lint and test tasks in this repository are performed via the Makefile in 
 - make build: build the Go code
 - make lint: run all static code analysis checks (Go, Helm, shell scripts).
 - make test: run all unit tests (Go, Helm chart unit tests)
+    - To only run the Go unit tests, run `make go-unit-tests`.
+    - To only run the Helm chart unit tests, run `make helm-unit-tests`.
 - make images: build all container images used by the operator.
 
 ## Common Workflows

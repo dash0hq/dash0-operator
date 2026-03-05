@@ -56,6 +56,7 @@ type oTelColConfig struct {
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
+	CompressConfigMap                                bool
 }
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
@@ -121,6 +122,11 @@ const (
 	configMapVolumeName            = "opentelemetry-collector-configmap"
 	collectorConfigurationYaml     = "config.yaml"
 	collectorConfigurationFilePath = "/etc/otelcol/conf/" + collectorConfigurationYaml
+
+	collectorConfigCompressedDirPath           = "/etc/otelcol/conf-compressed"
+	collectorConfigCompressedFilePath          = collectorConfigCompressedDirPath + "/" + collectorConfigurationYaml
+	collectorConfigDecompressedVolumeName      = "opentelemetry-collector-configmap-decompressed"
+	collectorConfigDecompressedVolumeSizeLimit = "50M"
 
 	collectorPidFilePath = "/etc/otelcol/run/pid.file"
 	pidFileVolumeName    = "opentelemetry-collector-pidfile"
@@ -199,11 +205,25 @@ var (
 		Path: collectorConfigurationYaml,
 	}}
 
-	collectorConfigVolume = corev1.VolumeMount{
+	// Collectors will either use only the collectorConfigPlainTextVolumeMount (when config map compression is disabled),
+	// or collectorConfigCompressedVolumeMount + collectorConfigDecompressedVolumeMount (when config map compression is
+	// enabled).
+	collectorConfigPlainTextVolumeMount = corev1.VolumeMount{
 		Name:      configMapVolumeName,
 		MountPath: "/etc/otelcol/conf",
 		ReadOnly:  true,
 	}
+	collectorConfigCompressedVolumeMount = corev1.VolumeMount{
+		Name:      configMapVolumeName,
+		MountPath: collectorConfigCompressedDirPath,
+		ReadOnly:  true,
+	}
+	collectorConfigDecompressedVolumeMount = corev1.VolumeMount{
+		Name:      collectorConfigDecompressedVolumeName,
+		MountPath: "/etc/otelcol/conf",
+		ReadOnly:  false,
+	}
+
 	collectorPidFileMountRW = corev1.VolumeMount{
 		Name:      pidFileVolumeName,
 		MountPath: filepath.Dir(collectorPidFilePath),
@@ -812,6 +832,10 @@ func assembleCollectorDaemonSetVolumes(
 				},
 			},
 		},
+		// When config map compression is disabled (which is the default), the configMapVolume holds the plain text config.
+		// When config map compression is enabled, it holds the compressed config maps, which will then be decompressed
+		// at startup by the collector container's entrypoint script (images/collector/src/image/entrypoint.sh), or - after
+		// an update, by the configreloader container (images/configreloader/src/configreloader.go).
 		{
 			Name: configMapVolumeName,
 			VolumeSource: corev1.VolumeSource{
@@ -831,6 +855,18 @@ func assembleCollectorDaemonSetVolumes(
 				},
 			},
 		},
+	}
+	if config.CompressConfigMap {
+		// If config map compression is enabled, this is where the plain text config maps will be written to when
+		// uncompressing them.
+		volumes = append(volumes, corev1.Volume{
+			Name: collectorConfigDecompressedVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: new(resource.MustParse(collectorConfigDecompressedVolumeSizeLimit)),
+				},
+			},
+		})
 	}
 	if !config.IsGkeAutopilot {
 		// On Docker desktop and other runtimes using docker, the files in /var/log/pods are symlinked to this folder.
@@ -884,16 +920,22 @@ func assembleCollectorDaemonSetVolumeMounts(
 	} else {
 		filelogOffsetVolumeMount = defaultFilelogReceiverOffsetsVolumeMount
 	}
-	volumeMounts := []corev1.VolumeMount{
-		collectorConfigVolume,
+	var volumeMounts []corev1.VolumeMount
+	if config.CompressConfigMap {
+		volumeMounts = []corev1.VolumeMount{collectorConfigCompressedVolumeMount, collectorConfigDecompressedVolumeMount}
+	} else {
+		volumeMounts = []corev1.VolumeMount{collectorConfigPlainTextVolumeMount}
+	}
+	volumeMounts = append(
+		volumeMounts,
 		collectorPidFileMountRW,
-		{
+		corev1.VolumeMount{
 			Name:      "node-pod-logs",
 			MountPath: "/var/log/pods",
 			ReadOnly:  true,
 		},
 		filelogOffsetVolumeMount,
-	}
+	)
 	if !config.IsGkeAutopilot {
 		// This volume mount is only useful for Docker Desktop and similar container runtimes. In GKE Autopilot we know
 		// for sure that /var/lib/docker/containers does not exist, so there is no need to mount it.
@@ -1048,12 +1090,27 @@ func assembleConfigurationReloaderContainer(
 ) corev1.Container {
 	collectorPidFileMountRO := collectorPidFileMountRW
 	collectorPidFileMountRO.ReadOnly = true
-	configurationReloaderContainer := corev1.Container{
-		Name: configReloader,
-		Args: []string{
+
+	var reloaderArgs []string
+	var reloaderVolumeMounts []corev1.VolumeMount
+	if config.CompressConfigMap {
+		reloaderArgs = []string{
+			"--pidfile=" + collectorPidFilePath,
+			"--decompressedoutput=" + collectorConfigurationFilePath,
+			collectorConfigCompressedFilePath,
+		}
+		reloaderVolumeMounts = []corev1.VolumeMount{collectorConfigCompressedVolumeMount, collectorConfigDecompressedVolumeMount, collectorPidFileMountRO}
+	} else {
+		reloaderArgs = []string{
 			"--pidfile=" + collectorPidFilePath,
 			collectorConfigurationFilePath,
-		},
+		}
+		reloaderVolumeMounts = []corev1.VolumeMount{collectorConfigPlainTextVolumeMount, collectorPidFileMountRO}
+	}
+
+	configurationReloaderContainer := corev1.Container{
+		Name: configReloader,
+		Args: reloaderArgs,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
 			ReadOnlyRootFilesystem:   new(false),
@@ -1086,7 +1143,7 @@ func assembleConfigurationReloaderContainer(
 			k8sPodNameEnvVar,
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
-		VolumeMounts: []corev1.VolumeMount{collectorConfigVolume, collectorPidFileMountRO},
+		VolumeMounts: reloaderVolumeMounts,
 	}
 	if config.Images.ConfigurationReloaderImagePullPolicy != "" {
 		configurationReloaderContainer.ImagePullPolicy = config.Images.ConfigurationReloaderImagePullPolicy
@@ -1425,7 +1482,7 @@ func assembleCollectorDeploymentVolumes(
 	configMapItems []corev1.KeyToPath,
 ) []corev1.Volume {
 	pidFileVolumeSizeLimit := resource.MustParse("1M")
-	return []corev1.Volume{
+	volumes := []corev1.Volume{
 		{
 			Name: configMapVolumeName,
 			VolumeSource: corev1.VolumeSource{
@@ -1446,6 +1503,17 @@ func assembleCollectorDeploymentVolumes(
 			},
 		},
 	}
+	if config.CompressConfigMap {
+		volumes = append(volumes, corev1.Volume{
+			Name: collectorConfigDecompressedVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: new(resource.MustParse(collectorConfigDecompressedVolumeSizeLimit)),
+				},
+			},
+		})
+	}
+	return volumes
 }
 
 func assembleDeploymentCollectorContainer(
@@ -1454,9 +1522,18 @@ func assembleDeploymentCollectorContainer(
 	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 	probes util.CollectorProbes,
 ) (corev1.Container, error) {
-	collectorVolumeMounts := []corev1.VolumeMount{
-		collectorConfigVolume,
-		collectorPidFileMountRW,
+	var collectorVolumeMounts []corev1.VolumeMount
+	if config.CompressConfigMap {
+		collectorVolumeMounts = []corev1.VolumeMount{
+			collectorConfigCompressedVolumeMount,
+			collectorConfigDecompressedVolumeMount,
+			collectorPidFileMountRW,
+		}
+	} else {
+		collectorVolumeMounts = []corev1.VolumeMount{
+			collectorConfigPlainTextVolumeMount,
+			collectorPidFileMountRW,
+		}
 	}
 	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
 	if err != nil {

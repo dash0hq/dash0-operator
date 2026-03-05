@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -72,6 +73,12 @@ func main() {
 		"",
 		"path to the collector's pid file, which contains the PID of the collector's process",
 	)
+	decompressedOutputPath := flag.String(
+		"decompressedoutput",
+		"",
+		"path where the decompressed configuration file should be written after a change is detected (in case config map"+
+			" compression is used)",
+	)
 
 	// Note: The checkFrequency of the configreloader is not the determining factor in how fast a changed config map will
 	// be noticed and a config update in the collector process will be triggered. Instead, this is mostly determined by
@@ -89,11 +96,18 @@ func main() {
 
 	flag.Parse()
 
+	// The list of paths to watch for changes, if --decompressedoutput is set, this is assumed to be gzip compressed files
+	// that will be unzipped to the --decompressedoutput directory; if --decompressedoutput is not set, the files are
+	// assumed to be uncompressed.
 	configurationFilePaths := flag.Args()
 
 	if len(configurationFilePaths) < 1 {
 		logger.Error("No configuration file paths provided in input")
 		os.Exit(1)
+	}
+
+	if *decompressedOutputPath != "" {
+		logger.Info("--decompressedoutput is set", "value", decompressedOutputPath)
 	}
 
 	if err := initializeHashes(configurationFilePaths); err != nil {
@@ -117,11 +131,13 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if isUpdateTriggered, err := checkConfiguration(
-					ctx,
-					configurationFilePaths,
-					*collectorPidFilePath,
-				); err != nil {
+				if isUpdateTriggered, err :=
+					checkConfiguration(
+						ctx,
+						configurationFilePaths,
+						*decompressedOutputPath,
+						*collectorPidFilePath,
+					); err != nil {
 					logger.Info(
 						"An error occurred while check for configuration changes",
 						errorLabel,
@@ -168,6 +184,7 @@ type HasTriggeredReload bool
 func checkConfiguration(
 	ctx context.Context,
 	configurationFilePaths []string,
+	decompressedOutputPath string,
 	collectorPidFilePath string,
 ) (HasTriggeredReload, error) {
 	var updatesConfigurationFilePaths []string
@@ -213,6 +230,12 @@ func checkConfiguration(
 		attribute.String(metricNamePrefix+"changed_files.names", changedFiles),
 	))
 
+	if decompressedOutputPath != "" {
+		if err := decompressAllConfigFiles(ctx, updatesConfigurationFilePaths, decompressedOutputPath); err != nil {
+			return false, err
+		}
+	}
+
 	logger.Info("Triggering a collector update due to changes to the config files", "changedFiles", changedFiles)
 
 	collectorPid, err := parsePidFile(collectorPidFilePath)
@@ -233,6 +256,57 @@ func checkConfiguration(
 	}
 
 	return true, nil
+}
+
+func decompressAllConfigFiles(
+	ctx context.Context,
+	updatesConfigurationFilePaths []string,
+	decompressedOutputPath string,
+) error {
+	for _, updatedPath := range updatesConfigurationFilePaths {
+		if err := decompressOneConfigFile(updatedPath, decompressedOutputPath); err != nil {
+			reloadErrorsMetric.Add(ctx, 1, otelmetric.WithAttributes(
+				attribute.String("error.type", "CannotDecompressConfig"),
+				attribute.String("error.message", common.TruncateErrorForMetricAttribute(err)),
+			))
+			return fmt.Errorf("cannot decompress updated config file: %w", err)
+		}
+	}
+	return nil
+}
+
+func decompressOneConfigFile(compressedPath string, decompressedOutputPath string) error {
+	logger.Info("Unpacking file", "from", compressedPath, "to", decompressedOutputPath)
+	compressedFile, err := os.Open(compressedPath)
+	if err != nil {
+		return fmt.Errorf("cannot open compressed config file '%s': %w", compressedPath, err)
+	}
+	defer func() {
+		_ = compressedFile.Close()
+	}()
+
+	gzReader, err := gzip.NewReader(compressedFile)
+	if err != nil {
+		return fmt.Errorf("cannot create gzip reader for '%s': %w", compressedPath, err)
+	}
+	defer func() {
+		_ = gzReader.Close()
+	}()
+
+	outputFile, err := os.Create(decompressedOutputPath)
+	if err != nil {
+		return fmt.Errorf("cannot create decompressed output file '%s': %w", decompressedOutputPath, err)
+	}
+	defer func() {
+		_ = outputFile.Close()
+	}()
+
+	if _, err = io.Copy(outputFile, gzReader); err != nil {
+		return fmt.Errorf("cannot decompress config file '%s' to '%s': %w", compressedPath, decompressedOutputPath, err)
+	}
+
+	logger.Info("Unpacked file successfully", "from", compressedPath, "to", decompressedOutputPath)
+	return nil
 }
 
 func parsePidFile(pidFilePath string) (int, error) {

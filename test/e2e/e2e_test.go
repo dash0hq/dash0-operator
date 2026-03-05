@@ -1499,6 +1499,7 @@ trace_statements:
 			})
 
 			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 				undeployOperator(operatorNamespace)
 			})
 
@@ -1543,6 +1544,52 @@ trace_statements:
 				Consistently(func(g Gomega) {
 					verifyNoSpans(g, runtimeTypePython, workloadTypeDeployment, testEndpoint, query, timestampLowerBound)
 				}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
+			})
+		})
+
+		Describe("with configmap compression", func() {
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with configmap compression enabled")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					true,
+					map[string]string{
+						"operator.collectors.compressConfigMaps": "true",
+					},
+				)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should produce telemetry when the collector config map is compressed", func() {
+				By("verifying that the collector config maps use binary data (compression)")
+				verifyCollectorConfigMapsAreCompressed(operatorNamespace)
+
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("verifying that the Node.js workload has been instrumented by the webhook")
+				verifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					"webhook",
+				)
 			})
 		})
 

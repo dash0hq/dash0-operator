@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"bytes"
+	"compress/gzip"
 	_ "embed"
 	"fmt"
 	"slices"
@@ -186,78 +187,7 @@ func assembleCollectorConfigMap(
 	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
-	var configMapData map[string]string
-	if forDeletion {
-		configMapData = map[string]string{}
-	} else {
-		selfIpReference := "${env:K8S_POD_IP}"
-		if config.IsIPv6Cluster {
-			selfIpReference = "[${env:K8S_POD_IP}]"
-		}
-		namespaceOttlFilter := renderOttlNamespaceFilter(
-			monitoredNamespaces,
-			config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
-			config.PrometheusCrdSupportEnabled,
-		)
-		customTelemetryFilters := aggregateCustomFilters(filters)
-		customTelemetryTransforms := aggregateCustomTransforms(transforms)
-		selfMonitoringMetricsConfig :=
-			selfmonitoringapiaccess.ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString(
-				config.SelfMonitoringConfiguration,
-			)
-		selfMonitoringLogsConfig :=
-			selfmonitoringapiaccess.ConvertExportConfigurationToCollectorLogsSelfMonitoringPipelineString(
-				config.SelfMonitoringConfiguration,
-			)
-
-		targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
-
-		collectorConfiguration, err := renderCollectorConfiguration(template,
-			&collectorConfigurationTemplateValues{
-				OperatorNamespace:           config.OperatorNamespace,
-				OperatorResourcesNamePrefix: config.NamePrefix,
-				Exporters:                   config.Exporters,
-				SendBatchMaxSize:            config.SendBatchMaxSize,
-				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
-				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
-				CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
-				DisableReplicasetInformer:                        config.DisableReplicasetInformer,
-				PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
-				TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
-				TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
-				TargetAllocatorServiceName:                       targetAllocatorServiceName,
-				TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
-				TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
-				KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
-				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
-				IsGkeAutopilot:                                   config.IsGkeAutopilot,
-				PseudoClusterUid:                                 string(config.PseudoClusterUid),
-				ClusterName:                                      config.ClusterName,
-				NamespacesWithLogCollection:                      namespacesWithLogCollection,
-				NamespacesWithEventCollection:                    namespacesWithEventCollection,
-				NamespaceOttlFilter:                              namespaceOttlFilter,
-				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
-				CustomFilters:                                    customTelemetryFilters,
-				CustomTransforms:                                 customTelemetryTransforms,
-				SelfIpReference:                                  selfIpReference,
-				InternalTelemetryEnabled:                         selfMonitoringMetricsConfig != "" || selfMonitoringLogsConfig != "",
-				SelfMonitoringEnabled:                            config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
-				SelfMonitoringMetricsConfig:                      selfMonitoringMetricsConfig,
-				SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
-				DevelopmentMode:                                  config.DevelopmentMode,
-				DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
-				EnableProfExtension:                              config.EnableProfExtension,
-			})
-		if err != nil {
-			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
-		}
-
-		configMapData = map[string]string{
-			collectorConfigurationYaml: collectorConfiguration,
-		}
-	}
-
-	return &corev1.ConfigMap{
+	configMap := corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
 			APIVersion: "v1",
@@ -267,9 +197,106 @@ func assembleCollectorConfigMap(
 			Namespace: config.OperatorNamespace,
 			Labels:    labels(false),
 		},
+		Data: map[string]string{},
+	}
 
-		Data: configMapData,
-	}, nil
+	if forDeletion {
+		// no need to render an actual config map just for deleting the config map
+		return &configMap, nil
+	}
+
+	selfIpReference := "${env:K8S_POD_IP}"
+	if config.IsIPv6Cluster {
+		selfIpReference = "[${env:K8S_POD_IP}]"
+	}
+	namespaceOttlFilter := renderOttlNamespaceFilter(
+		monitoredNamespaces,
+		config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
+		config.PrometheusCrdSupportEnabled,
+	)
+	customTelemetryFilters := aggregateCustomFilters(filters)
+	customTelemetryTransforms := aggregateCustomTransforms(transforms)
+	selfMonitoringMetricsConfig :=
+		selfmonitoringapiaccess.ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString(
+			config.SelfMonitoringConfiguration,
+		)
+	selfMonitoringLogsConfig :=
+		selfmonitoringapiaccess.ConvertExportConfigurationToCollectorLogsSelfMonitoringPipelineString(
+			config.SelfMonitoringConfiguration,
+		)
+
+	targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
+
+	collectorConfiguration, err := renderCollectorConfiguration(template,
+		&collectorConfigurationTemplateValues{
+			OperatorNamespace:           config.OperatorNamespace,
+			OperatorResourcesNamePrefix: config.NamePrefix,
+			Exporters:                   config.Exporters,
+			SendBatchMaxSize:            config.SendBatchMaxSize,
+			KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
+			CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
+			CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
+			DisableReplicasetInformer:                        config.DisableReplicasetInformer,
+			PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
+			TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
+			TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,
+			TargetAllocatorServiceName:                       targetAllocatorServiceName,
+			TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
+			TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
+			KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
+			UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
+			IsGkeAutopilot:                                   config.IsGkeAutopilot,
+			PseudoClusterUid:                                 string(config.PseudoClusterUid),
+			ClusterName:                                      config.ClusterName,
+			NamespacesWithLogCollection:                      namespacesWithLogCollection,
+			NamespacesWithEventCollection:                    namespacesWithEventCollection,
+			NamespaceOttlFilter:                              namespaceOttlFilter,
+			NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
+			CustomFilters:                                    customTelemetryFilters,
+			CustomTransforms:                                 customTelemetryTransforms,
+			SelfIpReference:                                  selfIpReference,
+			InternalTelemetryEnabled:                         selfMonitoringMetricsConfig != "" || selfMonitoringLogsConfig != "",
+			SelfMonitoringEnabled:                            config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
+			SelfMonitoringMetricsConfig:                      selfMonitoringMetricsConfig,
+			SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
+			DevelopmentMode:                                  config.DevelopmentMode,
+			DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
+			EnableProfExtension:                              config.EnableProfExtension,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
+	}
+
+	if !config.CompressConfigMap {
+		// config map compression is not enabled, return plain text config map
+		configMap.Data = map[string]string{
+			collectorConfigurationYaml: collectorConfiguration,
+		}
+		return &configMap, nil
+	}
+
+	// config map compression is enabled, compress the configuration with gzip
+	compressedConfiguration, err := compressContent(collectorConfiguration)
+	if err != nil {
+		return nil, err
+	}
+	configMap.Data = nil
+	configMap.BinaryData = map[string][]byte{
+		collectorConfigurationYaml: compressedConfiguration.Bytes(),
+	}
+	return &configMap, nil
+}
+
+func compressContent(collectorConfiguration string) (bytes.Buffer, error) {
+	var compressedConfig bytes.Buffer
+	gzWriter := gzip.NewWriter(&compressedConfig)
+	if _, err := gzWriter.Write([]byte(collectorConfiguration)); err != nil {
+		return bytes.Buffer{}, fmt.Errorf("cannot gzip collector configuration: %w", err)
+	}
+	if err := gzWriter.Close(); err != nil {
+		return bytes.Buffer{}, fmt.Errorf("cannot close gzip writer for collector configuration: %w", err)
+	}
+	return compressedConfig, nil
 }
 
 func renderOttlNamespaceFilter(monitoredNamespaces []string, selfMonitoringEnabled bool, prometheusCrdSupportEnabled bool) string {

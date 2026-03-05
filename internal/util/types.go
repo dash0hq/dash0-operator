@@ -66,6 +66,7 @@ type CollectorConfig struct {
 	DevelopmentMode           bool
 	DebugVerbosityDetailed    bool
 	EnableProfExtension       bool
+	CompressConfigMap         bool
 }
 
 type TargetAllocatorConfig struct {
