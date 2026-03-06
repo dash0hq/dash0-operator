@@ -53,8 +53,13 @@ const (
 	envVarOTelInjectorResourceAttributesName       = "OTEL_INJECTOR_RESOURCE_ATTRIBUTES"
 	otelInjectorLogLevelEnvVarName                 = "OTEL_INJECTOR_LOG_LEVEL"
 
+	serviceName      = "service.name"
+	serviceNamespace = "service.namespace"
+	serviceVersion   = "service.version"
+
 	defaultOtelExporterOtlpProtocol = common.ProtocolHttpProtobuf
 
+	resourcesOpenTelemetryIoLabelPrefix   = "resource.opentelemetry.io/"
 	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
 
 	// legacy environment variables
@@ -72,6 +77,8 @@ var (
 	initContainerAllowPrivilegeEscalation       = false
 	initContainerPrivileged                     = false
 	initContainerReadOnlyRootFilesystem         = true
+
+	serviceAttributes = []string{serviceName, serviceNamespace, serviceVersion}
 
 	otelExporterOtlpNoOverwriteMsg = fmt.Sprintf(
 		"Dash0 will not set %s/%s since the container already has at least one of those environment "+
@@ -628,6 +635,51 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
+	serviceAttributesFromResourcesOpenTelemetryIoAnnotation := make(map[string]string, 3)
+
+	// Map annotations resource.opentelemetry.io/your-key: "your-value" to resource attributes.
+	resourceAttributes := map[string]string{}
+	for annotationName, annotationValue := range workloadMeta.Annotations {
+		if after, ok := strings.CutPrefix(annotationName, resourcesOpenTelemetryIoLabelPrefix); ok {
+			resourceAttributeKey := after
+			resourceAttributes[resourceAttributeKey] = annotationValue
+			for _, k := range serviceAttributes {
+				if resourceAttributeKey == k {
+					serviceAttributesFromResourcesOpenTelemetryIoAnnotation[k] = annotationValue
+				}
+			}
+		}
+	}
+	// By iterating over the pod annotations _after_ the workload annotations, we ensure that the pod annotations take
+	// precedence over the workload annotations.
+	for annotationName, annotationValue := range podMeta.Annotations {
+		if after, ok := strings.CutPrefix(annotationName, resourcesOpenTelemetryIoLabelPrefix); ok {
+			resourceAttributeKey := after
+			resourceAttributes[resourceAttributeKey] = annotationValue
+			for _, k := range serviceAttributes {
+				if resourceAttributeKey == k {
+					serviceAttributesFromResourcesOpenTelemetryIoAnnotation[k] = annotationValue
+				}
+			}
+		}
+	}
+	if len(resourceAttributes) > 0 {
+		//nolint:prealloc
+		var resourceAttributeList []string
+		for _, resourceAttributeKey := range slices.Sorted(maps.Keys(resourceAttributes)) {
+			resourceAttributeValue := resourceAttributes[resourceAttributeKey]
+			resourceAttributeList = append(
+				resourceAttributeList,
+				fmt.Sprintf("%s=%s", resourceAttributeKey, resourceAttributeValue))
+		}
+		addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name:  envVarOTelInjectorResourceAttributesName,
+				Value: strings.Join(resourceAttributeList, ","),
+			})
+	}
+
 	// Add values from app.kubernetes.io/* labels as environment variables. Those will be picked up by the OpenTelemetry
 	// injector and turned into resource attributes. We will look for the labels in the pod metadata first, and if the
 	// pod does not have them, we will also check the workload labels. Labels will only be used from one of those two
@@ -692,39 +744,34 @@ func (m *ResourceModifier) addEnvironmentVariables(
 				)
 			}
 		}
-	}
-
-	// Map annotations resource.opentelemetry.io/your-key: "your-value" to resource attributes.
-	resourceAttributes := map[string]string{}
-	for annotationName, annotationValue := range workloadMeta.Annotations {
-		if after, ok := strings.CutPrefix(annotationName, "resource.opentelemetry.io/"); ok {
-			resourceAttributeKey := after
-			resourceAttributes[resourceAttributeKey] = annotationValue
+	} else {
+		if value, ok := serviceAttributesFromResourcesOpenTelemetryIoAnnotation[serviceName]; ok && !hasServiceAttributes.serviceName {
+			addOrReplaceEnvironmentVariable(
+				container,
+				corev1.EnvVar{
+					Name:  envVarOTelInjectorServiceName,
+					Value: value,
+				},
+			)
 		}
-	}
-	// By iterating over the pod annotations _after_ the workload annotations, we ensure that the pod annotations take
-	// precedence over the workload annotations.
-	for annotationName, annotationValue := range podMeta.Annotations {
-		if after, ok := strings.CutPrefix(annotationName, "resource.opentelemetry.io/"); ok {
-			resourceAttributeKey := after
-			resourceAttributes[resourceAttributeKey] = annotationValue
+		if value, ok := serviceAttributesFromResourcesOpenTelemetryIoAnnotation[serviceNamespace]; ok && !hasServiceAttributes.serviceNamespace {
+			addOrReplaceEnvironmentVariable(
+				container,
+				corev1.EnvVar{
+					Name:  envVarOTelInjectorServiceNamespace,
+					Value: value,
+				},
+			)
 		}
-	}
-	if len(resourceAttributes) > 0 {
-		//nolint:prealloc
-		var resourceAttributeList []string
-		for _, resourceAttributeKey := range slices.Sorted(maps.Keys(resourceAttributes)) {
-			resourceAttributeValue := resourceAttributes[resourceAttributeKey]
-			resourceAttributeList = append(
-				resourceAttributeList,
-				fmt.Sprintf("%s=%s", resourceAttributeKey, resourceAttributeValue))
+		if value, ok := serviceAttributesFromResourcesOpenTelemetryIoAnnotation[serviceVersion]; ok && !hasServiceAttributes.serviceName {
+			addOrReplaceEnvironmentVariable(
+				container,
+				corev1.EnvVar{
+					Name:  envVarOTelInjectorServiceVersionName,
+					Value: value,
+				},
+			)
 		}
-		addOrReplaceEnvironmentVariable(
-			container,
-			corev1.EnvVar{
-				Name:  envVarOTelInjectorResourceAttributesName,
-				Value: strings.Join(resourceAttributeList, ","),
-			})
 	}
 
 	if m.clusterInstrumentationConfig.InstrumentationDebug {
