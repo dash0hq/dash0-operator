@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/pkg/common
 
-go 1.26.0
+go 1.26.1
 
 require (
 	go.opentelemetry.io/contrib/bridges/otelzap v0.16.0
