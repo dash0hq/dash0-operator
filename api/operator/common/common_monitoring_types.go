@@ -34,7 +34,7 @@ const (
 	InstrumentWorkloadsModeNone InstrumentWorkloadsMode = "none"
 )
 
-var AllInstrumentWorkloadsMode = []InstrumentWorkloadsMode{
+var AllInstrumentWorkloadsModes = []InstrumentWorkloadsMode{
 	InstrumentWorkloadsModeAll,
 	InstrumentWorkloadsModeCreatedAndUpdated,
 	InstrumentWorkloadsModeNone,

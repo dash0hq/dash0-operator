@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,22 +41,21 @@ const ErrorMessageMonitoringExportAndExportsAreMutuallyExclusive = "The provided
 	"`exports` field and remove the `export` field."
 
 type MonitoringValidationWebhookHandler struct {
-	Client client.Client
+	Client            client.Client
+	operatorNamespace string
 }
 
 func NewMonitoringValidationWebhookHandler(
 	k8sClient client.Client,
+	operatorNamespace string,
 ) *MonitoringValidationWebhookHandler {
 	return &MonitoringValidationWebhookHandler{
-		Client: k8sClient,
+		Client:            k8sClient,
+		operatorNamespace: operatorNamespace,
 	}
 }
 
 var (
-	restrictedNamespaces = []string{
-		"kube-system",
-		"kube-node-lease",
-	}
 	// See https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators.
 	validTraceContextPropagators = []string{
 		"tracecontext",
@@ -96,9 +96,20 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	}
 
 	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
-	if slices.Contains(restrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
+	if slices.Contains(util.RestrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
 		msg := fmt.Sprintf(
 			"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
+				"\"%s\" with instrumentWorkloads.mode=%s, use instrumentWorkloads.mode=none instead.",
+			request.Name,
+			request.Namespace,
+			instrumentWorkloadsMode,
+		)
+		logger.Info(msg)
+		return admission.Denied(msg)
+	}
+	if request.Namespace == h.operatorNamespace && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
+		msg := fmt.Sprintf(
+			"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Dash0 operator namespace "+
 				"\"%s\" with instrumentWorkloads.mode=%s, use instrumentWorkloads.mode=none instead.",
 			request.Name,
 			request.Namespace,
@@ -112,7 +123,18 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	if errorResponse != nil {
 		return *errorResponse
 	}
-	admissionResponse, done := h.validateExport(availableOperatorConfigurations, monitoringResource)
+	admissionResponse, done :=
+		h.rejectCustomMonitoringResourceInAutomaticallyMonitoredNamespace(
+			ctx,
+			availableOperatorConfigurations,
+			monitoringResource,
+			logger,
+		)
+	if done {
+		logger.Info(admissionResponse.Result.Message)
+		return admissionResponse
+	}
+	admissionResponse, done = h.validateExport(availableOperatorConfigurations, monitoringResource)
 	if done {
 		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
@@ -139,6 +161,51 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	}
 
 	return admission.Allowed("")
+}
+
+func (h *MonitoringValidationWebhookHandler) rejectCustomMonitoringResourceInAutomaticallyMonitoredNamespace(
+	ctx context.Context,
+	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if len(availableOperatorConfigurations) == 0 {
+		return admission.Response{}, false
+	}
+	autoMonitorNamespaces := availableOperatorConfigurations[0].Spec.AutoMonitorNamespaces
+	if !autoMonitorNamespaces.IsEnabled() {
+		return admission.Response{}, false
+	}
+	if monitoringResource.Labels[util.AutoMonitoringNamespaceLabel] == "true" {
+		return admission.Response{}, false
+	}
+
+	selector, err := labels.Parse(autoMonitorNamespaces.LabelSelector)
+	if err != nil {
+		// Invalid label selector – be permissive rather than blocking all resources.
+		return admission.Response{}, false
+	}
+	namespace := &corev1.Namespace{}
+	if err = h.Client.Get(ctx, client.ObjectKey{Name: monitoringResource.Namespace}, namespace); err != nil {
+		logger.Error(
+			err,
+			fmt.Sprintf("Cannot load namespace %s to validate monitoring resource request.", monitoringResource.Namespace),
+		)
+		return admission.Response{}, false
+	}
+
+	if selector.Matches(labels.Set(namespace.Labels)) {
+		return admission.Denied(
+			fmt.Sprintf(
+				"Namespace \"%s\" is automatically managed by Dash0. Adding a custom Dash0 monitoring resource "+
+					"to an automatically managed namespace is not allowed.",
+				monitoringResource.Namespace,
+			),
+		), true
+	}
+
+	// Namespace is not subject to automatic monitoring, allow.
+	return admission.Response{}, false
 }
 
 func (h *MonitoringValidationWebhookHandler) validateExport(

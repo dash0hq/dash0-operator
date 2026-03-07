@@ -13,6 +13,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -31,6 +32,12 @@ type migrateOperatorConfigExportToExportsTestConfig struct {
 	oldSpec   *dash0v1alpha1.Dash0OperatorConfigurationSpec
 	spec      dash0v1alpha1.Dash0OperatorConfigurationSpec
 	wanted    dash0v1alpha1.Dash0OperatorConfigurationSpec
+}
+
+type setMonitoringTemplateDefaultsTestConfig struct {
+	autoMonitorNamespacesEnabled bool
+	spec                         *dash0v1alpha1.MonitoringTemplate
+	wanted                       *dash0v1alpha1.MonitoringTemplate
 }
 
 var _ = Describe("The mutating webhook for the operator configuration resource", func() {
@@ -484,6 +491,111 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
 						Enabled: new(true),
+					},
+				},
+			}),
+	)
+
+	DescribeTable("should set monitoring template defaults", func(testConfig setMonitoringTemplateDefaultsTestConfig) {
+		spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			AutoMonitorNamespaces: dash0v1alpha1.AutoMonitorNamespaces{
+				Enabled: new(testConfig.autoMonitorNamespacesEnabled),
+			},
+			MonitoringTemplate: testConfig.spec,
+		}
+		_, errorResponse := operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
+			admission.Request{},
+			&spec,
+			logger,
+		)
+		Expect(errorResponse).To(BeNil())
+		Expect(spec.MonitoringTemplate).To(Equal(testConfig.wanted))
+	},
+		Entry("if automatic namespace monitoring is disabled, set no defaults",
+			setMonitoringTemplateDefaultsTestConfig{
+				autoMonitorNamespacesEnabled: false,
+				spec:                         nil,
+				wanted:                       nil,
+			}),
+		Entry("given no MonitoringTemplate, set all monitoring template defaults",
+			setMonitoringTemplateDefaultsTestConfig{
+				autoMonitorNamespacesEnabled: true,
+				spec:                         nil,
+				wanted: &dash0v1alpha1.MonitoringTemplate{
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+							LabelSelector: "dash0.com/enable!=false",
+						},
+						LogCollection: dash0common.LogCollection{
+							Enabled: new(true),
+						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: new(true),
+						},
+						PrometheusScraping: dash0common.PrometheusScraping{
+							Enabled: new(true),
+						},
+					},
+				},
+			}),
+		Entry("given an empty MonitoringTemplate, set all monitoring template defaults",
+			setMonitoringTemplateDefaultsTestConfig{
+				autoMonitorNamespacesEnabled: true,
+				spec:                         &dash0v1alpha1.MonitoringTemplate{},
+				wanted: &dash0v1alpha1.MonitoringTemplate{
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+							LabelSelector: "dash0.com/enable!=false",
+						},
+						LogCollection: dash0common.LogCollection{
+							Enabled: new(true),
+						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: new(true),
+						},
+						PrometheusScraping: dash0common.PrometheusScraping{
+							Enabled: new(true),
+						},
+					},
+				},
+			}),
+		Entry("given a MonitoringTemplate with all attributes set to non-default values, leave them unchanged",
+			setMonitoringTemplateDefaultsTestConfig{
+				autoMonitorNamespacesEnabled: true,
+				spec: &dash0v1alpha1.MonitoringTemplate{
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode:          dash0common.InstrumentWorkloadsModeAll,
+							LabelSelector: "myapp.com/monitored=true",
+						},
+						LogCollection: dash0common.LogCollection{
+							Enabled: new(false),
+						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: new(false),
+						},
+						PrometheusScraping: dash0common.PrometheusScraping{
+							Enabled: new(false),
+						},
+					},
+				},
+				wanted: &dash0v1alpha1.MonitoringTemplate{
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode:          dash0common.InstrumentWorkloadsModeAll,
+							LabelSelector: "myapp.com/monitored=true",
+						},
+						LogCollection: dash0common.LogCollection{
+							Enabled: new(false),
+						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: new(false),
+						},
+						PrometheusScraping: dash0common.PrometheusScraping{
+							Enabled: new(false),
+						},
 					},
 				},
 			}),

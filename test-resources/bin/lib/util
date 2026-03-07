@@ -936,7 +936,7 @@ install_third_party_crds() {
 
 install_prometheus_crds() {
   helm upgrade --install \
-    --namespace "$target_namespace" \
+    --namespace "$operator_namespace" \
     --set crds.alertmanagerconfigs.enabled=false \
     --set crds.alertmanagers.enabled=false \
     --set crds.prometheusagents.enabled=false \

@@ -213,12 +213,12 @@ type InstrumentWorkloads struct {
 	// - workloads that do not have the label dash0.com/enable at all, or
 	// - workloads that have the label dash0.com/enable with a value other than "false".
 	//
-	// It is recommended to leave this setting unset (i.e. leave the default "dash0.com/enable!=false" in place), unless
+	// It is recommended to leave this setting unset (i.e., leave the default "dash0.com/enable!=false" in place), unless
 	// you have a specific use case that requires a different label selector. One such use case is implementing an
 	// opt-in model for workload instrumentation instead of the usual opt-out model. That is, instead of instrumenting
 	// all workloads by default and only disabling instrumentation for a few specific workloads, you want to
 	// deliberately turn on instrumentation for a few specific workloads and leave all others uninstrumented. Use a
-	// label selector with equals instead of not-equals to achieve this, i.e.
+	// label selector with equals instead of not-equals to achieve this, i.e.,
 	// spec.instrumentWorkloads.labelSelector="auto-instrument-this-workload-with-dash0=true".
 	//
 	// +kubebuilder:default=dash0.com/enable!=false
@@ -277,7 +277,7 @@ func (d *Dash0Monitoring) ReadInstrumentWorkloadsMode() dash0common.InstrumentWo
 	if instrumentWorkloadsMode == "" {
 		return dash0common.InstrumentWorkloadsModeAll
 	}
-	if !slices.Contains(dash0common.AllInstrumentWorkloadsMode, instrumentWorkloadsMode) {
+	if !slices.Contains(dash0common.AllInstrumentWorkloadsModes, instrumentWorkloadsMode) {
 		return dash0common.InstrumentWorkloadsModeAll
 	}
 	return instrumentWorkloadsMode

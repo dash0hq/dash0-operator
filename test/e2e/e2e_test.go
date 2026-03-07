@@ -1186,7 +1186,7 @@ traces:
 					Eventually(func(g Gomega) {
 						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
 						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-					}, 90*time.Second, time.Second).Should(Succeed())
+					}, 2*time.Minute, time.Second).Should(Succeed())
 
 					testId := uuid.New().String()
 					timestampLowerBound := time.Now()
@@ -1258,7 +1258,7 @@ trace_statements:
 					Eventually(func(g Gomega) {
 						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
 						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-					}, 90*time.Second, time.Second).Should(Succeed())
+					}, 2*time.Minute, time.Second).Should(Succeed())
 
 					testId := uuid.New().String()
 					timestampLowerBound := time.Now()

@@ -17,6 +17,8 @@ const (
 	FieldManager             = "dash0-operator"
 
 	OperatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
+	MonitoringAutoResourceName            = "dash0-monitoring-auto-resource"
+	AutoMonitoringNamespaceLabel          = "dash0.com/auto-monitoring-namespace"
 
 	ActorController WorkloadModifierActor = "controller"
 	ActorWebhook    WorkloadModifierActor = "webhook"
@@ -31,6 +33,13 @@ const (
 
 	EnvVarDash0NodeIp = "DASH0_NODE_IP"
 	EnvVarGoMemLimit  = "GOMEMLIMIT"
+)
+
+var (
+	RestrictedNamespaces = []string{
+		"kube-system",
+		"kube-node-lease",
+	}
 )
 
 func RenderAuthorizationHeader(authToken string) string {
