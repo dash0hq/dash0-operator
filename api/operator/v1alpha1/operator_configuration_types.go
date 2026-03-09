@@ -275,12 +275,18 @@ type MonitoringTemplate struct {
 type Dash0OperatorConfigurationStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
-	// PreviousAutoMonitorNamespacesLabelSelector records the label selector that was active when the namespace watch
-	// was last started. If it differs from the current spec.autoMonitorNamespaces.labelSelector, the namespace watch
-	// will be recreated with the new selector.
+	// PreviousAutoMonitorNamespacesLabelSelector records the label selector that was active when the operator
+	// configuration resource was reconciled the last time by the auto-namespace-monitoring controller. If it differs from
+	// the current spec.autoMonitorNamespaces.labelSelector, the namespace watch will be recreated with the new selector.
 	//
 	// +kubebuilder:validation:Optional
 	PreviousAutoMonitorNamespacesLabelSelector string `json:"previousAutoMonitorNamespacesLabelSelector,omitempty"`
+
+	// PreviousMonitoringTemplate records the monitoring template that was active when the operator configuration
+	// resource was reconciled the last time by the auto-namespace-monitoring controller.
+	//
+	// +kubebuilder:validation:Optional
+	PreviousMonitoringTemplate *MonitoringTemplate `json:"previousMonitoringTemplate,omitempty"`
 }
 
 func (d *Dash0OperatorConfiguration) IsMarkedForDeletion() bool {

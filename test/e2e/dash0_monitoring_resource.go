@@ -209,6 +209,25 @@ func updateDash0MonitoringResource(
 		))).To(Succeed())
 }
 
+func verifyDash0MonitoringResourceInstrumentWorkloadsMode(
+	g Gomega,
+	namespace string,
+	name string,
+	expectedMode dash0common.InstrumentWorkloadsMode,
+) {
+	output, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"--namespace",
+		namespace,
+		fmt.Sprintf("dash0monitorings.operator.dash0.com/%s", name),
+		"-o",
+		"jsonpath={.spec.instrumentWorkloads.mode}",
+	))
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(output).To(Equal(string(expectedMode)))
+}
+
 func undeployDash0MonitoringResource(namespace string) {
 	By(fmt.Sprintf("removing the Dash0 monitoring resource from namespace %s", namespace))
 	Expect(undeployDash0MonitoringResourceIgnoringMissingCrdErrors(namespace)).To(Succeed())

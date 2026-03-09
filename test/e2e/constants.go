@@ -8,8 +8,6 @@ import "fmt"
 const (
 	applicationUnderTestNamespace = "e2e-test-ns"
 
-	monitoringAutoResourceName = "dash0-monitoring-auto-resource"
-
 	runtimeTypeLabelDotnet  = ".NET"
 	applicationPathDotnet   = "test-resources/dotnet"
 	workloadNameDotnet      = "dash0-operator-dotnet-test"

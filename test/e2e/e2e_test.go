@@ -17,6 +17,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/startup"
+	dash0util "github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -1725,7 +1726,7 @@ trace_statements:
 
 				By("updating the Dash0 operator configuration endpoint setting")
 				newEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
-				updateEndpointOfDash0OperatorConfigurationResource(newEndpoint)
+				updateOperatorConfigurationExportEndpoint(newEndpoint)
 
 				By("verify that the config maps have been updated by the controller")
 				verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, newEndpoint)
@@ -2086,9 +2087,16 @@ trace_statements:
 					AutoNamespaceMonitoringEnabled: true,
 				}, operatorNamespace, operatorHelmChart)
 
-				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, monitoringAutoResourceName)
-				waitForMonitoringResourceToBecomeAvailable(namespaceExistingAlwaysOptIn, monitoringAutoResourceName)
-				verifyDash0MonitoringResourceDoesNotExist(Default, namespaceExistingDefaultOptOut, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, dash0util.MonitoringAutoResourceDefaultName)
+				waitForMonitoringResourceToBecomeAvailable(
+					namespaceExistingAlwaysOptIn,
+					dash0util.MonitoringAutoResourceDefaultName,
+				)
+				verifyDash0MonitoringResourceDoesNotExist(
+					Default,
+					namespaceExistingDefaultOptOut,
+					dash0util.MonitoringAutoResourceDefaultName,
+				)
 
 				recreateNamespace(namespaceNew)
 				recreateNamespaceWithLabel(
@@ -2103,9 +2111,13 @@ trace_statements:
 					},
 				)
 
-				waitForMonitoringResourceToBecomeAvailable(namespaceNew, monitoringAutoResourceName)
-				waitForMonitoringResourceToBecomeAvailable(namespaceNewAlwaysOptIn, monitoringAutoResourceName)
-				verifyDash0MonitoringResourceDoesNotExist(Default, namespaceNewDefaultOptOut, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceNew, dash0util.MonitoringAutoResourceDefaultName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceNewAlwaysOptIn, dash0util.MonitoringAutoResourceDefaultName)
+				verifyDash0MonitoringResourceDoesNotExist(
+					Default,
+					namespaceNewDefaultOptOut,
+					dash0util.MonitoringAutoResourceDefaultName,
+				)
 
 				deployWorkloadsInParallel(allWorkloadTestConfigs, testIds)
 
@@ -2153,24 +2165,44 @@ trace_statements:
 				// correctly.
 
 				By("auto-monitoring test, part II: changing the auto-namespace-monitoring label selector")
-				updateAutoNamespaceMonitoringLabelSelector("dash0.com/custom-auto-opt-in==true")
+				updateOperatorConfigurationAutoNamespaceMonitoringLabelSelector("dash0.com/custom-auto-opt-in==true")
 
 				// The two namespaces that had opted out via the default opt-out label should now be monitored, since they
 				// also have the custom opt-in label.
-				waitForMonitoringResourceToBecomeAvailable(namespaceExistingDefaultOptOut, monitoringAutoResourceName)
-				waitForMonitoringResourceToBecomeAvailable(namespaceNewDefaultOptOut, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(
+					namespaceExistingDefaultOptOut,
+					dash0util.MonitoringAutoResourceDefaultName,
+				)
+				waitForMonitoringResourceToBecomeAvailable(
+					namespaceNewDefaultOptOut,
+					dash0util.MonitoringAutoResourceDefaultName,
+				)
 
 				// The two namespaces that have not opted out via the default selector but also have not opted in via the
 				// custom selector should now be unmonitored.
 				Eventually(func(g Gomega) {
-					verifyDash0MonitoringResourceDoesNotExist(g, namespaceExisting, monitoringAutoResourceName)
-					verifyDash0MonitoringResourceDoesNotExist(g, namespaceNew, monitoringAutoResourceName)
+					verifyDash0MonitoringResourceDoesNotExist(
+						g,
+						namespaceExisting,
+						dash0util.MonitoringAutoResourceDefaultName,
+					)
+					verifyDash0MonitoringResourceDoesNotExist(
+						g,
+						namespaceNew,
+						dash0util.MonitoringAutoResourceDefaultName,
+					)
 				}, 30*time.Second, time.Second)
 
 				// Check that for the two namespaces that don't opt out via the default selector and _also_ opt-in via the
 				// custom selector, the monitoring resource is still there.
-				waitForMonitoringResourceToBecomeAvailable(namespaceExistingAlwaysOptIn, monitoringAutoResourceName)
-				waitForMonitoringResourceToBecomeAvailable(namespaceNewAlwaysOptIn, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(
+					namespaceExistingAlwaysOptIn,
+					dash0util.MonitoringAutoResourceDefaultName,
+				)
+				waitForMonitoringResourceToBecomeAvailable(
+					namespaceNewAlwaysOptIn,
+					dash0util.MonitoringAutoResourceDefaultName,
+				)
 
 				// Trivially modify the workloads - we run with instrumentWorkloads.mode=created-and-updated, simulate
 				// a change so that the instrumentation webhook will instrument the workloads.
@@ -2233,10 +2265,30 @@ trace_statements:
 					)
 				})
 
-				// Part Three: Change the labels of two namespaces so that one previousyl unmonitored namespaces now becomes
+				// Part Three: Update the monitoring template and verify that all monitoring resources are updated accordingly.
+
+				By("auto-monitoring test, part III: update the monitoring template")
+				updateOperatorConfigurationMonitoringTemplateInstrumentWorkloadsMode(dash0common.InstrumentWorkloadsModeAll)
+				Eventually(func(g Gomega) {
+					for _, ns := range []string{
+						namespaceExistingDefaultOptOut,
+						namespaceNewDefaultOptOut,
+						namespaceExistingAlwaysOptIn,
+						namespaceNewAlwaysOptIn,
+					} {
+						verifyDash0MonitoringResourceInstrumentWorkloadsMode(
+							g,
+							ns,
+							dash0util.MonitoringAutoResourceDefaultName,
+							dash0common.InstrumentWorkloadsModeAll,
+						)
+					}
+				}, 30*time.Second, time.Second).Should(Succeed())
+
+				// Part Four: Change the labels of two namespaces so that one previousyl unmonitored namespaces now becomes
 				// monitored, and a previously monitored becomes unmonitored.
 
-				By("auto-monitoring test, part III: changing the labels on two namespaces now")
+				By("auto-monitoring test, part IV: changing the labels on two namespaces now")
 				// namespaceExistingAlwaysOptIn no longer opts in.
 				Expect(runAndIgnoreOutput(
 					exec.Command(
@@ -2257,25 +2309,24 @@ trace_statements:
 						"dash0.com/custom-auto-opt-in=true",
 					))).To(Succeed())
 
-				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, monitoringAutoResourceName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, dash0util.MonitoringAutoResourceDefaultName)
+				// The new resource also should have been created according to the template set in part III.
+				verifyDash0MonitoringResourceInstrumentWorkloadsMode(
+					Default,
+					namespaceExisting,
+					dash0util.MonitoringAutoResourceDefaultName,
+					dash0common.InstrumentWorkloadsModeAll,
+				)
 				Eventually(func(g Gomega) {
-					verifyDash0MonitoringResourceDoesNotExist(g, namespaceExistingAlwaysOptIn, monitoringAutoResourceName)
+					verifyDash0MonitoringResourceDoesNotExist(
+						g,
+						namespaceExistingAlwaysOptIn,
+						dash0util.MonitoringAutoResourceDefaultName,
+					)
 				}, 30*time.Second, time.Second)
 
-				// Poke the workload to make it go through the instrumentation webhook.
-				Expect(addLabel(
-					namespaceExisting,
-					workloadTestConfigExisting.workloadType.workloadTypeString,
-					workloadName(workloadTestConfigExisting.runtime, workloadTestConfigExisting.workloadType),
-					"dummy-label-1=value",
-				)).To(Succeed())
-				Expect(addLabel(
-					namespaceExisting,
-					workloadTestConfigExisting.workloadType.workloadTypeString,
-					workloadName(workloadTestConfigExisting.runtime, workloadTestConfigExisting.workloadType),
-					"dummy-label-2=value",
-				)).To(Succeed())
-
+				// Since we changed the instrument workloads mode to "all" previously, the workload in namespaceExisting should
+				// now be automatically instrumented.
 				verifyThatWorkloadHasBeenInstrumented(
 					namespaceExisting,
 					workloadTestConfigExisting.runtime,
@@ -2287,7 +2338,7 @@ trace_statements:
 						namespaceExisting,
 					),
 					images,
-					"webhook",
+					"controller",
 				)
 				verifyNoDash0LabelsOrOnlyOptOut(
 					Default,

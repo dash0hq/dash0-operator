@@ -127,7 +127,11 @@ func (r *AutoNamespaceMonitoringReconciler) Reconcile(ctx context.Context, req c
 
 	if operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled() {
 		logger.Debug("AutoMonitorNamespaces is enabled, starting namespace watch")
-		if err := r.ensureNamespaceWatchIsActiveWithCorrectLabelSelector(ctx, operatorConfigurationResource, logger); err != nil {
+		if err := r.ensureNamespaceWatchIsActiveWithCorrectLabelSelector(
+			ctx,
+			operatorConfigurationResource,
+			logger,
+		); err != nil {
 			return ctrl.Result{}, err
 		}
 	} else {
@@ -155,7 +159,7 @@ func (r *AutoNamespaceMonitoringReconciler) ensureNamespaceWatchIsActiveWithCorr
 	r.ensureNamespaceWatchIsActive(currentLabelSelector, logger)
 
 	if removeMonitoringForPreviousLabelSelector {
-		logger.Debug("removing monitoring from namespaces that no longer match the label selector")
+		logger.Info("removing monitoring from namespaces that no longer match the label selector")
 		r.unmonitorNamespacesThatNoLongerMatchTheChangedLabelSelector(
 			ctx,
 			logger,
@@ -164,23 +168,22 @@ func (r *AutoNamespaceMonitoringReconciler) ensureNamespaceWatchIsActiveWithCorr
 		)
 	}
 
-	if previousLabelSelector != currentLabelSelector {
-		if err := r.Get(
+	monitoringTemplateHasChanged := compareMonitoringTemplates(
+		operatorConfigurationResource.Status.PreviousMonitoringTemplate,
+		operatorConfigurationResource.Spec.MonitoringTemplate,
+	)
+	if monitoringTemplateHasChanged && operatorConfigurationResource.Spec.MonitoringTemplate != nil {
+		r.updateAllAutoMonitoringResourcesWithNewTemplate(
 			ctx,
-			types.NamespacedName{
-				Namespace: "",
-				Name:      operatorConfigurationResource.Name,
-			},
-			operatorConfigurationResource); err != nil {
-			logger.Error(err, "failed to reload the operator configuration to update its status with the previous label selector")
-			return err
-		}
-		operatorConfigurationResource.Status.PreviousAutoMonitorNamespacesLabelSelector = currentLabelSelector
-		logger.Debug("updating operator configuration resource status")
-		if err := r.Status().Update(ctx, operatorConfigurationResource); err != nil {
-			logger.Error(err, "failed to update operator configuration status with the previous label selector")
-			return err
-		}
+			*operatorConfigurationResource.Spec.MonitoringTemplate,
+			currentLabelSelector,
+			logger,
+		)
+	}
+
+	err := r.updateOperatorConfigurationStatus(ctx, operatorConfigurationResource, previousLabelSelector, currentLabelSelector, monitoringTemplateHasChanged, logger)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -330,7 +333,7 @@ func (r *AutoNamespaceMonitoringReconciler) unmonitorNamespacesThatNoLongerMatch
 				// it up and reconcile it.
 				continue
 			}
-			if err := r.namespaceWatcher.ensureNamespaceIsUnmonitored(ctx, &ns); err != nil {
+			if err := r.namespaceWatcher.ensureNamespaceIsUnmonitored(ctx, &ns, logger); err != nil {
 				logger.Error(
 					err,
 					"cannot unmonitor namespace after the auto-namespace-monitoring label selector has changed",
@@ -340,6 +343,124 @@ func (r *AutoNamespaceMonitoringReconciler) unmonitorNamespacesThatNoLongerMatch
 			}
 		}
 	}()
+}
+
+func (r *AutoNamespaceMonitoringReconciler) updateAllAutoMonitoringResourcesWithNewTemplate(
+	ctx context.Context,
+	monitoringTemplate dash0v1alpha1.MonitoringTemplate,
+	labelSelector string,
+	logger logd.Logger,
+) {
+	// The monitoring template has changed. All automatically managed monitoring resources need to be updated.
+	go func() {
+		selector, err := labels.Parse(labelSelector)
+		if err != nil {
+			logger.Error(
+				err,
+				"cannot parse label selector for auto-namespace-monitoring after the monitoring template has changed",
+			)
+			return
+		}
+
+		namespaceList := &corev1.NamespaceList{}
+		if err := r.List(ctx, namespaceList, client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			logger.Error(
+				err,
+				"cannot list namespaces for auto-namespace-monitoring after the monitoring template has changed",
+			)
+			return
+		}
+		for _, ns := range namespaceList.Items {
+			list := &dash0v1beta1.Dash0MonitoringList{}
+			if err := r.List(ctx, list,
+				client.InNamespace(ns.Name),
+				client.MatchingLabels{util.AutoMonitoredNamespaceLabel: util.TrueString},
+			); err != nil {
+				logger.Error(
+					err,
+					"cannot list monitoring resources in namespace to update it after the monitoring template has changed",
+					"namespace",
+					ns.Name,
+				)
+				continue
+			}
+			if len(list.Items) == 0 {
+				// No auto-monitoring resource in this namespace yet. This will be reconciled by the namespace watch later.
+				logger.Debug(
+					"namespace does not have a auto-monitoring resource yet, nothing to update",
+					"namespace",
+					ns.Name,
+				)
+				continue
+			}
+			if err := r.namespaceWatcher.reconcileResourceWithMonitoringTemplate(
+				ctx,
+				list.Items[0],
+				monitoringTemplate,
+				logger,
+			); err != nil {
+				logger.Error(
+					err,
+					"cannot update monitoring resource in namespace to reflect the updated monitoring template",
+					"namespace",
+					ns.Name,
+				)
+			}
+		}
+	}()
+}
+
+func (r *AutoNamespaceMonitoringReconciler) updateOperatorConfigurationStatus(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	previousLabelSelector string,
+	currentLabelSelector string,
+	monitoringTemplateHasChanged bool,
+	logger logd.Logger,
+) error {
+	if previousLabelSelector == currentLabelSelector && !monitoringTemplateHasChanged {
+		return nil
+	}
+
+	if previousLabelSelector != currentLabelSelector {
+		logger.Info(
+			"Writing new label selector to operator configuration resource status",
+			"previous label selector",
+			previousLabelSelector,
+			"new label selector",
+			currentLabelSelector,
+		)
+	}
+
+	if monitoringTemplateHasChanged {
+		logger.Info(
+			"Writing new monitoring template to operator configuration resource status",
+			"previous monitoring template",
+			operatorConfigurationResource.Status.PreviousMonitoringTemplate,
+			"new monitoring template",
+			operatorConfigurationResource.Spec.MonitoringTemplate,
+		)
+	}
+
+	if err := r.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: "",
+			Name:      operatorConfigurationResource.Name,
+		},
+		operatorConfigurationResource,
+	); err != nil {
+		logger.Error(err, "failed to reload the operator configuration to update its status with the previous label selector")
+		return err
+	}
+	operatorConfigurationResource.Status.PreviousAutoMonitorNamespacesLabelSelector = currentLabelSelector
+	operatorConfigurationResource.Status.PreviousMonitoringTemplate = operatorConfigurationResource.Spec.MonitoringTemplate
+	logger.Debug("updating operator configuration resource status")
+	if err := r.Status().Update(ctx, operatorConfigurationResource); err != nil {
+		logger.Error(err, "failed to update operator configuration status with the previous label selector")
+		return err
+	}
+	return nil
 }
 
 type NamespaceWatcher struct {
@@ -461,7 +582,7 @@ func (w *NamespaceWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	} else {
 		// The namespace should not be auto-monitored. If there is an automatically created monitoring resource, remove it.
-		if err := w.ensureNamespaceIsUnmonitored(ctx, ns); err != nil {
+		if err := w.ensureNamespaceIsUnmonitored(ctx, ns, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -506,7 +627,11 @@ func (w *NamespaceWatcher) ensureNamespaceIsMonitored(
 	return nil
 }
 
-func (w *NamespaceWatcher) ensureNamespaceIsUnmonitored(ctx context.Context, ns *corev1.Namespace) error {
+func (w *NamespaceWatcher) ensureNamespaceIsUnmonitored(
+	ctx context.Context,
+	ns *corev1.Namespace,
+	logger logd.Logger,
+) error {
 	existingList := &dash0v1beta1.Dash0MonitoringList{}
 	if err := w.List(ctx, existingList,
 		client.InNamespace(ns.Name),
@@ -515,6 +640,11 @@ func (w *NamespaceWatcher) ensureNamespaceIsUnmonitored(ctx context.Context, ns 
 		return err
 	}
 	for i := range existingList.Items {
+		logger.Info(
+			"removing monitoring resource from namespace after the auto-namespace-monitoring label selector has changed",
+			"namespace",
+			ns.Name,
+		)
 		if err := w.Delete(ctx, &existingList.Items[i]); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
@@ -569,32 +699,6 @@ func (w *NamespaceWatcher) reconcileResourceWithMonitoringTemplate(
 	monitoringTemplate dash0v1alpha1.MonitoringTemplate,
 	logger logd.Logger,
 ) error {
-	// Deliberately not updating the name, even if the monitoring template has a new name. This would require to delete
-	// the resource under the old name and create a new resource.
-
-	expectedLabels := map[string]string{}
-	for k, v := range monitoringTemplate.Labels {
-		expectedLabels[k] = v
-	}
-	expectedLabels[util.AutoMonitoredNamespaceLabel] = util.TrueString
-
-	expectedAnnotations := map[string]string{}
-	for k, v := range monitoringTemplate.Annotations {
-		expectedAnnotations[k] = v
-	}
-
-	// Normalize nil maps to empty maps for comparison.
-	existingLabels := monitoringResource.Labels
-	if existingLabels == nil {
-		existingLabels = map[string]string{}
-	}
-	existingAnnotations := monitoringResource.Annotations
-	if existingAnnotations == nil {
-		existingAnnotations = map[string]string{}
-	}
-
-	needsLabelsUpdate := !reflect.DeepEqual(existingLabels, expectedLabels)
-	needsAnnotationsUpdate := !reflect.DeepEqual(existingAnnotations, expectedAnnotations)
 
 	// TODO: The current approach is to compare all relevant spec fields in the monitoring resource spec with the
 	// monitoring template, and update the monitoring resource spec if needed. This is probably not a good long term
@@ -612,91 +716,16 @@ func (w *NamespaceWatcher) reconcileResourceWithMonitoringTemplate(
 	// NormalizedTransformSpec is always skipped: it is derived from Transform by the webhook and never present in the
 	// template.
 
-	needsSpecUpdate := false
-
-	if monitoringResource.Spec.InstrumentWorkloads.Mode != monitoringTemplate.Spec.InstrumentWorkloads.Mode {
-		monitoringResource.Spec.InstrumentWorkloads.Mode = monitoringTemplate.Spec.InstrumentWorkloads.Mode
-		needsSpecUpdate = true
-	}
-	if monitoringResource.Spec.InstrumentWorkloads.LabelSelector != monitoringTemplate.Spec.InstrumentWorkloads.LabelSelector {
-		monitoringResource.Spec.InstrumentWorkloads.LabelSelector = monitoringTemplate.Spec.InstrumentWorkloads.LabelSelector
-		needsSpecUpdate = true
-	}
-	// InstrumentWorkloads.TraceContext.Propagators
-	if util.IsStringPointerValueDifferent(
-		monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators,
-		monitoringTemplate.Spec.InstrumentWorkloads.TraceContext.Propagators,
-	) {
-		monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators =
-			monitoringTemplate.Spec.InstrumentWorkloads.TraceContext.Propagators
-		needsSpecUpdate = true
-	}
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplate.Spec.LogCollection.Enabled, true) {
-		monitoringResource.Spec.LogCollection.Enabled = monitoringTemplate.Spec.LogCollection.Enabled
-		needsSpecUpdate = true
-	}
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplate.Spec.EventCollection.Enabled, true) {
-		monitoringResource.Spec.EventCollection.Enabled = monitoringTemplate.Spec.EventCollection.Enabled
-		needsSpecUpdate = true
-	}
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplate.Spec.PrometheusScraping.Enabled, true) {
-		monitoringResource.Spec.PrometheusScraping.Enabled = monitoringTemplate.Spec.PrometheusScraping.Enabled
-		needsSpecUpdate = true
-	}
-
-	if !reflect.DeepEqual(monitoringResource.Spec.Filter, monitoringTemplate.Spec.Filter) {
-		monitoringResource.Spec.Filter = monitoringTemplate.Spec.Filter
-		needsSpecUpdate = true
-	}
-	if !reflect.DeepEqual(monitoringResource.Spec.Transform, monitoringTemplate.Spec.Transform) {
-		monitoringResource.Spec.Transform = monitoringTemplate.Spec.Transform
-		needsSpecUpdate = true
-	}
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.SynchronizePersesDashboards, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplate.Spec.SynchronizePersesDashboards, true) {
-		monitoringResource.Spec.SynchronizePersesDashboards = monitoringTemplate.Spec.SynchronizePersesDashboards
-		needsSpecUpdate = true
-	}
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.SynchronizePrometheusRules, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplate.Spec.SynchronizePrometheusRules, true) {
-		monitoringResource.Spec.SynchronizePrometheusRules = monitoringTemplate.Spec.SynchronizePrometheusRules
-		needsSpecUpdate = true
-	}
-
-	// Note: The operator configuration validating webhook disallows Export/Exports on the monitoring template. Therefor,
-	// we can ignore these two fields
-
-	if !needsSpecUpdate && !needsLabelsUpdate && !needsAnnotationsUpdate {
+	if hasBeenUpdated :=
+		compareMonitoringResourceToMonitoringTemplateAndUpdate(monitoringTemplate, &monitoringResource); !hasBeenUpdated {
 		return nil
 	}
 
-	if needsSpecUpdate {
-		logger.Info(
-			"auto Dash0Monitoring resource spec does not match the monitoring template, updating",
-			"namespace", monitoringResource.Namespace,
-			"name", monitoringResource.Name,
-		)
-	}
-	if needsLabelsUpdate {
-		logger.Info(
-			"auto Dash0Monitoring resource labels do not match the monitoring template, updating",
-			"namespace", monitoringResource.Namespace,
-			"name", monitoringResource.Name,
-		)
-		monitoringResource.Labels = expectedLabels
-	}
-	if needsAnnotationsUpdate {
-		logger.Info(
-			"auto Dash0Monitoring resource annotations do not match the monitoring template, updating",
-			"namespace", monitoringResource.Namespace,
-			"name", monitoringResource.Name,
-		)
-		monitoringResource.Annotations = expectedAnnotations
-	}
-
+	logger.Debug(
+		"auto Dash0Monitoring resource does not match the monitoring template, updating",
+		"namespace", monitoringResource.Namespace,
+		"name", monitoringResource.Name,
+	)
 	if err := w.Update(ctx, &monitoringResource); err != nil {
 		logger.Error(
 			err,
@@ -712,6 +741,149 @@ func (w *NamespaceWatcher) reconcileResourceWithMonitoringTemplate(
 		"name", monitoringResource.Name,
 	)
 	return nil
+}
+
+func compareMonitoringResourceToMonitoringTemplateAndUpdate(
+	monitoringTemplate dash0v1alpha1.MonitoringTemplate,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+) bool {
+	objectMetaHasBeenUpdated := compareAndUpdateObjectMeta(
+		monitoringTemplate.ObjectMeta,
+		&monitoringResource.ObjectMeta,
+		true,
+	)
+	specHasBeenUpdate := compareAndUpdateSpec(monitoringTemplate.Spec, &monitoringResource.Spec)
+	return objectMetaHasBeenUpdated || specHasBeenUpdate
+}
+
+func compareMonitoringTemplates(
+	t1 *dash0v1alpha1.MonitoringTemplate,
+	t2 *dash0v1alpha1.MonitoringTemplate,
+) bool {
+	if t1 == nil && t2 == nil {
+		return false
+	}
+	if t1 == nil {
+		return true
+	}
+	if t2 == nil {
+		return true
+	}
+
+	// We are re-using the compareAndUpdate functions that are also used to update the monitoring resource from a
+	// template. In this case here, we don't want any object to be updated, we only need to find out whether the two
+	// templates are different. This achieved by handing the comparison functions clones.
+	t1Cloned := t1.DeepCopy()
+	t2Cloned := t2.DeepCopy()
+	objectMetaHasBeenUpdated := compareAndUpdateObjectMeta(
+		t1Cloned.ObjectMeta,
+		&t2Cloned.ObjectMeta,
+		false,
+	)
+	specHasBeenUpdate := compareAndUpdateSpec(t1Cloned.Spec, &t2Cloned.Spec)
+	return objectMetaHasBeenUpdated || specHasBeenUpdate
+}
+
+func compareAndUpdateObjectMeta(
+	monitoringTemplateObjectMeta metav1.ObjectMeta,
+	monitoringResourceObjectMeta *metav1.ObjectMeta,
+	addAutoMonitoredNamespaceLabel bool,
+) bool {
+	// Deliberately not comparing/updating the name of the resource, even if the monitoring template has a new name. This
+	// would require to delete the resource under the old name and create a new resource.
+
+	expectedLabels := map[string]string{}
+	for k, v := range monitoringTemplateObjectMeta.Labels {
+		expectedLabels[k] = v
+	}
+	if addAutoMonitoredNamespaceLabel {
+		expectedLabels[util.AutoMonitoredNamespaceLabel] = util.TrueString
+	}
+	// Normalize nil maps to empty maps for comparison.
+	existingLabels := monitoringResourceObjectMeta.Labels
+	if existingLabels == nil {
+		existingLabels = map[string]string{}
+	}
+	needsLabelsUpdate := !reflect.DeepEqual(existingLabels, expectedLabels)
+	if needsLabelsUpdate {
+		monitoringResourceObjectMeta.Labels = expectedLabels
+	}
+
+	expectedAnnotations := map[string]string{}
+	for k, v := range monitoringTemplateObjectMeta.Annotations {
+		expectedAnnotations[k] = v
+	}
+	existingAnnotations := monitoringResourceObjectMeta.Annotations
+	if existingAnnotations == nil {
+		existingAnnotations = map[string]string{}
+	}
+	needsAnnotationsUpdate := !reflect.DeepEqual(existingAnnotations, expectedAnnotations)
+	if needsAnnotationsUpdate {
+		monitoringResourceObjectMeta.Annotations = expectedAnnotations
+	}
+
+	return needsLabelsUpdate || needsAnnotationsUpdate
+}
+
+func compareAndUpdateSpec(
+	monitoringTemplateSpec dash0v1beta1.Dash0MonitoringSpec,
+	monitoringResourceSpec *dash0v1beta1.Dash0MonitoringSpec,
+) bool {
+	specUpdated := false
+	if monitoringResourceSpec.InstrumentWorkloads.Mode != monitoringTemplateSpec.InstrumentWorkloads.Mode {
+		monitoringResourceSpec.InstrumentWorkloads.Mode = monitoringTemplateSpec.InstrumentWorkloads.Mode
+		specUpdated = true
+	}
+	if monitoringResourceSpec.InstrumentWorkloads.LabelSelector != monitoringTemplateSpec.InstrumentWorkloads.LabelSelector {
+		monitoringResourceSpec.InstrumentWorkloads.LabelSelector = monitoringTemplateSpec.InstrumentWorkloads.LabelSelector
+		specUpdated = true
+	}
+	// InstrumentWorkloads.TraceContext.Propagators
+	if util.IsStringPointerValueDifferent(
+		monitoringResourceSpec.InstrumentWorkloads.TraceContext.Propagators,
+		monitoringTemplateSpec.InstrumentWorkloads.TraceContext.Propagators,
+	) {
+		monitoringResourceSpec.InstrumentWorkloads.TraceContext.Propagators =
+			monitoringTemplateSpec.InstrumentWorkloads.TraceContext.Propagators
+		specUpdated = true
+	}
+	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.LogCollection.Enabled, true) !=
+		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.LogCollection.Enabled, true) {
+		monitoringResourceSpec.LogCollection.Enabled = monitoringTemplateSpec.LogCollection.Enabled
+		specUpdated = true
+	}
+	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.EventCollection.Enabled, true) !=
+		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.EventCollection.Enabled, true) {
+		monitoringResourceSpec.EventCollection.Enabled = monitoringTemplateSpec.EventCollection.Enabled
+		specUpdated = true
+	}
+	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.PrometheusScraping.Enabled, true) !=
+		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.PrometheusScraping.Enabled, true) {
+		monitoringResourceSpec.PrometheusScraping.Enabled = monitoringTemplateSpec.PrometheusScraping.Enabled
+		specUpdated = true
+	}
+
+	if !reflect.DeepEqual(monitoringResourceSpec.Filter, monitoringTemplateSpec.Filter) {
+		monitoringResourceSpec.Filter = monitoringTemplateSpec.Filter
+		specUpdated = true
+	}
+	if !reflect.DeepEqual(monitoringResourceSpec.Transform, monitoringTemplateSpec.Transform) {
+		monitoringResourceSpec.Transform = monitoringTemplateSpec.Transform
+		specUpdated = true
+	}
+	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.SynchronizePersesDashboards, true) !=
+		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.SynchronizePersesDashboards, true) {
+		monitoringResourceSpec.SynchronizePersesDashboards = monitoringTemplateSpec.SynchronizePersesDashboards
+		specUpdated = true
+	}
+	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.SynchronizePrometheusRules, true) !=
+		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.SynchronizePrometheusRules, true) {
+		monitoringResourceSpec.SynchronizePrometheusRules = monitoringTemplateSpec.SynchronizePrometheusRules
+		specUpdated = true
+	}
+	// Note: The operator configuration validating webhook disallows Export/Exports on the monitoring template. Therefore,
+	// we can ignore these two fields
+	return specUpdated
 }
 
 // namespaceLabelSelectorPredicate filters namespace watch events by a label selector. For Update events, it fires if
