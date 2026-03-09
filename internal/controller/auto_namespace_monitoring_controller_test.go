@@ -510,6 +510,422 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(BeEmpty())
 		})
 	})
+
+	Context("comparing monitoring resource monitoring templates", func() {
+		type compareMonitoringResourceAndMonitoringTemplateTest struct {
+			template dash0v1alpha1.MonitoringTemplate
+			resource *dash0v1beta1.Dash0Monitoring
+			verify   func(hasBeenUpdated bool, resource *dash0v1beta1.Dash0Monitoring)
+		}
+		autoLabel := map[string]string{util.AutoMonitoredNamespaceLabel: util.TrueString}
+
+		DescribeTable("compareMonitoringResourceAndMonitoringTemplate",
+			func(t compareMonitoringResourceAndMonitoringTemplateTest) {
+				result := compareMonitoringResourceToMonitoringTemplateAndUpdate(t.template, t.resource)
+				t.verify(result, t.resource)
+			},
+			Entry("returns false when resource already matches the template",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels:      map[string]string{"label-key": "label-value"},
+							Annotations: map[string]string{"annotation-key": "annotation-value"},
+						},
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+								Mode: dash0common.InstrumentWorkloadsModeAll,
+							},
+							LogCollection: dash0common.LogCollection{Enabled: ptr.To(false)},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"label-key":                      "label-value",
+								util.AutoMonitoredNamespaceLabel: util.TrueString,
+							},
+							Annotations: map[string]string{"annotation-key": "annotation-value"},
+						},
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+								Mode: dash0common.InstrumentWorkloadsModeAll,
+							},
+							LogCollection: dash0common.LogCollection{Enabled: ptr.To(false)},
+						},
+					},
+					verify: func(hasBeenUpdated bool, _ *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeFalse())
+					},
+				}),
+			Entry("returns true and adds the auto-monitored-namespace label when it is missing",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{},
+					resource: &dash0v1beta1.Dash0Monitoring{},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(r.Labels[util.AutoMonitoredNamespaceLabel]).To(Equal(util.TrueString))
+					},
+				}),
+			Entry("returns true and updates labels when they differ",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"new-label": "new-value"},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								util.AutoMonitoredNamespaceLabel: util.TrueString,
+								"old-label":                      "old-value",
+							},
+						},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(r.Labels).To(Equal(map[string]string{
+							"new-label":                      "new-value",
+							util.AutoMonitoredNamespaceLabel: util.TrueString,
+						}))
+					},
+				}),
+			Entry("returns true and updates annotations when they differ",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{"new-annotation": "new-value"},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels:      autoLabel,
+							Annotations: map[string]string{"old-annotation": "old-value"},
+						},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(r.Annotations).To(Equal(map[string]string{"new-annotation": "new-value"}))
+					},
+				}),
+			Entry("returns true and updates InstrumentWorkloads.Mode when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{Mode: dash0common.InstrumentWorkloadsModeNone},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{Labels: autoLabel},
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{Mode: dash0common.InstrumentWorkloadsModeAll},
+						},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(r.Spec.InstrumentWorkloads.Mode).To(Equal(dash0common.InstrumentWorkloadsModeNone))
+					},
+				}),
+			Entry("returns true and updates InstrumentWorkloads.LabelSelector when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{LabelSelector: "app=new-selector"},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{Labels: autoLabel},
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{LabelSelector: "app=old-selector"},
+						},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(r.Spec.InstrumentWorkloads.LabelSelector).To(Equal("app=new-selector"))
+					},
+				}),
+			Entry("returns true and updates InstrumentWorkloads.TraceContext.Propagators when they differ",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+								TraceContext: dash0v1beta1.TraceContext{Propagators: ptr.To("tracecontext,xray")},
+							},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{ObjectMeta: metav1.ObjectMeta{Labels: autoLabel}},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(*r.Spec.InstrumentWorkloads.TraceContext.Propagators).To(Equal("tracecontext,xray"))
+					},
+				}),
+			Entry("returns true and updates LogCollection.Enabled when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{LogCollection: dash0common.LogCollection{Enabled: ptr.To(false)}},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{Labels: autoLabel},
+						Spec:       dash0v1beta1.Dash0MonitoringSpec{LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)}},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(*r.Spec.LogCollection.Enabled).To(BeFalse())
+					},
+				}),
+			Entry("returns true and updates EventCollection.Enabled when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{EventCollection: dash0common.EventCollection{Enabled: ptr.To(false)}},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{Labels: autoLabel},
+						Spec:       dash0v1beta1.Dash0MonitoringSpec{EventCollection: dash0common.EventCollection{Enabled: ptr.To(true)}},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(*r.Spec.EventCollection.Enabled).To(BeFalse())
+					},
+				}),
+			Entry("returns true and updates PrometheusScraping.Enabled when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(false)}},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{Labels: autoLabel},
+						Spec:       dash0v1beta1.Dash0MonitoringSpec{PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(true)}},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(*r.Spec.PrometheusScraping.Enabled).To(BeFalse())
+					},
+				}),
+			Entry("returns true and updates Filter when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							Filter: &dash0common.Filter{Traces: &dash0common.TraceFilter{SpanFilter: []string{"span filter"}}},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{ObjectMeta: metav1.ObjectMeta{Labels: autoLabel}},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(r.Spec.Filter.Traces.SpanFilter).To(Equal([]string{"span filter"}))
+					},
+				}),
+			Entry("returns true and updates Transform when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							Transform: &dash0common.Transform{
+								Traces: []json.RawMessage{[]byte(`"truncate_all(span.attributes, 1024)"`)},
+							},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{ObjectMeta: metav1.ObjectMeta{Labels: autoLabel}},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(r.Spec.Transform.Traces[0]).To(Equal(json.RawMessage(`"truncate_all(span.attributes, 1024)"`)))
+					},
+				}),
+			Entry("returns true and updates SynchronizePersesDashboards when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{SynchronizePersesDashboards: ptr.To(false)},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{Labels: autoLabel},
+						Spec:       dash0v1beta1.Dash0MonitoringSpec{SynchronizePersesDashboards: ptr.To(true)},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(*r.Spec.SynchronizePersesDashboards).To(BeFalse())
+					},
+				}),
+			Entry("returns true and updates SynchronizePrometheusRules when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{SynchronizePrometheusRules: ptr.To(false)},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{
+						ObjectMeta: metav1.ObjectMeta{Labels: autoLabel},
+						Spec:       dash0v1beta1.Dash0MonitoringSpec{SynchronizePrometheusRules: ptr.To(true)},
+					},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(*r.Spec.SynchronizePrometheusRules).To(BeFalse())
+					},
+				}),
+		)
+	})
+
+	Context("comparing monitoring templates", func() {
+		type compareMonitoringTemplatesTest struct {
+			t1     *dash0v1alpha1.MonitoringTemplate
+			t2     *dash0v1alpha1.MonitoringTemplate
+			expect bool
+		}
+
+		DescribeTable("compareMonitoringTemplates",
+			func(t compareMonitoringTemplatesTest) {
+				Expect(compareMonitoringTemplates(t.t1, t.t2)).To(Equal(t.expect))
+			},
+			Entry("both nil → not changed", compareMonitoringTemplatesTest{t1: nil, t2: nil, expect: false}),
+			Entry("t1 nil, t2 non-nil → changed",
+				compareMonitoringTemplatesTest{t1: nil, t2: &dash0v1alpha1.MonitoringTemplate{}, expect: true}),
+			Entry("t1 non-nil, t2 nil → changed",
+				compareMonitoringTemplatesTest{t1: &dash0v1alpha1.MonitoringTemplate{}, t2: nil, expect: true}),
+			Entry("both empty → not changed", compareMonitoringTemplatesTest{
+				t1:     &dash0v1alpha1.MonitoringTemplate{},
+				t2:     &dash0v1alpha1.MonitoringTemplate{},
+				expect: false,
+			}),
+			Entry("both identical (labels + annotations + spec) → not changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels:      map[string]string{"label-key": "label-value"},
+							Annotations: map[string]string{"annotation-key": "annotation-value"},
+						},
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{Mode: dash0common.InstrumentWorkloadsModeAll},
+							LogCollection:       dash0common.LogCollection{Enabled: ptr.To(false)},
+						},
+					},
+					t2: &dash0v1alpha1.MonitoringTemplate{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels:      map[string]string{"label-key": "label-value"},
+							Annotations: map[string]string{"annotation-key": "annotation-value"},
+						},
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{Mode: dash0common.InstrumentWorkloadsModeAll},
+							LogCollection:       dash0common.LogCollection{Enabled: ptr.To(false)},
+						},
+					},
+					expect: false,
+				}),
+			Entry("labels differ → changed",
+				compareMonitoringTemplatesTest{
+					t1:     &dash0v1alpha1.MonitoringTemplate{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"key": "value-1"}}},
+					t2:     &dash0v1alpha1.MonitoringTemplate{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"key": "value-2"}}},
+					expect: true,
+				}),
+			Entry("annotations differ → changed",
+				compareMonitoringTemplatesTest{
+					t1:     &dash0v1alpha1.MonitoringTemplate{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"key": "value-1"}}},
+					t2:     &dash0v1alpha1.MonitoringTemplate{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"key": "value-2"}}},
+					expect: true,
+				}),
+			Entry("InstrumentWorkloads.Mode differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{Mode: dash0common.InstrumentWorkloadsModeAll},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{Mode: dash0common.InstrumentWorkloadsModeNone},
+					}},
+					expect: true,
+				}),
+			Entry("InstrumentWorkloads.LabelSelector differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{LabelSelector: "app=selector-1"},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{LabelSelector: "app=selector-2"},
+					}},
+					expect: true,
+				}),
+			Entry("InstrumentWorkloads.TraceContext.Propagators differ → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							TraceContext: dash0v1beta1.TraceContext{Propagators: ptr.To("tracecontext")},
+						},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							TraceContext: dash0v1beta1.TraceContext{Propagators: ptr.To("tracecontext,xray")},
+						},
+					}},
+					expect: true,
+				}),
+			Entry("LogCollection.Enabled differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						LogCollection: dash0common.LogCollection{Enabled: ptr.To(false)},
+					}},
+					expect: true,
+				}),
+			Entry("EventCollection.Enabled differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						EventCollection: dash0common.EventCollection{Enabled: ptr.To(true)},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						EventCollection: dash0common.EventCollection{Enabled: ptr.To(false)},
+					}},
+					expect: true,
+				}),
+			Entry("PrometheusScraping.Enabled differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(true)},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(false)},
+					}},
+					expect: true,
+				}),
+			Entry("Filter differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						Filter: &dash0common.Filter{Traces: &dash0common.TraceFilter{SpanFilter: []string{"filter-1"}}},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						Filter: &dash0common.Filter{Traces: &dash0common.TraceFilter{SpanFilter: []string{"filter-2"}}},
+					}},
+					expect: true,
+				}),
+			Entry("Transform differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						Transform: &dash0common.Transform{Traces: []json.RawMessage{[]byte(`"transform-1"`)}},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						Transform: &dash0common.Transform{Traces: []json.RawMessage{[]byte(`"transform-2"`)}},
+					}},
+					expect: true,
+				}),
+			Entry("SynchronizePersesDashboards differs → changed",
+				compareMonitoringTemplatesTest{
+					t1:     &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{SynchronizePersesDashboards: ptr.To(true)}},
+					t2:     &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{SynchronizePersesDashboards: ptr.To(false)}},
+					expect: true,
+				}),
+			Entry("SynchronizePrometheusRules differs → changed",
+				compareMonitoringTemplatesTest{
+					t1:     &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{SynchronizePrometheusRules: ptr.To(true)}},
+					t2:     &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{SynchronizePrometheusRules: ptr.To(false)}},
+					expect: true,
+				}),
+		)
+
+		It("does not mutate the input templates", func() {
+			t1 := &dash0v1alpha1.MonitoringTemplate{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"key": "value-1"}},
+			}
+			t2 := &dash0v1alpha1.MonitoringTemplate{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"key": "value-2"}},
+			}
+			compareMonitoringTemplates(t1, t2)
+			Expect(t1.Labels).To(Equal(map[string]string{"key": "value-1"}))
+			Expect(t2.Labels).To(Equal(map[string]string{"key": "value-2"}))
+		})
+	})
 })
 
 func createOperatorConfigurationResourceWithAutoMonitorNamespaces(

@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -142,7 +143,7 @@ func waitForOperatorConfigurationResourceToBecomeAvailable() {
 		))).To(Succeed())
 }
 
-func updateEndpointOfDash0OperatorConfigurationResource(
+func updateOperatorConfigurationExportEndpoint(
 	newEndpoint string,
 ) {
 	jsonPatch := fmt.Sprintf(`[{
@@ -153,7 +154,7 @@ func updateEndpointOfDash0OperatorConfigurationResource(
 	updateDash0OperatorConfigurationResource(jsonPatch)
 }
 
-func updateAutoNamespaceMonitoringLabelSelector(
+func updateOperatorConfigurationAutoNamespaceMonitoringLabelSelector(
 	newLabelSelector string,
 ) {
 	jsonPatch := fmt.Sprintf(`[{
@@ -161,6 +162,17 @@ func updateAutoNamespaceMonitoringLabelSelector(
    "path":"/spec/autoMonitorNamespaces/labelSelector",
    "value":"%s"
 	}]`, newLabelSelector)
+	updateDash0OperatorConfigurationResource(jsonPatch)
+}
+
+func updateOperatorConfigurationMonitoringTemplateInstrumentWorkloadsMode(
+	newInstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode,
+) {
+	jsonPatch := fmt.Sprintf(`[{
+   "op":"replace",
+   "path":"/spec/monitoringTemplate/spec/instrumentWorkloads/mode",
+   "value":"%s"
+	}]`, newInstrumentWorkloadsMode)
 	updateDash0OperatorConfigurationResource(jsonPatch)
 }
 
