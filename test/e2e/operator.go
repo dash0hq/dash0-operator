@@ -88,21 +88,63 @@ func deployOperator(
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	additionalHelmParameters map[string]string,
 ) error {
+	return executeOperatorHelmChart(
+		"install",
+		operatorNamespace,
+		operatorHelmChart,
+		operatorHelmChartUrl,
+		images,
+		operatorConfigurationValues,
+		additionalHelmParameters,
+	)
+}
+
+func upgradeOperator(
+	operatorNamespace string,
+	operatorHelmChart string,
+	operatorHelmChartUrl string,
+	images Images,
+	operatorConfigurationValues *startup.OperatorConfigurationValues,
+	additionalHelmParameters map[string]string,
+) error {
+	return executeOperatorHelmChart(
+		"upgrade",
+		operatorNamespace,
+		operatorHelmChart,
+		operatorHelmChartUrl,
+		images,
+		operatorConfigurationValues,
+		additionalHelmParameters,
+	)
+}
+
+func executeOperatorHelmChart(
+	helmCommand string,
+	operatorNamespace string,
+	operatorHelmChart string,
+	operatorHelmChartUrl string,
+	images Images,
+	operatorConfigurationValues *startup.OperatorConfigurationValues,
+	additionalHelmParameters map[string]string,
+) error {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
 	By(
 		fmt.Sprintf(
-			"deploying the operator controller to namespace %s",
+			"running helm %s for the operator helm chart, deploying to namespace %s",
+			helmCommand,
 			operatorNamespace,
 		))
 	arguments := []string{
-		"install",
+		helmCommand,
 		"--wait",
 		"--namespace",
 		operatorNamespace,
-		"--create-namespace",
-		"--set", "operator.developmentMode=true",
 	}
+	if helmCommand == "install" {
+		arguments = append(arguments, "--create-namespace")
+	}
+	arguments = append(arguments, "--set", "operator.developmentMode=true")
 	arguments = addHelmParametersForImages(arguments, images)
 
 	if operatorConfigurationValues != nil {
@@ -137,9 +179,11 @@ func deployOperator(
 		return err
 	}
 
-	e2ePrint("output of helm install:\n%s\n", output)
+	e2ePrint("output of helm %s:\n%s\n", helmCommand, output)
 
-	if operatorConfigurationValues != nil {
+	if operatorConfigurationValues != nil || helmCommand == "upgrade" {
+		// If an operatorConfigurationValues has been provided, collectors will be deployed, and we should wait until it
+		// is ready. If this is a helm upgrade, the collectors should already be running anyway.
 		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 	}
 
@@ -306,34 +350,6 @@ func verifyDash0OperatorReleaseIsNotInstalled(g Gomega, operatorNamespace string
 		fmt.Sprintf("namespace/%s", operatorNamespace),
 		"--timeout=60s",
 	))).To(Succeed())
-}
-
-func upgradeOperator(
-	operatorNamespace string,
-	operatorHelmChart string,
-	operatorHelmChartUrl string,
-	images Images,
-) {
-	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
-
-	By("upgrading the operator controller")
-	arguments := []string{
-		"upgrade",
-		"--wait",
-		"--namespace",
-		operatorNamespace,
-		"--set", "operator.developmentMode=true",
-	}
-	arguments = addHelmParametersForImages(arguments, images)
-
-	arguments = append(arguments, operatorHelmReleaseName)
-	arguments = append(arguments, operatorHelmChart)
-
-	output, err := run(exec.Command("helm", arguments...))
-	Expect(err).NotTo(HaveOccurred())
-	e2ePrint("output of helm upgrade:\n%s\n", output)
-
-	waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 }
 
 func verifyOperatorManagerPodMemoryUsageIsReasonable() {

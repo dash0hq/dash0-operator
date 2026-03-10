@@ -428,6 +428,8 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.TargetAllocatorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.TargetAllocatorTolerations).To(HaveLen(0))
 					Expect(extraConfig.TargetAllocatorNodeAffinity).To(BeNil())
+
+					Expect(extraConfig.MonitoringTemplateRaw).To(BeNil())
 				})
 
 				It("should parse the config map content with all values set", func() {
@@ -605,6 +607,10 @@ targetAllocatorNodeAffinity:
         values:
         - value-07
         - value-08
+monitoringTemplate:
+  spec:
+    instrumentWorkloads:
+      mode: all
 `)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -781,6 +787,8 @@ targetAllocatorNodeAffinity:
 					Expect(targetAllocatorAffinityPref[0].Preference.MatchExpressions[0].Operator).To(Equal(corev1.NodeSelectorOpIn))
 					Expect(targetAllocatorAffinityPref[0].Preference.MatchExpressions[0].Values).To(HaveLen(1))
 					Expect(targetAllocatorAffinityPref[0].Preference.MatchExpressions[0].Values[0]).To(Equal("value-09"))
+
+					Expect(extraConfig.MonitoringTemplateRaw).ToNot(BeNil())
 				})
 
 				It("should merge partial config and defaults", func() {

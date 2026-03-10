@@ -5,16 +5,18 @@ package util
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/bep/debounce"
-	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/fsnotify/fsnotify"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
+
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type ResourceRequirementsWithGoMemLimit struct {
@@ -64,6 +66,10 @@ type ExtraConfig struct {
 	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
 	TargetAllocatorTolerations              []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
 	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
+
+	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
+	// dependencies. We should revisit how to untangle this.
+	MonitoringTemplateRaw *json.RawMessage `json:"monitoringTemplate,omitempty"`
 }
 
 type ExtraConfigClient interface {
@@ -266,11 +272,13 @@ func (w *ExtraConfigWatcher) watchConfigurationDirectory(
 				ctx := context.Background()
 				logger := logd.FromContext(ctx)
 				debouncedFileWatchEvents(func() {
+					logger.Info("the extra config map has been updated")
 					extraConfig, err := readExtraConfigurationFromFile(extraConfigFile)
 					if err != nil {
 						logger.Error(err, "cannot read extra config map file after it has been updated")
 						return
 					}
+					logger.Info("updating all clients with updated extra config map")
 					for _, client := range w.clients {
 						client.UpdateExtraConfig(ctx, extraConfig, logger)
 					}

@@ -172,7 +172,7 @@ func (r *SyntheticCheckReconciler) RemoveNamespacedApiConfigs(
 	}
 }
 
-func (r *SyntheticCheckReconciler) NotifiyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
+func (r *SyntheticCheckReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 

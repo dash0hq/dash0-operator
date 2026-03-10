@@ -5,6 +5,7 @@ package startup
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -20,8 +21,6 @@ import (
 )
 
 var (
-	autoOperatorConfigurationResourceHandler *AutoOperatorConfigurationResourceHandler
-
 	secretRef = SecretRef{
 		Name: "test-secret",
 		Key:  "test-key",
@@ -57,8 +56,6 @@ var _ = Describe(
 					OperatorWebhookServiceName,
 				)
 				readyCheckExecuter.bypassWebhookCheck = true
-				autoOperatorConfigurationResourceHandler =
-					NewAutoOperatorConfigurationResourceHandler(k8sClient, readyCheckExecuter)
 			},
 		)
 
@@ -70,12 +67,16 @@ var _ = Describe(
 
 		It(
 			"should fail validation if no endpoint has been provided", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx, &OperatorConfigurationValues{
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
 						Token: AuthorizationTokenTest,
-					}, logger,
+					},
+					nil,
 				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).To(
 					MatchError(
 						ContainSubstring(
@@ -88,12 +89,16 @@ var _ = Describe(
 
 		It(
 			"should fail validation if no token and no secret reference have been provided", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx, &OperatorConfigurationValues{
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
 						Endpoint: AuthorizationTokenTest,
-					}, logger,
+					},
+					nil,
 				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).To(
 					MatchError(
 						ContainSubstring(
@@ -107,14 +112,18 @@ var _ = Describe(
 
 		It(
 			"should fail validation if no token and no secret reference key have been provided", func() {
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx, &OperatorConfigurationValues{
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
 						Endpoint: AuthorizationTokenTest,
 						SecretRef: SecretRef{
 							Name: "test-secret",
 						},
-					}, logger,
+					},
+					nil,
 				)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).To(
 					MatchError(
 						ContainSubstring(
@@ -128,12 +137,14 @@ var _ = Describe(
 
 		It(
 			"should create a new operator configuration resource with a token", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx,
-					&operatorConfigurationValuesWithToken,
-					logger,
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					nil,
 				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				Eventually(
@@ -182,12 +193,14 @@ var _ = Describe(
 
 		It(
 			"should create a new operator configuration resource with a secret reference", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx,
-					&operatorConfigurationValuesWithSecretRef,
-					logger,
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithSecretRef,
+					nil,
 				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				Eventually(
@@ -222,16 +235,16 @@ var _ = Describe(
 
 		It(
 			"should wait for the replica to become leader", func() {
-				_, err :=
-					autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-						ctx,
-						&operatorConfigurationValuesWithToken,
-						logger,
-					)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					nil,
+				)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
-				// The autoOperatorConfigurationResourceHandler should not be able to proceed if we do notify the
-				// autoOperatorConfigurationResourceHandler about getting elected as leader.
+				// The handler should not be able to proceed if we do not notify it about getting elected as leader.
 				Consistently(
 					func(g Gomega) {
 						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
@@ -244,8 +257,8 @@ var _ = Describe(
 					}, 500*time.Millisecond, 100*time.Millisecond,
 				).Should(Succeed())
 
-				// now make this replica the leader, which should allow the autoOperatorConfigurationResourceHandler to proceed
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
+				// now make this replica the leader, which should allow the handler to proceed
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 
 				Eventually(
 					func(g Gomega) {
@@ -263,17 +276,18 @@ var _ = Describe(
 
 		It(
 			"should wait for the webhook service endpoint ready check", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
 				readyCheckExecuter.bypassWebhookCheck = false
-				_, err :=
-					autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-						ctx,
-						&operatorConfigurationValuesWithToken,
-						logger,
-					)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					nil,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
-				// The autoOperatorConfigurationResourceHandler should not be able to proceed if we do not skip the webhook
+				// The handler should not be able to proceed if we do not skip the webhook
 				// check (we never start the ready check executer in the test).
 				Consistently(
 					func(g Gomega) {
@@ -291,14 +305,18 @@ var _ = Describe(
 
 		It(
 			"should set the API endpoint", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx, &OperatorConfigurationValues{
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
 						Endpoint:    EndpointDash0Test,
 						Token:       AuthorizationTokenTest,
 						ApiEndpoint: ApiEndpointTest,
-					}, logger,
+					},
+					nil,
 				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				Eventually(
@@ -327,14 +345,18 @@ var _ = Describe(
 
 		It(
 			"should set a custom dataset", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx, &OperatorConfigurationValues{
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
 						Endpoint: EndpointDash0Test,
 						Token:    AuthorizationTokenTest,
 						Dataset:  "custom",
-					}, logger,
+					},
+					nil,
 				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				Eventually(
@@ -363,14 +385,18 @@ var _ = Describe(
 
 		It(
 			"should set the cluster name", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx, &OperatorConfigurationValues{
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
 						Endpoint:    EndpointDash0Test,
 						Token:       AuthorizationTokenTest,
 						ClusterName: "cluster-name",
-					}, logger,
+					},
+					nil,
 				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				Eventually(
@@ -399,10 +425,282 @@ var _ = Describe(
 		)
 
 		It(
+			"should create a new operator configuration resource with a monitoring template", func() {
+				monitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"none"}}}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					&monitoringTemplateJSON,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{
+								Name: util.OperatorConfigurationAutoResourceName,
+							}, &operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+
+						monitoringTemplate := operatorConfiguration.Spec.MonitoringTemplate
+						g.Expect(monitoringTemplate).ToNot(BeNil())
+						g.Expect(monitoringTemplate.Spec.InstrumentWorkloads.Mode).To(BeEquivalentTo("none"))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should fail to create the resource if the monitoring template is invalid JSON", func() {
+				invalid := json.RawMessage(`{not valid json}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					&invalid,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).To(
+					MatchError(
+						ContainSubstring("invalid operator configuration: the monitoring template cannot be parsed"),
+					),
+				)
+			},
+		)
+
+		It(
+			"should update the existing resource when UpdateExtraConfig is called with a new monitoring template", func() {
+				// Start without a monitoring template
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					nil,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.Spec.MonitoringTemplate).To(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				// Now call UpdateExtraConfig with a non-nil monitoring template.
+				monitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"none"}}}`)
+				handler.UpdateExtraConfig(ctx, util.ExtraConfig{MonitoringTemplateRaw: &monitoringTemplateJSON}, logger)
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						monitoringTemplate := operatorConfiguration.Spec.MonitoringTemplate
+						g.Expect(monitoringTemplate).ToNot(BeNil())
+						g.Expect(monitoringTemplate.Spec.InstrumentWorkloads.Mode).To(BeEquivalentTo("none"))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should update the existing resource when UpdateExtraConfig is called removing the monitoring template", func() {
+				monitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"none"}}}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					&monitoringTemplateJSON,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.Spec.MonitoringTemplate).ToNot(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				// Now call UpdateExtraConfig with a nil monitoring template (removing it)
+				handler.UpdateExtraConfig(ctx, util.ExtraConfig{MonitoringTemplateRaw: nil}, logger)
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.Spec.MonitoringTemplate).To(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should update the existing resource when UpdateExtraConfig is called with a changed monitoring template", func() {
+				monitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"none"}}}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					&monitoringTemplateJSON,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.Spec.MonitoringTemplate).ToNot(BeNil())
+						g.Expect(operatorConfiguration.Spec.MonitoringTemplate.Spec.InstrumentWorkloads.Mode).To(BeEquivalentTo("none"))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				// Now call UpdateExtraConfig with an updated monitoring template
+				updatedMonitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"all"}}}`)
+				handler.UpdateExtraConfig(ctx, util.ExtraConfig{MonitoringTemplateRaw: &updatedMonitoringTemplateJSON}, logger)
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						monitoringTemplate := operatorConfiguration.Spec.MonitoringTemplate
+						g.Expect(monitoringTemplate).ToNot(BeNil())
+						g.Expect(monitoringTemplate.Spec.InstrumentWorkloads.Mode).To(BeEquivalentTo("all"))
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should not update the resource when UpdateExtraConfig is called with the same monitoring template", func() {
+				monitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"none"}}}`)
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					&monitoringTemplateJSON,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				var resourceVersionAfterCreate string
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						resourceVersionAfterCreate = operatorConfiguration.ResourceVersion
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				// Call UpdateExtraConfig with the exact same content - should be a no-op
+				sameMonitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"none"}}}`)
+				handler.UpdateExtraConfig(ctx, util.ExtraConfig{MonitoringTemplateRaw: &sameMonitoringTemplateJSON}, logger)
+
+				// The resource version should remain unchanged since no update was triggered
+				Consistently(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.ResourceVersion).To(Equal(resourceVersionAfterCreate))
+					}, 500*time.Millisecond, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should not update the resource when UpdateExtraConfig is called with both old and new monitoring templates being nil", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					nil,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				var resourceVersionAfterCreate string
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						resourceVersionAfterCreate = operatorConfiguration.ResourceVersion
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+
+				// Call UpdateExtraConfig with nil monitoring template (both old and new are nil) - should be a no-op
+				handler.UpdateExtraConfig(ctx, util.ExtraConfig{MonitoringTemplateRaw: nil}, logger)
+
+				// The resource version should remain unchanged since no update was triggered
+				Consistently(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
+							&operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(operatorConfiguration.ResourceVersion).To(Equal(resourceVersionAfterCreate))
+					}, 500*time.Millisecond, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
 			"should update the existing resource if there already is an auto-operator-configuration-resource", func() {
-				autoOperatorConfigurationResourceHandler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx, &OperatorConfigurationValues{
+				handler1 := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
 						Endpoint:              "endpoint-1.dash0.com:4317",
 						Token:                 AuthorizationTokenTest,
 						ApiEndpoint:           "https://api-1.dash0.com",
@@ -411,8 +709,11 @@ var _ = Describe(
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
 						CollectPodLabelsAndAnnotationsEnabled:            true,
 						PrometheusCrdSupportEnabled:                      false,
-					}, logger,
+					},
+					nil,
 				)
+				handler1.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler1.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				Eventually(
@@ -445,11 +746,11 @@ var _ = Describe(
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 
-				// Now call the handler a second time, simulating a new startup of the operator manager process, with different
-				// operator-configuration-xxx flags
-				_, err = autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
-					ctx,
-					&OperatorConfigurationValues{
+				// Now simulate a new startup of the operator manager process with different operator-configuration-xxx flags
+				handler2 := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
 						Endpoint:              "endpoint-2.dash0.com:4317",
 						SecretRef:             secretRef,
 						ApiEndpoint:           "https://api-2.dash0.com",
@@ -458,8 +759,11 @@ var _ = Describe(
 						KubernetesInfrastructureMetricsCollectionEnabled: false,
 						CollectPodLabelsAndAnnotationsEnabled:            false,
 						PrometheusCrdSupportEnabled:                      true,
-					}, logger,
+					},
+					nil,
 				)
+				handler2.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err = handler2.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				// verify that there is _still_ only one resource, and that its settings have been updated.

@@ -757,3 +757,64 @@ operator:
               - key: "kubernetes.io/os"
                 operator: "In"
                 values: ["linux"]
+
+  # Settings for automatically monitoring namespaces.
+  #
+  # These settings have no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
+  # resource will be created by the Helm chart then.
+  autoMonitorNamespaces:
+
+    # Set enabled to true to have namespaces monitored automatically. By default, a Dash0Monitoring resource has to
+    # be added to each namespace that you want to monitor. With automatic namespace monitoring, you can let the Dash0
+    # operator automate this. This is useful if you want to monitor all or almost all namespaces in your cluster. It is
+    # also useful if you create new namespaces frequently and want to have them monitored right away, without additional
+    # setup. It is best suited if almost all namespace should be monitored in the same fashion.
+    #
+    # If enabled, the operator will:
+    # * automatically add monitoring to all existing namespaces at startup, and
+    # * automatically add monitoring to new namespaces, as they are created.
+    #
+    # Even when enabled, individual namespaces can opt out of automatic monitoring via label selectors
+    # (see operator.autoMonitorNamespaces.labelSelector).
+    #
+    # Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of
+    # operator.monitoringTemplate.
+    enabled: false
+
+    # An optional configurable label selector for controlling which namespaces are automatically monitored. Namespaces
+    # which match this label selector will be monitored automatically (if operator.dash0Export.enabled and
+    # operator.autoMonitorNamespaces.enabled are also set to true).
+    # Namespaces which do not match this label selector will not be monitored, regardless of the value of
+    # operator.autoMonitorNamespaces.enabled.
+    #
+    # This attribute is ignored if operator.autoMonitorNamespaces.enabled has not been set to true explicitly.
+    #
+    # By default, this label selector has the value "dash0.com/enable!=false" - that is, the following namespaces will
+    # be monitored:
+    # - namespaces which do not have the label dash0.com/enable at all, and
+    # - namespaces which have the label dash0.com/enable with a value other than "false".
+    #
+    # Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of
+    # operator.monitoringTemplate.
+    labelSelector: dash0.com/enable!=false
+
+  # The monitoring template describes the Dash0Monitoring resources that will be created for namespaces in case
+  # automatic namespace monitoring is enabled.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration resource will
+  # be created by the Helm chart then. This setting also has no effect if operator.autoMonitorNamespaces.enabled is
+  # false. If omitted, the Dash0 operator will use default values for automatically created Dash0Monitoring resources.
+  # The commeted out monitoringTemplate below shows the default values.
+  #
+  # monitoringTemplate:
+  #   spec:
+  #     instrumentWorkloads:
+  #       mode: created-and-updated
+  #     logCollection:
+  #       enabled: true
+  #     eventCollection:
+  #       enabled: true
+  #     prometheusScraping:
+  #       enabled: true
+  #     synchronizePersesDashboards: true
+  #     synchronizePrometheusRules: true

@@ -5,7 +5,10 @@ package startup
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
+	"sync/atomic"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,12 +38,16 @@ type OperatorConfigurationValues struct {
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	PrometheusCrdSupportEnabled                      bool
 	ClusterName                                      string
+	AutoMonitorNamespacesEnabled                     bool
+	AutoMonitorNamespacesLabelSelector               string
 }
 
 type AutoOperatorConfigurationResourceHandler struct {
 	client.Client
-	readyCheckExecuter  *ReadyCheckExecuter
-	hasBecomeLeaderChan chan struct{}
+	readyCheckExecuter          *ReadyCheckExecuter
+	hasBecomeLeaderChan         chan struct{}
+	operatorConfigurationValues OperatorConfigurationValues
+	monitoringTemplateRaw       atomic.Pointer[json.RawMessage]
 }
 
 const (
@@ -52,19 +59,64 @@ const (
 func NewAutoOperatorConfigurationResourceHandler(
 	client client.Client,
 	readyCheckExecuter *ReadyCheckExecuter,
+	operatorConfigurationValues OperatorConfigurationValues,
+	monitoringTemplateRaw *json.RawMessage,
 ) *AutoOperatorConfigurationResourceHandler {
-	return &AutoOperatorConfigurationResourceHandler{
-		Client:              client,
-		readyCheckExecuter:  readyCheckExecuter,
-		hasBecomeLeaderChan: make(chan struct{}),
+	r := &AutoOperatorConfigurationResourceHandler{
+		Client:                      client,
+		readyCheckExecuter:          readyCheckExecuter,
+		hasBecomeLeaderChan:         make(chan struct{}),
+		operatorConfigurationValues: operatorConfigurationValues,
 	}
+	r.monitoringTemplateRaw.Store(monitoringTemplateRaw)
+	return r
 }
 
-func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBecameLeader(
+func (r *AutoOperatorConfigurationResourceHandler) NotifyOperatorManagerJustBecameLeader(
 	_ context.Context,
 	_ logd.Logger,
 ) {
 	close(r.hasBecomeLeaderChan)
+}
+
+func (r *AutoOperatorConfigurationResourceHandler) UpdateExtraConfig(
+	ctx context.Context,
+	extraConfig util.ExtraConfig,
+	logger logd.Logger,
+) {
+	logger.Debug("extra config map update, checking for monitoring template changes")
+	previousMonitoringTemplate := r.monitoringTemplateRaw.Swap(extraConfig.MonitoringTemplateRaw)
+	if previousMonitoringTemplate == nil && extraConfig.MonitoringTemplateRaw == nil {
+		logger.Debug("both the previous and the new monitoring template are nil")
+		return
+	}
+	//nolint:staticcheck
+	hasChanged := false
+	if previousMonitoringTemplate == nil && extraConfig.MonitoringTemplateRaw != nil {
+		hasChanged = true
+	}
+	if previousMonitoringTemplate != nil && extraConfig.MonitoringTemplateRaw == nil {
+		hasChanged = true
+	}
+	if previousMonitoringTemplate != nil && extraConfig.MonitoringTemplateRaw != nil &&
+		!reflect.DeepEqual(*previousMonitoringTemplate, *extraConfig.MonitoringTemplateRaw) {
+		hasChanged = true
+	}
+	if !hasChanged {
+		logger.Debug("ignoring extra config map update, both the new and the old monitoring template have the same content")
+		return
+	}
+
+	logger.Info("updating the operator configuration resource after the monitoring template has been updated")
+	if _, err := r.CreateOrUpdateOperatorConfigurationResource(
+		ctx,
+		logger,
+	); err != nil {
+		logger.Error(
+			err,
+			"Failed to update the Dash0 operator configuration resource after updating the monitoring template via Helm.",
+		)
+	}
 }
 
 // CreateOrUpdateOperatorConfigurationResource waits until this replica becomes the leader, then it creates or updates
@@ -74,15 +126,18 @@ func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBec
 // successfully.
 func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigurationResource(
 	ctx context.Context,
-	operatorConfigurationValues *OperatorConfigurationValues,
 	logger logd.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
-	logger.Info("creating/updating the Dash0 operator configuration resource")
-	if err := r.validateOperatorConfiguration(operatorConfigurationValues); err != nil {
+	logger.Info("running validations and checks for creating/updating the Dash0 operator configuration resource")
+	if err := r.validateOperatorConfiguration(); err != nil {
+		return nil, err
+	}
+	monitoringTemplate, err := r.parseMonitoringTemplate()
+	if err != nil {
 		return nil, err
 	}
 
-	operatorConfigurationResource := convertValuesToResource(operatorConfigurationValues)
+	operatorConfigurationResource := convertValuesToResource(r.operatorConfigurationValues, monitoringTemplate)
 	go func() {
 		// If multiple replicas are active, only the leader should attempt to create or update the operator
 		// configuration resource.
@@ -96,7 +151,7 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 			logger.Error(ctx.Err(), "context cancelled while waiting for this replica to become leader")
 			return
 		case <-r.hasBecomeLeaderChan:
-			logger.Info("this replica has become leader, proceeding with creating/updating the operator configuration resource")
+			logger.Info("this replica is leader, proceeding with creating/updating the operator configuration resource")
 		}
 
 		// There is a validation webhook for operator configuration resources. Thus, before we can create or update an
@@ -120,6 +175,7 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 		}
 		logger.Info("the webhook service is available now")
 
+		logger.Info("all validations and checks succeeded, creating/updating the Dash0 operator configuration resource now")
 		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(
 			ctx,
 			operatorConfigurationResource,
@@ -130,25 +186,23 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 		}
 	}()
 
-	// optimistically return the resource that we are going to create on the validation webhook becomes available
+	// optimistically return the resource that we are going to create once the validation webhook becomes available
 	return operatorConfigurationResource, nil
 }
 
-func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration(
-	operatorConfiguration *OperatorConfigurationValues,
-) error {
-	if operatorConfiguration.Endpoint == "" {
+func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration() error {
+	if r.operatorConfigurationValues.Endpoint == "" {
 		return fmt.Errorf("invalid operator configuration: --operator-configuration-endpoint has not been provided")
 	}
-	if operatorConfiguration.Token == "" {
-		if operatorConfiguration.SecretRef.Name == "" { //nolint:staticcheck
+	if r.operatorConfigurationValues.Token == "" {
+		if r.operatorConfigurationValues.SecretRef.Name == "" { //nolint:staticcheck
 			return fmt.Errorf(
 				"invalid operator configuration: --operator-configuration-endpoint has been provided, " +
 					"indicating that an operator configuration resource should be created, but neither " +
 					"--operator-configuration-token nor --operator-configuration-secret-ref-name have been provided",
 			)
 		}
-		if operatorConfiguration.SecretRef.Key == "" { //nolint:staticcheck
+		if r.operatorConfigurationValues.SecretRef.Key == "" { //nolint:staticcheck
 			return fmt.Errorf(
 				"invalid operator configuration: --operator-configuration-endpoint has been provided, " +
 					"indicating that an operator configuration resource should be created, but neither " +
@@ -159,13 +213,25 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 	return nil
 }
 
+func (r *AutoOperatorConfigurationResourceHandler) parseMonitoringTemplate() (*dash0v1alpha1.MonitoringTemplate, error) {
+	monitoringTemplateRaw := r.monitoringTemplateRaw.Load()
+	if monitoringTemplateRaw == nil {
+		return nil, nil
+	}
+	monitoringTemplate := dash0v1alpha1.MonitoringTemplate{}
+	if err := json.Unmarshal(*monitoringTemplateRaw, &monitoringTemplate); err != nil {
+		return nil, fmt.Errorf("invalid operator configuration: the monitoring template cannot be parsed: %v", err)
+	}
+	return &monitoringTemplate, nil
+}
+
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceWithRetry(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) error {
 	return util.RetryWithCustomBackoff(
-		"create/update operator configuration resource at startup",
+		"create/update operator configuration resource",
 		func() error {
 			return r.createOrUpdateOperatorConfigurationResourceOnce(ctx, operatorConfigurationResource, logger)
 		},
@@ -230,7 +296,10 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 	return nil
 }
 
-func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationValues) *dash0v1alpha1.Dash0OperatorConfiguration {
+func convertValuesToResource(
+	operatorConfigurationValues OperatorConfigurationValues,
+	monitoringTemplate *dash0v1alpha1.MonitoringTemplate,
+) *dash0v1alpha1.Dash0OperatorConfiguration {
 	authorization := dash0common.Authorization{}
 	if operatorConfigurationValues.Token != "" {
 		authorization.Token = &operatorConfigurationValues.Token
@@ -258,6 +327,32 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 		dash0Exports[0].Dash0.Dataset = operatorConfigurationValues.Dataset
 	}
 
+	spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: new(operatorConfigurationValues.SelfMonitoringEnabled),
+		},
+		Exports: dash0Exports,
+		KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+			Enabled: new(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
+		},
+		CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+			Enabled: new(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),
+		},
+		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+			Enabled: new(operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled),
+		},
+		PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+			Enabled: new(operatorConfigurationValues.PrometheusCrdSupportEnabled),
+		},
+		ClusterName:        operatorConfigurationValues.ClusterName,
+		MonitoringTemplate: monitoringTemplate,
+	}
+
+	if operatorConfigurationValues.AutoMonitorNamespacesEnabled {
+		spec.AutoMonitorNamespaces.Enabled = new(true)
+		spec.AutoMonitorNamespaces.LabelSelector = operatorConfigurationValues.AutoMonitorNamespacesLabelSelector
+	}
+
 	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: util.OperatorConfigurationAutoResourceName,
@@ -282,25 +377,7 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 					"notes-on-creating-the-operator-configuration-resource-via-helm.",
 			},
 		},
-		Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-			SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-				Enabled: new(operatorConfigurationValues.SelfMonitoringEnabled),
-			},
-			Exports: dash0Exports,
-			KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-				Enabled: new(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
-			},
-			CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-				Enabled: new(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),
-			},
-			CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-				Enabled: new(operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled),
-			},
-			PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-				Enabled: new(operatorConfigurationValues.PrometheusCrdSupportEnabled),
-			},
-			ClusterName: operatorConfigurationValues.ClusterName,
-		},
+		Spec: spec,
 	}
 
 	return &operatorConfigurationResource

@@ -190,6 +190,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       will refuse to deploy to/delete from any context not on this list. This is a protection against accidentally
       deploying something to or deleting something from a production Kubernetes context.
       It is recommended to set this in `test-resources/.env`.
+    * `AUTO_MONITOR_NAMESPACES_ENABLED`: Set this to "true" to have the operator automatically monitor all namespaces.
+      Using `test-scenario-08-auto-namespace-monitoring.sh` implies `AUTO_MONITOR_NAMESPACES_ENABLED=true`.
     * `COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED`: Set this to "false" to disable collecting pod labels and annotations
       as resource attributes.
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
@@ -214,9 +216,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `DEPLOY_MONITORING_RESOURCE`: Set this to "false" to skip deploying the Dash0 monitoring resource to the test
       namespace.
       This is assumed to be "true" by default.
-    * `DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM`: Omit the Helm settings to have the operator's Helm chart deploy the
-      Dash0 operator configuration resource (aka auto configuration resource) automatically at operator manager startup.
-      This is assumed to be "true" by default.
+    * `DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM`: Set this to "false" to omit the Helm settings which make the operator
+      deploy the Dash0 operator configuration resource (aka auto configuration resource) automatically at startup.
+      This defaults to "true".
     * `DEPLOY_PERSES_DASHBOARD`: Set to "true" to deploy a Perses dashboard resource that will be synchronized to Dash0
       via the Dash0 API.
       This defaults to "false".

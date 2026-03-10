@@ -81,7 +81,7 @@ spec:
                       * automatically add monitoring to all existing namespaces at startup, and
                       * automatically add monitoring to new namespaces, as they are created.
 
-                      Even when enabled,, individual namespaces can opt out of automatic monitoring via label selectors
+                      Even when enabled, individual namespaces can opt out of automatic monitoring via label selectors
                       (see spec.autoMonitorNamespaces.labelSelector).
 
                       Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of
@@ -99,7 +99,7 @@ spec:
 
                       By default, this label selector has the value "dash0.com/enable!=false" - that is, the following namespaces will
                       be monitored (assuming spec.autoMonitorNamespaces.enabled is true):
-                      - namespaces which do not have the label dash0.com/enable at all, or
+                      - namespaces which do not have the label dash0.com/enable at all, and
                       - namespaces which have the label dash0.com/enable with a value other than "false".
 
                       Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of

@@ -104,6 +104,8 @@ type commandLineArguments struct {
 	operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled      bool
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationClusterName                                      string
+	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
+	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
 	disableOpenTelemetryCollectorHostPorts                                bool
@@ -312,6 +314,8 @@ func Start() {
 			CollectNamespaceLabelsAndAnnotationsEnabled:      cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
+			AutoMonitorNamespacesEnabled:                     cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
+			AutoMonitorNamespacesLabelSelector:               cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
 		}
 		if len(cliArgs.operatorConfigurationApiEndpoint) > 0 {
 			operatorConfigurationValues.ApiEndpoint = cliArgs.operatorConfigurationApiEndpoint
@@ -439,6 +443,20 @@ func defineCommandLineArguments() *commandLineArguments {
 		"The clusterName to set on the operator configuration resource; will be ignored if"+
 			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
 			"k8s.cluster.name to all telemetry.",
+	)
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
+		"operator-configuration-auto-monitor-namespaces-enabled",
+		false,
+		"The value for autoMonitorNamespaces.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
+		"operator-configuration-auto-monitor-namespaces-label-selector",
+		"",
+		"The value for autoMonitorNamespaces.labelSelector on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.",
 	)
 	flag.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
@@ -814,6 +832,10 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
+	operatorConfigurationTokenRedacted := ""
+	if cliArgs.operatorConfigurationToken != "" {
+		operatorConfigurationTokenRedacted = "<redacted>"
+	}
 	setupLog.Info(
 		"operator manager configuration:",
 
@@ -846,12 +868,53 @@ func startOperatorManager(
 		envVars.deploymentName,
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
+
+		"operator configuration endpoint",
+		cliArgs.operatorConfigurationEndpoint,
+		"operator configuration api endpoint",
+		cliArgs.operatorConfigurationApiEndpoint,
+		"operator configuration dataset",
+		cliArgs.operatorConfigurationDataset,
+		"operator configuration token",
+		operatorConfigurationTokenRedacted,
+		"operator configuration secret ref name",
+		cliArgs.operatorConfigurationSecretRefName,
+		"operator configuration secret ref key",
+		cliArgs.operatorConfigurationSecretRefKey,
+		"operator configuration self-monitoring enabled",
+		cliArgs.operatorConfigurationSelfMonitoringEnabled,
+		"operator configuration kubernetes infrastructure metrics collection enabled",
+		cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+		"operator configuration collect pod labels and annotations enabled",
+		cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
+		"operator configuration collect namespace labels and annotations enabled",
+		cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
+		"operator configuration prometheus crd support enabled",
+		cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
+		"operator configuration cluster name",
+		cliArgs.operatorConfigurationClusterName,
+		"auto-monitor namespaces enabled",
+		cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
+		"auto-monitor namespaces label selector",
+		cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
+
 		"force-use OpenTelemetry collector service URL",
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"disable OpenTelemetry collector host ports",
 		cliArgs.disableOpenTelemetryCollectorHostPorts,
 		"is GKE Autopilot",
 		cliArgs.isGkeAutopilot,
+
+		"metrics bind address",
+		cliArgs.metricsAddr,
+		"health probe bind address",
+		cliArgs.probeAddr,
+		"leader election enabled",
+		cliArgs.enableLeaderElection,
+		"metrics secure",
+		cliArgs.secureMetrics,
+		"http2 enabled",
+		cliArgs.enableHTTP2,
 
 		"extra config",
 		extraConfig,
@@ -957,7 +1020,7 @@ func startDash0Controllers(
 		clusterInstrumentationConfig,
 	)
 	// For consistency, we update the extra config map in the startupInstrumenter handler as well if it changes. Since
-	// it this instrumenter only runs once at starup, this has no effect whatsoever.
+	// this instrumenter only runs once at startup, this has no effect whatsoever.
 	extraConfigMapWatcher.AddClient(startupInstrumenter)
 	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
 		return fmt.Errorf("unable to add the leader election aware runnable: %w", err)
@@ -1351,17 +1414,19 @@ func createOrUpdateAutoOperatorConfigurationResource(
 	autoOperatorConfigurationResourceHandler := NewAutoOperatorConfigurationResourceHandler(
 		startupTasksK8sClient,
 		readyCheckExecuter,
+		*operatorConfigurationValues,
+		extraConfig.MonitoringTemplateRaw,
 	)
 	leaderElectionAwareRunnable.AddLeaderElectionClient(autoOperatorConfigurationResourceHandler)
 	if operatorConfigurationResource, err :=
 		autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
 			ctx,
-			operatorConfigurationValues,
 			logger,
 		); err != nil {
 		logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
 		return nil
 	} else {
+		extraConfigMapWatcher.AddClient(autoOperatorConfigurationResourceHandler)
 		return operatorConfigurationResource
 	}
 }

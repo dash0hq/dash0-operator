@@ -454,6 +454,8 @@ func (r *AutoNamespaceMonitoringReconciler) updateOperatorConfigurationStatus(
 		return err
 	}
 	operatorConfigurationResource.Status.PreviousAutoMonitorNamespacesLabelSelector = currentLabelSelector
+	// Potential optimization: instead of storing the full previous template, we could only store a hash. This would be
+	// good enough to find out if something has changed.
 	operatorConfigurationResource.Status.PreviousMonitoringTemplate = operatorConfigurationResource.Spec.MonitoringTemplate
 	logger.Debug("updating operator configuration resource status")
 	if err := r.Status().Update(ctx, operatorConfigurationResource); err != nil {

@@ -194,6 +194,57 @@ tests:
                       operator: In
                       values:
                         - value-09
+        monitoringTemplate:
+          metadata:
+            name: monitoring-template-name
+            labels:
+              label-1: label-value-1
+              label-2: label-value-2
+            annotations:
+              annotations-1: annotations-value-1
+              annotations-2: annotations-value-2
+          spec:
+            instrumentWorkloads:
+              mode: all
+              labelSelector: dash0.com/opt-in==true
+              traceContext:
+                propagators: xray
+            logCollection:
+              enabled: true
+            eventCollection:
+              enabled: false
+            prometheusScraping:
+              enabled: true
+            filter:
+              error_mode: propagate
+              traces:
+                span:
+                  - span filter 1
+                  - span filter 2
+                spanevent:
+                  - spanevent filter 1
+                  - spanevent filter 2
+              metrics:
+                metric:
+                  - metric filter 1
+                  - metric filter 2
+                datapoint:
+                  - datapoint filter 1
+                  - datapoint filter 2
+              logs:
+                log_records:
+                  - log record filter 1
+                  - log record filter 2
+            transform:
+              error_mode: propagate
+              trace_statements:
+                - trace statement 1
+              metric_statements:
+                - metric statement 1
+              log_statements:
+                - log statement 1
+            synchronizePersesDashboards: true
+            synchronizePrometheusRules: true
     asserts:
       - equal:
           path: data['extra.yaml']
@@ -380,6 +431,57 @@ tests:
                     values:
                     - value-07
                     - value-08
+            monitoringTemplate:
+              metadata:
+                annotations:
+                  annotations-1: annotations-value-1
+                  annotations-2: annotations-value-2
+                labels:
+                  label-1: label-value-1
+                  label-2: label-value-2
+                name: monitoring-template-name
+              spec:
+                eventCollection:
+                  enabled: false
+                filter:
+                  error_mode: propagate
+                  logs:
+                    log_records:
+                    - log record filter 1
+                    - log record filter 2
+                  metrics:
+                    datapoint:
+                    - datapoint filter 1
+                    - datapoint filter 2
+                    metric:
+                    - metric filter 1
+                    - metric filter 2
+                  traces:
+                    span:
+                    - span filter 1
+                    - span filter 2
+                    spanevent:
+                    - spanevent filter 1
+                    - spanevent filter 2
+                instrumentWorkloads:
+                  labelSelector: dash0.com/opt-in==true
+                  mode: all
+                  traceContext:
+                    propagators: xray
+                logCollection:
+                  enabled: true
+                prometheusScraping:
+                  enabled: true
+                synchronizePersesDashboards: true
+                synchronizePrometheusRules: true
+                transform:
+                  error_mode: propagate
+                  log_statements:
+                  - log statement 1
+                  metric_statements:
+                  - metric statement 1
+                  trace_statements:
+                  - trace statement 1
 
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
@@ -618,3 +720,31 @@ tests:
                 ephemeral-storage: 606Mi
                 memory: 406Mi
             .*
+
+  - it: should disallow export in the monitoring template
+    set:
+      operator:
+        monitoringTemplate:
+          spec:
+            export:
+              dash0:
+                endpoint: example.com
+                authorization:
+                  token: token
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.monitoringTemplate.spec.export: Providing custom export settings in the monitoring template is not allowed, please remove the field."
+
+  - it: should disallow exports in the monitoring template
+    set:
+      operator:
+        monitoringTemplate:
+          spec:
+            exports:
+              - dash0:
+                  endpoint: example.com
+                  authorization:
+                    token: token
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.monitoringTemplate.spec.exports: Providing custom export settings in the monitoring template is not allowed, please remove the field."

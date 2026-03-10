@@ -128,7 +128,7 @@ To actually have the operator properly monitor your workloads, two more things n
 1. a [Dash0 backend connection](#configuring-the-dash0-backend-connection) has to be configured (unless you did that
    already with the Helm values `operator.dash0Export.*`), and
 2. monitoring namespaces and their workloads to collect logs, traces and metrics has to be
-   [enabled per namespace](#enable-dash0-monitoring-for-a-namespace).
+   [enabled per namespace](#enable-dash0-monitoring-for-a-namespace), or configure namespace auto-monitoring.
 
 Both steps are described in the following sections.
 
@@ -311,6 +311,34 @@ Here is a list of configuration options for this resource:
   Setting it to `true` and having at least one namespace with `prometheusScraping` enabled, will deploy the OpenTelemetry
   target-allocator and update the `prometheusreceiver` in the OpenTelemetry collectors, so they query the allocator for targets
   to be scraped.
+* <a href="#operatorconfigurationresource.spec.autoMonitorNamespaces.enabled"><span id="operatorconfigurationresource.spec.autoMonitorNamespaces.enabled">`spec.autoMonitorNamespaces.enabled`</span></a>: Controls whether monitoring is set up for namespaces
+  automatically.
+  By default, a Dash0Monitoring resource has to be added to each namespace that you want to monitor.
+  With automatic namespace monitoring, you can let the Dash0 operator automate this.
+  This is useful if you want to monitor all or almost all namespaces in your cluster.
+  It is also useful if you create new namespaces frequently and want to have them monitored right away, without
+  additional setup.
+  It is best suited if almost all namespace should be monitored in the same fashion.
+  If enabled, the operator will:
+    * automatically add monitoring to all existing namespaces at startup, and
+    * automatically add monitoring to new namespaces, as they are created.
+  Even when enabled, individual namespaces can opt out of automatic monitoring via [label selectors](#operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector).
+  Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of the
+  [monitoringTemplate](#operatorconfigurationresource.spec.monitoringTemplat).
+* <a href="#operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector"><span id="operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector">`operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector`</span></a>:
+  An optional configurable label selector for controlling which namespaces are automatically monitored.
+  Namespaces which match this label selector will be monitored automatically (if `autoMonitorNamespaces.enabled` is
+  set to `true`).
+  Namespaces which do not match this label selector will not be monitored, regardless of the value of
+  `autoMonitorNamespaces.enabled`.
+  By default, this label selector has the value `"dash0.com/enable!=false"` - that is, the following namespaces will
+  be monitored:
+    * namespaces which do not have the label dash0.com/enable at all, and
+    * namespaces which have the label dash0.com/enable with a value other than "false".
+  Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of the
+  [monitoringTemplate](#operatorconfigurationresource.spec.monitoringTemplat).
+* <a href="#operatorconfigurationresource.spec.monitoringTemplate"><span id="operatorconfigurationresource.spec.monitoringTemplate">`operatorconfigurationresource.spec.monitoringTemplate`</span></a>:
+  Specification of the desired settings for automatically monitoring namespaces.
 
 After providing the required values (at least `endpoint` and `authorization`), save the file and apply the resource to
 the Kubernetes cluster you want to monitor:
@@ -425,6 +453,8 @@ If the conflicting dependencies cannot be resolved, you might need to instrument
 example by using the OpenTelemetry Python [zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/).
 
 ### Enable Dash0 Monitoring For a Namespace
+
+*Note:* You can skip this section if you monitor namespaces automatically.
 
 *Note:* By default, when enabling Dash0 monitoring for a namespace, all workloads in this namespace will be restarted
 to apply the Dash0 instrumentation.

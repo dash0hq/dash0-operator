@@ -847,7 +847,7 @@ var _ = Describe(
 							},
 							enabledSync: func() {
 								viewLeaderElectionAware.SetLeader(true)
-								viewReconciler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
+								viewReconciler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 							},
 						},
 					),
