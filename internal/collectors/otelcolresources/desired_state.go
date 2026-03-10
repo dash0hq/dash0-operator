@@ -1092,30 +1092,33 @@ func assembleConfigurationReloaderContainer(
 	collectorPidFileMountRO := collectorPidFileMountRW
 	collectorPidFileMountRO.ReadOnly = true
 
-	checkFrequency := "--frequency=5s"
-	if config.AutoNamespaceMonitoringEnabled {
-		// With AutoNamespaceMonitoringEnabled, a lot of namespaces are sometimes added en-masse (for example when the
-		// namespace watch starts). We do not want to churn the collector pipelines over and over.
-		checkFrequency = "--frequency=60s"
+	var reloaderVolumeMounts []corev1.VolumeMount
+	reloaderArgs := []string{
+		"--pidfile=" + collectorPidFilePath,
 	}
 
-	var reloaderArgs []string
-	var reloaderVolumeMounts []corev1.VolumeMount
 	if config.CompressConfigMap {
-		reloaderArgs = []string{
-			"--pidfile=" + collectorPidFilePath,
-			"--decompressedoutput=" + collectorConfigurationFilePath,
-			checkFrequency,
-			collectorConfigCompressedFilePath,
-		}
+		reloaderArgs = append(reloaderArgs, "--decompressedoutput="+collectorConfigurationFilePath)
 		reloaderVolumeMounts = []corev1.VolumeMount{collectorConfigCompressedVolumeMount, collectorConfigDecompressedVolumeMount, collectorPidFileMountRO}
 	} else {
-		reloaderArgs = []string{
-			"--pidfile=" + collectorPidFilePath,
-			checkFrequency,
-			collectorConfigurationFilePath,
-		}
 		reloaderVolumeMounts = []corev1.VolumeMount{collectorConfigPlainTextVolumeMount, collectorPidFileMountRO}
+	}
+
+	// For now, using --checkFrequency is not compatible with the GKE AP allow lists.
+	if !config.IsGkeAutopilot {
+		checkFrequency := "--frequency=5s"
+		if config.AutoNamespaceMonitoringEnabled {
+			// With AutoNamespaceMonitoringEnabled, a lot of namespaces are sometimes added en-masse (for example when the
+			// namespace watch starts). We do not want to churn the collector pipelines over and over.
+			checkFrequency = "--frequency=60s"
+		}
+		reloaderArgs = append(reloaderArgs, checkFrequency)
+	}
+
+	if config.CompressConfigMap {
+		reloaderArgs = append(reloaderArgs, collectorConfigCompressedFilePath)
+	} else {
+		reloaderArgs = append(reloaderArgs, collectorConfigurationFilePath)
 	}
 
 	configurationReloaderContainer := corev1.Container{

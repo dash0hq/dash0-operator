@@ -6,6 +6,11 @@
 # A smoke test to check whether the most recently published Helm chart has been modified in a way that would require
 # updating the GKE Autopilot WorkloadAllowlists.
 # The test tries to deploy the chart to a GKE Autopilot cluster.
+#
+# By default, the most recent published Helm chart will be tested.
+# Use OPERATOR_HELM_CHART=helm-chart/dash0-operator to test a local chart.
+# When using a local Helm chart, the test repositories ghcr.io/dash0hq/gke-ap-xxx will be used. Make sure they have
+# up-to-date images, this script does not build or push images.
 
 set -xeuo pipefail
 
@@ -94,8 +99,6 @@ helm_command+=" --set operator.dash0Export.apiEndpoint=https://api.dummy-url.aws
 helm_command+=" --set operator.prometheusCrdSupportEnabled=true"
 helm_command+=" --set operator.clusterName=dummy-cluster-name"
 if [[ "$chart" = "helm-chart/dash0-operator" ]]; then
-  # When using a local Helm chart, the test repositories ghcr.io/dash0hq/gke-ap-xxx will be used. Make sure they have
-  # up-to-date images, this script does not build or push images.
   helm_command+=" --set operator.image.repository=ghcr.io/dash0hq/gke-ap-operator-controller"
   helm_command+=" --set operator.image.tag=latest"
   helm_command+=" --set operator.initContainerImage.repository=ghcr.io/dash0hq/gke-ap-instrumentation"
