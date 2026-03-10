@@ -28,6 +28,7 @@ updates:
     ignore:
       - dependency-name: "golang"
         update-types: ["version-update:semver-minor"]
+      - dependency-name: "github.com/perses/perses-operator"
 
   # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
