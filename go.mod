@@ -14,7 +14,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.147.0
-	github.com/perses/perses-operator v0.3.1
+	github.com/perses/perses-operator v0.2.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.89.0
 	go.opentelemetry.io/collector/component v1.53.0
 	go.opentelemetry.io/collector/featuregate v1.53.0
