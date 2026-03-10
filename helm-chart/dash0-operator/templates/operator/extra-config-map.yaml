@@ -93,3 +93,14 @@ data:
       {{- toYaml .Values.operator.targetAllocator.tolerations | nindent 6 }}
     targetAllocatorNodeAffinity:
       {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}
+
+    {{- if .Values.operator.monitoringTemplate }}
+    {{- if and .Values.operator.monitoringTemplate.spec .Values.operator.monitoringTemplate.spec.export }}
+    {{- fail "Error: operator.monitoringTemplate.spec.export: Providing custom export settings in the monitoring template is not allowed, please remove the field." -}}
+    {{- end }}
+    {{- if and .Values.operator.monitoringTemplate.spec .Values.operator.monitoringTemplate.spec.exports }}
+    {{- fail "Error: operator.monitoringTemplate.spec.exports: Providing custom export settings in the monitoring template is not allowed, please remove the field." -}}
+    {{- end }}
+    monitoringTemplate:
+      {{- toYaml .Values.operator.monitoringTemplate | nindent 6 }}
+    {{- end }}

@@ -23,6 +23,8 @@ operator_webhook_service_name="$default_operator_webhook_service_name"
 # shellcheck source=./lib/util
 source "$scripts_lib/util"
 
+export AUTO_MONITOR_NAMESPACES_ENABLED="true"
+
 load_env_file
 verify_kubectx
 setup_test_environment "$target_namespace"
@@ -64,19 +66,23 @@ ensure_namespace_exists test-namespace-2
 ensure_namespace_exists test-namespace-3
 kubectl label namespace test-namespace-3 dash0.com/enable=false
 
-DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM=false
 echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
 finish_step
 
-sleep 10
+if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" = "false" ]]; then
+  echo "STEP $step_counter: deploy the Dash0 operator configuration resource"
+  sleep 10
+  install_operator_configuration_resource
+  finish_step
 
-echo "STEP $step_counter: deploy the Dash0 operator configuration resource"
-kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.auto-namespace-monitoring.yaml
-
-echo "waiting for the operator configuration resource to become available"
-kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource --for condition=Available
-finish_step
+  echo "waiting for the operator configuration resource to become available"
+  kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource --for condition=Available
+  finish_step
+else
+  echo "not deploying a Dash0 operator configuration resource (has been deployed with the helm chart already)"
+  echo
+fi
 
 echo "STEP $step_counter: creating test namespaces"
 ensure_namespace_exists test-namespace-4

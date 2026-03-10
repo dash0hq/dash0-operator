@@ -164,7 +164,7 @@ func (r *ViewReconciler) RemoveNamespacedApiConfigs(ctx context.Context, namespa
 	}
 }
 
-func (r *ViewReconciler) NotifiyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
+func (r *ViewReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 

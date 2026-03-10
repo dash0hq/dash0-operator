@@ -776,6 +776,28 @@ tests:
           path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-prometheus-crd-support-enabled=true
 
+  - it: should enable support for automatic namespace monitoring
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        autoMonitorNamespaces:
+          enabled: true
+          labelSelector: dash0.com/custom==false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[11]
+          value: --operator-configuration-auto-monitor-namespaces-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[12]
+          value: --operator-configuration-auto-monitor-namespaces-label-selector=dash0.com/custom==false
+
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:
       path: metadata.name

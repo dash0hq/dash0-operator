@@ -1647,14 +1647,16 @@ trace_statements:
 				)
 
 				// Now update the operator with the actual image names that are used throughout the whole test suite.
-				upgradeOperator(
+				Expect(upgradeOperator(
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					// now we use :latest (or :main-dev or whatever has been provided via env vars) instead of
 					// :e2e-test to trigger an actual change
 					images,
-				)
+					nil,
+					nil,
+				)).To(Succeed())
 
 				By("verifying that the Node.js deployment's instrumentation settings have been updated by the controller")
 				verifyThatWorkloadHasBeenInstrumented(
@@ -2013,17 +2015,6 @@ trace_statements:
 				}
 			)
 
-			BeforeEach(func() {
-				By("deploying the Dash0 operator")
-				deployOperatorWithoutAutoOperationConfiguration(
-					operatorNamespace,
-					operatorHelmChart,
-					operatorHelmChartUrl,
-					images,
-					nil,
-				)
-			})
-
 			AfterEach(func() {
 				undeployDash0MonitoringResource(namespaceExisting)
 				undeployDash0MonitoringResource(namespaceExistingAlwaysOptIn)
@@ -2052,7 +2043,16 @@ trace_statements:
 				undeployOperator(operatorNamespace)
 			})
 
-			It("automatically monitors namespaces", func() {
+			It("automatically monitors namespaces when managing the operator configuration resource manually", func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithoutAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					nil,
+				)
+
 				testIds := make(testIdMap)
 
 				for _, c := range allWorkloadTestConfigs {
@@ -2347,6 +2347,103 @@ trace_statements:
 					workloadTestConfigExistingAlwaysOptIn.workloadType,
 					false,
 				)
+			})
+
+			It("automatically monitors namespaces when managing the operator configuration resource via Helm", func() {
+				testIds := make(testIdMap)
+
+				for _, c := range allWorkloadTestConfigs {
+					mapKey := getTestIdMapKey(c.runtime, c.workloadType, applicationUnderTestNamespace)
+					testIds[mapKey] = generateNewTestId(c.runtime, c.workloadType)
+				}
+
+				recreateNamespaceWithLabel(
+					namespaceExistingAlwaysOptIn,
+					map[string]string{"dash0.com/custom-auto-opt-in": "\"true\""},
+				)
+
+				By("deploying the Dash0 operator")
+				customResourceName := "auto-monitoring-resource"
+				operatorConfigurationValues := startup.OperatorConfigurationValues{
+					Endpoint:              defaultEndpoint,
+					ApiEndpoint:           dash0ApiMockServiceBaseUrl,
+					Token:                 defaultToken,
+					SelfMonitoringEnabled: false,
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					CollectPodLabelsAndAnnotationsEnabled:            true,
+					PrometheusCrdSupportEnabled:                      false,
+				}
+				Expect(deployOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					&operatorConfigurationValues,
+					map[string]string{
+						"operator.autoMonitorNamespaces.enabled":       "true",
+						"operator.autoMonitorNamespaces.labelSelector": "dash0.com/custom-auto-opt-in==true",
+						"operator.monitoringTemplate.metadata.name":    customResourceName,
+					},
+				)).To(Succeed())
+
+				waitForMonitoringResourceToBecomeAvailable(namespaceExistingAlwaysOptIn, customResourceName)
+				recreateNamespaceWithLabel(
+					namespaceNewAlwaysOptIn,
+					map[string]string{"dash0.com/custom-auto-opt-in": "\"true\""},
+				)
+				waitForMonitoringResourceToBecomeAvailable(namespaceNewAlwaysOptIn, customResourceName)
+
+				deployWorkloadsInParallel([]runtimeWorkloadTestConfig{
+					workloadTestConfigExistingAlwaysOptIn,
+					workloadTestConfigNewAlwaysOptIn,
+				}, testIds)
+				runInParallel([]runtimeWorkloadTestConfig{
+					workloadTestConfigExistingAlwaysOptIn,
+					workloadTestConfigNewAlwaysOptIn,
+				}, func(c runtimeWorkloadTestConfig) {
+					By(fmt.Sprintf("verifying that the %s %s in namespace %s has been instrumented",
+						c.runtime.runtimeTypeLabel,
+						c.workloadType.workloadTypeString,
+						c.namespace,
+					))
+					verifyThatWorkloadHasBeenInstrumented(
+						c.namespace,
+						c.runtime,
+						c.workloadType,
+						getTestIdFromMap(testIds, c.runtime, c.workloadType, c.namespace),
+						images,
+						"webhook",
+					)
+				})
+				By("the workloads have been instrumented")
+
+				By("update the monitoring template via Helm")
+				Expect(upgradeOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					&operatorConfigurationValues,
+					map[string]string{
+						"operator.autoMonitorNamespaces.enabled":                    "true",
+						"operator.autoMonitorNamespaces.labelSelector":              "dash0.com/custom-auto-opt-in==true",
+						"operator.monitoringTemplate.metadata.name":                 customResourceName,
+						"operator.monitoringTemplate.spec.instrumentWorkloads.mode": "all",
+					},
+				)).To(Succeed())
+				Eventually(func(g Gomega) {
+					for _, ns := range []string{
+						namespaceExistingAlwaysOptIn,
+						namespaceNewAlwaysOptIn,
+					} {
+						verifyDash0MonitoringResourceInstrumentWorkloadsMode(
+							g,
+							ns,
+							customResourceName,
+							dash0common.InstrumentWorkloadsModeAll,
+						)
+					}
+				}, 2*time.Minute, time.Second).Should(Succeed())
 			})
 		})
 

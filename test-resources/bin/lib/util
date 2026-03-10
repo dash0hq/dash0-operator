@@ -653,6 +653,9 @@ run_helm() {
     if [[ "${PROMETHEUS_CRD_SUPPORT_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.prometheusCrdSupportEnabled=true"
     fi
+    if [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.autoMonitorNamespaces.enabled=true"
+    fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
@@ -705,10 +708,12 @@ deploy_otlp_sink_if_requested() {
 install_operator_configuration_resource() {
   if [[ "${USE_OTLP_SINK:-}" = "true" ]]; then
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.otlpsink.yaml
-  elif [[ "${USE_TOKEN:-}" = true ]]; then
+  elif [[ "${USE_TOKEN:-}" = "true" ]]; then
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
-  elif [[ "${USE_MULTI_CAST:-}" = true ]]; then
+  elif [[ "${USE_MULTI_CAST:-}" = "true" ]]; then
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.multi.yaml
+  elif [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
+    kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.auto-namespace-monitoring.yaml
   else
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.secret.yaml
   fi

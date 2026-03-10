@@ -669,7 +669,7 @@ var _ = Describe(
 							},
 							enabledSync: func() {
 								leaderElectionAware.SetLeader(true)
-								syntheticCheckReconciler.NotifiyOperatorManagerJustBecameLeader(ctx, logger)
+								syntheticCheckReconciler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 							},
 						},
 					),
