@@ -15,7 +15,8 @@ metadata:
     good enough for now. (We could potentially enforce the readiness by defining yet another pre-install/pre-upgrade
     hook: a job that checks for the ready condition of AllowlistSynchronizer and only succeeds once it is ready.)
     A downside of declaring this resource as a hook is that hook resources are not considered to be part of the release,
-    so they are not removed with helm uninstall.
+    so they are not removed with helm uninstall. Cleaning this up is done by
+    post-delete-remove-allowlist-synchronizer.yaml.
     */}}
     helm.sh/hook: "pre-install,pre-upgrade"
     helm.sh/hook-weight: "-1"
