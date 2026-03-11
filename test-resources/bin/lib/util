@@ -75,9 +75,15 @@ setup_test_environment () {
   install_nginx_ingress
 
   # Do not accidentally add monitoring resources to the following namespaces when testing namespace auto-monitoring.
-  kubectl label namespace cert-manager --overwrite dash0.com/enable=false
-  kubectl label namespace default --overwrite dash0.com/enable=false
-  kubectl label namespace ingress-nginx --overwrite dash0.com/enable=false
+  if kubectl get ns cert-manager &> /dev/null; then
+    kubectl label namespace cert-manager --overwrite dash0.com/enable=false
+  fi
+  if kubectl get ns default &> /dev/null; then
+    kubectl label namespace default --overwrite dash0.com/enable=false
+  fi
+  if kubectl get ns ingress-nginx &> /dev/null; then
+    kubectl label namespace ingress-nginx --overwrite dash0.com/enable=false
+  fi
 }
 
 ensure_namespace_exists() {
