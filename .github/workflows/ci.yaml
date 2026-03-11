@@ -13,6 +13,11 @@ on:
       - '*.md'
   workflow_dispatch:
 
+permissions:
+  # added so workflow runs triggered by dependabot PRs can push images
+  # note: this permission should be removed if we ever allow PRs from forks to trigger this workflow without approval
+  packages: write
+
 concurrency:
   # Branches and PR all run in their individual, separate concurrency groups (with cancel-in-progress: true). The main
   # branch and tags (which are used for releases) run in one shared concurrency group (with cancel-in-progress: true).
