@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -95,6 +96,14 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
+	if request.Operation == admissionv1.Update {
+		if !slices.Contains(monitoringResource.Finalizers, dash0common.MonitoringFinalizerId) {
+			// Always allow requests that remove the finalizer. Otherwise, we might accidentally block removing a manually
+			// managed monitoring resource from a namespace that is enabled for auto-namespace monitoring.
+			return admission.Allowed("")
+		}
+	}
+
 	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
 	if slices.Contains(util.RestrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
 		msg := fmt.Sprintf(
@@ -126,6 +135,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	admissionResponse, done :=
 		h.rejectCustomMonitoringResourceInAutomaticallyMonitoredNamespace(
 			ctx,
+			request.Operation,
 			availableOperatorConfigurations,
 			monitoringResource,
 			logger,
@@ -165,11 +175,14 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 
 func (h *MonitoringValidationWebhookHandler) rejectCustomMonitoringResourceInAutomaticallyMonitoredNamespace(
 	ctx context.Context,
+	operation admissionv1.Operation,
 	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger logd.Logger,
 ) (admission.Response, bool) {
 	if len(availableOperatorConfigurations) == 0 {
+		// If we cannot check whether autoMonitorNamespaces is enabled on the operator configuration resource, allow the
+		// request.
 		return admission.Response{}, false
 	}
 	autoMonitorNamespaces := availableOperatorConfigurations[0].Spec.AutoMonitorNamespaces
@@ -188,6 +201,12 @@ func (h *MonitoringValidationWebhookHandler) rejectCustomMonitoringResourceInAut
 	if slices.Contains(util.RestrictedNamespaces, monitoringResource.Namespace) {
 		// Do not reject manually managed monitoring resource in the restricted namespaces,
 		// auto_namespace_monitoring_controller will not install auto-monitoring resources there.
+		return admission.Response{}, false
+	}
+
+	if operation != admissionv1.Create {
+		// Allow deleting or updating manually managed resources in auto-monitoring-enabled namespaces, only disallow
+		// creating a new manually managed monitoring resource.
 		return admission.Response{}, false
 	}
 
