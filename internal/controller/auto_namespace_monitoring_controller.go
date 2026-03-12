@@ -217,6 +217,9 @@ func (r *AutoNamespaceMonitoringReconciler) ensureNamespaceWatchIsActive(labelSe
 				// skip the duplicate name validation check.
 				// See also: https://github.com/kubernetes-sigs/controller-runtime/issues/2983#issuecomment-2440089997.
 				SkipNameValidation: new(true),
+				// Without an explicit Logger, NewTypedUnmanaged uses a zero-value logr.Logger (nil sink) to build the
+				// default LogConstructor, which means the context passed to Reconcile has no logger.
+				Logger: r.manager.GetLogger(),
 			})
 	if err != nil {
 		logger.Error(err, "cannot create new namespace controller")
