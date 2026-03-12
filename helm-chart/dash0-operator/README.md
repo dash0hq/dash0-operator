@@ -454,7 +454,8 @@ example by using the OpenTelemetry Python [zero-code instrumentation](https://op
 
 ### Enable Dash0 Monitoring For a Namespace
 
-*Note:* You can skip this section if you monitor namespaces automatically.
+*Note:* As an alternative to enabling monitoring per namespace, you can also
+[monitor all namespaces automatically](#automatic-namespace-monitoring).
 
 *Note:* By default, when enabling Dash0 monitoring for a namespace, all workloads in this namespace will be restarted
 to apply the Dash0 instrumentation.
@@ -756,6 +757,175 @@ The override supports both the export of telemetry and the sync of resources, li
 
 Note: The operator always expects default export and API-sync settings via the Dash0 operator configuration, even when
 namespace-specific overrides are used.
+
+### Automatic Namespace Monitoring
+
+By default, a Dash0Monitoring resource has to be added to each namespace that you want to monitor (see
+[Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace)).
+With automatic namespace monitoring, you can let the Dash0 operator automate this.
+This is useful if you want to monitor all or almost all namespaces in your cluster.
+It is also useful if you create new namespaces frequently and want to have them monitored right away, without additional
+setup.
+It is best suited if almost all namespace should be monitored in the same fashion.
+
+Use the following Helm values to enable automatic namespace monitoring:
+
+```
+operator:
+
+  dash0Export:
+    # operator.dash0Export.enabled must be true to facilitate automatic namespace monitoring.
+    # Refer to the section "Installation" for details.
+    enabled: true
+    ...
+
+  autoMonitorNamespaces:
+    # Setting operator.autoMonitorNamespaces.enabled=true activates automatic namespace monitoring.
+    enabled: true
+```
+
+If automatic namespace monitoring is enabled, the operator will:
+* automatically add monitoring to all existing namespaces at startup, and
+* automatically add monitoring to new namespaces, as they are created.
+
+Even when this feature is enabled, individual namespaces can opt out of automatic monitoring via label selectors.
+Set `dash0.com/enable: "false"` on a namespace to exclude it from automatic namespace monitoring.
+
+The namespace label selector is configurable.
+For example, to use an opt-in approach instead of opt-out, something like this can be used:
+
+```
+operator:
+
+  dash0Export:
+    enabled: true
+    ...
+
+  autoMonitorNamespaces:
+    enabled: true
+    labelSelector: monitor-namespace-with-dash0==true
+```
+
+With this configuration, only namespaces that have the label `monitor-namespace-with-dash0: "true"` will be monitored.
+
+The following namespaces will not be monitored by automatic namespace monitoring, regardless of the label selector:
+* `kube-system`
+* `kube-node-lease`
+* `kube-public`
+* the namespace of the Dash0 operator
+
+You can deploy a monitoring resource to these namespaces manually though.
+
+Automatically monitoring namespaces will be monitored with the following default settings:
+
+* `instrumentWorkloads.mode`: `created-and-updated`
+* Log Collection: Enabled
+* Event Collection: Enabled
+* Prometheues Scraping: Enabled
+* Synchronize Perses Dashboards: Enabled
+* Synchronize Prometheus Rules: Enabled
+
+The defaults can be customized, as follows:
+
+```
+operator:
+  dash0Export:
+    enabled: true
+    ...
+
+  autoMonitorNamespaces:
+    enabled: true
+
+  monitoringTemplate:
+    spec:
+      instrumentWorkloads:
+        mode: none
+      logCollection:
+        enabled: true
+      eventCollection:
+        enabled: true
+      prometheusScraping:
+        enabled: false
+      synchronizePersesDashboards: false
+      synchronizePrometheusRules: false
+```
+
+With the previous example, only logs and Kubernetes events would be collected in automatically monitored namespaces,
+no workload auto-instrumentation would happen, and Prometheus metrics would not be scraped.
+
+All settings mentioned in [Additional Configuration Per Namespace](#additional-configuration-per-namespace)) can be
+set with the monitoring template, with the exception of per-namespace exports.
+(Use the `operator.dash0Export` to configure the export instead.)
+
+The following snippet shows all possible settings:
+
+```
+operator:
+  monitoringTemplate:
+    spec:
+      instrumentWorkloads:
+        mode: none
+      logCollection:
+        enabled: true
+      eventCollection:
+        enabled: true
+      prometheusScraping:
+        enabled: false
+      filter:
+        traces:
+          span:
+          - 'attributes["http.route"] == "/ready"'
+          - 'attributes["http.route"] == "/metrics"'
+          spanevent:
+          - 'attributes["grpc"] == true'
+          - 'IsMatch(name, ".*grpc.*")'
+        metrics:
+          metric:
+          - 'name == "k8s.replicaset.available"'
+          - 'name == "k8s.replicaset.desired"'
+          datapoint:
+          - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
+          - 'resource.attributes["service.name"] == "my_service_name"'
+        logs:
+          log_records:
+          - 'IsMatch(body, ".*password.*")'
+          - 'severity_number < SEVERITY_NUMBER_WARN'
+      transform:
+        trace_statements:
+        - 'truncate_all(span.attributes, 1024)'
+        metric_statements:
+          - conditions:
+            - 'metric.type == METRIC_DATA_TYPE_SUM'
+            statements:
+            - 'truncate_all(datapoint.attributes, 1024)'
+        log_statements:
+        - 'truncate_all(log.attributes, 1024)'
+      synchronizePersesDashboards: false
+      synchronizePrometheusRules: false
+```
+
+If there are some namespaces which require different monitoring settings, exclude them from automatic namespace
+monitoring via the label selector (e.g. `dash0.com/enable: "false"`) and deploy a Dash0Monitoring resource there
+manually.
+
+If the cluster has a lot of namespaces (e.g. close to or more than 1,000), it is recommended to set
+`operator.collectors.compressConfigMaps` to `true`.
+This will enable gzip compression for the ConfigMaps for the OpenTelemetry collectors.
+
+Example:
+
+```
+operator:
+  dash0Export:
+    enabled: true
+    ...
+
+  collectors:
+    compressConfigMaps: true
+
+  autoMonitorNamespaces:
+    enabled: true
+```
 
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 

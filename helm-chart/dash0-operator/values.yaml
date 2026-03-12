@@ -806,15 +806,18 @@ operator:
   # false. If omitted, the Dash0 operator will use default values for automatically created Dash0Monitoring resources.
   # The commeted out monitoringTemplate below shows the default values.
   #
-  # monitoringTemplate:
-  #   spec:
-  #     instrumentWorkloads:
-  #       mode: created-and-updated
-  #     logCollection:
-  #       enabled: true
-  #     eventCollection:
-  #       enabled: true
-  #     prometheusScraping:
-  #       enabled: true
-  #     synchronizePersesDashboards: true
-  #     synchronizePrometheusRules: true
+  # Note: This is a top level value, e.g. it's operator.monitoringTemplate, not
+  # operator.autoMonitorNamespaces.monitoringTemplate.
+  #
+  #monitoringTemplate:
+  #  spec:
+  #    instrumentWorkloads:
+  #      mode: created-and-updated
+  #    logCollection:
+  #      enabled: true
+  #    eventCollection:
+  #      enabled: true
+  #    prometheusScraping:
+  #      enabled: true
+  #    synchronizePersesDashboards: true
+  #    synchronizePrometheusRules: true
