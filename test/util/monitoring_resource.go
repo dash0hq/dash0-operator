@@ -78,13 +78,6 @@ func DefaultMonitoringResource() *dash0v1beta1.Dash0Monitoring {
 	}
 }
 
-func DefaultMonitoringResourceWithoutExport() *dash0v1beta1.Dash0Monitoring {
-	return &dash0v1beta1.Dash0Monitoring{
-		ObjectMeta: MonitoringResourceDefaultObjectMeta,
-		Spec:       MonitoringResourceDefaultSpecWithoutExport,
-	}
-}
-
 func DefaultMonitoringResourceWithName(monitoringResourceName types.NamespacedName) *dash0v1beta1.Dash0Monitoring {
 	return &dash0v1beta1.Dash0Monitoring{
 		ObjectMeta: metav1.ObjectMeta{

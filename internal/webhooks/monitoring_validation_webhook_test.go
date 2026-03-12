@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,18 +31,28 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 		expectedError string
 	}
 
+	//nolint:prealloc
+	var allTestNamespaces = []string{
+		TestNamespaceName,
+		OperatorNamespace,
+	}
+	allTestNamespaces = append(allTestNamespaces, util.RestrictedNamespaces...)
+
 	BeforeAll(func() {
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
 	})
 
 	AfterEach(func() {
-		Expect(
-			k8sClient.DeleteAllOf(ctx, &dash0v1beta1.Dash0Monitoring{}, client.InNamespace(TestNamespaceName)),
-		).To(Succeed())
+		for _, ns := range allTestNamespaces {
+			err := k8sClient.DeleteAllOf(ctx, &dash0v1beta1.Dash0Monitoring{}, client.InNamespace(ns))
+			if !apierrors.IsNotFound(err) {
+				Expect(err).ToNot(HaveOccurred())
+			}
+		}
 		Expect(k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{})).To(Succeed())
 	})
 
-	Describe("when validating", Ordered, func() {
+	Context("when validating", Ordered, func() {
 
 		type kubeSystemTestConfig struct {
 			namespace               string
@@ -733,6 +744,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 		type autoMonitoringNamespaceValidationTestConfig struct {
 			doNotCreateOperatorConfiguration bool
 			autoMonitorNamespacesEnabled     *bool
+			namespace                        string
 			labelSelector                    string
 			namespaceLabels                  map[string]string
 			monitoringResourceLabels         map[string]string
@@ -742,15 +754,21 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 		DescribeTable("should reject custom monitoring resources in automatically monitored namespaces", func(
 			config autoMonitoringNamespaceValidationTestConfig,
 		) {
+			namespace := config.namespace
+			if namespace == "" {
+				namespace = TestNamespaceName
+			}
+
 			if len(config.namespaceLabels) > 0 {
 				ns := &corev1.Namespace{}
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: TestNamespaceName}, ns)).To(Succeed())
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: namespace}, ns)).To(Succeed())
+				previousLabels := ns.Labels
 				ns.Labels = config.namespaceLabels
 				Expect(k8sClient.Update(ctx, ns)).To(Succeed())
 				DeferCleanup(func() {
 					ns := &corev1.Namespace{}
-					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: TestNamespaceName}, ns)).To(Succeed())
-					ns.Labels = map[string]string{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: namespace}, ns)).To(Succeed())
+					ns.Labels = previousLabels
 					Expect(k8sClient.Update(ctx, ns)).To(Succeed())
 				})
 			}
@@ -773,11 +791,25 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: TestNamespaceName,
+					Namespace: namespace,
 					Name:      MonitoringResourceName,
 					Labels:    config.monitoringResourceLabels,
 				},
-				Spec: MonitoringResourceDefaultSpec,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeNone,
+					},
+					Exports: []dash0common.Export{
+						{
+							Dash0: &dash0common.Dash0Configuration{
+								Endpoint: EndpointDash0Test,
+								Authorization: dash0common.Authorization{
+									Token: &AuthorizationTokenTest,
+								},
+							},
+						},
+					},
+				},
 			})
 
 			if config.expectRejection {
@@ -785,7 +817,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					"admission webhook \"validate-monitoring.dash0.com\" denied the request: "+
 						"Namespace \"%s\" is automatically managed by Dash0. Adding a custom Dash0 monitoring "+
 						"resource to an automatically managed namespace is not allowed.",
-					TestNamespaceName,
+					namespace,
 				))))
 			} else {
 				Expect(err).ToNot(HaveOccurred())
@@ -851,6 +883,22 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					labelSelector:                "dash0.com/monitor-this-namespace=true",
 					namespaceLabels:              map[string]string{"dash0.com/monitor-this-namespace": "true"},
 					expectRejection:              true,
+				},
+			),
+			Entry("allow manually managed monitoring resource in a restricted namespace",
+				autoMonitoringNamespaceValidationTestConfig{
+					namespace:                    "kube-system",
+					autoMonitorNamespacesEnabled: new(true),
+					labelSelector:                "dash0.com/enable!=false",
+					expectRejection:              false,
+				},
+			),
+			Entry("allow manually managed monitoring resource in the operator namespace",
+				autoMonitoringNamespaceValidationTestConfig{
+					namespace:                    OperatorNamespace,
+					autoMonitorNamespacesEnabled: new(true),
+					labelSelector:                "dash0.com/enable!=false",
+					expectRejection:              false,
 				},
 			),
 		)
