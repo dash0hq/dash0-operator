@@ -177,6 +177,17 @@ func (h *MonitoringValidationWebhookHandler) rejectCustomMonitoringResourceInAut
 		return admission.Response{}, false
 	}
 	if monitoringResource.Labels[util.AutoMonitoredNamespaceLabel] == "true" {
+		// This is a monitoring resource created by the auto_namespace_monitoring_controller, allow it.
+		return admission.Response{}, false
+	}
+	if monitoringResource.Namespace == h.operatorNamespace {
+		// Do not reject manually managed monitoring resource in the operator namespace,
+		// auto_namespace_monitoring_controller will not install auto-monitoring resources there.
+		return admission.Response{}, false
+	}
+	if slices.Contains(util.RestrictedNamespaces, monitoringResource.Namespace) {
+		// Do not reject manually managed monitoring resource in the restricted namespaces,
+		// auto_namespace_monitoring_controller will not install auto-monitoring resources there.
 		return admission.Response{}, false
 	}
 
