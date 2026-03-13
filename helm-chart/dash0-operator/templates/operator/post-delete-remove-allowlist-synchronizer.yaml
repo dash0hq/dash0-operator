@@ -75,7 +75,7 @@ spec:
         app.kubernetes.io/instance: post-delete-hook
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
-        cloud.google.com/matching-allowlist: dash0-post-delete-remove-allowlist-synchronizer-v1.0.1
+        cloud.google.com/matching-allowlist: dash0-post-delete-remove-allowlist-synchronizer-v1.0.2
     spec:
       restartPolicy: OnFailure
       affinity:
