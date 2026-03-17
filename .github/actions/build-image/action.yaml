@@ -107,7 +107,7 @@ runs:
     # optionally scan the built container image with Trivy and upload the results
     - name: run Trivy vulnerability scanner
       if: ${{ inputs.scan == 'true' }}
-      uses: aquasecurity/trivy-action@0.28.0
+      uses: aquasecurity/trivy-action@0.35.0
       with:
         image-ref: '${{ steps.docker-build.outputs.imageid }}'
         format: 'sarif'
