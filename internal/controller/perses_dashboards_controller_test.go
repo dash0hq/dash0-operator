@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -267,6 +268,49 @@ var _ = Describe(
 								Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeFalse())
 							},
 						).Should(Succeed())
+					},
+				)
+
+				It(
+					"tracks per-namespace sync-enabled state and clears it on removal",
+					func() {
+						crdReconciler := createPersesDashboardCrdReconciler()
+						Expect(crdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
+						reconciler := crdReconciler.persesDashboardReconciler
+						namespace := TestNamespaceName
+
+						syncDisabled := &dash0v1beta1.Dash0Monitoring{}
+						syncDisabled.Spec.SynchronizePersesDashboards = new(bool) // false
+
+						syncEnabled := &dash0v1beta1.Dash0Monitoring{}
+						// nil means default=true
+
+						By("First call with sync disabled — stores false, no resync")
+						crdReconciler.SetSynchronizationEnabled(ctx, namespace, syncDisabled, logger)
+						val, ok := reconciler.namespacedSyncEnabled.Load(namespace)
+						Expect(ok).To(BeTrue())
+						Expect(val).To(BeFalse())
+
+						By("Second call still disabled — no state change")
+						crdReconciler.SetSynchronizationEnabled(ctx, namespace, syncDisabled, logger)
+						val, _ = reconciler.namespacedSyncEnabled.Load(namespace)
+						Expect(val).To(BeFalse())
+
+						By("Transition to enabled — state updated")
+						crdReconciler.SetSynchronizationEnabled(ctx, namespace, syncEnabled, logger)
+						val, _ = reconciler.namespacedSyncEnabled.Load(namespace)
+						Expect(val).To(BeTrue())
+
+						By("Already enabled — no state change")
+						crdReconciler.SetSynchronizationEnabled(ctx, namespace, syncEnabled, logger)
+						val, _ = reconciler.namespacedSyncEnabled.Load(namespace)
+						Expect(val).To(BeTrue())
+
+						By("RemoveNamespacedApiConfigs clears the sync-enabled state")
+						reconciler.namespacedApiConfigs.Set(namespace, []ApiConfig{{Endpoint: "x", Token: "t"}})
+						crdReconciler.RemoveNamespacedApiConfigs(ctx, namespace, logger)
+						_, ok = reconciler.namespacedSyncEnabled.Load(namespace)
+						Expect(ok).To(BeFalse())
 					},
 				)
 

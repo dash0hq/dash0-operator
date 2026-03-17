@@ -317,6 +317,14 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 				logger,
 			)
 		}
+		for _, apiClient := range r.namespacedApiClients {
+			apiClient.SetSynchronizationEnabled(
+				ctx,
+				monitoringResource.Namespace,
+				monitoringResource,
+				logger,
+			)
+		}
 	} else {
 		logger.Info(
 			fmt.Sprintf(

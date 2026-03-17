@@ -30,6 +30,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -162,6 +163,15 @@ func (r *ViewReconciler) RemoveNamespacedApiConfigs(ctx context.Context, namespa
 		r.namespacedApiConfigs.Delete(namespace)
 		r.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
+}
+
+func (r *ViewReconciler) SetSynchronizationEnabled(
+	_ context.Context,
+	_ string,
+	_ *dash0v1beta1.Dash0Monitoring,
+	_ logd.Logger,
+) {
+	// no-op: views do not have a per-namespace sync toggle
 }
 
 func (r *ViewReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {

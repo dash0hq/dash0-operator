@@ -30,6 +30,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -170,6 +171,15 @@ func (r *SyntheticCheckReconciler) RemoveNamespacedApiConfigs(
 		r.namespacedApiConfigs.Delete(namespace)
 		r.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
+}
+
+func (r *SyntheticCheckReconciler) SetSynchronizationEnabled(
+	_ context.Context,
+	_ string,
+	_ *dash0v1beta1.Dash0Monitoring,
+	_ logd.Logger,
+) {
+	// no-op: synthetic checks do not have a per-namespace sync toggle
 }
 
 func (r *SyntheticCheckReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {

@@ -376,6 +376,45 @@ var _ = Describe(
 						)
 
 						It(
+							"should call SetSynchronizationEnabled on all registered clients after setting API configs",
+							func() {
+								By("Trigger reconcile request")
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								verifyMonitoringResourceIsAvailable(ctx)
+								Expect(namespacedApiClient1.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient1.lastMonitoringResource).ToNot(BeNil())
+								Expect(namespacedApiClient2.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient2.lastMonitoringResource).ToNot(BeNil())
+
+								By("Second reconcile also calls SetSynchronizationEnabled")
+								namespacedApiClient1.ResetCallCounts()
+								namespacedApiClient2.ResetCallCounts()
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								Expect(namespacedApiClient1.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient2.setSyncEnabledCalls).To(Equal(1))
+							},
+						)
+
+						It(
+							"should not call SetSynchronizationEnabled when API config is removed",
+							func() {
+								By("Initial reconcile")
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								verifyMonitoringResourceIsAvailable(ctx)
+								namespacedApiClient1.ResetCallCounts()
+								namespacedApiClient2.ResetCallCounts()
+
+								By("Remove export and reconcile")
+								RemoveExportFromMonitoringResource(ctx, k8sClient)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								Expect(namespacedApiClient1.removeNamespacedApiEndpointCalls).To(Equal(1))
+								Expect(namespacedApiClient1.setSyncEnabledCalls).To(Equal(0))
+								Expect(namespacedApiClient2.removeNamespacedApiEndpointCalls).To(Equal(1))
+								Expect(namespacedApiClient2.setSyncEnabledCalls).To(Equal(0))
+							},
+						)
+
+						It(
 							"should skip exports with unresolvable secret refs and set only valid API configs",
 							func() {
 								By("Update monitoring resource to have two exports: one with missing secret, one with token")

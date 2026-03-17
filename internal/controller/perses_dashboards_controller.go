@@ -52,6 +52,7 @@ type PersesDashboardReconciler struct {
 	httpClient                 *http.Client
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
+	namespacedSyncEnabled      sync.Map
 	httpRetryDelay             time.Duration
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
@@ -270,6 +271,24 @@ func (r *PersesDashboardCrdReconciler) RemoveNamespacedApiConfigs(
 ) {
 	if _, exists := r.persesDashboardReconciler.namespacedApiConfigs.Get(namespace); exists {
 		r.persesDashboardReconciler.namespacedApiConfigs.Delete(namespace)
+		r.persesDashboardReconciler.namespacedSyncEnabled.Delete(namespace)
+		r.persesDashboardReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *PersesDashboardCrdReconciler) SetSynchronizationEnabled(
+	ctx context.Context,
+	namespace string,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger logd.Logger,
+) {
+	enabled := r.persesDashboardReconciler.IsSynchronizationEnabled(monitoringResource)
+	previous, hadPrevious := r.persesDashboardReconciler.namespacedSyncEnabled.Swap(namespace, enabled)
+	if prev, ok := previous.(bool); hadPrevious && ok && !prev && enabled {
+		logger.Info(fmt.Sprintf(
+			"Synchronization of dashboards has been enabled for namespace %s, triggering resync.",
+			namespace,
+		))
 		r.persesDashboardReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
 }
@@ -672,7 +691,7 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 }
 
 // synchronizeNamespacedResources explicitly triggers a resync of dashboards in a given namespace in response to an
-// updated API endpoint, dataset or auth token.
+// updated API endpoint, dataset or auth token, or when synchronization has been enabled for the namespace.
 func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 	ctx context.Context,
 	namespace string,
