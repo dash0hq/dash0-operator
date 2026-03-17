@@ -296,7 +296,6 @@ func (r *PrometheusRuleCrdReconciler) RemoveNamespacedApiConfigs(
 ) {
 	if _, exists := r.prometheusRuleReconciler.namespacedApiConfigs.Get(namespace); exists {
 		r.prometheusRuleReconciler.namespacedApiConfigs.Delete(namespace)
-		r.prometheusRuleReconciler.namespacedSyncEnabled.Delete(namespace)
 		r.prometheusRuleReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
 }
@@ -316,6 +315,10 @@ func (r *PrometheusRuleCrdReconciler) SetSynchronizationEnabled(
 		))
 		r.prometheusRuleReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
+}
+
+func (r *PrometheusRuleCrdReconciler) RemoveSynchronizationEnabled(namespace string) {
+	r.prometheusRuleReconciler.namespacedSyncEnabled.Delete(namespace)
 }
 
 func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(

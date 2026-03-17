@@ -306,9 +306,14 @@ var _ = Describe(
 						val, _ = reconciler.namespacedSyncEnabled.Load(namespace)
 						Expect(val).To(BeTrue())
 
-						By("RemoveNamespacedApiConfigs clears the sync-enabled state")
+						By("RemoveNamespacedApiConfigs does not clear the sync-enabled state")
 						reconciler.namespacedApiConfigs.Set(namespace, []ApiConfig{{Endpoint: "x", Token: "t"}})
 						crdReconciler.RemoveNamespacedApiConfigs(ctx, namespace, logger)
+						val, _ = reconciler.namespacedSyncEnabled.Load(namespace)
+						Expect(val).To(BeTrue())
+
+						By("RemoveSynchronizationEnabled clears the sync-enabled state")
+						crdReconciler.RemoveSynchronizationEnabled(namespace)
 						_, ok = reconciler.namespacedSyncEnabled.Load(namespace)
 						Expect(ok).To(BeFalse())
 					},

@@ -182,6 +182,10 @@ func (r *SyntheticCheckReconciler) SetSynchronizationEnabled(
 	// no-op: synthetic checks do not have a per-namespace sync toggle
 }
 
+func (r *SyntheticCheckReconciler) RemoveSynchronizationEnabled(_ string) {
+	// no-op: synthetic checks do not have a per-namespace sync toggle
+}
+
 func (r *SyntheticCheckReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }

@@ -61,6 +61,7 @@ type NamespacedApiClient interface {
 	SetNamespacedApiConfigs(context.Context, string, []ApiConfig, logd.Logger)
 	RemoveNamespacedApiConfigs(context.Context, string, logd.Logger)
 	SetSynchronizationEnabled(context.Context, string, *dash0v1beta1.Dash0Monitoring, logd.Logger)
+	RemoveSynchronizationEnabled(string)
 }
 
 type ResourceToRequestsResult struct {

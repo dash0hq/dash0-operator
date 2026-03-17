@@ -1478,6 +1478,9 @@ func (c *DummyNamespacedApiClient) SetSynchronizationEnabled(
 	c.lastMonitoringResource = monitoringResource
 }
 
+func (c *DummyNamespacedApiClient) RemoveSynchronizationEnabled(_ string) {
+}
+
 func (c *DummyNamespacedApiClient) Reset() {
 	c.ResetCallCounts()
 	c.namespacedApiconfigs = make(map[string][]ApiConfig)

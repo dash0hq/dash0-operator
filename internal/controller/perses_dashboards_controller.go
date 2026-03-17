@@ -271,7 +271,6 @@ func (r *PersesDashboardCrdReconciler) RemoveNamespacedApiConfigs(
 ) {
 	if _, exists := r.persesDashboardReconciler.namespacedApiConfigs.Get(namespace); exists {
 		r.persesDashboardReconciler.namespacedApiConfigs.Delete(namespace)
-		r.persesDashboardReconciler.namespacedSyncEnabled.Delete(namespace)
 		r.persesDashboardReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
 }
@@ -291,6 +290,10 @@ func (r *PersesDashboardCrdReconciler) SetSynchronizationEnabled(
 		))
 		r.persesDashboardReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
+}
+
+func (r *PersesDashboardCrdReconciler) RemoveSynchronizationEnabled(namespace string) {
+	r.persesDashboardReconciler.namespacedSyncEnabled.Delete(namespace)
 }
 
 func (r *PersesDashboardReconciler) InitializeSelfMonitoringMetrics(

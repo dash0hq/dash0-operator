@@ -174,6 +174,10 @@ func (r *ViewReconciler) SetSynchronizationEnabled(
 	// no-op: views do not have a per-namespace sync toggle
 }
 
+func (r *ViewReconciler) RemoveSynchronizationEnabled(_ string) {
+	// no-op: views do not have a per-namespace sync toggle
+}
+
 func (r *ViewReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
