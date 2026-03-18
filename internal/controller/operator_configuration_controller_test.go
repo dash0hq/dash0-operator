@@ -16,6 +16,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
@@ -1441,7 +1442,9 @@ func (c *DummyApiClient) ResetCallCounts() {
 type DummyNamespacedApiClient struct {
 	setNamespacedApiEndpointCalls    int
 	removeNamespacedApiEndpointCalls int
+	setSyncEnabledCalls              int
 	namespacedApiconfigs             map[string][]ApiConfig
+	lastMonitoringResource           *dash0v1beta1.Dash0Monitoring
 }
 
 func NewDummyNamespacedApiClient() *DummyNamespacedApiClient {
@@ -1465,12 +1468,27 @@ func (c *DummyNamespacedApiClient) RemoveNamespacedApiConfigs(_ context.Context,
 	delete(c.namespacedApiconfigs, namespace)
 }
 
+func (c *DummyNamespacedApiClient) SetSynchronizationEnabled(
+	_ context.Context,
+	_ string,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	_ logd.Logger,
+) {
+	c.setSyncEnabledCalls++
+	c.lastMonitoringResource = monitoringResource
+}
+
+func (c *DummyNamespacedApiClient) RemoveSynchronizationEnabled(_ string) {
+}
+
 func (c *DummyNamespacedApiClient) Reset() {
 	c.ResetCallCounts()
 	c.namespacedApiconfigs = make(map[string][]ApiConfig)
+	c.lastMonitoringResource = nil
 }
 
 func (c *DummyNamespacedApiClient) ResetCallCounts() {
 	c.setNamespacedApiEndpointCalls = 0
 	c.removeNamespacedApiEndpointCalls = 0
+	c.setSyncEnabledCalls = 0
 }

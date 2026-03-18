@@ -57,6 +57,7 @@ type PrometheusRuleReconciler struct {
 	httpClient                 *http.Client
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
+	namespacedSyncEnabled      sync.Map
 	httpRetryDelay             time.Duration
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
@@ -297,6 +298,27 @@ func (r *PrometheusRuleCrdReconciler) RemoveNamespacedApiConfigs(
 		r.prometheusRuleReconciler.namespacedApiConfigs.Delete(namespace)
 		r.prometheusRuleReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
+}
+
+func (r *PrometheusRuleCrdReconciler) SetSynchronizationEnabled(
+	ctx context.Context,
+	namespace string,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	logger logd.Logger,
+) {
+	enabled := r.prometheusRuleReconciler.IsSynchronizationEnabled(monitoringResource)
+	previous, hadPrevious := r.prometheusRuleReconciler.namespacedSyncEnabled.Swap(namespace, enabled)
+	if prev, ok := previous.(bool); hadPrevious && ok && !prev && enabled {
+		logger.Info(fmt.Sprintf(
+			"Synchronization of check rules has been enabled for namespace %s, triggering resync.",
+			namespace,
+		))
+		r.prometheusRuleReconciler.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *PrometheusRuleCrdReconciler) RemoveSynchronizationEnabled(namespace string) {
+	r.prometheusRuleReconciler.namespacedSyncEnabled.Delete(namespace)
 }
 
 func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
@@ -1082,7 +1104,7 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 }
 
 // synchronizeNamespacedResources explicitly triggers a resync of check rules in a given namespace in response to an
-// updated API endpoint, dataset or auth token.
+// updated API endpoint, dataset or auth token, or when synchronization has been enabled for the namespace.
 func (r *PrometheusRuleReconciler) synchronizeNamespacedResources(
 	ctx context.Context,
 	namespace string,

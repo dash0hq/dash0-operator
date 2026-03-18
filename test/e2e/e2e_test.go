@@ -713,6 +713,65 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						regexIdx++
 					}
 				})
+
+				//nolint:lll
+				It("should resync Prometheus rules when synchronizePrometheusRules transitions from false to true", func() {
+					routeRegexes := []string{
+						"/api/alerting/check-rules\\?dataset=default&idPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20pod%20crash%20looping\\?dataset=default",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ccollector_exporter%20send%20failed%20spans\\?dataset=default",
+					}
+					substrings := []string{
+						"dash0/k8s - K8s Deployment replicas mismatch",
+						"dash0/k8s - K8s pod crash looping",
+						"dash0/collector - exporter send failed spans",
+					}
+
+					By("disabling synchronization of Prometheus rules")
+					updateDash0MonitoringResource(
+						applicationUnderTestNamespace,
+						`{"spec":{"synchronizePrometheusRules":false}}`,
+					)
+					time.Sleep(5 * time.Second)
+
+					By("deploying a PrometheusRule resource while sync is disabled")
+					deployPrometheusRuleResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					By("verifying no API requests are made while sync is disabled")
+					Consistently(func(g Gomega) {
+						storedRequests := getStoredApiRequests(g)
+						g.Expect(storedRequests).NotTo(BeNil())
+						g.Expect(storedRequests.Requests).To(BeEmpty())
+					}, 10*time.Second, 1*time.Second).Should(Succeed())
+
+					By("re-enabling synchronization of Prometheus rules")
+					updateDash0MonitoringResource(
+						applicationUnderTestNamespace,
+						`{"spec":{"synchronizePrometheusRules":true}}`,
+					)
+
+					By("verifying the check rules have been synchronized after re-enabling sync")
+					requests := fetchCapturedApiRequests(0, 4)
+					Expect(requests).To(HaveLen(4))
+					Expect(requests[0].Method).To(Equal("GET"))
+					Expect(requests[0].Url).To(MatchRegexp(routeRegexes[0]))
+					regexIdx := 1
+					substringIdx := 0
+					for i := 1; i < 4; i++ {
+						req := requests[i]
+						Expect(req.Method).To(Equal("PUT"))
+						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
+						regexIdx++
+						Expect(req.Body).ToNot(BeNil())
+						Expect(*req.Body).To(ContainSubstring(substrings[substringIdx]))
+						verifyApiSyncRequest(req)
+						substringIdx++
+					}
+				})
 			})
 
 			//nolint:lll

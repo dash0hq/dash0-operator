@@ -376,6 +376,64 @@ var _ = Describe(
 						)
 
 						It(
+							"should call SetSynchronizationEnabled on all registered clients after setting API configs",
+							func() {
+								By("Trigger reconcile request")
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								verifyMonitoringResourceIsAvailable(ctx)
+								Expect(namespacedApiClient1.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient1.lastMonitoringResource).ToNot(BeNil())
+								Expect(namespacedApiClient2.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient2.lastMonitoringResource).ToNot(BeNil())
+
+								By("Second reconcile also calls SetSynchronizationEnabled")
+								namespacedApiClient1.ResetCallCounts()
+								namespacedApiClient2.ResetCallCounts()
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								Expect(namespacedApiClient1.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient2.setSyncEnabledCalls).To(Equal(1))
+							},
+						)
+
+						It(
+							"should call SetSynchronizationEnabled even when API config is removed",
+							func() {
+								By("Initial reconcile")
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								verifyMonitoringResourceIsAvailable(ctx)
+								namespacedApiClient1.ResetCallCounts()
+								namespacedApiClient2.ResetCallCounts()
+
+								By("Remove export and reconcile")
+								RemoveExportFromMonitoringResource(ctx, k8sClient)
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								Expect(namespacedApiClient1.removeNamespacedApiEndpointCalls).To(Equal(1))
+								Expect(namespacedApiClient1.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient2.removeNamespacedApiEndpointCalls).To(Equal(1))
+								Expect(namespacedApiClient2.setSyncEnabledCalls).To(Equal(1))
+							},
+						)
+
+						It(
+							"should call SetSynchronizationEnabled when monitoring resource has no export config",
+							func() {
+								By("Remove export so monitoring resource uses defaults from operator config")
+								RemoveExportFromMonitoringResource(ctx, k8sClient)
+								namespacedApiClient1.Reset()
+								namespacedApiClient2.Reset()
+
+								By("Reconcile with no export — SetSynchronizationEnabled should still be called")
+								triggerReconcileRequest(ctx, monitoringReconciler)
+								Expect(namespacedApiClient1.setNamespacedApiEndpointCalls).To(Equal(0))
+								Expect(namespacedApiClient1.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient1.lastMonitoringResource).ToNot(BeNil())
+								Expect(namespacedApiClient2.setNamespacedApiEndpointCalls).To(Equal(0))
+								Expect(namespacedApiClient2.setSyncEnabledCalls).To(Equal(1))
+								Expect(namespacedApiClient2.lastMonitoringResource).ToNot(BeNil())
+							},
+						)
+
+						It(
 							"should skip exports with unresolvable secret refs and set only valid API configs",
 							func() {
 								By("Update monitoring resource to have two exports: one with missing secret, one with token")

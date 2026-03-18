@@ -307,15 +307,15 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 			for _, apiClient := range r.namespacedApiClients {
 				apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, logger)
 			}
-			return
-		}
-		for _, apiClient := range r.namespacedApiClients {
-			apiClient.SetNamespacedApiConfigs(
-				ctx,
-				monitoringResource.Namespace,
-				apiConfigs,
-				logger,
-			)
+		} else {
+			for _, apiClient := range r.namespacedApiClients {
+				apiClient.SetNamespacedApiConfigs(
+					ctx,
+					monitoringResource.Namespace,
+					apiConfigs,
+					logger,
+				)
+			}
 		}
 	} else {
 		logger.Info(
@@ -328,6 +328,15 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 		for _, apiClient := range r.namespacedApiClients {
 			apiClient.RemoveNamespacedApiConfigs(ctx, monitoringResource.Namespace, logger)
 		}
+	}
+
+	for _, apiClient := range r.namespacedApiClients {
+		apiClient.SetSynchronizationEnabled(
+			ctx,
+			monitoringResource.Namespace,
+			monitoringResource,
+			logger,
+		)
 	}
 }
 
@@ -405,6 +414,10 @@ func (r *MonitoringReconciler) runCleanupActions(
 	); err != nil {
 		logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
 		return err
+	}
+
+	for _, apiClient := range r.namespacedApiClients {
+		apiClient.RemoveSynchronizationEnabled(monitoringResource.Namespace)
 	}
 
 	// The Dash0 monitoring resource will be deleted after this reconcile finished. We still need to update its status,
