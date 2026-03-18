@@ -58,6 +58,7 @@ type oTelColConfig struct {
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
+	ProfilingEnabled                                 bool
 	CompressConfigMap                                bool
 }
 
@@ -1053,12 +1054,17 @@ func assembleDaemonSetCollectorContainer(
 		httpPort.HostPort = int32(OtlpHttpHostPort)
 	}
 
+	collectorArgs := []string{
+		"--config=file:" + collectorConfigurationFilePath,
+		"--feature-gates=-processor.resourcedetection.propagateerrors",
+	}
+	if config.ProfilingEnabled {
+		collectorArgs = append(collectorArgs, "--feature-gates=service.profilesSupport")
+	}
+
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,
-		Args: []string{
-			"--config=file:" + collectorConfigurationFilePath,
-			"--feature-gates=-processor.resourcedetection.propagateerrors",
-		},
+		Args: collectorArgs,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
 			ReadOnlyRootFilesystem:   new(false),

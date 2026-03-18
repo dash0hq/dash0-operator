@@ -270,7 +270,11 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       is 8192.
     * `OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE`: Set the `send_batch_max_size` parameter of the batch processor of the
       collectors managed by the operator. There is usually no need to configure this. The value must be greater than or
-      equal to `send_batch_size` (which defaults to 8192).
+      equal to 8192, which is the default value for `send_batch_size`.
+    * `PROFILING_ENABLED`: Set this to "true" to enable profiling data pipelines in the operator's OpenTelemetry
+      collectors. When enabled, the daemonset collector will accept, process, and export OTLP profiles data.
+      See <helm-chart/dash0-operator/README.md#profiling> for more details.
+      This defaults to "false".
     * `PROMETHEUS_SCRAPING_ENABLED`: Set this to "false" to disable Prometheus scraping in the test namespace via the
       monitoring resource.
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".

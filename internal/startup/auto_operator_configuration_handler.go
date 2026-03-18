@@ -37,6 +37,7 @@ type OperatorConfigurationValues struct {
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	PrometheusCrdSupportEnabled                      bool
+	ProfilingEnabled                                 bool
 	ClusterName                                      string
 	AutoMonitorNamespacesEnabled                     bool
 	AutoMonitorNamespacesLabelSelector               string
@@ -346,6 +347,9 @@ func convertValuesToResource(
 		},
 		ClusterName:        operatorConfigurationValues.ClusterName,
 		MonitoringTemplate: monitoringTemplate,
+		Profiling: &dash0v1alpha1.Profiling{
+			Enabled: new(operatorConfigurationValues.ProfilingEnabled),
+		},
 	}
 
 	if operatorConfigurationValues.AutoMonitorNamespacesEnabled {

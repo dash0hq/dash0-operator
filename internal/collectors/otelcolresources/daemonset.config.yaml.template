@@ -36,9 +36,15 @@ connectors:
   forward/traces-processors: {}
   forward/metrics-processors: {}
   forward/logs-processors: {}
+  {{- if .ProfilingEnabled }}
+  forward/profiles-processors: {}
+  {{- end }}
   forward/traces-default-exporter: {}
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
+  {{- if .ProfilingEnabled }}
+  forward/profiles-default-exporter: {}
+  {{- end }}
 
   {{- if $hasNamespacedExporters }}
   routing/traces:
@@ -79,6 +85,21 @@ connectors:
         pipelines:
         {{- range $i, $exporter := $exporters }}
           - logs/export/ns/{{ $ns }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if and .ProfilingEnabled $hasNamespacedExporters }}
+  routing/profiles:
+    default_pipelines: [profiles/export/default]
+    error_mode: ignore
+    table:
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+    {{- $exporters := index $.Exporters.Namespaced $ns }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+        {{- range $i, $exporter := $exporters }}
+          - profiles/export/ns/{{ $ns }}
         {{- end }}
     {{- end }}
   {{- end }}
@@ -571,6 +592,7 @@ processors:
       - k8s.statefulset.name
       - k8s.statefulset.uid
       # The following two work only if k8s.pod.uid and k8s.container.name are set
+      - container.id
       - container.image.name
       - container.image.tag
       {{- if or .CollectNamespaceLabelsAndAnnotationsEnabled .CollectPodLabelsAndAnnotationsEnabled }}
@@ -607,6 +629,9 @@ processors:
     - sources:
       - from: resource_attribute
         name: k8s.pod.uid
+    - sources:
+      - from: resource_attribute
+        name: container.id
     - sources:
       - from: connection
 
@@ -1099,6 +1124,61 @@ service:
         {{- range $i, $exporter := $exporters }}
         - {{ $exporter.Name }}
         {{- end }}
+    {{- end }}
+
+    {{- if .ProfilingEnabled }}
+    profiles:
+      receivers:
+        - otlp
+      exporters:
+        - forward/profiles-processors
+
+    profiles/common-processors:
+      receivers:
+        - forward/profiles-processors
+      processors:
+        - memory_limiter
+        - resourcedetection
+        - k8s_attributes
+        {{- if .ClusterName }}
+        - resource/clustername
+        {{- end }}
+        - transform/resources
+      exporters:
+        {{- if $hasNamespacedExporters }}
+        - routing/profiles
+        {{- else }}
+        - forward/profiles-default-exporter
+        {{- end }}
+
+    profiles/export/default:
+      receivers:
+        {{- if $hasNamespacedExporters }}
+        - routing/profiles
+        {{- else }}
+        - forward/profiles-default-exporter
+        {{- end}}
+      exporters:
+      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+      {{- end }}
+      {{- range $i, $exporter := .Exporters.Default }}
+        - {{ $exporter.Name }}
+      {{- end }}
+
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+    {{- $exporters := index $.Exporters.Namespaced $ns }}
+    profiles/export/ns/{{- $ns -}}:
+      receivers:
+        - routing/profiles
+      exporters:
+      {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+      {{- end }}
+      {{- range $i, $exporter := $exporters }}
+        - {{ $exporter.Name }}
+      {{- end }}
+    {{- end }}
     {{- end }}
 
   {{- if .InternalTelemetryEnabled }}

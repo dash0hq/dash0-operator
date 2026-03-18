@@ -104,6 +104,7 @@ type commandLineArguments struct {
 	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
 	operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled      bool
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
+	operatorConfigurationProfilingEnabled                                 bool
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
@@ -315,6 +316,7 @@ func Start() {
 			CollectPodLabelsAndAnnotationsEnabled:            cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
+			ProfilingEnabled:                                 cliArgs.operatorConfigurationProfilingEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 			AutoMonitorNamespacesEnabled:                     cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
 			AutoMonitorNamespacesLabelSelector:               cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
@@ -436,6 +438,13 @@ func defineCommandLineArguments() *commandLineArguments {
 		"operator-configuration-prometheus-crd-support-enabled",
 		false,
 		"The value for prometheusCrdSupport.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationProfilingEnabled,
+		"operator-configuration-profiling-enabled",
+		false,
+		"The value for profiling.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
 	flag.StringVar(
