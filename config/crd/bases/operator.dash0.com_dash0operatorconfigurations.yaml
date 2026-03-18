@@ -1255,6 +1255,16 @@ spec:
                         type: object
                     type: object
                 type: object
+              profiling:
+                description: Profiling describes the profiling configuration for the
+                  operator.
+                properties:
+                  enabled:
+                    description: |-
+                      If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
+                      This setting is optional, it defaults to `false`.
+                    type: boolean
+                type: object
               prometheusCrdSupport:
                 description: |-
                   Settings for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig).
