@@ -120,22 +120,28 @@ const (
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
 
-	configMapVolumeName            = "opentelemetry-collector-configmap"
-	collectorConfigurationYaml     = "config.yaml"
-	collectorConfigurationFilePath = "/etc/otelcol/conf/" + collectorConfigurationYaml
+	// config paths / config volume mount paths
+	collectorConfigurationYaml        = "config.yaml"
+	collectorConfigDirPath            = "/etc/otelcol/conf"
+	collectorConfigurationFilePath    = collectorConfigDirPath + "/" + collectorConfigurationYaml
+	collectorConfigCompressedDirPath  = "/etc/otelcol/conf-compressed"
+	collectorConfigCompressedFilePath = collectorConfigCompressedDirPath + "/" + collectorConfigurationYaml
 
-	collectorConfigCompressedDirPath           = "/etc/otelcol/conf-compressed"
-	collectorConfigCompressedFilePath          = collectorConfigCompressedDirPath + "/" + collectorConfigurationYaml
-	collectorConfigDecompressedVolumeName      = "opentelemetry-collector-configmap-decompressed"
-	collectorConfigDecompressedVolumeSizeLimit = "50M"
+	// config volume names -- the collectors will either use only the collectorConfigMapVolumeNamePlainText (when config
+	// map compression is disabled), or collectorConfigMapCompressedVolumeName + collectorConfigMapDecompressedVolumeName
+	// (when config map compression is enabled).
+	collectorConfigMapVolumeNamePlainText         = "opentelemetry-collector-configmap"
+	collectorConfigMapCompressedVolumeName        = "opentelemetry-collector-configmap-compressed"
+	collectorConfigMapDecompressedVolumeName      = "opentelemetry-collector-configmap-decompressed"
+	collectorConfigMapDecompressedVolumeSizeLimit = "50M"
 
 	collectorPidFilePath = "/etc/otelcol/run/pid.file"
 	pidFileVolumeName    = "opentelemetry-collector-pidfile"
 	offsetsDirPath       = "/var/otelcol/filelogreceiver_offsets"
 
 	gkeAutopilotAllowlistLabelKey             = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.1"
-	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.1"
+	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.2"
+	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.2"
 
 	targetAllocatorCertsVolumeName = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
@@ -206,22 +212,22 @@ var (
 		Path: collectorConfigurationYaml,
 	}}
 
-	// Collectors will either use only the collectorConfigPlainTextVolumeMount (when config map compression is disabled),
-	// or collectorConfigCompressedVolumeMount + collectorConfigDecompressedVolumeMount (when config map compression is
-	// enabled).
+	// The collectors will either use only the collectorConfigPlainTextVolumeMount (when config map compression is
+	// disabled), or collectorConfigCompressedVolumeMount + collectorConfigDecompressedVolumeMount (when config map
+	// compression is enabled).
 	collectorConfigPlainTextVolumeMount = corev1.VolumeMount{
-		Name:      configMapVolumeName,
-		MountPath: "/etc/otelcol/conf",
+		Name:      collectorConfigMapVolumeNamePlainText,
+		MountPath: collectorConfigDirPath,
 		ReadOnly:  true,
 	}
 	collectorConfigCompressedVolumeMount = corev1.VolumeMount{
-		Name:      configMapVolumeName,
+		Name:      collectorConfigMapCompressedVolumeName,
 		MountPath: collectorConfigCompressedDirPath,
 		ReadOnly:  true,
 	}
 	collectorConfigDecompressedVolumeMount = corev1.VolumeMount{
-		Name:      collectorConfigDecompressedVolumeName,
-		MountPath: "/etc/otelcol/conf",
+		Name:      collectorConfigMapDecompressedVolumeName,
+		MountPath: collectorConfigDirPath,
 		ReadOnly:  false,
 	}
 
@@ -833,21 +839,6 @@ func assembleCollectorDaemonSetVolumes(
 				},
 			},
 		},
-		// When config map compression is disabled (which is the default), the configMapVolume holds the plain text config.
-		// When config map compression is enabled, it holds the compressed config maps, which will then be decompressed
-		// at startup by the collector container's entrypoint script (images/collector/src/image/entrypoint.sh), or - after
-		// an update, by the configreloader container (images/configreloader/src/configreloader.go).
-		{
-			Name: configMapVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
-					},
-					Items: configMapItems,
-				},
-			},
-		},
 		{
 			Name: pidFileVolumeName,
 			VolumeSource: corev1.VolumeSource{
@@ -857,18 +848,44 @@ func assembleCollectorDaemonSetVolumes(
 			},
 		},
 	}
-	if config.CompressConfigMap {
-		// If config map compression is enabled, this is where the plain text config maps will be written to when
-		// uncompressing them.
+
+	if !config.CompressConfigMap {
 		volumes = append(volumes, corev1.Volume{
-			Name: collectorConfigDecompressedVolumeName,
+			Name: collectorConfigMapVolumeNamePlainText,
 			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{
-					SizeLimit: new(resource.MustParse(collectorConfigDecompressedVolumeSizeLimit)),
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
+					},
+					Items: configMapItems,
 				},
 			},
 		})
+	} else {
+		volumes = append(
+			volumes,
+			corev1.Volume{
+				Name: collectorConfigMapCompressedVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
+						},
+						Items: configMapItems,
+					},
+				},
+			},
+			corev1.Volume{
+				Name: collectorConfigMapDecompressedVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{
+						SizeLimit: new(resource.MustParse(collectorConfigMapDecompressedVolumeSizeLimit)),
+					},
+				},
+			},
+		)
 	}
+
 	if !config.IsGkeAutopilot {
 		// On Docker desktop and other runtimes using docker, the files in /var/log/pods are symlinked to this folder.
 		// (In GKE Autopilot we know for sure that /var/lib/docker/containers does not exist, so there is no need to
@@ -1099,21 +1116,25 @@ func assembleConfigurationReloaderContainer(
 
 	if config.CompressConfigMap {
 		reloaderArgs = append(reloaderArgs, "--decompressedoutput="+collectorConfigurationFilePath)
-		reloaderVolumeMounts = []corev1.VolumeMount{collectorConfigCompressedVolumeMount, collectorConfigDecompressedVolumeMount, collectorPidFileMountRO}
+		reloaderVolumeMounts = []corev1.VolumeMount{
+			collectorConfigCompressedVolumeMount,
+			collectorConfigDecompressedVolumeMount,
+			collectorPidFileMountRO,
+		}
 	} else {
-		reloaderVolumeMounts = []corev1.VolumeMount{collectorConfigPlainTextVolumeMount, collectorPidFileMountRO}
+		reloaderVolumeMounts = []corev1.VolumeMount{
+			collectorConfigPlainTextVolumeMount,
+			collectorPidFileMountRO,
+		}
 	}
 
-	// For now, using --checkFrequency is not compatible with the GKE AP allow lists.
-	if !config.IsGkeAutopilot {
-		checkFrequency := "--frequency=5s"
-		if config.AutoNamespaceMonitoringEnabled {
-			// With AutoNamespaceMonitoringEnabled, a lot of namespaces are sometimes added en-masse (for example when the
-			// namespace watch starts). We do not want to churn the collector pipelines over and over.
-			checkFrequency = "--frequency=60s"
-		}
-		reloaderArgs = append(reloaderArgs, checkFrequency)
+	checkFrequency := "--frequency=5s"
+	if config.AutoNamespaceMonitoringEnabled {
+		// With AutoNamespaceMonitoringEnabled, a lot of namespaces are sometimes added en-masse (for example when the
+		// namespace watch starts). We do not want to churn the collector pipelines over and over.
+		checkFrequency = "--frequency=60s"
 	}
+	reloaderArgs = append(reloaderArgs, checkFrequency)
 
 	if config.CompressConfigMap {
 		reloaderArgs = append(reloaderArgs, collectorConfigCompressedFilePath)
@@ -1497,17 +1518,6 @@ func assembleCollectorDeploymentVolumes(
 	pidFileVolumeSizeLimit := resource.MustParse("1M")
 	volumes := []corev1.Volume{
 		{
-			Name: configMapVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: DeploymentCollectorConfigConfigMapName(config.NamePrefix),
-					},
-					Items: configMapItems,
-				},
-			},
-		},
-		{
 			Name: pidFileVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{
@@ -1516,15 +1526,44 @@ func assembleCollectorDeploymentVolumes(
 			},
 		},
 	}
-	if config.CompressConfigMap {
-		volumes = append(volumes, corev1.Volume{
-			Name: collectorConfigDecompressedVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{
-					SizeLimit: new(resource.MustParse(collectorConfigDecompressedVolumeSizeLimit)),
+
+	if !config.CompressConfigMap {
+		volumes = append(
+			volumes,
+			corev1.Volume{
+				Name: collectorConfigMapVolumeNamePlainText,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: DeploymentCollectorConfigConfigMapName(config.NamePrefix),
+						},
+						Items: configMapItems,
+					},
 				},
 			},
-		})
+		)
+	} else {
+		volumes = append(
+			volumes,
+			corev1.Volume{
+				Name: collectorConfigMapCompressedVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: DeploymentCollectorConfigConfigMapName(config.NamePrefix),
+						},
+						Items: configMapItems,
+					},
+				},
+			},
+			corev1.Volume{
+				Name: collectorConfigMapDecompressedVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{
+						SizeLimit: new(resource.MustParse(collectorConfigMapDecompressedVolumeSizeLimit)),
+					},
+				},
+			})
 	}
 	return volumes
 }
