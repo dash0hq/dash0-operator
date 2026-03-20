@@ -136,6 +136,24 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.certManager.useCertManager is set to true, but you did not provide any annotations in operator.certManager.certManagerAnnotations. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager."
 
+  - it: should reject negative sendBatchSize
+    set:
+      operator:
+        collectors:
+          sendBatchSize: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.sendBatchSize must not be negative."
+
+  - it: should reject negative sendBatchMaxSize
+    set:
+      operator:
+        collectors:
+          sendBatchMaxSize: -1
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.sendBatchMaxSize must not be negative."
+
   - it: should reject sendBatchMaxSize less than 8192 when sendBatchSize is not set
     set:
       operator:
@@ -176,6 +194,18 @@ tests:
         collectors:
           sendBatchSize: 1000
           sendBatchMaxSize: 1000
+    asserts:
+      - isNotNullOrEmpty:
+          path: spec.template.spec.containers[0]
+
+  - it: should accept sendBatchSize without sendBatchMaxSize
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        collectors:
+          sendBatchSize: 4096
     asserts:
       - isNotNullOrEmpty:
           path: spec.template.spec.containers[0]

@@ -685,7 +685,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	if isSet {
 		converted, err := strconv.Atoi(sendBatchSizeRaw)
 		if err != nil {
-			logger.Error(err, "Ignoring invalid value for %s: %s", sendBatchSizeEnvVarName, sendBatchSizeRaw)
+			logger.Error(err, fmt.Sprintf("Ignoring invalid value for %s: %s", sendBatchSizeEnvVarName, sendBatchSizeRaw))
 		} else {
 			sendBatchSize = ptr.To(uint32(converted))
 		}
@@ -696,7 +696,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	if isSet {
 		converted, err := strconv.Atoi(sendBatchMaxSizeRaw)
 		if err != nil {
-			logger.Error(err, "Ignoring invalid value for %s: %s", sendBatchMaxSizeEnvVarName, sendBatchMaxSizeRaw)
+			logger.Error(err, fmt.Sprintf("Ignoring invalid value for %s: %s", sendBatchMaxSizeEnvVarName, sendBatchMaxSizeRaw))
 		} else {
 			sendBatchMaxSize = ptr.To(uint32(converted))
 		}

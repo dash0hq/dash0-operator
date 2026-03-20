@@ -240,6 +240,12 @@ spec:
         {{- end }}
         {{- $sendBatchSize := int (.Values.operator.collectors.sendBatchSize | default 0) }}
         {{- $sendBatchMaxSize := int (.Values.operator.collectors.sendBatchMaxSize | default 0) }}
+        {{- if lt $sendBatchSize 0 }}
+        {{- fail "Error: operator.collectors.sendBatchSize must not be negative." -}}
+        {{- end }}
+        {{- if lt $sendBatchMaxSize 0 }}
+        {{- fail "Error: operator.collectors.sendBatchMaxSize must not be negative." -}}
+        {{- end }}
         {{- if and (eq $sendBatchSize 0) (gt $sendBatchMaxSize 0) (lt $sendBatchMaxSize 8192) }}
         {{- fail "Error: operator.collectors.sendBatchMaxSize must be at least 8192 (the default value of sendBatchSize) when sendBatchSize is not set explicitly." -}}
         {{- end }}
