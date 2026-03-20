@@ -442,9 +442,16 @@ operator:
     # This setting produces a large amount of logs and is not suitable for extended production use.
     debugVerbosityDetailed: false
 
+    # If set to a value > 0, the send_batch_size parameter will be set for the batch processor of the collectors
+    # managed by the operator, otherwise it uses the processor's default (8192)
+    # (see https://github.com/open-telemetry/opentelemetry-collector/blob/main/processor/batchprocessor/README.md).
+    # There is usually no need to configure this.
+    sendBatchSize: 0
+
     # If set to a value > 0, the send_batch_max_size parameter will be set for the batch processor of the collectors
     # managed by the operator. There is usually no need to configure this. The value must be greater than or equal to
-    # 8192, which is the default value for send_batch_size.
+    # sendBatchSize, which defaults to 8192. If you need to use a smaller number, make sure to set both sendBatchSize
+    # and sendBatchMaxSize
     sendBatchMaxSize: 0
 
     # Disables the replicaset informer for the k8s_attributes processor. This will lead to not collecting the resource

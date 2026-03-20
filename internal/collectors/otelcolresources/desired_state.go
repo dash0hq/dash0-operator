@@ -36,6 +36,7 @@ type oTelColConfig struct {
 	NamePrefix                                       string
 	Exporters                                        otlpExporters
 	AllMonitoringResources                           []dash0v1beta1.Dash0Monitoring
+	SendBatchSize                                    *uint32
 	SendBatchMaxSize                                 *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
