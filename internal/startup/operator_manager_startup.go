@@ -78,6 +78,7 @@ type environmentVariables struct {
 	nodeIp                                      string
 	nodeName                                    string
 	podIp                                       string
+	sendBatchSize                               *uint32
 	sendBatchMaxSize                            *uint32
 	disableReplicasetInformer                   bool
 	instrumentationDebug                        bool
@@ -149,6 +150,7 @@ const (
 	enablePythonAutoInstrumentationEnvVarName = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
 	disableCollectorResourceWatchesEnvVarName = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName          = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
+	sendBatchSizeEnvVarName                   = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
 	sendBatchMaxSizeEnvVarName                = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 	disableReplicasetInformerEnvVarName       = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
 	enablePprofExtensionEnvVarName            = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
@@ -678,12 +680,23 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	disableCollectorResourceWatchesRaw, isSet := os.LookupEnv(disableCollectorResourceWatchesEnvVarName)
 	disableCollectorResourceWatches := isSet && strings.ToLower(disableCollectorResourceWatchesRaw) == envVarValueTrue
 
+	var sendBatchSize *uint32
+	sendBatchSizeRaw, isSet := os.LookupEnv(sendBatchSizeEnvVarName)
+	if isSet {
+		converted, err := strconv.Atoi(sendBatchSizeRaw)
+		if err != nil {
+			logger.Error(err, fmt.Sprintf("Ignoring invalid value for %s: %s", sendBatchSizeEnvVarName, sendBatchSizeRaw))
+		} else {
+			sendBatchSize = ptr.To(uint32(converted))
+		}
+	}
+
 	var sendBatchMaxSize *uint32
 	sendBatchMaxSizeRaw, isSet := os.LookupEnv(sendBatchMaxSizeEnvVarName)
 	if isSet {
 		converted, err := strconv.Atoi(sendBatchMaxSizeRaw)
 		if err != nil {
-			logger.Error(err, "Ignoring invalid value for %s: %s", sendBatchMaxSizeEnvVarName, sendBatchMaxSizeRaw)
+			logger.Error(err, fmt.Sprintf("Ignoring invalid value for %s: %s", sendBatchMaxSizeEnvVarName, sendBatchMaxSizeRaw))
 		} else {
 			sendBatchMaxSize = ptr.To(uint32(converted))
 		}
@@ -720,6 +733,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		nodeIp:                          nodeIp,
 		nodeName:                        nodeName,
 		podIp:                           podIp,
+		sendBatchSize:                   sendBatchSize,
 		sendBatchMaxSize:                sendBatchMaxSize,
 		disableReplicasetInformer:       disableReplicasetInformer,
 		instrumentationDebug:            instrumentationDebug,
@@ -1061,6 +1075,7 @@ func startDash0Controllers(
 		OperatorNamespace:         envVars.operatorNamespace,
 		OTelCollectorNamePrefix:   envVars.oTelCollectorNamePrefix,
 		TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
+		SendBatchSize:             envVars.sendBatchSize,
 		SendBatchMaxSize:          envVars.sendBatchMaxSize,
 		DisableReplicasetInformer: envVars.disableReplicasetInformer,
 		NodeIp:                    envVars.nodeIp,

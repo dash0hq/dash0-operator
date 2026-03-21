@@ -238,7 +238,25 @@ spec:
         - name: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
           value: {{ .Values.operator.collectors.debugVerbosityDetailed | toString | quote }}
         {{- end }}
-        {{- if gt (int (.Values.operator.collectors.sendBatchMaxSize | default 0)) 0 }}
+        {{- $sendBatchSize := int (.Values.operator.collectors.sendBatchSize | default 0) }}
+        {{- $sendBatchMaxSize := int (.Values.operator.collectors.sendBatchMaxSize | default 0) }}
+        {{- if lt $sendBatchSize 0 }}
+        {{- fail "Error: operator.collectors.sendBatchSize must not be negative." -}}
+        {{- end }}
+        {{- if lt $sendBatchMaxSize 0 }}
+        {{- fail "Error: operator.collectors.sendBatchMaxSize must not be negative." -}}
+        {{- end }}
+        {{- if and (eq $sendBatchSize 0) (gt $sendBatchMaxSize 0) (lt $sendBatchMaxSize 8192) }}
+        {{- fail "Error: operator.collectors.sendBatchMaxSize must be at least 8192 (the default value of sendBatchSize) when sendBatchSize is not set explicitly." -}}
+        {{- end }}
+        {{- if and (gt $sendBatchSize 0) (gt $sendBatchMaxSize 0) (lt $sendBatchMaxSize $sendBatchSize) }}
+        {{- fail "Error: operator.collectors.sendBatchMaxSize must be greater than or equal to operator.collectors.sendBatchSize." -}}
+        {{- end }}
+        {{- if gt $sendBatchSize 0 }}
+        - name: OTEL_COLLECTOR_SEND_BATCH_SIZE
+          value: {{ .Values.operator.collectors.sendBatchSize | quote }}
+        {{- end }}
+        {{- if gt $sendBatchMaxSize 0 }}
         - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
           value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
         {{- end }}

@@ -153,6 +153,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		NamePrefix:                  m.collectorConfig.OTelCollectorNamePrefix,
 		Exporters:                   otlpExporters,
 		AllMonitoringResources:      allMonitoringResources,
+		SendBatchSize:               m.collectorConfig.SendBatchSize,
 		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
@@ -379,6 +380,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		NamePrefix:        m.collectorConfig.OTelCollectorNamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
+		SendBatchSize:               m.collectorConfig.SendBatchSize,
 		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-

@@ -75,6 +75,7 @@ type collectorConfigurationTemplateValues struct {
 	OperatorNamespace                                string
 	OperatorResourcesNamePrefix                      string
 	Exporters                                        otlpExporters
+	SendBatchSize                                    *uint32
 	SendBatchMaxSize                                 *uint32
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
@@ -232,6 +233,7 @@ func assembleCollectorConfigMap(
 			OperatorNamespace:           config.OperatorNamespace,
 			OperatorResourcesNamePrefix: config.NamePrefix,
 			Exporters:                   config.Exporters,
+			SendBatchSize:               config.SendBatchSize,
 			SendBatchMaxSize:            config.SendBatchMaxSize,
 			KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 			CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
