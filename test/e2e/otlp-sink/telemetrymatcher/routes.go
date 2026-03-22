@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pprofile"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
@@ -44,6 +45,7 @@ func (r *Routes) defineRoutes(router *gin.Engine) {
 	router.GET("/matching-logs", r.matchingLogsRouteHandler)
 	router.GET("/matching-metrics", r.matchingMetricsRouteHandler)
 	router.GET("/matching-events", r.matchingEventsRouteHandler)
+	router.GET("/matching-profiles", r.matchingProfilesRouteHandler)
 }
 
 func (r *Routes) readyCheckRouteHandler(c *gin.Context) {
@@ -328,6 +330,45 @@ func (r *Routes) matchingMetricsRouteHandler(c *gin.Context) {
 		commonParams,
 		allMatchResults,
 		"metric",
+	)
+}
+
+// matchingProfilesRouteHandler checks for matching profiles using the given query parameters of the request.
+func (r *Routes) matchingProfilesRouteHandler(c *gin.Context) {
+	commonParams, ok := readCommonQueryParams(c)
+	if !ok {
+		return
+	}
+
+	checkResourceAttributes, ok := readBooleanQueryParameter(c, shared.QueryParamCheckResourceAttributes)
+	if !ok {
+		return
+	}
+
+	var resourceMatchFn func(pprofile.ResourceProfiles, *ResourceMatchResult[pprofile.ResourceProfiles])
+	if checkResourceAttributes {
+		resourceMatchFn = profilesResourceMatcher()
+	}
+
+	allMatchResults, err := readFileAndGetMatchingProfiles(
+		r.Config.ProfilesFile,
+		resourceMatchFn,
+		matchAnyProfileMatcher(),
+		commonParams.timestampLowerBound,
+	)
+	if err != nil {
+		c.JSON(500, shared.ExpectationResult{
+			Success:     false,
+			Description: fmt.Sprintf("error: %v", err),
+		})
+		return
+	}
+
+	processMatchResults(
+		c,
+		commonParams,
+		allMatchResults,
+		"profile",
 	)
 }
 

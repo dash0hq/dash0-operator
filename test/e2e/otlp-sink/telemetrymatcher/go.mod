@@ -6,6 +6,7 @@ require (
 	github.com/dash0hq/dash0-operator/test/e2e/pkg/shared v0.0.0-00010101000000-000000000000
 	github.com/gin-gonic/gin v1.12.0
 	go.opentelemetry.io/collector/pdata v1.53.0
+	go.opentelemetry.io/collector/pdata/pprofile v0.147.0
 	go.opentelemetry.io/otel v1.42.0
 )
 

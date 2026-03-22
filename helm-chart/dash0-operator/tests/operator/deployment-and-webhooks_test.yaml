@@ -608,6 +608,9 @@ tests:
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[11]
+          value: --operator-configuration-profiling-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-dataset=test-dataset
 
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
@@ -646,6 +649,9 @@ tests:
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[11]
+          value: --operator-configuration-profiling-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-cluster-name=cluster-name
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
@@ -792,10 +798,10 @@ tests:
           labelSelector: dash0.com/custom==false
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[11]
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-auto-monitor-namespaces-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[12]
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-auto-monitor-namespaces-label-selector=dash0.com/custom==false
 
   - it: should render the "dash0.com/cert-digest" label

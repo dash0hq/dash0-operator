@@ -119,6 +119,13 @@ operator:
   # resource will be created by the Helm chart then.
   prometheusCrdSupportEnabled: false
 
+  # An opt-in for enabling profiling data pipelines. If set to true, the operator will configure its OpenTelemetry
+  # collectors to accept, process and export profiling data over OTLP.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
+  # resource will be created by the Helm chart then.
+  profilingEnabled: false
+
   # If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
   # optional. Per default, the resource attribute k8s.cluster.name will not be added.
   #

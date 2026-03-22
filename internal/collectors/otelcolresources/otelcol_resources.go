@@ -131,6 +131,12 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
 			false,
 		)
+	profilingEnabled :=
+		operatorConfigurationResource.Spec.Profiling != nil &&
+			util.ReadBoolPointerWithDefault(
+				operatorConfigurationResource.Spec.Profiling.Enabled,
+				false,
+			)
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(
@@ -180,6 +186,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:    m.collectorConfig.EnableProfExtension,
+		ProfilingEnabled:       profilingEnabled,
 		CompressConfigMap:      m.collectorConfig.CompressConfigMap,
 	}
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
