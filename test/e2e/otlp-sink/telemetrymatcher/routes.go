@@ -44,6 +44,7 @@ func (r *Routes) defineRoutes(router *gin.Engine) {
 	router.GET("/matching-logs", r.matchingLogsRouteHandler)
 	router.GET("/matching-metrics", r.matchingMetricsRouteHandler)
 	router.GET("/matching-events", r.matchingEventsRouteHandler)
+	router.GET("/matching-profiles", r.matchingProfilesRouteHandler)
 }
 
 func (r *Routes) readyCheckRouteHandler(c *gin.Context) {
@@ -328,6 +329,35 @@ func (r *Routes) matchingMetricsRouteHandler(c *gin.Context) {
 		commonParams,
 		allMatchResults,
 		"metric",
+	)
+}
+
+// matchingProfilesRouteHandler checks for matching profiles using the given query parameters of the request.
+func (r *Routes) matchingProfilesRouteHandler(c *gin.Context) {
+	commonParams, ok := readCommonQueryParams(c)
+	if !ok {
+		return
+	}
+
+	allMatchResults, err := readFileAndGetMatchingProfiles(
+		r.Config.ProfilesFile,
+		nil, // no resource matching for now
+		matchAnyProfileMatcher(),
+		commonParams.timestampLowerBound,
+	)
+	if err != nil {
+		c.JSON(500, shared.ExpectationResult{
+			Success:     false,
+			Description: fmt.Sprintf("error: %v", err),
+		})
+		return
+	}
+
+	processMatchResults(
+		c,
+		commonParams,
+		allMatchResults,
+		"profile",
 	)
 }
 
