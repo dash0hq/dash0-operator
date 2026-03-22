@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -1492,3 +1493,75 @@ func (c *DummyNamespacedApiClient) ResetCallCounts() {
 	c.removeNamespacedApiEndpointCalls = 0
 	c.setSyncEnabledCalls = 0
 }
+
+var _ = Describe("operatorConfigurationPredicate", func() {
+	p := operatorConfigurationPredicate{}
+
+	baseOperatorConfig := func() *dash0v1alpha1.Dash0OperatorConfiguration {
+		return &dash0v1alpha1.Dash0OperatorConfiguration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "test",
+				Labels:      map[string]string{"key": "value"},
+				Annotations: map[string]string{"ann": "value"},
+			},
+			Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{},
+		}
+	}
+
+	It("should return true when spec changes", func() {
+		oldObj := baseOperatorConfig()
+		newObj := baseOperatorConfig()
+		enabled := true
+		newObj.Spec.KubernetesInfrastructureMetricsCollectionEnabled = &enabled
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
+	})
+
+	It("should return true when labels change", func() {
+		oldObj := baseOperatorConfig()
+		newObj := baseOperatorConfig()
+		newObj.Labels["new-label"] = "new-value"
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
+	})
+
+	It("should return true when annotations change", func() {
+		oldObj := baseOperatorConfig()
+		newObj := baseOperatorConfig()
+		newObj.Annotations["new-ann"] = "new-value"
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
+	})
+
+	It("should return false when only status changes", func() {
+		oldObj := baseOperatorConfig()
+		newObj := baseOperatorConfig()
+		newObj.Status.Conditions = []metav1.Condition{{
+			Type:   string(dash0common.ConditionTypeAvailable),
+			Status: metav1.ConditionTrue,
+		}}
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeFalse())
+	})
+
+	It("should return true when both spec and status change", func() {
+		oldObj := baseOperatorConfig()
+		newObj := baseOperatorConfig()
+		enabled := true
+		newObj.Spec.KubernetesInfrastructureMetricsCollectionEnabled = &enabled
+		newObj.Status.Conditions = []metav1.Condition{{
+			Type:   string(dash0common.ConditionTypeAvailable),
+			Status: metav1.ConditionTrue,
+		}}
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
+	})
+
+	It("should return true when ObjectOld is nil", func() {
+		Expect(p.Update(event.UpdateEvent{ObjectOld: nil, ObjectNew: baseOperatorConfig()})).To(BeTrue())
+	})
+
+	It("should return true when ObjectNew is nil", func() {
+		Expect(p.Update(event.UpdateEvent{ObjectOld: baseOperatorConfig(), ObjectNew: nil})).To(BeTrue())
+	})
+})

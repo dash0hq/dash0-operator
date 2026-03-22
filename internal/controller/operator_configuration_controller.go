@@ -6,12 +6,15 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	otelmetric "go.opentelemetry.io/otel/metric"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
@@ -88,6 +91,7 @@ func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) err
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0OperatorConfiguration{}).
+		WithEventFilter(operatorConfigurationPredicate{}).
 		Complete(r)
 }
 
@@ -368,4 +372,30 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 		return err
 	}
 	return nil
+}
+
+// An event filter that ignores changes in the status subresource but reacts on changes to spec, labels and
+// annotations. This is necessary because we update the status subresource when reconciling the resource, and without
+// the filter this would cause another no-op reconcile request.
+type operatorConfigurationPredicate struct {
+	predicate.Funcs
+}
+
+func (p operatorConfigurationPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return true
+	}
+
+	oldObj, okOld := e.ObjectOld.(*dash0v1alpha1.Dash0OperatorConfiguration)
+	newObj, okNew := e.ObjectNew.(*dash0v1alpha1.Dash0OperatorConfiguration)
+
+	if !okOld || !okNew {
+		return true
+	}
+
+	specChanged := !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
+	labelsChanged := !reflect.DeepEqual(oldObj.Labels, newObj.Labels)
+	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
+
+	return specChanged || labelsChanged || annotationsChanged
 }

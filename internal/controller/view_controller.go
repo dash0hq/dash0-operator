@@ -504,14 +504,6 @@ type viewPredicate struct {
 	predicate.Funcs
 }
 
-func (p viewPredicate) CreateFunc(_ event.CreateEvent) bool {
-	return true
-}
-
-func (p viewPredicate) DeleteFunc(_ event.DeleteEvent) bool {
-	return true
-}
-
 func (p viewPredicate) Update(e event.UpdateEvent) bool {
 	if e.ObjectOld == nil || e.ObjectNew == nil {
 		return true
@@ -529,8 +521,4 @@ func (p viewPredicate) Update(e event.UpdateEvent) bool {
 	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
 
 	return specChanged || labelsChanged || annotationsChanged
-}
-
-func (p viewPredicate) GenericFunc(_ event.GenericEvent) bool {
-	return true
 }

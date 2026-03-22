@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -95,6 +98,7 @@ func (r *MonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1beta1.Dash0Monitoring{}).
+		WithEventFilter(monitoringPredicate{}).
 		Complete(r)
 }
 
@@ -609,4 +613,31 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 		return err
 	}
 	return nil
+}
+
+// An event filter that ignores changes in the status subresource but reacts on changes to spec, labels and
+// annotations. This is necessary because we update the status subresource when reconciling the resource, and without
+// the filter this would cause another no-op reconcile request. Additionally, third-party resource sync results are
+// written to the monitoring resource's status, which would also trigger unnecessary reconciliations.
+type monitoringPredicate struct {
+	predicate.Funcs
+}
+
+func (p monitoringPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return true
+	}
+
+	oldObj, okOld := e.ObjectOld.(*dash0v1beta1.Dash0Monitoring)
+	newObj, okNew := e.ObjectNew.(*dash0v1beta1.Dash0Monitoring)
+
+	if !okOld || !okNew {
+		return true
+	}
+
+	specChanged := !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
+	labelsChanged := !reflect.DeepEqual(oldObj.Labels, newObj.Labels)
+	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
+
+	return specChanged || labelsChanged || annotationsChanged
 }

@@ -527,14 +527,6 @@ type syntheticCheckPredicate struct {
 	predicate.Funcs
 }
 
-func (p syntheticCheckPredicate) CreateFunc(_ event.CreateEvent) bool {
-	return true
-}
-
-func (p syntheticCheckPredicate) DeleteFunc(_ event.DeleteEvent) bool {
-	return true
-}
-
 func (p syntheticCheckPredicate) Update(e event.UpdateEvent) bool {
 	if e.ObjectOld == nil || e.ObjectNew == nil {
 		return true
@@ -552,8 +544,4 @@ func (p syntheticCheckPredicate) Update(e event.UpdateEvent) bool {
 	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
 
 	return specChanged || labelsChanged || annotationsChanged
-}
-
-func (p syntheticCheckPredicate) GenericFunc(_ event.GenericEvent) bool {
-	return true
 }
