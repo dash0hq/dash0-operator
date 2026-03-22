@@ -2606,6 +2606,37 @@ trace_statements:
 			})
 		})
 	})
+
+	Context("with an existing operator deployment and profiling enabled", func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator with profiling enabled")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				images,
+				false,
+				map[string]string{
+					"operator.profilingEnabled": "true",
+				},
+			)
+			deployEbpfProfiler(operatorNamespace)
+		})
+
+		AfterAll(func() {
+			teardownEbpfProfiler(operatorNamespace)
+			undeployOperator(operatorNamespace)
+		})
+
+		Describe("profiling data collection", func() {
+			It("should collect profiles with k8s resource attributes", func() {
+				timestampLowerBound := time.Now()
+				Eventually(func(g Gomega) {
+					verifyProfiles(g, timestampLowerBound, true)
+				}, 120*time.Second, 5*time.Second).Should(Succeed())
+			})
+		})
+	})
 })
 
 type runtimeWorkloadTestConfig struct {

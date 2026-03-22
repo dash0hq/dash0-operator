@@ -165,6 +165,9 @@ func executeOperatorHelmChart(
 		arguments = setHelmParameter(arguments, "operator.clusterName", e2eKubernetesContext)
 		arguments = setHelmParameter(arguments, "operator.selfMonitoringEnabled",
 			operatorConfigurationValues.SelfMonitoringEnabled)
+		if operatorConfigurationValues.ProfilingEnabled {
+			arguments = setHelmParameter(arguments, "operator.profilingEnabled", "true")
+		}
 	}
 
 	if additionalHelmParameters != nil {
