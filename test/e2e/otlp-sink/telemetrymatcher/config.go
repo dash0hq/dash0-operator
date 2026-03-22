@@ -9,16 +9,18 @@ import (
 )
 
 const (
-	metricsFilename = "metrics.jsonl"
-	logsFilename    = "logs.jsonl"
-	tracesFilename  = "traces.jsonl"
+	metricsFilename  = "metrics.jsonl"
+	logsFilename     = "logs.jsonl"
+	tracesFilename   = "traces.jsonl"
+	profilesFilename = "profiles.jsonl"
 )
 
 type Configuration struct {
-	Port        string
-	MetricsFile string
-	LogsFile    string
-	TracesFile  string
+	Port         string
+	MetricsFile  string
+	LogsFile     string
+	TracesFile   string
+	ProfilesFile string
 }
 
 func newConfigurationFromEnvironment() Configuration {
@@ -33,9 +35,10 @@ func newConfigurationFromEnvironment() Configuration {
 	}
 
 	return Configuration{
-		Port:        port,
-		MetricsFile: path.Join(telemetryDir, metricsFilename),
-		LogsFile:    path.Join(telemetryDir, logsFilename),
-		TracesFile:  path.Join(telemetryDir, tracesFilename),
+		Port:         port,
+		MetricsFile:  path.Join(telemetryDir, metricsFilename),
+		LogsFile:     path.Join(telemetryDir, logsFilename),
+		TracesFile:   path.Join(telemetryDir, tracesFilename),
+		ProfilesFile: path.Join(telemetryDir, profilesFilename),
 	}
 }
