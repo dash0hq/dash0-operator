@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pprofile"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
@@ -339,9 +340,19 @@ func (r *Routes) matchingProfilesRouteHandler(c *gin.Context) {
 		return
 	}
 
+	checkResourceAttributes, ok := readBooleanQueryParameter(c, shared.QueryParamCheckResourceAttributes)
+	if !ok {
+		return
+	}
+
+	var resourceMatchFn func(pprofile.ResourceProfiles, *ResourceMatchResult[pprofile.ResourceProfiles])
+	if checkResourceAttributes {
+		resourceMatchFn = profilesResourceMatcher()
+	}
+
 	allMatchResults, err := readFileAndGetMatchingProfiles(
 		r.Config.ProfilesFile,
-		nil, // no resource matching for now
+		resourceMatchFn,
 		matchAnyProfileMatcher(),
 		commonParams.timestampLowerBound,
 	)

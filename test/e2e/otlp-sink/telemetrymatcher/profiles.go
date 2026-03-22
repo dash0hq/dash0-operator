@@ -115,3 +115,50 @@ func matchAnyProfileMatcher() func(
 		matchResult.addPassedAssertion("profile-exists")
 	}
 }
+
+// profilesResourceMatcher validates that profile resource attributes contain Kubernetes metadata enriched by the
+// resourcedetection and k8s_attributes processors in the operator's collector pipeline.
+func profilesResourceMatcher() func(
+	pprofile.ResourceProfiles,
+	*ResourceMatchResult[pprofile.ResourceProfiles],
+) {
+	return func(resourceProfiles pprofile.ResourceProfiles, matchResult *ResourceMatchResult[pprofile.ResourceProfiles]) {
+		resourceAttributes := resourceProfiles.Resource().Attributes()
+
+		// Added by the resourcedetection processor (k8snode detector).
+		verifyResourceAttributeExists[pprofile.ResourceProfiles](
+			resourceAttributes,
+			"k8s.node.name",
+			matchResult,
+		)
+
+		// Added by the k8s_attributes processor via pod association (from: connection).
+		verifyResourceAttributeExists[pprofile.ResourceProfiles](
+			resourceAttributes,
+			"k8s.namespace.name",
+			matchResult,
+		)
+		verifyResourceAttributeExists[pprofile.ResourceProfiles](
+			resourceAttributes,
+			"k8s.pod.name",
+			matchResult,
+		)
+		verifyResourceAttributeExists[pprofile.ResourceProfiles](
+			resourceAttributes,
+			"k8s.pod.uid",
+			matchResult,
+		)
+		verifyResourceAttributeExists[pprofile.ResourceProfiles](
+			resourceAttributes,
+			"k8s.daemonset.name",
+			matchResult,
+		)
+
+		// Added by the k8s_attributes processor: cluster-level metadata.
+		verifyResourceAttributeExists[pprofile.ResourceProfiles](
+			resourceAttributes,
+			"k8s.cluster.uid",
+			matchResult,
+		)
+	}
+}
