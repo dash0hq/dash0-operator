@@ -66,9 +66,14 @@ receivers:
   {{- end }}
 
 processors:
-{{- if .SendBatchMaxSize }}
+{{- if or .SendBatchSize .SendBatchMaxSize }}
   batch:
+    {{- if .SendBatchSize }}
+    send_batch_size: {{ .SendBatchSize }}
+    {{- end }}
+    {{- if .SendBatchMaxSize }}
     send_batch_max_size: {{ .SendBatchMaxSize }}
+    {{- end }}
 {{- else }}
   batch: {}
 {{- end }}

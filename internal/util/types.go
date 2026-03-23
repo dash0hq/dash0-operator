@@ -54,6 +54,7 @@ type CollectorConfig struct {
 	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
 	// config of the prometheus_receiver
 	TargetAllocatorNamePrefix string
+	SendBatchSize             *uint32
 	SendBatchMaxSize          *uint32
 	DisableReplicasetInformer bool
 	NodeIp                    string

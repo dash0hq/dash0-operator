@@ -1392,12 +1392,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
-	DescribeTable("should render batch processor with defaults if SendBatchMaxSize is not requested", func(cmTypeDef configMapTypeDefinition) {
+	DescribeTable("should render batch processor with defaults if no batch size settings are provided", func(cmTypeDef configMapTypeDefinition) {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         cmTestSingleDefaultOtlpExporter(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			SendBatchSize:    nil,
 			SendBatchMaxSize: nil,
 		}, monitoredNamespaces, nil, nil, false)
 
@@ -1409,13 +1410,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(batchProcessor).To(HaveLen(0))
 	}, daemonSetAndDeployment)
 
-	DescribeTable("should not set send_batch_max_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
+	DescribeTable("should set send_batch_max_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Exporters:         cmTestSingleDefaultOtlpExporter(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			SendBatchMaxSize: new(uint32(16384)),
+			SendBatchMaxSize: ptr.To(uint32(16384)),
 		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -1424,6 +1425,47 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(batchProcessorRaw).ToNot(BeNil())
 		batchProcessor := batchProcessorRaw.(map[string]any)
 		Expect(batchProcessor).To(HaveLen(1))
+		sendBatchMaxSize := ReadFromMap(batchProcessor, []string{"send_batch_max_size"})
+		Expect(sendBatchMaxSize).To(Equal(16384))
+	}, daemonSetAndDeployment)
+
+	DescribeTable("should set send_batch_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
+		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			SendBatchSize: ptr.To(uint32(4096)),
+		}, monitoredNamespaces, nil, nil, false)
+
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
+		Expect(batchProcessorRaw).ToNot(BeNil())
+		batchProcessor := batchProcessorRaw.(map[string]any)
+		Expect(batchProcessor).To(HaveLen(1))
+		sendBatchSize := ReadFromMap(batchProcessor, []string{"send_batch_size"})
+		Expect(sendBatchSize).To(Equal(4096))
+	}, daemonSetAndDeployment)
+
+	DescribeTable("should set both send_batch_size and send_batch_max_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
+		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         cmTestSingleDefaultOtlpExporter(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			SendBatchSize:    ptr.To(uint32(4096)),
+			SendBatchMaxSize: ptr.To(uint32(16384)),
+		}, monitoredNamespaces, nil, nil, false)
+
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		batchProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "batch"})
+		Expect(batchProcessorRaw).ToNot(BeNil())
+		batchProcessor := batchProcessorRaw.(map[string]any)
+		Expect(batchProcessor).To(HaveLen(2))
+		sendBatchSize := ReadFromMap(batchProcessor, []string{"send_batch_size"})
+		Expect(sendBatchSize).To(Equal(4096))
 		sendBatchMaxSize := ReadFromMap(batchProcessor, []string{"send_batch_max_size"})
 		Expect(sendBatchMaxSize).To(Equal(16384))
 	}, daemonSetAndDeployment)
