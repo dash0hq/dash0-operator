@@ -539,6 +539,30 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(findObjectByName(desiredState, ExpectedDeploymentCollectorConfigMapName)).ToNot(BeNil())
 	})
 
+	It("should add the profilesSupport feature gate to the daemonset collector args when profiling is enabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			ProfilingEnabled:                                 true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSet := findObjectByName(desiredState, ExpectedDaemonSetName)
+		Expect(daemonSet).ToNot(BeNil())
+		daemonSetPodSpec := daemonSet.(*appsv1.DaemonSet).Spec.Template.Spec
+		daemonSetCollectorContainer := daemonSetPodSpec.Containers[0]
+		Expect(daemonSetCollectorContainer.Name).To(Equal("opentelemetry-collector"))
+		Expect(daemonSetCollectorContainer.Args).To(HaveLen(3))
+		Expect(daemonSetCollectorContainer.Args[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(daemonSetCollectorContainer.Args[1]).To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
+		Expect(daemonSetCollectorContainer.Args[2]).To(Equal("--feature-gates=service.profilesSupport"))
+	})
+
 	It("should omit all resources related to the collector deployment if collecting cluster metrics is disabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

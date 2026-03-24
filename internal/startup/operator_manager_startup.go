@@ -914,6 +914,8 @@ func startOperatorManager(
 		cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 		"operator configuration prometheus crd support enabled",
 		cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
+		"operator configuration profiling enabled",
+		cliArgs.operatorConfigurationProfilingEnabled,
 		"operator configuration cluster name",
 		cliArgs.operatorConfigurationClusterName,
 		"auto-monitor namespaces enabled",

@@ -142,6 +142,14 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			logger.Info(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 			return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		}
+		if spec.Profiling != nil && util.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
+			msg := "The provided Dash0 operator configuration resource has profiling " +
+				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+				"Please either set telemetryCollection.enabled=true or " +
+				"profiling.enabled=false."
+			logger.Info(msg)
+			return admission.Denied(msg)
+		}
 	}
 
 	for _, export := range spec.Exports {

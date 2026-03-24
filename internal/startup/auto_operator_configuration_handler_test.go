@@ -709,6 +709,7 @@ var _ = Describe(
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
 						CollectPodLabelsAndAnnotationsEnabled:            true,
 						PrometheusCrdSupportEnabled:                      false,
+						ProfilingEnabled:                                 false,
 					},
 					nil,
 				)
@@ -743,6 +744,8 @@ var _ = Describe(
 						g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeTrue())
 						g.Expect(*operatorConfiguration.Spec.CollectPodLabelsAndAnnotations.Enabled).To(BeTrue())
 						g.Expect(*operatorConfiguration.Spec.PrometheusCrdSupport.Enabled).To(BeFalse())
+						g.Expect(operatorConfiguration.Spec.Profiling).ToNot(BeNil())
+						g.Expect(*operatorConfiguration.Spec.Profiling.Enabled).To(BeFalse())
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 
@@ -759,6 +762,7 @@ var _ = Describe(
 						KubernetesInfrastructureMetricsCollectionEnabled: false,
 						CollectPodLabelsAndAnnotationsEnabled:            false,
 						PrometheusCrdSupportEnabled:                      true,
+						ProfilingEnabled:                                 true,
 					},
 					nil,
 				)
@@ -794,6 +798,8 @@ var _ = Describe(
 						g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
 						g.Expect(*operatorConfiguration.Spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
 						g.Expect(*operatorConfiguration.Spec.PrometheusCrdSupport.Enabled).To(BeTrue())
+						g.Expect(operatorConfiguration.Spec.Profiling).ToNot(BeNil())
+						g.Expect(*operatorConfiguration.Spec.Profiling.Enabled).To(BeTrue())
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 			},

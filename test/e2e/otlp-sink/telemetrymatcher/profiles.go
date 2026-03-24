@@ -57,7 +57,7 @@ func readFileAndGetMatchingProfiles(
 	}
 
 	if scanner.Err() != nil {
-		return nil, fmt.Errorf("error while scanning file %s: %v", profilesJsonlFilename, err)
+		return nil, fmt.Errorf("error while scanning file %s: %v", profilesJsonlFilename, scanner.Err())
 	}
 
 	return &matchResults, nil
@@ -118,7 +118,7 @@ func matchAnyProfileMatcher() func(
 
 // profilesResourceMatcher validates that profile resource attributes contain Kubernetes metadata enriched by the
 // resourcedetection and k8s_attributes processors in the operator's collector pipeline.
-func profilesResourceMatcher() func(
+func profilesResourceMatcher(operatorNamespace string) func(
 	pprofile.ResourceProfiles,
 	*ResourceMatchResult[pprofile.ResourceProfiles],
 ) {
@@ -133,9 +133,10 @@ func profilesResourceMatcher() func(
 		)
 
 		// Added by the k8s_attributes processor via pod association (from: connection).
-		verifyResourceAttributeExists[pprofile.ResourceProfiles](
+		verifyResourceAttributeEquals[pprofile.ResourceProfiles](
 			resourceAttributes,
 			"k8s.namespace.name",
+			operatorNamespace,
 			matchResult,
 		)
 		verifyResourceAttributeExists[pprofile.ResourceProfiles](
@@ -148,9 +149,10 @@ func profilesResourceMatcher() func(
 			"k8s.pod.uid",
 			matchResult,
 		)
-		verifyResourceAttributeExists[pprofile.ResourceProfiles](
+		verifyResourceAttributeEquals[pprofile.ResourceProfiles](
 			resourceAttributes,
 			"k8s.daemonset.name",
+			"ebpf-profiler",
 			matchResult,
 		)
 

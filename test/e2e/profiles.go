@@ -177,5 +177,6 @@ func compileTelemetryMatcherUrlForProfiles(
 	params.Add(shared.QueryParamExpectationMode, string(expectationMode))
 	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixNano(), 10))
 	params.Add(shared.QueryParamCheckResourceAttributes, strconv.FormatBool(checkResourceAttributes))
+	params.Add(shared.QueryParamOperatorNamespace, operatorNamespace)
 	return baseUrl + "?" + params.Encode()
 }

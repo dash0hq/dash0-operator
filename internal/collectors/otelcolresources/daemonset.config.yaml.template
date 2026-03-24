@@ -1143,6 +1143,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        {{- /* Note: the batch processor does not support profiles yet (upstream). */}}
         - transform/resources
       exporters:
         {{- if $hasNamespacedExporters }}

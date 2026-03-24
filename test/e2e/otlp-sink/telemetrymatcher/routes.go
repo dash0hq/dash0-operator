@@ -347,7 +347,7 @@ func (r *Routes) matchingProfilesRouteHandler(c *gin.Context) {
 
 	var resourceMatchFn func(pprofile.ResourceProfiles, *ResourceMatchResult[pprofile.ResourceProfiles])
 	if checkResourceAttributes {
-		resourceMatchFn = profilesResourceMatcher()
+		resourceMatchFn = profilesResourceMatcher(commonParams.operatorNamespace)
 	}
 
 	allMatchResults, err := readFileAndGetMatchingProfiles(
