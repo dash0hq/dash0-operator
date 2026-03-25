@@ -635,6 +635,10 @@ func (p monitoringPredicate) Update(e event.UpdateEvent) bool {
 		return true
 	}
 
+	if oldObj.DeletionTimestamp == nil && newObj.DeletionTimestamp != nil {
+		return true
+	}
+
 	specChanged := !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
 	labelsChanged := !reflect.DeepEqual(oldObj.Labels, newObj.Labels)
 	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)

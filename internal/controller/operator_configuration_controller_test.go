@@ -1557,6 +1557,15 @@ var _ = Describe("operatorConfigurationPredicate", func() {
 		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
 	})
 
+	It("should return true when deletion timestamp is set", func() {
+		oldObj := baseOperatorConfig()
+		newObj := baseOperatorConfig()
+		now := metav1.Now()
+		newObj.DeletionTimestamp = &now
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
+	})
+
 	It("should return true when ObjectOld is nil", func() {
 		Expect(p.Update(event.UpdateEvent{ObjectOld: nil, ObjectNew: baseOperatorConfig()})).To(BeTrue())
 	})
