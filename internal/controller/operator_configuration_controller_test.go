@@ -1533,8 +1533,12 @@ var _ = Describe("operatorConfigurationPredicate", func() {
 		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
 	})
 
-	It("should return false when only status changes", func() {
+	It("should return false when only status changes without available becoming true", func() {
 		oldObj := baseOperatorConfig()
+		oldObj.Status.Conditions = []metav1.Condition{{
+			Type:   string(dash0common.ConditionTypeAvailable),
+			Status: metav1.ConditionTrue,
+		}}
 		newObj := baseOperatorConfig()
 		newObj.Status.Conditions = []metav1.Condition{{
 			Type:   string(dash0common.ConditionTypeAvailable),
@@ -1542,6 +1546,17 @@ var _ = Describe("operatorConfigurationPredicate", func() {
 		}}
 
 		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeFalse())
+	})
+
+	It("should return true when available condition becomes true", func() {
+		oldObj := baseOperatorConfig()
+		newObj := baseOperatorConfig()
+		newObj.Status.Conditions = []metav1.Condition{{
+			Type:   string(dash0common.ConditionTypeAvailable),
+			Status: metav1.ConditionTrue,
+		}}
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
 	})
 
 	It("should return true when both spec and status change", func() {
@@ -1553,6 +1568,15 @@ var _ = Describe("operatorConfigurationPredicate", func() {
 			Type:   string(dash0common.ConditionTypeAvailable),
 			Status: metav1.ConditionTrue,
 		}}
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
+	})
+
+	It("should return true when deletion timestamp is set", func() {
+		oldObj := baseOperatorConfig()
+		newObj := baseOperatorConfig()
+		now := metav1.Now()
+		newObj.DeletionTimestamp = &now
 
 		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
 	})

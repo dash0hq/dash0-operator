@@ -142,10 +142,10 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	if resourceDeleted {
 		logger.Info("Reconciling the deletion of the operator configuration resource", "name", req.Name)
 		r.removeAllOperatorConfigurationSettings(ctx, logger)
-		if r.reconcileOpenTelemetryCollector(ctx, logger) != nil {
+		if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
-		if r.reconcileOpenTelemetryTargetAllocator(ctx, logger) != nil {
+		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -211,11 +211,11 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 
 	r.applyApiAccessSettings(ctx, operatorConfigurationResource, logger)
 
-	if r.reconcileOpenTelemetryCollector(ctx, logger) != nil {
+	if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if r.reconcileOpenTelemetryTargetAllocator(ctx, logger) != nil {
+	if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -377,6 +377,11 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 // An event filter that ignores changes in the status subresource but reacts on changes to spec, labels and
 // annotations. This is necessary because we update the status subresource when reconciling the resource, and without
 // the filter this would cause another no-op reconcile request.
+//
+// We also allow the transition of the Available condition to True to trigger a reconcile. This is needed because
+// reconcileOpenTelemetryCollector uses amendDeploymentAndDaemonSetWithSelfReferenceUIDs, which can only set the
+// DaemonSet/Deployment UID env var on the second reconcile (after the resource has been created). Without this, the
+// UID-setting reconcile would be deferred until an unrelated spec change triggers a reconcile.
 type operatorConfigurationPredicate struct {
 	predicate.Funcs
 }
@@ -393,9 +398,14 @@ func (p operatorConfigurationPredicate) Update(e event.UpdateEvent) bool {
 		return true
 	}
 
+	if oldObj.DeletionTimestamp == nil && newObj.DeletionTimestamp != nil {
+		return true
+	}
+
 	specChanged := !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
 	labelsChanged := !reflect.DeepEqual(oldObj.Labels, newObj.Labels)
 	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
+	availableBecameTrue := util.AvailableConditionBecameTrue(oldObj.Status.Conditions, newObj.Status.Conditions)
 
-	return specChanged || labelsChanged || annotationsChanged
+	return specChanged || labelsChanged || annotationsChanged || availableBecameTrue
 }
