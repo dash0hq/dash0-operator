@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ebpf-profiler-config
-  namespace: operator-namespace
+  namespace: ${OPERATOR_NAMESPACE}
 data:
   config.yaml: |
     receivers:
@@ -10,7 +10,7 @@ data:
 
     exporters:
       otlp/collector:
-        endpoint: dash0-operator-opentelemetry-collector-service.operator-namespace.svc.cluster.local:4317
+        endpoint: dash0-operator-opentelemetry-collector-service.${OPERATOR_NAMESPACE}.svc.cluster.local:4317
         tls:
           insecure: true
       debug:
@@ -29,9 +29,10 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: ebpf-profiler
-  namespace: operator-namespace
+  namespace: ${OPERATOR_NAMESPACE}
   labels:
     app: ebpf-profiler
+    dash0.com/enable: "false"
 spec:
   selector:
     matchLabels:
@@ -40,6 +41,7 @@ spec:
     metadata:
       labels:
         app: ebpf-profiler
+        dash0.com/enable: "false"
     spec:
       hostPID: true
       containers:
@@ -49,7 +51,12 @@ spec:
             - --config=file:/etc/otelcol/config.yaml
             - --feature-gates=service.profilesSupport
           securityContext:
-            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+                - SYS_PTRACE
+                - SYS_RESOURCE
+                - SYSLOG
           volumeMounts:
             - name: config
               mountPath: /etc/otelcol

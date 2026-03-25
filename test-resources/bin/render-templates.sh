@@ -182,3 +182,10 @@ cat \
   TARGET_NAMESPACE="$target_namespace" \
   envsubst > \
   test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml
+
+# shellcheck disable=SC2002
+cat \
+  test-resources/ebpf-profiler/daemonset.yaml.template | \
+  OPERATOR_NAMESPACE="$operator_namespace" \
+  envsubst > \
+  test-resources/ebpf-profiler/daemonset.yaml

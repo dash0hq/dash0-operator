@@ -977,6 +977,13 @@ deploy_cadvisor_scrapeconfig() {
   finish_step
 }
 
+deploy_ebpf_profiler() {
+  echo "STEP $step_counter: deploy the eBPF profiler DaemonSet to namespace ${operator_namespace}"
+  kubectl apply -f test-resources/ebpf-profiler/daemonset.yaml
+  kubectl rollout status daemonset/ebpf-profiler --namespace "$operator_namespace" --timeout=120s
+  finish_step
+}
+
 deploy_dash0_api_sync_resources() {
   if [[ "${DEPLOY_SYNTHETIC_CHECK:-}" = "true" ]]; then
     echo "STEP $step_counter: deploy a Dash0 synthetic check resource to namespace ${target_namespace}"

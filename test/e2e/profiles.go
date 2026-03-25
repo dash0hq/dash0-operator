@@ -81,7 +81,12 @@ spec:
             - --config=file:/etc/otelcol/config.yaml
             - --feature-gates=service.profilesSupport
           securityContext:
-            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+                - SYS_PTRACE
+                - SYS_RESOURCE
+                - SYSLOG
           volumeMounts:
             - name: config
               mountPath: /etc/otelcol
