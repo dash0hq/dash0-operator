@@ -377,6 +377,11 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 // An event filter that ignores changes in the status subresource but reacts on changes to spec, labels and
 // annotations. This is necessary because we update the status subresource when reconciling the resource, and without
 // the filter this would cause another no-op reconcile request.
+//
+// We also allow the transition of the Available condition to True to trigger a reconcile. This is needed because
+// reconcileOpenTelemetryCollector uses amendDeploymentAndDaemonSetWithSelfReferenceUIDs, which can only set the
+// DaemonSet/Deployment UID env var on the second reconcile (after the resource has been created). Without this, the
+// UID-setting reconcile would be deferred until an unrelated spec change triggers a reconcile.
 type operatorConfigurationPredicate struct {
 	predicate.Funcs
 }
@@ -400,6 +405,7 @@ func (p operatorConfigurationPredicate) Update(e event.UpdateEvent) bool {
 	specChanged := !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
 	labelsChanged := !reflect.DeepEqual(oldObj.Labels, newObj.Labels)
 	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
+	availableBecameTrue := util.AvailableConditionBecameTrue(oldObj.Status.Conditions, newObj.Status.Conditions)
 
-	return specChanged || labelsChanged || annotationsChanged
+	return specChanged || labelsChanged || annotationsChanged || availableBecameTrue
 }

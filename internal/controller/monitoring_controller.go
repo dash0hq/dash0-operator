@@ -14,7 +14,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	otelmetric "go.opentelemetry.io/otel/metric"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -649,15 +648,7 @@ func (p monitoringPredicate) Update(e event.UpdateEvent) bool {
 	specChanged := !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
 	labelsChanged := !reflect.DeepEqual(oldObj.Labels, newObj.Labels)
 	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
-	availableBecameTrue := availableConditionBecameTrue(oldObj.Status.Conditions, newObj.Status.Conditions)
+	availableBecameTrue := util.AvailableConditionBecameTrue(oldObj.Status.Conditions, newObj.Status.Conditions)
 
 	return specChanged || labelsChanged || annotationsChanged || availableBecameTrue
-}
-
-func availableConditionBecameTrue(oldConditions []metav1.Condition, newConditions []metav1.Condition) bool {
-	oldAvailable := meta.FindStatusCondition(oldConditions, string(dash0common.ConditionTypeAvailable))
-	newAvailable := meta.FindStatusCondition(newConditions, string(dash0common.ConditionTypeAvailable))
-	wasTrue := oldAvailable != nil && oldAvailable.Status == metav1.ConditionTrue
-	isTrue := newAvailable != nil && newAvailable.Status == metav1.ConditionTrue
-	return !wasTrue && isTrue
 }

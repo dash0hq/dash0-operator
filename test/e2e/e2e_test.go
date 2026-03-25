@@ -1772,32 +1772,6 @@ trace_statements:
 					operatorNamespace,
 				)
 
-				By("waiting for the collector rollouts to complete")
-				Eventually(func(g Gomega) {
-					g.Expect(runAndIgnoreOutput(
-						exec.Command("kubectl",
-							"rollout",
-							"status",
-							"daemonset",
-							collectorDaemonSetName,
-							"--namespace",
-							operatorNamespace,
-							"--timeout",
-							"20s",
-						))).To(Succeed())
-					g.Expect(runAndIgnoreOutput(
-						exec.Command("kubectl",
-							"rollout",
-							"status",
-							"deployment",
-							collectorDeploymentName,
-							"--namespace",
-							operatorNamespace,
-							"--timeout",
-							"20s",
-						))).To(Succeed())
-				}, 60*time.Second, time.Second).Should(Succeed())
-
 				By("waiting for the collectors to be ready")
 				var firstDaemonSetCollectorReadyTimeStamp time.Time
 				var firstDeploymentCollectorReadyTimeStamp time.Time
