@@ -85,6 +85,17 @@ updates:
       - dependency-name: "golang"
         update-types: ["version-update:semver-minor"]
 
+  - package-ecosystem: "helm"
+    directories:
+      - "/test/e2e/otlp-sink/helm-chart"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    groups:
+      development-dependencies:
+        dependency-type: "development"
+
   - package-ecosystem: "gomod"
     directories:
       - "test/e2e/dash0-api-mock"
