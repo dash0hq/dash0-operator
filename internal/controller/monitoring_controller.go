@@ -14,6 +14,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -215,10 +216,10 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// resources.VerifyThatUniqueNonDegradedResourceExists check, due to checkResourceResult.ResourceDoesNotExist
 		// being true. We still want to handle this case correctly for good measure (reconcile the otel collector, then
 		// stop the reconcile of the monitoring resource).
-		if r.reconcileOpenTelemetryCollector(ctx, logger) != nil {
+		if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
-		if r.reconcileOpenTelemetryTargetAllocator(ctx, logger) != nil {
+		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 		// The Dash0 monitoring resource is slated for deletion, the finalizer has already been removed in the last
@@ -253,11 +254,11 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	r.applyApiAccessSettings(ctx, monitoringResource, logger)
 
-	if r.reconcileOpenTelemetryCollector(ctx, logger) != nil {
+	if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if r.reconcileOpenTelemetryTargetAllocator(ctx, logger) != nil {
+	if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -619,6 +620,12 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 // annotations. This is necessary because we update the status subresource when reconciling the resource, and without
 // the filter this would cause another no-op reconcile request. Additionally, third-party resource sync results are
 // written to the monitoring resource's status, which would also trigger unnecessary reconciliations.
+//
+// We also allow the transition of the Available condition to True to trigger a reconcile. This is needed because
+// reconcileOpenTelemetryCollector uses findAllMonitoringResources, which reads from the informer cache and filters by
+// Available=True. Due to cache lag, the first reconcile (triggered by the Create event) may run
+// reconcileOpenTelemetryCollector before the cache reflects the Available=True status that was just written. Allowing
+// this specific status transition ensures a second reconcile occurs after the cache has caught up.
 type monitoringPredicate struct {
 	predicate.Funcs
 }
@@ -642,6 +649,15 @@ func (p monitoringPredicate) Update(e event.UpdateEvent) bool {
 	specChanged := !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
 	labelsChanged := !reflect.DeepEqual(oldObj.Labels, newObj.Labels)
 	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
+	availableBecameTrue := availableConditionBecameTrue(oldObj.Status.Conditions, newObj.Status.Conditions)
 
-	return specChanged || labelsChanged || annotationsChanged
+	return specChanged || labelsChanged || annotationsChanged || availableBecameTrue
+}
+
+func availableConditionBecameTrue(oldConditions []metav1.Condition, newConditions []metav1.Condition) bool {
+	oldAvailable := meta.FindStatusCondition(oldConditions, string(dash0common.ConditionTypeAvailable))
+	newAvailable := meta.FindStatusCondition(newConditions, string(dash0common.ConditionTypeAvailable))
+	wasTrue := oldAvailable != nil && oldAvailable.Status == metav1.ConditionTrue
+	isTrue := newAvailable != nil && newAvailable.Status == metav1.ConditionTrue
+	return !wasTrue && isTrue
 }

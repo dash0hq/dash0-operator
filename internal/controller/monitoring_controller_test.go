@@ -2469,12 +2469,42 @@ var _ = Describe("monitoringPredicate", func() {
 		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
 	})
 
-	It("should return false when only status changes", func() {
+	It("should return true when the Available condition transitions to True", func() {
 		oldObj := baseMonitoring()
 		newObj := baseMonitoring()
 		newObj.Status.Conditions = []metav1.Condition{{
 			Type:   string(dash0common.ConditionTypeAvailable),
 			Status: metav1.ConditionTrue,
+		}}
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
+	})
+
+	It("should return false when Available condition was already True", func() {
+		oldObj := baseMonitoring()
+		oldObj.Status.Conditions = []metav1.Condition{{
+			Type:   string(dash0common.ConditionTypeAvailable),
+			Status: metav1.ConditionTrue,
+		}}
+		newObj := baseMonitoring()
+		newObj.Status.Conditions = []metav1.Condition{{
+			Type:   string(dash0common.ConditionTypeAvailable),
+			Status: metav1.ConditionTrue,
+		}}
+
+		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeFalse())
+	})
+
+	It("should return false when Available condition transitions from True to non-True", func() {
+		oldObj := baseMonitoring()
+		oldObj.Status.Conditions = []metav1.Condition{{
+			Type:   string(dash0common.ConditionTypeAvailable),
+			Status: metav1.ConditionTrue,
+		}}
+		newObj := baseMonitoring()
+		newObj.Status.Conditions = []metav1.Condition{{
+			Type:   string(dash0common.ConditionTypeAvailable),
+			Status: metav1.ConditionUnknown,
 		}}
 
 		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeFalse())
