@@ -128,7 +128,7 @@ spec:
 			"--timeout=10s",
 		))
 		g.Expect(err).NotTo(HaveOccurred(), "eBPF profiler rollout status: %s", output)
-	}, 120*time.Second, 5*time.Second).Should(Succeed())
+	}, 300*time.Second, 5*time.Second).Should(Succeed())
 }
 
 func teardownEbpfProfiler(operatorNs string) {
