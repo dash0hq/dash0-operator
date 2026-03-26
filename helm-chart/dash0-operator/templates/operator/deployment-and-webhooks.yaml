@@ -260,9 +260,15 @@ spec:
         - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
           value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
         {{- end }}
-        {{- if .Values.operator.collectors.disableReplicasetInformer }}
+        {{- if or .Values.operator.collectors.k8s_attributes.disableReplicasetInformer .Values.operator.collectors.disableReplicasetInformer }}
         - name: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
-          value: {{ .Values.operator.collectors.disableReplicasetInformer | toString | quote }}
+          value: {{ or .Values.operator.collectors.k8s_attributes.disableReplicasetInformer .Values.operator.collectors.disableReplicasetInformer | toString | quote }}
+        {{- end }}
+        {{- if .Values.operator.collectors.k8s_attributes.wait_for_metadata }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
+          value: {{ .Values.operator.collectors.k8s_attributes.wait_for_metadata | toString | quote }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
+          value: {{ .Values.operator.collectors.k8s_attributes.wait_for_metadata_timeout | toString | quote }}
         {{- end }}
         {{- if .Values.operator.collectors.enablePprofExtension }}
         - name: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION

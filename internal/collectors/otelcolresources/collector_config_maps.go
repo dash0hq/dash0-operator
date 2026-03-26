@@ -80,7 +80,9 @@ type collectorConfigurationTemplateValues struct {
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
-	DisableReplicasetInformer                        bool
+	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesWaitForMetadata                     bool
+	K8sAttributesWaitForMetadataTimeout              string
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorAppKubernetesIoInstance           string
 	TargetAllocatorAppKubernetesIoName               string
@@ -238,7 +240,9 @@ func assembleCollectorConfigMap(
 			KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 			CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
-			DisableReplicasetInformer:                        config.DisableReplicasetInformer,
+			K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
+			K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
+			K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
 			PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,
 			TargetAllocatorAppKubernetesIoName:               taresources.AppKubernetesIoNameValue,
 			TargetAllocatorAppKubernetesIoInstance:           taresources.AppKubernetesIoInstanceValue,

@@ -454,11 +454,6 @@ operator:
     # and sendBatchMaxSize.
     sendBatchMaxSize: 0
 
-    # Disables the replicaset informer for the k8s_attributes processor. This will lead to not collecting the resource
-    # attribute k8s.deployment.uid, and might lead to wrong values k8s.deployment.name in some edge cases.
-    # The default is false, do not override this unless explicitly instructed by Dash0 support.
-    disableReplicasetInformer: false
-
     # If set to true, instrumented workloads will be instructed to use the service URL of the OpenTelemetry collector
     # DaemonSet, instead of sending telemetry via a node-local route to the node's IP address and the collector's host
     # port. This can be useful if you employ mechanisms that block host ports, like certain Istio configurations.
@@ -712,6 +707,30 @@ operator:
         periodSeconds: 2
         timeoutSeconds: 1
         failureThreshold: 30
+
+    # Settings for the k8s_attributes processor in the Dash0 operator collectors:
+    k8s_attributes:
+
+      # Disables the replicaset informer for the k8s_attributes processor. This will lead to not collecting the resource
+      # attribute k8s.deployment.uid, and might lead to wrong values k8s.deployment.name in some edge cases.
+      # The default is false, do not override this unless explicitly instructed by Dash0 support.
+      disableReplicasetInformer: false
+
+      # By default, the k8s_attributes processor will not wait until Kubernetes metadata has been fetched from the
+      # Kubernetes API. Telemetry which is collected before the Kubernetes metadata has been synchronized will not be
+      # enriched. That is, the first few spans, log records and metric data points will have less resource attributes
+      # than telemetry produced after the k8s_attributes has fetched all necessary data. For most use cases, this is
+      # not an issue at all, as the Dash0 backend backfills missing resource attributes later on.
+      #
+      # To wait for the metadata to be synchronized before the k8s_attributes processor is ready, set the
+      # wait_for_metadata option to true. Then the processor will not be ready until the metadata is fully synchronized.
+      # This also means that the start-up of the collectors will be *blocked*. If the metadata cannot be synchronized
+      # with in the configured timeout, the collectors will fail to start.
+      #
+      # See also:
+      # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/k8sattributesprocessor#configuration.
+      wait_for_metadata: false
+      wait_for_metadata_timeout: 15s
 
   # Settings related to the target-allocator managed by the operator.
   targetAllocator:

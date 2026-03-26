@@ -80,7 +80,9 @@ type environmentVariables struct {
 	podIp                                       string
 	sendBatchSize                               *uint32
 	sendBatchMaxSize                            *uint32
-	disableReplicasetInformer                   bool
+	k8sAttributesDisableReplicasetInformer      bool
+	k8sAttributesWaitForMetadata                bool
+	k8sAttributesWaitForMetadataTimeout         string
 	instrumentationDebug                        bool
 	enablePythonAutoInstrumentation             bool
 	debugVerbosityDetailed                      bool
@@ -144,17 +146,19 @@ const (
 	oTelCollectorServiceBaseUrlPattern   = "http://%s-opentelemetry-collector-service.%s.svc.cluster.local:4318"
 	oTelCollectorNodeLocalBaseUrlPattern = "http://$(%s):%d"
 
-	developmentModeEnvVarName                 = "DASH0_DEVELOPMENT_MODE"
-	pprofPortEnvVarName                       = "DASH0_PPROF_PORT"
-	instrumentationDebugEnvVarName            = "DASH0_INSTRUMENTATION_DEBUG"
-	enablePythonAutoInstrumentationEnvVarName = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
-	disableCollectorResourceWatchesEnvVarName = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
-	debugVerbosityDetailedEnvVarName          = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
-	sendBatchSizeEnvVarName                   = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
-	sendBatchMaxSizeEnvVarName                = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
-	disableReplicasetInformerEnvVarName       = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
-	enablePprofExtensionEnvVarName            = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
-	compressConfigMapsEnvVarName              = "OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS"
+	developmentModeEnvVarName                        = "DASH0_DEVELOPMENT_MODE"
+	pprofPortEnvVarName                              = "DASH0_PPROF_PORT"
+	instrumentationDebugEnvVarName                   = "DASH0_INSTRUMENTATION_DEBUG"
+	enablePythonAutoInstrumentationEnvVarName        = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
+	disableCollectorResourceWatchesEnvVarName        = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
+	debugVerbosityDetailedEnvVarName                 = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
+	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
+	sendBatchMaxSizeEnvVarName                       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
+	k8sAttributesDisableReplicasetInformerEnvVarName = "OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER"
+	k8sAttributesWaitForMetadataEnvVarName           = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA"
+	k8sAttributesWaitForMetadataTimeoutEnvVarName    = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT"
+	enablePprofExtensionEnvVarName                   = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
+	compressConfigMapsEnvVarName                     = "OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS"
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
@@ -702,8 +706,13 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		}
 	}
 
-	disableReplicasetInformerRaw, isSet := os.LookupEnv(disableReplicasetInformerEnvVarName)
-	disableReplicasetInformer := isSet && strings.ToLower(disableReplicasetInformerRaw) == envVarValueTrue
+	k8sAttributesDisableReplicasetInformerRaw, isSet := os.LookupEnv(k8sAttributesDisableReplicasetInformerEnvVarName)
+	k8sAttributesDisableReplicasetInformer :=
+		isSet && strings.ToLower(k8sAttributesDisableReplicasetInformerRaw) == envVarValueTrue
+
+	k8sAttributesWaitForMetadataRaw, isSet := os.LookupEnv(k8sAttributesWaitForMetadataEnvVarName)
+	k8sAttributesWaitForMetadata := isSet && strings.ToLower(k8sAttributesWaitForMetadataRaw) == envVarValueTrue
+	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
 
 	enablePprofExtensionRaw, isSet := os.LookupEnv(enablePprofExtensionEnvVarName)
 	enablePprofExtension := isSet && strings.ToLower(enablePprofExtensionRaw) == envVarValueTrue
@@ -730,18 +739,20 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		filelogOffsetSyncImagePullPolicy:            filelogOffsetSyncImagePullPolicy,
 		filelogOffsetVolumeOwnershipImage:           filelogOffsetVolumeOwnershipImage,
 		filelogOffsetVolumeOwnershipImagePullPolicy: filelogOffsetVolumeOwnershipImagePullPolicy,
-		nodeIp:                          nodeIp,
-		nodeName:                        nodeName,
-		podIp:                           podIp,
-		sendBatchSize:                   sendBatchSize,
-		sendBatchMaxSize:                sendBatchMaxSize,
-		disableReplicasetInformer:       disableReplicasetInformer,
-		instrumentationDebug:            instrumentationDebug,
-		enablePythonAutoInstrumentation: enablePythonAutoInstrumentation,
-		debugVerbosityDetailed:          debugVerbosityDetailed,
-		disableCollectorResourceWatches: disableCollectorResourceWatches,
-		enablePprofExtension:            enablePprofExtension,
-		compressConfigMaps:              compressConfigMaps,
+		nodeIp:                                 nodeIp,
+		nodeName:                               nodeName,
+		podIp:                                  podIp,
+		sendBatchSize:                          sendBatchSize,
+		sendBatchMaxSize:                       sendBatchMaxSize,
+		k8sAttributesDisableReplicasetInformer: k8sAttributesDisableReplicasetInformer,
+		k8sAttributesWaitForMetadata:           k8sAttributesWaitForMetadata,
+		k8sAttributesWaitForMetadataTimeout:    k8sAttributesWaitForMetadataTimeout,
+		instrumentationDebug:                   instrumentationDebug,
+		enablePythonAutoInstrumentation:        enablePythonAutoInstrumentation,
+		debugVerbosityDetailed:                 debugVerbosityDetailed,
+		disableCollectorResourceWatches:        disableCollectorResourceWatches,
+		enablePprofExtension:                   enablePprofExtension,
+		compressConfigMaps:                     compressConfigMaps,
 	}
 
 	return nil
@@ -1071,24 +1082,26 @@ func startDash0Controllers(
 
 	pseudoClusterUid := util.ReadPseudoClusterUid(ctx, startupTasksK8sClient, setupLog)
 	collectorConfig := util.CollectorConfig{
-		Images:                    images,
-		OperatorNamespace:         envVars.operatorNamespace,
-		OTelCollectorNamePrefix:   envVars.oTelCollectorNamePrefix,
-		TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
-		SendBatchSize:             envVars.sendBatchSize,
-		SendBatchMaxSize:          envVars.sendBatchMaxSize,
-		DisableReplicasetInformer: envVars.disableReplicasetInformer,
-		NodeIp:                    envVars.nodeIp,
-		NodeName:                  envVars.nodeName,
-		PseudoClusterUid:          pseudoClusterUid,
-		IsIPv6Cluster:             isIPv6Cluster,
-		IsDocker:                  isDocker,
-		DisableHostPorts:          cliArgs.disableOpenTelemetryCollectorHostPorts,
-		IsGkeAutopilot:            cliArgs.isGkeAutopilot,
-		DevelopmentMode:           developmentMode,
-		DebugVerbosityDetailed:    envVars.debugVerbosityDetailed,
-		EnableProfExtension:       envVars.enablePprofExtension,
-		CompressConfigMap:         envVars.compressConfigMaps,
+		Images:                                 images,
+		OperatorNamespace:                      envVars.operatorNamespace,
+		OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
+		TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
+		SendBatchSize:                          envVars.sendBatchSize,
+		SendBatchMaxSize:                       envVars.sendBatchMaxSize,
+		K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
+		K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
+		K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
+		NodeIp:                                 envVars.nodeIp,
+		NodeName:                               envVars.nodeName,
+		PseudoClusterUid:                       pseudoClusterUid,
+		IsIPv6Cluster:                          isIPv6Cluster,
+		IsDocker:                               isDocker,
+		DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
+		IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
+		DevelopmentMode:                        developmentMode,
+		DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
+		EnableProfExtension:                    envVars.enablePprofExtension,
+		CompressConfigMap:                      envVars.compressConfigMaps,
 	}
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
