@@ -142,6 +142,11 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	MonitoringTemplate *MonitoringTemplate `json:"monitoringTemplate,omitempty"`
+
+	// Profiling describes the profiling configuration for the operator.
+	//
+	// +kubebuilder:validation:Optional
+	Profiling *Profiling `json:"profiling,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
@@ -269,6 +274,15 @@ type MonitoringTemplate struct {
 	// namespaces with Dash0
 	// +kubebuilder:validation:Optional
 	Spec dash0v1beta1.Dash0MonitoringSpec `json:"spec,omitempty"`
+}
+
+// Profiling describes whether the operator should configure its OpenTelemetry collectors to accept, process
+// and export profiling data. When enabled, the daemonset collector will include additional connectors, routing, and
+// pipeline definitions for the profiles signal type.
+type Profiling struct {
+	// If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
+	// This setting is optional, it defaults to `false`.
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Dash0OperatorConfigurationStatus defines the observed state of the Dash0 operator configuration resource.

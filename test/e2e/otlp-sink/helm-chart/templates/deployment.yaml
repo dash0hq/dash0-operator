@@ -25,6 +25,7 @@ spec:
           {{- end }}
           args:
           - "--config=/etc/otelcol/config/config.yaml"
+          - "--feature-gates=service.profilesSupport"
           env:
             - name: K8S_POD_IP
               valueFrom:

@@ -1048,6 +1048,105 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(defaultPipelinesLogs).To(ContainElement("logs/export/default"))
 		})
 
+		It("should not render profiling pipelines or connectors when profiling is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:  false,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectors := collectorConfig["connectors"].(map[string]any)
+			Expect(connectors).ToNot(HaveKey("forward/profiles-processors"))
+			Expect(connectors).ToNot(HaveKey("forward/profiles-default-exporter"))
+
+			pipelines := readPipelines(collectorConfig)
+			for pipelineName := range pipelines {
+				Expect(pipelineName).ToNot(HavePrefix("profiles"))
+			}
+		})
+
+		It("should render profiling pipelines and connectors when profiling is enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:  true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectors := collectorConfig["connectors"].(map[string]any)
+			Expect(connectors).To(HaveKey("forward/profiles-processors"))
+			Expect(connectors).To(HaveKey("forward/profiles-default-exporter"))
+
+			pipelines := readPipelines(collectorConfig)
+
+			// Verify the profiles intake pipeline
+			profilesReceivers := readPipelineReceivers(pipelines, "profiles")
+			Expect(profilesReceivers).To(ContainElement("otlp"))
+			profilesExporters := readPipelineExporters(pipelines, "profiles")
+			Expect(profilesExporters).To(ContainElement("forward/profiles-processors"))
+
+			// Verify the profiles/common-processors pipeline
+			commonProcessors := readPipelineProcessors(pipelines, "profiles/common-processors")
+			Expect(commonProcessors).To(ContainElement("memory_limiter"))
+			Expect(commonProcessors).To(ContainElement("resourcedetection"))
+			Expect(commonProcessors).To(ContainElement("k8s_attributes"))
+			Expect(commonProcessors).To(ContainElement("transform/resources"))
+			commonExporters := readPipelineExporters(pipelines, "profiles/common-processors")
+			Expect(commonExporters).To(ContainElement("forward/profiles-default-exporter"))
+
+			// Verify the profiles/export/default pipeline
+			defaultExporters := readPipelineExporters(pipelines, "profiles/export/default")
+			Expect(defaultExporters).To(ContainElement("otlp_grpc/dash0/default"))
+		})
+
+		It("should render profiling routing connector with namespaced exporters [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				ProfilingEnabled:  true,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectors := collectorConfig["connectors"].(map[string]any)
+			routingProfilesRaw := connectors["routing/profiles"]
+			Expect(routingProfilesRaw).ToNot(BeNil())
+			routingProfiles := routingProfilesRaw.(map[string]any)
+			Expect(routingProfiles["error_mode"]).To(Equal("ignore"))
+			defaultPipelines := routingProfiles["default_pipelines"].([]any)
+			Expect(defaultPipelines).To(ContainElement("profiles/export/default"))
+
+			// Verify namespaced export pipeline has the expected exporters
+			pipelines := readPipelines(collectorConfig)
+			profilesExportNs1Exporters := readPipelineExporters(pipelines, "profiles/export/ns/"+namespace1)
+			Expect(profilesExportNs1Exporters).To(ContainElement("otlp_grpc/ns/" + namespace1))
+		})
+
+		It("should not render profiling routing connector without namespaced exporters [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:  true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectors := collectorConfig["connectors"].(map[string]any)
+			Expect(connectors).ToNot(HaveKey("routing/profiles"))
+		})
+
 		It("should render routing table entries with correct namespace conditions [DaemonSet])", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,

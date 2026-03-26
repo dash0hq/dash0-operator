@@ -656,6 +656,9 @@ run_helm() {
     if [[ "${PROMETHEUS_CRD_SUPPORT_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.prometheusCrdSupportEnabled=true"
     fi
+    if [[ "${PROFILING_ENABLED:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.profilingEnabled=true"
+    fi
     if [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.autoMonitorNamespaces.enabled=true"
     fi
@@ -971,6 +974,13 @@ deploy_cadvisor_scrapeconfig() {
   fi
   echo "STEP $step_counter: deploy a ScrapeConfig for scraping cadvisor metrics to ${target_namespace}"
   kubectl apply -n "$target_namespace" -f test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml
+  finish_step
+}
+
+deploy_ebpf_profiler() {
+  echo "STEP $step_counter: deploy the eBPF profiler DaemonSet to namespace ${operator_namespace}"
+  kubectl apply -f test-resources/ebpf-profiler/daemonset.yaml
+  kubectl rollout status daemonset/ebpf-profiler --namespace "$operator_namespace" --timeout=120s
   finish_step
 }
 

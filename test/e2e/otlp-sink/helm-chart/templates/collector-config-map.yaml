@@ -20,6 +20,9 @@ data:
       file/logs:
         path: /telemetry/logs.jsonl
         flush_interval: 100ms
+      file/profiles:
+        path: /telemetry/profiles.jsonl
+        flush_interval: 100ms
 
     receivers:
       otlp:
@@ -52,3 +55,9 @@ data:
           exporters:
             - debug
             - file/logs
+        profiles:
+          receivers:
+            - otlp
+          exporters:
+            - debug
+            - file/profiles

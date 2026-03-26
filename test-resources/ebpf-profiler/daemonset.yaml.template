@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ebpf-profiler-config
+  namespace: ${OPERATOR_NAMESPACE}
+data:
+  config.yaml: |
+    receivers:
+      profiling:
+
+    exporters:
+      otlp/collector:
+        endpoint: dash0-operator-opentelemetry-collector-service.${OPERATOR_NAMESPACE}.svc.cluster.local:4317
+        tls:
+          insecure: true
+      debug:
+        verbosity: detailed
+
+    service:
+      telemetry:
+        logs:
+          level: info
+      pipelines:
+        profiles:
+          receivers: [profiling]
+          exporters: [otlp/collector, debug]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ebpf-profiler
+  namespace: ${OPERATOR_NAMESPACE}
+  labels:
+    app: ebpf-profiler
+    dash0.com/enable: "false"
+spec:
+  selector:
+    matchLabels:
+      app: ebpf-profiler
+  template:
+    metadata:
+      labels:
+        app: ebpf-profiler
+        dash0.com/enable: "false"
+    spec:
+      hostPID: true
+      containers:
+        - name: ebpf-profiler
+          image: otel/opentelemetry-collector-ebpf-profiler:0.148.0
+          args:
+            - --config=file:/etc/otelcol/config.yaml
+            - --feature-gates=service.profilesSupport
+          securityContext:
+            capabilities:
+              add:
+                - SYS_ADMIN
+                - SYS_PTRACE
+                - SYS_RESOURCE
+                - SYSLOG
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+            - name: proc
+              mountPath: /proc
+              readOnly: true
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: ebpf-profiler-config
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
