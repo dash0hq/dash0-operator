@@ -1640,10 +1640,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	Describe("should enable/disable the replicaset informer", func() {
 		DescribeTable("should configure the k8s_attributes processor to not start the replicaset informer if disabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:         OperatorNamespace,
-				NamePrefix:                namePrefix,
-				Exporters:                 cmTestSingleDefaultOtlpExporter(),
-				DisableReplicasetInformer: true,
+				OperatorNamespace:                      OperatorNamespace,
+				NamePrefix:                             namePrefix,
+				Exporters:                              cmTestSingleDefaultOtlpExporter(),
+				K8sAttributesDisableReplicasetInformer: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1662,10 +1662,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 		DescribeTable("should configure the k8s_attributes processor to use the replicaset informer by default", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:         OperatorNamespace,
-				NamePrefix:                namePrefix,
-				Exporters:                 cmTestSingleDefaultOtlpExporter(),
-				DisableReplicasetInformer: false,
+				OperatorNamespace:                      OperatorNamespace,
+				NamePrefix:                             namePrefix,
+				Exporters:                              cmTestSingleDefaultOtlpExporter(),
+				K8sAttributesDisableReplicasetInformer: false,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -1678,6 +1678,44 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(metadataListRaw).ToNot(BeNil())
 			metadataList := metadataListRaw.([]any)
 			Expect(metadataList).To(ContainElement("k8s.deployment.uid"))
+		}, daemonSetAndDeployment)
+	})
+
+	Describe("should enable/disable wait_for_metadata", func() {
+		DescribeTable("should configure the k8s_attributes processor to wait for metadata if enabled", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace:                   OperatorNamespace,
+				NamePrefix:                          namePrefix,
+				Exporters:                           cmTestSingleDefaultOtlpExporter(),
+				K8sAttributesWaitForMetadata:        true,
+				K8sAttributesWaitForMetadataTimeout: "30s",
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
+			waitForMetadataRaw := ReadFromMap(k8sAttributesProcessor, []string{"wait_for_metadata"})
+			Expect(waitForMetadataRaw).ToNot(BeNil())
+			Expect(waitForMetadataRaw.(bool)).To(BeTrue())
+			waitForMetadataTimeoutRaw := ReadFromMap(k8sAttributesProcessor, []string{"wait_for_metadata_timeout"})
+			Expect(waitForMetadataTimeoutRaw).ToNot(BeNil())
+			Expect(waitForMetadataTimeoutRaw.(string)).To(Equal("30s"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should not render wait_for_metadata in the k8s_attributes processor by default", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
+			Expect(ReadFromMap(k8sAttributesProcessor, []string{"wait_for_metadata"})).To(BeNil())
+			Expect(ReadFromMap(k8sAttributesProcessor, []string{"wait_for_metadata_timeout"})).To(BeNil())
 		}, daemonSetAndDeployment)
 	})
 

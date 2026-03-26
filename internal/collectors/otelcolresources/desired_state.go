@@ -42,7 +42,9 @@ type oTelColConfig struct {
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
-	DisableReplicasetInformer                        bool
+	K8sAttributesDisableReplicasetInformer           bool
+	K8sAttributesWaitForMetadata                     bool
+	K8sAttributesWaitForMetadataTimeout              string
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorNamePrefix                        string
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig

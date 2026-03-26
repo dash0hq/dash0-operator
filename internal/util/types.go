@@ -53,21 +53,23 @@ type CollectorConfig struct {
 	OTelCollectorNamePrefix string
 	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
 	// config of the prometheus_receiver
-	TargetAllocatorNamePrefix string
-	SendBatchSize             *uint32
-	SendBatchMaxSize          *uint32
-	DisableReplicasetInformer bool
-	NodeIp                    string
-	NodeName                  string
-	PseudoClusterUid          types.UID
-	IsIPv6Cluster             bool
-	IsDocker                  bool
-	DisableHostPorts          bool
-	IsGkeAutopilot            bool
-	DevelopmentMode           bool
-	DebugVerbosityDetailed    bool
-	EnableProfExtension       bool
-	CompressConfigMap         bool
+	TargetAllocatorNamePrefix              string
+	SendBatchSize                          *uint32
+	SendBatchMaxSize                       *uint32
+	K8sAttributesDisableReplicasetInformer bool
+	K8sAttributesWaitForMetadata           bool
+	K8sAttributesWaitForMetadataTimeout    string
+	NodeIp                                 string
+	NodeName                               string
+	PseudoClusterUid                       types.UID
+	IsIPv6Cluster                          bool
+	IsDocker                               bool
+	DisableHostPorts                       bool
+	IsGkeAutopilot                         bool
+	DevelopmentMode                        bool
+	DebugVerbosityDetailed                 bool
+	EnableProfExtension                    bool
+	CompressConfigMap                      bool
 }
 
 type TargetAllocatorConfig struct {

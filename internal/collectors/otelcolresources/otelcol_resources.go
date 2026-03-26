@@ -159,7 +159,9 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      collectNamespaceLabelsAndAnnotationsEnabled,
-		DisableReplicasetInformer:                        m.collectorConfig.DisableReplicasetInformer,
+		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
+		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
@@ -387,7 +389,9 @@ func (m *OTelColResourceManager) DeleteResources(
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
-		DisableReplicasetInformer:                        m.collectorConfig.DisableReplicasetInformer,
+		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
+		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
+		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,        // irrelevant for deletion
 		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts, // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,

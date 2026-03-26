@@ -80,7 +80,7 @@ processors:
 
   k8s_attributes:
     extract:
-      {{- if .DisableReplicasetInformer }}
+      {{- if .K8sAttributesDisableReplicasetInformer }}
       deployment_name_from_replicaset: true
       {{- end }}
       metadata:
@@ -90,7 +90,7 @@ processors:
       - k8s.daemonset.name
       - k8s.daemonset.uid
       - k8s.deployment.name
-      {{- if not .DisableReplicasetInformer }}
+      {{- if not .K8sAttributesDisableReplicasetInformer }}
       - k8s.deployment.uid
       {{- end }}
       - k8s.job.name
@@ -132,6 +132,12 @@ processors:
           key_regex: (.*)
           from: pod
         {{- end }}
+    {{- end }}
+    {{- if .K8sAttributesWaitForMetadata }}
+    wait_for_metadata: true
+    {{- if .K8sAttributesWaitForMetadataTimeout }}
+    wait_for_metadata_timeout: {{ .K8sAttributesWaitForMetadataTimeout }}
+    {{- end }}
     {{- end }}
     passthrough: false
     pod_association:
