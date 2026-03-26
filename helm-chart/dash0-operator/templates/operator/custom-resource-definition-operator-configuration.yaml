@@ -573,6 +573,30 @@ spec:
                                   type: array
                               type: object
                             type: array
+                          profile_statements:
+                            items:
+                              properties:
+                                conditions:
+                                  items:
+                                    type: string
+                                  type: array
+                                context:
+                                  type: string
+                                error_mode:
+                                  description: |-
+                                    FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                                    processing a condition.
+                                  enum:
+                                  - ignore
+                                  - silent
+                                  - propagate
+                                  type: string
+                                statements:
+                                  items:
+                                    type: string
+                                  type: array
+                              type: object
+                            type: array
                           trace_statements:
                             items:
                               properties:
@@ -1022,6 +1046,21 @@ spec:
                                   type: string
                                 type: array
                             type: object
+                          profiles:
+                            description: |-
+                              Filters for the profiles signal.
+                              This can be used to drop _profiles_.
+                            properties:
+                              profile:
+                                description: |-
+                                  A list of conditions for filtering profiles.
+                                  This is a list of OTTL conditions.
+                                  All profiles where at least one condition evaluates to true will be dropped.
+                                  (That is, the conditions are implicitly connected by a logical OR.)
+                                items:
+                                  type: string
+                                type: array
+                            type: object
                           traces:
                             description: |-
                               Filters for the traces signal.
@@ -1252,6 +1291,10 @@ spec:
                           metric_statements:
                             description: Transform statements (or groups) for the
                               metric signal type.
+                            x-kubernetes-preserve-unknown-fields: true
+                          profile_statements:
+                            description: Transform statements (or groups) for the
+                              profile signal type.
                             x-kubernetes-preserve-unknown-fields: true
                           trace_statements:
                             description: Transform statements (or groups) for the
@@ -1463,6 +1506,30 @@ spec:
                                   type: array
                               type: object
                             type: array
+                          profile_statements:
+                            items:
+                              properties:
+                                conditions:
+                                  items:
+                                    type: string
+                                  type: array
+                                context:
+                                  type: string
+                                error_mode:
+                                  description: |-
+                                    FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                                    processing a condition.
+                                  enum:
+                                  - ignore
+                                  - silent
+                                  - propagate
+                                  type: string
+                                statements:
+                                  items:
+                                    type: string
+                                  type: array
+                              type: object
+                            type: array
                           trace_statements:
                             items:
                               properties:
@@ -1912,6 +1979,21 @@ spec:
                                   type: string
                                 type: array
                             type: object
+                          profiles:
+                            description: |-
+                              Filters for the profiles signal.
+                              This can be used to drop _profiles_.
+                            properties:
+                              profile:
+                                description: |-
+                                  A list of conditions for filtering profiles.
+                                  This is a list of OTTL conditions.
+                                  All profiles where at least one condition evaluates to true will be dropped.
+                                  (That is, the conditions are implicitly connected by a logical OR.)
+                                items:
+                                  type: string
+                                type: array
+                            type: object
                           traces:
                             description: |-
                               Filters for the traces signal.
@@ -2142,6 +2224,10 @@ spec:
                           metric_statements:
                             description: Transform statements (or groups) for the
                               metric signal type.
+                            x-kubernetes-preserve-unknown-fields: true
+                          profile_statements:
+                            description: Transform statements (or groups) for the
+                              profile signal type.
                             x-kubernetes-preserve-unknown-fields: true
                           trace_statements:
                             description: Transform statements (or groups) for the

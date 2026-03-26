@@ -31,6 +31,7 @@ type customFilters struct {
 	MetricConditions    []string
 	DataPointConditions []string
 	LogRecordConditions []string
+	ProfileConditions   []string
 }
 
 func (cf *customFilters) HasTraceFilters() bool {
@@ -45,11 +46,16 @@ func (cf *customFilters) HasLogFilters() bool {
 	return len(cf.LogRecordConditions) > 0
 }
 
+func (cf *customFilters) HasProfileFilters() bool {
+	return len(cf.ProfileConditions) > 0
+}
+
 type customTransforms struct {
 	GlobalErrorMode dash0common.FilterTransformErrorMode
 	TraceGroups     []customTransformGroup
 	MetricGroups    []customTransformGroup
 	LogGroups       []customTransformGroup
+	ProfileGroups   []customTransformGroup
 }
 
 type customTransformGroup struct {
@@ -69,6 +75,10 @@ func (ct *customTransforms) HasMetricTransforms() bool {
 
 func (ct *customTransforms) HasLogTransforms() bool {
 	return len(ct.LogGroups) > 0
+}
+
+func (ct *customTransforms) HasProfileTransforms() bool {
+	return len(ct.ProfileGroups) > 0
 }
 
 type collectorConfigurationTemplateValues struct {
@@ -336,6 +346,7 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 	var allMetricFilters []string
 	var allDataPointFilters []string
 	var allLogRecordFilters []string
+	var allProfileFilters []string
 	for _, filterSpecForNamespace := range filtersSpec {
 		if !filterSpecForNamespace.HasAnyFilters() {
 			continue
@@ -377,6 +388,14 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 				}
 			}
 		}
+		if filterSpecForNamespace.Profiles != nil && filterSpecForNamespace.Profiles.HasAnyFilters() {
+			if len(filterSpecForNamespace.Profiles.ProfileFilter) > 0 {
+				for _, condition := range filterSpecForNamespace.Profiles.ProfileFilter {
+					allProfileFilters =
+						append(allProfileFilters, prependNamespaceCheckToOttlFilterCondition(namespace, condition))
+				}
+			}
+		}
 
 		// Each namespace could specify a different error mode, however, we only render one filterprocessor per signal,
 		// so we use the "most severe" error mode (silent < ignore < propagate).
@@ -397,6 +416,7 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 		MetricConditions:    allMetricFilters,
 		DataPointConditions: allDataPointFilters,
 		LogRecordConditions: allLogRecordFilters,
+		ProfileConditions:   allProfileFilters,
 	}
 }
 
@@ -409,6 +429,7 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 	var allTraceGroups []customTransformGroup
 	var allMetricTraceGroups []customTransformGroup
 	var allLogGroups []customTransformGroup
+	var allProfileGroups []customTransformGroup
 	for _, namespacedTransform := range transformsSpec {
 		transform := namespacedTransform.Transform
 		if !transform.HasAnyStatements() {
@@ -430,6 +451,11 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 				slices.Concat(allLogGroups,
 					addNamespaceConditionToTransformGroups(namespace, transform.Logs))
 		}
+		if len(transform.Profiles) > 0 {
+			allProfileGroups =
+				slices.Concat(allProfileGroups,
+					addNamespaceConditionToTransformGroups(namespace, transform.Profiles))
+		}
 
 		// Each namespace could specify a different error mode, however, we only render one transform processor per
 		// signal, so we use the "most severe" error mode (silent < ignore < propagate).
@@ -450,6 +476,7 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 		TraceGroups:     allTraceGroups,
 		MetricGroups:    allMetricTraceGroups,
 		LogGroups:       allLogGroups,
+		ProfileGroups:   allProfileGroups,
 	}
 }
 

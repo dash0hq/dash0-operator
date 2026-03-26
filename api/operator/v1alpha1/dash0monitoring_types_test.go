@@ -1040,6 +1040,12 @@ func testFilter() *dash0common.Filter {
 				"log-record-filter-2",
 			},
 		},
+		Profiles: &dash0common.ProfileFilter{
+			ProfileFilter: []string{
+				"profile-filter-1",
+				"profile-filter-2",
+			},
+		},
 	}
 }
 
@@ -1057,6 +1063,10 @@ func testTransform() *dash0common.Transform {
 		Logs: []json.RawMessage{
 			[]byte(`"log-transform-1"`),
 			[]byte(`"log-transform-2`),
+		},
+		Profiles: []json.RawMessage{
+			[]byte(`"profile-transform-1"`),
+			[]byte(`"profile-transform-2`),
 		},
 	}
 }
@@ -1103,6 +1113,20 @@ func testNormalizedTransform() *dash0common.NormalizedTransformSpec {
 				Statements: []string{
 					"log-transform-statements-1",
 					"log-transform-statements-2",
+				},
+			},
+		},
+		Profiles: []dash0common.NormalizedTransformGroup{
+			{
+				Context:   new("profile-transform-context"),
+				ErrorMode: ptr.To(dash0common.FilterTransformErrorModePropagate),
+				Conditions: []string{
+					"profile-transform-condition-1",
+					"profile-transform-condition-2",
+				},
+				Statements: []string{
+					"profile-transform-statements-1",
+					"profile-transform-statements-2",
 				},
 			},
 		},

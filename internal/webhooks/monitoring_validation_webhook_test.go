@@ -660,6 +660,19 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					`unable to parse OTTL condition "invalid_syntax(...": condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
 				},
 			}),
+			Entry("should reject monitoring resource with invalid syntax in profile filter", ottlValidationTestConfig{
+				filter: &dash0common.Filter{
+					Profiles: &dash0common.ProfileFilter{
+						ProfileFilter: []string{
+							"invalid_syntax(...",
+						},
+					},
+				},
+				expectErrorSubstrings: []string{
+					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
+					`unable to parse OTTL condition "invalid_syntax(...": condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
+				},
+			}),
 			Entry("should allow monitoring resource with valid filter", ottlValidationTestConfig{
 				filter: &dash0common.Filter{
 					Traces: &dash0common.TraceFilter{
@@ -688,6 +701,22 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 							`severity_number < SEVERITY_NUMBER_WARN`,
 						},
 					},
+					Profiles: &dash0common.ProfileFilter{
+						ProfileFilter: []string{
+							`duration > 1000000`,
+						},
+					},
+				},
+			}),
+			Entry("should reject monitoring resource with invalid profiles transform", ottlValidationTestConfig{
+				transform: &dash0common.Transform{
+					Profiles: []json.RawMessage{
+						[]byte(`"invalid_syntax(..."`),
+					},
+				},
+				expectErrorSubstrings: []string{
+					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
+					`statement has invalid syntax: 1:16: unexpected token "." (expected ")" Key*)`,
 				},
 			}),
 			Entry("should reject monitoring resource with invalid traces transform", ottlValidationTestConfig{
@@ -736,6 +765,9 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					},
 					Logs: []json.RawMessage{
 						[]byte(`"truncate_all(log.attributes, 1024)"`),
+					},
+					Profiles: []json.RawMessage{
+						[]byte(`"truncate_all(profile.attributes, 1024)"`),
 					},
 				},
 			}),

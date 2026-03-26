@@ -32,11 +32,13 @@ const (
 	signalTypeTraces        signalType    = "traces"
 	signalTypeMetrics       signalType    = "metrics"
 	signalTypeLogs          signalType    = "logs"
+	signalTypeProfiles      signalType    = "profiles"
 	objectTypeSpan          objectType    = "span"
 	objectTypeSpanEvent     objectType    = "spanevent"
 	objectTypeMetric        objectType    = "metric"
 	objectTypeDataPoint     objectType    = "datapoint"
 	objectTypeLogRecord     objectType    = "log_record"
+	objectTypeProfile       objectType    = "profile"
 )
 
 type configMapTypeDefinition struct {
@@ -65,8 +67,9 @@ type filterTestConfigExpectations struct {
 
 type filterTestConfig struct {
 	configMapTypeDefinition
-	filters      []NamespacedFilter
-	expectations filterTestConfigExpectations
+	filters          []NamespacedFilter
+	profilingEnabled bool
+	expectations     filterTestConfigExpectations
 }
 
 type groupExpectations struct {
@@ -89,8 +92,9 @@ type transformTestConfigExpectations struct {
 
 type transformTestConfig struct {
 	configMapTypeDefinition
-	transforms   []NamespacedTransform
-	expectations transformTestConfigExpectations
+	transforms       []NamespacedTransform
+	profilingEnabled bool
+	expectations     transformTestConfigExpectations
 }
 
 const (
@@ -2018,6 +2022,48 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(metricsProcessors).ToNot(BeNil())
 			Expect(metricsProcessors).To(ContainElement("filter/metrics/only_monitored_namespaces"))
 		}, daemonSetAndDeployment)
+
+		It("should render the namespace filter and add it to the profiles pipeline [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:  true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			filterProcessor := ReadFromMap(collectorConfig, []string{
+				"processors",
+				"filter/profiles/only_monitored_namespaces",
+			})
+			Expect(filterProcessor).ToNot(BeNil())
+			filters := ReadFromMap(filterProcessor, []string{"profiles", "profile"})
+			Expect(filters).To(HaveLen(1))
+			filterString := filters.([]any)[0].(string)
+			Expect(filterString).To(Equal(`resource.attributes["k8s.namespace.name"] != nil and resource.attributes["k8s.namespace.name"] != "namespace-1" and resource.attributes["k8s.namespace.name"] != "namespace-2"`))
+			pipelines := readPipelines(collectorConfig)
+			profilesProcessors := readPipelineProcessors(pipelines, "profiles/common-processors")
+			Expect(profilesProcessors).ToNot(BeNil())
+			Expect(profilesProcessors).To(ContainElement("filter/profiles/only_monitored_namespaces"))
+		})
+
+		It("should not render the profiles namespace filter when profiling is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:  false,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			filterProcessor := ReadFromMap(collectorConfig, []string{
+				"processors",
+				"filter/profiles/only_monitored_namespaces",
+			})
+			Expect(filterProcessor).To(BeNil())
+		})
 	})
 
 	Describe("prometheus scraping config", func() {
@@ -2570,6 +2616,20 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					)),
 
+				Entry(fmt.Sprintf("[config map type: %s]: should filter profiles/profiles", cmTypeDef.cmType),
+					createFilterTestForSingleObjectType(cmTypeDef,
+						signalTypeProfiles,
+						objectTypeProfile,
+						[]string{
+							`an ottl profile condition`,
+							`another ottl profile condition`,
+						},
+						[]string{
+							`a third ottl profile condition`,
+							`a fourth ottl profile condition`,
+						},
+					)),
+
 				Entry(fmt.Sprintf("[config map type: %s]: should apply trace filter to only one namespace", cmTypeDef.cmType),
 					filterTestConfig{
 						configMapTypeDefinition: cmTypeDef,
@@ -2592,7 +2652,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						expectations: filterTestConfigExpectations{
 							daemonset: filterExpectations{
 								signalsWithFilters:    []signalType{signalTypeTraces},
-								signalsWithoutFilters: []signalType{signalTypeMetrics, signalTypeLogs},
+								signalsWithoutFilters: []signalType{signalTypeMetrics, signalTypeLogs, signalTypeProfiles},
 								conditions: conditionExpectationsPerObjectType{
 									signalTypeTraces: {
 										objectTypeSpan: []string{
@@ -2632,7 +2692,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						expectations: filterTestConfigExpectations{
 							daemonset: filterExpectations{
 								signalsWithFilters:    []signalType{signalTypeMetrics},
-								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
 								conditions: conditionExpectationsPerObjectType{
 									signalTypeMetrics: {
 										objectTypeMetric: []string{
@@ -2648,7 +2708,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							},
 							deployment: filterExpectations{
 								signalsWithFilters:    []signalType{signalTypeMetrics},
-								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
 								conditions: conditionExpectationsPerObjectType{
 									signalTypeMetrics: {
 										objectTypeMetric: []string{
@@ -2686,7 +2746,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						expectations: filterTestConfigExpectations{
 							daemonset: filterExpectations{
 								signalsWithFilters:    []signalType{signalTypeLogs},
-								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeMetrics},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeMetrics, signalTypeProfiles},
 								conditions: conditionExpectationsPerObjectType{
 									signalTypeLogs: {
 										objectTypeLogRecord: []string{
@@ -2703,6 +2763,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Entry(fmt.Sprintf("[config map type: %s]: should apply filters for all signals to only one namespace", cmTypeDef.cmType),
 					filterTestConfig{
 						configMapTypeDefinition: cmTypeDef,
+						profilingEnabled:        true,
 						filters: []NamespacedFilter{
 							{
 								Namespace: namespace1,
@@ -2719,6 +2780,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 									Logs: &dash0common.LogFilter{
 										LogRecordFilter: []string{"log record condition 1", "log record condition 2"},
 									},
+									Profiles: &dash0common.ProfileFilter{
+										ProfileFilter: []string{"profile condition 1", "profile condition 2"},
+									},
 								},
 							},
 							{
@@ -2728,7 +2792,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 						expectations: filterTestConfigExpectations{
 							daemonset: filterExpectations{
-								signalsWithFilters:    []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs},
+								signalsWithFilters:    []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs, signalTypeProfiles},
 								signalsWithoutFilters: nil,
 								conditions: conditionExpectationsPerObjectType{
 									signalTypeTraces: {
@@ -2757,11 +2821,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (log record condition 2)`,
 										},
 									},
+									signalTypeProfiles: {
+										objectTypeProfile: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (profile condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (profile condition 2)`,
+										},
+									},
 								},
 							},
 							deployment: filterExpectations{
 								signalsWithFilters:    []signalType{signalTypeMetrics},
-								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
 								conditions: conditionExpectationsPerObjectType{
 									signalTypeMetrics: {
 										objectTypeMetric: []string{
@@ -2789,6 +2859,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					NamePrefix:        namePrefix,
 					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					ProfilingEnabled: testConfig.profilingEnabled,
 				},
 				monitoredNamespaces,
 				testConfig.filters,
@@ -2972,6 +3043,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						[]string{"statement 3", "statement 4"},
 					)),
 
+				Entry(fmt.Sprintf("[config map type: %s]: should transform profiles", cmTypeDef.cmType),
+					createTransformTestForSingleObjectType(cmTypeDef,
+						signalTypeProfiles,
+						[]string{"statement 1", "statement 2"},
+						[]string{"statement 3", "statement 4"},
+					)),
+
 				Entry(fmt.Sprintf("[config map type: %s]: should apply trace transform to only one namespace", cmTypeDef.cmType),
 					transformTestConfig{
 						configMapTypeDefinition: cmTypeDef,
@@ -2994,7 +3072,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						expectations: transformTestConfigExpectations{
 							daemonset: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeTraces},
-								signalsWithoutTransforms: []signalType{signalTypeMetrics, signalTypeLogs},
+								signalsWithoutTransforms: []signalType{signalTypeMetrics, signalTypeLogs, signalTypeProfiles},
 								groups: groupExpectationsPerSignalType{
 									signalTypeTraces: []groupExpectations{
 										{
@@ -3038,7 +3116,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						expectations: transformTestConfigExpectations{
 							daemonset: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeMetrics},
-								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
 								groups: groupExpectationsPerSignalType{
 									signalTypeMetrics: {
 										{
@@ -3058,7 +3136,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							},
 							deployment: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeMetrics},
-								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
 								groups: groupExpectationsPerSignalType{
 									signalTypeMetrics: []groupExpectations{
 										{
@@ -3101,7 +3179,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						expectations: transformTestConfigExpectations{
 							daemonset: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeLogs},
-								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeMetrics, signalTypeProfiles},
 								groups: groupExpectationsPerSignalType{
 									signalTypeLogs: []groupExpectations{
 										{
@@ -3126,6 +3204,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Entry(fmt.Sprintf("[config map type: %s]: should apply transforms for all signals to only one namespace", cmTypeDef.cmType),
 					transformTestConfig{
 						configMapTypeDefinition: cmTypeDef,
+						profilingEnabled:        true,
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace1,
@@ -3143,6 +3222,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 										{Statements: []string{"log statement 1"}},
 										{Statements: []string{"log statement 2"}},
 									},
+									Profiles: []dash0common.NormalizedTransformGroup{
+										{Statements: []string{"profile statement 1"}},
+										{Statements: []string{"profile statement 2"}},
+									},
 								},
 							},
 							{
@@ -3152,7 +3235,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 						expectations: transformTestConfigExpectations{
 							daemonset: transformExpectations{
-								signalsWithTransforms:    []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs},
+								signalsWithTransforms:    []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs, signalTypeProfiles},
 								signalsWithoutTransforms: nil,
 								groups: groupExpectationsPerSignalType{
 									signalTypeTraces: []groupExpectations{
@@ -3197,11 +3280,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 											},
 										},
 									},
+									signalTypeProfiles: []groupExpectations{
+										{
+											statements: []string{"profile statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"profile statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+									},
 								},
 							},
 							deployment: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeMetrics},
-								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
 								groups: groupExpectationsPerSignalType{
 									signalTypeMetrics: {
 										{
@@ -3233,6 +3330,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					NamePrefix:        namePrefix,
 					Exporters:         cmTestSingleDefaultOtlpExporter(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					ProfilingEnabled: testConfig.profilingEnabled,
 				},
 				monitoredNamespaces,
 				nil,
@@ -3270,6 +3368,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					signalGroupsLabel = "metric_statements"
 				case signalTypeLogs:
 					signalGroupsLabel = "log_statements"
+				case signalTypeProfiles:
+					signalGroupsLabel = "profile_statements"
 				default:
 					Fail(fmt.Sprintf("unknown signal type: %s", signal))
 				}
@@ -3915,6 +4015,25 @@ func createFilterTestForSingleObjectType(
 		default:
 			Fail(fmt.Sprintf("unsupported object type %s for signal type %s", objectT, signalT))
 		}
+
+	case signalTypeProfiles:
+		switch objectT {
+		case objectTypeProfile:
+			filter1 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Profiles: &dash0common.ProfileFilter{
+					ProfileFilter: conditionsNamespace1,
+				},
+			}
+			filter2 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Profiles: &dash0common.ProfileFilter{
+					ProfileFilter: conditionsNamespace2,
+				},
+			}
+		default:
+			Fail(fmt.Sprintf("unsupported object type %s for signal type %s", objectT, signalT))
+		}
 	}
 
 	daemonSetExpectations := filterExpectations{
@@ -3951,6 +4070,7 @@ func createFilterTestForSingleObjectType(
 
 	return filterTestConfig{
 		configMapTypeDefinition: cmTypeDef,
+		profilingEnabled:        signalT == signalTypeProfiles,
 		filters: []NamespacedFilter{
 			{
 				Namespace: namespace1,
@@ -3975,7 +4095,7 @@ func emptyFilterExpectations() filterExpectations {
 }
 
 func allSignals() []signalType {
-	return []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs}
+	return []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs, signalTypeProfiles}
 }
 
 func prependNamespaceCheckToAllOttlCondition(namespace string, conditions []string) []string {
@@ -4050,6 +4170,20 @@ func createTransformTestForSingleObjectType(
 				{Statements: statementsNamespace2},
 			},
 		}
+
+	case signalTypeProfiles:
+		transform1 = dash0common.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+			Profiles: []dash0common.NormalizedTransformGroup{
+				{Statements: statementsNamespace1},
+			},
+		}
+		transform2 = dash0common.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+			Profiles: []dash0common.NormalizedTransformGroup{
+				{Statements: statementsNamespace2},
+			},
+		}
 	}
 
 	daemonSetExpectations := transformExpectations{
@@ -4114,6 +4248,7 @@ func createTransformTestForSingleObjectType(
 
 	return transformTestConfig{
 		configMapTypeDefinition: cmTypeDef,
+		profilingEnabled:        signalT == signalTypeProfiles,
 		transforms: []NamespacedTransform{
 			{
 				Namespace: namespace1,

@@ -135,6 +135,12 @@ type Filter struct {
 	//
 	// +kubebuilder:validation:Optional
 	Logs *LogFilter `json:"logs,omitempty"`
+
+	// Filters for the profiles signal.
+	// This can be used to drop _profiles_.
+	//
+	// +kubebuilder:validation:Optional
+	Profiles *ProfileFilter `json:"profiles,omitempty"`
 }
 
 func (f *Filter) HasAnyFilters() bool {
@@ -145,6 +151,9 @@ func (f *Filter) HasAnyFilters() bool {
 		return true
 	}
 	if f.Logs != nil && f.Logs.HasAnyFilters() {
+		return true
+	}
+	if f.Profiles != nil && f.Profiles.HasAnyFilters() {
 		return true
 	}
 	return false
@@ -223,6 +232,20 @@ func (f *LogFilter) HasAnyFilters() bool {
 	return len(f.LogRecordFilter) > 0
 }
 
+type ProfileFilter struct {
+	// A list of conditions for filtering profiles.
+	// This is a list of OTTL conditions.
+	// All profiles where at least one condition evaluates to true will be dropped.
+	// (That is, the conditions are implicitly connected by a logical OR.)
+	//
+	// +kubebuilder:validation:Optional
+	ProfileFilter []string `json:"profile,omitempty"`
+}
+
+func (f *ProfileFilter) HasAnyFilters() bool {
+	return len(f.ProfileFilter) > 0
+}
+
 type Transform struct {
 	// An optional field which will determine how the transform processor reacts to errors that occur while processing a
 	// statement. Possible values:
@@ -257,6 +280,12 @@ type Transform struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	Logs []json.RawMessage `json:"log_statements,omitempty"`
+
+	// Transform statements (or groups) for the profile signal type.
+	//
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Profiles []json.RawMessage `json:"profile_statements,omitempty"`
 }
 
 type NormalizedTransformSpec struct {
@@ -264,6 +293,7 @@ type NormalizedTransformSpec struct {
 	Traces    []NormalizedTransformGroup `json:"trace_statements,omitempty"`
 	Metrics   []NormalizedTransformGroup `json:"metric_statements,omitempty"`
 	Logs      []NormalizedTransformGroup `json:"log_statements,omitempty"`
+	Profiles  []NormalizedTransformGroup `json:"profile_statements,omitempty"`
 }
 
 func (t *NormalizedTransformSpec) HasAnyStatements() bool {
@@ -274,6 +304,9 @@ func (t *NormalizedTransformSpec) HasAnyStatements() bool {
 		return true
 	}
 	if len(t.Logs) > 0 {
+		return true
+	}
+	if len(t.Profiles) > 0 {
 		return true
 	}
 	return false

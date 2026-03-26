@@ -343,6 +343,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 			verifyNormalizedTransformGroupsForOneSignal(expected.Traces, patchAsMap, "trace_statements")
 			verifyNormalizedTransformGroupsForOneSignal(expected.Metrics, patchAsMap, "metric_statements")
 			verifyNormalizedTransformGroupsForOneSignal(expected.Logs, patchAsMap, "log_statements")
+			verifyNormalizedTransformGroupsForOneSignal(expected.Profiles, patchAsMap, "profile_statements")
 
 		},
 			Entry("without a transform spec", normalizeTransformSpecTestCase{
@@ -389,6 +390,9 @@ spec:
     log_statements:
     - 'log statement 1'
     - 'log statement 2'
+    profile_statements:
+    - 'profile statement 1'
+    - 'profile statement 2'
 `,
 				expected: &dash0common.NormalizedTransformSpec{
 					Traces: []dash0common.NormalizedTransformGroup{
@@ -402,6 +406,10 @@ spec:
 					Logs: []dash0common.NormalizedTransformGroup{
 						{Statements: []string{"log statement 1"}},
 						{Statements: []string{"log statement 2"}},
+					},
+					Profiles: []dash0common.NormalizedTransformGroup{
+						{Statements: []string{"profile statement 1"}},
+						{Statements: []string{"profile statement 2"}},
 					},
 				},
 			}),
@@ -464,6 +472,22 @@ spec:
 				},
 			}),
 
+			Entry("a transform spec with flat string profile statements", normalizeTransformSpecTestCase{
+				monitoringResourceSpec: `
+spec:
+  transform:
+    profile_statements:
+    - 'profile statement 1'
+    - 'profile statement 2'
+`,
+				expected: &dash0common.NormalizedTransformSpec{
+					Profiles: []dash0common.NormalizedTransformGroup{
+						{Statements: []string{"profile statement 1"}},
+						{Statements: []string{"profile statement 2"}},
+					},
+				},
+			}),
+
 			Entry("a transform spec with all signals and mixed styles", normalizeTransformSpecTestCase{
 				monitoringResourceSpec: `
 spec:
@@ -495,6 +519,9 @@ spec:
       statements:
       - 'log statement 3.1'
       - 'log statement 3.2'
+    profile_statements:
+    - 'profile statement 1'
+    - 'profile statement 2'
 `,
 				expected: &dash0common.NormalizedTransformSpec{
 					Traces: []dash0common.NormalizedTransformGroup{
@@ -520,6 +547,10 @@ spec:
 							Conditions: []string{"log condition 3.1", "log condition 3.2"},
 							Statements: []string{"log statement 3.1", "log statement 3.2"},
 						},
+					},
+					Profiles: []dash0common.NormalizedTransformGroup{
+						{Statements: []string{"profile statement 1"}},
+						{Statements: []string{"profile statement 2"}},
 					},
 				},
 			}),
