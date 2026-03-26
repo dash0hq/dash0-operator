@@ -46,6 +46,14 @@ For more information on how to have pods monitored by the Dash0 operator, see th
 [Enable Dash0 Monitoring For a Namespace](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#enable-dash0-monitoring-for-a-namespace) section of the Dash0 operator
 Helm chart documentation.
 
+### Profiling
+
+The Dash0 operator can be configured to accept, process, and export profiling data via OTLP.
+
+For more information on how to enable profiling support, see the
+[Profiling](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#profiling)
+section of the Dash0 operator Helm chart documentation.
+
 ### Alerting
 
 The Dash0 operator supports the [`PrometheusRule` custom resource definition](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#monitoring.coreos.com/v1.PrometheusRule)
