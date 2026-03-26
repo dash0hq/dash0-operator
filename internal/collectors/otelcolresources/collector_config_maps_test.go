@@ -1596,7 +1596,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	})
 
 	Describe("should enable/disable the replicaset informer", func() {
-		DescribeTable("should configure the k8s_attributes processor to not start the replicaset informer if disabled", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should configure the k8sattributes processor to not start the replicaset informer if disabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:         OperatorNamespace,
 				NamePrefix:                namePrefix,
@@ -1605,7 +1605,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
 			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
@@ -1618,7 +1618,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(metadataList).ToNot(ContainElement("k8s.deployment.uid"))
 		}, daemonSetAndDeployment)
 
-		DescribeTable("should configure the k8s_attributes processor to use the replicaset informer by default", func(cmTypeDef configMapTypeDefinition) {
+		DescribeTable("should configure the k8sattributes processor to use the replicaset informer by default", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:         OperatorNamespace,
 				NamePrefix:                namePrefix,
@@ -1627,7 +1627,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
 			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
@@ -1651,7 +1651,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
 			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
@@ -1671,7 +1671,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
 			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
@@ -1701,7 +1701,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
 			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
@@ -1727,7 +1727,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8sattributes"})
 			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
 			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
 			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})

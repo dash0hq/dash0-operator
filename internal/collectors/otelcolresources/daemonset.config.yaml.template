@@ -537,7 +537,7 @@ processors:
           # hostname, see https://kubernetes.io/docs/concepts/containers/container-environment/#container-information.
           enabled: false
 
-  k8s_attributes:
+  k8sattributes:
     extract:
       {{- if .DisableReplicasetInformer }}
       deployment_name_from_replicaset: true
@@ -883,7 +883,7 @@ service:
       processors:
         - memory_limiter
         - resourcedetection
-        - k8s_attributes
+        - k8sattributes
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
@@ -961,7 +961,7 @@ service:
         - forward/metrics-processors
       processors:
         - resourcedetection
-        - k8s_attributes
+        - k8sattributes
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
@@ -1045,7 +1045,7 @@ service:
         - forward/logs-processors
       processors:
         - resourcedetection
-        - k8s_attributes
+        - k8sattributes
         {{- if .NamespacesWithLogCollection }}
         - transform/logs/filelog_service_attributes
         {{- end }}
