@@ -2630,10 +2630,12 @@ trace_statements:
 
 		Describe("profiling data collection", func() {
 			It("should collect profiles with k8s resource attributes", func() {
+				By("waiting for profiles with k8s resource attributes to be captured")
 				timestampLowerBound := time.Now()
 				Eventually(func(g Gomega) {
 					verifyProfiles(g, timestampLowerBound, true)
 				}, 120*time.Second, 5*time.Second).Should(Succeed())
+				By("matching profiles with k8s resource attributes have been received")
 			})
 		})
 	})
