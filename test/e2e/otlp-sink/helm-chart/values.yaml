@@ -14,7 +14,7 @@ telemetryFilesVolume:
 collector:
   image:
     repository: otel/opentelemetry-collector-contrib
-    tag: 0.148.0
+    tag: 0.147.0
 
   grpcPort: 4317
   httpPort: 4318
