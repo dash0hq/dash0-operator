@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+# Important note: this scenario has only been verified to work properly on EKS and not when running in a docker-in-docker
+# cluster like kind. In kind, the profiles will likely have wrong resource attributes (from the profiler instead of the 
+# application). 
+
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"
 
