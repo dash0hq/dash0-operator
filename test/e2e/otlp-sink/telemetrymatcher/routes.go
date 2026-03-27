@@ -340,14 +340,11 @@ func (r *Routes) matchingProfilesRouteHandler(c *gin.Context) {
 		return
 	}
 
-	checkResourceAttributes, ok := readBooleanQueryParameter(c, shared.QueryParamCheckResourceAttributes)
-	if !ok {
-		return
-	}
+	expectedNamespace := c.Query(shared.QueryParamNamespace)
 
 	var resourceMatchFn func(pprofile.ResourceProfiles, *ResourceMatchResult[pprofile.ResourceProfiles])
-	if checkResourceAttributes {
-		resourceMatchFn = profilesResourceMatcher(commonParams.operatorNamespace)
+	if expectedNamespace != "" {
+		resourceMatchFn = profilesResourceMatcher(expectedNamespace)
 	}
 
 	allMatchResults, err := readFileAndGetMatchingProfiles(

@@ -45,6 +45,8 @@ data:
         endpoint: %s
         tls:
           insecure: true
+      debug:
+        verbosity: detailed
 
     service:
       telemetry:
@@ -53,7 +55,7 @@ data:
       pipelines:
         profiles:
           receivers: [profiling]
-          exporters: [otlp/collector]
+          exporters: [otlp/collector, debug]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -148,26 +150,12 @@ func teardownEbpfProfiler(operatorNs string) {
 func verifyProfiles(
 	g Gomega,
 	timestampLowerBound time.Time,
-	checkResourceAttributes bool,
-) {
-	askTelemetryMatcherForMatchingProfiles(
-		g,
-		shared.ExpectAtLeastOne,
-		timestampLowerBound,
-		checkResourceAttributes,
-	)
-}
-
-func askTelemetryMatcherForMatchingProfiles(
-	g Gomega,
-	expectationMode shared.ExpectationMode,
-	timestampLowerBound time.Time,
-	checkResourceAttributes bool,
+	expectedNamespace string,
 ) {
 	requestUrl := compileTelemetryMatcherUrlForProfiles(
-		expectationMode,
+		shared.ExpectAtLeastOne,
 		timestampLowerBound,
-		checkResourceAttributes,
+		expectedNamespace,
 	)
 	executeTelemetryMatcherRequest(g, requestUrl)
 }
@@ -175,13 +163,12 @@ func askTelemetryMatcherForMatchingProfiles(
 func compileTelemetryMatcherUrlForProfiles(
 	expectationMode shared.ExpectationMode,
 	timestampLowerBound time.Time,
-	checkResourceAttributes bool,
+	expectedNamespace string,
 ) string {
 	baseUrl := fmt.Sprintf("%s/matching-profiles", telemetryMatcherBaseUrl)
 	params := url.Values{}
 	params.Add(shared.QueryParamExpectationMode, string(expectationMode))
 	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixNano(), 10))
-	params.Add(shared.QueryParamCheckResourceAttributes, strconv.FormatBool(checkResourceAttributes))
-	params.Add(shared.QueryParamOperatorNamespace, operatorNamespace)
+	params.Add(shared.QueryParamNamespace, expectedNamespace)
 	return baseUrl + "?" + params.Encode()
 }
