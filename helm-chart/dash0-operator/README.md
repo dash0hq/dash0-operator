@@ -2805,17 +2805,11 @@ _To get a heap profile from the operator manager container:_
    operator manager pod (usually something like `dash0-operator-controller-xxxxxxxxx-xxxxx`, but the name depends on the
    Helm release name).
 4. Using the information from the previous two steps, run
-   `kubectl debug -n <operator-namespace> -it <operator-manager-pod-name> --image=quay.io/curl/curl --profile=general --custom=<(echo '{"securityContext":{"runAsNonRoot":false,"runAsUser":0}}') -- sh`
-  to get an interactive shell in the operator manager container.
-  `kubectl debug` will attach a debug container with the image `quay.io/curl/curl` to the pod, take note of the
-   container name (something like `debugger-xxxxx`).
-5. Run `curl http://localhost:1777/debug/pprof/heap > /tmp/heap.out` in this shell.
-   Leave the container running for the next step, i.e. do not exit the shell just yet.
-6. In a separate shell, while the `kubectl debug` shell from the previous two steps is still running, run
-  `kubectl cp -n <operator-namespace> -c <debug-containr-name> <operator-manager-pod-name>:/tmp/heap.out dash0-operator-manager-heap.out`.
-  (The command might print `tar: removing leading '/' from member names` to stdout, this can be ignored.)
-7. Exit the `kubectl debug` shell.
-8. Redeploy the operator without the Helm setting `operator.pprofPort=1777`.
+   `kubectl port-forward -n <operator-namespace> <operator-manager-pod-name> 1777`.
+5. In a separate shell, while the `kubectl port-forward` command from the previous step is still running, run
+   `curl http://localhost:1777/debug/pprof/heap > dash0-operator-manager-heap.out`.
+6. Terminate the `kubectl port-forward` command.
+7. Redeploy the operator without the Helm setting `operator.pprofPort=1777`.
 
 _To get a heap profile from a OpenTelemetry collector daemonset container:_
 1. Deploy the operator manager with the additional Helm value `operator.collectors.enablePprofExtension=true`.
@@ -2824,17 +2818,11 @@ _To get a heap profile from a OpenTelemetry collector daemonset container:_
    collector pod that has high memory usage (usually something like
    `dash0-operator-opentelemetry-collector-agent-daemonset-xxxxx`, but the name depends on the Helm release name).
 4. Using the information from the previous two steps, run
-   `kubectl debug -n <operator-namespace> -it <collector-daemonset-pod-name> --image=quay.io/curl/curl --profile=general --custom=<(echo '{"securityContext":{"runAsNonRoot":false,"runAsUser":0}}') -- sh`
-   to get an interactive shell in the collector container.
-   `kubectl debug` will attach a debug container with the image `quay.io/curl/curl` to the pod, take note of the
-   container name (something like `debugger-xxxxx`).
-5. Run `curl http://localhost:1777/debug/pprof/heap > /tmp/heap.out` in this shell.
-   Leave the container running for the next step, i.e. do not exit the shell just yet.
-6. In a separate shell, while the `kubectl debug` shell from the previous two steps is still running, run
-   `kubectl cp -n <operator-namespace> -c <debug-containr-name> <collector-daemonset-pod-name>:/tmp/heap.out dash0-daemonset-collector.out`
-   (The command might print `tar: removing leading '/' from member names` to stdout, this can be ignored.)
-7. Exit the `kubectl debug` shell.
-8. Redeploy the operator without the Helm setting `operator.collectors.enablePprofExtension=true`.
+   `kubectl port-forward -n <operator-namespace> <collector-daemonset-pod-name> 1777`.
+5. In a separate shell, while the `kubectl port-forward` command from the previous step is still running, run
+   `curl http://localhost:1777/debug/pprof/heap > dash0-daemonset-collector.out`.
+6. Terminate the `kubectl port-forward` command.
+7. Redeploy the operator without the Helm setting `operator.collectors.enablePprofExtension=true`.
 
 _To get a heap profile from a OpenTelemetry collector deployment container:_
 * Follow the same steps as for the collector daemonset, but use
