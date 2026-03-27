@@ -2626,7 +2626,7 @@ trace_statements:
 				operatorNamespace,
 			)
 			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-			deployEbpfProfiler(operatorNamespace)
+			deployEbpfProfiler(operatorNamespace, applicationUnderTestNamespace)
 		})
 
 		AfterAll(func() {
@@ -2636,14 +2636,16 @@ trace_statements:
 			undeployOperator(operatorNamespace)
 		})
 
+		// Note: This does currently not test whether undesired profiles (e.g. from the operator namespace) are dropped,
+		// but we have good coverage via the unit tests for that.
 		Describe("profiling data collection", func() {
-			It("should collect profiles from a monitored namespace with k8s resource attributes", func() {
-				By("waiting for profiles from the test application to be captured")
+			It("should collect profiles", func() {
+				By("waiting for profiles to be captured")
 				timestampLowerBound := time.Now()
 				Eventually(func(g Gomega) {
 					verifyProfiles(g, timestampLowerBound, applicationUnderTestNamespace)
 				}, 120*time.Second, 5*time.Second).Should(Succeed())
-				By("matching profiles with k8s resource attributes have been received")
+				By("matching profiles have been received")
 			})
 		})
 	})
