@@ -657,6 +657,12 @@ processors:
       - context: resource
         statements:
         - truncate_all(resource.attributes, 2048)
+    {{- if .ProfilingEnabled }}
+    profile_statements:
+      - context: resource
+        statements:
+        - truncate_all(resource.attributes, 2048)
+    {{- end }}
 
   {{- if or $hasPrometheusScrapingEnabledForAtLeastOneNamespace (and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled) }}
   transform/metrics/prometheus_service_attributes:
@@ -721,6 +727,14 @@ processors:
   filter/metrics/only_monitored_namespaces:
     metrics:
       metric:
+        - {{ .NamespaceOttlFilter }}
+  {{- end }}
+  {{- if and .ProfilingEnabled .NamespaceOttlFilter }}
+  # Similar to filter/metrics/only_monitored_namespaces, but for profiles: the eBPF profiler collects profiles from all
+  # processes on the node, hence we need to filter out profiles from non-monitored namespaces.
+  filter/profiles/only_monitored_namespaces:
+    profiles:
+      profile:
         - {{ .NamespaceOttlFilter }}
   {{- end }}
 
@@ -821,6 +835,40 @@ processors:
     error_mode: {{ .CustomTransforms.GlobalErrorMode }}
     log_statements:
       {{- range $i, $group := .CustomTransforms.LogGroups }}
+      - statements:
+          {{- range $i, $statement := $group.Statements }}
+          - '{{ $statement }}'
+          {{- end }}
+      {{- if $group.Conditions }}
+        conditions:
+          {{- range $i, $condition := $group.Conditions }}
+          - '{{ $condition }}'
+          {{- end }}
+      {{- end }}
+      {{- if $group.ErrorMode }}
+        error_mode: {{ $group.ErrorMode }}
+      {{- end }}
+      {{- if $group.Context }}
+        context: {{ $group.Context }}
+      {{- end }}
+      {{- end }}
+  {{- end }}
+  {{- if and .ProfilingEnabled .CustomFilters.HasProfileFilters }}
+  filter/profiles/custom_telemetry_filter:
+    error_mode: {{ .CustomFilters.ErrorMode }}
+    profiles:
+      {{- if .CustomFilters.ProfileConditions }}
+      profile:
+        {{- range $i, $condition := .CustomFilters.ProfileConditions }}
+        - '{{ $condition }}'
+        {{- end }}
+      {{- end }}
+  {{- end }}
+  {{- if and .ProfilingEnabled .CustomTransforms.HasProfileTransforms }}
+  transform/profiles/custom_telemetry_transform:
+    error_mode: {{ .CustomTransforms.GlobalErrorMode }}
+    profile_statements:
+      {{- range $i, $group := .CustomTransforms.ProfileGroups }}
       - statements:
           {{- range $i, $statement := $group.Statements }}
           - '{{ $statement }}'
@@ -1149,7 +1197,16 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        {{- if .NamespaceOttlFilter }}
+        - filter/profiles/only_monitored_namespaces
+        {{- end }}
+        {{- if .CustomFilters.HasProfileFilters }}
+        - filter/profiles/custom_telemetry_filter
+        {{- end }}
         {{- /* Note: the batch processor does not support profiles yet (upstream). */}}
+        {{- if .CustomTransforms.HasProfileTransforms }}
+        - transform/profiles/custom_telemetry_transform
+        {{- end }}
         - transform/resources
       exporters:
         {{- if $hasNamespacedExporters }}

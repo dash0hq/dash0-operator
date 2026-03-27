@@ -630,6 +630,9 @@ The Dash0 monitoring resource supports additional configuration settings:
     * `spec.filter.logs.log_record`:
        A list of OTTL conditions for filtering log records.
        All log records where at least one condition evaluates to true will be dropped.
+    * `spec.filter.profiles.profile`:
+       A list of OTTL conditions for filtering profiles.
+       All profiles where at least one condition evaluates to true will be dropped.
   This setting is optional, by default, no filters are applied.
   It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and set
   filters in any monitoring resource at the same time.
@@ -641,7 +644,7 @@ The Dash0 monitoring resource supports additional configuration settings:
 * <a href="#monitoringresource.spec.transform"><span id="monitoringresource.spec.transform">`spec.transform`</span></a>:
   An optional custom transformation configuration that will be applied to the collected telemetry before sending it to
   the configured telemetry backend.
-  Transformations for a specific telemetry signal (e.g. traces, metrics, logs) are lists of
+  Transformations for a specific telemetry signal (e.g. traces, metrics, logs, profiles) are lists of
   [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md) statements.
   All telemetry for the respective signal will be routed through all transformation statements.
   The statements are executed in the order they are listed.
@@ -655,16 +658,18 @@ The Dash0 monitoring resource supports additional configuration settings:
   One difference to the transform processor is that the transform rules configured in a Dash0 monitoring resource will
   only be applied to the telemetry collected in the namespace the monitoring resource is installed in.
   Telemetry from other namespaces is not affected.
-  If both `spec.filter` and `spec.transform` are configured, the filtering for a given signal (traces, metrics, logs)
+  If both `spec.filter` and `spec.transform` are configured, the filtering for a given signal (traces, metrics, logs, profiles)
   will be executed _before_ the transform processor.
   (That is, you cannot assume that transformations have already been applied when writing filter rules.)
   Existing configurations for the transform processor can be copied and pasted without syntactical changes.
     * `spec.transform.trace_statements`:
       A list of OTTL statements (or a list of groups in the advanced config style) for transforming trace telemetry.
     * `spec.transform.metric_statements`:
-      A list of OTTL statements (or a list of groups in the advanced config style) for filtering metric telemetry.
+      A list of OTTL statements (or a list of groups in the advanced config style) for transforming metric telemetry.
     * `spec.transform.log_statements`:
-      A list of OTTL statements (or a list of groups in the advanced config style) for filtering log telemetry.
+      A list of OTTL statements (or a list of groups in the advanced config style) for transforming log telemetry.
+    * `spec.transform.profile_statements`:
+      A list of OTTL statements (or a list of groups in the advanced config style) for transforming profile telemetry.
   This setting is optional, by default, no transformations are applied.
   It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and set
   transforms in any monitoring resource at the same time.
@@ -694,8 +699,8 @@ The Dash0 monitoring resource supports additional configuration settings:
 Here is comprehensive example for a monitoring resource which
 * sets the instrumentation mode to `created-and-updated`,
 * disables Prometheus scraping,
-* sets a couple of filters for all five telemetry object types,
-* applies transformations to limit the length of span attributes, datapoint attributes, and log attributes
+* sets a couple of filters for all six telemetry object types,
+* applies transformations to limit the length of span attributes, datapoint attributes, log attributes, and profile attributes
   (with the metric transform using the advanced transform config style),
 * disables Perses dashboard synchronization, and
 * disables Prometheus rule synchronization.
@@ -730,6 +735,9 @@ spec:
       log_records:
       - 'IsMatch(body, ".*password.*")'
       - 'severity_number < SEVERITY_NUMBER_WARN'
+    profiles:
+      profile:
+      - 'resource.attributes["k8s.pod.name"] == "debug-pod"'
 
   transform:
     trace_statements:
@@ -741,6 +749,8 @@ spec:
         - 'truncate_all(datapoint.attributes, 1024)'
     log_statements:
     - 'truncate_all(log.attributes, 1024)'
+    profile_statements:
+    - 'truncate_all(profile.attributes, 1024)'
 
   synchronizePersesDashboards: false
 
@@ -1651,6 +1661,11 @@ spec:
     enabled: true
   # ... other settings
 ```
+
+When profiling is enabled, you can use the same `spec.filter` and `spec.transform` settings on your `Dash0Monitoring`
+resources to filter and transform profiling data, just like for traces, metrics, and logs.
+See the [`spec.filter`](#monitoringresource.spec.filter) and [`spec.transform`](#monitoringresource.spec.transform)
+sections for details.
 
 #### Collecting Profiles with the OpenTelemetry eBPF Profiler
 

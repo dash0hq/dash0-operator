@@ -30,6 +30,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/common"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/logs"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/metrics"
+	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/profiles"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/traces"
 )
 
@@ -451,6 +452,13 @@ func validateFilter(filter *dash0common.Filter) error {
 		}
 	}
 
+	if filter.Profiles != nil {
+		if filter.Profiles.ProfileFilter != nil {
+			_, err := filterottl.NewBoolExprForProfile(filter.Profiles.ProfileFilter, filterottl.StandardProfileFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
+			errors = multierr.Append(errors, err)
+		}
+	}
+
 	return errors
 }
 
@@ -492,6 +500,19 @@ func validateTransform(transform *dash0common.NormalizedTransformSpec) error {
 			return err
 		}
 		for _, cs := range transform.Logs {
+			_, err = pc.ParseContextStatements(toContextStatements(cs))
+			if err != nil {
+				errors = multierr.Append(errors, err)
+			}
+		}
+	}
+
+	if len(transform.Profiles) > 0 {
+		pc, err := common.NewProfileParserCollection(component.TelemetrySettings{Logger: zap.NewNop()}, common.WithProfileParser(profiles.ProfileFunctions()))
+		if err != nil {
+			return err
+		}
+		for _, cs := range transform.Profiles {
 			_, err = pc.ParseContextStatements(toContextStatements(cs))
 			if err != nil {
 				errors = multierr.Append(errors, err)

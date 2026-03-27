@@ -2620,20 +2620,28 @@ trace_statements:
 					"operator.profilingEnabled": "true",
 				},
 			)
+			deployDash0MonitoringResourceWithRetry(
+				applicationUnderTestNamespace,
+				dash0MonitoringValuesDefault,
+				operatorNamespace,
+			)
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 			deployEbpfProfiler(operatorNamespace)
 		})
 
 		AfterAll(func() {
+			removeAllTestApplications(applicationUnderTestNamespace)
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			teardownEbpfProfiler(operatorNamespace)
 			undeployOperator(operatorNamespace)
 		})
 
 		Describe("profiling data collection", func() {
-			It("should collect profiles with k8s resource attributes", func() {
-				By("waiting for profiles with k8s resource attributes to be captured")
+			It("should collect profiles from a monitored namespace with k8s resource attributes", func() {
+				By("waiting for profiles from the test application to be captured")
 				timestampLowerBound := time.Now()
 				Eventually(func(g Gomega) {
-					verifyProfiles(g, timestampLowerBound, true)
+					verifyProfiles(g, timestampLowerBound, applicationUnderTestNamespace)
 				}, 120*time.Second, 5*time.Second).Should(Succeed())
 				By("matching profiles with k8s resource attributes have been received")
 			})

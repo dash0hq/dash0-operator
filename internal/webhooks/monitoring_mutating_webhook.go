@@ -256,12 +256,19 @@ func normalizeTransform(transform *dash0common.Transform, logger logd.Logger) (*
 		logger.Error(err, "error when normalizing transform.log_statements")
 		return nil, responseStatus, err
 	}
+	profileTransformGroups, responseStatus, err :=
+		normalizeTransformGroupsForOneSignal(transform.Profiles, "profile_statements", logger)
+	if err != nil {
+		logger.Error(err, "error when normalizing transform.profile_statements")
+		return nil, responseStatus, err
+	}
 
 	return &dash0common.NormalizedTransformSpec{
 		ErrorMode: transform.ErrorMode,
 		Traces:    traceTransformGroups,
 		Metrics:   metricTransformGroups,
 		Logs:      logTransformGroups,
+		Profiles:  profileTransformGroups,
 	}, 0, nil
 }
 

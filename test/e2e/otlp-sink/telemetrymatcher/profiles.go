@@ -118,7 +118,7 @@ func matchAnyProfileMatcher() func(
 
 // profilesResourceMatcher validates that profile resource attributes contain Kubernetes metadata enriched by the
 // resourcedetection and k8s_attributes processors in the operator's collector pipeline.
-func profilesResourceMatcher(operatorNamespace string) func(
+func profilesResourceMatcher(expectedNamespace string) func(
 	pprofile.ResourceProfiles,
 	*ResourceMatchResult[pprofile.ResourceProfiles],
 ) {
@@ -136,7 +136,7 @@ func profilesResourceMatcher(operatorNamespace string) func(
 		verifyResourceAttributeEquals[pprofile.ResourceProfiles](
 			resourceAttributes,
 			"k8s.namespace.name",
-			operatorNamespace,
+			expectedNamespace,
 			matchResult,
 		)
 		verifyResourceAttributeExists[pprofile.ResourceProfiles](
@@ -147,12 +147,6 @@ func profilesResourceMatcher(operatorNamespace string) func(
 		verifyResourceAttributeExists[pprofile.ResourceProfiles](
 			resourceAttributes,
 			"k8s.pod.uid",
-			matchResult,
-		)
-		verifyResourceAttributeEquals[pprofile.ResourceProfiles](
-			resourceAttributes,
-			"k8s.daemonset.name",
-			"ebpf-profiler",
 			matchResult,
 		)
 
