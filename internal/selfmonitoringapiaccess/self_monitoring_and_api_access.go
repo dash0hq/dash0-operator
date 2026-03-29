@@ -50,6 +50,36 @@ var (
 
 	collectorMetricsSelfMonitoringPrelude = `
     metrics:
+      level: detailed
+      views:
+        # this metric was added in 0.145.0 and has a high cardinality due to its pod_identifier attribute
+        - selector:
+            instrument_name: "otelcol.k8s.pod.association"
+          stream:
+            aggregation:
+              drop: {}
+        # the metrics below are not directly related to the issue, but have been added by enabling 'level: detailed',
+        # which is required to use views
+        - selector:
+            instrument_name: "http.client.*"
+          stream:
+            aggregation:
+              drop: {}
+        - selector:
+            instrument_name: "http.server.*"
+          stream:
+            aggregation:
+              drop: {}
+        - selector:
+            instrument_name: "rpc.*"
+          stream:
+            aggregation:
+              drop: {}
+        - selector:
+            instrument_name: "otelcol_processor_batch_batch_send_size_bytes"
+          stream:
+            aggregation:
+              drop: {}
       readers:
         - periodic:
             interval: 30000
@@ -507,13 +537,15 @@ func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(
 	pipeline += fmt.Sprintf(
 		`
                 headers:
-                  %s: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"`,
+                  - name: %s
+                    value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"`,
 		util.AuthorizationHeaderName,
 	)
 	if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
 		pipeline += fmt.Sprintf(
 			`
-                  %s: "%s"
+                  - name: %s
+                    value: "%s"
 `, util.Dash0DatasetHeaderName, dash0Export.Dataset,
 		)
 	} else {
@@ -571,7 +603,8 @@ func appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline string, he
 		if header.Name != "" {
 			pipeline += fmt.Sprintf(
 				`
-                  %s: "%s"`,
+                  - name: %s
+                    value: "%s"`,
 				header.Name,
 				header.Value,
 			)
