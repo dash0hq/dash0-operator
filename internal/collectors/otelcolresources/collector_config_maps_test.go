@@ -3566,10 +3566,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(otlpExporter["endpoint"]).To(Equal(EndpointDash0WithProtocolTest))
 			headersRaw := otlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
-			headers, ok := headersRaw.(map[string]any)
+			headers, ok := headersRaw.([]any)
 			Expect(ok).To(BeTrue())
 			Expect(headers).To(HaveLen(1))
-			Expect(headers[util.AuthorizationHeaderName]).To(Equal("Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"))
+			header0, ok := headers[0].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(header0["name"]).To(Equal(util.AuthorizationHeaderName))
+			Expect(header0["value"]).To(Equal("Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"))
 
 			selfMonitoringMetricsPipelineRaw := readSelfMonitoringMetricsPipeline(collectorConfig)
 			Expect(selfMonitoringMetricsPipelineRaw).ToNot(BeNil())
@@ -3580,10 +3583,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(otlpExporter["endpoint"]).To(Equal(EndpointDash0WithProtocolTest))
 			headersRaw = otlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
-			headers, ok = headersRaw.(map[string]any)
+			headers, ok = headersRaw.([]any)
 			Expect(ok).To(BeTrue())
 			Expect(headers).To(HaveLen(1))
-			Expect(headers[util.AuthorizationHeaderName]).To(Equal("Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"))
+			header0, ok = headers[0].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(header0["name"]).To(Equal(util.AuthorizationHeaderName))
+			Expect(header0["value"]).To(Equal("Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"))
 		}, daemonSetAndDeployment)
 	})
 
