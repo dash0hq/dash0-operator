@@ -553,34 +553,23 @@ var _ = Describe(
 				}
 
 				var (
-					dash0ExportExpectedMetricsPipelineString = `
-    metrics:
-      readers:
-        - periodic:
-            interval: 30000
-            timeout: 10000
-            exporter:
-              otlp:
+					dash0ExportExpectedMetricsPipelineString = expectedMetricsPipeline(`
                 protocol: grpc
                 endpoint: https://endpoint.dash0.com:4317
                 headers:
-                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
-`
+                  - name: Authorization
+                    value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+`)
 
-					dash0ExportWithCustomDatasetExpectedMetricsPipelineString = `
-    metrics:
-      readers:
-        - periodic:
-            interval: 30000
-            timeout: 10000
-            exporter:
-              otlp:
+					dash0ExportWithCustomDatasetExpectedMetricsPipelineString = expectedMetricsPipeline(`
                 protocol: grpc
                 endpoint: https://endpoint.dash0.com:4317
                 headers:
-                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
-                  Dash0-Dataset: "test-dataset"
-`
+                  - name: Authorization
+                    value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+                  - name: Dash0-Dataset
+                    value: "test-dataset"
+`)
 				)
 
 				DescribeTable(
@@ -660,20 +649,14 @@ var _ = Describe(
 									},
 								},
 							),
-							expectedMetricsPipelineString: `
-    metrics:
-      readers:
-        - periodic:
-            interval: 30000
-            timeout: 10000
-            exporter:
-              otlp:
+							expectedMetricsPipelineString: expectedMetricsPipeline(`
                 protocol: grpc
                 endpoint: http://endpoint.dash0.com:4317
                 insecure: true
                 headers:
-                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
-`,
+                  - name: Authorization
+                    value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+`),
 						},
 					),
 					Entry(
@@ -686,17 +669,10 @@ var _ = Describe(
 									},
 								},
 							),
-							expectedMetricsPipelineString: `
-    metrics:
-      readers:
-        - periodic:
-            interval: 30000
-            timeout: 10000
-            exporter:
-              otlp:
+							expectedMetricsPipelineString: expectedMetricsPipeline(`
                 protocol: grpc
                 endpoint: dns://endpoint.backend.com:4317
-`,
+`),
 						},
 					),
 					Entry(
@@ -725,21 +701,17 @@ var _ = Describe(
 									},
 								},
 							),
-							expectedMetricsPipelineString: `
-    metrics:
-      readers:
-        - periodic:
-            interval: 30000
-            timeout: 10000
-            exporter:
-              otlp:
+							expectedMetricsPipelineString: expectedMetricsPipeline(`
                 protocol: grpc
                 endpoint: dns://endpoint.backend.com:4317
                 headers:
-                  Key1: "Value1"
-                  Key2: "Value2"
-                  KeyWithoutValue: ""
-`,
+                  - name: Key1
+                    value: "Value1"
+                  - name: Key2
+                    value: "Value2"
+                  - name: KeyWithoutValue
+                    value: ""
+`),
 						},
 					),
 					Entry(
@@ -752,18 +724,11 @@ var _ = Describe(
 									},
 								},
 							),
-							expectedMetricsPipelineString: `
-    metrics:
-      readers:
-        - periodic:
-            interval: 30000
-            timeout: 10000
-            exporter:
-              otlp:
+							expectedMetricsPipelineString: expectedMetricsPipeline(`
                 protocol: grpc
                 endpoint: http://endpoint.backend.com:4317
                 insecure: true
-`,
+`),
 						},
 					),
 					Entry(
@@ -793,21 +758,17 @@ var _ = Describe(
 									},
 								},
 							),
-							expectedMetricsPipelineString: `
-    metrics:
-      readers:
-        - periodic:
-            interval: 30000
-            timeout: 10000
-            exporter:
-              otlp:
+							expectedMetricsPipelineString: expectedMetricsPipeline(`
                 protocol: http/protobuf
                 endpoint: https://endpoint.backend.com:4318
                 headers:
-                  Key1: "Value1"
-                  Key2: "Value2"
-                  KeyWithoutValue: ""
-`,
+                  - name: Key1
+                    value: "Value1"
+                  - name: Key2
+                    value: "Value2"
+                  - name: KeyWithoutValue
+                    value: ""
+`),
 						},
 					),
 					Entry(
@@ -837,21 +798,17 @@ var _ = Describe(
 									},
 								},
 							),
-							expectedMetricsPipelineString: `
-    metrics:
-      readers:
-        - periodic:
-            interval: 30000
-            timeout: 10000
-            exporter:
-              otlp:
+							expectedMetricsPipelineString: expectedMetricsPipeline(`
                 protocol: http/json
                 endpoint: https://endpoint.backend.com:4318
                 headers:
-                  Key1: "Value1"
-                  Key2: "Value2"
-                  KeyWithoutValue: ""
-`,
+                  - name: Key1
+                    value: "Value1"
+                  - name: Key2
+                    value: "Value2"
+                  - name: KeyWithoutValue
+                    value: ""
+`),
 						},
 					),
 				)
@@ -876,7 +833,8 @@ var _ = Describe(
                 protocol: grpc
                 endpoint: https://endpoint.dash0.com:4317
                 headers:
-                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+                  - name: Authorization
+                    value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
 `
 
 					dash0ExportWithCustomDatasetExpectedLogPipelineString = `
@@ -888,8 +846,10 @@ var _ = Describe(
                 protocol: grpc
                 endpoint: https://endpoint.dash0.com:4317
                 headers:
-                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
-                  Dash0-Dataset: "test-dataset"
+                  - name: Authorization
+                    value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+                  - name: Dash0-Dataset
+                    value: "test-dataset"
 `
 				)
 
@@ -980,7 +940,8 @@ var _ = Describe(
                 endpoint: http://endpoint.dash0.com:4317
                 insecure: true
                 headers:
-                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+                  - name: Authorization
+                    value: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
 `,
 						},
 					),
@@ -1040,9 +1001,12 @@ var _ = Describe(
                 protocol: grpc
                 endpoint: dns://endpoint.backend.com:4317
                 headers:
-                  Key1: "Value1"
-                  Key2: "Value2"
-                  KeyWithoutValue: ""
+                  - name: Key1
+                    value: "Value1"
+                  - name: Key2
+                    value: "Value2"
+                  - name: KeyWithoutValue
+                    value: ""
 `,
 						},
 					),
@@ -1104,9 +1068,12 @@ var _ = Describe(
                 protocol: http/protobuf
                 endpoint: https://endpoint.backend.com:4318
                 headers:
-                  Key1: "Value1"
-                  Key2: "Value2"
-                  KeyWithoutValue: ""
+                  - name: Key1
+                    value: "Value1"
+                  - name: Key2
+                    value: "Value2"
+                  - name: KeyWithoutValue
+                    value: ""
 `,
 						},
 					),
@@ -1146,9 +1113,12 @@ var _ = Describe(
                 protocol: http/json
                 endpoint: https://endpoint.backend.com:4318
                 headers:
-                  Key1: "Value1"
-                  Key2: "Value2"
-                  KeyWithoutValue: ""
+                  - name: Key1
+                    value: "Value1"
+                  - name: Key2
+                    value: "Value2"
+                  - name: KeyWithoutValue
+                    value: ""
 `,
 						},
 					),
@@ -1347,4 +1317,45 @@ func createSelfMonitoringConfiguration(export *dash0common.Export) SelfMonitorin
 		SelfMonitoringEnabled: true,
 		Export:                *export,
 	}
+}
+
+func expectedMetricsPipeline(exporterSuffix string) string {
+	return `
+    metrics:
+      level: detailed
+      views:
+        # this metric was added in 0.145.0 and has a high cardinality due to its pod_identifier attribute
+        - selector:
+            instrument_name: "otelcol.k8s.pod.association"
+          stream:
+            aggregation:
+              drop: {}
+        # the metrics below are not directly related to the issue, but have been added by enabling 'level: detailed',
+        # which is required to use views
+        - selector:
+            instrument_name: "http.client.*"
+          stream:
+            aggregation:
+              drop: {}
+        - selector:
+            instrument_name: "http.server.*"
+          stream:
+            aggregation:
+              drop: {}
+        - selector:
+            instrument_name: "rpc.*"
+          stream:
+            aggregation:
+              drop: {}
+        - selector:
+            instrument_name: "otelcol_processor_batch_batch_send_size_bytes"
+          stream:
+            aggregation:
+              drop: {}
+      readers:
+        - periodic:
+            interval: 30000
+            timeout: 10000
+            exporter:
+              otlp:` + exporterSuffix
 }
