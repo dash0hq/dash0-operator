@@ -22,7 +22,11 @@ const (
 	ebpfProfilerImage = "otel/opentelemetry-collector-ebpf-profiler:0.148.0"
 )
 
-func deployEbpfProfiler(operatorNs string) {
+// Note: we need to hardcode the k8s.namespace.name here so the e2e tests work on kind, where the ebpf profiler can't
+// correctly set the container.id and therefore the k8sattributes processor does not correctly populate the attribute.
+// This means that all profiles will have the hardcoded namespace, but that's good enough to check whether the profiles
+// arrive at the otlp sink.
+func deployEbpfProfiler(operatorNs string, targetNamespace string) {
 	By("deploying eBPF profiler")
 	collectorServiceEndpoint := fmt.Sprintf(
 		"%s-opentelemetry-collector-service.%s.svc.cluster.local:4317",
@@ -40,6 +44,13 @@ data:
     receivers:
       profiling:
 
+    processors:
+      resource:
+        attributes:
+          - key: k8s.namespace.name
+            value: %s
+            action: upsert
+
     exporters:
       otlp/collector:
         endpoint: %s
@@ -55,6 +66,7 @@ data:
       pipelines:
         profiles:
           receivers: [profiling]
+          processors: [resource]
           exporters: [otlp/collector, debug]
 ---
 apiVersion: apps/v1
@@ -108,7 +120,7 @@ spec:
         - name: sys
           hostPath:
             path: /sys
-`, operatorNs, collectorServiceEndpoint, operatorNs, ebpfProfilerImage)
+`, operatorNs, targetNamespace, collectorServiceEndpoint, operatorNs, ebpfProfilerImage)
 
 	tmpFile := filepath.Join(os.TempDir(), "ebpf-profiler-manifest.yaml")
 	err := os.WriteFile(tmpFile, []byte(manifest), 0600)
