@@ -11,7 +11,6 @@ from sys import path, version, version_info, stderr
 
 # Note: We might need to tweak the list of offending opentelemetry-* packages.
 double_instrumentation_check_packages = [
-    "opentelemetry-api",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
     "opentelemetry-exporter-otlp-proto-common",
