@@ -584,7 +584,7 @@ tests:
                 periodSeconds: 2
                 timeoutSeconds: 1
               startup:
-                failureThreshold: 30
+                failureThreshold: 45
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
@@ -630,7 +630,7 @@ tests:
                 periodSeconds: 2
                 timeoutSeconds: 1
               startup:
-                failureThreshold: 30
+                failureThreshold: 45
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
