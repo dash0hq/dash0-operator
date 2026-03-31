@@ -1100,7 +1100,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			commonProcessors := readPipelineProcessors(pipelines, "profiles/common-processors")
 			Expect(commonProcessors).To(ContainElement("memory_limiter"))
 			Expect(commonProcessors).To(ContainElement("resourcedetection"))
-			Expect(commonProcessors).To(ContainElement("k8s_attributes"))
+			Expect(commonProcessors).To(ContainElement("k8s_attributes/profiles"))
+			Expect(commonProcessors).ToNot(ContainElement("k8s_attributes"))
 			Expect(commonProcessors).To(ContainElement("transform/resources"))
 			commonExporters := readPipelineExporters(pipelines, "profiles/common-processors")
 			Expect(commonExporters).To(ContainElement("forward/profiles-default-exporter"))
@@ -1108,6 +1109,77 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify the profiles/export/default pipeline
 			defaultExporters := readPipelineExporters(pipelines, "profiles/export/default")
 			Expect(defaultExporters).To(ContainElement("otlp_grpc/dash0/default"))
+		})
+
+		It("should render k8s_attributes/profiles without connection pod association and with container.id [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:  true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// Verify k8s_attributes/profiles processor exists
+			k8sAttrProfilesRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes/profiles"})
+			Expect(k8sAttrProfilesRaw).ToNot(BeNil())
+			k8sAttrProfiles := k8sAttrProfilesRaw.(map[string]any)
+
+			// Verify pod_association has container.id first, then k8s.pod.ip and k8s.pod.uid, and no connection
+			podAssociation := k8sAttrProfiles["pod_association"].([]any)
+			podAssocSources := make([]string, 0)
+			for _, assoc := range podAssociation {
+				sources := assoc.(map[string]any)["sources"].([]any)
+				for _, src := range sources {
+					srcMap := src.(map[string]any)
+					from := srcMap["from"].(string)
+					if from == "connection" {
+						podAssocSources = append(podAssocSources, "connection")
+					} else if name, ok := srcMap["name"]; ok {
+						podAssocSources = append(podAssocSources, name.(string))
+					}
+				}
+			}
+			Expect(podAssocSources).To(Equal([]string{"container.id", "k8s.pod.ip", "k8s.pod.uid"}))
+
+			// Verify the base k8s_attributes processor has connection but no container.id
+			k8sAttrRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			Expect(k8sAttrRaw).ToNot(BeNil())
+			k8sAttr := k8sAttrRaw.(map[string]any)
+			basePodAssociation := k8sAttr["pod_association"].([]any)
+			basePodAssocSources := make([]string, 0)
+			for _, assoc := range basePodAssociation {
+				sources := assoc.(map[string]any)["sources"].([]any)
+				for _, src := range sources {
+					srcMap := src.(map[string]any)
+					from := srcMap["from"].(string)
+					if from == "connection" {
+						basePodAssocSources = append(basePodAssocSources, "connection")
+					} else if name, ok := srcMap["name"]; ok {
+						basePodAssocSources = append(basePodAssocSources, name.(string))
+					}
+				}
+			}
+			Expect(basePodAssocSources).To(ContainElement("connection"))
+			Expect(basePodAssocSources).ToNot(ContainElement("container.id"))
+		})
+
+		It("should not render k8s_attributes/profiles when profiling is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:  false,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			processors := collectorConfig["processors"].(map[string]any)
+			Expect(processors).ToNot(HaveKey("k8s_attributes/profiles"))
+			Expect(processors).To(HaveKey("k8s_attributes"))
 		})
 
 		It("should render profiling routing connector with namespaced exporters [DaemonSet]", func() {
