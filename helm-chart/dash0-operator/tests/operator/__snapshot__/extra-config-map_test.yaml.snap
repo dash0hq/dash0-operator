@@ -49,7 +49,7 @@ extra config map should match snapshot:
             periodSeconds: 2
             timeoutSeconds: 1
           startup:
-            failureThreshold: 30
+            failureThreshold: 45
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1
@@ -91,7 +91,7 @@ extra config map should match snapshot:
             periodSeconds: 2
             timeoutSeconds: 1
           startup:
-            failureThreshold: 30
+            failureThreshold: 45
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1

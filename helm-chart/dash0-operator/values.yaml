@@ -623,7 +623,7 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 30
+        failureThreshold: 45
 
     # Resource settings for the collector container of the Deployment collector pod (cluster-metrics-collector) managed
     # by the operator. There should usually be no reason to override this.
@@ -713,7 +713,7 @@ operator:
         initialDelaySeconds: 0
         periodSeconds: 2
         timeoutSeconds: 1
-        failureThreshold: 30
+        failureThreshold: 45
 
     # Settings for the k8s_attributes processor in the Dash0 operator collectors:
     k8s_attributes:
