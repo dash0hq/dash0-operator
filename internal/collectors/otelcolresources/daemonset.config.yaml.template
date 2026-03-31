@@ -542,15 +542,16 @@ processors:
 
   resourcedetection:
     detectors:
-    # note: later detectors override attributes provided by earlier detectors
-    - system
-    - ec2
+    # Note: Later detectors do *not* overwrite attributes provided by earlier detectors, hence more specific detectors
+    # must come first (e.g. eks before ec2 - both write to cloud.platform)
     - eks
     - ecs
+    - ec2
     - gcp
     - azure
     - aks
     - k8snode
+    - system
     timeout: 2s
     eks:
       node_from_env_var: K8S_NODE_NAME
