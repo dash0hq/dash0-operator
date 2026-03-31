@@ -19,6 +19,10 @@ const (
 	collectedLogsBaseDir = "test-resources/e2e/logs"
 )
 
+var (
+	collectionIssueLog = "_collection-issues.log"
+)
+
 func createDirAndDeleteOldCollectedLogs() {
 	By("deleting old collected Kubernetes logs")
 	_ = os.RemoveAll(collectedLogsBaseDir)
@@ -35,8 +39,8 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 			outputPath,
 		))
 	if err := os.MkdirAll(outputPath, 0755); err != nil {
-		e2ePrint(
-			"Error in collectPodInfoAndLogs, cannot create directory \"%s\": %s\n",
+		logCollectionIssue(
+			"Error in collectPodInfoAndLogs, cannot create directory \"%s\": %s",
 			outputPath,
 			err.Error(),
 		)
@@ -60,7 +64,7 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 		fmt.Sprintf("kubectl -n %s describe deployment e2e-tests-operator-hr-opentelemetry-target-allocator-deployment",
 			operatorNamespace), outputPath)
 
-	e2eTestNamespaces := getNamespacesWithPrefix("e2e-test-ns")
+	e2eTestNamespaces := getNamespacesWithPrefix("e2e-test-ns", outputPath)
 	for _, namespace := range append([]string{
 		operatorNamespace,
 		otlpSinkNamespace,
@@ -83,7 +87,7 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 }
 
 func getPodLogs(namespace string, outputPath string) {
-	podNames := getPodNames(namespace)
+	podNames := getPodNames(namespace, outputPath)
 	for _, podName := range podNames {
 		executeCommandAndStoreOutput(
 			fmt.Sprintf(
@@ -96,27 +100,30 @@ func getPodLogs(namespace string, outputPath string) {
 	}
 }
 
-func getPodNames(namespace string) []string {
+func getPodNames(namespace string, outputPath string) []string {
 	podsJson, err := run(exec.Command("kubectl", "-n", namespace, "get", "pods", "--output=json"))
 	if err != nil {
-		e2ePrint(
-			"Error in collectPodInfoAndLogs when running kubectl get pods to fetch pod names: %s\n",
+		logCollectionIssue(
+			"Error in collectPodInfoAndLogs when running kubectl get pods to fetch pod names: %s",
+			outputPath,
 			err.Error(),
 		)
 		return nil
 	}
 	var parsedOutput map[string]interface{}
 	if err = json.Unmarshal([]byte(podsJson), &parsedOutput); err != nil {
-		e2ePrint(
-			"Error in collectPodInfoAndLogs when parsing the output of kubectl get pods to fetch pod names: %s\n",
+		logCollectionIssue(
+			"Error in collectPodInfoAndLogs when parsing the output of kubectl get pods to fetch pod names: %s",
+			outputPath,
 			err.Error(),
 		)
 		return nil
 	}
 	podItems, ok := parsedOutput["items"].([]interface{})
 	if !ok {
-		e2ePrint(
-			"Unexpected JSON structure for output of kubectl get pods to fetch pod names:\n%s\n",
+		logCollectionIssue(
+			"Unexpected JSON structure for output of kubectl get pods to fetch pod names:\n%s",
+			outputPath,
 			podsJson,
 		)
 		return nil
@@ -126,8 +133,9 @@ func getPodNames(namespace string) []string {
 	for podIdx, podItemRaw := range podItems {
 		podItem, ok := podItemRaw.(map[string]interface{})
 		if !ok {
-			e2ePrint(
-				"Unexpected JSON structure for pod item %d when fetching pod names:\n%s\n",
+			logCollectionIssue(
+				"Unexpected JSON structure for pod item %d when fetching pod names:\n%s",
+				outputPath,
 				podIdx,
 				podsJson,
 			)
@@ -135,8 +143,9 @@ func getPodNames(namespace string) []string {
 		}
 		podMetadata, ok := podItem["metadata"].(map[string]interface{})
 		if !ok {
-			e2ePrint(
-				"Unexpected JSON structure for pod metadata at index %d when fetching pod names:\n%s\n",
+			logCollectionIssue(
+				"Unexpected JSON structure for pod metadata at index %d when fetching pod names:\n%s",
+				outputPath,
 				podIdx,
 				podsJson,
 			)
@@ -144,8 +153,9 @@ func getPodNames(namespace string) []string {
 		}
 		podNameRaw := podMetadata["name"]
 		if podNameRaw == nil {
-			e2ePrint(
-				"Pod metadate for item %d does not have a name attribute:\n%s\n",
+			logCollectionIssue(
+				"Pod metadate for item %d does not have a name attribute:\n%s",
+				outputPath,
 				podIdx,
 				podsJson,
 			)
@@ -153,8 +163,9 @@ func getPodNames(namespace string) []string {
 		}
 		podName, ok := podNameRaw.(string)
 		if !ok {
-			e2ePrint(
-				"Pod name for item %d is not a string:\n%s\n",
+			logCollectionIssue(
+				"Pod name for item %d is not a string:\n%s",
+				outputPath,
 				podIdx,
 				podsJson,
 			)
@@ -171,7 +182,12 @@ func executeCommandAndStoreOutput(fullCommandLine string, outputPath string) {
 
 	output, err := run(exec.Command(commandParts[0], commandParts[1:]...), false)
 	if err != nil {
-		e2ePrint("Error in collectPodInfoAndLogs for command: \"%s\": %s\n", fullCommandLine, err.Error())
+		logCollectionIssue(
+			"Error in collectPodInfoAndLogs for command: \"%s\": %s",
+			outputPath,
+			fullCommandLine,
+			err.Error(),
+		)
 		return
 	}
 
@@ -194,6 +210,14 @@ func serializeToFile(value any, outputPath string, filename string) {
 	}
 }
 
+func logCollectionIssue(format string, outputPath string, a ...any) {
+	appendToFile(
+		[]byte(fmt.Sprintf(format, a...)),
+		outputPath,
+		collectionIssueLog,
+	)
+}
+
 func writeToFile(content []byte, outputPath string, filename string) {
 	fullFileName := path.Join(outputPath, filename)
 	if err := os.WriteFile(fullFileName, content, 0644); err != nil {
@@ -205,12 +229,42 @@ func writeToFile(content []byte, outputPath string, filename string) {
 	}
 }
 
-func getNamespacesWithPrefix(prefix string) []string {
+func appendToFile(content []byte, outputPath string, filename string) {
+	fullFileName := path.Join(outputPath, filename)
+	f, err := os.OpenFile(fullFileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		e2ePrint(
+			"Error in collectPodInfoAndLogs when opening the file \"%s\" for appending: %s",
+			fullFileName,
+			err.Error(),
+		)
+		return
+	}
+	defer func() {
+		if err := f.Close(); err != nil && err == nil {
+			e2ePrint(
+				"Error in collectPodInfoAndLogs when closing the file \"%s\" after appending: %s",
+				fullFileName,
+				err.Error(),
+			)
+		}
+	}()
+	if _, err = f.Write(content); err != nil {
+		e2ePrint(
+			"Error in collectPodInfoAndLogs when appending to file \"%s\": %s",
+			fullFileName,
+			err.Error(),
+		)
+	}
+}
+
+func getNamespacesWithPrefix(prefix string, outputPath string) []string {
 	namespacesOutput, err := run(
 		exec.Command("kubectl", "get", "namespaces", "--output=jsonpath={.items[*].metadata.name}"))
 	if err != nil {
-		e2ePrint(
-			"Error in collectPodInfoAndLogs when running kubectl get namespaces: %s\n",
+		logCollectionIssue(
+			"Error in collectPodInfoAndLogs when running kubectl get namespaces: %s",
+			outputPath,
 			err.Error(),
 		)
 		return nil
