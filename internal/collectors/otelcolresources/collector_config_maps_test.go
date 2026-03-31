@@ -1127,7 +1127,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(k8sAttrProfilesRaw).ToNot(BeNil())
 			k8sAttrProfiles := k8sAttrProfilesRaw.(map[string]any)
 
-			// Verify pod_association has container.id but no connection
+			// Verify pod_association has container.id first, then k8s.pod.ip and k8s.pod.uid, and no connection
 			podAssociation := k8sAttrProfiles["pod_association"].([]any)
 			podAssocSources := make([]string, 0)
 			for _, assoc := range podAssociation {
@@ -1142,8 +1142,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					}
 				}
 			}
-			Expect(podAssocSources).To(ContainElement("container.id"))
-			Expect(podAssocSources).ToNot(ContainElement("connection"))
+			Expect(podAssocSources).To(Equal([]string{"container.id", "k8s.pod.ip", "k8s.pod.uid"}))
 
 			// Verify the base k8s_attributes processor has connection but no container.id
 			k8sAttrRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})

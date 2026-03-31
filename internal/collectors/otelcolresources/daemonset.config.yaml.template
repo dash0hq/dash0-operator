@@ -708,13 +708,13 @@ processors:
     pod_association:
     - sources:
       - from: resource_attribute
+        name: container.id
+    - sources:
+      - from: resource_attribute
         name: k8s.pod.ip
     - sources:
       - from: resource_attribute
         name: k8s.pod.uid
-    - sources:
-      - from: resource_attribute
-        name: container.id
 {{- end }}
 
   # Limit resource attributes to a reasonable maximum length. This is particularly important when transforming
