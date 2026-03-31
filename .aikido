@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+#
+# Aikido Security Configuration
+#
+# This file configures exclusions for Aikido Code Security (SAST) scans.
+# Using string-inclusion matching: if a value appears anywhere in a file path, it's excluded.
+
+exclude:
+  paths:
+    # Generated files
+    - .gen.go
+
+    # Test files - matches **/*_test.go
+    - _test.go
+
+    # Test directories
+    - /test/
+    - /test-resources/
+
+    # Vendored code (excluded in SonarCloud and golangci-lint)
+    - /internal/webhooks/vendored/
+
+    # Generated Kustomize sources (intermediate stage for Helm chart)
+    - /config/
+
+    # Test data directories
+    - /testdata/
+
+# Example: Ignoring specific CVEs
+# Uncomment and modify when you need to ignore specific vulnerabilities.
+# Always provide a reason for auditing and team communication.
+#
+# ignore:
+#   cves:
+#     CVE-2024-12345:
+#       reason: "False positive - not applicable to our usage"
+#     CVE-2023-98765:
+#       reason: "Mitigated through input validation in our code"
