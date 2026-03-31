@@ -592,7 +592,7 @@ processors:
       - k8s.replicaset.uid
       - k8s.statefulset.name
       - k8s.statefulset.uid
-      # The following two work only if k8s.pod.uid and k8s.container.name are set
+      # The following three work only if k8s.pod.uid and k8s.container.name are set
       - container.id
       - container.image.name
       - container.image.tag
@@ -668,7 +668,7 @@ processors:
       - k8s.replicaset.uid
       - k8s.statefulset.name
       - k8s.statefulset.uid
-      # The following two work only if k8s.pod.uid and k8s.container.name are set
+      # The following three work only if k8s.pod.uid and k8s.container.name are set
       - container.id
       - container.image.name
       - container.image.tag
