@@ -2562,6 +2562,13 @@ configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
+## Notes on AWS EKS
+
+If your telemetry from an AWS EKS cluster is missing `cloud.provider`, `cloud.platform` and other `cloud.*` resource
+attributes, refer to the [resource detection processor documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/resourcedetectionprocessor/README.md#amazon-eks).
+In particular, make sure that [IMDS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html) is
+available on your EKS nodes.
+
 ## Notes on GKE Autopilot
 
 When deploying the Dash0 operator to a GKE Autopilot cluster, provide the following additional setting when applying the
