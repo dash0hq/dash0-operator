@@ -449,8 +449,6 @@ deploy_filelog_offsets_pvc() {
   if [[ "$FILELOG_OFFSETS_PVC" = "kind" ]]; then
     kubectl patch persistentvolume filelogreceiver-offsets --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]' || true
     kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-kind.yaml
-  elif [[ "$FILELOG_OFFSETS_PVC" = "docker" ]]; then
-    kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-docker.yaml
   elif [[ "$FILELOG_OFFSETS_PVC" = "gke" ]]; then
     kubectl apply -f test-resources/filelog-offset-storage/offset-storage-pvc-gke.yaml
   elif [[ "$FILELOG_OFFSETS_PVC" = "gke-ap" ]]; then
