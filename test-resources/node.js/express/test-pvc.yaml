@@ -1,8 +1,16 @@
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiVersion: v1
+kind: PersistentVolume
 metadata:
-  name: docker-storage-class
-provisioner: docker.io/hostpath
+  name:  test-pv
+spec:
+  storageClassName: standard
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: 200Mi
+  hostPath:
+    path: /test-pv
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -15,4 +23,3 @@ spec:
   resources:
     requests:
       storage: 100Mi
-  storageClassName: docker-storage-class
