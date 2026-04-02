@@ -256,7 +256,10 @@ shellcheck-check-installed:
 .PHONY: shellcheck-lint
 shellcheck-lint: shellcheck-check-installed ## Run static code analysis for all shell scripts.
 	@echo "-------------------------------- (linting shell scripts)"
-	find . -name \*.sh | xargs shellcheck -x
+	find . -name \*.sh \
+	  -not -path ./images/collector/opentelemetry-collector/\* \
+	  -not -path ./images/collector/opentelemetry-collector-contrib/\* \
+	  | xargs shellcheck -x
 
 .PHONY: npm-installed
 npm-installed:
