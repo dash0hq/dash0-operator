@@ -235,8 +235,6 @@ Moving beyond the quickstart instructions, here are more details on the test scr
         * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters
           created via test-resources/bin/create_cluster_and_registry.sh or based on `test-resources/kind-config.yaml`
           (i.e. clusters that have the `offset-storage` extra mounts), then use this for filelog offset storage
-        * `FILELOG_OFFSETS_PVC=docker`: deploy a StorageClass and PersistentVolumeClaim suitable for Docker Desktop,
-          then use this for filelog offset storage
         * `FILELOG_OFFSETS_PVC=gke`: deploy a PersistentVolumeClaim suitable for GCP GKE clusters, then use this for
           filelog offset storage
         * `FILELOG_OFFSETS_PVC=aws-efs-dp`: deploy a StorageClass and PersistentVolumeClaim suitable for an AWS EKS
