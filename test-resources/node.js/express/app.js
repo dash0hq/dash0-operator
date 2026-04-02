@@ -96,7 +96,7 @@ function delay(ms) {
 
 function gracefulShutdown(signalName) {
   return () => {
-    shouldStop=true;
+    shouldStop = true;
     console.log(`received ${signalName}, stopping server`);
     server.close(() => {
       console.log('server stopped, bye');
