@@ -114,7 +114,7 @@ func verifyThatTargetAllocatorIsNotDeployed(operatorNamespace string) {
 				"--namespace",
 				operatorNamespace,
 				targetAllocatorName,
-			))).ToNot(Succeed())
+			), false, false, false)).ToNot(Succeed())
 	}
 	Consistently(verifyTargetAllocatorDeploymentDoesNotExist, 20*time.Second, time.Second).Should(Succeed())
 }

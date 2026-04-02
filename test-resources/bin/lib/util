@@ -666,6 +666,9 @@ run_helm() {
     if [[ "${AUTO_MONITOR_NAMESPACES_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.autoMonitorNamespaces.enabled=true"
     fi
+    if [[ "${TELEMETRY_COLLECTION_ENABLED:-}" = "false" ]]; then
+      helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
+    fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then

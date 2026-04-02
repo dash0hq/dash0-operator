@@ -140,7 +140,7 @@ func verifyCollectorDaemonSetIsNotPresent(g Gomega) {
 			"--namespace",
 			operatorNamespace,
 			collectorDaemonSetName,
-		))).ToNot(Succeed())
+		), false, false, false)).ToNot(Succeed())
 }
 
 func verifyCollectorDeploymentIsNotPresent(g Gomega) {
@@ -152,7 +152,7 @@ func verifyCollectorDeploymentIsNotPresent(g Gomega) {
 			"--namespace",
 			operatorNamespace,
 			collectorDeploymentName,
-		))).ToNot(Succeed())
+		), false, false, false)).ToNot(Succeed())
 }
 
 func verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace string, s string) {

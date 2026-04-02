@@ -38,6 +38,7 @@ type OperatorConfigurationValues struct {
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	PrometheusCrdSupportEnabled                      bool
 	ProfilingEnabled                                 bool
+	TelemetryCollectionEnabled                       bool
 	ClusterName                                      string
 	AutoMonitorNamespacesEnabled                     bool
 	AutoMonitorNamespacesLabelSelector               string
@@ -328,6 +329,16 @@ func convertValuesToResource(
 		dash0Exports[0].Dash0.Dataset = operatorConfigurationValues.Dataset
 	}
 
+	if !operatorConfigurationValues.TelemetryCollectionEnabled {
+		operatorConfigurationValues.SelfMonitoringEnabled = false
+		operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled = false
+		operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled = false
+		operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled = false
+		operatorConfigurationValues.PrometheusCrdSupportEnabled = false
+		operatorConfigurationValues.ProfilingEnabled = false
+		operatorConfigurationValues.AutoMonitorNamespacesEnabled = false
+	}
+
 	spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: new(operatorConfigurationValues.SelfMonitoringEnabled),
@@ -350,11 +361,13 @@ func convertValuesToResource(
 		Profiling: &dash0v1alpha1.Profiling{
 			Enabled: new(operatorConfigurationValues.ProfilingEnabled),
 		},
-	}
-
-	if operatorConfigurationValues.AutoMonitorNamespacesEnabled {
-		spec.AutoMonitorNamespaces.Enabled = new(true)
-		spec.AutoMonitorNamespaces.LabelSelector = operatorConfigurationValues.AutoMonitorNamespacesLabelSelector
+		TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+			Enabled: new(operatorConfigurationValues.TelemetryCollectionEnabled),
+		},
+		AutoMonitorNamespaces: dash0v1alpha1.AutoMonitorNamespaces{
+			Enabled:       new(operatorConfigurationValues.AutoMonitorNamespacesEnabled),
+			LabelSelector: operatorConfigurationValues.AutoMonitorNamespacesLabelSelector,
+		},
 	}
 
 	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{
