@@ -87,6 +87,8 @@ operator:
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
+  # This setting has no effect if operator.telemetryCollectionEnabled is set to false, self-monitoring will be disabled
+  # implicitly.
   selfMonitoringEnabled: true
 
   # An opt-out for collecting kubernetes infrastructure metrics. If set to false, the operator will not collect
@@ -94,6 +96,8 @@ operator:
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
+  # This setting has no effect if operator.telemetryCollectionEnabled is set to false, Kubernetes infrastructure metrics
+  # collection will be disabled implicitly.
   kubernetesInfrastructureMetricsCollectionEnabled: true
 
   # An opt-out for collecting pod labels and annotations as resource attributes. If set to false, the operator will
@@ -102,6 +106,8 @@ operator:
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
+  # This setting has no effect if operator.telemetryCollectionEnabled is set to false, collecting pod labels and
+  # annotations will be disabled implicitly.
   collectPodLabelsAndAnnotationsEnabled: true
 
   # An opt-in for collecting namespace labels and annotations as resource attributes. If set to true, the operator will
@@ -109,6 +115,8 @@ operator:
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
+  # This setting has no effect if operator.telemetryCollectionEnabled is set to false, collecting namespace labels and
+  # annotations will be disabled implicitly.
   collectNamespaceLabelsAndAnnotationsEnabled: false
 
   # An opt-in for enabling support for Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig). If set to true,
@@ -117,6 +125,8 @@ operator:
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
+  # This setting has no effect if operator.telemetryCollectionEnabled is set to false, support for Prometheus CRDs will
+  # be disabled implicitly.
   prometheusCrdSupportEnabled: false
 
   # An opt-in for enabling profiling data pipelines. If set to true, the operator will configure its OpenTelemetry
@@ -124,7 +134,26 @@ operator:
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
+  # This setting has no effect if operator.telemetryCollectionEnabled is set to false, profiling pipelines will be
+  # disabled implicitly.
   profilingEnabled: false
+
+  # An opt-out for telemetry collection. If set to false, the operator will not deploy any OpenTelemetry collectors
+  # to the cluster, and no telemetry will be collected. This is useful if you want to use the operator only for
+  # infrastructure-as-code purposes (dashboards, check rules, etc.) without having it collect telemetry. Setting this to
+  # false also implicitly disables all other telemetry-collection related settings (see above). This setting is
+  # optional, it defaults to true.
+  #
+  # By default (i.e. if this setting is true), the operator Helm chart will set up all necessary permissions to manage
+  # OpenTelemetry collectors and the target allocator, including permissions to create ClusterRoles. If set to false,
+  # these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC permissions.
+  #
+  # If this is set to false, and operator.dash0Export.enabled is also false (i.e. the Dash0OperatorConfiguration
+  # resource is managed manually), it will not be possible to set spec.telemetryCollection.enabled to true in the
+  # Dash0OperatorConfiguration, since the required RBAC permissions have not been granted. To enable telemetry
+  # collection later, it is required to change this Helm value to true and perform a "helm upgrade --install" with the
+  # updated setting.
+  telemetryCollectionEnabled: true
 
   # If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
   # optional. Per default, the resource attribute k8s.cluster.name will not be added.

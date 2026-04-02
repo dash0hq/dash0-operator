@@ -19,17 +19,17 @@ func runAndIgnoreOutput(cmd *exec.Cmd, logCommandArgs ...bool) error {
 
 // run executes the provided command within this context
 func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
-	var logCommand bool
-	var alwaysLogOutput bool
+	logCommand := true
+	logOutputOnSuccess := false
+	logOutputOnError := true
 	if len(logCommandArgs) >= 1 {
 		logCommand = logCommandArgs[0]
-	} else {
-		logCommand = true
 	}
 	if len(logCommandArgs) >= 2 {
-		alwaysLogOutput = logCommandArgs[1]
-	} else {
-		alwaysLogOutput = false
+		logOutputOnSuccess = logCommandArgs[1]
+	}
+	if len(logCommandArgs) >= 3 {
+		logOutputOnError = logCommandArgs[2]
 	}
 
 	command := strings.Join(cmd.Args, " ")
@@ -37,14 +37,14 @@ func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 		e2ePrint("running: %s\n", command)
 	}
 	output, err := cmd.CombinedOutput()
-	if alwaysLogOutput {
+	if err != nil {
+		if logOutputOnError {
+			e2ePrint(fmt.Sprintf("%s failed with error: (%v) %s", command, err, string(output)))
+		}
+		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
+	} else if logOutputOnSuccess {
 		e2ePrint("output: %s\n", string(output))
 	}
-	if err != nil {
-		e2ePrint(fmt.Sprintf("%s failed with error: (%v) %s", command, err, string(output)))
-		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
-	}
-
 	return string(output), nil
 }
 

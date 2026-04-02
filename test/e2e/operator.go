@@ -55,6 +55,7 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			CollectPodLabelsAndAnnotationsEnabled:            true,
 			PrometheusCrdSupportEnabled:                      false,
+			TelemetryCollectionEnabled:                       true,
 		},
 		additionalHelmParameters,
 	)
@@ -165,6 +166,8 @@ func executeOperatorHelmChart(
 		arguments = setHelmParameter(arguments, "operator.clusterName", e2eKubernetesContext)
 		arguments = setHelmParameter(arguments, "operator.selfMonitoringEnabled",
 			operatorConfigurationValues.SelfMonitoringEnabled)
+		arguments = setHelmParameter(arguments, "operator.telemetryCollectionEnabled",
+			operatorConfigurationValues.TelemetryCollectionEnabled)
 		if operatorConfigurationValues.ProfilingEnabled {
 			arguments = setHelmParameter(arguments, "operator.profilingEnabled", "true")
 		}
@@ -184,9 +187,11 @@ func executeOperatorHelmChart(
 
 	e2ePrint("output of helm %s:\n%s\n", helmCommand, output)
 
-	if operatorConfigurationValues != nil || helmCommand == "upgrade" {
-		// If an operatorConfigurationValues has been provided, collectors will be deployed, and we should wait until it
-		// is ready. If this is a helm upgrade, the collectors should already be running anyway.
+	if (operatorConfigurationValues != nil && operatorConfigurationValues.TelemetryCollectionEnabled) ||
+		helmCommand == "upgrade" {
+		// If an operatorConfigurationValues has been provided with telemetry collection enabled, collectors will be
+		// deployed, and we should wait until they are ready. If this is a helm upgrade, the collectors should already
+		// be running anyway.
 		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 	}
 

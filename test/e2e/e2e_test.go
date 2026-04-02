@@ -17,14 +17,14 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/startup"
-	dash0util "github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	gomegaformat "github.com/onsi/gomega/format"
 
 	"github.com/dash0hq/dash0-operator/test/e2e/pkg/shared"
-	"github.com/dash0hq/dash0-operator/test/util"
+	testUtil "github.com/dash0hq/dash0-operator/test/util"
 )
 
 const (
@@ -1487,6 +1487,47 @@ trace_statements:
 			})
 		})
 
+		Describe("with operator.telemetryCollectionEnabled=false via Helm values", func() {
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not deploy collectors or the target allocator", func() {
+				By("deploying the Dash0 operator with telemetryCollectionEnabled=false via Helm values")
+				Expect(deployOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					&startup.OperatorConfigurationValues{
+						Endpoint:                   defaultEndpoint,
+						ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+						Token:                      defaultToken,
+						TelemetryCollectionEnabled: false,
+					},
+					nil,
+				)).To(Succeed())
+
+				waitForAutoOperatorConfigurationResourceToBecomeAvailable()
+
+				By("verifying that all telemetry-collection-related settings are disabled")
+				Eventually(func(g Gomega) {
+					operatorConfiguration := loadOperatorConfigurationResource(g, util.OperatorConfigurationAutoResourceName)
+					verifyThatAllTelemetrySettingsAreDisabledInOperatorConfiguration(g, operatorConfiguration)
+				}, 30*time.Second, pollingInterval).Should(Succeed())
+
+				// Verify that neither the collector daemon set, the collector deployment, nor the target allocator are created
+				// when telemetryCollectionEnabled is false.
+				By("validating that the OpenTelemetry collectors do not exist")
+				Consistently(func(g Gomega) {
+					verifyCollectorDaemonSetIsNotPresent(g)
+					verifyCollectorDeploymentIsNotPresent(g)
+				}, 20*time.Second, pollingInterval).Should(Succeed())
+				verifyThatTargetAllocatorIsNotDeployed(operatorNamespace)
+			})
+		})
+
 		Describe("when using cert-manager instead of auto-generated certs", func() {
 
 			BeforeAll(func() {
@@ -1889,7 +1930,7 @@ trace_statements:
 					operatorHelmChartUrl,
 					images,
 					&startup.OperatorConfigurationValues{
-						Endpoint: util.EndpointDash0Test,
+						Endpoint: testUtil.EndpointDash0Test,
 						// no token, no secret ref
 						TelemetryCollectionEnabled: true,
 					},
@@ -2147,15 +2188,15 @@ trace_statements:
 					AutoNamespaceMonitoringEnabled: true,
 				}, operatorNamespace, operatorHelmChart)
 
-				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, dash0util.MonitoringAutoResourceDefaultName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, util.MonitoringAutoResourceDefaultName)
 				waitForMonitoringResourceToBecomeAvailable(
 					namespaceExistingAlwaysOptIn,
-					dash0util.MonitoringAutoResourceDefaultName,
+					util.MonitoringAutoResourceDefaultName,
 				)
 				verifyDash0MonitoringResourceDoesNotExist(
 					Default,
 					namespaceExistingDefaultOptOut,
-					dash0util.MonitoringAutoResourceDefaultName,
+					util.MonitoringAutoResourceDefaultName,
 				)
 
 				recreateNamespace(namespaceNew)
@@ -2171,12 +2212,12 @@ trace_statements:
 					},
 				)
 
-				waitForMonitoringResourceToBecomeAvailable(namespaceNew, dash0util.MonitoringAutoResourceDefaultName)
-				waitForMonitoringResourceToBecomeAvailable(namespaceNewAlwaysOptIn, dash0util.MonitoringAutoResourceDefaultName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceNew, util.MonitoringAutoResourceDefaultName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceNewAlwaysOptIn, util.MonitoringAutoResourceDefaultName)
 				verifyDash0MonitoringResourceDoesNotExist(
 					Default,
 					namespaceNewDefaultOptOut,
-					dash0util.MonitoringAutoResourceDefaultName,
+					util.MonitoringAutoResourceDefaultName,
 				)
 
 				deployWorkloadsInParallel(allWorkloadTestConfigs, testIds)
@@ -2231,11 +2272,11 @@ trace_statements:
 				// also have the custom opt-in label.
 				waitForMonitoringResourceToBecomeAvailable(
 					namespaceExistingDefaultOptOut,
-					dash0util.MonitoringAutoResourceDefaultName,
+					util.MonitoringAutoResourceDefaultName,
 				)
 				waitForMonitoringResourceToBecomeAvailable(
 					namespaceNewDefaultOptOut,
-					dash0util.MonitoringAutoResourceDefaultName,
+					util.MonitoringAutoResourceDefaultName,
 				)
 
 				// The two namespaces that have not opted out via the default selector but also have not opted in via the
@@ -2244,12 +2285,12 @@ trace_statements:
 					verifyDash0MonitoringResourceDoesNotExist(
 						g,
 						namespaceExisting,
-						dash0util.MonitoringAutoResourceDefaultName,
+						util.MonitoringAutoResourceDefaultName,
 					)
 					verifyDash0MonitoringResourceDoesNotExist(
 						g,
 						namespaceNew,
-						dash0util.MonitoringAutoResourceDefaultName,
+						util.MonitoringAutoResourceDefaultName,
 					)
 				}, 30*time.Second, time.Second)
 
@@ -2257,11 +2298,11 @@ trace_statements:
 				// custom selector, the monitoring resource is still there.
 				waitForMonitoringResourceToBecomeAvailable(
 					namespaceExistingAlwaysOptIn,
-					dash0util.MonitoringAutoResourceDefaultName,
+					util.MonitoringAutoResourceDefaultName,
 				)
 				waitForMonitoringResourceToBecomeAvailable(
 					namespaceNewAlwaysOptIn,
-					dash0util.MonitoringAutoResourceDefaultName,
+					util.MonitoringAutoResourceDefaultName,
 				)
 
 				// Trivially modify the workloads - we run with instrumentWorkloads.mode=created-and-updated, simulate
@@ -2339,7 +2380,7 @@ trace_statements:
 						verifyDash0MonitoringResourceInstrumentWorkloadsMode(
 							g,
 							ns,
-							dash0util.MonitoringAutoResourceDefaultName,
+							util.MonitoringAutoResourceDefaultName,
 							dash0common.InstrumentWorkloadsModeAll,
 						)
 					}
@@ -2369,19 +2410,19 @@ trace_statements:
 						"dash0.com/custom-auto-opt-in=true",
 					))).To(Succeed())
 
-				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, dash0util.MonitoringAutoResourceDefaultName)
+				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, util.MonitoringAutoResourceDefaultName)
 				// The new resource also should have been created according to the template set in part III.
 				verifyDash0MonitoringResourceInstrumentWorkloadsMode(
 					Default,
 					namespaceExisting,
-					dash0util.MonitoringAutoResourceDefaultName,
+					util.MonitoringAutoResourceDefaultName,
 					dash0common.InstrumentWorkloadsModeAll,
 				)
 				Eventually(func(g Gomega) {
 					verifyDash0MonitoringResourceDoesNotExist(
 						g,
 						namespaceExistingAlwaysOptIn,
-						dash0util.MonitoringAutoResourceDefaultName,
+						util.MonitoringAutoResourceDefaultName,
 					)
 				}, 30*time.Second, time.Second)
 

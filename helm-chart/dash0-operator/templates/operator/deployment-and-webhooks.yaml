@@ -144,6 +144,7 @@ spec:
         - --operator-configuration-collect-namespace-labels-and-annotations-enabled={{ .Values.operator.collectNamespaceLabelsAndAnnotationsEnabled }}
         - --operator-configuration-prometheus-crd-support-enabled={{ .Values.operator.prometheusCrdSupportEnabled }}
         - --operator-configuration-profiling-enabled={{ .Values.operator.profilingEnabled }}
+        - --operator-configuration-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
 {{- end }}{{/*closes "if .Values.operator.clusterName" */}}

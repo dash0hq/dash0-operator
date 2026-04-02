@@ -425,6 +425,61 @@ var _ = Describe(
 		)
 
 		It(
+			"should set telemetry-dependent settings to false when telemetryCollectionEnabled is false", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						Endpoint:              EndpointDash0Test,
+						Token:                 AuthorizationTokenTest,
+						SelfMonitoringEnabled: true,
+						KubernetesInfrastructureMetricsCollectionEnabled: true,
+						CollectPodLabelsAndAnnotationsEnabled:            true,
+						CollectNamespaceLabelsAndAnnotationsEnabled:      true,
+						PrometheusCrdSupportEnabled:                      true,
+						ProfilingEnabled:                                 true,
+						AutoMonitorNamespacesEnabled:                     true,
+						TelemetryCollectionEnabled:                       false,
+					},
+					nil,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{
+								Name: util.OperatorConfigurationAutoResourceName,
+							}, &operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+
+						spec := operatorConfiguration.Spec
+						g.Expect(spec.TelemetryCollection.Enabled).ToNot(BeNil())
+						g.Expect(*spec.TelemetryCollection.Enabled).To(BeFalse())
+						g.Expect(spec.SelfMonitoring.Enabled).ToNot(BeNil())
+						g.Expect(*spec.SelfMonitoring.Enabled).To(BeFalse())
+						g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).ToNot(BeNil())
+						g.Expect(*spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
+						g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).ToNot(BeNil())
+						g.Expect(*spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
+						g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).ToNot(BeNil())
+						g.Expect(*spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(BeFalse())
+						g.Expect(spec.PrometheusCrdSupport.Enabled).ToNot(BeNil())
+						g.Expect(*spec.PrometheusCrdSupport.Enabled).To(BeFalse())
+						g.Expect(spec.Profiling).ToNot(BeNil())
+						g.Expect(spec.Profiling.Enabled).ToNot(BeNil())
+						g.Expect(*spec.Profiling.Enabled).To(BeFalse())
+						g.Expect(spec.AutoMonitorNamespaces.IsEnabled()).To(BeFalse())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
 			"should create a new operator configuration resource with a monitoring template", func() {
 				monitoringTemplateJSON := json.RawMessage(`{"spec":{"instrumentWorkloads":{"mode":"none"}}}`)
 				handler := NewAutoOperatorConfigurationResourceHandler(
@@ -710,6 +765,7 @@ var _ = Describe(
 						CollectPodLabelsAndAnnotationsEnabled:            true,
 						PrometheusCrdSupportEnabled:                      false,
 						ProfilingEnabled:                                 false,
+						TelemetryCollectionEnabled:                       true,
 					},
 					nil,
 				)
@@ -763,6 +819,7 @@ var _ = Describe(
 						CollectPodLabelsAndAnnotationsEnabled:            false,
 						PrometheusCrdSupportEnabled:                      true,
 						ProfilingEnabled:                                 true,
+						TelemetryCollectionEnabled:                       true,
 					},
 					nil,
 				)

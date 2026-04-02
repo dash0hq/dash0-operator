@@ -107,6 +107,7 @@ type commandLineArguments struct {
 	operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled      bool
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationProfilingEnabled                                 bool
+	operatorConfigurationTelemetryCollectionEnabled                       bool
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
@@ -321,6 +322,7 @@ func Start() {
 			CollectNamespaceLabelsAndAnnotationsEnabled:      cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ProfilingEnabled:                                 cliArgs.operatorConfigurationProfilingEnabled,
+			TelemetryCollectionEnabled:                       cliArgs.operatorConfigurationTelemetryCollectionEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 			AutoMonitorNamespacesEnabled:                     cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
 			AutoMonitorNamespacesLabelSelector:               cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
@@ -449,6 +451,13 @@ func defineCommandLineArguments() *commandLineArguments {
 		"operator-configuration-profiling-enabled",
 		false,
 		"The value for profiling.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationTelemetryCollectionEnabled,
+		"operator-configuration-telemetry-collection-enabled",
+		true,
+		"The value for telemetryCollection.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
 	flag.StringVar(
@@ -927,6 +936,8 @@ func startOperatorManager(
 		cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 		"operator configuration profiling enabled",
 		cliArgs.operatorConfigurationProfilingEnabled,
+		"operator configuration telemetry collection enabled",
+		cliArgs.operatorConfigurationTelemetryCollectionEnabled,
 		"operator configuration cluster name",
 		cliArgs.operatorConfigurationClusterName,
 		"auto-monitor namespaces enabled",

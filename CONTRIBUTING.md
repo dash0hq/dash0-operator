@@ -288,7 +288,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       Dash0 API.
       This defaults to "true".
     * `TELEMETRY_COLLECTION_ENABLED`: Set this to "false" to instruct the operator to not deploy OpenTelemetry
-      collectors.
+      collectors and the target allocator.
       This defaults to "true".
     * `USE_CERT_MANAGER`: Set this to "true" to have the operator use cert-manager to manage TLS certificates, instead
       of generating certificates on the fly during Helm install.

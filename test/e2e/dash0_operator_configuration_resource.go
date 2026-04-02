@@ -5,6 +5,7 @@ package e2e
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -122,25 +124,77 @@ func deployRenderedOperatorConfigurationResourceWithRetry(
 }
 
 func waitForOperatorConfigurationResourceToBecomeAvailable() {
-	By("waiting for the Dash0 operator configuration resource to become available")
+	waitForOperatorConfigurationResourceWithNameToBecomeAvailable(dash0OperatorConfigurationResourceName)
+}
+
+func waitForAutoOperatorConfigurationResourceToBecomeAvailable() {
+	waitForOperatorConfigurationResourceWithNameToBecomeAvailable(util.OperatorConfigurationAutoResourceName)
+}
+
+func waitForOperatorConfigurationResourceWithNameToBecomeAvailable(operatorConfigurationResourceName string) {
+	By(
+		fmt.Sprintf("waiting for the Dash0 operator configuration resource %s to become available",
+			operatorConfigurationResourceName,
+		))
 	Eventually(func(g Gomega) {
 		g.Expect(
 			runAndIgnoreOutput(exec.Command(
 				"kubectl",
 				"get",
-				"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource-e2e",
+				"Dash0OperatorConfiguration",
+				operatorConfigurationResourceName,
 			))).To(Succeed())
 	}, 60*time.Second, 1*time.Second).Should(Succeed())
 	Expect(
 		runAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"wait",
-			"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource-e2e",
+			"Dash0OperatorConfiguration",
+			operatorConfigurationResourceName,
 			"--for",
 			"condition=Available",
 			"--timeout",
 			"30s",
 		))).To(Succeed())
+}
+
+func loadOperatorConfigurationResource(
+	g Gomega,
+	operatorConfigurationResourceName string,
+) dash0v1alpha1.Dash0OperatorConfiguration {
+	output, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"Dash0OperatorConfiguration",
+		operatorConfigurationResourceName,
+		"-o",
+		"json",
+	))
+	g.Expect(err).NotTo(HaveOccurred())
+	operatorConfiguration := dash0v1alpha1.Dash0OperatorConfiguration{}
+	g.Expect(json.Unmarshal([]byte(output), &operatorConfiguration)).To(Succeed())
+	return operatorConfiguration
+}
+
+func verifyThatAllTelemetrySettingsAreDisabledInOperatorConfiguration(
+	g Gomega,
+	operatorConfiguration dash0v1alpha1.Dash0OperatorConfiguration,
+) {
+	spec := operatorConfiguration.Spec
+	g.Expect(spec.TelemetryCollection.Enabled).ToNot(BeNil())
+	g.Expect(*spec.TelemetryCollection.Enabled).To(BeFalse())
+	g.Expect(spec.SelfMonitoring.Enabled).ToNot(BeNil())
+	g.Expect(*spec.SelfMonitoring.Enabled).To(BeFalse())
+	g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).ToNot(BeNil())
+	g.Expect(*spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
+	g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).ToNot(BeNil())
+	g.Expect(*spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
+	g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).ToNot(BeNil())
+	g.Expect(*spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(BeFalse())
+	g.Expect(spec.PrometheusCrdSupport.Enabled).ToNot(BeNil())
+	g.Expect(*spec.PrometheusCrdSupport.Enabled).To(BeFalse())
+	g.Expect(spec.Profiling.Enabled).ToNot(BeNil())
+	g.Expect(*spec.Profiling.Enabled).To(BeFalse())
 }
 
 func updateOperatorConfigurationExportEndpoint(
