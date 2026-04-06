@@ -758,6 +758,9 @@ spec:
                       type.
                     x-kubernetes-preserve-unknown-fields: true
                 type: object
+            required:
+            - synchronizePersesDashboards
+            - synchronizePrometheusRules
             type: object
           status:
             description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring
@@ -1759,6 +1762,9 @@ spec:
                       type.
                     x-kubernetes-preserve-unknown-fields: true
                 type: object
+            required:
+            - synchronizePersesDashboards
+            - synchronizePrometheusRules
             type: object
           status:
             description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring

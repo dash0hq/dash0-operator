@@ -1212,6 +1212,9 @@ custom resource definition for operator configuration should match snapshot:
                                   description: Transform statements (or groups) for the trace signal type.
                                   x-kubernetes-preserve-unknown-fields: true
                               type: object
+                          required:
+                            - synchronizePersesDashboards
+                            - synchronizePrometheusRules
                           type: object
                       type: object
                     profiling:
@@ -2092,6 +2095,9 @@ custom resource definition for operator configuration should match snapshot:
                                   description: Transform statements (or groups) for the trace signal type.
                                   x-kubernetes-preserve-unknown-fields: true
                               type: object
+                          required:
+                            - synchronizePersesDashboards
+                            - synchronizePrometheusRules
                           type: object
                       type: object
                   type: object

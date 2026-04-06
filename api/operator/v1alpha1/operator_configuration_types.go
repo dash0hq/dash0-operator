@@ -166,7 +166,7 @@ type KubernetesInfrastructureMetricsCollection struct {
 	// time.
 	//
 	// +kubebuilder:validation:Optional
-	Enabled *bool `json:"enabled"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type PrometheusCrdSupport struct {
@@ -176,7 +176,7 @@ type PrometheusCrdSupport struct {
 	// the same time.
 	//
 	// +kubebuilder:validation:Optional
-	Enabled *bool `json:"enabled"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type CollectPodLabelsAndAnnotations struct {
@@ -190,7 +190,7 @@ type CollectPodLabelsAndAnnotations struct {
 	// `collectPodLabelsAndAnnotations.enabled=true` at the same time.
 	//
 	// +kubebuilder:validation:Optional
-	Enabled *bool `json:"enabled"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type CollectNamespaceLabelsAndAnnotations struct {
@@ -203,7 +203,7 @@ type CollectNamespaceLabelsAndAnnotations struct {
 	// `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
 	//
 	// +kubebuilder:validation:Optional
-	Enabled *bool `json:"enabled"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type TelemetryCollection struct {
@@ -282,6 +282,7 @@ type MonitoringTemplate struct {
 type Profiling struct {
 	// If enabled, the operator will set up the pipelines to receive, process and forward profiling data over OTLP.
 	// This setting is optional, it defaults to `false`.
+	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }
 

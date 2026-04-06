@@ -51,7 +51,7 @@ type LogCollection struct {
 	// `logCollection.enabled=true` in any monitoring resource at the same time.
 	//
 	// +kubebuilder:validation:Optional
-	Enabled *bool `json:"enabled"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type EventCollection struct {
@@ -65,7 +65,7 @@ type EventCollection struct {
 	// `eventCollection.enabled=true` in any monitoring resource at the same time.
 	//
 	// +kubebuilder:validation:Optional
-	Enabled *bool `json:"enabled"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type PrometheusScraping struct {
@@ -77,7 +77,7 @@ type PrometheusScraping struct {
 	// `prometheusScraping.enabled=true` in any monitoring resource at the same time.
 	//
 	// +kubebuilder:validation:Optional
-	Enabled *bool `json:"enabled"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
