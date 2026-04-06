@@ -146,7 +146,7 @@ type Dash0MonitoringSpec struct {
 	// for details. This setting is optional, it defaults to `true`.
 	//
 	// +kubebuilder:default=true
-	SynchronizePersesDashboards *bool `json:"synchronizePersesDashboards,omitempty"`
+	SynchronizePersesDashboards *bool `json:"synchronizePersesDashboards"`
 
 	// If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
 	// rules in Dash0 via the Dash0 API.
@@ -154,7 +154,7 @@ type Dash0MonitoringSpec struct {
 	// for details. This setting is optional, it defaults to `true`.
 	//
 	// +kubebuilder:default=true
-	SynchronizePrometheusRules *bool `json:"synchronizePrometheusRules,omitempty"`
+	SynchronizePrometheusRules *bool `json:"synchronizePrometheusRules"`
 }
 
 type InstrumentWorkloads struct {

@@ -1301,6 +1301,9 @@ spec:
                               trace signal type.
                             x-kubernetes-preserve-unknown-fields: true
                         type: object
+                    required:
+                    - synchronizePersesDashboards
+                    - synchronizePrometheusRules
                     type: object
                 type: object
               profiling:
@@ -2234,6 +2237,9 @@ spec:
                               trace signal type.
                             x-kubernetes-preserve-unknown-fields: true
                         type: object
+                    required:
+                    - synchronizePersesDashboards
+                    - synchronizePrometheusRules
                     type: object
                 type: object
             type: object
