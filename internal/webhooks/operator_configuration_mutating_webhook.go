@@ -178,8 +178,10 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 func (h *OperatorConfigurationMutatingWebhookHandler) setMonitoringTemplateDefaults(
 	spec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
 ) bool {
-	if !spec.AutoMonitorNamespaces.IsEnabled() {
-		// If AutoMonitorNamespaces is not enabled, we do not need to set defaults for the MonitoringTemplate.
+	if !spec.AutoMonitorNamespaces.IsEnabled() && spec.MonitoringTemplate == nil {
+		// If AutoMonitorNamespaces is not enabled and there is no monitoring template at all, we do not need to set
+		// defaults for the monitoring template. However, if at least a partial monitoring template has been provided,
+		// defaults should be set, hence the " && spec.MonitoringTemplate == nil" in the condition.
 		return false
 	}
 

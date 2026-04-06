@@ -36,7 +36,7 @@ type migrateOperatorConfigExportToExportsTestConfig struct {
 
 type setMonitoringTemplateDefaultsTestConfig struct {
 	autoMonitorNamespacesEnabled bool
-	spec                         *dash0v1alpha1.MonitoringTemplate
+	template                     *dash0v1alpha1.MonitoringTemplate
 	wanted                       *dash0v1alpha1.MonitoringTemplate
 }
 
@@ -115,31 +115,32 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 		)
 		Expect(errorResponse).To(BeNil())
 		Expect(spec).To(Equal(testConfig.wanted))
-	}, Entry("given an empty spec, set all default values",
-		normalizeOperatorConfigurationResourceSpecTestConfig{
-			spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{},
-			wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-					Enabled: new(true),
+	},
+		Entry("given an empty spec, set all default values",
+			normalizeOperatorConfigurationResourceSpecTestConfig{
+				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{},
+				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: new(true),
+					},
+					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+						Enabled: new(true),
+					},
+					KubernetesInfrastructureMetricsCollectionEnabled: new(true),
+					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: new(true),
+					},
+					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: new(false),
+					},
+					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
+						Enabled: new(false),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(true),
+					},
 				},
-				KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
-					Enabled: new(true),
-				},
-				KubernetesInfrastructureMetricsCollectionEnabled: new(true),
-				CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
-					Enabled: new(true),
-				},
-				CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
-					Enabled: new(false),
-				},
-				PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
-					Enabled: new(false),
-				},
-				TelemetryCollection: dash0v1alpha1.TelemetryCollection{
-					Enabled: new(true),
-				},
-			},
-		}),
+			}),
 		Entry("given empty structs, set all default values",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				// This is actully the same test case as before, given how the default values for a structs work in Go.
@@ -501,7 +502,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			AutoMonitorNamespaces: dash0v1alpha1.AutoMonitorNamespaces{
 				Enabled: new(testConfig.autoMonitorNamespacesEnabled),
 			},
-			MonitoringTemplate: testConfig.spec,
+			MonitoringTemplate: testConfig.template,
 		}
 		_, errorResponse := operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
 			admission.Request{},
@@ -511,16 +512,45 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 		Expect(errorResponse).To(BeNil())
 		Expect(spec.MonitoringTemplate).To(Equal(testConfig.wanted))
 	},
-		Entry("if automatic namespace monitoring is disabled, set no defaults",
+		Entry("if automatic namespace monitoring is disabled and template is nil, do nothing",
 			setMonitoringTemplateDefaultsTestConfig{
 				autoMonitorNamespacesEnabled: false,
-				spec:                         nil,
+				template:                     nil,
 				wanted:                       nil,
+			}),
+		Entry("if automatic namespace monitoring is disabled but there is a template, set all monitoring template defaults",
+			setMonitoringTemplateDefaultsTestConfig{
+				autoMonitorNamespacesEnabled: false,
+				template: &dash0v1alpha1.MonitoringTemplate{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "monitoring",
+					},
+				},
+				wanted: &dash0v1alpha1.MonitoringTemplate{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "monitoring",
+					},
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+							LabelSelector: "dash0.com/enable!=false",
+						},
+						LogCollection: dash0common.LogCollection{
+							Enabled: new(true),
+						},
+						EventCollection: dash0common.EventCollection{
+							Enabled: new(true),
+						},
+						PrometheusScraping: dash0common.PrometheusScraping{
+							Enabled: new(true),
+						},
+					},
+				},
 			}),
 		Entry("given no MonitoringTemplate, set all monitoring template defaults",
 			setMonitoringTemplateDefaultsTestConfig{
 				autoMonitorNamespacesEnabled: true,
-				spec:                         nil,
+				template:                     nil,
 				wanted: &dash0v1alpha1.MonitoringTemplate{
 					Spec: dash0v1beta1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
@@ -542,7 +572,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 		Entry("given an empty MonitoringTemplate, set all monitoring template defaults",
 			setMonitoringTemplateDefaultsTestConfig{
 				autoMonitorNamespacesEnabled: true,
-				spec:                         &dash0v1alpha1.MonitoringTemplate{},
+				template:                     &dash0v1alpha1.MonitoringTemplate{},
 				wanted: &dash0v1alpha1.MonitoringTemplate{
 					Spec: dash0v1beta1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
@@ -564,7 +594,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 		Entry("given a MonitoringTemplate with all attributes set to non-default values, leave them unchanged",
 			setMonitoringTemplateDefaultsTestConfig{
 				autoMonitorNamespacesEnabled: true,
-				spec: &dash0v1alpha1.MonitoringTemplate{
+				template: &dash0v1alpha1.MonitoringTemplate{
 					Spec: dash0v1beta1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 							Mode:          dash0common.InstrumentWorkloadsModeAll,
