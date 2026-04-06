@@ -1891,6 +1891,7 @@ trace_statements:
 					&startup.OperatorConfigurationValues{
 						Endpoint: util.EndpointDash0Test,
 						// no token, no secret ref
+						TelemetryCollectionEnabled: true,
 					},
 					nil,
 				)
@@ -2431,6 +2432,7 @@ trace_statements:
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
 					CollectPodLabelsAndAnnotationsEnabled:            true,
 					PrometheusCrdSupportEnabled:                      false,
+					TelemetryCollectionEnabled:                       true,
 				}
 				Expect(deployOperator(
 					operatorNamespace,
