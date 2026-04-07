@@ -5,17 +5,17 @@ cluster role bindings should match snapshot:
     metadata:
       labels:
         app.kubernetes.io/component: controller
-        app.kubernetes.io/instance: role-binding
+        app.kubernetes.io/instance: cluster-role-binding-base
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
-      name: dash0-operator-manager-rolebinding
+      name: dash0-operator-manager-base
     roleRef:
       apiGroup: rbac.authorization.k8s.io
       kind: ClusterRole
-      name: dash0-operator-manager-role
+      name: dash0-operator-manager-base
     subjects:
       - kind: ServiceAccount
         name: dash0-operator-controller
@@ -25,18 +25,60 @@ cluster role bindings should match snapshot:
     kind: ClusterRoleBinding
     metadata:
       labels:
-        app.kubernetes.io/component: proxy
-        app.kubernetes.io/instance: role-binding
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-binding-iac
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
-      name: dash0-operator-proxy-rolebinding
+      name: dash0-operator-manager-iac
     roleRef:
       apiGroup: rbac.authorization.k8s.io
       kind: ClusterRole
-      name: dash0-operator-proxy-role
+      name: dash0-operator-manager-iac
+    subjects:
+      - kind: ServiceAccount
+        name: dash0-operator-controller
+        namespace: NAMESPACE
+  3: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-binding-collector
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-manager-collector
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: dash0-operator-manager-collector
+    subjects:
+      - kind: ServiceAccount
+        name: dash0-operator-controller
+        namespace: NAMESPACE
+  4: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-binding-instrument
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-manager-instrument
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: dash0-operator-manager-instrument
     subjects:
       - kind: ServiceAccount
         name: dash0-operator-controller

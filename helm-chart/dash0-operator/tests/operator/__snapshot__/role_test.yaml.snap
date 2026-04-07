@@ -5,15 +5,36 @@ leader election role should match snapshot:
     metadata:
       labels:
         app.kubernetes.io/component: controller
-        app.kubernetes.io/instance: leader-election-role
+        app.kubernetes.io/instance: role
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
-      name: dash0-operator-leader-election-role
+      name: dash0-operator-manager
       namespace: NAMESPACE
     rules:
+      - apiGroups:
+          - apps
+        resources:
+          - deployments
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - discovery.k8s.io
+        resources:
+          - endpointslices
+        verbs:
+          - list
+      - apiGroups:
+          - ""
+        resources:
+          - secrets
+        verbs:
+          - get
+          - list
+          - watch
       - apiGroups:
           - ""
         resources:
