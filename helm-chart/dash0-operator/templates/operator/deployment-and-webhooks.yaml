@@ -144,7 +144,6 @@ spec:
         - --operator-configuration-collect-namespace-labels-and-annotations-enabled={{ .Values.operator.collectNamespaceLabelsAndAnnotationsEnabled }}
         - --operator-configuration-prometheus-crd-support-enabled={{ .Values.operator.prometheusCrdSupportEnabled }}
         - --operator-configuration-profiling-enabled={{ .Values.operator.profilingEnabled }}
-        - --operator-configuration-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
 {{- end }}{{/*closes "if .Values.operator.clusterName" */}}
@@ -154,6 +153,7 @@ spec:
         - --operator-configuration-auto-monitor-namespaces-enabled={{ .Values.operator.autoMonitorNamespaces.enabled }}
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
+        - --telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
         - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
         - --disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}

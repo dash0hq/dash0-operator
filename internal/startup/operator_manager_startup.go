@@ -107,10 +107,10 @@ type commandLineArguments struct {
 	operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled      bool
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationProfilingEnabled                                 bool
-	operatorConfigurationTelemetryCollectionEnabled                       bool
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
+	telemetryCollectionEnabled                                            bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
 	disableOpenTelemetryCollectorHostPorts                                bool
@@ -322,7 +322,7 @@ func Start() {
 			CollectNamespaceLabelsAndAnnotationsEnabled:      cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ProfilingEnabled:                                 cliArgs.operatorConfigurationProfilingEnabled,
-			TelemetryCollectionEnabled:                       cliArgs.operatorConfigurationTelemetryCollectionEnabled,
+			TelemetryCollectionEnabled:                       cliArgs.telemetryCollectionEnabled,
 			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 			AutoMonitorNamespacesEnabled:                     cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
 			AutoMonitorNamespacesLabelSelector:               cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
@@ -454,11 +454,10 @@ func defineCommandLineArguments() *commandLineArguments {
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
 	flag.BoolVar(
-		&cliArgs.operatorConfigurationTelemetryCollectionEnabled,
-		"operator-configuration-telemetry-collection-enabled",
+		&cliArgs.telemetryCollectionEnabled,
+		"telemetry-collection-enabled",
 		true,
-		"The value for telemetryCollection.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.",
+		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)
 	flag.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
@@ -936,8 +935,6 @@ func startOperatorManager(
 		cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 		"operator configuration profiling enabled",
 		cliArgs.operatorConfigurationProfilingEnabled,
-		"operator configuration telemetry collection enabled",
-		cliArgs.operatorConfigurationTelemetryCollectionEnabled,
 		"operator configuration cluster name",
 		cliArgs.operatorConfigurationClusterName,
 		"auto-monitor namespaces enabled",
@@ -945,6 +942,8 @@ func startOperatorManager(
 		"auto-monitor namespaces label selector",
 		cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
 
+		"telemetry collection enabled",
+		cliArgs.telemetryCollectionEnabled,
 		"force-use OpenTelemetry collector service URL",
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"disable OpenTelemetry collector host ports",
@@ -1326,7 +1325,7 @@ func startDash0Controllers(
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
-	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient, cliArgs.telemetryCollectionEnabled).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
 	if err := webhooks.NewMonitoringMutatingWebhookHandler(

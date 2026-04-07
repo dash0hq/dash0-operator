@@ -396,4 +396,50 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"the operator configuration and remove the `export` from the monitoringTemplate.spec.")))
 	})
 
+	Context("with telemetry collection disabled via Helm", Ordered, func() {
+		BeforeAll(func() {
+			operatorConfigurationValidationWebhookHandler.telemetryCollectionEnabledViaHelm = false
+		})
+
+		AfterAll(func() {
+			operatorConfigurationValidationWebhookHandler.telemetryCollectionEnabledViaHelm = true
+		})
+
+		It("should reject enabling telemetry collection via the operator configuration resource", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+							Enabled: new(true),
+						},
+					},
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: Telemetry collection " +
+					"has been disabled via the Helm chart (operator.telemetryCollectionEnabled: false), but the provided Dash0 " +
+					"operator configuration resource has telemetryCollection.enabled=true. Telemetry collection cannot be " +
+					"enabled via the operator configuration resource when it has been disabled via the Helm chart. Instead, " +
+					"run helm upgrade --install to set operator.telemetryCollectionEnabled: true via the Helm chart.")))
+		})
+
+		It("should allow updates when operator configuration resource has telemetry collection disabled", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+							Enabled: new(false),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })
