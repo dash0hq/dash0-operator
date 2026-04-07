@@ -41,7 +41,7 @@ type Dash0OperatorConfiguration struct {
 
 // Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 operator.
 type Dash0OperatorConfigurationSpec struct {
-	// Deprecated: Use `exports` instead. It is a validation error to set both `export` and `exports`.
+	// Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.
 	// The mutating webhook will automatically migrate `export` to `exports` if only `export` is specified.
 	//
 	// The configuration of the default observability backend to which telemetry data will be sent by the operator, as
