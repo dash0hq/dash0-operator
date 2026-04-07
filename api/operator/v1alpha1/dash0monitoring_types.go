@@ -48,7 +48,7 @@ type Dash0Monitoring struct {
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
 // telemetry to an observability backend.
 type Dash0MonitoringSpec struct {
-	// Deprecated: Use `exports` instead. It is a validation error to set both `export` and `exports`.
+	// Deprecated: Use `exports` instead. If both `export` and `exports` are specified, `export` will be ignored.
 	// The mutating webhook will automatically migrate `export` to `exports` if only `export` is specified.
 	//
 	// The configuration of the observability backend to which telemetry data will be sent. This property is optional.
