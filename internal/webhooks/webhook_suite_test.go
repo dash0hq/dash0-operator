@@ -46,8 +46,9 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 
-	operatorConfigurationMutatingWebhookHandler *OperatorConfigurationMutatingWebhookHandler
-	monitoringMutatingWebhookHandler            *MonitoringMutatingWebhookHandler
+	operatorConfigurationMutatingWebhookHandler   *OperatorConfigurationMutatingWebhookHandler
+	operatorConfigurationValidationWebhookHandler *OperatorConfigurationValidationWebhookHandler
+	monitoringMutatingWebhookHandler              *MonitoringMutatingWebhookHandler
 )
 
 func TestWebhook(t *testing.T) {
@@ -137,14 +138,16 @@ var _ = BeforeSuite(func() {
 	operatorConfigurationMutatingWebhookHandler = NewOperatorConfigurationMutatingWebhookHandler(k8sClient)
 	Expect(operatorConfigurationMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
-	Expect(NewOperatorConfigurationValidationWebhookHandler(k8sClient).SetupWebhookWithManager(manager)).To(Succeed())
+	operatorConfigurationValidationWebhookHandler = NewOperatorConfigurationValidationWebhookHandler(k8sClient, true)
+	Expect(operatorConfigurationValidationWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
 	Expect(SetupDash0MonitoringConversionWebhookWithManager(manager)).To(Succeed())
 
 	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace)
 	Expect(monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
-	Expect(NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).SetupWebhookWithManager(manager)).To(Succeed())
+	Expect(NewMonitoringValidationWebhookHandler(k8sClient, OperatorNamespace).
+		SetupWebhookWithManager(manager)).To(Succeed())
 
 	//+kubebuilder:scaffold:webhook
 

@@ -364,21 +364,24 @@ tests:
           value: --leader-elect
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --force-use-otel-collector-service-url=true
+          value: --telemetry-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --gke-autopilot=false
+          value: --force-use-otel-collector-service-url=true
       - equal:
           path: spec.template.spec.containers[0].args[5]
-          value: --disable-otel-collector-host-ports=true
+          value: --gke-autopilot=false
       - equal:
           path: spec.template.spec.containers[0].args[6]
-          value: --instrumentation-delay-after-each-workload-millis=13
+          value: --disable-otel-collector-host-ports=true
       - equal:
           path: spec.template.spec.containers[0].args[7]
+          value: --instrumentation-delay-after-each-workload-millis=13
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
           value: --instrumentation-delay-after-each-namespace-millis=123
       - notExists:
-          path: spec.template.spec.containers[0].args[8]
+          path: spec.template.spec.containers[0].args[9]
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: GOMEMLIMIT
@@ -626,13 +629,13 @@ tests:
         instrumentationDelayAfterEachNamespaceMillis: 135
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[6]
+          path: spec.template.spec.containers[0].args[7]
           value: --instrumentation-delay-after-each-workload-millis=2
       - equal:
-          path: spec.template.spec.containers[0].args[7]
+          path: spec.template.spec.containers[0].args[8]
           value: --instrumentation-delay-after-each-namespace-millis=135
       - notExists:
-          path: spec.template.spec.containers[0].args[8]
+          path: spec.template.spec.containers[0].args[9]
 
   - it: should render disableReplicasetInformer from legacy path
     documentSelector:
@@ -723,9 +726,6 @@ tests:
           value: --operator-configuration-profiling-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[12]
-          value: --operator-configuration-telemetry-collection-enabled=true
-      - equal:
-          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-dataset=test-dataset
 
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
@@ -767,9 +767,6 @@ tests:
           value: --operator-configuration-profiling-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[12]
-          value: --operator-configuration-telemetry-collection-enabled=true
-      - equal:
-          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-cluster-name=cluster-name
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
@@ -916,11 +913,23 @@ tests:
           labelSelector: dash0.com/custom==false
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[13]
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-auto-monitor-namespaces-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[14]
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-auto-monitor-namespaces-label-selector=dash0.com/custom==false
+
+  - it: should disable telemetry collection via Helm
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --telemetry-collection-enabled=false
 
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:

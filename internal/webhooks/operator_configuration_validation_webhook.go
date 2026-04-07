@@ -18,6 +18,12 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
+const ErrorMessageTelemetryCollectionDisabledViaHelm = "Telemetry collection has been disabled via the Helm chart " +
+	"(operator.telemetryCollectionEnabled: false), but the provided Dash0 operator configuration resource has " +
+	"telemetryCollection.enabled=true. Telemetry collection cannot be enabled via the operator configuration resource " +
+	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
+	"operator.telemetryCollectionEnabled: true via the Helm chart."
+
 const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
 	"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 	"Please either set telemetryCollection.enabled=true or " +
@@ -38,14 +44,17 @@ const ErrorMessageOperatorConfigurationMonitoringTemplateWithExport = "The provi
 	"`exports` field in the operator configuration and remove the `export` from the monitoringTemplate.spec."
 
 type OperatorConfigurationValidationWebhookHandler struct {
-	Client client.Client
+	Client                            client.Client
+	telemetryCollectionEnabledViaHelm bool
 }
 
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
+	telemetryCollectionEnabledViaHelm bool,
 ) *OperatorConfigurationValidationWebhookHandler {
 	return &OperatorConfigurationValidationWebhookHandler{
-		Client: k8sClient,
+		Client:                            k8sClient,
+		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
 	}
 }
 
@@ -75,6 +84,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	spec := operatorConfigurationResource.Spec
+
+	if !h.telemetryCollectionEnabledViaHelm && spec.TelemetryCollection.Enabled != nil && *spec.TelemetryCollection.Enabled {
+		logger.Info(ErrorMessageTelemetryCollectionDisabledViaHelm)
+		return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm)
+	}
 
 	// Reject if both the deprecated export and the new exports field are set.
 	//nolint:staticcheck
