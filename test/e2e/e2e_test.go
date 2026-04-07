@@ -1511,6 +1511,16 @@ trace_statements:
 
 				waitForAutoOperatorConfigurationResourceToBecomeAvailable()
 
+				// Deploy a monitoring resource for the sole purpose of verifying that it can be deployed successfully and
+				// becomes ready.
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
+					},
+					operatorNamespace,
+				)
+
 				By("verifying that all telemetry-collection-related settings are disabled")
 				Eventually(func(g Gomega) {
 					operatorConfiguration := loadOperatorConfigurationResource(g, util.OperatorConfigurationAutoResourceName)

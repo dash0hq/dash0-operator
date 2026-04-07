@@ -1,17 +1,17 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ template "dash0-operator.chartName" . }}-leader-election-rolebinding
+  name: {{ template "dash0-operator.chartName" . }}-manager
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: leader-election-rolebinding
+    app.kubernetes.io/instance: role-binding
     {{- include "dash0-operator.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ template "dash0-operator.chartName" . }}-leader-election-role
+  name: {{ template "dash0-operator.chartName" . }}-manager
 subjects:
 - kind: ServiceAccount
   name: {{ template "dash0-operator.serviceAccountName" . }}

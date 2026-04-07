@@ -1,14 +1,44 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ template "dash0-operator.chartName" . }}-leader-election-role
+  name: {{ template "dash0-operator.chartName" . }}-manager
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: leader-election-role
+    app.kubernetes.io/instance: role
     {{- include "dash0-operator.labels" . | nindent 4 }}
+
 rules:
+
+# Permissions required so the operator can look up its own deployment.
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+
+# Permissions required to create a Dash0 operator configuration resource:
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - list
+
+# Permissions required to resolve the secret with the Dash0 auth token:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required for leader election:
 - apiGroups:
   - ""
   resources:

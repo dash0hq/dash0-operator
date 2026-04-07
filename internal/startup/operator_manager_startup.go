@@ -31,6 +31,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	crzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -846,25 +847,43 @@ func startOperatorManager(
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	developmentMode bool,
 ) error {
-	mgr, err := ctrl.NewManager(
-		ctrl.GetConfigOrDie(), ctrl.Options{
-			Scheme: runtimeScheme,
-			Metrics: metricsserver.Options{
-				BindAddress:   cliArgs.metricsAddr,
-				SecureServing: cliArgs.secureMetrics,
-				TLSOpts:       tlsOpts,
-			},
-			WebhookServer:          webhookServer,
-			HealthProbeBindAddress: cliArgs.probeAddr,
-			LeaderElection:         cliArgs.enableLeaderElection,
-			LeaderElectionID:       "5ae7ac41.dash0.com",
-
-			// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
-			// operator manager will terminate immediately, we need to shut down a couple of internal components before
-			// terminating (self monitoring OTel SDK shutdown etc.).
-			LeaderElectionReleaseOnCancel: false,
+	options := ctrl.Options{
+		Scheme: runtimeScheme,
+		Metrics: metricsserver.Options{
+			BindAddress:   cliArgs.metricsAddr,
+			SecureServing: cliArgs.secureMetrics,
+			TLSOpts:       tlsOpts,
 		},
-	)
+		WebhookServer:          webhookServer,
+		HealthProbeBindAddress: cliArgs.probeAddr,
+		LeaderElection:         cliArgs.enableLeaderElection,
+		LeaderElectionID:       "5ae7ac41.dash0.com",
+
+		// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
+		// operator manager will terminate immediately, we need to shut down a couple of internal components before
+		// terminating (self monitoring OTel SDK shutdown etc.).
+		LeaderElectionReleaseOnCancel: false,
+	}
+
+	if !cliArgs.telemetryCollectionEnabled {
+		// If telemetry collection is disabled, we do not have the RBAC permissions to read secrects in arbitrary
+		// namespaces. As a consequence, we need to instruct controller-runtime to only list/watch secrets in the operator
+		// namespace. Otherwise, any k8sClient.Get call to fetch a secret (in particular, the Dash0 auth token secret for
+		// self-monitoring) will make controller-runtime execute a list and watch for secrets in the entire cluster, just
+		// to build its internal cache. This fails with
+		// 'User ... cannot list resource "secrets" in API group "" at the cluster scope.'
+		// if we do not have cluster-wide permissions for secrets.
+		options.Cache = cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.Secret{}: {
+					Namespaces: map[string]cache.Config{
+						envVars.operatorNamespace: {},
+					},
+				},
+			},
+		}
+	}
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 	if err != nil {
 		return fmt.Errorf("unable to create the manager: %w", err)
 	}
@@ -1002,6 +1021,10 @@ func startOperatorManager(
 		}
 	}()
 
+	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
+		return fmt.Errorf("unable to add the leader election aware runnable: %w", err)
+	}
+
 	setupLog.Info("starting manager (waiting for leader election)")
 	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		return fmt.Errorf("unable to set up the signal handler: %w", err)
@@ -1050,31 +1073,6 @@ func startDash0Controllers(
 		return err
 	}
 
-	clusterInstrumentationConfig := util.NewClusterInstrumentationConfig(
-		images,
-		oTelCollectorBaseUrl,
-		extraConfig,
-		cliArgs.instrumentationDelays,
-		envVars.instrumentationDebug,
-		envVars.enablePythonAutoInstrumentation,
-	)
-	startupInstrumenter := instrumentation.NewInstrumenter(
-		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
-		nil,
-		clientset,
-		mgr.GetEventRecorder("dash0-startup-tasks"),
-		clusterInstrumentationConfig,
-	)
-	// For consistency, we update the extra config map in the startupInstrumenter handler as well if it changes. Since
-	// this instrumenter only runs once at startup, this has no effect whatsoever.
-	extraConfigMapWatcher.AddClient(startupInstrumenter)
-	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
-		return fmt.Errorf("unable to add the leader election aware runnable: %w", err)
-	}
-	// register the instrument-at-startup task to run once this operator manager becomes leader
-	if err = mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
-		return fmt.Errorf("unable to add instrument-at-startup task: %w", err)
-	}
 	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
 		ctx,
 		readyCheckExecuter,
@@ -1088,109 +1086,137 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to add log-operator-configuration task: %w", err)
 	}
 
-	instrumenter := instrumentation.NewInstrumenter(
-		k8sClient,
-		clientset,
-		mgr.GetEventRecorder("dash0-monitoring-controller"),
-		clusterInstrumentationConfig,
-	)
-	// For consistency, we update the extra config map in the instrumenter handler as well. However, even if
-	// instrumentation related settings have been changed (e.g. operator.initContainerResources), we will not
-	// re-instrument existing workloads to update the settings. It would make no sense, since the init container
-	// only runs once at pod startup of the workload, so changing resource settings for the init container afterwards
-	// is useless.
-	extraConfigMapWatcher.AddClient(instrumenter)
-
-	pseudoClusterUid := util.ReadPseudoClusterUid(ctx, startupTasksK8sClient, setupLog)
-	collectorConfig := util.CollectorConfig{
-		Images:                                 images,
-		OperatorNamespace:                      envVars.operatorNamespace,
-		OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
-		TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
-		SendBatchSize:                          envVars.sendBatchSize,
-		SendBatchMaxSize:                       envVars.sendBatchMaxSize,
-		K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
-		K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
-		K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
-		NodeIp:                                 envVars.nodeIp,
-		NodeName:                               envVars.nodeName,
-		PseudoClusterUid:                       pseudoClusterUid,
-		IsIPv6Cluster:                          isIPv6Cluster,
-		IsDocker:                               isDocker,
-		DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
-		IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
-		DevelopmentMode:                        developmentMode,
-		DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
-		EnableProfExtension:                    envVars.enablePprofExtension,
-		CompressConfigMap:                      envVars.compressConfigMaps,
-	}
-	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
-		k8sClient,
-		mgr.GetScheme(),
-		operatorDeploymentSelfReference,
-		collectorConfig,
-	)
-	collectorManager := collectors.NewCollectorManager(
-		k8sClient,
-		clientset,
+	clusterInstrumentationConfig := util.NewClusterInstrumentationConfig(
+		images,
+		oTelCollectorBaseUrl,
 		extraConfig,
-		developmentMode,
-		oTelColResourceManager,
+		cliArgs.instrumentationDelays,
+		envVars.instrumentationDebug,
+		envVars.enablePythonAutoInstrumentation,
 	)
-	// We update the extra config map in the collectorManager when the extra config map changes, and also trigger a
-	// reconciliation of the collectors. This makes sure changed resource settings, filelog offset volumes or toleration
-	// taints are applied more or less immediately. (Noticing the changed config map can take a minute or a bit more.)
-	extraConfigMapWatcher.AddClient(collectorManager)
-
-	if !envVars.disableCollectorResourceWatches {
-		collectorReconciler := collectors.NewCollectorReconciler(
-			k8sClient,
-			collectorManager,
-			envVars.operatorNamespace,
-			envVars.oTelCollectorNamePrefix,
-		)
-		if err := collectorReconciler.SetupWithManager(mgr); err != nil {
-			return fmt.Errorf("unable to set up the collector reconciler: %w", err)
-		}
-	} else {
-		setupLog.Info(
-			"Warning: The setting operator.disableCollectorResourceWatches is true, collector resources will not be " +
-				"watched. This setting is intended for troubleshooting the OpenTelemetry collector setup.",
-		)
-	}
-
-	targetAllocatorConfig := util.TargetAllocatorConfig{
-		Images:                    images,
-		OperatorNamespace:         envVars.operatorNamespace,
-		TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
-		CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
-		IsGkeAutopilot:            cliArgs.isGkeAutopilot,
-	}
-	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
-		k8sClient,
-		mgr.GetScheme(),
-		operatorDeploymentSelfReference,
-		targetAllocatorConfig,
-	)
-	targetallocatorManager := targetallocator.NewTargetAllocatorManager(
-		k8sClient, clientset, extraConfig, developmentMode, targetallocatorResourceManager,
-	)
-	// We update the extra config map in the targetallocatorManager when the extra config map changes, and also trigger a
-	// reconciliation of the target-allocator.
-	extraConfigMapWatcher.AddClient(targetallocatorManager)
-	targetAllocatorReconciler := targetallocator.NewTargetAllocatorReconciler(
-		k8sClient,
-		targetallocatorManager,
-		envVars.operatorNamespace,
-		envVars.targetAllocatorNamePrefix,
-	)
-	if err := targetAllocatorReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
-	}
-
 	clusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, setupLog)
 	if err != nil {
 		return err
+	}
+
+	var instrumenter *instrumentation.Instrumenter
+	var collectorManager *collectors.CollectorManager
+	var targetallocatorManager *targetallocator.TargetAllocatorManager
+
+	if cliArgs.telemetryCollectionEnabled {
+		startupInstrumenter := instrumentation.NewInstrumenter(
+			// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
+			nil,
+			clientset,
+			mgr.GetEventRecorder("dash0-startup-tasks"),
+			clusterInstrumentationConfig,
+		)
+		// For consistency, we update the extra config map in the startupInstrumenter handler as well if it changes. Since
+		// this instrumenter only runs once at startup, this has no effect whatsoever.
+		extraConfigMapWatcher.AddClient(startupInstrumenter)
+		// register the instrument-at-startup task to run once this operator manager becomes leader
+		if err = mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
+			return fmt.Errorf("unable to add instrument-at-startup task: %w", err)
+		}
+
+		instrumenter = instrumentation.NewInstrumenter(
+			k8sClient,
+			clientset,
+			mgr.GetEventRecorder("dash0-monitoring-controller"),
+			clusterInstrumentationConfig,
+		)
+		// For consistency, we update the extra config map in the instrumenter handler as well. However, even if
+		// instrumentation related settings have been changed (e.g. operator.initContainerResources), we will not
+		// re-instrument existing workloads to update the settings. It would make no sense, since the init container
+		// only runs once at pod startup of the workload, so changing resource settings for the init container afterwards
+		// is useless.
+		extraConfigMapWatcher.AddClient(instrumenter)
+
+		collectorConfig := util.CollectorConfig{
+			Images:                                 images,
+			OperatorNamespace:                      envVars.operatorNamespace,
+			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
+			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
+			SendBatchSize:                          envVars.sendBatchSize,
+			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
+			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
+			K8sAttributesWaitForMetadata:           envVars.k8sAttributesWaitForMetadata,
+			K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
+			NodeIp:                                 envVars.nodeIp,
+			NodeName:                               envVars.nodeName,
+			PseudoClusterUid:                       clusterUid,
+			IsIPv6Cluster:                          isIPv6Cluster,
+			IsDocker:                               isDocker,
+			DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
+			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
+			DevelopmentMode:                        developmentMode,
+			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
+			EnableProfExtension:                    envVars.enablePprofExtension,
+			CompressConfigMap:                      envVars.compressConfigMaps,
+		}
+		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
+			k8sClient,
+			mgr.GetScheme(),
+			operatorDeploymentSelfReference,
+			collectorConfig,
+		)
+		collectorManager = collectors.NewCollectorManager(
+			k8sClient,
+			clientset,
+			extraConfig,
+			developmentMode,
+			oTelColResourceManager,
+		)
+		// We update the extra config map in the collectorManager when the extra config map changes, and also trigger a
+		// reconciliation of the collectors. This makes sure changed resource settings, filelog offset volumes or toleration
+		// taints are applied more or less immediately. (Noticing the changed config map can take a minute or a bit more.)
+		extraConfigMapWatcher.AddClient(collectorManager)
+
+		if !envVars.disableCollectorResourceWatches {
+			collectorReconciler := collectors.NewCollectorReconciler(
+				k8sClient,
+				collectorManager,
+				envVars.operatorNamespace,
+				envVars.oTelCollectorNamePrefix,
+			)
+			if err := collectorReconciler.SetupWithManager(mgr); err != nil {
+				return fmt.Errorf("unable to set up the collector reconciler: %w", err)
+			}
+		} else {
+			setupLog.Info(
+				"Warning: The setting operator.disableCollectorResourceWatches is true, collector resources will not be " +
+					"watched. This setting is intended for troubleshooting the OpenTelemetry collector setup.",
+			)
+		}
+
+		targetAllocatorConfig := util.TargetAllocatorConfig{
+			Images:                    images,
+			OperatorNamespace:         envVars.operatorNamespace,
+			TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
+			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
+			IsGkeAutopilot:            cliArgs.isGkeAutopilot,
+		}
+		targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
+			k8sClient,
+			mgr.GetScheme(),
+			operatorDeploymentSelfReference,
+			targetAllocatorConfig,
+		)
+		targetallocatorManager = targetallocator.NewTargetAllocatorManager(
+			k8sClient, clientset, extraConfig, developmentMode, targetallocatorResourceManager,
+		)
+		// We update the extra config map in the targetallocatorManager when the extra config map changes, and also trigger a
+		// reconciliation of the target-allocator.
+		extraConfigMapWatcher.AddClient(targetallocatorManager)
+		targetAllocatorReconciler := targetallocator.NewTargetAllocatorReconciler(
+			k8sClient,
+			targetallocatorManager,
+			envVars.operatorNamespace,
+			envVars.targetAllocatorNamePrefix,
+		)
+		if err := targetAllocatorReconciler.SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
+		}
 	}
 
 	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
@@ -1259,7 +1285,7 @@ func startDash0Controllers(
 		},
 		collectorManager,
 		targetallocatorManager,
-		pseudoClusterUid,
+		clusterUid,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,
 		operatorDeploymentSelfReference.Name,
@@ -1296,31 +1322,34 @@ func startDash0Controllers(
 	}
 	setupLog.Info("The monitoring resource reconciler has been started.")
 
-	setupLog.Info("Creating the auto-namespace-monitoring reconciler.")
-	autoNamespaceMonitoringReconciler := controller.NewAutoNamespaceMonitoringReconciler(
-		k8sClient,
-		envVars.operatorNamespace,
-	)
-	setupLog.Info("Starting the auto-namespace-monitoring reconciler.")
-	if err := autoNamespaceMonitoringReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the auto-namespace-monitoring reconciler: %w", err)
-	}
-	setupLog.Info("The auto-namespace-monitoring reconciler has been started.")
+	var autoNamespaceMonitoringReconciler *controller.AutoNamespaceMonitoringReconciler
+	if cliArgs.telemetryCollectionEnabled {
+		setupLog.Info("Creating the auto-namespace-monitoring reconciler.")
+		autoNamespaceMonitoringReconciler = controller.NewAutoNamespaceMonitoringReconciler(
+			k8sClient,
+			envVars.operatorNamespace,
+		)
+		setupLog.Info("Starting the auto-namespace-monitoring reconciler.")
+		if err := autoNamespaceMonitoringReconciler.SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to set up the auto-namespace-monitoring reconciler: %w", err)
+		}
+		setupLog.Info("The auto-namespace-monitoring reconciler has been started.")
 
-	instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
-		k8sClient,
-		mgr.GetEventRecorder("dash0-instrumentation-webhook"),
-		clusterInstrumentationConfig,
-	)
-	if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
+		instrumentationWebhookHandler := webhooks.NewInstrumentationWebhookHandler(
+			k8sClient,
+			mgr.GetEventRecorder("dash0-instrumentation-webhook"),
+			clusterInstrumentationConfig,
+		)
+		if err := instrumentationWebhookHandler.SetupWebhookWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
+		}
+		// For consistency, we update the extra config map in the instrumentation webhook handler as well.
+		// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), _new_
+		// workloads will be instrumented with the updated settings. Existing and already instrumented workloads will not
+		// be reinstrumented, and even if they are changed, the instrumentation webhook will not apply the new settings
+		// due to the HasBeenInstrumentedSuccessfullyByThisVersion check.
+		extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
 	}
-	// For consistency, we update the extra config map in the instrumentation webhook handler as well.
-	// In case instrumentation-related settings have been changed (e.g., operator.initContainerResources), _new_
-	// workloads will be instrumented with the updated settings. Existing and already instrumented workloads will not
-	// be reinstrumented, and even if they are changed, the instrumentation webhook will not apply the new settings
-	// due to the HasBeenInstrumentedSuccessfullyByThisVersion check.
-	extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
 
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
@@ -1341,17 +1370,18 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to create the monitoring conversion webhook: %w", err)
 	}
 
-	oTelSdkStarter.WaitForOTelConfig(
-		[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
-			operatorConfigurationReconciler,
-			monitoringReconciler,
-			syntheticCheckReconciler,
-			viewReconciler,
-			persesDashboardCrdReconciler,
-			prometheusRuleCrdReconciler,
-			autoNamespaceMonitoringReconciler,
-		},
-	)
+	selfMonitoringClients := []selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+		operatorConfigurationReconciler,
+		monitoringReconciler,
+		syntheticCheckReconciler,
+		viewReconciler,
+		persesDashboardCrdReconciler,
+		prometheusRuleCrdReconciler,
+	}
+	if autoNamespaceMonitoringReconciler != nil {
+		selfMonitoringClients = append(selfMonitoringClients, autoNamespaceMonitoringReconciler)
+	}
+	oTelSdkStarter.WaitForOTelConfig(selfMonitoringClients)
 
 	triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		ctx,
@@ -1359,7 +1389,7 @@ func startDash0Controllers(
 		envVars.operatorNamespace,
 		oTelSdkStarter,
 		operatorConfigurationResource,
-		pseudoClusterUid,
+		clusterUid,
 		images.GetOperatorVersion(),
 		developmentMode,
 	)

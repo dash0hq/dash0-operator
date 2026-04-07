@@ -350,6 +350,10 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
 	logger logd.Logger,
 ) error {
+	if r.collectorManager == nil {
+		// If telemetry collection is disabled via Helm, the collector manager is not initialized.
+		return nil
+	}
 	if _, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
 	); err != nil {
@@ -363,6 +367,10 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 	ctx context.Context,
 	logger logd.Logger,
 ) error {
+	if r.targetAllocatorManager == nil {
+		// If telemetry collection is disabled via Helm, the target allocator manager is not initialized.
+		return nil
+	}
 	logger.Info("Reconciling OpenTelemetry target allocator.")
 	if _, err := r.targetAllocatorManager.ReconcileTargetAllocator(
 		ctx,

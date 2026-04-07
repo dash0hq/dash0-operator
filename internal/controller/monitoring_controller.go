@@ -231,16 +231,19 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	monitoringResource, requiredAction, statusUpdate :=
 		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, logger)
 
-	if isFirstReconcile || requiredAction == util.ModificationModeInstrumentation {
-		if err = r.instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, logger); err != nil {
-			// The error has already been logged in checkSettingsAndInstrumentExistingWorkloads
-			logger.Info("Requeuing reconcile request.")
-			return ctrl.Result{}, err
-		}
-	} else if requiredAction == util.ModificationModeUninstrumentation {
-		if err = r.instrumenter.UninstrumentWorkloadsIfAvailable(ctx, monitoringResource, logger); err != nil {
-			logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
-			return ctrl.Result{}, err
+	if r.instrumenter != nil {
+		// If telemetry collection is disabled via Helm, the instrumenter is not initialized.
+		if isFirstReconcile || requiredAction == util.ModificationModeInstrumentation {
+			if err = r.instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, logger); err != nil {
+				// The error has already been logged in checkSettingsAndInstrumentExistingWorkloads
+				logger.Info("Requeuing reconcile request.")
+				return ctrl.Result{}, err
+			}
+		} else if requiredAction == util.ModificationModeUninstrumentation {
+			if err = r.instrumenter.UninstrumentWorkloadsIfAvailable(ctx, monitoringResource, logger); err != nil {
+				logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
+				return ctrl.Result{}, err
+			}
 		}
 	}
 
@@ -411,13 +414,15 @@ func (r *MonitoringReconciler) runCleanupActions(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger logd.Logger,
 ) error {
-	if err := r.instrumenter.UninstrumentWorkloadsIfAvailable(
-		ctx,
-		monitoringResource,
-		logger,
-	); err != nil {
-		logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
-		return err
+	if r.instrumenter != nil {
+		if err := r.instrumenter.UninstrumentWorkloadsIfAvailable(
+			ctx,
+			monitoringResource,
+			logger,
+		); err != nil {
+			logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
+			return err
+		}
 	}
 
 	for _, apiClient := range r.namespacedApiClients {
@@ -560,6 +565,11 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
 	logger logd.Logger,
 ) error {
+	if r.collectorManager == nil {
+		// If telemetry collection is disabled via Helm, the collector manager is not initialized.
+		return nil
+	}
+
 	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
 	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.
@@ -576,6 +586,11 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryTargetAllocator(
 	ctx context.Context,
 	logger logd.Logger,
 ) error {
+	if r.targetAllocatorManager == nil {
+		// If telemetry collection is disabled via Helm, the collector manager is not initialized.
+		return nil
+	}
+
 	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
 	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.

@@ -5,18 +5,18 @@ leader election role binding should match snapshot:
     metadata:
       labels:
         app.kubernetes.io/component: controller
-        app.kubernetes.io/instance: leader-election-rolebinding
+        app.kubernetes.io/instance: role-binding
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
-      name: dash0-operator-leader-election-rolebinding
+      name: dash0-operator-manager
       namespace: NAMESPACE
     roleRef:
       apiGroup: rbac.authorization.k8s.io
       kind: Role
-      name: dash0-operator-leader-election-role
+      name: dash0-operator-manager
     subjects:
       - kind: ServiceAccount
         name: dash0-operator-controller

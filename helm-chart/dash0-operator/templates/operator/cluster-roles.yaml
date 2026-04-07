@@ -1,161 +1,17 @@
+{{/*
+The -manager-base cluster role holds permissions required for basic operator manager tasks.
+*/}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ template "dash0-operator.chartName" . }}-manager-role
+  name: {{ template "dash0-operator.chartName" . }}-manager-base
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: manager-role
+    app.kubernetes.io/instance: cluster-role-base
     {{- include "dash0-operator.labels" . | nindent 4 }}
 
 rules:
-
-# Permissions required to watch for the third-party CRD (Perses dashboards, Prometheus check rules):
-- apiGroups:
-  - apiextensions.k8s.io
-  resources:
-  - customresourcedefinitions
-  verbs:
-  - get
-  - list
-  - watch
-
-# Permissions required to instrument workloads in the apps API group:
-- apiGroups:
-  - apps
-  resources:
-  - daemonsets
-  - deployments
-  - replicasets
-  - statefulsets
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-
-# Permissions required to instrument workloads in the batch API group:
-- apiGroups:
-  - batch
-  resources:
-  - cronjobs
-  - jobs
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-
-# Pmrmissions required to create a Dash0 operator configuration resource:
-- apiGroups:
-  - discovery.k8s.io
-  resources:
-  - endpointslices
-  verbs:
-  - list
-
-# Permissions required to queue events to report about the operator's actions:
-- apiGroups:
-  - events.k8s.io
-  resources:
-  - events
-  verbs:
-  - create
-  - list
-  - patch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
-  verbs:
-  - get
-
-# Permissions for the legacy event API, required to attach dangling events to their respective involved objects:
-- apiGroups:
-    - ""
-  resources:
-    - events
-  verbs:
-    - list
-    - patch
-    - update
-
-# Permissions required to automatically restart (i.e. delete) pods when instrumenting replicasets that are not part of a
-# higher order workload (e.g. a deployment, daemonset):
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - delete
-  - get
-  - list
-
-# Permissions required to resolve the secret with the Dash0 auth token:
-- apiGroups:
-    - ""
-  resources:
-    - secrets
-  verbs:
-    - get
-    - list
-    - watch
-
-# Permissions required to watch Perses dashboard resources:
-- apiGroups:
-  - perses.dev
-  resources:
-  - persesdashboards
-  verbs:
-  - get
-  - list
-  - watch
-
-# Permissions required to watch Prometheus rule resources:
-- apiGroups:
-  - monitoring.coreos.com
-  resources:
-  - prometheusrules
-  verbs:
-  - get
-  - list
-  - watch
-
-# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
-- apiGroups:
-  - operator.dash0.com
-  resources:
-  - dash0monitorings
-  verbs:
-  - create
-  - delete
-  - deletecollection
-  - get
-  - list
-  - patch
-  - update
-  - watch
-
-# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
-- apiGroups:
-  - operator.dash0.com
-  resources:
-  - dash0monitorings/finalizers
-  verbs:
-  - update
-
-# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
-- apiGroups:
-  - operator.dash0.com
-  resources:
-  - dash0monitorings/status
-  verbs:
-  - get
-  - patch
-  - update
 
 # Permissions required to manage the Dash0 operator configuration resource, its finalizers and status:
 - apiGroups:
@@ -190,45 +46,177 @@ rules:
   - patch
   - update
 
+# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0monitorings
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0monitorings/finalizers
+  verbs:
+  - update
+
+# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0monitorings/status
+  verbs:
+  - get
+  - patch
+  - update
+
+# Permissions required to queue events to report about the operator's actions:
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - list
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+
+# Permissions for the legacy event API, required to attach dangling events to their respective involved objects:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - list
+  - patch
+  - update
+
+# Permissions required to detect the container runtime:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+
+---
+{{/*
+The -manager-iac cluster role holds permissions used for IaC tasks, like synchronizing dashboards and check rules.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-manager-iac
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-iac
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+rules:
+
+# Permissions required to watch for the third-party CRD (Perses dashboards, Prometheus check rules):
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to watch Perses dashboard resources:
+- apiGroups:
+  - perses.dev
+  resources:
+  - persesdashboards
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to watch Prometheus rule resources:
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - prometheusrules
+  verbs:
+  - get
+  - list
+  - watch
+
 # Permissions required to watch Dash0 synthetic check resources:
 - apiGroups:
-    - operator.dash0.com
+  - operator.dash0.com
   resources:
-    - dash0syntheticchecks
+  - dash0syntheticchecks
   verbs:
-    - get
-    - list
-    - watch
+  - get
+  - list
+  - watch
 
 # Permissions required to write to Dash0 synthetic check resource status:
 - apiGroups:
-    - operator.dash0.com
+  - operator.dash0.com
   resources:
-    - dash0syntheticchecks/status
+  - dash0syntheticchecks/status
   verbs:
-    - get
-    - patch
-    - update
+  - get
+  - patch
+  - update
 
-  # Permissions required to watch Dash0 view resources:
+# Permissions required to watch Dash0 view resources:
 - apiGroups:
-    - operator.dash0.com
+  - operator.dash0.com
   resources:
-    - dash0views
+  - dash0views
   verbs:
-    - get
-    - list
-    - watch
+  - get
+  - list
+  - watch
 
-  # Permissions required to write to Dash0 view resource status:
+# Permissions required to write to Dash0 view resource status:
 - apiGroups:
-    - operator.dash0.com
+  - operator.dash0.com
   resources:
-    - dash0views/status
+  - dash0views/status
   verbs:
-    - get
-    - patch
-    - update
+  - get
+  - patch
+  - update
+
+---
+{{ if .Values.operator.telemetryCollectionEnabled }}
+{{/*
+The -manager-collector cluster role holds permissions for managing OpenTelemetry collectors and the target allocator.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-manager-collector
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-collector
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+rules:
 
 # Permissions required to manage OTel collector resources:
 - apiGroups:
@@ -378,6 +366,7 @@ rules:
   - get
   - list
   - watch
+
 # Permissions required due to the fact that the operator needs to create dedicated service accounts/cluster roles/
 # cluster role bindings for the OTel target-allocator and give it a set of permissions; which it can only
 # do if holds these permissions itself.
@@ -401,7 +390,7 @@ rules:
   - get
   - list
   - watch
-- apiGroups: 
+- apiGroups:
   - ""
   resources:
   - namespaces
@@ -435,45 +424,75 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
 - nonResourceURLs:
   - /metrics
   verbs:
   - get
+
+{{ end }}
+
 ---
+{{ if .Values.operator.telemetryCollectionEnabled }}
+{{/*
+The -manager-instrument cluster role holds permissions necessary for auto-instrumenting workloads.
+*/}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ template "dash0-operator.chartName" . }}-metrics-reader
+  name: {{ template "dash0-operator.chartName" . }}-manager-instrument
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: metrics-role
+    app.kubernetes.io/instance: cluster-role-instrument
     {{- include "dash0-operator.labels" . | nindent 4 }}
+
 rules:
-- nonResourceURLs:
-  - /metrics
+
+# Permissions required to instrument workloads in the apps API group:
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - statefulsets
   verbs:
   - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ template "dash0-operator.chartName" . }}-proxy-role
-  labels:
-    app.kubernetes.io/name: dash0-operator
-    app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: proxy-role
-    {{- include "dash0-operator.labels" . | nindent 4 }}
-rules:
+  - list
+  - patch
+  - update
+  - watch
+
+# Permissions required to instrument workloads in the batch API group:
 - apiGroups:
-  - authentication.k8s.io
+  - batch
   resources:
-  - tokenreviews
+  - cronjobs
+  - jobs
   verbs:
-  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+# Permissions required to automatically restart (i.e. delete) pods when instrumenting replicasets that are not part of a
+# higher order workload (e.g. a deployment, daemonset):
 - apiGroups:
-  - authorization.k8s.io
+  - ""
   resources:
-  - subjectaccessreviews
+  - pods
   verbs:
-  - create
+  - delete
+  - get
+  - list
+
+{{ end }}

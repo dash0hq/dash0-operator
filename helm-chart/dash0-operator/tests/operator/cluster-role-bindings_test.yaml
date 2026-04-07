@@ -5,3 +5,46 @@ tests:
   - it: cluster role bindings should match snapshot
     asserts:
       - matchSnapshot: {}
+
+  - it: should bind permissions for telemetry collection if telemetry collection is enabled
+    asserts:
+    - hasDocuments:
+        count: 4
+    - containsDocument:
+        kind: ClusterRoleBinding
+        apiVersion: rbac.authorization.k8s.io/v1
+        name: dash0-operator-manager-base
+      documentIndex: 0
+    - containsDocument:
+        kind: ClusterRoleBinding
+        apiVersion: rbac.authorization.k8s.io/v1
+        name: dash0-operator-manager-iac
+      documentIndex: 1
+    - containsDocument:
+        kind: ClusterRoleBinding
+        apiVersion: rbac.authorization.k8s.io/v1
+        name: dash0-operator-manager-collector
+      documentIndex: 2
+    - containsDocument:
+        kind: ClusterRoleBinding
+        apiVersion: rbac.authorization.k8s.io/v1
+        name: dash0-operator-manager-instrument
+      documentIndex: 3
+
+  - it: should not bind permissions for telemetry collection if telemetry collection is disabled
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+    asserts:
+    - hasDocuments:
+        count: 2
+    - containsDocument:
+        kind: ClusterRoleBinding
+        apiVersion: rbac.authorization.k8s.io/v1
+        name: dash0-operator-manager-base
+      documentIndex: 0
+    - containsDocument:
+        kind: ClusterRoleBinding
+        apiVersion: rbac.authorization.k8s.io/v1
+        name: dash0-operator-manager-iac
+      documentIndex: 1
