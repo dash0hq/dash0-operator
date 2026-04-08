@@ -87,8 +87,6 @@ operator:
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.
-  # This setting has no effect if operator.telemetryCollectionEnabled is set to false, self-monitoring will be disabled
-  # implicitly.
   selfMonitoringEnabled: true
 
   # An opt-out for collecting kubernetes infrastructure metrics. If set to false, the operator will not collect
@@ -141,8 +139,10 @@ operator:
   # An opt-out for telemetry collection. If set to false, the operator will not deploy any OpenTelemetry collectors
   # to the cluster, and no telemetry will be collected. This is useful if you want to use the operator only for
   # infrastructure-as-code purposes (dashboards, check rules, etc.) without having it collect telemetry. Setting this to
-  # false also implicitly disables all other telemetry-collection related settings (see above). This setting is
-  # optional, it defaults to true.
+  # false also implicitly disables all other telemetry-collection related settings (see above), except for
+  # self-monitoring telemetry from the operator (which can be enabled or disabled independently).
+  #
+  # This setting is optional, it defaults to true.
   #
   # By default (i.e. if this setting is true), the operator Helm chart will set up all necessary permissions to manage
   # OpenTelemetry collectors and the target allocator, including permissions to create ClusterRoles. If set to false,

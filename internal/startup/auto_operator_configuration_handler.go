@@ -330,7 +330,6 @@ func convertValuesToResource(
 	}
 
 	if !operatorConfigurationValues.TelemetryCollectionEnabled {
-		operatorConfigurationValues.SelfMonitoringEnabled = false
 		operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled = false
 		operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled = false
