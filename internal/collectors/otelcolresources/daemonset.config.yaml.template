@@ -442,9 +442,8 @@ receivers:
             target_label: node
       {{- end }}
 
-      # This job scrapes the prometheus endpoint exposed by the target-allocator.
-      # It is only enabled if both self-monitoring and support for Prometheus CRDs are enabled.
       {{- if and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled }}
+      # The following job scrapes the prometheus endpoint exposed by the target-allocator.
       - job_name: 'dash0-target-allocator-selfmonitoring'
         honor_labels: true
 
@@ -508,8 +507,10 @@ receivers:
       type: container
   {{- end}}
 
-  # deliberately not checking $hasPrometheusScrapingEnabledForAtLeastOneNamespace here,to have logs in case the
-  # target-allocator is running even though it shouldn't
+  {{- /*
+  Deliberately not checking $hasPrometheusScrapingEnabledForAtLeastOneNamespace here,to have logs in case the
+  target-allocator is running even though it shouldn't.
+  */}}
   {{- if and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled }}
   filelog/selfmonitoring:
     include:
