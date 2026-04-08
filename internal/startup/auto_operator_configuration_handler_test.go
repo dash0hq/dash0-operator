@@ -458,10 +458,8 @@ var _ = Describe(
 						g.Expect(err).ToNot(HaveOccurred())
 
 						spec := operatorConfiguration.Spec
-						g.Expect(spec.TelemetryCollection.Enabled).ToNot(BeNil())
-						g.Expect(*spec.TelemetryCollection.Enabled).To(BeFalse())
 						g.Expect(spec.SelfMonitoring.Enabled).ToNot(BeNil())
-						g.Expect(*spec.SelfMonitoring.Enabled).To(BeFalse())
+						g.Expect(*spec.SelfMonitoring.Enabled).To(BeTrue())
 						g.Expect(spec.KubernetesInfrastructureMetricsCollection.Enabled).ToNot(BeNil())
 						g.Expect(*spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
 						g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).ToNot(BeNil())
@@ -474,6 +472,8 @@ var _ = Describe(
 						g.Expect(spec.Profiling.Enabled).ToNot(BeNil())
 						g.Expect(*spec.Profiling.Enabled).To(BeFalse())
 						g.Expect(spec.AutoMonitorNamespaces.IsEnabled()).To(BeFalse())
+						g.Expect(spec.TelemetryCollection.Enabled).ToNot(BeNil())
+						g.Expect(*spec.TelemetryCollection.Enabled).To(BeFalse())
 					}, 5*time.Second, 100*time.Millisecond,
 				).Should(Succeed())
 			},
