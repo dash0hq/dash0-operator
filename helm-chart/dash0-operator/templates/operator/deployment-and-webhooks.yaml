@@ -424,6 +424,7 @@ webhooks:
           - gke-managed-checkpointing
           - gke-managed-parallelstorecsi
           - gke-managed-lustrecsi
+          - gke-managed-otel
       {{- end }}
   clientConfig:
     {{- if not .Values.operator.certManager.useCertManager }}
@@ -523,6 +524,7 @@ webhooks:
             - gke-managed-checkpointing
             - gke-managed-parallelstorecsi
             - gke-managed-lustrecsi
+            - gke-managed-otel
     {{- end }}
     rules:
       - apiGroups:
@@ -621,6 +623,7 @@ webhooks:
             - gke-managed-checkpointing
             - gke-managed-parallelstorecsi
             - gke-managed-lustrecsi
+            - gke-managed-otel
     {{- end }}
     rules:
       - apiGroups:
