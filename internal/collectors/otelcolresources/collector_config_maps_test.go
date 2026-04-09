@@ -207,6 +207,52 @@ func cmTestHttpExporterWithInsecure() otlpExporters {
 	}
 }
 
+func cmTestDash0ExporterWithKeepalive() otlpExporters {
+	export := Dash0ExportWithEndpointAndToken()
+	export.Dash0.Keepalive = &dash0common.KeepaliveClientConfig{
+		Time:                new("30s"),
+		Timeout:             new("10s"),
+		PermitWithoutStream: new(true),
+	}
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	exporter, err := convertDash0ExporterToOtlpExporter(export.Dash0, "default", auth)
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*exporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestGrpcExporterWithKeepalive() otlpExporters {
+	grpcExporter, err := convertGrpcExporterToOtlpExporter(&dash0common.GrpcConfiguration{
+		Endpoint: grpcEndpointTest,
+		Keepalive: &dash0common.KeepaliveClientConfig{
+			Time:                new("30s"),
+			Timeout:             new("10s"),
+			PermitWithoutStream: new(true),
+		},
+	}, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*grpcExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestGrpcExporterWithPartialKeepalive() otlpExporters {
+	grpcExporter, err := convertGrpcExporterToOtlpExporter(&dash0common.GrpcConfiguration{
+		Endpoint: grpcEndpointTest,
+		Keepalive: &dash0common.KeepaliveClientConfig{
+			Time: new("60s"),
+		},
+	}, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*grpcExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
 func cmTestNamespacedOtlpExporters() otlpExporters {
 	export := Dash0ExportWithEndpointAndToken()
 	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
@@ -672,6 +718,104 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			httpOtlpExporter := httpExporter.(map[string]any)
 			Expect(httpOtlpExporter["endpoint"]).To(Equal(httpInsecureEndpointTest))
 			Expect(httpOtlpExporter["encoding"]).To(Equal("proto"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render Dash0 exporter with keepalive config", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestDash0ExporterWithKeepalive(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]any)
+
+			dash0Exporter := exporters["otlp_grpc/dash0/default"]
+			Expect(dash0Exporter).ToNot(BeNil())
+			dash0OtlpExporter := dash0Exporter.(map[string]any)
+
+			keepaliveRaw := dash0OtlpExporter["keepalive"]
+			Expect(keepaliveRaw).ToNot(BeNil())
+			keepalive := keepaliveRaw.(map[string]any)
+			Expect(keepalive["time"]).To(Equal("30s"))
+			Expect(keepalive["timeout"]).To(Equal("10s"))
+			Expect(keepalive["permit_without_stream"]).To(Equal(true))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render gRPC exporter with keepalive config", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestGrpcExporterWithKeepalive(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]any)
+
+			grpcExporter := exporters["otlp_grpc/default"]
+			Expect(grpcExporter).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporter.(map[string]any)
+
+			keepaliveRaw := grpcOtlpExporter["keepalive"]
+			Expect(keepaliveRaw).ToNot(BeNil())
+			keepalive := keepaliveRaw.(map[string]any)
+			Expect(keepalive["time"]).To(Equal("30s"))
+			Expect(keepalive["timeout"]).To(Equal("10s"))
+			Expect(keepalive["permit_without_stream"]).To(Equal(true))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render gRPC exporter with partial keepalive config", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestGrpcExporterWithPartialKeepalive(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]any)
+
+			grpcExporter := exporters["otlp_grpc/default"]
+			Expect(grpcExporter).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporter.(map[string]any)
+
+			keepaliveRaw := grpcOtlpExporter["keepalive"]
+			Expect(keepaliveRaw).ToNot(BeNil())
+			keepalive := keepaliveRaw.(map[string]any)
+			Expect(keepalive["time"]).To(Equal("60s"))
+			Expect(keepalive).ToNot(HaveKey("timeout"))
+			Expect(keepalive).ToNot(HaveKey("permit_without_stream"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should not render keepalive when not configured", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]any)
+
+			dash0Exporter := exporters["otlp_grpc/dash0/default"]
+			Expect(dash0Exporter).ToNot(BeNil())
+			dash0OtlpExporter := dash0Exporter.(map[string]any)
+			Expect(dash0OtlpExporter).ToNot(HaveKey("keepalive"))
 		}, daemonSetAndDeployment)
 
 		DescribeTable("should render namespaced OTLP exporters", func(cmTypeDef configMapTypeDefinition) {
