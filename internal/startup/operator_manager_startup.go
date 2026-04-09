@@ -14,7 +14,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	dash0 "github.com/dash0hq/dash0-api-client-go"
 	"github.com/go-logr/zapr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -181,7 +183,11 @@ var (
 	extraConfig                     util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
-	httpClient                             = &http.Client{}
+	httpClient = dash0.NewTransport(
+		dash0.WithTransportMaxRetries(2),
+		dash0.WithTransportRetryWaitMin(1*time.Second),
+		dash0.WithTransportRetryWaitMax(3*time.Second),
+	).HTTPClient()
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
 

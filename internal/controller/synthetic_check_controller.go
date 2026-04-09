@@ -46,7 +46,6 @@ type SyntheticCheckReconciler struct {
 	initialSyncMutex      sync.Mutex
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
-	httpRetryDelay        time.Duration
 }
 
 var (
@@ -66,7 +65,6 @@ func NewSyntheticCheckReconciler(
 		httpClient:           httpClient,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
-		httpRetryDelay:       1 * time.Second,
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
 	}
 }
@@ -121,15 +119,6 @@ func (r *SyntheticCheckReconciler) K8sClient() client.Client {
 
 func (r *SyntheticCheckReconciler) HttpClient() *http.Client {
 	return r.httpClient
-}
-
-func (r *SyntheticCheckReconciler) GetHttpRetryDelay() time.Duration {
-	return r.httpRetryDelay
-}
-
-//nolint:unused
-func (r *SyntheticCheckReconciler) overrideHttpRetryDelay(delay time.Duration) {
-	r.httpRetryDelay = delay
 }
 
 func (r *SyntheticCheckReconciler) SetDefaultApiConfigs(
