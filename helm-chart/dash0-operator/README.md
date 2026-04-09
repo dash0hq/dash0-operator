@@ -2232,7 +2232,12 @@ extensively in [Awesome Prometheus alerts](#https://samber.github.io/awesome-pro
 to Dash0, you can annotate the kube-state-metrics pod with `prometheus.io/scrape: "true"` and add a Dash0 monitoring
 resource to the namespace it is running in.
 
-## Managing Dash0 Dashboards
+## Managing Dash0 Configurations
+
+The Dash0 operator offers capabilities to manage certain Dash0 configurations as infrastructure as code, by deploying
+them as Kubernetes resources to a cluster and letting the operator synchronize them to the Dash0 API.
+
+### Managing Dash0 Dashboards
 
 You can manage your Dash0 dashboards via the Dash0 operator.
 
@@ -2298,7 +2303,7 @@ configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
-## Managing Dash0 Check Rules
+### Managing Dash0 Check Rules
 
 You can manage your Dash0 check rules via the Dash0 operator.
 
@@ -2426,7 +2431,7 @@ configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
-## Managing Dash0 Synthetic Checks
+### Managing Dash0 Synthetic Checks
 
 You can manage your Dash0 synthetic checks via the Dash0 operator.
 
@@ -2496,7 +2501,7 @@ configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
-## Managing Dash0 Views
+### Managing Dash0 Views
 
 You can manage your Dash0 views via the Dash0 operator.
 
@@ -2561,6 +2566,25 @@ not want it to collect telemetry, you can set `telemetryCollection.enabled` to `
 configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
+
+### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)
+
+If you use the Dash0 operator only for infrastructure-as-code purposes, and not to collect telemetry in the cluster,
+you can set the Helm flag `operator.telemetryCollectionEnabled=false`.
+In this mode, the operator will not deploy any OpenTelemetry collectors to the cluster, and no telemetry will be
+collected.
+
+By default, the operator Helm chart will set up all necessary Kubernetes RBAC permissions to manage OpenTelemetry
+collectors and the target allocator.
+If set to false, these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC
+permissions.
+
+If `operator.telemetryCollectionEnabled=false` is set, it will not be possible to set
+[`spec.telemetryCollection.enabled`](#operatorconfigurationresource.spec.telemetryCollection.enabled)
+to `true` in the [Dash0OperatorConfiguration](#configuring-the-dash0-backend-connection), since the required RBAC
+permissions have not been granted.
+To enable telemetry collection later on, it is required to change this Helm value to `true` and perform a
+`helm upgrade --install` with the updated setting.
 
 ## Notes on AWS EKS
 
