@@ -46,7 +46,6 @@ type ViewReconciler struct {
 	initialSyncMutex      sync.Mutex
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
-	httpRetryDelay        time.Duration
 }
 
 var (
@@ -66,7 +65,6 @@ func NewViewReconciler(
 		httpClient:           httpClient,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
-		httpRetryDelay:       1 * time.Second,
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
 	}
 }
@@ -121,15 +119,6 @@ func (r *ViewReconciler) K8sClient() client.Client {
 
 func (r *ViewReconciler) HttpClient() *http.Client {
 	return r.httpClient
-}
-
-func (r *ViewReconciler) GetHttpRetryDelay() time.Duration {
-	return r.httpRetryDelay
-}
-
-//nolint:unused
-func (r *ViewReconciler) overrideHttpRetryDelay(delay time.Duration) {
-	r.httpRetryDelay = delay
 }
 
 func (r *ViewReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {

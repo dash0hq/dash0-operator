@@ -119,8 +119,6 @@ var _ = Describe(
 							},
 						)
 
-						// to make tests that involve http retries faster, we do not want to wait for one second for each retry
-						viewReconciler.overrideHttpRetryDelay(20 * time.Millisecond)
 					},
 				)
 
@@ -1010,7 +1008,7 @@ func createViewReconciler(clusterId string) *ViewReconciler {
 		k8sClient,
 		types.UID(clusterId),
 		viewLeaderElectionAware,
-		&http.Client{},
+		TestHTTPClient(),
 	)
 	return viewReconciler
 }

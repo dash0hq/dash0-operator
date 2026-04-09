@@ -119,8 +119,6 @@ var _ = Describe(
 							},
 						)
 
-						// to make tests that involve http retries faster, we do not want to wait for one second for each retry
-						syntheticCheckReconciler.overrideHttpRetryDelay(20 * time.Millisecond)
 					},
 				)
 
@@ -832,7 +830,7 @@ func createSyntheticCheckReconciler(clusterId string) *SyntheticCheckReconciler 
 		k8sClient,
 		types.UID(clusterId),
 		leaderElectionAware,
-		&http.Client{},
+		TestHTTPClient(),
 	)
 	return syntheticCheckReconciler
 }

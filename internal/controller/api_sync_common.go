@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -20,7 +19,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -180,7 +178,6 @@ type ApiSyncReconciler interface {
 	ControllerName() string
 	K8sClient() client.Client
 	HttpClient() *http.Client
-	GetHttpRetryDelay() time.Duration
 
 	// MapResourceToHttpRequests converts a Kubernetes resource object to a list of HTTP requests that can be sent to
 	// the Dash0 API. It returns:
@@ -785,7 +782,7 @@ func fetchExistingOrigins(
 			fetchExistingOriginsRequest.Method,
 			fetchExistingOriginsRequest.URL.String(),
 		)
-		if responseBytes, err := executeSingleHttpRequestWithRetryAndReadBody(
+		if responseBytes, err := executeSingleHttpRequest(
 			apiSyncReconciler,
 			fetchExistingOriginsRequest,
 			actionLabel,
@@ -884,7 +881,7 @@ func executeAllHttpRequests(
 		)
 		isDelete := apiRequest.Request.Method == http.MethodDelete
 		if responseBytes, err :=
-			executeSingleHttpRequestWithRetryAndReadBody(
+			executeSingleHttpRequest(
 				apiSyncReconciler,
 				apiRequest.Request,
 				actionLabel,
@@ -921,7 +918,9 @@ func executeAllHttpRequests(
 	return successfullySynchronized, httpErrors
 }
 
-func executeSingleHttpRequestWithRetryAndReadBody(
+// executeSingleHttpRequest executes a single HTTP request and reads the response body. Retry and rate limiting are
+// handled by the transport layer of the HTTP client (provided by dash0-api-client-go).
+func executeSingleHttpRequest(
 	apiSyncReconciler ApiSyncReconciler,
 	req *http.Request,
 	actionLabel string,
@@ -929,51 +928,14 @@ func executeSingleHttpRequestWithRetryAndReadBody(
 	logger logd.Logger,
 ) ([]byte, error) {
 	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
-	responseBody := &[]byte{}
-	if err := util.RetryWithCustomBackoff(
-		fmt.Sprintf("http request to %s", req.URL.String()),
-		func() error {
-			return executeSingleHttpRequestAndReadBody(
-				apiSyncReconciler,
-				req,
-				responseBody,
-				actionLabel,
-				logger,
-			)
-		},
-		wait.Backoff{
-			Steps:    3,
-			Duration: apiSyncReconciler.GetHttpRetryDelay(),
-			Factor:   1.5,
-		},
-		true,
-		true,
-		logger,
-	); err != nil {
-		return nil, err
-	} else if responseBody != nil && len(*responseBody) > 0 {
-		return *responseBody, nil
-	} else if expectBody {
-		return nil, fmt.Errorf("unexpected nil/empty response body")
-	} else {
-		return make([]byte, 0), nil
-	}
-}
 
-func executeSingleHttpRequestAndReadBody(
-	apiSyncReconciler ApiSyncReconciler,
-	req *http.Request,
-	responseBody *[]byte,
-	actionLabel string,
-	logger logd.Logger,
-) error {
 	res, err := apiSyncReconciler.HttpClient().Do(req)
 	if err != nil {
 		logger.Error(
 			err,
 			fmt.Sprintf("unable to execute the HTTP request to %s", actionLabel),
 		)
-		return util.NewRetryableErrorWithFlag(err, true)
+		return nil, err
 	}
 
 	isUnexpectedStatusCode := res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices
@@ -984,39 +946,33 @@ func executeSingleHttpRequestAndReadBody(
 		// HTTP status is not 2xx, treat this as an error.
 		// convertNon2xxStatusCodeToError will also consume and close the response body.
 		err = convertNon2xxStatusCodeToError(res, actionLabel)
-		retryableStatusCodeError := util.NewRetryableError(err)
-		if res.StatusCode >= http.StatusBadRequest && res.StatusCode < http.StatusInternalServerError {
-			// HTTP 4xx status codes are not retryable
-			retryableStatusCodeError.SetRetryable(false)
-			logger.Error(err, "unexpected status code")
-			return retryableStatusCodeError
-		} else {
-			// everything else, in particular HTTP 5xx status codes can be retried
-			retryableStatusCodeError.SetRetryable(true)
-			logger.Error(err, "unexpected status code, request might be retried")
-			return retryableStatusCodeError
-		}
+		logger.Error(err, "unexpected status code")
+		return nil, err
 	}
 
-	// HTTP status code was 2xx, read the response body and return it
+	// HTTP status code was 2xx, read the response body and return it.
 	defer func() {
 		_ = res.Body.Close()
 	}()
 
-	if responseBytes, err := io.ReadAll(res.Body); err != nil {
+	responseBytes, err := io.ReadAll(res.Body)
+	if err != nil {
 		logger.Error(
 			err,
 			fmt.Sprintf(
-				"unable to execute the HTTP request for %s at %s",
+				"unable to read the HTTP response body for %s at %s",
 				apiSyncReconciler.ShortName(),
 				req.URL.String(),
 			),
 		)
-		return util.NewRetryableErrorWithFlag(err, true)
-	} else {
-		*responseBody = responseBytes
+		return nil, err
 	}
-	return nil
+	if len(responseBytes) > 0 {
+		return responseBytes, nil
+	} else if expectBody {
+		return nil, fmt.Errorf("unexpected nil/empty response body")
+	}
+	return make([]byte, 0), nil
 }
 
 func convertNon2xxStatusCodeToError(

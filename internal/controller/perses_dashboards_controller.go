@@ -53,7 +53,6 @@ type PersesDashboardReconciler struct {
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	namespacedSyncEnabled      sync.Map
-	httpRetryDelay             time.Duration
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
 }
@@ -129,7 +128,6 @@ func (r *PersesDashboardCrdReconciler) CreateThirdPartyResourceReconciler(pseudo
 		httpClient:           r.httpClient,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
-		httpRetryDelay:       1 * time.Second,
 	}
 }
 
@@ -358,14 +356,6 @@ func (r *PersesDashboardReconciler) Queue() *workqueue.Typed[ThirdPartyResourceS
 
 func (r *PersesDashboardReconciler) HttpClient() *http.Client {
 	return r.httpClient
-}
-
-func (r *PersesDashboardReconciler) GetHttpRetryDelay() time.Duration {
-	return r.httpRetryDelay
-}
-
-func (r *PersesDashboardReconciler) overrideHttpRetryDelay(delay time.Duration) {
-	r.httpRetryDelay = delay
 }
 
 func (r *PersesDashboardReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1beta1.Dash0Monitoring) bool {

@@ -409,8 +409,6 @@ var _ = Describe(
 						)
 						Expect(isWatchingPersesDashboardResources(persesDashboardCrdReconciler)).To(BeTrue())
 						persesDashboardReconciler = persesDashboardCrdReconciler.persesDashboardReconciler
-						// to make tests that involve http retries faster, we do not want to wait for one second for each retry
-						persesDashboardReconciler.overrideHttpRetryDelay(20 * time.Millisecond)
 					},
 				)
 
@@ -1019,7 +1017,7 @@ func createPersesDashboardCrdReconciler() *PersesDashboardCrdReconciler {
 		k8sClient,
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},
-		&http.Client{},
+		TestHTTPClient(),
 	)
 
 	// We create the controller multiple times in tests, this option is required, otherwise the controller
