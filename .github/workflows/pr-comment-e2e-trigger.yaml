@@ -1,0 +1,125 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Trigger E2E tests via PR comment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  trigger-e2e:
+    name: Trigger E2E tests from PR comment
+    runs-on: ubuntu-latest
+    # Only run for PR comments (not issue comments) that start with /run-e2e
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/run-e2e')
+
+    steps:
+      - name: Check commenter permissions
+        id: check-permissions
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor,
+              });
+              const allowed = ['admin', 'write', 'maintain'].includes(data.permission);
+              if (!allowed) {
+                core.warning(`User ${context.actor} has '${data.permission}' permission — not enough to trigger E2E tests.`);
+              }
+              return allowed;
+            } catch (err) {
+              core.warning(`Could not check permissions for ${context.actor}: ${err.message}`);
+              return false;
+            }
+
+      - name: Acknowledge comment with reaction
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
+      - name: Get PR branch
+        id: pr-info
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            return { ref: pr.head.ref, sha: pr.head.sha };
+
+      - name: Parse optional focus from comment
+        id: parse-comment
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Extract everything after "/run-e2e" on the first line as the optional focus string
+          FOCUS=$(printf '%s' "$COMMENT_BODY" | head -1 | sed 's|^/run-e2e[[:space:]]*||' | xargs)
+          echo "focus=$FOCUS" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch e2e workflow
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        env:
+          PR_INFO: ${{ steps.pr-info.outputs.result }}
+          FOCUS: ${{ steps.parse-comment.outputs.focus }}
+        with:
+          # E2E_DISPATCH_PAT is required because GITHUB_TOKEN cannot trigger workflow_dispatch
+          # events on the same repository.
+          github-token: ${{ secrets.E2E_DISPATCH_PAT }}
+          script: |
+            const prInfo = JSON.parse(process.env.PR_INFO);
+            const inputs = { pr_number: String(context.issue.number) };
+            if (process.env.FOCUS) {
+              inputs.focus = process.env.FOCUS;
+            }
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'e2e.yaml',
+              ref: prInfo.ref,
+              inputs,
+            });
+
+      - name: Post trigger comment
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        env:
+          PR_INFO: ${{ steps.pr-info.outputs.result }}
+          FOCUS: ${{ steps.parse-comment.outputs.focus }}
+        with:
+          script: |
+            const prInfo = JSON.parse(process.env.PR_INFO);
+            const focusLine = process.env.FOCUS ? `\n- **Focus**: \`${process.env.FOCUS}\`` : '';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '### :rocket: E2E tests triggered',
+                '',
+                `- **Branch**: \`${prInfo.ref}\`${focusLine}`,
+                `- **Triggered by**: @${context.actor}`,
+                '',
+                `Results will be posted here once the tests complete. You can also [view the workflow runs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/e2e.yaml) directly.`,
+              ].join('\n'),
+            });

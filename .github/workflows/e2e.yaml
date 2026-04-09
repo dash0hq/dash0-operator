@@ -15,6 +15,9 @@ on:
       focus:
         required: false
         description: Execute a subset of tests by providing the focus parameter.
+      pr_number:
+        required: false
+        description: PR number to report results back to (set automatically when triggered via PR comment).
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -31,6 +34,9 @@ jobs:
     name: Set up cluster and run e2e tests
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout repository
@@ -176,3 +182,45 @@ jobs:
                     text: ':scroll: <${{ steps.upload-k8s-logs.outputs.artifact-url }}|K8s cluster info/pod logs>'
                   - type: mrkdwn
                     text: ":mag: ${{ inputs.focus != '' && inputs.focus || 'full test suite' }}"
+
+      - name: Post PR comment on success
+        if: success() && inputs.pr_number != ''
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          FOCUS: ${{ inputs.focus }}
+        with:
+          script: |
+            const focusLine = process.env.FOCUS ? `\n- **Focus**: \`${process.env.FOCUS}\`` : '';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body: [
+                '### :white_check_mark: E2E tests passed',
+                '',
+                `- **Branch**: \`${process.env.GITHUB_REF_NAME}\`${focusLine}`,
+                `- **Run**: [#${process.env.GITHUB_RUN_ID}](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`,
+              ].join('\n'),
+            });
+
+      - name: Post PR comment on failure
+        if: failure() && inputs.pr_number != ''
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          FOCUS: ${{ inputs.focus }}
+        with:
+          script: |
+            const focusLine = process.env.FOCUS ? `\n- **Focus**: \`${process.env.FOCUS}\`` : '';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body: [
+                '### :x: E2E tests failed',
+                '',
+                `- **Branch**: \`${process.env.GITHUB_REF_NAME}\`${focusLine}`,
+                `- **Run**: [#${process.env.GITHUB_RUN_ID}](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`,
+              ].join('\n'),
+            });
