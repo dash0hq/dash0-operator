@@ -1000,10 +1000,10 @@ exporters:
     {{- if $exporter.Keepalive }}
     keepalive:
       {{- if $exporter.Keepalive.Time }}
-      time: {{ $exporter.Keepalive.Time }}
+      time: "{{ $exporter.Keepalive.Time }}"
       {{- end }}
       {{- if $exporter.Keepalive.Timeout }}
-      timeout: {{ $exporter.Keepalive.Timeout }}
+      timeout: "{{ $exporter.Keepalive.Timeout }}"
       {{- end }}
       {{- if $exporter.Keepalive.PermitWithoutStream }}
       permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
@@ -1035,10 +1035,10 @@ exporters:
     {{- if $exporter.Keepalive }}
     keepalive:
       {{- if $exporter.Keepalive.Time }}
-      time: {{ $exporter.Keepalive.Time }}
+      time: "{{ $exporter.Keepalive.Time }}"
       {{- end }}
       {{- if $exporter.Keepalive.Timeout }}
-      timeout: {{ $exporter.Keepalive.Timeout }}
+      timeout: "{{ $exporter.Keepalive.Timeout }}"
       {{- end }}
       {{- if $exporter.Keepalive.PermitWithoutStream }}
       permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
