@@ -150,6 +150,15 @@ spec:
 {{- if .Values.operator.dash0Export.dataset }}
         - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.dataset" */}}
+{{- if .Values.operator.dash0Export.keepalive.time }}
+        - --operator-configuration-keepalive-time={{ .Values.operator.dash0Export.keepalive.time }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.time" */}}
+{{- if .Values.operator.dash0Export.keepalive.timeout }}
+        - --operator-configuration-keepalive-timeout={{ .Values.operator.dash0Export.keepalive.timeout }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.timeout" */}}
+{{- if .Values.operator.dash0Export.keepalive.permit_without_stream }}
+        - --operator-configuration-keepalive-permit-without-stream={{ .Values.operator.dash0Export.keepalive.permit_without_stream }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.permit_without_stream" */}}
         - --operator-configuration-auto-monitor-namespaces-enabled={{ .Values.operator.autoMonitorNamespaces.enabled }}
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}

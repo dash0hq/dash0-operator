@@ -728,6 +728,49 @@ tests:
           path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-dataset=test-dataset
 
+  - it: should add args for creating an operator configuration resource with keepalive settings to the deployment
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+          keepalive:
+            time: "30s"
+            timeout: "10s"
+            permit_without_stream: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[12]
+          value: --operator-configuration-keepalive-time=30s
+      - equal:
+          path: spec.template.spec.containers[0].args[13]
+          value: --operator-configuration-keepalive-timeout=10s
+      - equal:
+          path: spec.template.spec.containers[0].args[14]
+          value: --operator-configuration-keepalive-permit-without-stream=true
+
+  - it: should not add keepalive args when keepalive is not configured
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+    asserts:
+      # Without keepalive, auto-monitor args should be at index 12 (where keepalive-time would otherwise be).
+      - equal:
+          path: spec.template.spec.containers[0].args[12]
+          value: --operator-configuration-auto-monitor-namespaces-enabled=false
+
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
     documentSelector:
       path: metadata.name
