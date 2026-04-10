@@ -495,7 +495,7 @@ func defineCommandLineArguments() *commandLineArguments {
 	)
 	flag.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
-		"telemetry-collection-enabled",
+		"operator-configuration-telemetry-collection-enabled",
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)

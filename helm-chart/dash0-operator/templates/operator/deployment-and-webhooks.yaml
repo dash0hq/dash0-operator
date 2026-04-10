@@ -162,7 +162,7 @@ spec:
         - --operator-configuration-auto-monitor-namespaces-enabled={{ .Values.operator.autoMonitorNamespaces.enabled }}
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
-        - --telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
+        - --operator-configuration-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
         - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
         - --disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
