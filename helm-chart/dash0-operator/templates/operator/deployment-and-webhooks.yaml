@@ -85,7 +85,7 @@ spec:
         {{- include "dash0-operator.podLabels" . | nindent 8 }}
         {{- end }}
         {{- if .Values.operator.gke.autopilot.enabled }}
-        cloud.google.com/matching-allowlist: dash0-operator-manager-v1.0.2
+        cloud.google.com/matching-allowlist: dash0-operator-manager-v1.0.3
         {{- end }}
     spec:
 {{- if .Values.operator.nodeAffinity }}
@@ -162,16 +162,21 @@ spec:
         - --operator-configuration-auto-monitor-namespaces-enabled={{ .Values.operator.autoMonitorNamespaces.enabled }}
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
-        - --operator-configuration-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
-        - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
-        - --gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
-        - --disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
+        - --dash0-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
+        - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
+        - --dash0-gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
+        - --dash0-disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
 {{- if (default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis) }}
         - --instrumentation-delay-after-each-workload-millis={{ default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
 {{- end }}
 {{- if (default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis) }}
         - --instrumentation-delay-after-each-namespace-millis={{ default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis }}
 {{- end }}
+        {{- /*
+        Maintenance note: When adding new args or env entries, make sure they are covered by the Google GKE workload
+        allowlist. In particular, adding args with the prefix "--dash0-" or "--operator-configuration-" is always
+        covered, as well as environment variables with any of the prefixes "DASH0_", "OTEL_", or "K8S_".
+        */}}
         env:
         - name: GOMEMLIMIT
           value: {{ .Values.operator.managerContainerResources.gomemlimit | quote }}
