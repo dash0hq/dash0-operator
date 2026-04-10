@@ -364,16 +364,16 @@ tests:
           value: --leader-elect
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --operator-configuration-telemetry-collection-enabled=true
+          value: --dash0-telemetry-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --force-use-otel-collector-service-url=true
+          value: --dash0-force-use-otel-collector-service-url=true
       - equal:
           path: spec.template.spec.containers[0].args[5]
-          value: --gke-autopilot=false
+          value: --dash0-gke-autopilot=false
       - equal:
           path: spec.template.spec.containers[0].args[6]
-          value: --disable-otel-collector-host-ports=true
+          value: --dash0-disable-otel-collector-host-ports=true
       - equal:
           path: spec.template.spec.containers[0].args[7]
           value: --instrumentation-delay-after-each-workload-millis=13
@@ -972,7 +972,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --operator-configuration-telemetry-collection-enabled=false
+          value: --dash0-telemetry-collection-enabled=false
 
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:

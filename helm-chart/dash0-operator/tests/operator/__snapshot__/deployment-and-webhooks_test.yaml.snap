@@ -48,10 +48,10 @@ deployment should match snapshot (default values):
                 - --health-probe-bind-address=:8081
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
-                - --operator-configuration-telemetry-collection-enabled=true
-                - --force-use-otel-collector-service-url=false
-                - --gke-autopilot=false
-                - --disable-otel-collector-host-ports=false
+                - --dash0-telemetry-collection-enabled=true
+                - --dash0-force-use-otel-collector-service-url=false
+                - --dash0-gke-autopilot=false
+                - --dash0-disable-otel-collector-host-ports=false
               command:
                 - /manager
               env:
@@ -209,10 +209,10 @@ deployment should match snapshot when using cert-manager:
                 - --health-probe-bind-address=:8081
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
-                - --operator-configuration-telemetry-collection-enabled=true
-                - --force-use-otel-collector-service-url=false
-                - --gke-autopilot=false
-                - --disable-otel-collector-host-ports=false
+                - --dash0-telemetry-collection-enabled=true
+                - --dash0-force-use-otel-collector-service-url=false
+                - --dash0-gke-autopilot=false
+                - --dash0-disable-otel-collector-host-ports=false
               command:
                 - /manager
               env:
