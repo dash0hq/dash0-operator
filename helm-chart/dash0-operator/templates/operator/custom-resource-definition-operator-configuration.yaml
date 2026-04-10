@@ -230,6 +230,23 @@ spec:
                           `ingress.` and end in `dash0.com:4317`.
                         minLength: 1
                         type: string
+                      keepalive:
+                        description: |-
+                          The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                          This setting is optional and there should usually be no need to configure it.
+                        properties:
+                          permit_without_stream:
+                            description: Allow keepalive pings when there are no active
+                              streams.
+                            type: boolean
+                          time:
+                            description: Period after which a keepalive ping is sent
+                              on the transport.
+                            type: string
+                          timeout:
+                            description: Time to wait for a keepalive ping acknowledgement.
+                            type: string
+                        type: object
                     required:
                     - authorization
                     - endpoint
@@ -267,6 +284,23 @@ spec:
                           Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
                           `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
                         type: boolean
+                      keepalive:
+                        description: |-
+                          The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                          This setting is optional and there should usually be no need to configure it.
+                        properties:
+                          permit_without_stream:
+                            description: Allow keepalive pings when there are no active
+                              streams.
+                            type: boolean
+                          time:
+                            description: Period after which a keepalive ping is sent
+                              on the transport.
+                            type: string
+                          timeout:
+                            description: Time to wait for a keepalive ping acknowledgement.
+                            type: string
+                        type: object
                     required:
                     - endpoint
                     type: object
@@ -389,6 +423,23 @@ spec:
                             `ingress.` and end in `dash0.com:4317`.
                           minLength: 1
                           type: string
+                        keepalive:
+                          description: |-
+                            The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                            This setting is optional and there should usually be no need to configure it.
+                          properties:
+                            permit_without_stream:
+                              description: Allow keepalive pings when there are no
+                                active streams.
+                              type: boolean
+                            time:
+                              description: Period after which a keepalive ping is
+                                sent on the transport.
+                              type: string
+                            timeout:
+                              description: Time to wait for a keepalive ping acknowledgement.
+                              type: string
+                          type: object
                       required:
                       - authorization
                       - endpoint
@@ -426,6 +477,23 @@ spec:
                             Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
                             `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
                           type: boolean
+                        keepalive:
+                          description: |-
+                            The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                            This setting is optional and there should usually be no need to configure it.
+                          properties:
+                            permit_without_stream:
+                              description: Allow keepalive pings when there are no
+                                active streams.
+                              type: boolean
+                            time:
+                              description: Period after which a keepalive ping is
+                                sent on the transport.
+                              type: string
+                            timeout:
+                              description: Time to wait for a keepalive ping acknowledgement.
+                              type: string
+                          type: object
                       required:
                       - endpoint
                       type: object
@@ -720,6 +788,24 @@ spec:
                                   `ingress.` and end in `dash0.com:4317`.
                                 minLength: 1
                                 type: string
+                              keepalive:
+                                description: |-
+                                  The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                                  This setting is optional and there should usually be no need to configure it.
+                                properties:
+                                  permit_without_stream:
+                                    description: Allow keepalive pings when there
+                                      are no active streams.
+                                    type: boolean
+                                  time:
+                                    description: Period after which a keepalive ping
+                                      is sent on the transport.
+                                    type: string
+                                  timeout:
+                                    description: Time to wait for a keepalive ping
+                                      acknowledgement.
+                                    type: string
+                                type: object
                             required:
                             - authorization
                             - endpoint
@@ -758,6 +844,24 @@ spec:
                                   Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
                                   `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
                                 type: boolean
+                              keepalive:
+                                description: |-
+                                  The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                                  This setting is optional and there should usually be no need to configure it.
+                                properties:
+                                  permit_without_stream:
+                                    description: Allow keepalive pings when there
+                                      are no active streams.
+                                    type: boolean
+                                  time:
+                                    description: Period after which a keepalive ping
+                                      is sent on the transport.
+                                    type: string
+                                  timeout:
+                                    description: Time to wait for a keepalive ping
+                                      acknowledgement.
+                                    type: string
+                                type: object
                             required:
                             - endpoint
                             type: object
@@ -883,6 +987,24 @@ spec:
                                     `ingress.` and end in `dash0.com:4317`.
                                   minLength: 1
                                   type: string
+                                keepalive:
+                                  description: |-
+                                    The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                                    This setting is optional and there should usually be no need to configure it.
+                                  properties:
+                                    permit_without_stream:
+                                      description: Allow keepalive pings when there
+                                        are no active streams.
+                                      type: boolean
+                                    time:
+                                      description: Period after which a keepalive
+                                        ping is sent on the transport.
+                                      type: string
+                                    timeout:
+                                      description: Time to wait for a keepalive ping
+                                        acknowledgement.
+                                      type: string
+                                  type: object
                               required:
                               - authorization
                               - endpoint
@@ -921,6 +1043,24 @@ spec:
                                     Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
                                     `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
                                   type: boolean
+                                keepalive:
+                                  description: |-
+                                    The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                                    This setting is optional and there should usually be no need to configure it.
+                                  properties:
+                                    permit_without_stream:
+                                      description: Allow keepalive pings when there
+                                        are no active streams.
+                                      type: boolean
+                                    time:
+                                      description: Period after which a keepalive
+                                        ping is sent on the transport.
+                                      type: string
+                                    timeout:
+                                      description: Time to wait for a keepalive ping
+                                        acknowledgement.
+                                      type: string
+                                  type: object
                               required:
                               - endpoint
                               type: object
@@ -1656,6 +1796,24 @@ spec:
                                   `ingress.` and end in `dash0.com:4317`.
                                 minLength: 1
                                 type: string
+                              keepalive:
+                                description: |-
+                                  The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                                  This setting is optional and there should usually be no need to configure it.
+                                properties:
+                                  permit_without_stream:
+                                    description: Allow keepalive pings when there
+                                      are no active streams.
+                                    type: boolean
+                                  time:
+                                    description: Period after which a keepalive ping
+                                      is sent on the transport.
+                                    type: string
+                                  timeout:
+                                    description: Time to wait for a keepalive ping
+                                      acknowledgement.
+                                    type: string
+                                type: object
                             required:
                             - authorization
                             - endpoint
@@ -1694,6 +1852,24 @@ spec:
                                   Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
                                   `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
                                 type: boolean
+                              keepalive:
+                                description: |-
+                                  The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                                  This setting is optional and there should usually be no need to configure it.
+                                properties:
+                                  permit_without_stream:
+                                    description: Allow keepalive pings when there
+                                      are no active streams.
+                                    type: boolean
+                                  time:
+                                    description: Period after which a keepalive ping
+                                      is sent on the transport.
+                                    type: string
+                                  timeout:
+                                    description: Time to wait for a keepalive ping
+                                      acknowledgement.
+                                    type: string
+                                type: object
                             required:
                             - endpoint
                             type: object
@@ -1819,6 +1995,24 @@ spec:
                                     `ingress.` and end in `dash0.com:4317`.
                                   minLength: 1
                                   type: string
+                                keepalive:
+                                  description: |-
+                                    The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                                    This setting is optional and there should usually be no need to configure it.
+                                  properties:
+                                    permit_without_stream:
+                                      description: Allow keepalive pings when there
+                                        are no active streams.
+                                      type: boolean
+                                    time:
+                                      description: Period after which a keepalive
+                                        ping is sent on the transport.
+                                      type: string
+                                    timeout:
+                                      description: Time to wait for a keepalive ping
+                                        acknowledgement.
+                                      type: string
+                                  type: object
                               required:
                               - authorization
                               - endpoint
@@ -1857,6 +2051,24 @@ spec:
                                     Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
                                     `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
                                   type: boolean
+                                keepalive:
+                                  description: |-
+                                    The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+                                    This setting is optional and there should usually be no need to configure it.
+                                  properties:
+                                    permit_without_stream:
+                                      description: Allow keepalive pings when there
+                                        are no active streams.
+                                      type: boolean
+                                    time:
+                                      description: Period after which a keepalive
+                                        ping is sent on the transport.
+                                      type: string
+                                    timeout:
+                                      description: Time to wait for a keepalive ping
+                                        acknowledgement.
+                                      type: string
+                                  type: object
                               required:
                               - endpoint
                               type: object

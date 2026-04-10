@@ -81,6 +81,17 @@ operator:
     # live Kubernetes cluster.
     disableSecretValidation: false
 
+    # The client-side gRPC keepalive configuration for the connection to the Dash0 backend.
+    # See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+    # This setting is optional and there should usually be no need to configure it.
+    keepalive:
+      # Period after which a keepalive ping is sent on the transport (e.g. "30s").
+      time:
+      # Time to wait for a keepalive ping acknowledgement (e.g. "10s").
+      timeout:
+      # Allow keepalive pings when there are no active streams.
+      permit_without_stream:
+
   # An opt-out for operator self-monitoring. If set to false, self monitoring for the operator will be disabled, that
   # is, the operator will not send self-monitoring telemetry to the configured Dash0 backend. This setting is optional,
   # it defaults to true.

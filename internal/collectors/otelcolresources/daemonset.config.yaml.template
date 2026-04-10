@@ -997,6 +997,18 @@ exporters:
     {{- if $exporter.Encoding }}
     encoding: "{{ $exporter.Encoding }}"
     {{- end }}
+    {{- if $exporter.Keepalive }}
+    keepalive:
+      {{- if $exporter.Keepalive.Time }}
+      time: "{{ $exporter.Keepalive.Time }}"
+      {{- end }}
+      {{- if $exporter.Keepalive.Timeout }}
+      timeout: "{{ $exporter.Keepalive.Timeout }}"
+      {{- end }}
+      {{- if $exporter.Keepalive.PermitWithoutStream }}
+      permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
+      {{- end }}
+    {{- end }}
   {{- end }}
 
   {{- range $ns := .Exporters.AllNamespaceKeys }}
@@ -1019,6 +1031,18 @@ exporters:
     {{- end }}
     {{- if $exporter.Encoding }}
     encoding: "{{ $exporter.Encoding }}"
+    {{- end }}
+    {{- if $exporter.Keepalive }}
+    keepalive:
+      {{- if $exporter.Keepalive.Time }}
+      time: "{{ $exporter.Keepalive.Time }}"
+      {{- end }}
+      {{- if $exporter.Keepalive.Timeout }}
+      timeout: "{{ $exporter.Keepalive.Timeout }}"
+      {{- end }}
+      {{- if $exporter.Keepalive.PermitWithoutStream }}
+      permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
+      {{- end }}
     {{- end }}
   {{- end }}
   {{- end }}

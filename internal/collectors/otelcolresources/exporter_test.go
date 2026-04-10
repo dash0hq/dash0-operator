@@ -108,6 +108,84 @@ var _ = Describe("Exporter Conversion", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exporter.Insecure).To(BeTrue())
 		})
+
+		It("should set keepalive when configured", func() {
+			time := "30s"
+			timeout := "10s"
+			permitWithoutStream := true
+			d0Config := &dash0common.Dash0Configuration{
+				Endpoint: EndpointDash0Test,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+				Keepalive: &dash0common.KeepaliveClientConfig{
+					Time:                &time,
+					Timeout:             &timeout,
+					PermitWithoutStream: &permitWithoutStream,
+				},
+			}
+			auth := &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			}
+
+			exporter, err := convertDash0ExporterToOtlpExporter(d0Config, "default", auth)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.Keepalive).NotTo(BeNil())
+			Expect(*exporter.Keepalive.Time).To(Equal("30s"))
+			Expect(*exporter.Keepalive.Timeout).To(Equal("10s"))
+			Expect(*exporter.Keepalive.PermitWithoutStream).To(BeTrue())
+		})
+
+		It("should leave keepalive nil when not configured", func() {
+			d0Config := &dash0common.Dash0Configuration{
+				Endpoint: EndpointDash0Test,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			}
+			auth := &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			}
+
+			exporter, err := convertDash0ExporterToOtlpExporter(d0Config, "default", auth)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.Keepalive).To(BeNil())
+		})
+
+		It("should set keepalive with partial fields", func() {
+			time := "60s"
+			d0Config := &dash0common.Dash0Configuration{
+				Endpoint: EndpointDash0Test,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+				Keepalive: &dash0common.KeepaliveClientConfig{
+					Time: &time,
+				},
+			}
+			auth := &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			}
+
+			exporter, err := convertDash0ExporterToOtlpExporter(d0Config, "default", auth)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.Keepalive).NotTo(BeNil())
+			Expect(*exporter.Keepalive.Time).To(Equal("60s"))
+			Expect(exporter.Keepalive.Timeout).To(BeNil())
+			Expect(exporter.Keepalive.PermitWithoutStream).To(BeNil())
+		})
 	})
 
 	Describe("ConvertGrpcExporterToOtlpExporter", func() {
@@ -200,6 +278,57 @@ var _ = Describe("Exporter Conversion", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exporter.Name).To(Equal("otlp_grpc/ns/test-namespace"))
+		})
+
+		It("should set keepalive when configured", func() {
+			time := "30s"
+			timeout := "10s"
+			permitWithoutStream := true
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Keepalive: &dash0common.KeepaliveClientConfig{
+					Time:                &time,
+					Timeout:             &timeout,
+					PermitWithoutStream: &permitWithoutStream,
+				},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.Keepalive).NotTo(BeNil())
+			Expect(*exporter.Keepalive.Time).To(Equal("30s"))
+			Expect(*exporter.Keepalive.Timeout).To(Equal("10s"))
+			Expect(*exporter.Keepalive.PermitWithoutStream).To(BeTrue())
+		})
+
+		It("should leave keepalive nil when not configured", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.Keepalive).To(BeNil())
+		})
+
+		It("should set keepalive with partial fields", func() {
+			permitWithoutStream := true
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Keepalive: &dash0common.KeepaliveClientConfig{
+					PermitWithoutStream: &permitWithoutStream,
+				},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.Keepalive).NotTo(BeNil())
+			Expect(exporter.Keepalive.Time).To(BeNil())
+			Expect(exporter.Keepalive.Timeout).To(BeNil())
+			Expect(*exporter.Keepalive.PermitWithoutStream).To(BeTrue())
 		})
 	})
 

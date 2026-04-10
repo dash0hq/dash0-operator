@@ -22,6 +22,7 @@ type otlpExporter struct {
 	Encoding           string
 	Insecure           bool
 	InsecureSkipVerify bool
+	Keepalive          *dash0common.KeepaliveClientConfig
 }
 
 type defaultOtlpExporters = []otlpExporter
@@ -201,6 +202,7 @@ func convertDash0ExporterToOtlpExporter(
 		Endpoint:      d0.Endpoint,
 		Headers:       headers,
 		Authorization: auth,
+		Keepalive:     d0.Keepalive,
 	}
 	setGrpcTlsFromPrefix(d0.Endpoint, &dash0Exporter)
 	return &dash0Exporter, nil
@@ -211,9 +213,10 @@ func convertGrpcExporterToOtlpExporter(grpc *dash0common.GrpcConfiguration, name
 		return nil, fmt.Errorf("no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")
 	}
 	grpcExporter := otlpExporter{
-		Name:     fmt.Sprintf("%s/%s", grpcExporterNamePrefix, nameSuffix),
-		Endpoint: grpc.Endpoint,
-		Headers:  grpc.Headers,
+		Name:      fmt.Sprintf("%s/%s", grpcExporterNamePrefix, nameSuffix),
+		Endpoint:  grpc.Endpoint,
+		Headers:   grpc.Headers,
+		Keepalive: grpc.Keepalive,
 	}
 	if grpc.Insecure != nil {
 		grpcExporter.Insecure = *grpc.Insecure

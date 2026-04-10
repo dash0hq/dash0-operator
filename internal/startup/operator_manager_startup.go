@@ -104,6 +104,9 @@ type commandLineArguments struct {
 	operatorConfigurationSecretRefKey                                     string
 	operatorConfigurationDataset                                          string
 	operatorConfigurationApiEndpoint                                      string
+	operatorConfigurationKeepaliveTime                                    string
+	operatorConfigurationKeepaliveTimeout                                 string
+	operatorConfigurationKeepalivePermitWithoutStream                     bool
 	operatorConfigurationSelfMonitoringEnabled                            bool
 	operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
@@ -340,6 +343,15 @@ func Start() {
 		if len(cliArgs.operatorConfigurationDataset) > 0 {
 			operatorConfigurationValues.Dataset = cliArgs.operatorConfigurationDataset
 		}
+		if len(cliArgs.operatorConfigurationKeepaliveTime) > 0 {
+			operatorConfigurationValues.KeepaliveTime = cliArgs.operatorConfigurationKeepaliveTime
+		}
+		if len(cliArgs.operatorConfigurationKeepaliveTimeout) > 0 {
+			operatorConfigurationValues.KeepaliveTimeout = cliArgs.operatorConfigurationKeepaliveTimeout
+		}
+		if cliArgs.operatorConfigurationKeepalivePermitWithoutStream {
+			operatorConfigurationValues.KeepalivePermitWithoutStream = true
+		}
 	}
 
 	if err = startOperatorManager(
@@ -417,6 +429,27 @@ func defineCommandLineArguments() *commandLineArguments {
 		"operator-configuration-api-endpoint",
 		"",
 		"The Dash0 API endpoint for managing dashboards, check rules, synthetic checks and views via the operator.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationKeepaliveTime,
+		"operator-configuration-keepalive-time",
+		"",
+		"The keepalive time for the gRPC connection to the Dash0 backend; will be ignored if "+
+			"operator-configuration-endpoint is not set.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationKeepaliveTimeout,
+		"operator-configuration-keepalive-timeout",
+		"",
+		"The keepalive timeout for the gRPC connection to the Dash0 backend; will be ignored if "+
+			"operator-configuration-endpoint is not set.",
+	)
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationKeepalivePermitWithoutStream,
+		"operator-configuration-keepalive-permit-without-stream",
+		false,
+		"Whether to allow keepalive pings when there are no active gRPC streams; will be ignored if "+
+			"operator-configuration-endpoint is not set.",
 	)
 	flag.BoolVar(
 		&cliArgs.operatorConfigurationSelfMonitoringEnabled,

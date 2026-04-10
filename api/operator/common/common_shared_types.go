@@ -66,6 +66,12 @@ type Dash0Configuration struct {
 	//
 	// +kubebuilder:validation:Optional
 	ApiEndpoint string `json:"apiEndpoint,omitempty"`
+
+	// The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+	// This setting is optional and there should usually be no need to configure it.
+	//
+	// +kubebuilder:validation:Optional
+	Keepalive *KeepaliveClientConfig `json:"keepalive,omitempty"`
 }
 
 // Authorization contains the authorization settings for Dash0.
@@ -146,6 +152,12 @@ type GrpcConfiguration struct {
 	//
 	// +kubebuilder:validation:Optional
 	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
+
+	// The client-side keepalive configuration. See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
+	// This setting is optional and there should usually be no need to configure it.
+	//
+	// +kubebuilder:validation:Optional
+	Keepalive *KeepaliveClientConfig `json:"keepalive,omitempty"`
 }
 
 // OtlpEncoding describes the encoding of the OTLP data when sent via HTTP.
@@ -163,6 +175,21 @@ type Header struct {
 	Name string `json:"name"`
 	// +kubebuilder:validation:Required
 	Value string `json:"value"`
+}
+
+// KeepaliveClientConfig exposes the keepalive.ClientParameters for gRPC clients.
+type KeepaliveClientConfig struct {
+	// Period after which a keepalive ping is sent on the transport.
+	// +kubebuilder:validation:Optional
+	Time *string `json:"time,omitempty"`
+
+	// Time to wait for a keepalive ping acknowledgement.
+	// +kubebuilder:validation:Optional
+	Timeout *string `json:"timeout,omitempty"`
+
+	// Allow keepalive pings when there are no active streams.
+	// +kubebuilder:validation:Optional
+	PermitWithoutStream *bool `json:"permit_without_stream,omitempty"`
 }
 
 func (e *Export) HasDash0ExportConfigured() bool {

@@ -384,6 +384,119 @@ var _ = Describe(
 		)
 
 		It(
+			"should set keepalive configuration", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						Endpoint:                     EndpointDash0Test,
+						Token:                        AuthorizationTokenTest,
+						KeepaliveTime:                "30s",
+						KeepaliveTimeout:             "10s",
+						KeepalivePermitWithoutStream: true,
+					},
+					nil,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{
+								Name: util.OperatorConfigurationAutoResourceName,
+							}, &operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+
+						export := operatorConfiguration.Spec.Exports[0]
+						dash0Export := export.Dash0
+						g.Expect(dash0Export).ToNot(BeNil())
+						g.Expect(dash0Export.Keepalive).ToNot(BeNil())
+						g.Expect(dash0Export.Keepalive.Time).ToNot(BeNil())
+						g.Expect(*dash0Export.Keepalive.Time).To(Equal("30s"))
+						g.Expect(dash0Export.Keepalive.Timeout).ToNot(BeNil())
+						g.Expect(*dash0Export.Keepalive.Timeout).To(Equal("10s"))
+						g.Expect(dash0Export.Keepalive.PermitWithoutStream).ToNot(BeNil())
+						g.Expect(*dash0Export.Keepalive.PermitWithoutStream).To(BeTrue())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should not set keepalive when no keepalive values are provided", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					operatorConfigurationValuesWithToken,
+					nil,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{
+								Name: util.OperatorConfigurationAutoResourceName,
+							}, &operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+
+						export := operatorConfiguration.Spec.Exports[0]
+						dash0Export := export.Dash0
+						g.Expect(dash0Export).ToNot(BeNil())
+						g.Expect(dash0Export.Keepalive).To(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
+			"should set partial keepalive configuration", func() {
+				handler := NewAutoOperatorConfigurationResourceHandler(
+					k8sClient,
+					readyCheckExecuter,
+					OperatorConfigurationValues{
+						Endpoint:      EndpointDash0Test,
+						Token:         AuthorizationTokenTest,
+						KeepaliveTime: "60s",
+					},
+					nil,
+				)
+				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
+				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(
+					func(g Gomega) {
+						operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+						err := k8sClient.Get(
+							ctx, types.NamespacedName{
+								Name: util.OperatorConfigurationAutoResourceName,
+							}, &operatorConfiguration,
+						)
+						g.Expect(err).ToNot(HaveOccurred())
+
+						export := operatorConfiguration.Spec.Exports[0]
+						dash0Export := export.Dash0
+						g.Expect(dash0Export).ToNot(BeNil())
+						g.Expect(dash0Export.Keepalive).ToNot(BeNil())
+						g.Expect(dash0Export.Keepalive.Time).ToNot(BeNil())
+						g.Expect(*dash0Export.Keepalive.Time).To(Equal("60s"))
+						g.Expect(dash0Export.Keepalive.Timeout).To(BeNil())
+						g.Expect(dash0Export.Keepalive.PermitWithoutStream).To(BeNil())
+					}, 5*time.Second, 100*time.Millisecond,
+				).Should(Succeed())
+			},
+		)
+
+		It(
 			"should set the cluster name", func() {
 				handler := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,

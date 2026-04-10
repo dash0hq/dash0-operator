@@ -32,6 +32,9 @@ type OperatorConfigurationValues struct {
 	SecretRef
 	ApiEndpoint                                      string
 	Dataset                                          string
+	KeepaliveTime                                    string
+	KeepaliveTimeout                                 string
+	KeepalivePermitWithoutStream                     bool
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
@@ -327,6 +330,21 @@ func convertValuesToResource(
 	}
 	if operatorConfigurationValues.Dataset != "" {
 		dash0Exports[0].Dash0.Dataset = operatorConfigurationValues.Dataset
+	}
+	if operatorConfigurationValues.KeepaliveTime != "" ||
+		operatorConfigurationValues.KeepaliveTimeout != "" ||
+		operatorConfigurationValues.KeepalivePermitWithoutStream {
+		keepalive := &dash0common.KeepaliveClientConfig{}
+		if operatorConfigurationValues.KeepaliveTime != "" {
+			keepalive.Time = &operatorConfigurationValues.KeepaliveTime
+		}
+		if operatorConfigurationValues.KeepaliveTimeout != "" {
+			keepalive.Timeout = &operatorConfigurationValues.KeepaliveTimeout
+		}
+		if operatorConfigurationValues.KeepalivePermitWithoutStream {
+			keepalive.PermitWithoutStream = new(true)
+		}
+		dash0Exports[0].Dash0.Keepalive = keepalive
 	}
 
 	if !operatorConfigurationValues.TelemetryCollectionEnabled {
