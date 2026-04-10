@@ -429,8 +429,12 @@ func upsertViaApi(
 	// each for a Perses dashboard and a Prometheus rules might be processed concurrently. All resource synchronization
 	// attempts that are related to third-party resources types (Prometheus rules, Perses dashboards) end with writing
 	// to the Dash0 monitoring resource status in the same namespace. These write attempts will fail if they happen
-	// concurrently. Therefore, we add all synchronization attempts to one queue that is shared across resource types,
-	// and only process them one at a time.
+	// concurrently. Therefore, we add all synchronization attempts to one queue that is shared across third-party
+	// resource types, and only process them one at a time.
+	// This queueing is independent of the rate limiting implemented by CappedRateLimer, which spreads out API request for
+	// all types (not only third-party CRDs) to avoid running into Dash0 API rate limits. (CappedRateLimer does not offer
+	// a guarantee that API sync operations including updating the Dash0 monitoring resource's status are handled
+	// sequentially.)
 	thirdPartyResourceReconciler.Queue().Add(
 		ThirdPartyResourceSyncJob{
 			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
@@ -444,7 +448,7 @@ func deleteViaApi(
 	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	dash0ApiResource *unstructured.Unstructured,
 ) {
-	// See comment in upsertViaApi for an explanation why we use a shared queue for all resource types.
+	// See comment in upsertViaApi for an explanation why we use a shared queue for all third-pary resource types.
 	thirdPartyResourceReconciler.Queue().Add(
 		ThirdPartyResourceSyncJob{
 			thirdPartyResourceReconciler: thirdPartyResourceReconciler,

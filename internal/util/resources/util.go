@@ -12,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -115,4 +116,8 @@ func SetOwnerReference(
 
 func RenderName(prefix string, parts ...string) string {
 	return strings.Join(append([]string{prefix}, parts...), "-")
+}
+
+func QualifiedResourceName(resource *unstructured.Unstructured) string {
+	return resource.GetNamespace() + "/" + resource.GetName()
 }

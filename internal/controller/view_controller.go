@@ -34,6 +34,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/rate"
 )
 
 type ViewReconciler struct {
@@ -41,6 +42,7 @@ type ViewReconciler struct {
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
 	httpClient            *http.Client
+	limiter               *rate.CappedRateLimiter
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
@@ -57,12 +59,14 @@ func NewViewReconciler(
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
 	httpClient *http.Client,
+	limiter *rate.CappedRateLimiter,
 ) *ViewReconciler {
 	return &ViewReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
 		httpClient:           httpClient,
+		limiter:              limiter,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
@@ -220,8 +224,6 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 				},
 			}
 			_, _ = r.Reconcile(ctx, pseudoReconcileRequest)
-			// stagger API requests a bit
-			time.Sleep(50 * time.Millisecond)
 		}
 		logger.Info("Initial synchronization of views has finished.")
 		r.initialSyncHasHappend.Store(true)
@@ -269,20 +271,22 @@ func (r *ViewReconciler) synchronizeNamespacedResources(ctx context.Context, nam
 				},
 			}
 			_, _ = r.Reconcile(ctx, pseudoReconcileRequest)
-			// stagger API requests a bit
-			time.Sleep(50 * time.Millisecond)
 		}
 		logger.Info(fmt.Sprintf("Synchronization of views in namespace %s has finished.", namespace))
 	}()
 }
 
 func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+	qualifiedName := req.NamespacedName.String() //nolint:staticcheck
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), qualifiedName, logger) {
+		return reconcile.Result{}, nil
+	}
+
 	if viewReconcileRequestMetric != nil {
 		viewReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	qualifiedName := req.NamespacedName.String() //nolint:staticcheck
-	logger := logd.FromContext(ctx)
 	logger.Info("processing reconcile request for a view resource", "name", qualifiedName)
 
 	action := upsertAction

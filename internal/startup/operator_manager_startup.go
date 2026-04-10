@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	"github.com/dash0hq/dash0-api-client-go"
 	"github.com/go-logr/zapr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -55,6 +55,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/rate"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
 )
@@ -1258,11 +1259,16 @@ func startDash0Controllers(
 		}
 	}
 
+	// Shared rate limiter for all API-sync reconcilers (Perses dashboards, Prometheus rules, synthetic checks, views,
+	// etc.). It enforces a maximum of 500 API sync operations per 5-minute window.
+	apiSyncRateLimiter := rate.NewDefaultCappedRateLimiter()
+
 	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
 		httpClient,
+		apiSyncRateLimiter,
 	)
 	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
@@ -1274,6 +1280,7 @@ func startDash0Controllers(
 		clusterUid,
 		leaderElectionAwareRunnable,
 		httpClient,
+		apiSyncRateLimiter,
 	)
 	if err := viewReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the view reconciler: %w", err)
@@ -1292,6 +1299,7 @@ func startDash0Controllers(
 		thirdPartyResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
+		apiSyncRateLimiter,
 	)
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
@@ -1302,12 +1310,16 @@ func startDash0Controllers(
 		thirdPartyResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
+		apiSyncRateLimiter,
 	)
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
 	}
 
-	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, setupLog)
+	controller.StartProcessingThirdPartySynchronizationQueue(
+		thirdPartyResourceSynchronizationQueue,
+		setupLog,
+	)
 
 	setupLog.Info("Creating the self-monitoring OTel SDK starter.")
 	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)

@@ -27,6 +27,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/rate"
 
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
@@ -392,7 +393,10 @@ var _ = Describe(
 
 						Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, logger)).To(Succeed())
 
-						StartProcessingThirdPartySynchronizationQueue(testQueuePersesDashboards, logger)
+						StartProcessingThirdPartySynchronizationQueue(
+							testQueuePersesDashboards,
+							logger,
+						)
 					},
 				)
 
@@ -1018,6 +1022,7 @@ func createPersesDashboardCrdReconciler() *PersesDashboardCrdReconciler {
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},
 		TestHTTPClient(),
+		rate.NewNoOpCappedRateLimiter(),
 	)
 
 	// We create the controller multiple times in tests, this option is required, otherwise the controller

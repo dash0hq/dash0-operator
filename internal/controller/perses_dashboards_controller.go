@@ -32,6 +32,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/rate"
+	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
 type PersesDashboardCrdReconciler struct {
@@ -40,6 +42,7 @@ type PersesDashboardCrdReconciler struct {
 	leaderElectionAware       util.LeaderElectionAware
 	mgr                       ctrl.Manager
 	httpClient                *http.Client
+	limiter                   *rate.CappedRateLimiter
 	skipNameValidation        bool
 	persesDashboardReconciler *PersesDashboardReconciler
 	persesDashboardCrdExists  atomic.Bool
@@ -50,6 +53,7 @@ type PersesDashboardReconciler struct {
 	pseudoClusterUid           types.UID
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
+	limiter                    *rate.CappedRateLimiter
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	namespacedSyncEnabled      sync.Map
@@ -67,12 +71,14 @@ func NewPersesDashboardCrdReconciler(
 	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	leaderElectionAware util.LeaderElectionAware,
 	httpClient *http.Client,
+	limiter *rate.CappedRateLimiter,
 ) *PersesDashboardCrdReconciler {
 	return &PersesDashboardCrdReconciler{
 		Client:              k8sClient,
 		queue:               queue,
 		leaderElectionAware: leaderElectionAware,
 		httpClient:          httpClient,
+		limiter:             limiter,
 	}
 }
 
@@ -126,6 +132,7 @@ func (r *PersesDashboardCrdReconciler) CreateThirdPartyResourceReconciler(pseudo
 		queue:                r.queue,
 		pseudoClusterUid:     pseudoClusterUid,
 		httpClient:           r.httpClient,
+		limiter:              r.limiter,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 	}
@@ -374,11 +381,15 @@ func (r *PersesDashboardReconciler) Create(
 	e event.TypedCreateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), resources.QualifiedResourceName(e.Object), logger) {
+		return
+	}
+
 	if persesDashboardReconcileRequestMetric != nil {
 		persesDashboardReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected a new Perses dashboard resource",
 		"namespace",
@@ -395,11 +406,15 @@ func (r *PersesDashboardReconciler) Update(
 	e event.TypedUpdateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), resources.QualifiedResourceName(e.ObjectNew), logger) {
+		return
+	}
+
 	if persesDashboardReconcileRequestMetric != nil {
 		persesDashboardReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected a change for a Perses dashboard resource",
 		"namespace",
@@ -416,11 +431,15 @@ func (r *PersesDashboardReconciler) Delete(
 	e event.TypedDeleteEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), resources.QualifiedResourceName(e.Object), logger) {
+		return
+	}
+
 	if persesDashboardReconcileRequestMetric != nil {
 		persesDashboardReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected the deletion of a Perses dashboard resource",
 		"namespace",
@@ -437,11 +456,14 @@ func (r *PersesDashboardReconciler) Generic(
 	e event.TypedGenericEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), resources.QualifiedResourceName(e.Object), logger) {
+		return
+	}
 	if persesDashboardReconcileRequestMetric != nil {
 		persesDashboardReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Reconciling dashboard triggered by config event (updated API config or authorization).",
 		"namespace",
@@ -723,9 +745,6 @@ func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 				Object: dashboardResource,
 			}
 			r.Generic(ctx, evt, nil)
-
-			// stagger API requests a bit
-			time.Sleep(50 * time.Millisecond)
 		}
 		logger.Info(fmt.Sprintf("Triggering synchronization of dashboards in namespace %s has finished.", namespace))
 	}()
