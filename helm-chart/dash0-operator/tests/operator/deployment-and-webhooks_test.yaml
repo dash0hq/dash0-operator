@@ -364,7 +364,7 @@ tests:
           value: --leader-elect
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --telemetry-collection-enabled=true
+          value: --operator-configuration-telemetry-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
           value: --force-use-otel-collector-service-url=true
@@ -972,7 +972,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --telemetry-collection-enabled=false
+          value: --operator-configuration-telemetry-collection-enabled=false
 
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:
