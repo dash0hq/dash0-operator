@@ -159,8 +159,8 @@ const (
 	offsetsDirPath       = "/var/otelcol/filelogreceiver_offsets"
 
 	gkeAutopilotAllowlistLabelKey             = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.2"
-	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.2"
+	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.3"
+	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.3"
 
 	targetAllocatorCertsVolumeName = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
@@ -724,7 +724,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		podSpec.PriorityClassName = priorityClassName
 	}
 
-	templateLabels := addGkeAutopilotAllowListMatchLabel(config, daemonSetMatchLabels, gkeAutopilotAllowlistLabelDaemonsetValue)
+	templateLabels := addGkeAutopilotAllowlistMatchLabel(config, daemonSetMatchLabels, gkeAutopilotAllowlistLabelDaemonsetValue)
 	collectorDaemonSet := &appsv1.DaemonSet{
 		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
@@ -1523,7 +1523,7 @@ func assembleCollectorDeployment(
 		podSpec.PriorityClassName = priorityClassName
 	}
 
-	templateLabels := addGkeAutopilotAllowListMatchLabel(config, deploymentMatchLabels, gkeAutopilotAllowlistLabelDeploymentValue)
+	templateLabels := addGkeAutopilotAllowlistMatchLabel(config, deploymentMatchLabels, gkeAutopilotAllowlistLabelDeploymentValue)
 	collectorDeployment := &appsv1.Deployment{
 		TypeMeta: util.K8sTypeMetaDeployment,
 		ObjectMeta: metav1.ObjectMeta{
@@ -1773,7 +1773,7 @@ func addCommonMetadata(object client.Object) clientObject {
 	}
 }
 
-func addGkeAutopilotAllowListMatchLabel(
+func addGkeAutopilotAllowlistMatchLabel(
 	config *oTelColConfig,
 	originalLabels map[string]string,
 	gkeAutopilotAllowlistLabelValue string,
