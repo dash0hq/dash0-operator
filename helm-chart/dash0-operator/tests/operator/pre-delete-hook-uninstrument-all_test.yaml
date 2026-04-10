@@ -1,15 +1,8 @@
-suite: test post-install hook job
+suite: test pre-delete hook job
 templates:
-  - operator/post-install-hook.yaml
+  - operator/pre-delete-hook-uninstrument-all.yaml
 tests:
-  - it: post-install hook job should match snapshot
-    set:
-      operator:
-        dash0Export:
-          enabled: true
-          endpoint: https://ingress.dash0.com
-          token: "very-secret-dash0-auth-token"
-          apiEndpoint: https://api.dash0.com
+  - it: pre-delete hook job should match snapshot
     asserts:
       - matchSnapshot: {}
 
@@ -17,35 +10,14 @@ tests:
     chart:
       version: 4.5.6
       appVersion: 99.100.101
-    set:
-      operator:
-        dash0Export:
-          enabled: true
-          endpoint: https://ingress.dash0.com
-          token: "very-secret-dash0-auth-token"
-          apiEndpoint: https://api.dash0.com
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/dash0hq/operator-controller:99.100.101
 
-  - it: post-install hook job should not be deployed if no operator configuration auto resource is requested
-    set:
-      operator:
-        dash0Export:
-          enabled: false
-    asserts:
-      - hasDocuments:
-          count: 0
-
   - it: should render tolerations and priority class
     set:
       operator:
-        dash0Export:
-          enabled: true
-          endpoint: https://ingress.dash0.com
-          token: "very-secret-dash0-auth-token"
-          apiEndpoint: https://api.dash0.com
         tolerations:
           - key: key1
             operator: Equal

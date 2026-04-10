@@ -1,6 +1,6 @@
 suite: test allowlist synchronizer
 templates:
-  - operator/gke-autopilot-allowlist-synchronizer.yaml
+  - operator/pre-install-hook-gke-autopilot-allowlist-synchronizer.yaml
 tests:
   - it: should not install the GKE Autopilot AllowlistSynchronizer if operator.gke.autopilot.enabled is false
     asserts:

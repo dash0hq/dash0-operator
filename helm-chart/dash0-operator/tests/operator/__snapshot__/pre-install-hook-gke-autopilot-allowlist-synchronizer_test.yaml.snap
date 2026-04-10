@@ -5,7 +5,7 @@ should install the GKE Autopilot AllowlistSynchronizer if operator.gke.autopilot
     metadata:
       annotations:
         helm.sh/hook: pre-install,pre-upgrade
-        helm.sh/hook-weight: "-1"
+        helm.sh/hook-weight: "-20"
       name: dash0-allowlist-synchronizer
     spec:
       allowlistPaths:

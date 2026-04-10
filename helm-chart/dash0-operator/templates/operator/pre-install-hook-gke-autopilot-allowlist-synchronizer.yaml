@@ -1,0 +1,25 @@
+{{- if (and .Values.operator.gke.autopilot.enabled .Values.operator.gke.autopilot.deployAllowlistSynchronizer) }}
+apiVersion: auto.gke.io/v1
+kind: AllowlistSynchronizer
+metadata:
+  name: dash0-allowlist-synchronizer
+  annotations:
+    {{/*
+    We need to make sure that the AllowlistSynchronizer has been deployed before Helm tries to deploy the operator manager
+    deployment (which has an allowlist annotation). Unfortunately, Helm has no good out-of-the box support for defining a
+    dependency like that. Annotating a resource as a pre-install hook gives us the desired order.
+
+    A downside of declaring this resource as a hook is that hook resources are not considered to be part of the release,
+    so they are not removed with helm uninstall. Cleaning this up is done by post-delete-remove-allowlist-synchronizer
+    (another Helm hook).
+
+    We also need to make sure the AllowlistSynchronizer is in the ready state (which means it has actually fetched the workload
+    allowlistst) before deploying the operator manager. The pre-install-hook-allowlist-synchronizer-ready-check (yet another hook)
+    makes sure this has happened.
+    */}}
+    helm.sh/hook: "pre-install,pre-upgrade"
+    helm.sh/hook-weight: "-20"
+spec:
+  allowlistPaths:
+    - Dash0/operator/*
+{{- end }}

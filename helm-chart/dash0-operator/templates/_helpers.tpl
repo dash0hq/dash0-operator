@@ -42,6 +42,10 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- default (printf "%s-controller" (include "dash0-operator.chartName" .)) .Values.operator.serviceAccount.name }}
 {{- end }}
 
+{{- define "dash0-operator.preInstallHookServiceAccountName" -}}
+{{- printf "%s-pre-install" (include "dash0-operator.chartName" .) }}
+{{- end }}
+
 {{- define "dash0-operator.postDeleteHookServiceAccountName" -}}
 {{- printf "%s-post-delete" (include "dash0-operator.chartName" .) }}
 {{- end }}
