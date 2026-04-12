@@ -163,6 +163,7 @@ spec:
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
         - --operator-configuration-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
+        - --feature-intelligent-edge-enabled={{ include "dash0-operator.development.intelligentEdge.enabled" . }}
         - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
         - --disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
@@ -195,11 +196,20 @@ spec:
         - name: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
           value: {{ .Values.operator.initContainerImage.pullPolicy }}
         {{- end }}
+        {{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+        - name: DASH0_COLLECTOR_IMAGE
+          value: {{ include "dash0-operator.intelligentEdgeCollectorImage" . | quote }}
+        {{- if .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
+        - name: DASH0_COLLECTOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
+        {{- end }}
+        {{- else }}
         - name: DASH0_COLLECTOR_IMAGE
           value: {{ include "dash0-operator.collectorImage" . | quote }}
         {{- if .Values.operator.collectorImage.pullPolicy }}
         - name: DASH0_COLLECTOR_IMAGE_PULL_POLICY
           value: {{ .Values.operator.collectorImage.pullPolicy }}
+        {{- end }}
         {{- end }}
         - name: DASH0_TARGET_ALLOCATOR_IMAGE
           value: {{ include "dash0-operator.targetAllocatorImage" . | quote }}
@@ -224,6 +234,14 @@ spec:
         {{- if .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
         - name: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY
           value: {{ .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
+        {{- end }}
+        {{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+        - name: DASH0_BARKER_IMAGE
+          value: {{ include "dash0-operator.barkerImage" . | quote }}
+        {{- if .Values.operator.barkerImage.pullPolicy }}
+        - name: DASH0_BARKER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.barkerImage.pullPolicy }}
+        {{- end }}
         {{- end }}
         {{- if .Values.operator.developmentMode }}
         - name: DASH0_DEVELOPMENT_MODE
@@ -590,6 +608,50 @@ webhooks:
         scope: Cluster
     sideEffects: None
     timeoutSeconds: 5
+{{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-intelligent-edge-validator
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: intelligent-edge-validator-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+webhooks:
+  - name: validate-intelligent-edge.dash0.com
+    clientConfig:
+      {{- if not .Values.operator.certManager.useCertManager }}
+      caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- end }}
+      service:
+        name: {{ template "dash0-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
+        path: /intelligent-edge/validate
+    admissionReviewVersions:
+      - v1
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0intelligentedges
+        scope: Cluster
+    sideEffects: None
+    timeoutSeconds: 5
+{{- end }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration

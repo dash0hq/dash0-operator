@@ -1,0 +1,4 @@
+operator:
+  development:
+    intelligentEdge:
+      enabled: true

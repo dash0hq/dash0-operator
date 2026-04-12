@@ -63,6 +63,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			clientset,
 			util.ExtraConfigDefaults,
 			false,
+			false,
 			oTelColResourceManager,
 		)
 	})

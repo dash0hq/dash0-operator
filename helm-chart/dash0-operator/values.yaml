@@ -434,6 +434,26 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
+  # the container image to use for the intelligent edge collector (there should usually be no reason to override this)
+  intelligentEdgeCollectorImage:
+    repository: "ghcr.io/dash0hq/intelligent-edge-collector"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
+  # the container image to use for the barker component (there should usually be no reason to override this)
+  barkerImage:
+    repository: "ghcr.io/dash0hq/barker"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
   # the image pull secrets to pull the container images
   imagePullSecrets: []
 

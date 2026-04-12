@@ -119,6 +119,7 @@ type collectorConfigurationTemplateValues struct {
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
+	IntelligentEdge                                  IntelligentEdgeConfig
 }
 
 type KubeletStatsReceiverConfig struct {
@@ -280,6 +281,7 @@ func assembleCollectorConfigMap(
 			DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
 			EnableProfExtension:                              config.EnableProfExtension,
 			ProfilingEnabled:                                 config.ProfilingEnabled,
+			IntelligentEdge:                                  config.IntelligentEdge,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)

@@ -1,0 +1,18 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SamplingRule
+metadata:
+  name: slow-payment-errors
+spec:
+  enabled: true
+  display:
+    name: Keep slow payment service errors
+  conditions:
+    kind: and
+    spec:
+      conditions:
+        - kind: error
+        - kind: ottl
+          spec:
+            ottl: resource.attributes["service.name"] == "payment-service"
+  rateLimit:
+    rate: 50

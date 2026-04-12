@@ -47,6 +47,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/intelligentedge"
+	"github.com/dash0hq/dash0-operator/internal/intelligentedge/ieresources"
 	"github.com/dash0hq/dash0-operator/internal/postdelete"
 	"github.com/dash0hq/dash0-operator/internal/postinstall"
 	"github.com/dash0hq/dash0-operator/internal/predelete"
@@ -78,6 +80,8 @@ type environmentVariables struct {
 	filelogOffsetSyncImagePullPolicy            corev1.PullPolicy
 	filelogOffsetVolumeOwnershipImage           string
 	filelogOffsetVolumeOwnershipImagePullPolicy corev1.PullPolicy
+	barkerImage                                 string
+	barkerImagePullPolicy                       corev1.PullPolicy
 	nodeIp                                      string
 	nodeName                                    string
 	podIp                                       string
@@ -117,6 +121,7 @@ type commandLineArguments struct {
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
 	telemetryCollectionEnabled                                            bool
+	featureIntelligentEdgeEnabled                                         bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
 	disableOpenTelemetryCollectorHostPorts                                bool
@@ -147,6 +152,8 @@ const (
 	filelogOffsetSyncImagePullPolicyEnvVarName            = "DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY"
 	filelogOffsetVolumeOwnershipImageEnvVarName           = "DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE"
 	filelogOffsetVolumeOwnershipImagePullPolicyEnvVarName = "DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY"
+	barkerImageEnvVarName                                 = "DASH0_BARKER_IMAGE"
+	barkerImagePullPolicyEnvVarName                       = "DASH0_BARKER_IMAGE_PULL_POLICY"
 	k8sNodeIpEnvVarName                                   = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
@@ -499,6 +506,12 @@ func defineCommandLineArguments() *commandLineArguments {
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)
+	flag.BoolVar(
+		&cliArgs.featureIntelligentEdgeEnabled,
+		"feature-intelligent-edge-enabled",
+		false,
+		"Enable Intelligent Edge features (sampling, RED metrics, barker proxy).",
+	)
 	flag.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
 		"operator-configuration-cluster-name",
@@ -717,6 +730,9 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	filelogOffsetVolumeOwnershipImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetVolumeOwnershipImagePullPolicyEnvVarName)
 
+	barkerImage, _ := os.LookupEnv(barkerImageEnvVarName)
+	barkerImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(barkerImagePullPolicyEnvVarName)
+
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeIpEnvVarName)
@@ -796,20 +812,22 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		filelogOffsetSyncImagePullPolicy:            filelogOffsetSyncImagePullPolicy,
 		filelogOffsetVolumeOwnershipImage:           filelogOffsetVolumeOwnershipImage,
 		filelogOffsetVolumeOwnershipImagePullPolicy: filelogOffsetVolumeOwnershipImagePullPolicy,
-		nodeIp:                                 nodeIp,
-		nodeName:                               nodeName,
-		podIp:                                  podIp,
-		sendBatchSize:                          sendBatchSize,
-		sendBatchMaxSize:                       sendBatchMaxSize,
-		k8sAttributesDisableReplicasetInformer: k8sAttributesDisableReplicasetInformer,
-		k8sAttributesWaitForMetadata:           k8sAttributesWaitForMetadata,
-		k8sAttributesWaitForMetadataTimeout:    k8sAttributesWaitForMetadataTimeout,
-		instrumentationDebug:                   instrumentationDebug,
-		enablePythonAutoInstrumentation:        enablePythonAutoInstrumentation,
-		debugVerbosityDetailed:                 debugVerbosityDetailed,
-		disableCollectorResourceWatches:        disableCollectorResourceWatches,
-		enablePprofExtension:                   enablePprofExtension,
-		compressConfigMaps:                     compressConfigMaps,
+		barkerImage:                                 barkerImage,
+		barkerImagePullPolicy:                       barkerImagePullPolicy,
+		nodeIp:                                      nodeIp,
+		nodeName:                                    nodeName,
+		podIp:                                       podIp,
+		sendBatchSize:                               sendBatchSize,
+		sendBatchMaxSize:                            sendBatchMaxSize,
+		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
+		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
+		k8sAttributesWaitForMetadataTimeout:         k8sAttributesWaitForMetadataTimeout,
+		instrumentationDebug:                        instrumentationDebug,
+		enablePythonAutoInstrumentation:             enablePythonAutoInstrumentation,
+		debugVerbosityDetailed:                      debugVerbosityDetailed,
+		disableCollectorResourceWatches:             disableCollectorResourceWatches,
+		enablePprofExtension:                        enablePprofExtension,
+		compressConfigMaps:                          compressConfigMaps,
 	}
 
 	return nil
@@ -962,6 +980,11 @@ func startOperatorManager(
 		"configuration reloader image pull policy override",
 		envVars.configurationReloaderImagePullPolicy,
 
+		"barker image",
+		envVars.barkerImage,
+		"barker image pull policy override",
+		envVars.barkerImagePullPolicy,
+
 		"operator namespace",
 		envVars.operatorNamespace,
 		"operator manager deployment name",
@@ -1002,6 +1025,8 @@ func startOperatorManager(
 
 		"telemetry collection enabled",
 		cliArgs.telemetryCollectionEnabled,
+		"feature intelligent edge enabled",
+		cliArgs.featureIntelligentEdgeEnabled,
 		"force-use OpenTelemetry collector service URL",
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"disable OpenTelemetry collector host ports",
@@ -1102,6 +1127,8 @@ func startDash0Controllers(
 		FilelogOffsetSyncImagePullPolicy:            envVars.filelogOffsetSyncImagePullPolicy,
 		FilelogOffsetVolumeOwnershipImage:           envVars.filelogOffsetVolumeOwnershipImage,
 		FilelogOffsetVolumeOwnershipImagePullPolicy: envVars.filelogOffsetVolumeOwnershipImagePullPolicy,
+		BarkerImage:                                 envVars.barkerImage,
+		BarkerImagePullPolicy:                       envVars.barkerImagePullPolicy,
 	}
 
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
@@ -1204,6 +1231,7 @@ func startDash0Controllers(
 			clientset,
 			extraConfig,
 			developmentMode,
+			cliArgs.featureIntelligentEdgeEnabled,
 			oTelColResourceManager,
 		)
 		// We update the extra config map in the collectorManager when the extra config map changes, and also trigger a
@@ -1258,6 +1286,34 @@ func startDash0Controllers(
 		}
 	}
 
+	if !cliArgs.featureIntelligentEdgeEnabled {
+		setupLog.Info("Intelligent Edge features are disabled.")
+	} else {
+		setupLog.Info("Intelligent Edge features are enabled.")
+		ieResourceManager := ieresources.NewIntelligentEdgeResourceManager(
+			k8sClient,
+			mgr.GetScheme(),
+			operatorDeploymentSelfReference,
+			envVars.operatorNamespace,
+			envVars.oTelCollectorNamePrefix,
+			envVars.barkerImage,
+			envVars.barkerImagePullPolicy,
+		)
+		ieManager := intelligentedge.NewIntelligentEdgeManager(
+			k8sClient,
+			ieResourceManager,
+		)
+		ieReconciler := intelligentedge.NewIntelligentEdgeReconciler(
+			k8sClient,
+			ieManager,
+			collectorManager,
+		)
+		if err := ieReconciler.SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to set up the intelligent edge reconciler: %w", err)
+		}
+		setupLog.Info("The intelligent edge reconciler has been started.")
+	} // closes else (IE enabled)
+
 	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
 		k8sClient,
 		clusterUid,
@@ -1279,6 +1335,20 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the view reconciler: %w", err)
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(viewReconciler)
+
+	var samplingRuleReconciler *controller.SamplingRuleReconciler
+	if cliArgs.featureIntelligentEdgeEnabled {
+		samplingRuleReconciler = controller.NewSamplingRuleReconciler(
+			k8sClient,
+			clusterUid,
+			leaderElectionAwareRunnable,
+			httpClient,
+		)
+		if err := samplingRuleReconciler.SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to set up the sampling rule reconciler: %w", err)
+		}
+		leaderElectionAwareRunnable.AddLeaderElectionClient(samplingRuleReconciler)
+	}
 
 	thirdPartyResourceSynchronizationQueue =
 		workqueue.NewTypedWithConfig(
@@ -1313,15 +1383,19 @@ func startDash0Controllers(
 	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
 
 	setupLog.Info("Creating the operator configuration resource reconciler.")
+	apiClients := []controller.ApiClient{
+		syntheticCheckReconciler,
+		viewReconciler,
+		persesDashboardCrdReconciler,
+		prometheusRuleCrdReconciler,
+	}
+	if samplingRuleReconciler != nil {
+		apiClients = append(apiClients, samplingRuleReconciler)
+	}
 	operatorConfigurationReconciler := controller.NewOperatorConfigurationReconciler(
 		k8sClient,
 		clientset,
-		[]controller.ApiClient{
-			syntheticCheckReconciler,
-			viewReconciler,
-			persesDashboardCrdReconciler,
-			prometheusRuleCrdReconciler,
-		},
+		apiClients,
 		collectorManager,
 		targetallocatorManager,
 		clusterUid,
@@ -1390,23 +1464,8 @@ func startDash0Controllers(
 		extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
 	}
 
-	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
-	}
-	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient, cliArgs.telemetryCollectionEnabled).SetupWebhookWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
-	}
-	if err := webhooks.NewMonitoringMutatingWebhookHandler(
-		k8sClient,
-		envVars.operatorNamespace,
-	).SetupWebhookWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
-	}
-	if err := webhooks.NewMonitoringValidationWebhookHandler(k8sClient, envVars.operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
-	}
-	if err := webhooks.SetupDash0MonitoringConversionWebhookWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to create the monitoring conversion webhook: %w", err)
+	if err := setupResourceWebhooks(mgr, k8sClient, envVars.operatorNamespace, cliArgs.telemetryCollectionEnabled, cliArgs.featureIntelligentEdgeEnabled); err != nil {
+		return err
 	}
 
 	selfMonitoringClients := []selfmonitoringapiaccess.SelfMonitoringMetricsClient{
@@ -1419,6 +1478,9 @@ func startDash0Controllers(
 	}
 	if autoNamespaceMonitoringReconciler != nil {
 		selfMonitoringClients = append(selfMonitoringClients, autoNamespaceMonitoringReconciler)
+	}
+	if samplingRuleReconciler != nil {
+		selfMonitoringClients = append(selfMonitoringClients, samplingRuleReconciler)
 	}
 	oTelSdkStarter.WaitForOTelConfig(selfMonitoringClients)
 
@@ -1642,6 +1704,30 @@ func deleteDash0AllowlistSynchronizer(ctx context.Context, logger logd.Logger) e
 	}
 	if err = handler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, logger); err != nil {
 		return err
+	}
+	return nil
+}
+
+func setupResourceWebhooks(mgr ctrl.Manager, k8sClient client.Client, operatorNamespace string, telemetryCollectionEnabled bool, intelligentEdgeEnabled bool) error {
+	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
+	}
+	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient, telemetryCollectionEnabled).SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
+	}
+	if intelligentEdgeEnabled {
+		if err := webhooks.NewIntelligentEdgeValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to create the intelligent edge validation webhook: %w", err)
+		}
+	}
+	if err := webhooks.NewMonitoringMutatingWebhookHandler(k8sClient, operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
+	}
+	if err := webhooks.NewMonitoringValidationWebhookHandler(k8sClient, operatorNamespace).SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
+	}
+	if err := webhooks.SetupDash0MonitoringConversionWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the monitoring conversion webhook: %w", err)
 	}
 	return nil
 }

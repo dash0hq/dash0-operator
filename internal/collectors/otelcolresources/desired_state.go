@@ -26,6 +26,18 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+type IntelligentEdgeConfig struct {
+	Enabled         bool
+	SamplingEnabled bool
+	Endpoint        string
+	ApiEndpoint     string
+	AuthEnvVar      string
+	Dataset         string
+	Insecure        bool
+	BarkerEnabled   bool
+	BarkerName      string
+}
+
 type oTelColConfig struct {
 	// OperatorNamespace is the namespace of the Dash0 operator
 	OperatorNamespace string
@@ -56,6 +68,7 @@ type oTelColConfig struct {
 	IsIPv6Cluster                                    bool
 	IsGkeAutopilot                                   bool
 	OffsetStorageVolume                              *corev1.Volume
+	IntelligentEdge                                  IntelligentEdgeConfig
 	AutoNamespaceMonitoringEnabled                   bool
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
@@ -928,6 +941,15 @@ func assembleCollectorDaemonSetVolumes(
 		})
 	}
 
+	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled {
+		volumes = append(volumes, corev1.Volume{
+			Name: "trace-reservoir",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		})
+	}
+
 	return volumes, filelogOffsetsVolume
 }
 
@@ -986,6 +1008,13 @@ func assembleCollectorDaemonSetVolumeMounts(
 		})
 	}
 
+	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "trace-reservoir",
+			MountPath: "/var/lib/dash0/trace-reservoir",
+		})
+	}
+
 	return volumeMounts
 }
 
@@ -1039,6 +1068,18 @@ func assembleCollectorEnvVars(
 			}
 			collectorEnv = append(collectorEnv, authTokenEnvVar)
 		}
+	}
+
+	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled {
+		// Uses Kubernetes dependent variable expansion: $(VAR_NAME) references the exporter auth token env var
+		// defined earlier in this container's env list. The referenced env var (e.g., DASH0_AUTHORIZATION_DEFAULT_0)
+		// must appear before this one.
+		collectorEnv = append(collectorEnv,
+			corev1.EnvVar{
+				Name:  "DASH0_SAMPLING_AUTH_TOKEN",
+				Value: fmt.Sprintf("$(%s)", config.IntelligentEdge.AuthEnvVar),
+			},
+		)
 	}
 
 	return collectorEnv, nil
