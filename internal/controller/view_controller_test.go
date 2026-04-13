@@ -22,6 +22,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/rate"
 
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
@@ -1009,6 +1010,7 @@ func createViewReconciler(clusterId string) *ViewReconciler {
 		types.UID(clusterId),
 		viewLeaderElectionAware,
 		TestHTTPClient(),
+		rate.NewNoOpCappedRateLimiter(),
 	)
 	return viewReconciler
 }

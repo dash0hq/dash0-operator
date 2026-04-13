@@ -37,6 +37,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/rate"
+	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
 type PrometheusRuleCrdReconciler struct {
@@ -45,6 +47,7 @@ type PrometheusRuleCrdReconciler struct {
 	leaderElectionAware      util.LeaderElectionAware
 	mgr                      ctrl.Manager
 	httpClient               *http.Client
+	limiter                  *rate.CappedRateLimiter
 	skipNameValidation       bool
 	prometheusRuleReconciler *PrometheusRuleReconciler
 	prometheusRuleCrdExists  atomic.Bool
@@ -55,6 +58,7 @@ type PrometheusRuleReconciler struct {
 	pseudoClusterUid           types.UID
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
+	limiter                    *rate.CappedRateLimiter
 	defaultApiConfigs          selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs       selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	namespacedSyncEnabled      sync.Map
@@ -92,12 +96,14 @@ func NewPrometheusRuleCrdReconciler(
 	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	leaderElectionAware util.LeaderElectionAware,
 	httpClient *http.Client,
+	limiter *rate.CappedRateLimiter,
 ) *PrometheusRuleCrdReconciler {
 	return &PrometheusRuleCrdReconciler{
 		Client:              k8sClient,
 		queue:               queue,
 		leaderElectionAware: leaderElectionAware,
 		httpClient:          httpClient,
+		limiter:             limiter,
 	}
 }
 
@@ -151,6 +157,7 @@ func (r *PrometheusRuleCrdReconciler) CreateThirdPartyResourceReconciler(pseudoC
 		queue:                r.queue,
 		pseudoClusterUid:     pseudoClusterUid,
 		httpClient:           r.httpClient,
+		limiter:              r.limiter,
 		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
 		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
 	}
@@ -399,11 +406,15 @@ func (r *PrometheusRuleReconciler) Create(
 	e event.TypedCreateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), resources.QualifiedResourceName(e.Object), logger) {
+		return
+	}
+
 	if prometheusRuleReconcileRequestMetric != nil {
 		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected a new Prometheus rule resource",
 		"namespace",
@@ -420,11 +431,14 @@ func (r *PrometheusRuleReconciler) Update(
 	e event.TypedUpdateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), resources.QualifiedResourceName(e.ObjectNew), logger) {
+		return
+	}
 	if prometheusRuleReconcileRequestMetric != nil {
 		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected a change for a Prometheus rule resource",
 		"namespace",
@@ -441,11 +455,14 @@ func (r *PrometheusRuleReconciler) Delete(
 	e event.TypedDeleteEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), resources.QualifiedResourceName(e.Object), logger) {
+		return
+	}
 	if prometheusRuleReconcileRequestMetric != nil {
 		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Detected the deletion of a Prometheus rule resource",
 		"namespace",
@@ -462,11 +479,15 @@ func (r *PrometheusRuleReconciler) Generic(
 	e event.TypedGenericEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
+	logger := logd.FromContext(ctx)
+	if !r.limiter.Wait(ctx, r.KindDisplayName(), resources.QualifiedResourceName(e.Object), logger) {
+		return
+	}
+
 	if prometheusRuleReconcileRequestMetric != nil {
 		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	logger := logd.FromContext(ctx)
 	logger.Info(
 		"Reconciling check rule triggered by config event (updated API config or authorization).",
 		"namespace",
@@ -559,7 +580,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 				allValidationIssues[checkRuleName] = validationIssues
 				// If a rule becomes temporarily invalid due to a bad edit, we do not want to delete it in Dash0
 				// (assuming it has been valid at some point before and has been synchronized). Instead, we keep the
-				// most recent valid state. To do that, we add its id to the list of ids we have seen (the list will
+				// most recent valid state. To do that, we add its id to the list of ids we have seen. The list will
 				// later be used to determine which of the checks in Dash0 need to be removed because they are no longer
 				// in the K8s resource.
 				originsInResource = append(originsInResource, checkRuleOriginNotUrlEncoded)
@@ -568,7 +589,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 			if syncError != nil {
 				// If a rule cannot be synchronized temporarily, we do not want to delete it in Dash0 immediately
 				// (assuming the rule has been synchronized before at some point). Instead, we keep the
-				// most recent state. To do that, we add its id to the list of ids we have seen (the list will later
+				// most recent state. To do that, we add its id to the list of ids we have seen. The list will later
 				// be used to determine which of the checks in Dash0 need to be removed because they are no longer
 				// in the K8s resource.
 				allSynchronizationErrors[checkRuleName] = syncError.Error()
@@ -1133,9 +1154,6 @@ func (r *PrometheusRuleReconciler) synchronizeNamespacedResources(
 				Object: ruleResource,
 			}
 			r.Generic(ctx, evt, nil)
-
-			// stagger API requests a bit
-			time.Sleep(50 * time.Millisecond)
 		}
 		logger.Info(fmt.Sprintf("Triggering synchronization of check rules in namespace %s has finished.", namespace))
 	}()
