@@ -495,7 +495,7 @@ func defineCommandLineArguments() *commandLineArguments {
 	)
 	flag.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
-		"operator-configuration-telemetry-collection-enabled",
+		"dash0-telemetry-collection-enabled",
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)
@@ -523,23 +523,23 @@ func defineCommandLineArguments() *commandLineArguments {
 	)
 	flag.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
-		"force-use-otel-collector-service-url",
+		"dash0-force-use-otel-collector-service-url",
 		false,
 		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
 			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.",
 	)
 	flag.BoolVar(
 		&cliArgs.isGkeAutopilot,
-		"gke-autopilot",
+		"dash0-gke-autopilot",
 		false,
 		"Whether the operator is running on GKE Autopilot.",
 	)
 	flag.BoolVar(
 		&cliArgs.disableOpenTelemetryCollectorHostPorts,
-		"disable-otel-collector-host-ports",
+		"dash0-disable-otel-collector-host-ports",
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
-			"--force-use-otel-collector-service-url.",
+			"--dash0-force-use-otel-collector-service-url.",
 	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	flag.Uint64Var(

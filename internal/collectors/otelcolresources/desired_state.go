@@ -144,8 +144,8 @@ const (
 	offsetsDirPath       = "/var/otelcol/filelogreceiver_offsets"
 
 	gkeAutopilotAllowlistLabelKey             = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.2"
-	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.2"
+	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.3"
+	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.3"
 
 	targetAllocatorCertsVolumeName = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"

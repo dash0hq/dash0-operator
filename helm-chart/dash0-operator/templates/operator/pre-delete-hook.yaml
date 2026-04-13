@@ -22,7 +22,7 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
         {{- if .Values.operator.gke.autopilot.enabled }}
-        cloud.google.com/matching-allowlist: dash0-pre-delete-v1.0.2
+        cloud.google.com/matching-allowlist: dash0-pre-delete-v1.0.3
         {{- end }}
     spec:
       restartPolicy: OnFailure
@@ -52,6 +52,11 @@ spec:
             - /manager
           args:
             - "--uninstrument-all"
+          {{- /*
+          Maintenance note: When adding new args or env entries, make sure they are covered by the Google GKE workload
+          allowlist. In particular, adding args with the prefix "--dash0-" is always covered, as well as environment
+          variables with any of the prefixes "DASH0_", "OTEL_", or "K8S_".
+          */}}
           {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 10 }}
           env:
             - name: GOMEMLIMIT
