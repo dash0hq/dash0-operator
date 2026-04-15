@@ -20,6 +20,7 @@ If $ARGUMENTS starts with `--cleanup`, extract the component name (the part afte
     - `receiver`
 * Clone the repository which contains the component into images/collector.
   Clone the tag that matches the current component version in images/collector/src/builder/config.yaml, e.g. v0.147.0.
+  Do not use a sparse checkout.
   If the directory already exists, ask if it can be deleted.
 * Add a COPY instruction to the "builder" stage of images/collector/Dockerfile, after the WORKDIR instruction.
   The COPY instruction copies the sources for the component $ARGUMENTS.
