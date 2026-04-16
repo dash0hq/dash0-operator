@@ -80,8 +80,8 @@ COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
 COPY --from=download-injector-binary /libotelinject.so /dash0-init-container/injector/libotelinject.so
-COPY opentelemetry-injector/otelinject.conf /dash0-init-container/injector/otelinject.conf
-COPY opentelemetry-injector/otelinject-with-python.conf /dash0-init-container/injector/otelinject-with-python.conf
+COPY opentelemetry-injector/injector.conf /dash0-init-container/injector/injector.conf
+COPY opentelemetry-injector/injector-with-python.conf /dash0-init-container/injector/injector-with-python.conf
 COPY --from=build-dotnet /glibc /dash0-init-container/agents/dotnet/glibc
 COPY --from=build-dotnet /musl /dash0-init-container/agents/dotnet/musl
 COPY --from=build-jvm /dash0-init-container/jvm/build /dash0-init-container/agents/jvm

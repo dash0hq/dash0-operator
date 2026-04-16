@@ -98,7 +98,7 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 					Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 				},
 				"OTEL_INJECTOR_CONFIG_FILE": {
-					Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+					Value: "/__otel_auto_instrumentation/injector/injector.conf",
 				},
 				"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 					ValueFrom: "metadata.namespace",

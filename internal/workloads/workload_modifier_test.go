@@ -133,7 +133,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
-								Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+								Value: "/__otel_auto_instrumentation/injector/injector.conf",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -194,7 +194,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
-								Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+								Value: "/__otel_auto_instrumentation/injector/injector.conf",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -271,7 +271,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								ValueFrom: "metadata.namespace",
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
-								Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+								Value: "/__otel_auto_instrumentation/injector/injector.conf",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -308,7 +308,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								Value: "/__otel_auto_instrumentation/injector/libotelinject.so third_party_preload.so another_third_party_preload.so",
 							},
 							"OTEL_INJECTOR_CONFIG_FILE": {
-								Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+								Value: "/__otel_auto_instrumentation/injector/injector.conf",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
 								Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -2385,7 +2385,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				envVars := container.Env
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
 			},
-			Entry("should change OTEL_INJECTOR_CONFIG_FILE to otelinject-with-python.conf when enabling Python auto-instrumentation", pythonAutoInstrumenationTest{
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf when enabling Python auto-instrumentation", pythonAutoInstrumenationTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInjectorConfigFileName,
 					Value: envVarOtelInjectorConfigFileValue,
@@ -2421,7 +2421,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonEnabledValue},
 				},
 			}),
-			Entry("should change OTEL_INJECTOR_CONFIG_FILE to otelinject.conf when disabling Python auto-instrumentation", pythonAutoInstrumenationTest{
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector.conf when disabling Python auto-instrumentation", pythonAutoInstrumenationTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInjectorConfigFileName,
 					Value: envVarOtelInjectorConfigFilePythonEnabledValue,
@@ -2457,7 +2457,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileValue},
 				},
 			}),
-			Entry("should change OTEL_INJECTOR_CONFIG_FILE to otelinject-with-python.conf if the existing env var uses ValueFrom", pythonAutoInstrumenationTest{
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf if the existing env var uses ValueFrom", pythonAutoInstrumenationTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name: envVarOtelInjectorConfigFileName,
 					ValueFrom: &corev1.EnvVarSource{
@@ -2479,7 +2479,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonEnabledValue},
 				},
 			}),
-			Entry("should change OTEL_INJECTOR_CONFIG_FILE to otelinject.conf if the existing env var uses ValueFrom", pythonAutoInstrumenationTest{
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector.conf if the existing env var uses ValueFrom", pythonAutoInstrumenationTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name: envVarOtelInjectorConfigFileName,
 					ValueFrom: &corev1.EnvVarSource{
@@ -2501,7 +2501,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileValue},
 				},
 			}),
-			Entry("should set OTEL_INJECTOR_CONFIG_FILE to otelinject-with-python.conf if the env var does not exist", pythonAutoInstrumenationTest{
+			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf if the env var does not exist", pythonAutoInstrumenationTest{
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
 					OTelCollectorNodeLocalBaseUrlTest,
@@ -2515,7 +2515,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonEnabledValue},
 				},
 			}),
-			Entry("should set OTEL_INJECTOR_CONFIG_FILE to otelinject.conf if the existing env var is empty", pythonAutoInstrumenationTest{
+			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector.conf if the existing env var is empty", pythonAutoInstrumenationTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInjectorConfigFileName,
 					Value: "",

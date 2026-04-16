@@ -261,7 +261,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 								},
 								"OTEL_INJECTOR_CONFIG_FILE": {
-									Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+									Value: "/__otel_auto_instrumentation/injector/injector.conf",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -322,7 +322,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 								},
 								"OTEL_INJECTOR_CONFIG_FILE": {
-									Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+									Value: "/__otel_auto_instrumentation/injector/injector.conf",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -407,7 +407,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									ValueFrom: "metadata.namespace",
 								},
 								"OTEL_INJECTOR_CONFIG_FILE": {
-									Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+									Value: "/__otel_auto_instrumentation/injector/injector.conf",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
 									Value: OTelCollectorNodeLocalBaseUrlTest,
@@ -441,7 +441,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									Value: "/__otel_auto_instrumentation/injector/libotelinject.so third_party_preload.so another_third_party_preload.so",
 								},
 								"OTEL_INJECTOR_CONFIG_FILE": {
-									Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+									Value: "/__otel_auto_instrumentation/injector/injector.conf",
 								},
 								"DASH0_NODE_IP": {
 									ValueFrom: "status.hostIP",
