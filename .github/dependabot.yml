@@ -61,6 +61,11 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+    # Ignore Python 3.15 images as long as they are in alpha/rc state (python:3.15.0a8-trixie etc.).
+    # Needs to be removed again when Python 3.15 becomes stable.
+    ignore:
+    - dependency-name: "python"
+      versions: [">= 3.15"]
     # enable the following `ignore` to prevent upgrades to RCs
     # ignore:
     #   - dependency-name: "golang"

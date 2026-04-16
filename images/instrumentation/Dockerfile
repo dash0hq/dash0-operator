@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # download the opentelemetry-injector binary for the target architecture
-FROM alpine:3.23.3 AS download-injector-binary
+FROM alpine:3.23.4 AS download-injector-binary
 
 RUN apk add --no-cache curl jq wget
 
@@ -42,7 +42,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-fund=true
 
 # download .NET auto instrumentation
-FROM alpine:3.23.3 AS build-dotnet
+FROM alpine:3.23.4 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
 		unzip
@@ -51,7 +51,7 @@ COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
 # install Python artifacts (glibc)
-FROM python:3.14.3-trixie AS build-python-glibc
+FROM python:3.14.4-trixie AS build-python-glibc
 RUN mkdir -p /dash0-init-container/python
 WORKDIR /dash0-init-container/python
 COPY python/requirements.txt .
@@ -63,7 +63,7 @@ RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt
 COPY python/sitecustomize.py .
 
 # install Python artifacts (musl)
-FROM python:3.14.3-alpine3.23 AS build-python-musl
+FROM python:3.14.4-alpine3.23 AS build-python-musl
 RUN mkdir -p /dash0-init-container/python
 WORKDIR /dash0-init-container/python
 COPY python/requirements.txt .
@@ -75,7 +75,7 @@ RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt
 COPY python/sitecustomize.py .
 
 # build the final instrumentation image
-FROM alpine:3.23.3
+FROM alpine:3.23.4
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
