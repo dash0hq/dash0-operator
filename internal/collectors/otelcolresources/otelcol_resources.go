@@ -155,13 +155,14 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	config := &oTelColConfig{
-		OperatorNamespace:           m.collectorConfig.OperatorNamespace,
-		NamePrefix:                  m.collectorConfig.OTelCollectorNamePrefix,
-		Exporters:                   otlpExporters,
-		AllMonitoringResources:      allMonitoringResources,
-		SendBatchSize:               m.collectorConfig.SendBatchSize,
-		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
-		SelfMonitoringConfiguration: selfMonitoringConfiguration,
+		OperatorNamespace:             m.collectorConfig.OperatorNamespace,
+		OperatorManagerDeploymentName: m.operatorManagerDeployment.Name,
+		NamePrefix:                    m.collectorConfig.OTelCollectorNamePrefix,
+		Exporters:                     otlpExporters,
+		AllMonitoringResources:        allMonitoringResources,
+		SendBatchSize:                 m.collectorConfig.SendBatchSize,
+		SendBatchMaxSize:              m.collectorConfig.SendBatchMaxSize,
+		SelfMonitoringConfiguration:   selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      collectNamespaceLabelsAndAnnotationsEnabled,

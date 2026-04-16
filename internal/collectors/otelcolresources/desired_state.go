@@ -29,11 +29,13 @@ import (
 type oTelColConfig struct {
 	// OperatorNamespace is the namespace of the Dash0 operator
 	OperatorNamespace string
-
-	// NamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set to value of
-	// the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the operator Helm
-	// chart.
-	NamePrefix                                       string
+	// NamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set to
+	// value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the operator
+	//Helm chart.
+	NamePrefix string
+	// OperatorManagerDeploymentName is the name of the operator manager deployment, used to exclude the operator
+	// manager's own metrics from namespace-based filtering.
+	OperatorManagerDeploymentName                    string
 	Exporters                                        otlpExporters
 	AllMonitoringResources                           []dash0v1beta1.Dash0Monitoring
 	SendBatchSize                                    *uint32
