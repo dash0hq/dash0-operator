@@ -24,4 +24,4 @@ RUN for test in /test-cases/*; do \
 # setting the LD_PRELOAD environment variable via the operator.
 COPY --from=init /dash0-init-container /__otel_auto_instrumentation
 ENV LD_PRELOAD=/__otel_auto_instrumentation/injector/libotelinject.so
-ENV OTEL_INJECTOR_CONFIG_FILE=/__otel_auto_instrumentation/injector/otelinject-with-python.conf
+ENV OTEL_INJECTOR_CONFIG_FILE=/__otel_auto_instrumentation/injector/injector-with-python.conf

@@ -1030,7 +1030,7 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		},
 		{
 			Name:  "OTEL_INJECTOR_CONFIG_FILE",
-			Value: "/__otel_auto_instrumentation/injector/otelinject.conf",
+			Value: "/__otel_auto_instrumentation/injector/injector.conf",
 		},
 		{
 			Name: "OTEL_INJECTOR_K8S_NAMESPACE_NAME",
