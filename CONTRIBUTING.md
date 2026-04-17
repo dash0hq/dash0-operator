@@ -441,6 +441,7 @@ OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
 ```
 
 When running with a remote Helm chart like this, the images from the chart are used by default, instead of local images.
+Running the end-to-end tests against a specific version of the Helm chart is not supported.
 
 When an end-to-end test case fails, the test suite automatically collects pod descriptions, config maps and pod logs
 from the Kubernetes cluster at the time of the failure.
