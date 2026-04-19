@@ -1,0 +1,17 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: notification-channel-e2e-test
+  labels:
+    app.kubernetes.io/name: notification-channel-e2e-test
+{{- if .Dash0ComEnabled }}
+    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
+{{- end }}
+spec:
+  display:
+    name: E2E test notification channel
+  type: slack
+  slackConfig:
+    webhookURL: "https://hooks.slack.com/services/T00/B00/e2e-test"
+    channel: "#e2e-alerts"
+  frequency: 10m

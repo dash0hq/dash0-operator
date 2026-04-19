@@ -1280,6 +1280,17 @@ func startDash0Controllers(
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(viewReconciler)
 
+	notificationChannelReconciler := controller.NewNotificationChannelReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := notificationChannelReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the notification channel reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(notificationChannelReconciler)
+
 	thirdPartyResourceSynchronizationQueue =
 		workqueue.NewTypedWithConfig(
 			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
@@ -1319,6 +1330,7 @@ func startDash0Controllers(
 		[]controller.ApiClient{
 			syntheticCheckReconciler,
 			viewReconciler,
+			notificationChannelReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
@@ -1346,6 +1358,7 @@ func startDash0Controllers(
 		[]controller.NamespacedApiClient{
 			syntheticCheckReconciler,
 			viewReconciler,
+			notificationChannelReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},

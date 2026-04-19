@@ -167,6 +167,22 @@ cluster roles should match snapshot:
           - get
           - patch
           - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0notificationchannels
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0notificationchannels/status
+        verbs:
+          - get
+          - patch
+          - update
   3: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole

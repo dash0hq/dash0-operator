@@ -51,3 +51,8 @@ Start by making changes to the Go code in `api/operator`.
 Then run `make manifests generate` to update the Kustomize source files in `config/crd`.
 The resulting changes in the directory `config/crd` need to be carried over to the respective files in
 `helm-chart/dash0-operator/templates/operator`, which are the Helm chart templates.
+
+CRD specs must be fully typed with structured Go types (enums, nested objects, required/optional markers, and
+kubebuilder validation annotations). Do not use opaque string fields to hold structured data. Validate the Go types
+against the canonical OpenAPI spec in `https://github.com/dash0hq/dash0hq/dash0/tree/main/modules/openapi-types/internal/spec/` to ensure they match the Dash0 API
+object schemas.

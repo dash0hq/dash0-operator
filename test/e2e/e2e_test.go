@@ -596,6 +596,48 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 
 				//nolint:dupl
+				It("should synchronize a notification channel to the Dash0 API", func() {
+					deployNotificationChannelResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					// Notification channels are org-level, so the URL has no dataset query parameter.
+					//nolint:lll
+					routeRegex := "/api/notification-channels/dash0-operator_.*_e2e-test-ns_notification-channel-e2e-test"
+
+					By("verifying the notification channel has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("E2E test notification channel"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInNotificationChannel(applicationUnderTestNamespace, "false")
+					//nolint:lll
+					By("verifying the notification channel has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInNotificationChannel(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the notification channel has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("E2E test notification channel"))
+					verifyApiSyncRequest(req)
+
+					removeNotificationChannelResource(applicationUnderTestNamespace)
+					By("verifying the notification channel has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:dupl
 				It("should synchronize Perses dashboards to the Dash0 API", func() {
 					deployPersesDashboardResource(
 						applicationUnderTestNamespace,
