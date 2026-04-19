@@ -539,6 +539,9 @@ example).
 - IE images are currently not publicly available, for this reason, access to a private container registry that
 serves these images is required.
 
+Hint: Alternatively, follow `test-resources/intelligentedge/README.md` to build and push the images (requires access
+to the source code).
+
 ### Testing
 
 - Set `IMAGE_REPOSITORY_PREFIX` to a repo containing the images or set the individual images explicitly via helm values.
