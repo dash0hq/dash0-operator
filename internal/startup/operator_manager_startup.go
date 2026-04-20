@@ -43,6 +43,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/allowlistreadycheck"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
@@ -97,6 +98,8 @@ type environmentVariables struct {
 type commandLineArguments struct {
 	isUninstrumentAll                                                     bool
 	autoOperatorConfigurationResourceAvailableCheck                       bool
+	allowlistSynchronizerReadyCheck                                       bool
+	dash0AllowListVersion                                                 string
 	deleteAllowlistSynchronizer                                           bool
 	operatorConfigurationEndpoint                                         string
 	operatorConfigurationToken                                            string
@@ -253,6 +256,13 @@ func Start() {
 		}
 		os.Exit(0)
 	}
+	if cliArgs.allowlistSynchronizerReadyCheck {
+		if err := waitForAllowlistSynchronizerReadiness(setupLog, cliArgs.dash0AllowListVersion); err != nil {
+			setupLog.Error(err, "waiting for the AllowlistSynchronizer resource to become ready has failed")
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	if cliArgs.deleteAllowlistSynchronizer {
 		if err := deleteDash0AllowlistSynchronizer(ctx, setupLog); err != nil {
 			setupLog.Error(err, "deleting the AllowlistSynchronizer resource failed")
@@ -386,6 +396,18 @@ func defineCommandLineArguments() *commandLineArguments {
 			"becomes available, then exit.",
 	)
 	flag.BoolVar(
+		&cliArgs.allowlistSynchronizerReadyCheck,
+		"allowlist-synchronizer-ready-check",
+		false,
+		"If set, the process will wait until the GKE Autopilot AllowlistSynchronizer resource is ready, then exit.",
+	)
+	flag.StringVar(
+		&cliArgs.dash0AllowListVersion,
+		"dash0-allow-list-version",
+		"",
+		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.3). Used with --allowlist-synchronizer-ready-check.",
+	)
+	flag.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
 		"delete-allowlist-synchronizer",
 		false,
@@ -495,7 +517,7 @@ func defineCommandLineArguments() *commandLineArguments {
 	)
 	flag.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
-		"operator-configuration-telemetry-collection-enabled",
+		"dash0-telemetry-collection-enabled",
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)
@@ -523,23 +545,23 @@ func defineCommandLineArguments() *commandLineArguments {
 	)
 	flag.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
-		"force-use-otel-collector-service-url",
+		"dash0-force-use-otel-collector-service-url",
 		false,
 		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
 			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.",
 	)
 	flag.BoolVar(
 		&cliArgs.isGkeAutopilot,
-		"gke-autopilot",
+		"dash0-gke-autopilot",
 		false,
 		"Whether the operator is running on GKE Autopilot.",
 	)
 	flag.BoolVar(
 		&cliArgs.disableOpenTelemetryCollectorHostPorts,
-		"disable-otel-collector-host-ports",
+		"dash0-disable-otel-collector-host-ports",
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
-			"--force-use-otel-collector-service-url.",
+			"--dash0-force-use-otel-collector-service-url.",
 	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	flag.Uint64Var(
@@ -1629,6 +1651,19 @@ func waitForOperatorConfigurationResourceAvailability(logger logd.Logger) error 
 	}
 	if err = handler.WaitForOperatorConfigurationResourceToBecomeAvailable(); err != nil {
 		logger.Error(err, "Failed to wait for the operator monitoring resource.")
+		return err
+	}
+	return nil
+}
+
+func waitForAllowlistSynchronizerReadiness(logger logd.Logger, version string) error {
+	handler, err := allowlistreadycheck.NewOperatorPreInstallHandler(version)
+	if err != nil {
+		logger.Error(err, "Failed to create the pre-install handler.")
+		return err
+	}
+	if err = handler.WaitForAllowlistSynchronizerToBecomeReady(); err != nil {
+		logger.Error(err, "Failed to wait for the AllowlistSynchronizer to become ready.")
 		return err
 	}
 	return nil
