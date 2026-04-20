@@ -1,0 +1,12 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-slack
+spec:
+  display:
+    name: Slack Alerts
+  type: slack
+  slackConfig:
+    webhookURL: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+    channel: "#alerts"
+  frequency: 10m

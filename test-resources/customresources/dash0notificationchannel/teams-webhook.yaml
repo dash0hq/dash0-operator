@@ -1,0 +1,11 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-teams-webhook
+spec:
+  display:
+    name: Microsoft Teams Alerts
+  type: teams_webhook
+  teamsWebhookConfig:
+    url: "https://example.webhook.office.com/webhookb2/00000000-0000-0000-0000-000000000000@00000000-0000-0000-0000-000000000000/IncomingWebhook/XXXXXXXXXXXXXXXX/00000000-0000-0000-0000-000000000000"
+  frequency: 10m
