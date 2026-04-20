@@ -120,16 +120,6 @@ spec:
 {{- if .Values.operator.dash0Export.token }}
         - --operator-configuration-token={{ .Values.operator.dash0Export.token }}
 {{- else if (and .Values.operator.dash0Export.secretRef.name .Values.operator.dash0Export.secretRef.key) }}
-{{- if not .Values.operator.dash0Export.disableSecretValidation }}
-{{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.operator.dash0Export.secretRef.name -}}
-{{- if $secret -}}
-{{- if not (index $secret.data .Values.operator.dash0Export.secretRef.key) -}}
-{{- fail (printf "Error: There is a secret named \"%s\" in the target namespace \"%s\", but it does not have the required key \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." .Values.operator.dash0Export.secretRef.name .Release.Namespace .Values.operator.dash0Export.secretRef.key) -}}
-{{- end -}}{{/* closes "if not (index $secret.data .Values.operator.dash0Export.secretRef.key) -}}" */}}
-{{- else -}}{{/* else for "if $secret" */}}
-{{- fail (printf "Error: There is no secret named \"%s\" in the target namespace \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." .Values.operator.dash0Export.secretRef.name .Release.Namespace) -}}
-{{- end }}{{/*closes "if $secret" */}}
-{{- end }}{{/*closes "not .Values.operator.dash0Export.disableSecretValidation" */}}
         - --operator-configuration-secret-ref-name={{ .Values.operator.dash0Export.secretRef.name }}
         - --operator-configuration-secret-ref-key={{ .Values.operator.dash0Export.secretRef.key }}
 {{- else }}{{/*else for "Values.operator.dash0Export.token" / "else if (and .Values.operator.dash0Export.secretRef.name .Values.operator.dash0Export.secretRef.key)" */}}

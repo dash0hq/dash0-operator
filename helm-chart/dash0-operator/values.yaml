@@ -76,11 +76,6 @@ operator:
       # secret with the command above (see property "name"), then you would set the property to "token".
       key:
 
-    # If secretRef is used, the Helm chart will check if the provided secret actually exists. Set this to true to
-    # disable this check. This can be useful if you want to render the manifests via the Helm charts without accessing a
-    # live Kubernetes cluster.
-    disableSecretValidation: false
-
     # The client-side gRPC keepalive configuration for the connection to the Dash0 backend.
     # See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
     # This setting is optional and there should usually be no need to configure it.
