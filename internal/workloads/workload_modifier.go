@@ -72,11 +72,8 @@ const (
 )
 
 var (
-	defaultInitContainerUser              int64 = 13020
-	defaultInitContainerGroup             int64 = 13020
-	initContainerAllowPrivilegeEscalation       = false
-	initContainerPrivileged                     = false
-	initContainerReadOnlyRootFilesystem         = true
+	defaultInitContainerUser  int64 = 13020
+	defaultInitContainerGroup int64 = 13020
 
 	serviceAttributes = []string{serviceName, serviceNamespace, serviceVersion}
 
@@ -478,12 +475,15 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 		Image: m.clusterInstrumentationConfig.InitContainerImage,
 		Env:   initContainerEnv,
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: &initContainerAllowPrivilegeEscalation,
-			Privileged:               &initContainerPrivileged,
-			ReadOnlyRootFilesystem:   &initContainerReadOnlyRootFilesystem,
+			AllowPrivilegeEscalation: new(false),
+			Privileged:               new(false),
+			ReadOnlyRootFilesystem:   new(true),
 			RunAsNonRoot:             securityContext.RunAsNonRoot,
 			RunAsUser:                initContainerUser,
 			RunAsGroup:               initContainerGroup,
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
