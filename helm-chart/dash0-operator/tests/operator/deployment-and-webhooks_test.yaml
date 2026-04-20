@@ -824,8 +824,6 @@ tests:
           secretRef:
             name: secret-name
             key: secret-key
-          # Disabling secret validation is necessary in Helm unit tests since there is no live cluster to check against.
-          disableSecretValidation: true
           apiEndpoint: https://api.dash0.com
     asserts:
       - equal:
