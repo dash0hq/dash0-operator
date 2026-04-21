@@ -41,6 +41,9 @@ func main() {
 	router.PUT("/api/views/:origin", handleViewRequest)
 	router.DELETE("/api/views/:origin", handleViewRequest)
 
+	router.PUT("/api/notification-channels/:origin", handleNotificationChannelRequest)
+	router.DELETE("/api/notification-channels/:origin", handleNotificationChannelRequest)
+
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
 	router.DELETE("/api/dashboards/:origin", handleDashboardRequest)
 
@@ -77,6 +80,13 @@ func handleViewRequest(ginCtx *gin.Context) {
 }
 
 func handleDashboardRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+func handleNotificationChannelRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	ginCtx.JSON(http.StatusOK, map[string]any{
 		"message": "ok",
