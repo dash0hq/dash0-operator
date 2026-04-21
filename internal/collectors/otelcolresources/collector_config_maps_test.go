@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottlmetric"
 	"go.opentelemetry.io/collector/component"
@@ -1832,6 +1833,163 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			logsExportDefaultReceivers := readPipelineReceivers(pipelines, "logs/export/default")
 			Expect(logsExportDefaultReceivers).To(ContainElement("forward/logs-default-exporter"))
 			Expect(logsExportDefaultReceivers).ToNot(ContainElement("routing/logs"))
+		})
+
+		It("should route namespaced traces before sampling when intelligent edge is enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			pipelines := readPipelines(collectorConfig)
+
+			// routing/traces default_pipelines should point to ie-pre-sampling
+			routingTraces := connectors["routing/traces"].(map[string]interface{})
+			defaultPipelines := routingTraces["default_pipelines"].([]interface{})
+			Expect(defaultPipelines).To(ContainElement("traces/ie-pre-sampling"))
+			Expect(defaultPipelines).ToNot(ContainElement("traces/export/default"))
+
+			// traces/common-processors should export to routing/traces (not directly to sampling)
+			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
+			Expect(tracesCommonExporters).To(ContainElement("routing/traces"))
+			Expect(tracesCommonExporters).ToNot(ContainElement("forward/traces-to-sampling"))
+			Expect(tracesCommonExporters).ToNot(ContainElement("dash0redmetrics"))
+
+			// traces/ie-pre-sampling should exist and forward to sampling + RED metrics
+			iePreSamplingReceivers := readPipelineReceivers(pipelines, "traces/ie-pre-sampling")
+			Expect(iePreSamplingReceivers).To(ContainElement("routing/traces"))
+			iePreSamplingExporters := readPipelineExporters(pipelines, "traces/ie-pre-sampling")
+			Expect(iePreSamplingExporters).To(ContainElement("forward/traces-to-sampling"))
+			Expect(iePreSamplingExporters).To(ContainElement("dash0redmetrics"))
+
+			// traces/sampled should export to forward/traces-default-exporter (not routing)
+			sampledExporters := readPipelineExporters(pipelines, "traces/sampled")
+			Expect(sampledExporters).To(ContainElement("forward/traces-default-exporter"))
+			Expect(sampledExporters).ToNot(ContainElement("routing/traces"))
+
+			// traces/export/default should receive from forward/traces-default-exporter
+			tracesExportDefaultReceivers := readPipelineReceivers(pipelines, "traces/export/default")
+			Expect(tracesExportDefaultReceivers).To(ContainElement("forward/traces-default-exporter"))
+			Expect(tracesExportDefaultReceivers).ToNot(ContainElement("routing/traces"))
+
+			// namespace-specific export pipelines still receive from routing/traces
+			tracesExportNs1Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace1)
+			Expect(tracesExportNs1Receivers).To(ContainElement("routing/traces"))
+			tracesExportNs2Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace2)
+			Expect(tracesExportNs2Receivers).To(ContainElement("routing/traces"))
+
+			// dash0settingsonedgeextension extension should be configured and listed in service extensions
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			Expect(extensions).To(HaveKey("dash0settingsonedgeextension"))
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			Expect(settingsOnEdge["endpoint"]).To(Equal("https://control-plane-api.dash0.com"))
+
+			serviceConfig := collectorConfig["service"].(map[string]interface{})
+			serviceExtensions := serviceConfig["extensions"].([]interface{})
+			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
+		})
+
+		It("should collect barker logs via filelog/selfmonitoring when IE + barker + self-monitoring enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   true,
+					BarkerName:      namePrefix + "-barker",
+				},
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// filelog/selfmonitoring should include barker pod log path
+			receivers := collectorConfig["receivers"].(map[string]interface{})
+			Expect(receivers).To(HaveKey("filelog/selfmonitoring"))
+			filelogConfig := receivers["filelog/selfmonitoring"].(map[string]interface{})
+			includePaths := filelogConfig["include"].([]interface{})
+			barkerPathFound := false
+			for _, p := range includePaths {
+				if path, ok := p.(string); ok {
+					if strings.Contains(path, namePrefix+"-barker") {
+						barkerPathFound = true
+					}
+				}
+			}
+			Expect(barkerPathFound).To(BeTrue(), "barker pod log path not found in filelog/selfmonitoring include list")
+
+			// logs/selfmonitoring-filelog-to-forwarder pipeline should exist
+			pipelines := readPipelines(collectorConfig)
+			Expect(pipelines).To(HaveKey("logs/selfmonitoring-filelog-to-forwarder"))
+		})
+
+		It("should not include barker logs in filelog/selfmonitoring when barker is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   false,
+				},
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			configContent := configMap.Data["config.yaml"]
+			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-barker"))
+		})
+
+		It("should not collect barker logs when self-monitoring is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   true,
+					BarkerName:      namePrefix + "-barker",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			configContent := configMap.Data["config.yaml"]
+			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-barker"))
+			Expect(configContent).ToNot(ContainSubstring("filelog/selfmonitoring"))
 		})
 	})
 

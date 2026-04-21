@@ -1,0 +1,78 @@
+dist:
+  name: operator-intelligent-edge-collector
+  description: OpenTelemetry Collector for the Dash0 operator intelligent edge pipeline
+  output_path: ./dist_operator_intelligent_edge_collector
+  build_tags: "grpcnotrace"
+
+# OpenTelemetry Collector build for the Dash0 operator intelligent edge pipeline.
+
+replaces:
+  - github.com/dash0hq/dash0-opentelemetry-collector/internal/cardinalityrules => ../internal/cardinalityrules
+  - github.com/dash0hq/dash0-opentelemetry-collector/internal/coreinternal => ../internal/coreinternal
+  - github.com/dash0hq/dash0-opentelemetry-collector/internal/common => ../internal/common
+  - github.com/dash0hq/dash0-opentelemetry-collector/internal/patternextractor => ../internal/patternextractor
+  - github.com/dash0hq/dash0-opentelemetry-collector/internal/resourcemetrics => ../internal/resourcemetrics
+  - github.com/dash0hq/dash0-opentelemetry-collector/internal/trace-reservoir => ../internal/trace-reservoir
+  - github.com/dash0hq/dash0-opentelemetry-collector/internal/samplingrules => ../internal/samplingrules
+  - github.com/dash0hq/backend-utils => ../../../modules/backend-utils
+  - github.com/dash0hq/decision-maker-client => ../../../modules/decision-maker-client
+  - github.com/dash0hq/openapi-types => ../../../modules/openapi-types
+  - github.com/dash0hq/proto => ../../../modules/proto
+  - github.com/dash0hq/time-chunking => ../../../modules/time-chunking
+  - github.com/dash0hq/testutils => ../../../modules/testutils # Only needed so that IntelliJ can process dependencies correctly
+  - github.com/dash0hq/resources => ../../../modules/resources
+  - github.com/dash0hq/ottl => ../../../modules/ottl
+  - github.com/dash0hq/samplingrules => ../../../modules/samplingrules
+  - github.com/ClickHouse/clickhouse-go/v2 => github.com/mdonkers/clickhouse-go/v2 v2.40.2-0.20260115111817-51e93acad1c0
+  - github.com/prometheus/prometheus => github.com/dash0hq/prometheus v0.309.2-0.20260116164841-442a10ac2c09
+
+extensions:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.147.0
+  - gomod: github.com/dash0hq/dash0-opentelemetry-collector/extension/dash0settingsonedgeextension v0.0.0
+    path: ./extension/dash0settingsonedgeextension
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.147.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.147.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.147.0
+  - gomod: github.com/dash0hq/dash0-opentelemetry-collector/processor/dash0resourceprocessor v0.0.0
+    path: ./processor/dash0resourceprocessor
+  - gomod: github.com/dash0hq/dash0-opentelemetry-collector/processor/dash0operationprocessor v0.0.0
+    path: ./processor/dash0operationprocessor
+  - gomod: github.com/dash0hq/dash0-opentelemetry-collector/processor/dash0samplingprocessor v0.0.0
+    path: ./processor/dash0samplingprocessor
+  - gomod: github.com/dash0hq/dash0-opentelemetry-collector/processor/dash0filterprocessor v0.0.0
+    path: ./processor/dash0filterprocessor
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.145.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.147.0
+
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.147.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.147.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.147.0
+
+connectors:
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.147.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector v0.147.0
+  - gomod: github.com/dash0hq/dash0-opentelemetry-collector/connector/dash0redmetricsconnector v0.0.0
+    path: ./connector/dash0redmetricsconnector
+  - gomod: github.com/dash0hq/dash0-opentelemetry-collector/connector/dash0signaltometricsconnector v0.0.0
+    path: ./connector/dash0signaltometricsconnector
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.53.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.53.0

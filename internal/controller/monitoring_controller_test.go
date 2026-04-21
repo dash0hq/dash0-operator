@@ -104,6 +104,7 @@ var _ = Describe(
 					clientset,
 					util.ExtraConfigDefaults,
 					false,
+					false,
 					oTelColResourceManager,
 				)
 				targetAllocatorResourceManager := taresources.NewTargetAllocatorResourceManager(

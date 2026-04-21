@@ -31,6 +31,11 @@ extensions:
   {{- if .EnableProfExtension }}
   pprof: {}
   {{- end }}
+{{- if .IntelligentEdge.Enabled }}
+  dash0settingsonedgeextension:
+    endpoint: {{ .IntelligentEdge.ApiEndpoint }}
+    auth_token: ${env:DASH0_SAMPLING_AUTH_TOKEN}
+{{- end }}
 
 connectors:
   forward/traces-processors: {}
@@ -42,13 +47,23 @@ connectors:
   forward/traces-default-exporter: {}
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
+{{- if .IntelligentEdge.Enabled }}
+{{- if .IntelligentEdge.SamplingEnabled }}
+  forward/traces-to-sampling: {}
+{{- end }}
+  dash0redmetrics: {}
+{{- end }}
   {{- if .ProfilingEnabled }}
   forward/profiles-default-exporter: {}
   {{- end }}
 
   {{- if $hasNamespacedExporters }}
   routing/traces:
+{{- if .IntelligentEdge.Enabled }}
+    default_pipelines: [traces/ie-pre-sampling]
+{{- else }}
     default_pipelines: [traces/export/default]
+{{- end }}
     error_mode: ignore
     table:
     {{- range $ns := .Exporters.AllNamespaceKeys }}
@@ -511,10 +526,15 @@ receivers:
   Deliberately not checking $hasPrometheusScrapingEnabledForAtLeastOneNamespace here,to have logs in case the
   target-allocator is running even though it shouldn't.
   */}}
-  {{- if and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled }}
+  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled)) }}
   filelog/selfmonitoring:
     include:
+      {{- if .PrometheusCrdSupportEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .OperatorResourcesNamePrefix }}-opentelemetry-target-allocator*/*/*.log
+      {{- end }}
+      {{- if and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled }}
+      - /var/log/pods/{{ .OperatorNamespace }}_{{ .IntelligentEdge.BarkerName }}*/*/*.log
+      {{- end }}
     # the target-allocator starts faster than the collectors are created, we therefore need to read its logs from the
     # beginning or we will miss the logs it prints during startup
     start_at: beginning
@@ -965,6 +985,31 @@ processors:
       {{- end }}
   {{- end }}
 
+{{- if .IntelligentEdge.Enabled }}
+  resource/ie_attributes:
+    attributes:
+    - key: dash0.org.technical.id
+      value: edge
+      action: upsert
+    - key: dash0.dataset
+      value: {{ .IntelligentEdge.Dataset }}
+      action: upsert
+  dash0resource: {}
+  dash0operation: {}
+{{- if .IntelligentEdge.SamplingEnabled }}
+  dash0sampling:
+    decision_maker_endpoint: {{ .IntelligentEdge.Endpoint }}
+    decision_maker_headers:
+      Authorization: Bearer ${env:DASH0_SAMPLING_AUTH_TOKEN}
+      Dash0-Dataset: {{ .IntelligentEdge.Dataset }}
+    decision_maker_insecure: {{ .IntelligentEdge.Insecure }}
+    default_dataset: {{ .IntelligentEdge.Dataset }}
+    reservoir:
+      type: disk
+      data_dir: /var/lib/dash0/trace-reservoir
+{{- end }}
+{{- end }}
+
   memory_limiter:
     check_interval: 1s
     limit_percentage: 80
@@ -1054,6 +1099,9 @@ service:
   {{- if .EnableProfExtension }}
   - pprof
   {{- end }}
+  {{- if .IntelligentEdge.Enabled }}
+  - dash0settingsonedgeextension
+  {{- end }}
 
   pipelines:
     traces/otlp-to-forwarder:
@@ -1080,16 +1128,55 @@ service:
         - transform/traces/custom_telemetry_transform
         {{- end }}
         - transform/resources
+        {{- if .IntelligentEdge.Enabled }}
+        - resource/ie_attributes
+        - dash0resource
+        - dash0operation
+        {{- end }}
       exporters:
         {{- if $hasNamespacedExporters }}
         - routing/traces
+        {{- else if .IntelligentEdge.Enabled }}
+        {{- if .IntelligentEdge.SamplingEnabled }}
+        - forward/traces-to-sampling
+        {{- end }}
+        - dash0redmetrics
+        {{- if not .IntelligentEdge.SamplingEnabled }}
+        - forward/traces-default-exporter
+        {{- end }}
         {{- else }}
         - forward/traces-default-exporter
         {{- end }}
+{{- if .IntelligentEdge.Enabled }}
+{{- if $hasNamespacedExporters }}
+
+    traces/ie-pre-sampling:
+      receivers:
+        - routing/traces
+      exporters:
+        {{- if .IntelligentEdge.SamplingEnabled }}
+        - forward/traces-to-sampling
+        {{- end }}
+        - dash0redmetrics
+        {{- if not .IntelligentEdge.SamplingEnabled }}
+        - forward/traces-default-exporter
+        {{- end }}
+{{- end }}
+
+{{- if .IntelligentEdge.SamplingEnabled }}
+    traces/sampled:
+      receivers:
+        - forward/traces-to-sampling
+      processors:
+        - dash0sampling
+      exporters:
+        - forward/traces-default-exporter
+{{- end }}
+{{- end }}
 
     traces/export/default:
       receivers:
-        {{- if $hasNamespacedExporters }}
+        {{- if and $hasNamespacedExporters (not .IntelligentEdge.Enabled) }}
         - routing/traces
         {{- else }}
         - forward/traces-default-exporter
@@ -1124,6 +1211,9 @@ service:
         {{- end }}
         {{- if .UseHostMetricsReceiver }}
         - hostmetrics
+        {{- end }}
+        {{- if .IntelligentEdge.Enabled }}
+        - dash0redmetrics
         {{- end }}
       processors:
         - memory_limiter
@@ -1161,6 +1251,9 @@ service:
         - transform/metrics/custom_telemetry_transform
         {{- end }}
         - transform/resources
+        {{- if .IntelligentEdge.Enabled }}
+        - resource/ie_attributes
+        {{- end }}
       exporters:
         {{- if $hasNamespacedExporters }}
         - routing/metrics
@@ -1215,7 +1308,7 @@ service:
         - forward/logs-processors
     {{- end }}
 
-    {{- if and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled }}
+    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled)) }}
     logs/selfmonitoring-filelog-to-forwarder:
       receivers:
         - filelog/selfmonitoring
@@ -1245,6 +1338,9 @@ service:
         - transform/logs/custom_telemetry_transform
         {{- end }}
         - transform/resources
+        {{- if .IntelligentEdge.Enabled }}
+        - resource/ie_attributes
+        {{- end }}
       exporters:
         {{- if $hasNamespacedExporters }}
         - routing/logs

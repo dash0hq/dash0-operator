@@ -523,6 +523,10 @@ func validatePreconditionsAndPreprocess(
 	namespace := dash0ApiResource.GetNamespace()
 	name := dash0ApiResource.GetName()
 
+	if namespace == "" {
+		return validatePreconditionsForClusterScopedResource(apiSyncReconciler, dash0ApiResource, name, logger)
+	}
+
 	monitoringRes, err := resources.FindUniqueOrMostRecentResourceInScope(
 		ctx,
 		apiSyncReconciler.K8sClient(),
@@ -710,6 +714,79 @@ func validatePreconditionsAndPreprocess(
 		monitoringResource:   monitoringResource,
 		validatedApiConfigs:  validatedApiConfigs,
 		k8sNamespace:         namespace,
+		k8sName:              name,
+	}
+}
+
+func validatePreconditionsForClusterScopedResource(
+	apiSyncReconciler ApiSyncReconciler,
+	dash0ApiResource *unstructured.Unstructured,
+	name string,
+	logger logd.Logger,
+) *preconditionValidationResult {
+	defaultApiConfigs := apiSyncReconciler.GetDefaultApiConfigs()
+	validDefaultConfigs := filterValidApiConfigs(defaultApiConfigs, logger, "default operator configuration")
+	if len(validDefaultConfigs) == 0 {
+		logger.Info(
+			fmt.Sprintf(
+				"No valid Dash0 API config(s) available in the operator configuration resource. "+
+					"The %s %s will not be updated in Dash0.",
+				apiSyncReconciler.ShortName(),
+				name,
+			),
+		)
+		return &preconditionValidationResult{
+			synchronizeResource: false,
+		}
+	}
+
+	var validatedApiConfigs []ValidatedApiConfigAndToken
+	for _, apiConfig := range validDefaultConfigs {
+		validatedApiConfigs = append(validatedApiConfigs, *NewValidatedApiConfigAndToken(
+			apiConfig.Endpoint,
+			apiConfig.Dataset,
+			apiConfig.Token,
+		))
+	}
+
+	dash0ApiResourceObject := dash0ApiResource.Object
+	if dash0ApiResourceObject == nil {
+		logger.Info(
+			fmt.Sprintf(
+				"The \"Object\" property in the event for %s %s is absent or empty, the %s(s) will not be updated in Dash0.",
+				apiSyncReconciler.KindDisplayName(),
+				name,
+				apiSyncReconciler.ShortName(),
+			),
+		)
+		return &preconditionValidationResult{
+			synchronizeResource: false,
+		}
+	}
+
+	syncDisabledViaLabel := isSyncDisabledViaLabel(dash0ApiResourceObject)
+	cleanUpMetadata(dash0ApiResourceObject)
+
+	if dash0ApiResourceObject["spec"] == nil {
+		logger.Info(
+			fmt.Sprintf(
+				"%s %s has no spec, the %s(s) will not be updated in Dash0.",
+				apiSyncReconciler.KindDisplayName(),
+				name,
+				apiSyncReconciler.ShortName(),
+			),
+		)
+		return &preconditionValidationResult{
+			synchronizeResource: false,
+		}
+	}
+
+	return &preconditionValidationResult{
+		synchronizeResource:  true,
+		syncDisabledViaLabel: syncDisabledViaLabel,
+		resource:             dash0ApiResourceObject,
+		monitoringResource:   nil,
+		validatedApiConfigs:  validatedApiConfigs,
 		k8sName:              name,
 	}
 }
