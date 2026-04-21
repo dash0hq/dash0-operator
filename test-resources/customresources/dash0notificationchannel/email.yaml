@@ -1,0 +1,14 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-email
+spec:
+  display:
+    name: Email Alerts
+  type: email_v2
+  emailV2Config:
+    recipients:
+      - oncall@example.com
+      - alerts@example.com
+    plaintext: false
+  frequency: 10m

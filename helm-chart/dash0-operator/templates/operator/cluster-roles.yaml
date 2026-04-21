@@ -201,6 +201,26 @@ rules:
   - patch
   - update
 
+# Permissions required to watch Dash0 notification channel resources:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0notificationchannels
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to Dash0 notification channel resource status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0notificationchannels/status
+  verbs:
+  - get
+  - patch
+  - update
+
 # Permissions required to manage the Dash0 intelligent edge resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com

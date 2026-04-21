@@ -1,0 +1,12 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-pagerduty
+spec:
+  display:
+    name: PagerDuty Alerts
+  type: pagerduty
+  pagerdutyConfig:
+    key: "00000000000000000000000000000000"
+    url: "https://events.pagerduty.com/v2/enqueue"
+  frequency: 10m

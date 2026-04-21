@@ -1083,6 +1083,11 @@ deploy_dash0_api_sync_resources() {
     kubectl apply -n "$target_namespace" -f test-resources/customresources/prometheusrule/prometheusrule.yaml
     finish_step
   fi
+  if [[ -n "${DEPLOY_NOTIFICATION_CHANNEL:-}" ]]; then
+    echo "STEP $step_counter: deploy a Dash0 notification channel resource (${DEPLOY_NOTIFICATION_CHANNEL}) to namespace ${target_namespace}"
+    kubectl apply -n "$target_namespace" -f "test-resources/customresources/dash0notificationchannel/${DEPLOY_NOTIFICATION_CHANNEL}.yaml"
+    finish_step
+  fi
 }
 
 deploy_intelligent_edge_resource() {

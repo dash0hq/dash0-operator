@@ -1336,6 +1336,17 @@ func startDash0Controllers(
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(viewReconciler)
 
+	notificationChannelReconciler := controller.NewNotificationChannelReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := notificationChannelReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the notification channel reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(notificationChannelReconciler)
+
 	var samplingRuleReconciler *controller.SamplingRuleReconciler
 	if cliArgs.featureIntelligentEdgeEnabled {
 		samplingRuleReconciler = controller.NewSamplingRuleReconciler(
@@ -1386,6 +1397,7 @@ func startDash0Controllers(
 	apiClients := []controller.ApiClient{
 		syntheticCheckReconciler,
 		viewReconciler,
+		notificationChannelReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}
@@ -1420,6 +1432,7 @@ func startDash0Controllers(
 		[]controller.NamespacedApiClient{
 			syntheticCheckReconciler,
 			viewReconciler,
+			notificationChannelReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},

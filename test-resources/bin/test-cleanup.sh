@@ -53,6 +53,12 @@ fi
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/prometheusrule/prometheusrule.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
+for notification_channel_file in test-resources/customresources/dash0notificationchannel/*.yaml; do
+  if kubectl delete -n "$target_namespace" -f "$notification_channel_file"; then
+    wait_for_third_party_resource_deletion="true"
+  fi
+done
+
 
 if [[ "$wait_for_third_party_resource_deletion" = "true" ]]; then
   echo "Waiting for third party resource deletion to be synchronized to the Dash0 API."

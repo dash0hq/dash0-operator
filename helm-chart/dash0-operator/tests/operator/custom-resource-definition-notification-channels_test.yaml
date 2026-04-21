@@ -1,0 +1,7 @@
+suite: test notification channel CRD
+templates:
+  - operator/custom-resource-definition-notification-channels.yaml
+tests:
+  - it: custom resource definition for notification channels should match snapshot
+    asserts:
+      - matchSnapshot: {}

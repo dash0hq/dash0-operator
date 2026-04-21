@@ -1,0 +1,12 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-slack-bot
+spec:
+  display:
+    name: Slack Bot Alerts
+  type: slack_bot
+  slackBotConfig:
+    teamId: "T00000000"
+    channel: "#alerts"
+  frequency: 10m
