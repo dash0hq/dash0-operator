@@ -27,11 +27,12 @@ import (
 
 type CollectorManager struct {
 	client.Client
-	clientset              *kubernetes.Clientset
-	oTelColResourceManager *otelcolresources.OTelColResourceManager
-	extraConfig            atomic.Pointer[util.ExtraConfig]
-	developmentMode        bool
-	updateInProgress       atomic.Bool
+	clientset                     *kubernetes.Clientset
+	oTelColResourceManager        *otelcolresources.OTelColResourceManager
+	extraConfig                   atomic.Pointer[util.ExtraConfig]
+	developmentMode               bool
+	intelligentEdgeFeatureEnabled bool
+	updateInProgress              atomic.Bool
 }
 
 type CollectorReconcileTrigger string
@@ -52,13 +53,15 @@ func NewCollectorManager(
 	clientset *kubernetes.Clientset,
 	extraConfig util.ExtraConfig,
 	developmentMode bool,
+	intelligentEdgeFeatureEnabled bool,
 	oTelColResourceManager *otelcolresources.OTelColResourceManager,
 ) *CollectorManager {
 	m := &CollectorManager{
-		Client:                 k8sClient,
-		clientset:              clientset,
-		developmentMode:        developmentMode,
-		oTelColResourceManager: oTelColResourceManager,
+		Client:                        k8sClient,
+		clientset:                     clientset,
+		developmentMode:               developmentMode,
+		intelligentEdgeFeatureEnabled: intelligentEdgeFeatureEnabled,
+		oTelColResourceManager:        oTelColResourceManager,
 	}
 	m.extraConfig.Store(&extraConfig)
 	return m
@@ -113,6 +116,13 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	if err != nil {
 		return false, err
 	}
+	var intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge
+	if m.intelligentEdgeFeatureEnabled {
+		intelligentEdgeResource, err = m.findIntelligentEdgeResource(ctx, logger)
+		if err != nil {
+			return false, err
+		}
+	}
 
 	extraConfig := m.extraConfig.Load()
 	if extraConfig == nil {
@@ -136,6 +146,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 			ctx,
 			operatorConfigurationResource,
 			allMonitoringResources,
+			intelligentEdgeResource,
 			*extraConfig,
 			logger,
 		)
@@ -147,6 +158,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
+	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) error {
@@ -162,6 +174,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 			extraConfig,
 			operatorConfigurationResource,
 			allMonitoringResources,
+			intelligentEdgeResource,
 			logger,
 		)
 	if err != nil {
@@ -223,6 +236,26 @@ func (m *CollectorManager) findOperatorConfigurationResource(
 		return nil, nil
 	}
 	return operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration), nil
+}
+
+func (m *CollectorManager) findIntelligentEdgeResource(
+	ctx context.Context,
+	logger logd.Logger,
+) (*dash0v1alpha1.Dash0IntelligentEdge, error) {
+	intelligentEdgeResource, err := resources.FindUniqueOrMostRecentResourceInScope(
+		ctx,
+		m.Client,
+		"",
+		&dash0v1alpha1.Dash0IntelligentEdge{},
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if intelligentEdgeResource == nil {
+		return nil, nil
+	}
+	return intelligentEdgeResource.(*dash0v1alpha1.Dash0IntelligentEdge), nil
 }
 
 func (m *CollectorManager) findAllMonitoringResources(

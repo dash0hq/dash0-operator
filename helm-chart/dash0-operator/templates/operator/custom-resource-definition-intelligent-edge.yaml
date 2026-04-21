@@ -1,0 +1,311 @@
+{{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+    {{- if .Values.operator.certManager.useCertManager }}
+    {{- with .Values.operator.certManager.certManagerAnnotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- end }}
+  name: dash0intelligentedges.operator.dash0.com
+spec:
+  group: operator.dash0.com
+  names:
+    kind: Dash0IntelligentEdge
+    listKind: Dash0IntelligentEdgeList
+    plural: dash0intelligentedges
+    singular: dash0intelligentedge
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.enabled
+      name: Enabled
+      type: boolean
+    - jsonPath: .spec.barker.enabled
+      name: Barker
+      type: boolean
+    - jsonPath: .status.conditions[?(@.type == "Available")].status
+      name: Available
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Dash0IntelligentEdge is the schema for the Dash0IntelligentEdge API. It configures the intelligent edge
+          feature cluster-wide. This is a singleton resource — only one instance may exist per cluster.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              Dash0IntelligentEdgeSpec describes the cluster-wide configuration for the intelligent edge tail-sampling feature.
+              When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
+              dash0operation, dash0sampling processors and dash0redmetrics connector) and optionally deploys the Barker proxy.
+            properties:
+              barker:
+                description: |-
+                  Configuration for the Barker proxy. When enabled, the operator deploys Barker as a Deployment and Service
+                  in the operator namespace. Barker consolidates collector-to-Decision-Maker connections, reducing egress
+                  and improving reliability. Recommended for clusters with multiple collector instances.
+                properties:
+                  debug:
+                    description: |-
+                      Enable verbose network logging in Barker. This is separate from the log level and produces
+                      detailed output about gRPC connections and message flow. Warning: high log volume. This setting
+                      is optional, it defaults to false.
+                    type: boolean
+                  enabled:
+                    default: true
+                    description: |-
+                      Whether to deploy the Barker proxy. When enabled, collectors connect to Barker instead of directly
+                      to the cloud Decision Maker. This consolidates N collector connections into 1-2 upstream connections.
+                      This setting is optional, it defaults to true.
+                    type: boolean
+                  logLevel:
+                    allOf:
+                    - enum:
+                      - trace
+                      - debug
+                      - info
+                      - warn
+                      - error
+                    - enum:
+                      - trace
+                      - debug
+                      - info
+                      - warn
+                      - error
+                    default: info
+                    description: The log level for the Barker proxy. This setting
+                      is optional, it defaults to "info".
+                    type: string
+                required:
+                - enabled
+                type: object
+              controlPlaneApiEndpoint:
+                description: |-
+                  The control plane API endpoint used by the dash0settingsonedge extension to fetch settings and rules.
+                  This setting is optional. When not set, the endpoint is derived from the Dash0 API endpoint configured
+                  in the operator configuration resource by stripping regional segments and replacing "api." with
+                  "control-plane-api." (e.g., https://api.eu-central-1.aws.dash0.com -> https://control-plane-api.dash0.com).
+                type: string
+              enabled:
+                default: true
+                description: |-
+                  Whether intelligent edge is enabled. When disabled, no IE components are added to the collector pipeline
+                  and no IE resources (e.g. barker) are deployed, regardless of other settings in this resource. This
+                  setting is optional, it defaults to true.
+                type: boolean
+              operationProcessor:
+                description: |-
+                  Configuration for the dash0operation processor. This processor derives dash0.operation.* and dash0.span.*
+                  attributes from OpenTelemetry semantic conventions.
+                properties:
+                  cardinalityRules:
+                    description: |-
+                      Custom rules for normalizing high-cardinality operation names. Rules are evaluated in order, first
+                      match wins. This setting is optional, it defaults to an empty list.
+                    items:
+                      description: CardinalityRule defines a rule for normalizing
+                        high-cardinality attribute values.
+                      properties:
+                        id:
+                          description: Unique identifier for this rule.
+                          minLength: 1
+                          type: string
+                        operationMatchers:
+                          description: Matchers to apply to attribute values. Evaluated
+                            in order, first match wins.
+                          items:
+                            description: OperationMatcher defines a regex-based matcher
+                              for normalizing operation names.
+                            properties:
+                              literal:
+                                description: If true, replacement values are used
+                                  as-is without {}-wrapping.
+                                type: boolean
+                              quickFilter:
+                                description: A substring pre-filter for this specific
+                                  matcher.
+                                type: string
+                              regex:
+                                description: Regular expression with capture groups
+                                  for matching attribute values.
+                                maxLength: 2048
+                                minLength: 1
+                                type: string
+                              replacements:
+                                description: Replacement values for the capture groups.
+                                items:
+                                  type: string
+                                minItems: 1
+                                type: array
+                            required:
+                            - regex
+                            - replacements
+                            type: object
+                          minItems: 1
+                          type: array
+                        quickFilter:
+                          description: |-
+                            A substring pre-filter for performance. Only values containing this substring are evaluated
+                            against the matchers.
+                          type: string
+                        sourceAttribute:
+                          description: The attribute to apply this rule to. If empty,
+                            the rule applies to all URL-related attributes.
+                          type: string
+                      required:
+                      - id
+                      - operationMatchers
+                      type: object
+                    type: array
+                type: object
+              redMetrics:
+                description: |-
+                  Configuration for the dash0redmetrics connector. This connector generates RED (Rate, Errors, Duration)
+                  metrics from 100% of spans before sampling, ensuring metric accuracy regardless of the sample rate.
+                properties:
+                  additionalSpanAttributes:
+                    description: |-
+                      Additional low-cardinality span attributes to include as metric dimensions. Each attribute should
+                      have at most 3 unique values to avoid high cardinality. This setting is optional, it defaults to
+                      an empty list.
+                    items:
+                      type: string
+                    type: array
+                  maxTimeSeries:
+                    description: |-
+                      Soft limit for the number of time series held in memory. This setting is optional, it defaults
+                      to 5000.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
+              sampling:
+                description: Configuration for the dash0sampling processor in the
+                  collector pipeline.
+                properties:
+                  debug:
+                    description: |-
+                      Enable verbose logging of sampling decisions. Warning: this produces high log volume. This setting
+                      is optional, it defaults to false.
+                    type: boolean
+                  decisionMakerEndpoint:
+                    description: |-
+                      The Decision Maker endpoint used by the sampling processor. This setting is optional. When not set,
+                      the endpoint is derived from the Dash0 ingress endpoint configured in the operator configuration
+                      resource by replacing "ingress." with "decision-maker." and ":4317" with ":443". When Barker is
+                      enabled, this field is ignored and the sampling processor connects to the in-cluster Barker service
+                      instead.
+                    type: string
+                  enabled:
+                    default: true
+                    description: |-
+                      Whether tail-sampling is enabled. When disabled, the sampling processor and its Decision Maker
+                      connection are not added to the collector pipeline. RED metrics, dash0resource, and dash0operation
+                      processors remain active if the overall IE flag (spec.enabled) is true. This setting is optional,
+                      it defaults to true.
+                    type: boolean
+                  fallbackSampleRatio:
+                    description: |-
+                      The probability ratio for fallback sampling when the Decision Maker is unreachable. A value of
+                      "0.01" keeps 1% of spans. Set to "0.0" to block all spans until the Decision Maker is available,
+                      or "1.0" to keep all spans. This setting is optional, it defaults to "0.01". Must be a string
+                      representation of a float between 0.0 and 1.0.
+                    pattern: ^(0(\.\d+)?|1(\.0+)?)$
+                    type: string
+                required:
+                - enabled
+                type: object
+            required:
+            - enabled
+            type: object
+          status:
+            description: Dash0IntelligentEdgeStatus defines the observed state of
+              the Dash0IntelligentEdge resource.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}

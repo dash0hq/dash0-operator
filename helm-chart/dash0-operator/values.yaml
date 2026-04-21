@@ -76,11 +76,6 @@ operator:
       # secret with the command above (see property "name"), then you would set the property to "token".
       key:
 
-    # If secretRef is used, the Helm chart will check if the provided secret actually exists. Set this to true to
-    # disable this check. This can be useful if you want to render the manifests via the Helm charts without accessing a
-    # live Kubernetes cluster.
-    disableSecretValidation: false
-
     # The client-side gRPC keepalive configuration for the connection to the Dash0 backend.
     # See https://pkg.go.dev/google.golang.org/grpc/keepalive#ClientParameters
     # This setting is optional and there should usually be no need to configure it.
@@ -427,6 +422,26 @@ operator:
   # (there should usually be no reason to override this)
   filelogOffsetVolumeOwnershipImage:
     repository: "ghcr.io/dash0hq/filelog-offset-volume-ownership"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
+  # the container image to use for the intelligent edge collector (there should usually be no reason to override this)
+  intelligentEdgeCollectorImage:
+    repository: "ghcr.io/dash0hq/intelligent-edge-collector"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
+  # the container image to use for the barker component (there should usually be no reason to override this)
+  barkerImage:
+    repository: "ghcr.io/dash0hq/barker"
     # overrides the image tag, which defaults to the chart appVersion.
     tag:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored

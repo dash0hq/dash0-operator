@@ -445,6 +445,7 @@ OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
 ```
 
 When running with a remote Helm chart like this, the images from the chart are used by default, instead of local images.
+Running the end-to-end tests against a specific version of the Helm chart is not supported.
 
 When an end-to-end test case fails, the test suite automatically collects pod descriptions, config maps and pod logs
 from the Kubernetes cluster at the time of the failure.
@@ -535,3 +536,23 @@ new volumes etc.), we need to make sure that previously instrumented workloads a
 be accompanied by corresponding tests (for example new test cases in `workload_modifier_test.go`, see the test suite
 `"when updating instrumentation from 0.5.1 to 0.6.0"` in commit 300a765a64a42d98dcc6d9a66dccc534b610ab65 for an
 example).
+
+## Intelligent Edge Development
+
+### Prerequisites
+
+- IE images are currently not publicly available, for this reason, access to a private container registry that
+serves these images is required.
+
+Hint: Alternatively, follow `test-resources/intelligentedge/README.md` to build and push the images (requires access
+to the source code).
+
+### Testing
+
+- Set `IMAGE_REPOSITORY_PREFIX` to a repo containing the images or set the individual images explicitly via helm values.
+- Install the operator helm chart with `operator.development.intelligentEdge.enabled=true`
+  - This will instruct helm to set the right collector image and also install the IE CRDs.
+- You can now create a `Dash0IntelligentEdge` CR and add `Dash0SamplingRule`s.
+
+A test scenario is available in [test-resources/bin/test-scenario-10-intelligent-edge.sh](test-resources/bin/test-scenario-10-intelligent-edge.sh)
+and example sampling rules can be found in [test-resources/customresources/dash0samplingrule](test-resources/customresources/dash0samplingrule).

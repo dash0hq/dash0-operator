@@ -98,6 +98,16 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.filelogOffsetVolumeOwnershipImage "context" .) -}}
 {{- end }}
 
+{{/* the intelligent edge collector image */}}
+{{- define "dash0-operator.intelligentEdgeCollectorImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.intelligentEdgeCollectorImage "context" .) -}}
+{{- end }}
+
+{{/* the barker image */}}
+{{- define "dash0-operator.barkerImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.barkerImage "context" .) -}}
+{{- end }}
+
 {{- define "dash0-operator.imageRef" -}}
 {{- if .image.digest -}}
 {{- printf "%s@%s" .image.repository .image.digest }}
@@ -126,4 +136,13 @@ securityContext:
   runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
+{{- end }}
+
+{{/* development settings */}}
+{{/* note: defaults are defined here instead of values.yaml, since they should usually not be overridden by users. */}}
+
+{{/* Enable/Disable IntelligentEdge features. When IE is disabled, no IE-related CRDs will be created and the collector
+image will not include any IE components. */}}
+{{- define "dash0-operator.development.intelligentEdge.enabled" -}}
+{{- if ((((.Values.operator).development).intelligentEdge).enabled) -}}true{{- else -}}false{{- end -}}
 {{- end }}

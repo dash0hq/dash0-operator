@@ -133,6 +133,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
+					nil,
 					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -151,6 +152,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
+					nil,
 					nil,
 					logger,
 				)
@@ -183,6 +185,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
+					nil,
 					nil,
 					logger,
 				)
@@ -217,6 +220,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
+					nil,
 					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -239,6 +243,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
+					nil,
 					nil,
 					logger,
 				)
@@ -304,6 +309,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
+					nil,
 					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -333,6 +339,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
+					nil,
 					nil,
 					logger,
 				)
@@ -374,6 +381,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
+					nil,
 					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -392,6 +400,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
+					nil,
 					nil,
 					logger,
 				)
@@ -415,6 +424,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
+					nil,
 					logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -434,6 +444,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				util.ExtraConfigDefaults,
 				operatorConfiguration,
 				nil,
+				nil,
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -445,6 +456,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				ctx,
 				util.ExtraConfigDefaults,
 				operatorConfiguration,
+				nil,
 				nil,
 				logger,
 			)
@@ -459,6 +471,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					util.ExtraConfigDefaults,
 					operatorConfiguration,
+					nil,
 					nil,
 					logger,
 				)
@@ -479,6 +492,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				ctx,
 				util.ExtraConfigDefaults,
 				operatorConfiguration,
+				nil,
 				nil,
 				logger,
 			)
@@ -508,6 +522,171 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 })
+
+var _ = Describe("intelligentEdgeConfigFromResource", func() {
+	logger := logd.FromContext(context.Background())
+	operatorConfig := &dash0v1alpha1.Dash0OperatorConfiguration{
+		Spec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
+	}
+	operatorNamespace := OperatorNamespace
+
+	It("should return disabled config when resource is nil", func() {
+		config := intelligentEdgeConfigFromResource(nil, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeFalse())
+	})
+
+	It("should return disabled config when spec.enabled is false", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(false),
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeFalse())
+	})
+
+	It("should derive endpoints from operator config when no overrides are set", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.Endpoint).To(Equal(util.DeriveDecisionMakerEndpoint(EndpointDash0Test)))
+		Expect(config.ApiEndpoint).To(Equal(deriveCpaEndpoint(ApiEndpointTest)))
+	})
+
+	It("should use explicit decision maker endpoint when set", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					DecisionMakerEndpoint: "custom-dm.example.com:443",
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.Endpoint).To(Equal("custom-dm.example.com:443"))
+		// CPA endpoint should still be derived
+		Expect(config.ApiEndpoint).To(Equal(deriveCpaEndpoint(ApiEndpointTest)))
+	})
+
+	It("should use explicit control plane API endpoint when set", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled:                 boolPtr(true),
+				Barker:                  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.ApiEndpoint).To(Equal("https://custom-cpa.example.com"))
+		// DM endpoint should still be derived
+		Expect(config.Endpoint).To(Equal(util.DeriveDecisionMakerEndpoint(EndpointDash0Test)))
+	})
+
+	It("should use both explicit endpoints when both are set", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled:                 boolPtr(true),
+				Barker:                  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
+				Sampling: dash0v1alpha1.SamplingConfig{
+					DecisionMakerEndpoint: "custom-dm.example.com:443",
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.Endpoint).To(Equal("custom-dm.example.com:443"))
+		Expect(config.ApiEndpoint).To(Equal("https://custom-cpa.example.com"))
+	})
+
+	It("should override explicit DM endpoint with barker service when barker is enabled", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker: dash0v1alpha1.BarkerConfig{
+					Enabled: boolPtr(true),
+				},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					DecisionMakerEndpoint: "custom-dm.example.com:443",
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.Endpoint).To(Equal(fmt.Sprintf("%s-barker.%s.svc.cluster.local:8011", namePrefix, operatorNamespace)))
+		Expect(config.Insecure).To(BeTrue())
+	})
+
+	It("should handle nil operator config with explicit endpoints", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled:                 boolPtr(true),
+				Barker:                  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
+				Sampling: dash0v1alpha1.SamplingConfig{
+					DecisionMakerEndpoint: "custom-dm.example.com:443",
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, nil, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.Endpoint).To(Equal("custom-dm.example.com:443"))
+		Expect(config.ApiEndpoint).To(Equal("https://custom-cpa.example.com"))
+		Expect(config.Dataset).To(Equal(util.DatasetDefault))
+	})
+
+	It("should have sampling enabled by default", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.SamplingEnabled).To(BeTrue())
+	})
+
+	It("should allow disabling sampling while keeping IE enabled", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Enabled: boolPtr(false),
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.SamplingEnabled).To(BeFalse())
+	})
+
+	It("should return disabled config when overall IE is disabled regardless of sampling setting", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(false),
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Enabled: boolPtr(true),
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeFalse())
+	})
+})
+
+func boolPtr(b bool) *bool {
+	return &b
+}
 
 func verifyObject(ctx context.Context, testObject *corev1.ConfigMap) {
 	object := &corev1.ConfigMap{}

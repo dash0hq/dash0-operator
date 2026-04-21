@@ -221,6 +221,57 @@ rules:
   - patch
   - update
 
+# Permissions required to manage the Dash0 intelligent edge resource, its finalizers and status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0intelligentedges
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0intelligentedges/finalizers
+  verbs:
+  - update
+
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0intelligentedges/status
+  verbs:
+  - get
+  - patch
+  - update
+
+# Permissions required to watch Dash0 sampling rule resources:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0samplingrules
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to Dash0 sampling rule resource status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0samplingrules/status
+  verbs:
+  - get
+  - patch
+  - update
+
 ---
 {{ if .Values.operator.telemetryCollectionEnabled }}
 {{/*

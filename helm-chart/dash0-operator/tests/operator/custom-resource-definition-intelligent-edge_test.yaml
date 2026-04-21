@@ -1,0 +1,23 @@
+suite: test intelligent edge CRD
+templates:
+  - operator/custom-resource-definition-intelligent-edge.yaml
+tests:
+  - it: should not render the intelligent edge CRD by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render the intelligent edge CRD when IE is enabled
+    set:
+      operator:
+        development:
+          intelligentEdge:
+            enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: CustomResourceDefinition
+      - equal:
+          path: metadata.name
+          value: dash0intelligentedges.operator.dash0.com

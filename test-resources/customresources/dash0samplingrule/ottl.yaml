@@ -1,0 +1,14 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SamplingRule
+metadata:
+  name: keep-slow-requests
+spec:
+  enabled: true
+  display:
+    name: Keep requests slower than 1s
+  conditions:
+    kind: ottl
+    spec:
+      ottl: end_time_unix_nano - start_time_unix_nano > 1000000000
+  rateLimit:
+    rate: 100

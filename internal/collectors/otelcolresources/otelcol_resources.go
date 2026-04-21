@@ -91,6 +91,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	extraConfig util.ExtraConfig,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
+	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
 	logger logd.Logger,
 ) (bool, bool, error) {
 	selfMonitoringConfiguration, err :=
@@ -155,13 +156,14 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	config := &oTelColConfig{
-		OperatorNamespace:           m.collectorConfig.OperatorNamespace,
-		NamePrefix:                  m.collectorConfig.OTelCollectorNamePrefix,
-		Exporters:                   otlpExporters,
-		AllMonitoringResources:      allMonitoringResources,
-		SendBatchSize:               m.collectorConfig.SendBatchSize,
-		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
-		SelfMonitoringConfiguration: selfMonitoringConfiguration,
+		OperatorNamespace:             m.collectorConfig.OperatorNamespace,
+		OperatorManagerDeploymentName: m.operatorManagerDeployment.Name,
+		NamePrefix:                    m.collectorConfig.OTelCollectorNamePrefix,
+		Exporters:                     otlpExporters,
+		AllMonitoringResources:        allMonitoringResources,
+		SendBatchSize:                 m.collectorConfig.SendBatchSize,
+		SendBatchMaxSize:              m.collectorConfig.SendBatchMaxSize,
+		SelfMonitoringConfiguration:   selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      collectNamespaceLabelsAndAnnotationsEnabled,
@@ -186,6 +188,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Images:                 m.collectorConfig.Images,
 		IsIPv6Cluster:          m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:         m.collectorConfig.IsGkeAutopilot,
+		IntelligentEdge:        intelligentEdgeConfigFromResource(intelligentEdgeResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
 		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:    m.collectorConfig.EnableProfExtension,
@@ -726,4 +729,95 @@ func (m *OTelColResourceManager) logErrorAndDisableKubeletStatsReceiver(logger l
 			"kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.",
 	)
 	return KubeletStatsReceiverConfig{Enabled: false}
+}
+
+func intelligentEdgeConfigFromResource(
+	resource *dash0v1alpha1.Dash0IntelligentEdge,
+	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
+	operatorNamespace string,
+	namePrefix string,
+	logger logd.Logger,
+) IntelligentEdgeConfig {
+	if resource == nil {
+		return IntelligentEdgeConfig{Enabled: false}
+	}
+	if !util.ReadBoolPointerWithDefault(resource.Spec.Enabled, true) {
+		logger.Info("Intelligent edge is explicitly disabled via the Dash0IntelligentEdge resource.")
+		return IntelligentEdgeConfig{Enabled: false}
+	}
+
+	barkerEnabled := util.ReadBoolPointerWithDefault(resource.Spec.Barker.Enabled, true)
+	samplingEnabled := util.ReadBoolPointerWithDefault(resource.Spec.Sampling.Enabled, true)
+
+	derivedEndpoint, derivedApiEndpoint, dataset := deriveDash0EndpointsAndDataset(operatorConfig)
+	hasDash0Export := derivedEndpoint != "" || derivedApiEndpoint != ""
+	endpoint := derivedEndpoint
+	apiEndpoint := derivedApiEndpoint
+	if resource.Spec.Sampling.DecisionMakerEndpoint != "" {
+		endpoint = resource.Spec.Sampling.DecisionMakerEndpoint
+	}
+	if resource.Spec.ControlPlaneApiEndpoint != "" {
+		apiEndpoint = resource.Spec.ControlPlaneApiEndpoint
+	}
+	if !hasDash0Export {
+		logger.Info("Warning: No Dash0 export is configured in the operator configuration resource. The " +
+			"sampling processor and barker will not have an authorization token for the Decision Maker. " +
+			"Configure a Dash0 export with an auth token in the operator configuration resource.")
+	}
+	insecure := false
+	if barkerEnabled {
+		endpoint = fmt.Sprintf("%s-barker.%s.svc.cluster.local:8011", namePrefix, operatorNamespace)
+		insecure = true
+	}
+
+	if endpoint == "" && apiEndpoint == "" {
+		logger.Info("Intelligent edge is enabled but no Decision Maker or control plane API endpoints could be " +
+			"derived from the operator configuration resource (and no explicit overrides are set). Intelligent " +
+			"edge will remain disabled in the collector config until a valid operator configuration with a " +
+			"Dash0 export is available.")
+		return IntelligentEdgeConfig{Enabled: false}
+	}
+
+	return IntelligentEdgeConfig{
+		Enabled:         true,
+		SamplingEnabled: samplingEnabled,
+		Endpoint:        endpoint,
+		ApiEndpoint:     apiEndpoint,
+		AuthEnvVar:      authEnvVarNameDefaultIndexed(0),
+		Dataset:         dataset,
+		Insecure:        insecure,
+		BarkerEnabled:   barkerEnabled,
+		BarkerName:      namePrefix + "-barker",
+	}
+}
+
+func deriveDash0EndpointsAndDataset(operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration) (string, string, string) {
+	if operatorConfig == nil {
+		return "", "", util.DatasetDefault
+	}
+	exports := operatorConfig.EffectiveExports()
+	for _, export := range exports {
+		if export.Dash0 != nil {
+			dmEndpoint := util.DeriveDecisionMakerEndpoint(export.Dash0.Endpoint)
+			cpaEndpoint := deriveCpaEndpoint(export.Dash0.ApiEndpoint)
+			dataset := export.Dash0.Dataset
+			if dataset == "" {
+				dataset = util.DatasetDefault
+			}
+			return dmEndpoint, cpaEndpoint, dataset
+		}
+	}
+	return "", "", util.DatasetDefault
+}
+
+// deriveCpaEndpoint derives the control-plane API endpoint from a Dash0 API endpoint.
+// This assumes the input is a Dash0-hosted API endpoint (e.g., https://api.eu-central-1.aws.dash0.com).
+func deriveCpaEndpoint(apiEndpoint string) string {
+	host := strings.TrimPrefix(apiEndpoint, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	host = strings.TrimSuffix(host, "/")
+	if idx := strings.Index(host, "dash0"); idx > 0 {
+		return "https://control-plane-api." + host[idx:]
+	}
+	return apiEndpoint
 }
