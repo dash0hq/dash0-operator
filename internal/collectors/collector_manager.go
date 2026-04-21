@@ -250,10 +250,6 @@ func (m *CollectorManager) findIntelligentEdgeResource(
 		logger,
 	)
 	if err != nil {
-		if meta.IsNoMatchError(err) {
-			// The Dash0IntelligentEdge CRD is not installed (IE feature is disabled). This is expected.
-			return nil, nil
-		}
 		return nil, err
 	}
 	if intelligentEdgeResource == nil {

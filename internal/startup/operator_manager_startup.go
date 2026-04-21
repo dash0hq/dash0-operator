@@ -508,7 +508,7 @@ func defineCommandLineArguments() *commandLineArguments {
 	)
 	flag.BoolVar(
 		&cliArgs.featureIntelligentEdgeEnabled,
-		"feature-intelligent-edge-enabled",
+		"dash0-feature-intelligent-edge-enabled",
 		false,
 		"Enable Intelligent Edge features (sampling, RED metrics, barker proxy).",
 	)

@@ -367,24 +367,21 @@ tests:
           value: --operator-configuration-telemetry-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --feature-intelligent-edge-enabled=false
-      - equal:
-          path: spec.template.spec.containers[0].args[5]
           value: --force-use-otel-collector-service-url=true
       - equal:
-          path: spec.template.spec.containers[0].args[6]
+          path: spec.template.spec.containers[0].args[5]
           value: --gke-autopilot=false
       - equal:
-          path: spec.template.spec.containers[0].args[7]
+          path: spec.template.spec.containers[0].args[6]
           value: --disable-otel-collector-host-ports=true
       - equal:
-          path: spec.template.spec.containers[0].args[8]
+          path: spec.template.spec.containers[0].args[7]
           value: --instrumentation-delay-after-each-workload-millis=13
       - equal:
-          path: spec.template.spec.containers[0].args[9]
+          path: spec.template.spec.containers[0].args[8]
           value: --instrumentation-delay-after-each-namespace-millis=123
       - notExists:
-          path: spec.template.spec.containers[0].args[10]
+          path: spec.template.spec.containers[0].args[9]
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: GOMEMLIMIT
@@ -632,13 +629,13 @@ tests:
         instrumentationDelayAfterEachNamespaceMillis: 135
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[8]
+          path: spec.template.spec.containers[0].args[7]
           value: --instrumentation-delay-after-each-workload-millis=2
       - equal:
-          path: spec.template.spec.containers[0].args[9]
+          path: spec.template.spec.containers[0].args[8]
           value: --instrumentation-delay-after-each-namespace-millis=135
       - notExists:
-          path: spec.template.spec.containers[0].args[10]
+          path: spec.template.spec.containers[0].args[9]
 
   - it: should render disableReplicasetInformer from legacy path
     documentSelector:
@@ -985,9 +982,9 @@ tests:
       path: metadata.name
       value: dash0-operator-controller
     asserts:
-      - equal:
-          path: spec.template.spec.containers[0].args[4]
-          value: --feature-intelligent-edge-enabled=false
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-feature-intelligent-edge-enabled=true
       - equal:
           path: spec.template.spec.containers[0].env[8].name
           value: DASH0_COLLECTOR_IMAGE
@@ -1014,7 +1011,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --feature-intelligent-edge-enabled=true
+          value: --dash0-feature-intelligent-edge-enabled=true
       - equal:
           path: spec.template.spec.containers[0].env[8].name
           value: DASH0_COLLECTOR_IMAGE

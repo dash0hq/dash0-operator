@@ -163,7 +163,9 @@ spec:
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
         - --operator-configuration-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
-        - --feature-intelligent-edge-enabled={{ include "dash0-operator.development.intelligentEdge.enabled" . }}
+{{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+        - --dash0-feature-intelligent-edge-enabled=true
+{{- end }}
         - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
         - --disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}

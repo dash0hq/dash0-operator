@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -26,6 +25,9 @@ const (
 	barkerInternalPort = 8012
 
 	barkerAuthTokenEnvVarName = "BARKER_AUTH_TOKEN"
+
+	// barkerUserID is the numeric UID baked into the barker image via `adduser -u 10001` in its Dockerfile.
+	barkerUserID int64 = 10001
 
 	defaultDataset = "default"
 )
@@ -110,6 +112,17 @@ func assembleBarkerDeployment(
 	barkerContainer := corev1.Container{
 		Name:  barkerComponentName,
 		Image: barkerImage,
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(true),
+			RunAsNonRoot:             new(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "grpc",
@@ -145,7 +158,7 @@ func assembleBarkerDeployment(
 			ProbeHandler: corev1.ProbeHandler{
 				GRPC: &corev1.GRPCAction{
 					Port:    barkerGrpcPort,
-					Service: ptr.To("liveness"),
+					Service: new("liveness"),
 				},
 			},
 			InitialDelaySeconds: 5,
@@ -155,7 +168,7 @@ func assembleBarkerDeployment(
 			ProbeHandler: corev1.ProbeHandler{
 				GRPC: &corev1.GRPCAction{
 					Port:    barkerGrpcPort,
-					Service: ptr.To("readiness"),
+					Service: new("readiness"),
 				},
 			},
 			InitialDelaySeconds: 5,
@@ -191,7 +204,14 @@ func assembleBarkerDeployment(
 				Labels: barkerLabels(),
 			},
 			Spec: corev1.PodSpec{
-				AutomountServiceAccountToken: ptr.To(false),
+				AutomountServiceAccountToken: new(false),
+				SecurityContext: &corev1.PodSecurityContext{
+					RunAsNonRoot: new(true),
+					RunAsUser:    new(barkerUserID),
+					SeccompProfile: &corev1.SeccompProfile{
+						Type: corev1.SeccompProfileTypeRuntimeDefault,
+					},
+				},
 				Containers: []corev1.Container{
 					barkerContainer,
 				},

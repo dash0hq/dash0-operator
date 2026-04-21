@@ -67,9 +67,7 @@ func (r *IntelligentEdgeReconciler) Reconcile(
 		return ctrl.Result{}, err
 	} else if checkResourceResult.ResourceDoesNotExist {
 		// IE resource has been deleted: remove barker & reconcile the collector.
-		hasBeenReconciled, reconcileErr := r.intelligentEdgeManager.ReconcileIntelligentEdge(
-			ctx, nil, TriggeredByWatchEvent,
-		)
+		hasBeenReconciled, reconcileErr := r.intelligentEdgeManager.ReconcileIntelligentEdge(ctx, nil)
 		if reconcileErr != nil {
 			logger.Error(reconcileErr, "failed to reconcile intelligent edge deletion")
 			return reconcile.Result{}, reconcileErr
@@ -99,9 +97,7 @@ func (r *IntelligentEdgeReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
-	hasBeenReconciled, err := r.intelligentEdgeManager.ReconcileIntelligentEdge(
-		ctx, intelligentEdgeResource, TriggeredByWatchEvent,
-	)
+	hasBeenReconciled, err := r.intelligentEdgeManager.ReconcileIntelligentEdge(ctx, intelligentEdgeResource)
 	if err != nil {
 		intelligentEdgeResource.EnsureResourceIsMarkedAsDegraded(
 			"ReconcileFailed",

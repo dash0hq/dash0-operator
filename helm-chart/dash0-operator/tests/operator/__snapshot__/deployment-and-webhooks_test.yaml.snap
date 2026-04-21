@@ -49,7 +49,6 @@ deployment should match snapshot (default values):
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
                 - --operator-configuration-telemetry-collection-enabled=true
-                - --feature-intelligent-edge-enabled=false
                 - --force-use-otel-collector-service-url=false
                 - --gke-autopilot=false
                 - --disable-otel-collector-host-ports=false
@@ -211,7 +210,6 @@ deployment should match snapshot when using cert-manager:
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
                 - --operator-configuration-telemetry-collection-enabled=true
-                - --feature-intelligent-edge-enabled=false
                 - --force-use-otel-collector-service-url=false
                 - --gke-autopilot=false
                 - --disable-otel-collector-host-ports=false

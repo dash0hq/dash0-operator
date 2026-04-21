@@ -15,13 +15,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
-type IntelligentEdgeReconcileTrigger string
-
-const (
-	TriggeredByWatchEvent             IntelligentEdgeReconcileTrigger = "watch"
-	TriggeredByDash0ResourceReconcile IntelligentEdgeReconcileTrigger = "resource"
-)
-
 type IntelligentEdgeManager struct {
 	client.Client
 	resourceManager  *ieresources.IntelligentEdgeResourceManager
@@ -41,10 +34,9 @@ func NewIntelligentEdgeManager(
 func (m *IntelligentEdgeManager) ReconcileIntelligentEdge(
 	ctx context.Context,
 	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
-	trigger IntelligentEdgeReconcileTrigger,
 ) (bool, error) {
 	logger := logd.FromContext(ctx)
-	logger.Info("Reconciling intelligent edge.", "trigger", trigger)
+	logger.Info("Reconciling intelligent edge.")
 
 	if !m.updateInProgress.CompareAndSwap(false, true) {
 		logger.Info("Reconciliation of intelligent edge resources is already in progress, skipping.")

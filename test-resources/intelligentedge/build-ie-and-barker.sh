@@ -18,7 +18,13 @@ if [[ -z "${DASH0_REPO_ROOT:-}" ]]; then
 fi
 COLLECTOR_DIR="$DASH0_REPO_ROOT/components/collector"
 BARKER_DIR="$DASH0_REPO_ROOT/components/barker"
-ARCH="${ARCH:-amd64}"
+if [[ -z "${ARCH:-}" ]]; then
+  case "$(uname -m)" in
+    x86_64|amd64) ARCH=amd64 ;;
+    arm64|aarch64) ARCH=arm64 ;;
+    *) echo "Error: unsupported host architecture '$(uname -m)'. Set ARCH=amd64 or ARCH=arm64." >&2; exit 1 ;;
+  esac
+fi
 REVISION="$(git -C "$DASH0_REPO_ROOT" rev-list -1 HEAD)"
 VERSION="${VERSION:-0.0.1}"
 
@@ -40,7 +46,7 @@ go tool go.opentelemetry.io/collector/cmd/builder \
   --output-path dist_operator_intelligent_edge_collector
 rm -f "$RESOLVED_CONFIG"
 cd dist_operator_intelligent_edge_collector
-GOWORK=off CGO_ENABLED=0 GOEXPERIMENT=newinliner go build -trimpath \
+GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH="${ARCH}" GOEXPERIMENT=newinliner go build -trimpath \
   -o "../bin/operator-intelligent-edge-collector_linux_${ARCH}" \
   -ldflags="$LDFLAGS_IEC" .
 
@@ -54,21 +60,21 @@ echo "==> Building operator-intelligent-edge-collector Docker image"
 cd "$COLLECTOR_DIR"
 cp -f "bin/operator-intelligent-edge-collector_linux_${ARCH}" "operator-intelligent-edge-collector_${ARCH}"
 cp -f "$SCRIPT_DIR/entrypoint-operator-intelligent-edge.sh" entrypoint-operator-intelligent-edge.sh
-docker build --build-arg "TARGETARCH=${ARCH}" -t intelligent-edge-collector:latest \
+docker build --platform "linux/${ARCH}" --build-arg "TARGETARCH=${ARCH}" -t intelligent-edge-collector:latest \
   -f "$SCRIPT_DIR/Dockerfile.operator-intelligent-edge" .
 rm -f "operator-intelligent-edge-collector_${ARCH}" entrypoint-operator-intelligent-edge.sh
 
 echo "==> Building barker Docker image"
 cd "$BARKER_DIR"
 cp -f "bin/dash0-barker_linux_${ARCH}" "dash0-barker_${ARCH}"
-docker build --platform "linux/${ARCH}" --build-arg "TARGETARCH=${ARCH}" -t dash0-barker:latest .
+docker build --platform "linux/${ARCH}" --build-arg "TARGETARCH=${ARCH}" -t barker:latest .
 rm -f "dash0-barker_${ARCH}"
 
 if [[ -n "${IMAGE_REPOSITORY_PREFIX:-}" ]]; then
   PREFIX="${IMAGE_REPOSITORY_PREFIX%/}"
   echo "==> Tagging images with prefix: $PREFIX"
   docker tag intelligent-edge-collector:latest "${PREFIX}/intelligent-edge-collector:latest"
-  docker tag dash0-barker:latest "${PREFIX}/barker:latest"
+  docker tag barker:latest "${PREFIX}/barker:latest"
 fi
 
 if [[ "$PUSH" == true ]]; then
@@ -83,7 +89,7 @@ fi
 
 echo "==> Done. Images:"
 docker image inspect --format '{{.ID}}  {{.Size}}' intelligent-edge-collector:latest | xargs -I{} echo "  intelligent-edge-collector:latest  {}"
-docker image inspect --format '{{.ID}}  {{.Size}}' dash0-barker:latest | xargs -I{} echo "  dash0-barker:latest  {}"
+docker image inspect --format '{{.ID}}  {{.Size}}' barker:latest | xargs -I{} echo "  barker:latest  {}"
 if [[ -n "${PREFIX:-}" ]]; then
   echo "  ${PREFIX}/intelligent-edge-collector:latest"
   echo "  ${PREFIX}/barker:latest"
