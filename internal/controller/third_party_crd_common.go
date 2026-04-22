@@ -390,7 +390,7 @@ func filterValidApiConfigs(apiConfigs []ApiConfig, logger logd.Logger, configCon
 	var validConfigs []ApiConfig
 	for idx, apiConfig := range apiConfigs {
 		if apiConfig.Endpoint == "" || apiConfig.Token == "" {
-			logger.Info(
+			logger.Warn(
 				fmt.Sprintf(
 					"API config #%d in %s has a missing endpoint or token (endpoint: %q, token present: %v). "+
 						"This config will be skipped.",

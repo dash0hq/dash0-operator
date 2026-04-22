@@ -7,13 +7,17 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
+	"go.uber.org/zap"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// Logger is a thin wrapper around logr.Logger that adds a Debug method using V(1), which maps to zapcore.DebugLevel
-// (-1) via the zapr bridge (logr V level n maps to zap level -n). Debug messages are only visible when the operator
-// runs in development mode, where the zap logger is configured at debug level (-1).
-// In production mode, the zap logger is configured at info level (0), so V(1) messages are filtered out.
+// Logger is a thin wrapper around logr.Logger that adds
+//   - a Debug method using V(1), which maps to zapcore.DebugLevel (-1) via the zapr bridge
+//     (logr V level n maps to zap level -n).
+//   - a Warn method to log warnings
+//
+// In production mode, the zap logger is configured at info level (0), so Debug messages are filtered out.
 type Logger struct {
 	logr.Logger
 }
@@ -31,6 +35,21 @@ func FromContext(ctx context.Context) Logger {
 // Debug logs a message at V(1) level (zapcore.DebugLevel).
 func (l Logger) Debug(msg string, keysAndValues ...any) {
 	l.Logger.WithCallDepth(1).V(1).Info(msg, keysAndValues...)
+}
+
+// Warn logs a message at zapcore.WarnLevel by accessing the underlying *zap.Logger via zapr.Underlier.
+// Falls back to Info level if the sink does not implement zapr.Underlier (e.g. in tests).
+func (l Logger) Warn(msg string, keysAndValues ...any) {
+	if underlier, ok := l.GetSink().(zapr.Underlier); ok {
+		underlier.GetUnderlying().WithOptions(zap.AddCallerSkip(1)).Sugar().Warnw(msg, keysAndValues...)
+		return
+	}
+	l.Logger.WithCallDepth(1).Info(msg, keysAndValues...)
+}
+
+// ErrorAsWarn logs an error at level at zapcore.WarnLevel.
+func (l Logger) ErrorAsWarn(err error, msg string, keysAndValues ...any) {
+	l.Warn(msg, append([]any{"error", err}, keysAndValues...)...)
 }
 
 // WithValues returns a new Logger with additional key-value pairs.

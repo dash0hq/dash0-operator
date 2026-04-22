@@ -497,7 +497,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		displayRaw = r.addDisplaySectionIfMissing(displayRaw, specOrConfig)
 		display, ok := displayRaw.(map[string]any)
 		if !ok {
-			logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
+			logger.Warn("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
 			return NewResourceToRequestsResultSingleItemValidationIssue(apiConfig, itemName, "spec.display is not a map")
 		}
 		r.setDisplayNameIfMissing(preconditionChecksResult, display)

@@ -453,9 +453,10 @@ operator:
   imagePullSecrets: []
 
   # If set to true, it enables a set of config changes suitable for local development or troubleshooting:
-  # - instructs the logger (Zap) of the operator manager to use a Zap development config (stacktraces on warnings, no
-  #   sampling), otherwise a Zap production config will be used (stacktraces on errors, sampling)
   # - adds a debug exporter (with the default config) to the collectors managed by the operator
+  # - sets the log level to debug
+  # - instructs the logger (Zap) of the operator manager to use a Zap development config (no sampling), otherwise a
+  #   Zap production config will be used (sampling)
   # - adds insecure_skip_verify: true to the kubeletstats receiver config, to enable the receiver to work on Docker
   #   Desktop and similar setups, see helm-chart/dash0-operator/README.md ->
   #   "Notes on Running The Operator on Docker Desktop"

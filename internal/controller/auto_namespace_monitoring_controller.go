@@ -623,7 +623,7 @@ func (w *NamespaceWatcher) ensureNamespaceIsMonitored(
 			logger,
 		)
 	}
-	logger.Info(
+	logger.Warn(
 		"There already is a Dash0Monitoring resource in this namespace that has not been created via auto-namespace "+
 			"monitoring, skipping this namespace.",
 		"namespace",

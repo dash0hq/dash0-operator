@@ -166,7 +166,7 @@ func (h *OperatorPreDeleteHandler) waitForAllDash0MonitoringResourcesToBeFinaliz
 	}
 
 	if timeoutHasOccured {
-		h.logger.Info(
+		h.logger.Warn(
 			fmt.Sprintf("The deletion of all Dash0 monitoring resource(s) across all namespaces has not completed "+
 				"successfully within the timeout of %d seconds. %d of %d resources have been deleted.",
 				int(h.timeout/time.Second),
