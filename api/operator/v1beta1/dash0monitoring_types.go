@@ -259,6 +259,12 @@ type Dash0MonitoringStatus struct {
 	// +kubebuilder:validation:Optional
 	PreviousInstrumentWorkloads InstrumentWorkloads `json:"previousInstrumentWorkloads,omitempty"`
 
+	// The spec.logCollection setting that has been observed in the previous reconcile cycle. Used to detect when log
+	// collection has been toggled, which requires re-instrumenting workloads so that OTEL_LOGS_EXPORTER is
+	// added/removed accordingly.
+	// +kubebuilder:validation:Optional
+	PreviousLogCollection dash0common.LogCollection `json:"previousLogCollection,omitempty"`
+
 	// Shows results of synchronizing Perses dashboard resources in this namespace via the Dash0 API.
 	// +kubebuilder:validation:Optional
 	PersesDashboardSynchronizationResults map[string]dash0common.PersesDashboardSynchronizationResults `json:"persesDashboardSynchronizationResults,omitempty"`
@@ -436,12 +442,22 @@ func (d *Dash0Monitoring) At(list client.ObjectList, index int) dash0operator.Da
 	return &list.(*Dash0MonitoringList).Items[index]
 }
 
-func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInstrumentationConfig {
+func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig(operatorNamespace string) util.NamespaceInstrumentationConfig {
 	return util.NamespaceInstrumentationConfig{
 		InstrumentationLabelSelector:    d.Spec.InstrumentWorkloads.LabelSelector,
 		TraceContextPropagators:         d.Spec.InstrumentWorkloads.TraceContext.Propagators,
 		PreviousTraceContextPropagators: d.Status.PreviousInstrumentWorkloads.TraceContext.Propagators,
+		LogCollectionEnabled:            isLogCollectionEnabledForInstrumentation(d.Namespace, d.Spec.LogCollection.Enabled, operatorNamespace),
+		PreviousLogCollectionEnabled:    isLogCollectionEnabledForInstrumentation(d.Namespace, d.Status.PreviousLogCollection.Enabled, operatorNamespace),
 	}
+}
+
+// isLogCollectionEnabledForInstrumentation mirrors the computation used for the collector's
+// namespacesWithLogCollection list (see internal/collectors/otelcolresources/desired_state.go): log collection is
+// considered enabled for the given namespace iff the monitoring resource's logCollection.enabled is true (default
+// true if unset) and the namespace is not the operator namespace.
+func isLogCollectionEnabledForInstrumentation(namespace string, logCollectionEnabled *bool, operatorNamespace string) bool {
+	return util.ReadBoolPointerWithDefault(logCollectionEnabled, true) && namespace != operatorNamespace
 }
 
 // EffectiveExports returns Exports if set, otherwise wraps the deprecated Export field into a single-element slice.

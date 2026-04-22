@@ -218,7 +218,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 		h,
 		request,
 		gvkLabel,
-		dash0MonitoringResource.GetNamespaceInstrumentationConfig(),
+		dash0MonitoringResource.GetNamespaceInstrumentationConfig(h.ClusterInstrumentationConfig.OperatorNamespace),
 		logger,
 	)
 }

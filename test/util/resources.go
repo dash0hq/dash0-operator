@@ -1025,6 +1025,10 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 			Value: common.ProtocolHttpProtobuf,
 		},
 		{
+			Name:  "OTEL_LOGS_EXPORTER",
+			Value: "none",
+		},
+		{
 			Name:  "LD_PRELOAD",
 			Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 		},

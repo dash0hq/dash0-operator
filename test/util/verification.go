@@ -94,6 +94,9 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 				"OTEL_EXPORTER_OTLP_PROTOCOL": {
 					Value: common.ProtocolHttpProtobuf,
 				},
+				"OTEL_LOGS_EXPORTER": {
+					Value: "none",
+				},
 				"LD_PRELOAD": {
 					Value: "/__otel_auto_instrumentation/injector/libotelinject.so",
 				},

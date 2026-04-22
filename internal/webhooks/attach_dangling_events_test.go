@@ -45,6 +45,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			recorder,
 			util.NewClusterInstrumentationConfig(
 				TestImages,
+				OperatorNamespace,
 				OTelCollectorNodeLocalBaseUrlTest,
 				util.ExtraConfigDefaults,
 				nil,

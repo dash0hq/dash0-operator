@@ -68,6 +68,8 @@ var (
 
 	DefaultNamespaceInstrumentationConfig = util.NamespaceInstrumentationConfig{
 		InstrumentationLabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+		LogCollectionEnabled:         true,
+		PreviousLogCollectionEnabled: true,
 	}
 )
 
@@ -430,6 +432,16 @@ func UpdateInstrumentWorkloadsTraceContextPropagators(
 ) {
 	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 	monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators = traceContextPropagators
+	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+}
+
+func UpdateLogCollectionEnabled(
+	ctx context.Context,
+	k8sClient client.Client,
+	enabled *bool,
+) {
+	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+	monitoringResource.Spec.LogCollection.Enabled = enabled
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }
 

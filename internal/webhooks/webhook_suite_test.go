@@ -127,6 +127,7 @@ var _ = BeforeSuite(func() {
 		manager.GetEventRecorder("dash0-webhook"),
 		util.NewClusterInstrumentationConfig(
 			TestImages,
+			OperatorNamespace,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
 			nil,

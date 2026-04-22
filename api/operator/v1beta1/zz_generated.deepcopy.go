@@ -139,6 +139,7 @@ func (in *Dash0MonitoringStatus) DeepCopyInto(out *Dash0MonitoringStatus) {
 		}
 	}
 	in.PreviousInstrumentWorkloads.DeepCopyInto(&out.PreviousInstrumentWorkloads)
+	in.PreviousLogCollection.DeepCopyInto(&out.PreviousLogCollection)
 	if in.PersesDashboardSynchronizationResults != nil {
 		in, out := &in.PersesDashboardSynchronizationResults, &out.PersesDashboardSynchronizationResults
 		*out = make(map[string]common.PersesDashboardSynchronizationResults, len(*in))

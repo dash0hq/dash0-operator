@@ -56,6 +56,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			recorder,
 			util.NewClusterInstrumentationConfig(
 				TestImages,
+				OperatorNamespace,
 				OTelCollectorNodeLocalBaseUrlTest,
 				util.ExtraConfigDefaults,
 				nil,
@@ -796,6 +797,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				recorder,
 				util.NewClusterInstrumentationConfig(
 					TestImages,
+					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,

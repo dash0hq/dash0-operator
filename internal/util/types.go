@@ -121,6 +121,7 @@ func getImageVersion(image string) string {
 // cluster, e.g. settings from the helm chart or the operator configuration resource.
 type ClusterInstrumentationConfig struct {
 	Images
+	OperatorNamespace               string
 	OTelCollectorBaseUrl            string
 	ExtraConfig                     atomic.Pointer[ExtraConfig]
 	InstrumentationDelays           *DelayConfig
@@ -130,6 +131,7 @@ type ClusterInstrumentationConfig struct {
 
 func NewClusterInstrumentationConfig(
 	images Images,
+	operatorNamespace string,
 	oTelCollectorBaseUrl string,
 	extraConfig ExtraConfig,
 	instrumentationDelays *DelayConfig,
@@ -138,6 +140,7 @@ func NewClusterInstrumentationConfig(
 ) *ClusterInstrumentationConfig {
 	c := &ClusterInstrumentationConfig{
 		Images:                          images,
+		OperatorNamespace:               operatorNamespace,
 		OTelCollectorBaseUrl:            oTelCollectorBaseUrl,
 		InstrumentationDelays:           instrumentationDelays,
 		InstrumentationDebug:            instrumentationDebug,
@@ -164,6 +167,14 @@ type NamespaceInstrumentationConfig struct {
 	InstrumentationLabelSelector    string
 	TraceContextPropagators         *string
 	PreviousTraceContextPropagators *string
+	// LogCollectionEnabled is true if the operator collects pod logs from this namespace via the collector's filelog
+	// receiver. When true, the workload modifier sets OTEL_LOGS_EXPORTER=none on instrumented containers to prevent
+	// the workload's own OTel SDK from also exporting logs via OTLP (which would result in duplicates).
+	LogCollectionEnabled bool
+	// PreviousLogCollectionEnabled reflects the LogCollectionEnabled value at the time of the previous reconcile. Used
+	// during uninstrumentation / re-instrumentation to decide whether to remove a previously set OTEL_LOGS_EXPORTER
+	// env var.
+	PreviousLogCollectionEnabled bool
 }
 
 type ModificationMode string
