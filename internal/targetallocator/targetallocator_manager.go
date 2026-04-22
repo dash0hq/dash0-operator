@@ -145,7 +145,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 		err = m.removeTargetAllocator(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else if !hasPrometheusScrapingEnabledForAtLeastOneNamespace {
-		logger.Info(
+		logger.Warn(
 			fmt.Sprintf("Support for Prometheus CRDs has been enabled explicitly via the operator configuration "+
 				"resource (\"%s\"), property prometheusCrdSupport.enabled=true, but not a single namespace has "+
 				"`prometheusScraping.enabled` via the Dash0Monitoring resource. No Dash0 OpenTelemetry target-allocator "+

@@ -760,7 +760,7 @@ func intelligentEdgeConfigFromResource(
 		apiEndpoint = resource.Spec.ControlPlaneApiEndpoint
 	}
 	if !hasDash0Export {
-		logger.Info("Warning: No Dash0 export is configured in the operator configuration resource. The " +
+		logger.Warn("No Dash0 export is configured in the operator configuration resource. The " +
 			"sampling processor and barker will not have an authorization token for the Decision Maker. " +
 			"Configure a Dash0 export with an auth token in the operator configuration resource.")
 	}

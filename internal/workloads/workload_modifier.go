@@ -892,7 +892,7 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 	//   an OTel SDK is set up manually in the workload's code.
 	// * It will also break for OTel SDKs that only support the GRPC exporter, but not HTTP (Python & nginx for
 	//   example).
-	perContainerLogger.Info(otelExporterOtlpNoOverwriteMsg)
+	perContainerLogger.Warn(otelExporterOtlpNoOverwriteMsg)
 	instrumentationIssues = append(instrumentationIssues, otelExporterOtlpNoOverwriteMsg)
 	return instrumentationIssues
 }
@@ -916,7 +916,7 @@ func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 				"Dash0 cannot prepend anything to the environment variable %s as it is specified via "+
 					"ValueFrom, this container will not be instrumented to send telemetry to Dash0.",
 				envVarLdPreloadName)
-			perContainerLogger.Info(msg)
+			perContainerLogger.Warn(msg)
 			instrumentationIssues = append(instrumentationIssues, msg)
 			return instrumentationIssues
 		}

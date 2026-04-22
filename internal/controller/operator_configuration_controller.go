@@ -274,7 +274,7 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 	logger logd.Logger,
 ) {
 	if !operatorConfigurationResource.HasDash0ApiAccessConfigured() {
-		logger.Info(
+		logger.Warn(
 			"The API endpoint setting required for managing dashboards, check rules, synthetic checks and	 " +
 				"views via the operator is missing or has been removed, the operator will not update these resources " +
 				"in Dash0.",
@@ -318,7 +318,7 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 	}
 
 	if len(apiConfigs) == 0 {
-		logger.Info(
+		logger.Warn(
 			"None of the configured exports have valid API access settings. " +
 				"The operator will not update dashboards, check rules, synthetic checks or views in Dash0.",
 		)

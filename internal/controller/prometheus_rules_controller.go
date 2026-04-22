@@ -828,7 +828,7 @@ func convertRuleToCheckRule(
 		return nil, nil, false
 	}
 	if rule.Alert == "" {
-		logger.Info(
+		logger.Warn(
 			fmt.Sprintf(
 				"Found invalid rule in group %s which has neither a record nor an alert attribute.", groupName,
 			),
