@@ -33,7 +33,6 @@ const (
 var (
 	clusterInstrumentationConfig = util.NewClusterInstrumentationConfig(
 		TestImages,
-		OperatorNamespace,
 		OTelCollectorNodeLocalBaseUrlTest,
 		util.ExtraConfigDefaults,
 		nil,
@@ -89,7 +88,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				NewResourceModifier(
 					util.NewClusterInstrumentationConfig(
 						TestImages,
-						OperatorNamespace,
 						OTelCollectorServiceBaseUrlTest,
 						util.ExtraConfigDefaults,
 						nil,
@@ -2519,7 +2517,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
-					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,
@@ -2538,7 +2535,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
-					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,
@@ -2557,7 +2553,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
-					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,
@@ -2576,7 +2571,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
-					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,
@@ -2599,7 +2593,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
-					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,
@@ -2622,7 +2615,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
-					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,
@@ -2637,7 +2629,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf if the env var does not exist", pythonAutoInstrumenationTest{
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
-					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,
@@ -2656,7 +2647,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
-					OperatorNamespace,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					nil,

@@ -1154,7 +1154,6 @@ func startDash0Controllers(
 
 	clusterInstrumentationConfig := util.NewClusterInstrumentationConfig(
 		images,
-		envVars.operatorNamespace,
 		oTelCollectorBaseUrl,
 		extraConfig,
 		cliArgs.instrumentationDelays,

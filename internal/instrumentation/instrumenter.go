@@ -221,12 +221,12 @@ func (i *Instrumenter) instrumentAllWorkloads(
 ) error {
 	namespace := dash0MonitoringResource.Namespace
 
-	errCronJobs := i.findAndInstrumentCronJobs(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errDaemonSets := i.findAndInstrumentyDaemonSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errDeployments := i.findAndInstrumentDeployments(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errJobs := i.findAndAddLabelsToImmutableJobsOnInstrumentation(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errReplicaSets := i.findAndInstrumentReplicaSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errStatefulSets := i.findAndInstrumentStatefulSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
+	errCronJobs := i.findAndInstrumentCronJobs(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errDaemonSets := i.findAndInstrumentyDaemonSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errDeployments := i.findAndInstrumentDeployments(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errJobs := i.findAndAddLabelsToImmutableJobsOnInstrumentation(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errReplicaSets := i.findAndInstrumentReplicaSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errStatefulSets := i.findAndInstrumentStatefulSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
 	combinedErrors := errors.Join(
 		errCronJobs,
 		errDaemonSets,
@@ -763,12 +763,12 @@ func (i *Instrumenter) uninstrumentAllWorkloads(
 ) error {
 	namespace := dash0MonitoringResource.Namespace
 
-	errCronJobs := i.findAndUninstrumentCronJobs(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errDaemonSets := i.findAndUninstrumentDaemonSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errDeployments := i.findAndUninstrumentDeployments(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errJobs := i.findAndHandleJobOnUninstrumentation(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errReplicaSets := i.findAndUninstrumentReplicaSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
-	errStatefulSets := i.findAndUninstrumentStatefulSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(i.ClusterInstrumentationConfig.OperatorNamespace), logger)
+	errCronJobs := i.findAndUninstrumentCronJobs(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errDaemonSets := i.findAndUninstrumentDaemonSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errDeployments := i.findAndUninstrumentDeployments(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errJobs := i.findAndHandleJobOnUninstrumentation(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errReplicaSets := i.findAndUninstrumentReplicaSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errStatefulSets := i.findAndUninstrumentStatefulSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
 	combinedErrors := errors.Join(
 		errCronJobs,
 		errDaemonSets,

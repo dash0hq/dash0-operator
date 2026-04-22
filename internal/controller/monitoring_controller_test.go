@@ -81,7 +81,6 @@ var _ = Describe(
 					recorder,
 					util.NewClusterInstrumentationConfig(
 						TestImages,
-						OperatorNamespace,
 						OTelCollectorNodeLocalBaseUrlTest,
 						util.ExtraConfigDefaults,
 						nil,

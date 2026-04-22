@@ -442,22 +442,14 @@ func (d *Dash0Monitoring) At(list client.ObjectList, index int) dash0operator.Da
 	return &list.(*Dash0MonitoringList).Items[index]
 }
 
-func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig(operatorNamespace string) util.NamespaceInstrumentationConfig {
+func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInstrumentationConfig {
 	return util.NamespaceInstrumentationConfig{
 		InstrumentationLabelSelector:    d.Spec.InstrumentWorkloads.LabelSelector,
 		TraceContextPropagators:         d.Spec.InstrumentWorkloads.TraceContext.Propagators,
 		PreviousTraceContextPropagators: d.Status.PreviousInstrumentWorkloads.TraceContext.Propagators,
-		LogCollectionEnabled:            isLogCollectionEnabledForInstrumentation(d.Namespace, d.Spec.LogCollection.Enabled, operatorNamespace),
-		PreviousLogCollectionEnabled:    isLogCollectionEnabledForInstrumentation(d.Namespace, d.Status.PreviousLogCollection.Enabled, operatorNamespace),
+		LogCollectionEnabled:            util.ReadBoolPointerWithDefault(d.Spec.LogCollection.Enabled, true),
+		PreviousLogCollectionEnabled:    util.ReadBoolPointerWithDefault(d.Status.PreviousLogCollection.Enabled, true),
 	}
-}
-
-// isLogCollectionEnabledForInstrumentation mirrors the computation used for the collector's
-// namespacesWithLogCollection list (see internal/collectors/otelcolresources/desired_state.go): log collection is
-// considered enabled for the given namespace iff the monitoring resource's logCollection.enabled is true (default
-// true if unset) and the namespace is not the operator namespace.
-func isLogCollectionEnabledForInstrumentation(namespace string, logCollectionEnabled *bool, operatorNamespace string) bool {
-	return util.ReadBoolPointerWithDefault(logCollectionEnabled, true) && namespace != operatorNamespace
 }
 
 // EffectiveExports returns Exports if set, otherwise wraps the deprecated Export field into a single-element slice.
