@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	dash0 "github.com/dash0hq/dash0-api-client-go"
+	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	"github.com/go-logr/zapr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -193,10 +193,10 @@ var (
 	extraConfig                     util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
-	httpClient = dash0.NewTransport(
-		dash0.WithTransportMaxRetries(2),
-		dash0.WithTransportRetryWaitMin(1*time.Second),
-		dash0.WithTransportRetryWaitMax(3*time.Second),
+	httpClient = dash0apiclient.NewTransport(
+		dash0apiclient.WithTransportMaxRetries(2),
+		dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
+		dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
 	).HTTPClient()
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
@@ -235,7 +235,11 @@ func Start() {
 	pprofPort := os.Getenv(pprofPortEnvVarName)
 	if pprofPort != "" {
 		go func() {
-			setupLog.Info("starting pprof server", "port", pprofPort)
+			setupLog.Warn(
+				"starting pprof server (do not use in production unless instructed by Dash0 support to do so)",
+				"port",
+				pprofPort,
+			)
 			if err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil); err != nil {
 				if errors.Is(err, http.ErrServerClosed) {
 					setupLog.Info("pprof server has been closed")
@@ -762,7 +766,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	if isSet {
 		converted, err := strconv.Atoi(sendBatchSizeRaw)
 		if err != nil {
-			logger.Error(err, fmt.Sprintf("Ignoring invalid value for %s: %s", sendBatchSizeEnvVarName, sendBatchSizeRaw))
+			logger.ErrorAsWarn(err, fmt.Sprintf("Ignoring invalid value for %s: %s", sendBatchSizeEnvVarName, sendBatchSizeRaw))
 		} else {
 			sendBatchSize = ptr.To(uint32(converted))
 		}
@@ -773,7 +777,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	if isSet {
 		converted, err := strconv.Atoi(sendBatchMaxSizeRaw)
 		if err != nil {
-			logger.Error(err, fmt.Sprintf("Ignoring invalid value for %s: %s", sendBatchMaxSizeEnvVarName, sendBatchMaxSizeRaw))
+			logger.ErrorAsWarn(err, fmt.Sprintf("Ignoring invalid value for %s: %s", sendBatchMaxSizeEnvVarName, sendBatchMaxSizeRaw))
 		} else {
 			sendBatchMaxSize = ptr.To(uint32(converted))
 		}
@@ -852,7 +856,7 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 			pullPolicyRaw == string(corev1.PullNever) {
 			return corev1.PullPolicy(pullPolicyRaw)
 		} else {
-			setupLog.Info(
+			setupLog.Warn(
 				fmt.Sprintf(
 					"Ignoring unknown pull policy setting (%s): %s.", envVarName, pullPolicyRaw,
 				),
@@ -1250,8 +1254,8 @@ func startDash0Controllers(
 				return fmt.Errorf("unable to set up the collector reconciler: %w", err)
 			}
 		} else {
-			setupLog.Info(
-				"Warning: The setting operator.disableCollectorResourceWatches is true, collector resources will not be " +
+			setupLog.Warn(
+				"The setting operator.disableCollectorResourceWatches is true, collector resources will not be " +
 					"watched. This setting is intended for troubleshooting the OpenTelemetry collector setup.",
 			)
 		}

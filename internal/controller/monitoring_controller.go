@@ -245,7 +245,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 		} else if requiredAction == util.ModificationModeUninstrumentation {
 			if err = r.instrumenter.UninstrumentWorkloadsIfAvailable(ctx, monitoringResource, logger); err != nil {
-				logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
+				logger.ErrorAsWarn(err, "Failed to uninstrument workloads, requeuing reconcile request.")
 				return ctrl.Result{}, err
 			}
 		}
@@ -293,7 +293,7 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 				logger,
 			)
 			if err != nil || token == nil {
-				logger.Info(
+				logger.Warn(
 					fmt.Sprintf(
 						"Could not retrieve token for export #%d (endpoint: %s) in namespace %s. "+
 							"This export will be skipped, but other exports will continue to be processed.",
@@ -573,10 +573,9 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 		)
 
 		if retryErr != nil {
-			logger.Error(
-				retryErr, fmt.Sprintf(
-					"Could not attach all dangling events after %d retries.", backoff.Steps,
-				),
+			logger.ErrorAsWarn(
+				retryErr,
+				fmt.Sprintf("Could not attach all dangling events after %d retries.", backoff.Steps),
 			)
 		}
 	}

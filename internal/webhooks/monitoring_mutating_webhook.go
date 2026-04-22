@@ -63,7 +63,7 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 
 	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
-		logger.Info("rejecting invalid monitoring resource", "error", err)
+		logger.Warn("rejecting invalid monitoring resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
@@ -310,7 +310,7 @@ func normalizeTransformGroupsForOneSignal(
 					em := dash0common.FilterTransformErrorMode(errorMode)
 					normalizedGroup.ErrorMode = &em
 				} else {
-					logger.Error(
+					logger.ErrorAsWarn(
 						err,
 						fmt.Sprintf(
 							"ignoring invalid error mode %v for spec.transform.%s[%d]: ",

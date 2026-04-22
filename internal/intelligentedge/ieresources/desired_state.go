@@ -61,7 +61,7 @@ func assembleDesiredState(
 		util.ReadBoolPointerWithDefault(intelligentEdgeResource.Spec.Barker.Enabled, true)
 
 	if barkerEnabled && barkerImage == "" {
-		logger.Info("Warning: Barker is enabled but no barker image is configured. The barker proxy will not be deployed.")
+		logger.Warn("Barker is enabled but no barker image is configured. The barker proxy will not be deployed.")
 		barkerEnabled = false
 	}
 
@@ -107,7 +107,7 @@ func assembleBarkerDeployment(
 		dmEndpoint = intelligentEdgeResource.Spec.Sampling.DecisionMakerEndpoint
 	}
 	if dmEndpoint == "" {
-		logger.Info("Warning: No Decision Maker endpoint could be derived for the barker proxy. The barker " +
+		logger.Warn("No Decision Maker endpoint could be derived for the barker proxy. The barker " +
 			"will not be able to forward sampling decisions to the Decision Maker.")
 	}
 	authTokenEnvVar := assembleAuthTokenEnvVar(authorization, logger)
@@ -263,7 +263,7 @@ func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
 
 func assembleAuthTokenEnvVar(authorization *dash0common.Authorization, logger logd.Logger) corev1.EnvVar {
 	if authorization == nil {
-		logger.Info("Warning: No Dash0 authorization configured. The barker proxy will not be able to " +
+		logger.Warn("No Dash0 authorization configured. The barker proxy will not be able to " +
 			"authenticate with the Decision Maker.")
 		return corev1.EnvVar{
 			Name:  barkerAuthTokenEnvVarName,

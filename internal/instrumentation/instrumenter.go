@@ -207,7 +207,7 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 
 	logger.Info("Now instrumenting existing workloads in namespace so they send telemetry to Dash0.")
 	if err := i.instrumentAllWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
-		logger.Error(err, "Instrumenting existing workloads failed.")
+		logger.ErrorAsWarn(err, "Instrumenting existing workloads failed.")
 		return err
 	}
 
@@ -688,7 +688,7 @@ func (i *Instrumenter) postProcessInstrumentation(
 		if errors.As(retryErr, e) {
 			logger.Info(e.Error())
 		} else {
-			logger.Error(retryErr, "Dash0 instrumentation by controller has not been successful.")
+			logger.ErrorAsWarn(retryErr, "Dash0 instrumentation by controller has not been successful.")
 		}
 		util.QueueFailedInstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
@@ -750,7 +750,7 @@ func (i *Instrumenter) UninstrumentWorkloadsIfAvailable(
 	if dash0MonitoringResource.IsAvailable() {
 		logger.Info("Reverting Dash0's modifications to workloads that have been instrumented to make them send telemetry to Dash0.")
 		if err := i.uninstrumentAllWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
-			logger.Error(err, "Uninstrumenting existing workloads failed.")
+			logger.ErrorAsWarn(err, "Uninstrumenting existing workloads failed.")
 			return err
 		}
 	} else {
@@ -1161,7 +1161,7 @@ func (i *Instrumenter) postProcessUninstrumentation(
 		if errors.As(retryErr, e) {
 			logger.Info(e.Error())
 		} else {
-			logger.Error(retryErr, "Dash0's removal of instrumentation by controller has not been successful.")
+			logger.ErrorAsWarn(retryErr, "Dash0's removal of instrumentation by controller has not been successful.")
 		}
 		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
@@ -1234,7 +1234,7 @@ func (i *Instrumenter) restartPodsOfReplicaSet(
 	logger.Debug(fmt.Sprintf("found %d pod(s) to restart for replica set %s/%s", len(podsOfReplicaSet), replicaSet.Namespace, replicaSet.Name))
 	for _, pod := range podsOfReplicaSet {
 		if err := i.Delete(ctx, &pod); err != nil {
-			logger.Info(
+			logger.Warn(
 				fmt.Sprintf(
 					"Failed to restart pod owned by the replica "+
 						"set %s/%s (%s), this pod will not be restarted automatically.",
