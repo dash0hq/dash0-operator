@@ -19,10 +19,11 @@ type dash0ApiResourceValues struct {
 }
 
 const (
-	syntheticCheckName  = "synthetic-check-e2e-test"
-	viewName            = "view-e2e-test"
-	persesDashboardName = "perses-dashboard-e2e-test"
-	prometheusRuleName  = "prometheus-rules-e2e-test"
+	syntheticCheckName      = "synthetic-check-e2e-test"
+	viewName                = "view-e2e-test"
+	persesDashboardName     = "perses-dashboard-e2e-test"
+	prometheusRuleName      = "prometheus-rules-e2e-test"
+	notificationChannelName = "notification-channel-e2e-test"
 )
 
 var (
@@ -41,6 +42,10 @@ var (
 	//go:embed prometheusrule.yaml.template
 	prometheusRuleSource   string
 	prometheusRuleTemplate *template.Template
+
+	//go:embed dash0notificationchannel.yaml.template
+	notificationChannelSource   string
+	notificationChannelTemplate *template.Template
 )
 
 func deployThirdPartyCrds(cleanupSteps *neccessaryCleanupSteps) {
@@ -313,9 +318,68 @@ func removePrometheusRuleResource(namespace string) {
 	))
 }
 
+func renderNotificationChannelTemplate(values dash0ApiResourceValues) string {
+	notificationChannelTemplate = initTemplateOnce(
+		notificationChannelTemplate,
+		notificationChannelSource,
+		"dash0notificationchannel",
+	)
+	return renderResourceTemplate(notificationChannelTemplate, values, "dash0notificationchannel")
+}
+
+func deployNotificationChannelResource(
+	namespace string,
+	values dash0ApiResourceValues,
+) {
+	renderedResourceFileName := renderNotificationChannelTemplate(values)
+	defer func() {
+		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
+	}()
+
+	By(fmt.Sprintf(
+		"deploying a Dash0NotificationChannel resource to namespace %s with values %v", namespace, values))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"apply",
+		"-n",
+		namespace,
+		"-f",
+		renderedResourceFileName,
+	))).To(Succeed())
+}
+
+func setOptOutLabelInNotificationChannel(namespace string, value string) {
+	By(fmt.Sprintf("setting the opt-out label in the notification channel with value %s", value))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"-n",
+			namespace,
+			"--overwrite",
+			"Dash0NotificationChannel",
+			notificationChannelName,
+			fmt.Sprintf("dash0.com/enable=%s", value),
+		)),
+	).To(Succeed())
+}
+
+func removeNotificationChannelResource(namespace string) {
+	_ = runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"delete",
+		"--ignore-not-found",
+		"-n",
+		namespace,
+		"Dash0NotificationChannel",
+		notificationChannelName,
+	))
+}
+
 func removeDash0ApiSyncResources(namespace string) {
 	removeSyntheticCheckResource(namespace)
 	removePersesDashboardResource(namespace)
 	removePrometheusRuleResource(namespace)
 	removeViewResource(namespace)
+	removeNotificationChannelResource(namespace)
 }

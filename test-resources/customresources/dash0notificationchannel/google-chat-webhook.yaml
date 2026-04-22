@@ -1,0 +1,11 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-google-chat-webhook
+spec:
+  display:
+    name: Google Chat Alerts
+  type: google_chat_webhook
+  googleChatWebhookConfig:
+    url: "https://chat.googleapis.com/v1/spaces/XXXXXXXXXX/messages?key=XXXXXXXXXX&token=XXXXXXXXXX"
+  frequency: 10m

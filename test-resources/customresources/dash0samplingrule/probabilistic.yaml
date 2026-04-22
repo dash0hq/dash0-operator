@@ -1,0 +1,13 @@
+# note: this rule will be evaluated locally, no decision maker involved
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SamplingRule
+metadata:
+  name: sample-10-percent
+spec:
+  enabled: true
+  display:
+    name: Sample 10% of all traces
+  conditions:
+    kind: probabilistic
+    spec:
+      rate: "0.1"

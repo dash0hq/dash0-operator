@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+
+FROM alpine:3.23.3
+
+ARG TARGETARCH
+
+COPY --link operator-intelligent-edge-collector_${TARGETARCH} /otelcol
+COPY --link entrypoint-operator-intelligent-edge.sh /entrypoint.sh
+
+USER 65532:65532
+
+EXPOSE 4317 4318 13133
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["--config", "/etc/otelcol/config.yaml"]

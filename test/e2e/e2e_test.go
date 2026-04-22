@@ -82,6 +82,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 		recreateNamespaceWithLabel(applicationUnderTestNamespace, map[string]string{"dash0.com/enable": "\"false\""})
 		cleanupSteps.removeTestApplicationNamespace = true
 
+		determineOperatorHelmChart()
 		determineContainerImages()
 		determineTestAppImages()
 		determineDash0ApiMockImage()
@@ -153,7 +154,8 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				operatorNamespace,
 				operatorHelmChart,
 				operatorHelmChartUrl,
-				images,
+				"",
+				&images,
 				true,
 				map[string]string{
 					"operator.instrumentation.enablePythonAutoInstrumentation": "true",
@@ -660,6 +662,48 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 					removeViewResource(applicationUnderTestNamespace)
 					By("verifying the view has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:dupl
+				It("should synchronize a notification channel to the Dash0 API", func() {
+					deployNotificationChannelResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					// Notification channels are org-level, so the URL has no dataset query parameter.
+					//nolint:lll
+					routeRegex := "/api/notification-channels/dash0-operator_.*_e2e-test-ns_notification-channel-e2e-test"
+
+					By("verifying the notification channel has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("E2E test notification channel"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInNotificationChannel(applicationUnderTestNamespace, "false")
+					//nolint:lll
+					By("verifying the notification channel has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInNotificationChannel(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the notification channel has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("E2E test notification channel"))
+					verifyApiSyncRequest(req)
+
+					removeNotificationChannelResource(applicationUnderTestNamespace)
+					By("verifying the notification channel has been deleted via the Dash0 API (after removing the resource)")
 					req = fetchCapturedApiRequest(3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
@@ -1448,7 +1492,8 @@ trace_statements:
 				operatorNamespace,
 				operatorHelmChart,
 				operatorHelmChartUrl,
-				images,
+				"",
+				&images,
 				nil,
 			)
 		})
@@ -1482,7 +1527,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					// We are verifying that no namespaced metrics are collected later on in this test, but
 					// self-monitoring metrics are namespaced, so we are deliberately disabling self-monitoring for this
 					// test.
@@ -1516,7 +1562,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					nil,
 				)
 				By("create an operator configuration resource with telemetryCollection.enabled=false")
@@ -1569,7 +1616,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					&startup.OperatorConfigurationValues{
 						Endpoint:                   defaultEndpoint,
 						ApiEndpoint:                dash0ApiMockServiceBaseUrl,
@@ -1620,7 +1668,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					true,
 					map[string]string{
 						"operator.certManager.useCertManager": "true",
@@ -1681,7 +1730,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					true,
 					nil,
 				)
@@ -1748,7 +1798,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					true,
 					map[string]string{
 						"operator.collectors.compressConfigMaps": "true",
@@ -1787,58 +1838,52 @@ trace_statements:
 			})
 		})
 
-		Describe("operator startup", func() {
+		Describe("operator upgrade", func() {
 			AfterAll(func() {
 				undeployOperator(operatorNamespace)
 			})
 
-			It("should update instrumentation modifications at startup", func() {
+			// This test initially deploys the most recently published Helm chart (unless that is what this test suite run
+			// tests, then it will install the previous version). Then, in a second step we upgrade the operator with the
+			// chart and image names that are used throughout the whole test suite. That is usually the chart and images built
+			// from local sources, or alternatively the most recently published release. This simulates updating the operator
+			// to a new release.
+			It("should update instrumentations of workloads at startup", func() {
 				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 				By("installing the Node.js deployment")
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
-				// We initially deploy the operator with alternative image tags to simulate the workloads having
-				// been instrumented by outdated images. Then (later) we will redeploy the operator with the actual
-				// image names that are used throughout the whole test suite (defined by environment variables), to
-				// simulate updating the instrumentation.
-				initialAlternativeImages := deriveAlternativeImagesForUpdateTest(images)
-				deployOperatorWithDefaultAutoOperationConfiguration(
-					operatorNamespace,
-					operatorHelmChart,
-					operatorHelmChartUrl,
-					initialAlternativeImages,
-					true,
-					nil,
-				)
+				By("installing the previous operator release")
+				previousChartVersion := deployPreviousOperatorRelease()
+
 				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesDefault,
 					operatorNamespace,
 				)
 
-				By("verifying that the Node.js deployment has been instrumented by the controller")
+				By("verifying that the Node.js deployment has been instrumented by the previous operator release")
 				verifyThatWorkloadHasBeenInstrumented(
 					applicationUnderTestNamespace,
 					runtimeTypeNodeJs,
 					workloadTypeDeployment,
 					testId,
-					initialAlternativeImages,
+					createContainerImagesForHelmChartVersion(previousChartVersion),
 					"controller",
 				)
 
-				// Now update the operator with the actual image names that are used throughout the whole test suite.
+				// Now upgrade the operator.
 				Expect(upgradeOperator(
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					// now we use :latest (or :main-dev or whatever has been provided via env vars) instead of
-					// :e2e-test to trigger an actual change
-					images,
+					"",
+					&images,
 					nil,
 					nil,
 				)).To(Succeed())
 
-				By("verifying that the Node.js deployment's instrumentation settings have been updated by the controller")
+				By("verifying that the Node.js deployment's instrumentation has been updated by the controller")
 				verifyThatWorkloadHasBeenInstrumented(
 					applicationUnderTestNamespace,
 					runtimeTypeNodeJs,
@@ -1858,7 +1903,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					nil,
 				)
 				time.Sleep(10 * time.Second)
@@ -1973,7 +2019,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					nil,
 				)
 				time.Sleep(10 * time.Second)
@@ -2008,7 +2055,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					&startup.OperatorConfigurationValues{
 						Endpoint: testUtil.EndpointDash0Test,
 						// no token, no secret ref
@@ -2092,7 +2140,8 @@ trace_statements:
 						operatorNamespace,
 						operatorHelmChart,
 						operatorHelmChartUrl,
-						images,
+						"",
+						&images,
 						true,
 						nil,
 					)
@@ -2230,7 +2279,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					nil,
 				)
 
@@ -2559,7 +2609,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					&operatorConfigurationValues,
 					map[string]string{
 						"operator.autoMonitorNamespaces.enabled":       "true",
@@ -2604,7 +2655,8 @@ trace_statements:
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					images,
+					"",
+					&images,
 					&operatorConfigurationValues,
 					map[string]string{
 						"operator.autoMonitorNamespaces.enabled":                    "true",
@@ -2639,7 +2691,8 @@ trace_statements:
 				operatorNamespace,
 				operatorHelmChart,
 				operatorHelmChartUrl,
-				images,
+				"",
+				&images,
 				true,
 				map[string]string{
 					"operator.prometheusCrdSupportEnabled": "true",
@@ -2737,7 +2790,8 @@ trace_statements:
 				operatorNamespace,
 				operatorHelmChart,
 				operatorHelmChartUrl,
-				images,
+				"",
+				&images,
 				false,
 				map[string]string{
 					"operator.profilingEnabled": "true",

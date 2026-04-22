@@ -1,0 +1,12 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-incidentio
+spec:
+  display:
+    name: Incident.io Alerts
+  type: incidentio
+  incidentioConfig:
+    url: "https://api.incident.io/v2/alert_events/http/example-source"
+    headers: "Bearer my-incidentio-api-key"
+  frequency: 10m

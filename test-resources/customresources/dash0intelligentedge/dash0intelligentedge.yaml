@@ -1,0 +1,9 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0IntelligentEdge
+metadata:
+  name: dash0-intelligent-edge
+spec:
+  enabled: true
+  barker:
+    logLevel: debug
+    debug: true

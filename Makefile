@@ -185,7 +185,7 @@ build-all-push-all-test-e2e: all-images push-all-images test-e2e ## Builds and p
 # is, `go test ./test/e2e/ -v -ginkgo.v`, but that would require us to manage go test's timeout (via the -timeout
 # flag), and ginkgo's own timeout.
 .PHONY: test-e2e
-test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-images-test-e2e).
+test-e2e: ## Run the end-to-end tests. When testing local code, container images should be built beforehand (or use target build-all-test-e2e).
 ifdef GINKGO_FOCUS
 	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v -focus="$(GINKGO_FOCUS)" .
 else

@@ -982,10 +982,6 @@ helm install \
   dash0-operator/dash0-operator
 ```
 
-The Helm chart will validate whether the referenced secret exists and contains the required key.
-You can disable this check by setting `--set operator.dash0Export.disableSecretValidation=true`.
-This can be useful if you want to render the manifests via the Helm chart without accessing a live Kubernetes cluster.
-
 If you do not want to install the operator configuration resource via `helm install` but instead deploy it manually,
 and use a secret reference for the auth token, the following example YAML file would work with the secret created
 above:
@@ -2561,11 +2557,354 @@ Status:
   Synchronized At:        2025-09-05T11:47:56Z
 ```
 
-Note: If you only want to manage dashboards, check rules, synthetic checks and views via the Dash0 operator, and you do
-not want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator
-configuration resource.
+Note: If you only want to manage dashboards, check rules, synthetic checks, views and notification channels via the
+Dash0 operator, and you do not want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the
+Dash0 operator configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
+
+### Managing Dash0 Notification Channels
+
+You can manage your Dash0 notification channels via the Dash0 operator.
+
+Pre-requisites for this feature:
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have at least one Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+* The operator will only pick up notification channel resources in namespaces that have a Dash0 monitoring resource
+  deployed.
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
+  monitoring resource.
+
+With the prerequisites in place, you can manage Dash0 notification channels via the operator.
+The Dash0 operator will watch for notification channel resources in all namespaces that have a Dash0 monitoring resource
+deployed, and synchronize the notification channel resources with the Dash0 backend:
+* When a new notification channel resource is created, the operator will create a corresponding notification channel via
+  Dash0's API.
+* When a notification channel resource is changed, the operator will update the corresponding notification channel via
+  Dash0's API.
+* When a notification channel resource is deleted, the operator will delete the corresponding notification channel via
+  Dash0's API.
+
+Notification channels are organization-level resources. Unlike synthetic checks or views, they are not scoped to a
+dataset.
+
+The custom resource definition for Dash0 notification channels can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-notification-channels.yaml).
+
+You can opt out of synchronization for individual notification channel resources by adding the Kubernetes label
+`dash0.com/enable: false` to the notification channel resource.
+If this label is added to a notification channel which has previously been synchronized to Dash0, the operator will
+delete the corresponding notification channel in Dash0.
+
+When a notification channel resource has been synchronized to Dash0, the operator will write a summary of that
+synchronization operation to its status.
+The result of the synchronization operation will be written directly to the notification channel resource status (not to
+the Dash0 monitoring resource).
+The status will also show whether any error occurred during synchronization.
+
+```yaml
+Kind: Dash0NotificationChannel
+...
+Status:
+  Synchronization Status: successful
+  Synchronized At:        2025-09-05T11:47:56Z
+```
+
+#### Supported Notification Channel Types
+
+The `type` field in the spec determines which type-specific config field must be set.
+Exactly one config field must be provided, matching the `type`.
+
+##### Slack Webhook
+
+Sends notifications to a Slack channel via an [incoming webhook](https://api.slack.com/messaging/webhooks).
+This is the simplest Slack integration and requires no OAuth flow.
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: slack-alerts
+spec:
+  display:
+    name: Slack Alerts
+  type: slack
+  slackConfig:
+    webhookURL: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+    channel: "#alerts"
+```
+
+##### Slack Bot
+
+Sends notifications using the Dash0 Slack Bot, which is installed into a Slack workspace via OAuth.
+The Slack Bot integration supports richer formatting and centralized channel management compared to the simpler
+Slack Webhook integration. See the [comparison table](#slack-webhook-vs-slack-bot) at the end of this section.
+
+**Prerequisites:**
+* You must have **admin permissions** on the target Slack workspace.
+* You need access to the **Dash0 UI** to initiate the OAuth authorization flow.
+
+**Step 1: Install the Dash0 Slack App.**
+In the Dash0 UI, navigate to **Settings > Notification Channels**, click **Add Notification Channel** and select
+**Slack Bot**. Click **Authorize** to start the OAuth flow. You will be redirected to Slack to authorize the Dash0 bot
+for your workspace. After authorization, Slack grants Dash0 a bot token scoped to your workspace. This is a
+**one-time operation per workspace** -- once authorized, you can create multiple notification channels against different
+Slack channels in that workspace without repeating the OAuth flow. Note the **Team ID** displayed after authorization
+(e.g. `T012345`). You will need it for the `teamId` field.
+
+**Step 2: Invite the bot to target channels.**
+The Dash0 bot must be explicitly added to each Slack channel it will post to.
+In Slack, open the target channel and run `/invite @Dash0`. Repeat this for every channel you want to receive
+notifications in.
+
+**Step 3: Create the notification channel.**
+Once the bot is installed and invited to the target channel, create a `Dash0NotificationChannel` resource:
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: slack-bot-alerts
+spec:
+  display:
+    name: Slack Bot Alerts
+  type: slack_bot
+  slackBotConfig:
+    teamId: "T012345"
+    channel: "#alerts"
+```
+
+You can also create notification channels programmatically using the
+[Dash0 Go client library](https://github.com/dash0hq/dash0-api-client-go):
+
+```go
+var config dash0.NotificationChannelSpec_Config
+config.FromSlackBotConfig(dash0.SlackBotConfig{
+    Channel: "#alerts",
+    TeamId:  "T012345",
+})
+```
+
+**Multiple channels:** A single OAuth installation supports creating multiple notification channels across different
+Slack channels in the same workspace. Create additional `Dash0NotificationChannel` resources with the same `teamId` but
+different `channel` values:
+
+```yaml
+# Channel 1: production alerts
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: slack-bot-prod
+spec:
+  display:
+    name: Production Alerts
+  type: slack_bot
+  slackBotConfig:
+    teamId: "T012345"
+    channel: "#prod-alerts"
+---
+# Channel 2: staging alerts
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: slack-bot-staging
+spec:
+  display:
+    name: Staging Alerts
+  type: slack_bot
+  slackBotConfig:
+    teamId: "T012345"
+    channel: "#staging-alerts"
+```
+
+##### Email
+
+Sends notifications to a list of email recipients.
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: email-alerts
+spec:
+  display:
+    name: Email Alerts
+  type: email_v2
+  emailV2Config:
+    recipients:
+      - oncall@example.com
+      - teamlead@example.com
+    plaintext: false
+```
+
+##### Generic Webhook
+
+Sends notifications to an arbitrary HTTP endpoint.
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: webhook-alerts
+spec:
+  display:
+    name: Webhook Alerts
+  type: webhook
+  webhookConfig:
+    url: "https://example.com/webhook"
+    headers:
+      X-Custom-Header: "my-value"
+    followRedirects: false
+    allowInsecure: false
+```
+
+##### Incident.io
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: incidentio-alerts
+spec:
+  display:
+    name: Incident.io Alerts
+  type: incidentio
+  incidentioConfig:
+    url: "https://api.incident.io/v2/alert_events/http/my-source"
+    headers: "Bearer my-api-token"
+```
+
+##### OpsGenie
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: opsgenie-alerts
+spec:
+  display:
+    name: OpsGenie Alerts
+  type: opsgenie
+  opsgenieConfig:
+    instance: eu
+    apiKey: "my-opsgenie-api-key"
+```
+
+##### PagerDuty
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: pagerduty-alerts
+spec:
+  display:
+    name: PagerDuty Alerts
+  type: pagerduty
+  pagerdutyConfig:
+    key: "my-integration-key"
+    url: "https://events.pagerduty.com/v2/enqueue"
+```
+
+##### Microsoft Teams Webhook
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: teams-alerts
+spec:
+  display:
+    name: Teams Alerts
+  type: teams_webhook
+  teamsWebhookConfig:
+    url: "https://outlook.office.com/webhook/..."
+```
+
+##### Discord Webhook
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: discord-alerts
+spec:
+  display:
+    name: Discord Alerts
+  type: discord_webhook
+  discordWebhookConfig:
+    url: "https://discord.com/api/webhooks/..."
+```
+
+##### Google Chat Webhook
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: google-chat-alerts
+spec:
+  display:
+    name: Google Chat Alerts
+  type: google_chat_webhook
+  googleChatWebhookConfig:
+    url: "https://chat.googleapis.com/v1/spaces/.../messages?key=..."
+```
+
+##### iLert
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: ilert-alerts
+spec:
+  display:
+    name: iLert Alerts
+  type: ilert
+  ilertConfig:
+    url: "https://api.ilert.com/api/events/my-integration-key"
+```
+
+##### All Quiet
+
+```yaml
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: allquiet-alerts
+spec:
+  display:
+    name: All Quiet Alerts
+  type: all_quiet
+  allQuietConfig:
+    url: "https://allquiet.app/api/webhook/my-inbound-integration-id"
+```
+
+#### Optional Fields
+
+**`frequency`**: Controls the notification frequency (e.g. `10m`, `5m`, `1h`). Defaults to `10m` if omitted.
+
+**`routing`**: Defines which assets and filters determine when this channel is notified.
+
+```yaml
+spec:
+  # ...type and config fields...
+  frequency: 5m
+  routing:
+    assets:
+      - kind: check_rule
+        id: "rule-id"
+        name: "My Check Rule"
+        dataset: "default"
+    filters:
+      - key: service.name
+        operator: is
+        value: my-service
+```
 
 ### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)
 

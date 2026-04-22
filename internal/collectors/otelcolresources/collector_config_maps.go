@@ -119,6 +119,7 @@ type collectorConfigurationTemplateValues struct {
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
+	IntelligentEdge                                  IntelligentEdgeConfig
 }
 
 type KubeletStatsReceiverConfig struct {
@@ -225,8 +226,7 @@ func assembleCollectorConfigMap(
 	}
 	namespaceOttlFilter := renderOttlNamespaceFilter(
 		monitoredNamespaces,
-		config.SelfMonitoringConfiguration.SelfMonitoringEnabled,
-		config.PrometheusCrdSupportEnabled,
+		config,
 	)
 	customTelemetryFilters := aggregateCustomFilters(filters)
 	customTelemetryTransforms := aggregateCustomTransforms(transforms)
@@ -280,6 +280,7 @@ func assembleCollectorConfigMap(
 			DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
 			EnableProfExtension:                              config.EnableProfExtension,
 			ProfilingEnabled:                                 config.ProfilingEnabled,
+			IntelligentEdge:                                  config.IntelligentEdge,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
@@ -317,20 +318,47 @@ func compressContent(collectorConfiguration string) (bytes.Buffer, error) {
 	return compressedConfig, nil
 }
 
-func renderOttlNamespaceFilter(monitoredNamespaces []string, selfMonitoringEnabled bool, prometheusCrdSupportEnabled bool) string {
+func renderOttlNamespaceFilter(
+	monitoredNamespaces []string,
+	config *oTelColConfig,
+) string {
+	selfMonitoringEnabled := config.SelfMonitoringConfiguration.SelfMonitoringEnabled
+
+	// Do not drop metrics from the operator manager or the collectors, even if there isn't a Dash0Monitoring resource in
+	// the operator namespace. Operator manager metrics are considered self-monitoring and therefore controlled via the
+	// global SelfMonitoring config from the Dash0OperatorConfiguration.
+	operatorManagerExclusion := ""
+	if selfMonitoringEnabled && config.OperatorManagerDeploymentName != "" {
+		operatorManagerExclusion = fmt.Sprintf(
+			"(resource.attributes[\"k8s.deployment.name\"] != \"%[2]s\" or "+
+				"resource.attributes[\"k8s.namespace.name\"] != \"%[1]s\") and\n          "+
+				"(resource.attributes[\"k8s.daemonset.name\"] != \"%[3]s\" or "+
+				"resource.attributes[\"k8s.namespace.name\"] != \"%[1]s\") and\n          "+
+				"(resource.attributes[\"k8s.deployment.name\"] != \"%[4]s\" or "+
+				"resource.attributes[\"k8s.namespace.name\"] != \"%[1]s\") and\n          ",
+			config.OperatorNamespace,
+			config.OperatorManagerDeploymentName,
+			DaemonSetName(config.NamePrefix),
+			DeploymentName(config.NamePrefix),
+		)
+	}
 	// Do not drop metrics from the target-allocator even if there isn't a Dash0Monitoring resource in the namespace.
 	// target-allocator metrics are considered self-monitoring and therefore controlled via the global SelfMonitoring
 	// config (and prometheusCrdSupportEnabled) from the Dash0OperatorConfiguration.
 	taExclusion := ""
-	if selfMonitoringEnabled && prometheusCrdSupportEnabled {
-		taExclusion = fmt.Sprintf(
-			"(resource.attributes[\"k8s.pod.label.app.kubernetes.io/instance\"] != \"%s\" and "+
-				"resource.attributes[\"k8s.pod.label.app.kubernetes.io/name\"] != \"%s\") and ",
-			taresources.AppKubernetesIoInstanceValue, taresources.AppKubernetesIoNameValue)
+	if selfMonitoringEnabled && config.PrometheusCrdSupportEnabled {
+		taDeploymentName := taresources.DeploymentName(config.TargetAllocatorNamePrefix)
+		taExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
+			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
+			taDeploymentName,
+			config.OperatorNamespace,
+		)
 	}
+	selfMonitoringExclusions := operatorManagerExclusion + taExclusion
+
 	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
 	// list of monitored namespaces.
-	namespaceOttlFilter := fmt.Sprintf("%sresource.attributes[\"k8s.namespace.name\"] != nil\n", taExclusion)
+	namespaceOttlFilter := fmt.Sprintf("%sresource.attributes[\"k8s.namespace.name\"] != nil\n", selfMonitoringExclusions)
 	for _, namespace := range monitoredNamespaces {
 		// Be wary of indentation, all lines after the first must start with at least 10 spaces for YAML compliance.
 		namespaceOttlFilter = namespaceOttlFilter +

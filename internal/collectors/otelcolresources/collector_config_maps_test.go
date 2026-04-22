@@ -4,10 +4,16 @@
 package otelcolresources
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottlmetric"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 
@@ -20,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
+	. "github.com/dash0hq/dash0-operator/test/util/targetallocator"
 )
 
 type configMapType string
@@ -1827,6 +1834,163 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsExportDefaultReceivers).To(ContainElement("forward/logs-default-exporter"))
 			Expect(logsExportDefaultReceivers).ToNot(ContainElement("routing/logs"))
 		})
+
+		It("should route namespaced traces before sampling when intelligent edge is enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			pipelines := readPipelines(collectorConfig)
+
+			// routing/traces default_pipelines should point to ie-pre-sampling
+			routingTraces := connectors["routing/traces"].(map[string]interface{})
+			defaultPipelines := routingTraces["default_pipelines"].([]interface{})
+			Expect(defaultPipelines).To(ContainElement("traces/ie-pre-sampling"))
+			Expect(defaultPipelines).ToNot(ContainElement("traces/export/default"))
+
+			// traces/common-processors should export to routing/traces (not directly to sampling)
+			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
+			Expect(tracesCommonExporters).To(ContainElement("routing/traces"))
+			Expect(tracesCommonExporters).ToNot(ContainElement("forward/traces-to-sampling"))
+			Expect(tracesCommonExporters).ToNot(ContainElement("dash0redmetrics"))
+
+			// traces/ie-pre-sampling should exist and forward to sampling + RED metrics
+			iePreSamplingReceivers := readPipelineReceivers(pipelines, "traces/ie-pre-sampling")
+			Expect(iePreSamplingReceivers).To(ContainElement("routing/traces"))
+			iePreSamplingExporters := readPipelineExporters(pipelines, "traces/ie-pre-sampling")
+			Expect(iePreSamplingExporters).To(ContainElement("forward/traces-to-sampling"))
+			Expect(iePreSamplingExporters).To(ContainElement("dash0redmetrics"))
+
+			// traces/sampled should export to forward/traces-default-exporter (not routing)
+			sampledExporters := readPipelineExporters(pipelines, "traces/sampled")
+			Expect(sampledExporters).To(ContainElement("forward/traces-default-exporter"))
+			Expect(sampledExporters).ToNot(ContainElement("routing/traces"))
+
+			// traces/export/default should receive from forward/traces-default-exporter
+			tracesExportDefaultReceivers := readPipelineReceivers(pipelines, "traces/export/default")
+			Expect(tracesExportDefaultReceivers).To(ContainElement("forward/traces-default-exporter"))
+			Expect(tracesExportDefaultReceivers).ToNot(ContainElement("routing/traces"))
+
+			// namespace-specific export pipelines still receive from routing/traces
+			tracesExportNs1Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace1)
+			Expect(tracesExportNs1Receivers).To(ContainElement("routing/traces"))
+			tracesExportNs2Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace2)
+			Expect(tracesExportNs2Receivers).To(ContainElement("routing/traces"))
+
+			// dash0settingsonedgeextension extension should be configured and listed in service extensions
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			Expect(extensions).To(HaveKey("dash0settingsonedgeextension"))
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			Expect(settingsOnEdge["endpoint"]).To(Equal("https://control-plane-api.dash0.com"))
+
+			serviceConfig := collectorConfig["service"].(map[string]interface{})
+			serviceExtensions := serviceConfig["extensions"].([]interface{})
+			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
+		})
+
+		It("should collect barker logs via filelog/selfmonitoring when IE + barker + self-monitoring enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   true,
+					BarkerName:      namePrefix + "-barker",
+				},
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// filelog/selfmonitoring should include barker pod log path
+			receivers := collectorConfig["receivers"].(map[string]interface{})
+			Expect(receivers).To(HaveKey("filelog/selfmonitoring"))
+			filelogConfig := receivers["filelog/selfmonitoring"].(map[string]interface{})
+			includePaths := filelogConfig["include"].([]interface{})
+			barkerPathFound := false
+			for _, p := range includePaths {
+				if path, ok := p.(string); ok {
+					if strings.Contains(path, namePrefix+"-barker") {
+						barkerPathFound = true
+					}
+				}
+			}
+			Expect(barkerPathFound).To(BeTrue(), "barker pod log path not found in filelog/selfmonitoring include list")
+
+			// logs/selfmonitoring-filelog-to-forwarder pipeline should exist
+			pipelines := readPipelines(collectorConfig)
+			Expect(pipelines).To(HaveKey("logs/selfmonitoring-filelog-to-forwarder"))
+		})
+
+		It("should not include barker logs in filelog/selfmonitoring when barker is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   false,
+				},
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			configContent := configMap.Data["config.yaml"]
+			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-barker"))
+		})
+
+		It("should not collect barker logs when self-monitoring is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   true,
+					BarkerName:      namePrefix + "-barker",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			configContent := configMap.Data["config.yaml"]
+			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-barker"))
+			Expect(configContent).ToNot(ContainSubstring("filelog/selfmonitoring"))
+		})
 	})
 
 	DescribeTable("should render batch processor with defaults if no batch size settings are provided", func(cmTypeDef configMapTypeDefinition) {
@@ -2263,17 +2427,27 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	Describe("discard metrics from unmonitored namespaces", func() {
 
 		type ottlFilterExpressionTestConfig struct {
-			monitoredNamespaces         []string
-			selfMonitoringEnabled       bool
-			prometheusCrdSupportEnabled bool
-			expectedExpression          string
+			monitoredNamespaces           []string
+			selfMonitoringEnabled         bool
+			prometheusCrdSupportEnabled   bool
+			operatorManagerDeploymentName string
+			expectedExpression            string
 		}
 
-		DescribeTable("should render the namespace filter ottl expression", func(testConfig ottlFilterExpressionTestConfig) {
+		DescribeTable("should render the namespace filter ottl expression correctly", func(testConfig ottlFilterExpressionTestConfig) {
+			colConfig := &oTelColConfig{
+				OperatorNamespace:             OperatorNamespace,
+				NamePrefix:                    namePrefix,
+				OperatorManagerDeploymentName: testConfig.operatorManagerDeploymentName,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
+				},
+				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
+				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
+			}
 			expression := renderOttlNamespaceFilter(
 				testConfig.monitoredNamespaces,
-				testConfig.selfMonitoringEnabled,
-				testConfig.prometheusCrdSupportEnabled,
+				colConfig,
 			)
 			Expect(expression).To(Equal(testConfig.expectedExpression))
 		},
@@ -2303,33 +2477,319 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-3\"\n",
 			}),
-			Entry("with no namespaces and self-monitoring enabled", ottlFilterExpressionTestConfig{
-				monitoredNamespaces:         nil,
-				selfMonitoringEnabled:       true,
-				prometheusCrdSupportEnabled: true,
-				expectedExpression: "(resource.attributes[\"k8s.pod.label.app.kubernetes.io/instance\"] != \"dash0-operator\" " +
-					"and resource.attributes[\"k8s.pod.label.app.kubernetes.io/name\"] != \"opentelemetry-target-allocator\") " +
-					"and resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			Entry("with no namespaces, self-monitoring enabled, Prometheus CRD support disabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
 			}),
-			Entry("with one namespace and self-monitoring enabled", ottlFilterExpressionTestConfig{
-				monitoredNamespaces:         []string{namespace1},
-				selfMonitoringEnabled:       true,
-				prometheusCrdSupportEnabled: true,
-				expectedExpression: "(resource.attributes[\"k8s.pod.label.app.kubernetes.io/instance\"] != \"dash0-operator\" " +
-					"and resource.attributes[\"k8s.pod.label.app.kubernetes.io/name\"] != \"opentelemetry-target-allocator\") " +
-					"and resource.attributes[\"k8s.namespace.name\"] != nil\n" +
+			Entry("with one namespace, self-monitoring enabled, Prometheus CRD support disabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           []string{namespace1},
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n",
 			}),
-			Entry("with two namespaces and self-monitoring enabled", ottlFilterExpressionTestConfig{
-				monitoredNamespaces:         []string{namespace1, namespace2},
-				selfMonitoringEnabled:       true,
-				prometheusCrdSupportEnabled: true,
-				expectedExpression: "(resource.attributes[\"k8s.pod.label.app.kubernetes.io/instance\"] != \"dash0-operator\" " +
-					"and resource.attributes[\"k8s.pod.label.app.kubernetes.io/name\"] != \"opentelemetry-target-allocator\") " +
-					"and resource.attributes[\"k8s.namespace.name\"] != nil\n" +
+			Entry("with two namespaces, self-monitoring enabled, Prometheus CRD support disabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           []string{namespace1, namespace2},
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n",
 			}),
+			Entry("with no namespaces, self-monitoring enabled, Prometheus CRD support enabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   true,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedTargetAllocatorDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
+			Entry("with one namespace, self-monitoring enabled, Prometheus CRD support enabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           []string{namespace1},
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   true,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedTargetAllocatorDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n" +
+					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n",
+			}),
+			Entry("with two namespaces, self-monitoring enabled, Prometheus CRD support enabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           []string{namespace1, namespace2},
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   true,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedTargetAllocatorDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n" +
+					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n" +
+					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n",
+			}),
+		)
+
+		type ottlFilterEvaluationTestConfig struct {
+			monitoredNamespaces           []string
+			selfMonitoringEnabled         bool
+			prometheusCrdSupportEnabled   bool
+			operatorManagerDeploymentName string
+			resourceAttributes            map[string]string
+			expectedToBeDropped           bool
+		}
+
+		DescribeTable("should let self-monitoring metrics pass through the OTTL namespace filter", func(testConfig ottlFilterEvaluationTestConfig) {
+			colConfig := &oTelColConfig{
+				OperatorNamespace:             OperatorNamespace,
+				NamePrefix:                    namePrefix,
+				OperatorManagerDeploymentName: testConfig.operatorManagerDeploymentName,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: testConfig.selfMonitoringEnabled,
+				},
+				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
+				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
+			}
+			expression := renderOttlNamespaceFilter(testConfig.monitoredNamespaces, colConfig)
+
+			settings := component.TelemetrySettings{Logger: zap.NewNop()}
+			parser, err := ottlmetric.NewParser(nil, settings)
+			Expect(err).NotTo(HaveOccurred())
+			conditions, err := parser.ParseConditions([]string{expression})
+			Expect(err).NotTo(HaveOccurred())
+			condSeq := ottlmetric.NewConditionSequence(conditions, settings)
+
+			resourceMetrics := pmetric.NewResourceMetrics()
+			for k, v := range testConfig.resourceAttributes {
+				resourceMetrics.Resource().Attributes().PutStr(k, v)
+			}
+			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
+			metric := scopeMetrics.Metrics().AppendEmpty()
+			tCtx := ottlmetric.NewTransformContextPtr(resourceMetrics, scopeMetrics, metric)
+			defer tCtx.Close()
+
+			result, err := condSeq.Eval(context.Background(), tCtx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(testConfig.expectedToBeDropped))
+		},
+			Entry("operator manager metrics are not dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": OperatorManagerDeploymentName,
+						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("daemonset collector metrics are not dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.daemonset.name": ExpectedDaemonSetName,
+						"k8s.namespace.name": OperatorNamespace,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("deployment collector metrics are not dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": ExpectedDeploymentName,
+						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("target allocator metrics are not dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   true,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": ExpectedTargetAllocatorDeploymentName,
+						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("metrics from a random deployment in a monitored namespace are not dropped (self-monitoring enabled)",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": "some-deployment",
+						"k8s.namespace.name":  namespace1,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("metrics from a random deployment in a monitored namespace are not dropped (self-monitoring disabled)",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         false,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": "some-deployment",
+						"k8s.namespace.name":  namespace1,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("metrics from a random workload in a monitored namespace are not dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         false,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.namespace.name": namespace2,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("metrics from a random deployment in an unmonitored namespace are dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": "some-deployment",
+						"k8s.namespace.name":  "some-namespace",
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("metrics from a random daemonset in an unmonitored namespace are dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.daemonset.name": "some-daemonset",
+						"k8s.namespace.name": "some-namespace",
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("metrics from a random deployment in the operator namespace are dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   true,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": "some-deployment",
+						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("metrics from a random daemonset in the operator namespace are dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   true,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.daemonset.name": "some-daemonset",
+						"k8s.namespace.name": OperatorNamespace,
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("metrics from a deployment with the same name as the operator manager in a different namespace are dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": OperatorManagerDeploymentName,
+						"k8s.namespace.name":  "some-namespace",
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("metrics from a daemonset with the same name as the collector in a different namespace are dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.daemonset.name": ExpectedDaemonSetName,
+						"k8s.namespace.name": "some-namespace",
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("metrics from a deployment with the same name as the collector in a different namespace are dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": ExpectedDeploymentName,
+						"k8s.namespace.name":  "some-namespace",
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("metrics from a deployment with the same name as the target allocator in a different namespace are dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": ExpectedTargetAllocatorDeploymentName,
+						"k8s.namespace.name":  "some-namespace",
+					},
+					expectedToBeDropped: true,
+				}),
 		)
 
 		DescribeTable("should render the namespace filter and add it to the metrics pipeline", func(cmTypeDef configMapTypeDefinition) {

@@ -1,0 +1,11 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-ilert
+spec:
+  display:
+    name: iLert Alerts
+  type: ilert
+  ilertConfig:
+    url: "https://api.ilert.com/api/v1/events/dash0/XXXXXXXXXXXXXXXX"
+  frequency: 10m

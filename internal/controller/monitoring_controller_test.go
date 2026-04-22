@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -105,6 +104,7 @@ var _ = Describe(
 					k8sClient,
 					clientset,
 					util.ExtraConfigDefaults,
+					false,
 					false,
 					oTelColResourceManager,
 				)
@@ -2141,7 +2141,7 @@ var _ = Describe(
 								)
 							}
 
-							UpdateLogCollectionEnabled(ctx, k8sClient, ptr.To(false))
+							UpdateLogCollectionEnabled(ctx, k8sClient, new(false))
 							triggerReconcileRequest(ctx, monitoringReconciler)
 							verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 							podSpec = GetDeployment(ctx, k8sClient, TestNamespaceName, name).Spec.Template.Spec
@@ -2156,7 +2156,7 @@ var _ = Describe(
 
 						It("should re-instrument a deployment and add OTEL_LOGS_EXPORTER when log collection is re-enabled", func() {
 							monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-							monitoringResource.Spec.LogCollection.Enabled = ptr.To(false)
+							monitoringResource.Spec.LogCollection.Enabled = new(false)
 							Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
 							name := UniqueName(DeploymentNamePrefix)
@@ -2169,7 +2169,7 @@ var _ = Describe(
 								Expect(FindEnvVarByName(container.Env, "OTEL_LOGS_EXPORTER")).To(BeNil(), container.Name)
 							}
 
-							UpdateLogCollectionEnabled(ctx, k8sClient, ptr.To(true))
+							UpdateLogCollectionEnabled(ctx, k8sClient, new(true))
 							triggerReconcileRequest(ctx, monitoringReconciler)
 							verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
 							podSpec = GetDeployment(ctx, k8sClient, TestNamespaceName, name).Spec.Template.Spec

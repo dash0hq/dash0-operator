@@ -1,0 +1,16 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-webhook
+spec:
+  display:
+    name: Webhook Alerts
+  type: webhook
+  webhookConfig:
+    url: "https://example.com/webhook"
+    headers:
+      Authorization: "Bearer my-secret-token"
+      Content-Type: "application/json"
+    followRedirects: true
+    allowInsecure: false
+  frequency: 10m

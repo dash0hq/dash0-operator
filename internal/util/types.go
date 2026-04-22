@@ -99,6 +99,8 @@ type Images struct {
 	FilelogOffsetSyncImagePullPolicy            corev1.PullPolicy
 	FilelogOffsetVolumeOwnershipImage           string
 	FilelogOffsetVolumeOwnershipImagePullPolicy corev1.PullPolicy
+	BarkerImage                                 string
+	BarkerImagePullPolicy                       corev1.PullPolicy
 }
 
 func (i Images) GetOperatorVersion() string {
