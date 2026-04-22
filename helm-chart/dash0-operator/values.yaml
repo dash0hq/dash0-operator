@@ -452,14 +452,15 @@ operator:
   # the image pull secrets to pull the container images
   imagePullSecrets: []
 
+  # The log level for the operator manager. Valid values: debug, info, warn, error.
+  # Has no effect when developmentMode is true (development mode always uses debug level).
+  logLevel: info
+
   # If set to true, it enables a set of config changes suitable for local development or troubleshooting:
   # - adds a debug exporter (with the default config) to the collectors managed by the operator
-  # - sets the log level to debug
+  # - sets the log level to debug (the logLevel setting will be ignored when developmentMode is set)
   # - instructs the logger (Zap) of the operator manager to use a Zap development config (no sampling), otherwise a
   #   Zap production config will be used (sampling)
-  # - adds insecure_skip_verify: true to the kubeletstats receiver config, to enable the receiver to work on Docker
-  #   Desktop and similar setups, see helm-chart/dash0-operator/README.md ->
-  #   "Notes on Running The Operator on Docker Desktop"
   developmentMode: false
 
   # If set to a value, the operator manager will enable pprof and make it available on the specificied port.

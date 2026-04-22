@@ -54,6 +54,7 @@ type SelfMonitoringTestConfig struct {
 	expectedHeaders       map[string]string
 }
 
+//nolint:goconst
 var _ = Describe(
 	"The operation configuration resource controller", Ordered, func() {
 
