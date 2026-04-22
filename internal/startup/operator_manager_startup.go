@@ -134,6 +134,7 @@ type commandLineArguments struct {
 	probeAddr                                                             string
 	secureMetrics                                                         bool
 	enableHTTP2                                                           bool
+	logLevel                                                              string
 }
 
 const (
@@ -539,6 +540,12 @@ func defineCommandLineArguments() *commandLineArguments {
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)
+	flag.StringVar(
+		&cliArgs.logLevel,
+		"dash0-log-level",
+		"info",
+		"The log level for the operator manager (debug, info, warn, error). Ignored when development mode is active.",
+	)
 	flag.BoolVar(
 		&cliArgs.featureIntelligentEdgeEnabled,
 		"dash0-feature-intelligent-edge-enabled",
@@ -651,6 +658,16 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	if !developmentMode {
+		var level zapcore.Level
+		if err := level.UnmarshalText([]byte(strings.ToLower(cliArgs.logLevel))); err != nil {
+			fmt.Fprintf(os.Stderr, "invalid --dash0-log-level value %q, defaulting to info: %v\n", cliArgs.logLevel, err)
+			level = zapcore.InfoLevel
+		}
+		lvl := zap.NewAtomicLevelAt(level)
+		opts.Level = &lvl
+	}
 
 	if cliArgs.disableOpenTelemetryCollectorHostPorts {
 		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
