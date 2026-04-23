@@ -116,7 +116,7 @@ type ModificationResult struct {
 	RenderReasonMessage               NoModificationReasonMessage
 	ContainersTotal                   int
 	InstrumentationIssuesPerContainer map[string][]string
-	SkipLogging                       bool
+	LogAtDebugOnly                    bool
 	IgnoredOnce                       bool
 	ImmutableWorkload                 bool
 }
@@ -138,7 +138,9 @@ func NewNotModifiedDueToErrorResult() ModificationResult {
 }
 
 func NewNotModifiedOwnedByHigherOrderWorkloadResult() ModificationResult {
-	return newNotModifiedSkipLoggingResult(NoModificationReasonOwnedByHigherOrderWorkload)
+	r := newNotModifiedResult(NoModificationReasonOwnedByHigherOrderWorkload)
+	r.LogAtDebugOnly = true
+	return r
 }
 
 func NewNotModifiedUnsupportedOperatingSystemResult(details string) ModificationResult {
@@ -183,16 +185,6 @@ func newNotModifiedResult(
 	return ModificationResult{
 		HasBeenModified:     false,
 		RenderReasonMessage: reason,
-	}
-}
-
-func newNotModifiedSkipLoggingResult(
-	reason NoModificationReasonMessage,
-) ModificationResult {
-	return ModificationResult{
-		HasBeenModified:     false,
-		RenderReasonMessage: reason,
-		SkipLogging:         true,
 	}
 }
 

@@ -152,6 +152,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	operatorConfigurationResource := checkResourceResult.Resource.(*dash0v1alpha1.Dash0OperatorConfiguration)
+	logger.Debug("operator configuration resource found, proceeding with reconciliation", "name", operatorConfigurationResource.Name)
 	defer func() {
 		operatorConfigurationResource.LogResourceAsEvent(logger)
 	}()
@@ -236,7 +237,6 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	logger.Debug("reconciliations triggered by operator configuration were successful")
-
 	return ctrl.Result{}, nil
 }
 
@@ -352,6 +352,8 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 ) error {
 	if r.collectorManager == nil {
 		// If telemetry collection is disabled via Helm, the collector manager is not initialized.
+		logger.Debug("collector manager is not initialized, possibly due to telemetry collection being disabled, " +
+			"skipping OpenTelemetry collector reconciliation")
 		return nil
 	}
 	if _, err := r.collectorManager.ReconcileOpenTelemetryCollector(
@@ -369,6 +371,8 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 ) error {
 	if r.targetAllocatorManager == nil {
 		// If telemetry collection is disabled via Helm, the target allocator manager is not initialized.
+		logger.Debug("target allocator manager is not initialized, possibly due to telemetry collection being disabled, " +
+			"skipping OpenTelemetry target allocator reconciliation")
 		return nil
 	}
 	logger.Info("Reconciling OpenTelemetry target allocator.")

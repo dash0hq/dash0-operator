@@ -112,15 +112,26 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	if err != nil {
 		return false, err
 	}
+	if operatorConfigurationResource != nil {
+		logger.Debug("found operator configuration resource for collector reconciliation", "name", operatorConfigurationResource.Name)
+	} else {
+		logger.Debug("no operator configuration resource found for collector reconciliation")
+	}
 	allMonitoringResources, err := m.findAllMonitoringResources(ctx, logger)
 	if err != nil {
 		return false, err
 	}
+	logger.Debug("found available monitoring resources for collector reconciliation", "count", len(allMonitoringResources))
 	var intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge
 	if m.intelligentEdgeFeatureEnabled {
 		intelligentEdgeResource, err = m.findIntelligentEdgeResource(ctx, logger)
 		if err != nil {
 			return false, err
+		}
+		if intelligentEdgeResource != nil {
+			logger.Debug("found intelligent edge resource for collector reconciliation", "name", intelligentEdgeResource.Name)
+		} else {
+			logger.Debug("no intelligent edge resource found for collector reconciliation")
 		}
 	}
 
@@ -191,6 +202,8 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 		logger.Info("OpenTelemetry collector Kubernetes resources have been created.")
 	} else if resourcesHaveBeenUpdated {
 		logger.Info("OpenTelemetry collector Kubernetes resources have been updated.")
+	} else {
+		logger.Debug("OpenTelemetry collector Kubernetes resources are already up to date, no changes required")
 	}
 	return nil
 }
@@ -214,6 +227,8 @@ func (m *CollectorManager) removeOpenTelemetryCollector(
 	}
 	if resourcesHaveBeenDeleted {
 		logger.Info("OpenTelemetry collector Kubernetes resources have been deleted.")
+	} else {
+		logger.Debug("no OpenTelemetry collector Kubernetes resources to delete")
 	}
 	return nil
 }
@@ -284,5 +299,10 @@ func (m *CollectorManager) findAllMonitoringResources(
 		}
 		monitoringResources = append(monitoringResources, mr)
 	}
+	logger.Debug(
+		"filtered monitoring resources by availability",
+		"total", len(monitoringResourceList.Items),
+		"available", len(monitoringResources),
+	)
 	return monitoringResources, nil
 }

@@ -179,6 +179,15 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	}
 
 	dash0MonitoringResource := dash0List.Items[0]
+	logger.Debug(
+		"found Dash0 monitoring resource in namespace",
+		"namespace",
+		targetNamespace,
+		"available",
+		dash0MonitoringResource.IsAvailable(),
+		"markedForDeletion",
+		dash0MonitoringResource.IsMarkedForDeletion(),
+	)
 
 	if !dash0MonitoringResource.IsAvailable() {
 		return admission.Allowed(fmt.Sprintf(
@@ -214,6 +223,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	kind := gkv.Kind
 	gvkLabel := fmt.Sprintf("%s/%s.%s", group, version, kind)
 
+	logger.Debug("routing admission request to handler", "group", group, "kind", kind, "version", version)
 	return routes.routeFor(group, kind, version)(
 		h,
 		request,
@@ -509,7 +519,7 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 ) admission.Response {
 	if !modificationResult.IgnoredOnce && !modificationResult.HasBeenModified {
 		msg := modificationResult.RenderReasonMessage(actor)
-		if !modificationResult.SkipLogging {
+		if !modificationResult.LogAtDebugOnly {
 			logger.Info(msg)
 		}
 		if !isPod {
@@ -533,6 +543,7 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 		return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 	}
 
+	logger.Debug("patching workload to instrument it")
 	util.HandlePotentiallySuccessfulInstrumentationEvent(
 		h.Recorder,
 		resource,
@@ -558,8 +569,10 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 	}
 
 	if !modificationResult.HasBeenModified {
-		if !modificationResult.SkipLogging {
+		if !modificationResult.LogAtDebugOnly {
 			logger.Info(modificationResult.RenderReasonMessage(actor))
+		} else {
+			logger.Debug(modificationResult.RenderReasonMessage(actor))
 		}
 		util.QueueNoUninstrumentationNecessaryEvent(h.Recorder, resource, actor)
 		return admission.Allowed("no changes")

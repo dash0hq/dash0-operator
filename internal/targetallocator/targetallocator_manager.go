@@ -98,10 +98,16 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 	if err != nil {
 		return false, err
 	}
+	if operatorConfigurationResource != nil {
+		logger.Debug("found operator configuration resource for target allocator reconciliation", "name", operatorConfigurationResource.Name)
+	} else {
+		logger.Debug("no operator configuration resource found for target allocator reconciliation")
+	}
 	allMonitoringResources, err := resources.FindAllMonitoringResources(ctx, m.Client, logger)
 	if err != nil {
 		return false, err
 	}
+	logger.Debug("found monitoring resources for target allocator reconciliation", "count", len(allMonitoringResources))
 
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {
@@ -111,6 +117,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 		}
 	}
 	hasPrometheusScrapingEnabledForAtLeastOneNamespace := len(namespacesWithPrometheusScraping) > 0
+	logger.Debug("determined namespaces with Prometheus scraping enabled", "namespaces", namespacesWithPrometheusScraping)
 
 	extraConfig := m.extraConfig.Load()
 	if extraConfig == nil {
@@ -198,6 +205,8 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 		logger.Info("OpenTelemetry target-allocator Kubernetes resources have been created.")
 	} else if resourcesHaveBeenUpdated {
 		logger.Info("OpenTelemetry target-allocator Kubernetes resources have been updated.")
+	} else {
+		logger.Debug("OpenTelemetry target-allocator Kubernetes resources are already up to date, no changes required")
 	}
 
 	return nil
@@ -222,6 +231,8 @@ func (m *TargetAllocatorManager) removeTargetAllocator(
 	}
 	if resourcesHaveBeenDeleted {
 		logger.Info("OpenTelemetry collector Kubernetes resources have been deleted.")
+	} else {
+		logger.Debug("no OpenTelemetry target-allocator Kubernetes resources to delete")
 	}
 	return nil
 }

@@ -185,6 +185,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// The error has already been logged in initStatusConditions
 		return ctrl.Result{}, err
 	}
+	logger.Debug("determined first reconcile status for monitoring resource", "isFirstReconcile", isFirstReconcile)
 
 	isMarkedForDeletion, runCleanupActions, err := resources.CheckImminentDeletionAndHandleFinalizers(
 		ctx,
@@ -198,6 +199,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	} else if runCleanupActions {
 		// r.runCleanupActions will uninstrument workloads and then remove the finalizer.
+		logger.Debug("monitoring resource is marked for deletion, running cleanup actions")
 		err = r.runCleanupActions(ctx, monitoringResource, logger)
 		if err != nil {
 			// error has already been logged in runCleanupActions
@@ -265,7 +267,6 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	logger.Debug("reconciliations triggered by monitoring resource were successful")
-
 	return ctrl.Result{}, nil
 }
 
@@ -275,6 +276,11 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 	logger logd.Logger,
 ) {
 	if monitoringResource.HasDash0ApiAccessConfigured() {
+		logger.Debug(
+			"applying API access settings for monitoring resource",
+			"namespace",
+			monitoringResource.Namespace,
+		)
 		var apiConfigs []ApiConfig
 		for idx, dash0Config := range monitoringResource.GetDash0Exports() {
 			token, err := selfmonitoringapiaccess.GetAuthTokenForDash0Export(
@@ -399,6 +405,11 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 		}
 	}
 
+	logger.Debug(
+		"manageInstrumentWorkloadsChanges has determined whether instrumentation needs to be updates",
+		"required action",
+		requiredAction,
+	)
 	return monitoringResource, requiredAction, statusUpdateInfo{
 		previousInstrumentWorkloadsMode:          previousInstrumentWorkloadsMode,
 		currentInstrumentWorkloadsMode:           currentInstrumentWorkloadsMode,
@@ -567,6 +578,8 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 ) error {
 	if r.collectorManager == nil {
 		// If telemetry collection is disabled via Helm, the collector manager is not initialized.
+		logger.Debug("collector manager is not initialized, possibly due to telemetry collection being disabled, " +
+			"skipping OpenTelemetry collector reconciliation")
 		return nil
 	}
 
@@ -588,6 +601,8 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryTargetAllocator(
 ) error {
 	if r.targetAllocatorManager == nil {
 		// If telemetry collection is disabled via Helm, the collector manager is not initialized.
+		logger.Debug("target allocator manager is not initialized, possibly due to telemetry collection being disabled, " +
+			"skipping OpenTelemetry target allocator reconciliation")
 		return nil
 	}
 
