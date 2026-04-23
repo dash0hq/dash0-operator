@@ -44,6 +44,7 @@ type ViewReconciler struct {
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
+	initialSyncInProgress atomic.Bool
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
 }
@@ -175,7 +176,7 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 	r.initialSyncMutex.Lock()
 	defer r.initialSyncMutex.Unlock()
 
-	if r.initialSyncHasHappend.Load() {
+	if r.initialSyncHasHappend.Load() || r.initialSyncInProgress.Load() {
 		return
 	}
 
@@ -200,8 +201,11 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 	}
 
 	logger.Info("Running initial synchronization of views now.")
+	r.initialSyncInProgress.Store(true)
 
 	go func() {
+		defer r.initialSyncInProgress.Store(false)
+
 		allViewResourcesInCluster := dash0v1alpha1.Dash0ViewList{}
 		if err := r.List(
 			ctx,

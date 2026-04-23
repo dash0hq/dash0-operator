@@ -44,6 +44,7 @@ type SyntheticCheckReconciler struct {
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
+	initialSyncInProgress atomic.Bool
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
 }
@@ -186,7 +187,7 @@ func (r *SyntheticCheckReconciler) maybeDoInitialSynchronizationOfAllResources(
 	r.initialSyncMutex.Lock()
 	defer r.initialSyncMutex.Unlock()
 
-	if r.initialSyncHasHappend.Load() {
+	if r.initialSyncHasHappend.Load() || r.initialSyncInProgress.Load() {
 		return
 	}
 
@@ -211,8 +212,11 @@ func (r *SyntheticCheckReconciler) maybeDoInitialSynchronizationOfAllResources(
 	}
 
 	logger.Info("Running initial synchronization of synthetic checks now.")
+	r.initialSyncInProgress.Store(true)
 
 	go func() {
+		defer r.initialSyncInProgress.Store(false)
+
 		allSyntheticCheckResourcesInCluster := dash0v1alpha1.Dash0SyntheticCheckList{}
 		if err := r.List(
 			ctx,

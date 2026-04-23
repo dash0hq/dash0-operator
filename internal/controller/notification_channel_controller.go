@@ -42,6 +42,7 @@ type NotificationChannelReconciler struct {
 	defaultApiConfigs     selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	namespacedApiConfigs  selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex      sync.Mutex
+	initialSyncInProgress atomic.Bool
 	initialSyncHasHappend atomic.Bool
 	namespacedSyncMutex   selfmonitoringapiaccess.NamespaceMutex
 }
@@ -187,7 +188,7 @@ func (r *NotificationChannelReconciler) maybeDoInitialSynchronizationOfAllResour
 	r.initialSyncMutex.Lock()
 	defer r.initialSyncMutex.Unlock()
 
-	if r.initialSyncHasHappend.Load() {
+	if r.initialSyncHasHappend.Load() || r.initialSyncInProgress.Load() {
 		return
 	}
 
@@ -212,8 +213,11 @@ func (r *NotificationChannelReconciler) maybeDoInitialSynchronizationOfAllResour
 	}
 
 	logger.Info("Running initial synchronization of notification channels now.")
+	r.initialSyncInProgress.Store(true)
 
 	go func() {
+		defer r.initialSyncInProgress.Store(false)
+
 		allResources := dash0v1beta1.Dash0NotificationChannelList{}
 		if err := r.List(
 			ctx,

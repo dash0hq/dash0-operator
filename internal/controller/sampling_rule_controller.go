@@ -43,6 +43,7 @@ type SamplingRuleReconciler struct {
 	httpClient             *http.Client
 	defaultApiConfigs      selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
 	initialSyncMutex       sync.Mutex
+	initialSyncInProgress  atomic.Bool
 	initialSyncHasHappened atomic.Bool
 }
 
@@ -145,7 +146,7 @@ func (r *SamplingRuleReconciler) maybeDoInitialSynchronizationOfAllResources(
 	r.initialSyncMutex.Lock()
 	defer r.initialSyncMutex.Unlock()
 
-	if r.initialSyncHasHappened.Load() {
+	if r.initialSyncHasHappened.Load() || r.initialSyncInProgress.Load() {
 		return
 	}
 
@@ -168,8 +169,11 @@ func (r *SamplingRuleReconciler) maybeDoInitialSynchronizationOfAllResources(
 	}
 
 	logger.Info("Running initial synchronization of sampling rules now.")
+	r.initialSyncInProgress.Store(true)
 
 	go func() {
+		defer r.initialSyncInProgress.Store(false)
+
 		allSamplingRuleResourcesInCluster := dash0v1alpha1.Dash0SamplingRuleList{}
 		if err := r.List(
 			ctx,
