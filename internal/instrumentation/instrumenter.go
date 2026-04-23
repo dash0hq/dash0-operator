@@ -437,6 +437,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 		requiredAction = util.ModificationModeInstrumentation
 	}
 
+	logger.Debug("determined required action for immutable job", "required action", requiredAction, "modifyLabels", modifyLabels)
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry("handling immutable job", func() error {
 		if !modifyLabels {
@@ -626,6 +627,7 @@ func (i *Instrumenter) instrumentWorkload(
 		requiredAction = util.ModificationModeInstrumentation
 	}
 
+	logger.Debug("determined required action for workload", "required action", requiredAction)
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
 		if err := i.Get(ctx, client.ObjectKey{
@@ -691,8 +693,10 @@ func (i *Instrumenter) postProcessInstrumentation(
 		util.QueueFailedInstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
 	} else if !modificationResult.HasBeenModified {
-		if !modificationResult.SkipLogging {
+		if !modificationResult.LogAtDebugOnly {
 			logger.Info(modificationResult.RenderReasonMessage(actor))
+		} else {
+			logger.Debug(modificationResult.RenderReasonMessage(actor))
 		}
 		util.QueueNoInstrumentationNecessaryEvent(i.Recorder, resource, modificationResult.RenderReasonMessage(actor))
 		return false
@@ -750,8 +754,8 @@ func (i *Instrumenter) UninstrumentWorkloadsIfAvailable(
 			return err
 		}
 	} else {
-		logger.Info("Removing the Dash0 monitoring resource and running finalizers, but Dash0 is not marked as available." +
-			" Dash0 instrumentation will not be removed from workloads.")
+		logger.Info("Removing the Dash0 monitoring resource and running finalizers, but the Dash0 monitoring resource is not " +
+			"marked as available. Instrumentation will not be removed from workloads.")
 	}
 	return nil
 }
@@ -1112,6 +1116,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 	// although it has dash0.com/enabled=false it must have been set after the instrumentation, in which case
 	// uninstrumenting it is the correct thing to do.
 
+	logger.Debug("reverting instrumentation for workload")
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {
 		if err := i.Get(ctx, client.ObjectKey{
@@ -1161,7 +1166,7 @@ func (i *Instrumenter) postProcessUninstrumentation(
 		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
 	} else if !modificationResult.HasBeenModified {
-		if !modificationResult.SkipLogging {
+		if !modificationResult.LogAtDebugOnly {
 			logger.Info(modificationResult.RenderReasonMessage(actor))
 		}
 		util.QueueNoUninstrumentationNecessaryEvent(i.Recorder, resource, actor)
@@ -1226,9 +1231,9 @@ func (i *Instrumenter) restartPodsOfReplicaSet(
 		return true
 	})
 
+	logger.Debug(fmt.Sprintf("found %d pod(s) to restart for replica set %s/%s", len(podsOfReplicaSet), replicaSet.Namespace, replicaSet.Name))
 	for _, pod := range podsOfReplicaSet {
-		err := i.Delete(ctx, &pod)
-		if err != nil {
+		if err := i.Delete(ctx, &pod); err != nil {
 			logger.Info(
 				fmt.Sprintf(
 					"Failed to restart pod owned by the replica "+
@@ -1237,6 +1242,8 @@ func (i *Instrumenter) restartPodsOfReplicaSet(
 					replicaSet.Name,
 					replicaSet.UID,
 				))
+		} else {
+			logger.Debug(fmt.Sprintf("deleted pod %s/%s to trigger restart", pod.Namespace, pod.Name))
 		}
 	}
 }

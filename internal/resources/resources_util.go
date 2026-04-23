@@ -381,6 +381,7 @@ func InitStatusConditions(
 		resource.SetAvailableConditionToUnknown()
 		firstReconcile = true
 		needsRefresh = true
+		logger.Debug("no status conditions found, this is the first reconcile for this resource")
 	} else if availableCondition :=
 		meta.FindStatusCondition(
 			conditions,
@@ -388,6 +389,7 @@ func InitStatusConditions(
 		); availableCondition == nil {
 		resource.SetAvailableConditionToUnknown()
 		needsRefresh = true
+		logger.Debug("available condition absent, setting it to unknown")
 	}
 	if needsRefresh {
 		err := updateResourceStatus(ctx, k8sClient, resource, logger)
@@ -395,6 +397,8 @@ func InitStatusConditions(
 			// The error has already been logged in refreshStatus
 			return firstReconcile, err
 		}
+	} else {
+		logger.Debug("status conditions already up to date, no refresh needed")
 	}
 	return firstReconcile, nil
 }
@@ -432,6 +436,7 @@ func CheckImminentDeletionAndHandleFinalizers(
 	logger logd.Logger,
 ) (bool, bool, error) {
 	isMarkedForDeletion := resource.IsMarkedForDeletion()
+	logger.Debug("checking resource deletion status and finalizers", "isMarkedForDeletion", isMarkedForDeletion)
 	if !isMarkedForDeletion {
 		err := addFinalizerIfNecessary(
 			ctx,
