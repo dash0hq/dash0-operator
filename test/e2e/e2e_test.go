@@ -756,7 +756,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					)
 
 					routeRegexes := []string{
-						"/api/alerting/check-rules\\?dataset=default&idPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+						"/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20pod%20crash%20looping\\?dataset=default",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ccollector_exporter%20send%20failed%20spans\\?dataset=default",
@@ -831,7 +831,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				//nolint:lll
 				It("should resync Prometheus rules when synchronizePrometheusRules transitions from false to true", func() {
 					routeRegexes := []string{
-						"/api/alerting/check-rules\\?dataset=default&idPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+						"/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20pod%20crash%20looping\\?dataset=default",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ccollector_exporter%20send%20failed%20spans\\?dataset=default",
