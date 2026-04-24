@@ -486,7 +486,7 @@ var _ = Describe(
 							logger,
 						)
 
-						Expect(result.ItemsTotal).To(Equal(1))
+						Expect(result.TotalProcessed()).To(Equal(1))
 						Expect(result.SynchronizationErrors).To(BeNil())
 						Expect(result.ApiRequests).To(HaveLen(1))
 

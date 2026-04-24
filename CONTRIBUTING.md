@@ -225,6 +225,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `DEPLOY_PROMETHEUS_RULE`: Set to "true" to deploy Prometheus rule resource that will be synchronized to Dash0 via
       the Dash0 API.
       This defaults to "false".
+    * `DEPLOY_RECORDING_RULE`: Set to "true" to deploy a Dash0 recording rule resource that will be synchronized to
+      Dash0 via the Dash0 API.
+      This defaults to "false".
     * `DEPLOY_SYNTHETIC_CHECK`: Set to "true" to deploy a synthetic check resource that will be synchronized to Dash0
       via the Dash0 API.
       This defaults to "false".

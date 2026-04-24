@@ -463,10 +463,10 @@ func (r *PersesDashboardReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
-func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequest(
+func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequests(
 	_ *preconditionValidationResult,
 	_ ApiConfig,
-) (*http.Request, error) {
+) ([]*http.Request, error) {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
 	// multiple objects that are synchronized (as it is the case for PrometheusRule). Thus, this controller does not
