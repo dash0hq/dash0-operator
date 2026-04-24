@@ -380,8 +380,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[8]
           value: --instrumentation-delay-after-each-namespace-millis=123
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --dash0-log-level=info
+      - notExists:
+          path: spec.template.spec.containers[0].args[10]
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: GOMEMLIMIT
@@ -634,8 +637,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[8]
           value: --instrumentation-delay-after-each-namespace-millis=135
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --dash0-log-level=info
+      - notExists:
+          path: spec.template.spec.containers[0].args[10]
 
   - it: should render disableReplicasetInformer from legacy path
     documentSelector:

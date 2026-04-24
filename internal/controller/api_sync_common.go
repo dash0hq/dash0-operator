@@ -597,7 +597,7 @@ func validatePreconditionsAndPreprocess(
 	// but not the monitoring resource in this namespace. In that case we would incorrectly do an initial sync to the
 	// default backend even though the monitoring resource defines a custom API config.
 	if monitoringResource.HasDash0ExportConfigured() && !namespacedApiConfigExists {
-		logger.Info(
+		logger.Warn(
 			fmt.Sprintf(
 				"The monitoring resource of namespace %s has a Dash0 export, but no API config "+
 					"is available (yet). This might happen if the monitoring resource has not been reconciled so far and will "+
@@ -667,7 +667,7 @@ func validatePreconditionsAndPreprocess(
 
 	dash0ApiResourceObject := dash0ApiResource.Object
 	if dash0ApiResourceObject == nil {
-		logger.Info(
+		logger.Warn(
 			fmt.Sprintf(
 				"The \"Object\" property in the event for %s in %s/%s is absent or empty, the %s(s) will not be updated in Dash0.",
 				apiSyncReconciler.KindDisplayName(),
@@ -686,7 +686,7 @@ func validatePreconditionsAndPreprocess(
 	cleanUpMetadata(dash0ApiResourceObject)
 
 	if dash0ApiResourceObject["spec"] == nil {
-		logger.Info(
+		logger.Warn(
 			fmt.Sprintf(
 				"%s %s/%s has no spec, the %s(s) from will not be updated in Dash0.",
 				apiSyncReconciler.KindDisplayName(),
@@ -727,7 +727,7 @@ func validatePreconditionsForClusterScopedResource(
 	defaultApiConfigs := apiSyncReconciler.GetDefaultApiConfigs()
 	validDefaultConfigs := filterValidApiConfigs(defaultApiConfigs, logger, "default operator configuration")
 	if len(validDefaultConfigs) == 0 {
-		logger.Info(
+		logger.Warn(
 			fmt.Sprintf(
 				"No valid Dash0 API config(s) available in the operator configuration resource. "+
 					"The %s %s will not be updated in Dash0.",
@@ -751,7 +751,7 @@ func validatePreconditionsForClusterScopedResource(
 
 	dash0ApiResourceObject := dash0ApiResource.Object
 	if dash0ApiResourceObject == nil {
-		logger.Info(
+		logger.Warn(
 			fmt.Sprintf(
 				"The \"Object\" property in the event for %s %s is absent or empty, the %s(s) will not be updated in Dash0.",
 				apiSyncReconciler.KindDisplayName(),
@@ -768,7 +768,7 @@ func validatePreconditionsForClusterScopedResource(
 	cleanUpMetadata(dash0ApiResourceObject)
 
 	if dash0ApiResourceObject["spec"] == nil {
-		logger.Info(
+		logger.Warn(
 			fmt.Sprintf(
 				"%s %s has no spec, the %s(s) will not be updated in Dash0.",
 				apiSyncReconciler.KindDisplayName(),

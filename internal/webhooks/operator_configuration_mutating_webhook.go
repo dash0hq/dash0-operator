@@ -76,7 +76,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(ctx context.Context
 	logger := logd.FromContext(ctx)
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
-		logger.Info("rejecting invalid operator configuration resource", "error", err)
+		logger.Warn("rejecting invalid operator configuration resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 

@@ -1229,7 +1229,7 @@ func (i *Instrumenter) restartPodsOfReplicaSet(
 	for _, pod := range podsOfReplicaSet {
 		err := i.Delete(ctx, &pod)
 		if err != nil {
-			logger.Info(
+			logger.Warn(
 				fmt.Sprintf(
 					"Failed to restart pod owned by the replica "+
 						"set %s/%s (%s), this pod will not be restarted automatically.",

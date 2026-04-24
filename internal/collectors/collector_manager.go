@@ -130,7 +130,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	}
 
 	if operatorConfigurationResource == nil {
-		logger.Info(logMsgOperatorConfigMissing)
+		logger.Warn(logMsgOperatorConfigMissing)
 		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else if !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {

@@ -165,6 +165,7 @@ spec:
 {{- if (default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis) }}
         - --instrumentation-delay-after-each-namespace-millis={{ default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis }}
 {{- end }}
+        - --dash0-log-level={{ .Values.operator.logLevel }}
         env:
         - name: GOMEMLIMIT
           value: {{ .Values.operator.managerContainerResources.gomemlimit | quote }}

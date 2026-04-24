@@ -287,7 +287,7 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 				logger,
 			)
 			if err != nil || token == nil {
-				logger.Info(
+				logger.Warn(
 					fmt.Sprintf(
 						"Could not retrieve token for export #%d (endpoint: %s) in namespace %s. "+
 							"This export will be skipped, but other exports will continue to be processed.",
