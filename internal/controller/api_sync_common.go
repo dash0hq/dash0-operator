@@ -886,13 +886,21 @@ func fetchExistingOrigins(
 						append(existingOriginsWithMatchingPrefix, objWithOrigin.Origin)
 				}
 			}
+			logger.Info(
+				fmt.Sprintf("existing origins for this %s", apiSyncReconciler.ShortName()),
+				"origins",
+				existingOriginsWithMatchingPrefix,
+			)
 			return existingOriginsWithMatchingPrefix, nil
 		}
-	} else {
-		// this third party resource reconciler does not support fetching existing origins, this is expected for
-		// resource types that have a one-to-one relationship between K8s resource and Dash0 API object
-		return nil, nil
 	}
+
+	// this third party resource reconciler does not support fetching existing origins, this is expected for
+	// resource types that have a one-to-one relationship between K8s resource and Dash0 API object
+	logger.Debug(fmt.Sprintf(
+		"not executing a request to fetch existing origins, the reconciler for resource type %s does not "+
+			"support fetching existing origins", apiSyncReconciler.KindDisplayName()))
+	return nil, nil
 }
 
 func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
