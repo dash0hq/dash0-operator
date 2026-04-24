@@ -77,7 +77,7 @@ type ThirdPartyResourceReconciler interface {
 	// FetchExistingResourceOriginsRequest is only used for resource types where one Kubernetes resource (say, a
 	// PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks). Controllers
 	// which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
-	FetchExistingResourceOriginsRequest(*preconditionValidationResult, ApiConfig) (*http.Request, error)
+	FetchExistingResourceOriginsRequests(*preconditionValidationResult, ApiConfig) ([]*http.Request, error)
 
 	// CreateDeleteRequests produces an HTTP DELETE requests for the resources that still exist in Dash0, but should
 	// not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
@@ -570,7 +570,7 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 						monitoringResource.GetName(),
 						thirdPartyResourceReconciler.ShortName(),
 						qualifiedName,
-						syncResults.itemsTotal,
+						syncResults.totalProcessed(),
 						successfullySynchronizedNames,
 						syncResults.validationIssues,
 						syncResults.allSynchronizationErrors(),
@@ -627,7 +627,7 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 				monitoringResource.GetName(),
 				thirdPartyResourceReconciler.ShortName(),
 				qualifiedName,
-				syncResults.itemsTotal,
+				syncResults.totalProcessed(),
 				successfullySynchronizedNames,
 				syncResults.validationIssues,
 				syncResults.allSynchronizationErrors(),
