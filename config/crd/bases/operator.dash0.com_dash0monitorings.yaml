@@ -2101,6 +2101,24 @@ spec:
                         type: string
                     type: object
                 type: object
+              previousLogCollection:
+                description: |-
+                  The spec.logCollection setting that has been observed in the previous reconcile cycle. Used to detect when log
+                  collection has been toggled, which requires re-instrumenting workloads so that OTEL_LOGS_EXPORTER is
+                  added/removed accordingly.
+                properties:
+                  enabled:
+                    description: |-
+                      Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
+                      in the target namespace and send the resulting log records to Dash0.
+
+                      This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
+                      and the operator will collect pod logs in the target namespace; unless there is an operator configuration
+                      resource with `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error
+                      to set `telemetryCollection.enabled=false` in the operator configuration resource and
+                      `logCollection.enabled=true` in any monitoring resource at the same time.
+                    type: boolean
+                type: object
               prometheusRuleSynchronizationResults:
                 additionalProperties:
                   properties:

@@ -42,6 +42,8 @@ const (
 	envVarOtelInjectorConfigFilePythonEnabledValue = "/__otel_auto_instrumentation/injector/injector-with-python.conf"
 	envVarOtelExporterOtlpEndpointName             = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envVarOtelExporterOtlpProtocolName             = "OTEL_EXPORTER_OTLP_PROTOCOL"
+	envVarOtelLogsExporterName                     = "OTEL_LOGS_EXPORTER"
+	envVarOtelLogsExporterNoneValue                = "none"
 	envVarDash0CollectorBaseUrlName                = "DASH0_OTEL_COLLECTOR_BASE_URL"
 	envVarOTelInjectorNamespaceName                = "OTEL_INJECTOR_K8S_NAMESPACE_NAME"
 	envVarOTelInjectorPodName                      = "OTEL_INJECTOR_K8S_POD_NAME"
@@ -216,7 +218,33 @@ func InstrumentationIsUpToDate(
 	if otelInjectorConfEnvVarWillBeUpdatedForAtLeastOneContainer(containers, clusterInstrumentationConfig) {
 		return false
 	}
+	if otelLogsExporterEnvVarWillBeUpdatedForAtLeastOneContainer(containers, namespaceInstrumentationConfig) {
+		return false
+	}
 	return true
+}
+
+// otelLogsExporterEnvVarWillBeUpdatedForAtLeastOneContainer returns true if the OTEL_LOGS_EXPORTER env var on any
+// container would be added or removed by the workload modifier based on the current LogCollectionEnabled setting.
+func otelLogsExporterEnvVarWillBeUpdatedForAtLeastOneContainer(
+	containers []corev1.Container,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+) bool {
+	for _, container := range containers {
+		envVar := util.GetEnvVar(new(container), envVarOtelLogsExporterName)
+		if namespaceInstrumentationConfig.LogCollectionEnabled {
+			// We want to add OTEL_LOGS_EXPORTER=none, but only if the user hasn't set a value via pod spec env.
+			if util.IsEnvVarUnsetOrEmpty(envVar) {
+				return true
+			}
+		} else if namespaceInstrumentationConfig.PreviousLogCollectionEnabled {
+			// We want to remove OTEL_LOGS_EXPORTER=none that we previously set.
+			if envVar != nil && envVar.ValueFrom == nil && envVar.Value == envVarOtelLogsExporterNoneValue {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type ResourceModifier struct {
@@ -576,6 +604,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		perContainerLogger,
 	)
 
+	m.addOtelLogsExporterEnvVar(container)
+
 	instrumentationIssues = m.addOrAppendToLdPreloadEnvVar(container, instrumentationIssues, perContainerLogger)
 	otelInjectorConfigFile := envVarOtelInjectorConfigFileValue
 	if m.clusterInstrumentationConfig.EnablePythonAutoInstrumentation {
@@ -824,6 +854,48 @@ func (m *ResourceModifier) prependDash0NodeIp(container *corev1.Container) {
 			},
 		},
 	)
+}
+
+// addOtelLogsExporterEnvVar sets OTEL_LOGS_EXPORTER=none when log collection is enabled for the namespace, so the
+// workload's own OTel SDK does not also export logs via OTLP (the collector's filelog receiver already tails stdout,
+// which would result in duplicate log records). If the user has already set OTEL_LOGS_EXPORTER explicitly, we preserve
+// their value.
+//
+// Conversely, when log collection has just been disabled for the namespace (i.e. LogCollectionEnabled=false and
+// PreviousLogCollectionEnabled=true), this function also removes the OTEL_LOGS_EXPORTER=none entry that we previously
+// added, so re-instrumenting a workload via the normal instrumentation path also cleans up the env var. A user-set
+// value is preserved.
+func (m *ResourceModifier) addOtelLogsExporterEnvVar(container *corev1.Container) {
+	if !m.namespaceInstrumentationConfig.LogCollectionEnabled {
+		m.removeOtelLogsExporterEnvVar(container)
+		return
+	}
+	if isSet, _ := envVarIsSetAndNotEmpty(container, envVarOtelLogsExporterName); isSet {
+		return
+	}
+	addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
+			Name:  envVarOtelLogsExporterName,
+			Value: envVarOtelLogsExporterNoneValue,
+		},
+	)
+}
+
+// removeOtelLogsExporterEnvVar removes the OTEL_LOGS_EXPORTER env var, but only if the value matches what we would
+// have set (i.e. "none") and log collection was enabled at the previous reconcile. Any user-set value is preserved.
+func (m *ResourceModifier) removeOtelLogsExporterEnvVar(container *corev1.Container) {
+	if !m.namespaceInstrumentationConfig.PreviousLogCollectionEnabled {
+		return
+	}
+	idx := findEnvVarIdx(container, envVarOtelLogsExporterName)
+	if idx < 0 {
+		return
+	}
+	if !envVarHasValue(container, idx, envVarOtelLogsExporterNoneValue) {
+		return
+	}
+	removeEnvironmentVariable(container, envVarOtelLogsExporterName)
 }
 
 func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
@@ -1357,6 +1429,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 
 	m.removeOtelExporterOtlpEnvVarsIfCurrentValueMatchesConfig(container)
 	m.removeOtelPropagatorsIfCurrentValueMatchesConfig(container)
+	m.removeOtelLogsExporterEnvVar(container)
 
 	removeEnvironmentVariable(container, envVarOTelInjectorNamespaceName)
 	removeEnvironmentVariable(container, envVarOTelInjectorPodName)

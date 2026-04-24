@@ -144,6 +144,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
 							},
+							"OTEL_LOGS_EXPORTER": {
+								Value: "none",
+							},
 							"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
 							},
@@ -204,6 +207,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
+							},
+							"OTEL_LOGS_EXPORTER": {
+								Value: "none",
 							},
 							"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
@@ -282,6 +288,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
 							},
+							"OTEL_LOGS_EXPORTER": {
+								Value: "none",
+							},
 							"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
 							},
@@ -318,6 +327,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
+							},
+							"OTEL_LOGS_EXPORTER": {
+								Value: "none",
 							},
 							"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
@@ -1606,6 +1618,119 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelExporterOtlpEndpointName: nil,
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
 				},
+			}),
+		)
+
+		type otelLogsExporterEnvVarTest struct {
+			logCollectionEnabled         bool
+			previousLogCollectionEnabled bool
+			existingEnvVars              []corev1.EnvVar
+			expectedEnvVar               *EnvVarExpectation
+		}
+
+		DescribeTable("should set OTEL_LOGS_EXPORTER=none when log collection is enabled in the namespace",
+			func(testConfig otelLogsExporterEnvVarTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				nsConfig := DefaultNamespaceInstrumentationConfig
+				nsConfig.LogCollectionEnabled = testConfig.logCollectionEnabled
+				modifier := NewResourceModifier(clusterInstrumentationConfig, nsConfig, testActor, logger)
+				modifier.addOtelLogsExporterEnvVar(container)
+
+				VerifyEnvVarsFromMap(
+					map[string]*EnvVarExpectation{envVarOtelLogsExporterName: testConfig.expectedEnvVar},
+					container.Env,
+				)
+			},
+			Entry("should set OTEL_LOGS_EXPORTER=none when log collection is enabled and env var is absent", otelLogsExporterEnvVarTest{
+				logCollectionEnabled: true,
+				existingEnvVars:      nil,
+				expectedEnvVar:       &EnvVarExpectation{Value: "none"},
+			}),
+			Entry("should not override an existing OTEL_LOGS_EXPORTER user value when log collection is enabled", otelLogsExporterEnvVarTest{
+				logCollectionEnabled: true,
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelLogsExporterName,
+					Value: "otlp",
+				}},
+				expectedEnvVar: &EnvVarExpectation{Value: "otlp"},
+			}),
+			Entry("should not override an existing OTEL_LOGS_EXPORTER=none set by the user when log collection is enabled", otelLogsExporterEnvVarTest{
+				logCollectionEnabled: true,
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelLogsExporterName,
+					Value: "none",
+				}},
+				expectedEnvVar: &EnvVarExpectation{Value: "none"},
+			}),
+			Entry("should not override OTEL_LOGS_EXPORTER set via ValueFrom when log collection is enabled", otelLogsExporterEnvVarTest{
+				logCollectionEnabled: true,
+				existingEnvVars: []corev1.EnvVar{{
+					Name: envVarOtelLogsExporterName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+					},
+				}},
+				expectedEnvVar: &EnvVarExpectation{ValueFrom: "metadata.name"},
+			}),
+			Entry("should not set OTEL_LOGS_EXPORTER when log collection is disabled", otelLogsExporterEnvVarTest{
+				logCollectionEnabled: false,
+				existingEnvVars:      nil,
+				expectedEnvVar:       nil,
+			}),
+			Entry("should not override an existing OTEL_LOGS_EXPORTER user value when log collection is disabled", otelLogsExporterEnvVarTest{
+				logCollectionEnabled: false,
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelLogsExporterName,
+					Value: "otlp",
+				}},
+				expectedEnvVar: &EnvVarExpectation{Value: "otlp"},
+			}),
+		)
+
+		DescribeTable("should remove OTEL_LOGS_EXPORTER on uninstrumentation only when we set it",
+			func(testConfig otelLogsExporterEnvVarTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				nsConfig := DefaultNamespaceInstrumentationConfig
+				nsConfig.PreviousLogCollectionEnabled = testConfig.previousLogCollectionEnabled
+				modifier := NewResourceModifier(clusterInstrumentationConfig, nsConfig, testActor, logger)
+				modifier.removeOtelLogsExporterEnvVar(container)
+
+				VerifyEnvVarsFromMap(
+					map[string]*EnvVarExpectation{envVarOtelLogsExporterName: testConfig.expectedEnvVar},
+					container.Env,
+				)
+			},
+			Entry("should remove OTEL_LOGS_EXPORTER=none when we previously set it", otelLogsExporterEnvVarTest{
+				previousLogCollectionEnabled: true,
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelLogsExporterName,
+					Value: "none",
+				}},
+				expectedEnvVar: nil,
+			}),
+			Entry("should not remove a user-set OTEL_LOGS_EXPORTER value", otelLogsExporterEnvVarTest{
+				previousLogCollectionEnabled: true,
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelLogsExporterName,
+					Value: "otlp",
+				}},
+				expectedEnvVar: &EnvVarExpectation{Value: "otlp"},
+			}),
+			Entry("should not touch OTEL_LOGS_EXPORTER when log collection was not enabled previously", otelLogsExporterEnvVarTest{
+				previousLogCollectionEnabled: false,
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelLogsExporterName,
+					Value: "none",
+				}},
+				expectedEnvVar: &EnvVarExpectation{Value: "none"},
 			}),
 		)
 

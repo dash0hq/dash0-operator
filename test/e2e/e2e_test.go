@@ -365,6 +365,76 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			})
 
 			Describe("log collection", func() {
+				It("toggles OTEL_LOGS_EXPORTER=none with the log collection setting", func() {
+					Expect(installTestAppWorkload(
+						runtimeTypeJvm,
+						workloadTypeDeployment,
+						applicationUnderTestNamespace,
+						"",
+						nil,
+						nil,
+					)).To(Succeed())
+
+					By("verifying that the JVM deployment has been instrumented by the controller")
+					Eventually(func(g Gomega) {
+						verifyLabels(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeJvm,
+							workloadTypeDeployment,
+							true,
+							images,
+							"webhook",
+						)
+					}).Should(Succeed())
+
+					noneValue := "none"
+					By("verifying that OTEL_LOGS_EXPORTER=none has been added to the instrumented workload")
+					Eventually(func(g Gomega) {
+						verifyPodEnvVar(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeJvm,
+							workloadTypeDeployment,
+							"app",
+							"OTEL_LOGS_EXPORTER",
+							&noneValue,
+						)
+					}, 30*time.Second, pollingInterval).Should(Succeed())
+
+					By("disabling log collection for the namespace")
+					updateLogCollectionEnabledOfDash0MonitoringResource(applicationUnderTestNamespace, false)
+
+					By("verifying that OTEL_LOGS_EXPORTER has been removed from the re-instrumented workload")
+					Eventually(func(g Gomega) {
+						verifyPodEnvVar(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeJvm,
+							workloadTypeDeployment,
+							"app",
+							"OTEL_LOGS_EXPORTER",
+							nil,
+						)
+					}, 60*time.Second, pollingInterval).Should(Succeed())
+
+					By("re-enabling log collection for the namespace")
+					updateLogCollectionEnabledOfDash0MonitoringResource(applicationUnderTestNamespace, true)
+
+					By("verifying that OTEL_LOGS_EXPORTER=none is added back")
+					Eventually(func(g Gomega) {
+						verifyPodEnvVar(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeJvm,
+							workloadTypeDeployment,
+							"app",
+							"OTEL_LOGS_EXPORTER",
+							&noneValue,
+						)
+					}, 60*time.Second, pollingInterval).Should(Succeed())
+				})
+
 				It("collects pod logs, but does not collect the same logs twice when the collector pod is restarted", func() {
 					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 

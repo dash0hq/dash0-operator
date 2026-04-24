@@ -190,6 +190,21 @@ func updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 	)
 }
 
+func updateLogCollectionEnabledOfDash0MonitoringResource(namespace string, enabled bool) {
+	updateDash0MonitoringResource(
+		namespace,
+		fmt.Sprintf(`
+{
+  "spec": {
+    "logCollection": {
+      "enabled": %t
+    }
+  }
+}
+`, enabled),
+	)
+}
+
 func updateDash0MonitoringResource(
 	namespace string,
 	jsonPatch string,

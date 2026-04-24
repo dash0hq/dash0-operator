@@ -29,6 +29,7 @@ const (
 	annotationNameSpecInstrumentWorkloadsLabelSelector                     = "dash0.com/spec.instrumentWorkloads.labelSelector"
 	annotationNameStatusPreviousInstrumentWorkloadsLabelSelector           = "dash0.com/status.previousInstrumentWorkloads.labelSelector"
 	annotationNameSpecEventCollectionEnabled                               = "dash0.com/spec.eventCollection.enabled"
+	annotationNameStatusPreviousLogCollectionEnabled                       = "dash0.com/status.previousLogCollection.enabled"
 )
 
 // Dash0Monitoring is the schema for the Dash0Monitoring API
@@ -454,6 +455,13 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 		dst.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators] =
 			*src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
 	}
+	if src.Status.PreviousLogCollection.Enabled != nil {
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
+		}
+		dst.Annotations[annotationNameStatusPreviousLogCollectionEnabled] =
+			strconv.FormatBool(*src.Status.PreviousLogCollection.Enabled)
+	}
 	dst.Status.PersesDashboardSynchronizationResults = src.Status.PersesDashboardSynchronizationResults
 	dst.Status.PrometheusRuleSynchronizationResults = src.Status.PrometheusRuleSynchronizationResults
 	return nil
@@ -528,6 +536,16 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 			dst.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = new(previousPropagators)
 		}
 		delete(dst.Annotations, annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators)
+
+		previousLogCollectionEnabledAnnotationValue, previousLogCollectionEnabledFound :=
+			src.Annotations[annotationNameStatusPreviousLogCollectionEnabled]
+		if previousLogCollectionEnabledFound && strings.TrimSpace(previousLogCollectionEnabledAnnotationValue) != "" {
+			if previousLogCollectionEnabled, err := strconv.ParseBool(previousLogCollectionEnabledAnnotationValue); err == nil {
+				dst.Status.PreviousLogCollection.Enabled = ptr.To(previousLogCollectionEnabled)
+			}
+			// Deliberately not handling the error here, if the annotation has an invalid value, we ignore it.
+		}
+		delete(dst.Annotations, annotationNameStatusPreviousLogCollectionEnabled)
 	}
 	dst.Status.PersesDashboardSynchronizationResults = src.Status.PersesDashboardSynchronizationResults
 	dst.Status.PrometheusRuleSynchronizationResults = src.Status.PrometheusRuleSynchronizationResults

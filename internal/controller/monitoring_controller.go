@@ -50,6 +50,8 @@ type statusUpdateInfo struct {
 	currentInstrumentWorkloadsLabelSelector  string
 	previousTraceContextPropagators          *string
 	currentTraceContextPropagators           *string
+	previousLogCollectionEnabled             bool
+	currentLogCollectionEnabled              bool
 }
 
 const (
@@ -361,6 +363,9 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	previousTraceContextPropagators := monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
 	currentTraceContextPropagators := monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators
 
+	previousLogCollectionEnabled := util.ReadBoolPointerWithDefault(monitoringResource.Status.PreviousLogCollection.Enabled, true)
+	currentLogCollectionEnabled := util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true)
+
 	var requiredAction util.ModificationMode
 	if !isFirstReconcile {
 		if previousInstrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeAll && previousInstrumentWorkloadsMode != "" && currentInstrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeAll {
@@ -396,6 +401,9 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 			if util.IsStringPointerValueDifferent(previousTraceContextPropagators, currentTraceContextPropagators) {
 				requiredAction = util.ModificationModeInstrumentation
 			}
+			if previousLogCollectionEnabled != currentLogCollectionEnabled {
+				requiredAction = util.ModificationModeInstrumentation
+			}
 		}
 	}
 
@@ -406,6 +414,8 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 		currentInstrumentWorkloadsLabelSelector:  currentLabelSelector,
 		previousTraceContextPropagators:          previousTraceContextPropagators,
 		currentTraceContextPropagators:           currentTraceContextPropagators,
+		previousLogCollectionEnabled:             previousLogCollectionEnabled,
+		currentLogCollectionEnabled:              currentLogCollectionEnabled,
 	}
 }
 
@@ -622,6 +632,11 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 		statusUpdate.currentTraceContextPropagators,
 	) {
 		monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = statusUpdate.currentTraceContextPropagators
+	}
+	if statusUpdate.previousLogCollectionEnabled != statusUpdate.currentLogCollectionEnabled ||
+		monitoringResource.Status.PreviousLogCollection.Enabled == nil {
+		currentLogCollectionEnabled := statusUpdate.currentLogCollectionEnabled
+		monitoringResource.Status.PreviousLogCollection.Enabled = &currentLogCollectionEnabled
 	}
 	if err := r.Status().Update(ctx, monitoringResource); err != nil {
 		logger.Error(err, updateStatusFailedMessageMonitoring)

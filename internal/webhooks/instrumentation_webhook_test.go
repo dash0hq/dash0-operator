@@ -272,6 +272,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
 								},
+								"OTEL_LOGS_EXPORTER": {
+									Value: "none",
+								},
 								"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 									ValueFrom: "metadata.namespace",
 								},
@@ -332,6 +335,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								},
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
+								},
+								"OTEL_LOGS_EXPORTER": {
+									Value: "none",
 								},
 								"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 									ValueFrom: "metadata.namespace",
@@ -418,6 +424,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
 								},
+								"OTEL_LOGS_EXPORTER": {
+									Value: "none",
+								},
 								"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 									ValueFrom: "metadata.namespace",
 								},
@@ -454,6 +463,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 								},
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
+								},
+								"OTEL_LOGS_EXPORTER": {
+									Value: "none",
 								},
 								"OTEL_INJECTOR_K8S_NAMESPACE_NAME": {
 									ValueFrom: "metadata.namespace",

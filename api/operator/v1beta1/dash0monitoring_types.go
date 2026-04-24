@@ -259,6 +259,12 @@ type Dash0MonitoringStatus struct {
 	// +kubebuilder:validation:Optional
 	PreviousInstrumentWorkloads InstrumentWorkloads `json:"previousInstrumentWorkloads,omitempty"`
 
+	// The spec.logCollection setting that has been observed in the previous reconcile cycle. Used to detect when log
+	// collection has been toggled, which requires re-instrumenting workloads so that OTEL_LOGS_EXPORTER is
+	// added/removed accordingly.
+	// +kubebuilder:validation:Optional
+	PreviousLogCollection dash0common.LogCollection `json:"previousLogCollection,omitempty"`
+
 	// Shows results of synchronizing Perses dashboard resources in this namespace via the Dash0 API.
 	// +kubebuilder:validation:Optional
 	PersesDashboardSynchronizationResults map[string]dash0common.PersesDashboardSynchronizationResults `json:"persesDashboardSynchronizationResults,omitempty"`
@@ -441,6 +447,8 @@ func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInst
 		InstrumentationLabelSelector:    d.Spec.InstrumentWorkloads.LabelSelector,
 		TraceContextPropagators:         d.Spec.InstrumentWorkloads.TraceContext.Propagators,
 		PreviousTraceContextPropagators: d.Status.PreviousInstrumentWorkloads.TraceContext.Propagators,
+		LogCollectionEnabled:            util.ReadBoolPointerWithDefault(d.Spec.LogCollection.Enabled, true),
+		PreviousLogCollectionEnabled:    util.ReadBoolPointerWithDefault(d.Status.PreviousLogCollection.Enabled, true),
 	}
 }
 
