@@ -52,7 +52,8 @@ var (
 		},
 	)
 
-	checkRuleApiBasePath = "/api/alerting/check-rules/"
+	checkRuleApiBasePath     = "/api/alerting/check-rules/"
+	recordingRuleApiBasePath = "/api/recording-rules/"
 
 	defaultRuleObjectMeta = metav1.ObjectMeta{
 		Name:      "test-rule",
@@ -434,10 +435,11 @@ var _ = Describe(
 				It(
 					"it ignores Prometheus rule resource changes if no Dash0 monitoring resource exists in the namespace",
 					func() {
-						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Create(
 							ctx,
 							event.TypedCreateEvent[*unstructured.Unstructured]{
@@ -457,10 +459,11 @@ var _ = Describe(
 						monitoringResource.Spec.SynchronizePrometheusRules = new(false)
 						Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
-						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Create(
 							ctx,
 							event.TypedCreateEvent[*unstructured.Unstructured]{
@@ -478,12 +481,13 @@ var _ = Describe(
 					"it ignores Prometheus rule resource changes if the API endpoint is not configured", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
-						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
 						prometheusRuleCrdReconciler.RemoveDefaultApiConfigs(ctx, logger)
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Create(
 							ctx,
 							event.TypedCreateEvent[*unstructured.Unstructured]{
@@ -502,10 +506,11 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						expectFetchOriginsGetRequest(clusterId)
-						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Create(
 							ctx,
 							event.TypedCreateEvent[*unstructured.Unstructured]{
@@ -539,12 +544,19 @@ var _ = Describe(
 							AuthorizationHeaderTestAlternative,
 							DatasetCustomTestAlternative,
 						)
-						expectRulePutRequestsCustom(
+						expectCheckRulePutRequestsCustom(
 							clusterId,
 							ApiEndpointTestAlternative,
 							AuthorizationHeaderTestAlternative,
 							DatasetCustomTestAlternative,
 							defaultCheckRuleRequests(),
+						)
+						expectRecordingRulePutRequestsCustom(
+							clusterId,
+							ApiEndpointTestAlternative,
+							AuthorizationHeaderTestAlternative,
+							DatasetCustomTestAlternative,
+							defaultRecordingRuleRequests(),
 						)
 						defer gock.Off()
 
@@ -558,7 +570,7 @@ var _ = Describe(
 							}, logger,
 						)
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Create(
 							ctx,
 							event.TypedCreateEvent[*unstructured.Unstructured]{
@@ -587,19 +599,27 @@ var _ = Describe(
 
 						// Expect GET + PUT requests for both API configs
 						expectFetchOriginsGetRequest(clusterId)
-						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
 						expectFetchOriginsGetRequestCustom(
 							clusterId,
 							ApiEndpointTestAlternative,
 							AuthorizationHeaderTestAlternative,
 							DatasetCustomTestAlternative,
 						)
-						expectRulePutRequestsCustom(
+						expectCheckRulePutRequestsCustom(
 							clusterId,
 							ApiEndpointTestAlternative,
 							AuthorizationHeaderTestAlternative,
 							DatasetCustomTestAlternative,
 							defaultCheckRuleRequests(),
+						)
+						expectRecordingRulePutRequestsCustom(
+							clusterId,
+							ApiEndpointTestAlternative,
+							AuthorizationHeaderTestAlternative,
+							DatasetCustomTestAlternative,
+							defaultRecordingRuleRequests(),
 						)
 						defer gock.Off()
 
@@ -618,7 +638,7 @@ var _ = Describe(
 							}, logger,
 						)
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Create(
 							ctx,
 							event.TypedCreateEvent[*unstructured.Unstructured]{
@@ -633,19 +653,23 @@ var _ = Describe(
 							dash0common.PrometheusRuleSynchronizationResult{
 								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
 								AlertingRulesTotal:    4,
+								RecordingRulesTotal:   1,
 								InvalidRulesTotal:     0,
 								InvalidRules:          nil,
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
 									{
 										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
 										Dash0Dataset:           DatasetCustomTest,
-										SynchronizedRulesTotal: 4,
+										SynchronizedRulesTotal: 5,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-1"),
 											},
 											"dash0/group-1 - rule-1-2": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-2"),
+											},
+											"dash0/group-1 - rule-1-3": {
+												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-3"),
 											},
 											"dash0/group-2 - rule-2-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-2", "rule-2-1"),
@@ -660,13 +684,16 @@ var _ = Describe(
 									{
 										Dash0ApiEndpoint:       ApiEndpointStandardizedTestAlternative,
 										Dash0Dataset:           DatasetCustomTestAlternative,
-										SynchronizedRulesTotal: 4,
+										SynchronizedRulesTotal: 5,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPatternAlternative, clusterId, "dash0|group-1", "rule-1-1"),
 											},
 											"dash0/group-1 - rule-1-2": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPatternAlternative, clusterId, "dash0|group-1", "rule-1-2"),
+											},
+											"dash0/group-1 - rule-1-3": {
+												Dash0Origin: fmt.Sprintf(checkRuleOriginPatternAlternative, clusterId, "dash0|group-1", "rule-1-3"),
 											},
 											"dash0/group-2 - rule-2-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPatternAlternative, clusterId, "dash0|group-2", "rule-2-1"),
@@ -691,7 +718,8 @@ var _ = Describe(
 
 						// First API config succeeds
 						expectFetchOriginsGetRequest(clusterId)
-						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
 
 						// Second API config fails (all PUT requests return 503)
 						expectFetchOriginsGetRequestCustom(
@@ -735,7 +763,7 @@ var _ = Describe(
 							}, logger,
 						)
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Create(
 							ctx,
 							event.TypedCreateEvent[*unstructured.Unstructured]{
@@ -767,8 +795,8 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						// Expect DELETE requests for both API configs
-						expectRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
-						expectRuleDeleteRequestsCustom(
+						expectCheckRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRuleDeleteRequestsCustom(
 							clusterId,
 							ApiEndpointTestAlternative,
 							AuthorizationHeaderTestAlternative,
@@ -793,7 +821,7 @@ var _ = Describe(
 							}, logger,
 						)
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Delete(
 							ctx,
 							event.TypedDeleteEvent[*unstructured.Unstructured]{
@@ -815,10 +843,11 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						expectFetchOriginsGetRequest(clusterId)
-						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Update(
 							ctx,
 							event.TypedUpdateEvent[*unstructured.Unstructured]{
@@ -841,10 +870,11 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						expectFetchOriginsGetRequest(clusterId)
-						expectRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRulePutRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
-						ruleResource := createDefaultRuleResourceWithEnableLabel("whatever")
+						ruleResource := createDefaultPrometheusRuleResourceWithEnableLabel("whatever")
 						prometheusRuleReconciler.Update(
 							ctx,
 							event.TypedUpdateEvent[*unstructured.Unstructured]{
@@ -867,10 +897,11 @@ var _ = Describe(
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
-						expectRuleDeleteRequestsWithHttpStatus(clusterId, defaultCheckRuleRequests(), http.StatusNotFound)
+						expectCheckRuleDeleteRequestsWithHttpStatus(clusterId, defaultCheckRuleRequests(), http.StatusNotFound)
+						expectRecordingRuleDeleteRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
-						ruleResource := createDefaultRuleResourceWithEnableLabel("false")
+						ruleResource := createDefaultPrometheusRuleResourceWithEnableLabel("false")
 						prometheusRuleReconciler.Create(
 							ctx,
 							event.TypedCreateEvent[*unstructured.Unstructured]{
@@ -893,10 +924,11 @@ var _ = Describe(
 					func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
-						expectRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
+						expectCheckRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRuleDeleteRequests(clusterId, defaultRecordingRuleRequests())
 						defer gock.Off()
 
-						ruleResource := createDefaultRuleResourceWithEnableLabel("false")
+						ruleResource := createDefaultPrometheusRuleResourceWithEnableLabel("false")
 						prometheusRuleReconciler.Update(
 							ctx,
 							event.TypedUpdateEvent[*unstructured.Unstructured]{
@@ -919,7 +951,7 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						expectFetchOriginsGetRequest(clusterId)
-						expectRulePutRequests(
+						expectCheckRulePutRequests(
 							clusterId,
 							[]checkRuleRequestExpectation{
 								{
@@ -936,19 +968,22 @@ var _ = Describe(
 								},
 							},
 						)
-						expectRuleDeleteRequests(
-							clusterId, []checkRuleRequestExpectation{
-								{
-									group: "dash0/group-1",
-									alert: "rule-1-2",
-								},
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
+						orphanedRules := []checkRuleRequestExpectation{
+							{
+								group: "dash0/group-1",
+								alert: "rule-1-2",
 							},
-						)
+						}
+						expectCheckRuleDeleteRequests(clusterId, orphanedRules)
+						// The dual-delete sends DELETEs to both APIs; the recording-rules API returns 404 for
+						// alerting rule orphans, which is handled gracefully.
+						expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, orphanedRules, http.StatusNotFound)
 						defer gock.Off()
 
 						spec := createDefaultSpec()
 						spec.Groups[0].Rules = slices.Delete(spec.Groups[0].Rules, 1, 2)
-						ruleResource := createRuleResource(spec)
+						ruleResource := createPrometheusRuleResource(spec)
 						prometheusRuleReconciler.Update(
 							ctx,
 							event.TypedUpdateEvent[*unstructured.Unstructured]{
@@ -962,17 +997,23 @@ var _ = Describe(
 							k8sClient,
 							dash0common.PrometheusRuleSynchronizationResult{
 								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
-								AlertingRulesTotal:    4,
-								InvalidRulesTotal:     0,
-								InvalidRules:          nil,
+								// 4 upserts (3 alerting + 1 recording) + 2 deletes (orphan sent to both APIs)
+								AlertingRulesTotal:  3,
+								RecordingRulesTotal: 1,
+								InvalidRulesTotal:   0,
+								InvalidRules:        nil,
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
 									{
-										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
-										Dash0Dataset:           DatasetCustomTest,
-										SynchronizedRulesTotal: 4,
+										Dash0ApiEndpoint: ApiEndpointStandardizedTest,
+										Dash0Dataset:     DatasetCustomTest,
+										// Both deletes have the same ItemName so the map deduplicates them.
+										SynchronizedRulesTotal: 6,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-1"),
+											},
+											"dash0/group-1 - rule-1-3": {
+												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-3"),
 											},
 											"dash0/group-2 - rule-2-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-2", "rule-2-1"),
@@ -999,7 +1040,7 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						expectFetchOriginsGetRequest(clusterId)
-						expectRulePutRequests(
+						expectCheckRulePutRequests(
 							clusterId,
 							[]checkRuleRequestExpectation{
 								{
@@ -1012,23 +1053,24 @@ var _ = Describe(
 								},
 							},
 						)
-						expectRuleDeleteRequests(
-							clusterId, []checkRuleRequestExpectation{
-								{
-									group: "dash0/group-2",
-									alert: "rule-2-1",
-								},
-								{
-									group: "dash0/group-2",
-									alert: "rule-2-2",
-								},
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
+						orphanedRules := []checkRuleRequestExpectation{
+							{
+								group: "dash0/group-2",
+								alert: "rule-2-1",
 							},
-						)
+							{
+								group: "dash0/group-2",
+								alert: "rule-2-2",
+							},
+						}
+						expectCheckRuleDeleteRequests(clusterId, orphanedRules)
+						expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, orphanedRules, http.StatusNotFound)
 						defer gock.Off()
 
 						spec := createDefaultSpec()
 						spec.Groups = slices.Delete(spec.Groups, 1, 2)
-						ruleResource := createRuleResource(spec)
+						ruleResource := createPrometheusRuleResource(spec)
 						prometheusRuleReconciler.Update(
 							ctx,
 							event.TypedUpdateEvent[*unstructured.Unstructured]{
@@ -1042,20 +1084,24 @@ var _ = Describe(
 							k8sClient,
 							dash0common.PrometheusRuleSynchronizationResult{
 								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
-								AlertingRulesTotal:    4,
+								AlertingRulesTotal:    2,
+								RecordingRulesTotal:   1,
 								InvalidRulesTotal:     0,
 								InvalidRules:          nil,
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
 									{
 										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
 										Dash0Dataset:           DatasetCustomTest,
-										SynchronizedRulesTotal: 4,
+										SynchronizedRulesTotal: 7,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-1"),
 											},
 											"dash0/group-1 - rule-1-2": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-2"),
+											},
+											"dash0/group-1 - rule-1-3": {
+												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-3"),
 											},
 											"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-1 (deleted)": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-2", "rule-2-1"),
@@ -1079,7 +1125,7 @@ var _ = Describe(
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
 						expectFetchOriginsGetRequest(clusterId)
-						expectRulePutRequests(
+						expectCheckRulePutRequests(
 							clusterId,
 							[]checkRuleRequestExpectation{
 								{
@@ -1100,24 +1146,26 @@ var _ = Describe(
 								},
 							},
 						)
-						expectRuleDeleteRequests(
-							clusterId,
-							[]checkRuleRequestExpectation{
-								{
-									group: "dash0/group-2",
-									alert: "rule-2-1",
-								},
-								{
-									group: "dash0/group-2",
-									alert: "rule-2-2",
-								},
+						expectRecordingRulePutRequests(clusterId, defaultRecordingRuleRequests())
+						orphanedRules := []checkRuleRequestExpectation{
+							{
+								group: "dash0/group-2",
+								alert: "rule-2-1",
 							},
-						)
+							{
+								group: "dash0/group-2",
+								alert: "rule-2-2",
+							},
+						}
+						expectCheckRuleDeleteRequests(clusterId, orphanedRules)
+						// The dual-delete sends DELETEs to both APIs; the recording-rules API returns 404 for
+						// alerting rule orphans, which is handled gracefully.
+						expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, orphanedRules, http.StatusNotFound)
 						defer gock.Off()
 
 						spec := createDefaultSpec()
 						spec.Groups[1].Name = "renamed"
-						ruleResource := createRuleResource(spec)
+						ruleResource := createPrometheusRuleResource(spec)
 						prometheusRuleReconciler.Update(
 							ctx,
 							event.TypedUpdateEvent[*unstructured.Unstructured]{
@@ -1131,20 +1179,24 @@ var _ = Describe(
 							k8sClient,
 							dash0common.PrometheusRuleSynchronizationResult{
 								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
-								AlertingRulesTotal:    6,
+								AlertingRulesTotal:    4,
+								RecordingRulesTotal:   1,
 								InvalidRulesTotal:     0,
 								InvalidRules:          nil,
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
 									{
 										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
 										Dash0Dataset:           DatasetCustomTest,
-										SynchronizedRulesTotal: 6,
+										SynchronizedRulesTotal: 9,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-1"),
 											},
 											"dash0/group-1 - rule-1-2": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-2"),
+											},
+											"dash0/group-1 - rule-1-3": {
+												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "dash0|group-1", "rule-1-3"),
 											},
 											"renamed - rule-2-1": {
 												Dash0Origin: fmt.Sprintf(checkRuleOriginPattern, clusterId, "renamed", "rule-2-1"),
@@ -1173,10 +1225,11 @@ var _ = Describe(
 					"deletes all check rules when the whole PrometheusRule resource has been deleted", func() {
 						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
 
-						expectRuleDeleteRequestsWithHttpStatus(clusterId, defaultCheckRuleRequests(), http.StatusNotFound)
+						expectCheckRuleDeleteRequestsWithHttpStatus(clusterId, defaultCheckRuleRequests(), http.StatusNotFound)
+						expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, defaultRecordingRuleRequests(), http.StatusNotFound)
 						defer gock.Off()
 
-						ruleResource := createDefaultRuleResource()
+						ruleResource := createDefaultPrometheusRuleResource()
 						prometheusRuleReconciler.Delete(
 							ctx,
 							event.TypedDeleteEvent[*unstructured.Unstructured]{
@@ -1200,7 +1253,7 @@ var _ = Describe(
 
 						expectFetchOriginsGetRequest(clusterId)
 
-						// successful requests (HTTP 200)
+						// successful check rule requests (HTTP 200)
 						for _, pathRegex := range []string{
 							fmt.Sprintf(
 								"dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group-1_rule-1-3",
@@ -1218,6 +1271,13 @@ var _ = Describe(
 								Reply(200).
 								JSON(map[string]string{})
 						}
+						// successful recording rule requests (HTTP 200)
+						expectRecordingRulePutRequests(clusterId, []checkRuleRequestExpectation{
+							{
+								group: "dash0/group-1",
+								alert: "rule_1_4",
+							},
+						})
 						// failed requests (HTTP 401)
 						for _, pathRegex := range []string{
 							fmt.Sprintf(
@@ -1238,7 +1298,7 @@ var _ = Describe(
 						}
 						defer gock.Off()
 
-						ruleResource := createRuleResource(
+						ruleResource := createPrometheusRuleResource(
 							prometheusv1.PrometheusRuleSpec{
 								Groups: []prometheusv1.RuleGroup{
 									{
@@ -1257,7 +1317,7 @@ var _ = Describe(
 												Expr:  intstr.FromString("vector(1)"),
 											},
 											{
-												Record: "rule_1_4", // will be ignored as it is a record rule
+												Record: "rule_1_4", // recording rule, should be synchronized successfully
 												Expr:   intstr.FromString("vector(1)"),
 											},
 											{
@@ -1300,17 +1360,18 @@ var _ = Describe(
 							dash0common.PrometheusRuleSynchronizationResult{
 								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusPartiallySuccessful,
 								AlertingRulesTotal:    7,
+								RecordingRulesTotal:   1,
 								InvalidRulesTotal:     3,
 								InvalidRules: map[string][]string{
 									"dash0/group-1 - rule-1-1": {thresholdAnnotationsMissingMessage()},
-									"dash0/group-1 - 4":        {"rule has neither the alert nor the record attribute"},
+									"dash0/group-1 - 4":        {"alerting rule has no alert attribute"},
 									"dash0/group-2 - rule-2-2": {thresholdAnnotationsMissingMessage()},
 								},
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
 									{
 										Dash0ApiEndpoint:       ApiEndpointStandardizedTest,
 										Dash0Dataset:           DatasetCustomTest,
-										SynchronizedRulesTotal: 2,
+										SynchronizedRulesTotal: 3,
 										SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 											"dash0/group-1 - rule-1-3": {
 												Dash0Origin: fmt.Sprintf(
@@ -1318,6 +1379,14 @@ var _ = Describe(
 													clusterId,
 													"dash0|group-1",
 													"rule-1-3",
+												),
+											},
+											"dash0/group-1 - rule_1_4": {
+												Dash0Origin: fmt.Sprintf(
+													checkRuleOriginPattern,
+													clusterId,
+													"dash0|group-1",
+													"rule_1_4",
 												),
 											},
 											"dash0/group-2 - rule-2-1": {
@@ -1361,6 +1430,19 @@ var _ = Describe(
 							Times(1).
 							Reply(401).
 							JSON(map[string]string{})
+						// failed recording rule request, HTTP 401, no retry
+						gock.New(ApiEndpointTest).
+							Put(
+								fmt.Sprintf(
+									"%s.*%s",
+									recordingRuleApiBasePath,
+									"dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-3",
+								),
+							).
+							MatchParam("dataset", DatasetCustomTest).
+							Times(1).
+							Reply(401).
+							JSON(map[string]string{})
 						// failed request, HTTP 500, will be retried 3 times
 						gock.New(ApiEndpointTest).
 							Put(
@@ -1376,7 +1458,7 @@ var _ = Describe(
 							JSON(map[string]string{})
 						defer gock.Off()
 
-						ruleResource := createRuleResource(
+						ruleResource := createPrometheusRuleResource(
 							prometheusv1.PrometheusRuleSpec{
 								Groups: []prometheusv1.RuleGroup{
 									{
@@ -1391,7 +1473,7 @@ var _ = Describe(
 												Expr:  intstr.FromString("vector(1)"),
 											},
 											{
-												Record: "rule-1-3", // will be ignored as it is a record rule
+												Record: "rule-1-3", // recording rule, PUT requests will receive HTTP 401
 												Expr:   intstr.FromString("vector(1)"),
 											},
 											{
@@ -1430,10 +1512,11 @@ var _ = Describe(
 							dash0common.PrometheusRuleSynchronizationResult{
 								SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusFailed,
 								AlertingRulesTotal:    5,
+								RecordingRulesTotal:   1,
 								InvalidRulesTotal:     3,
 								InvalidRules: map[string][]string{
 									"dash0/group-1 - rule-1-1": {thresholdAnnotationsMissingMessage()},
-									"dash0/group-1 - 3":        {"rule has neither the alert nor the record attribute"},
+									"dash0/group-1 - 3":        {"alerting rule has no alert attribute"},
 									"dash0/group-2 - rule-2-1": {thresholdAnnotationsMissingMessage()},
 								},
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
@@ -1442,9 +1525,10 @@ var _ = Describe(
 										Dash0Dataset:                DatasetCustomTest,
 										SynchronizedRulesTotal:      0,
 										SynchronizedRulesAttributes: nil,
-										SynchronizationErrorsTotal:  2,
+										SynchronizationErrorsTotal:  3,
 										SynchronizationErrors: map[string]string{
 											"dash0/group-1 - rule-1-2": "^unexpected status code 401 when synchronizing the rule \"dash0/group-1 - rule-1-2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2\\?dataset=test-dataset, response body is {}\n$",
+											"dash0/group-1 - rule-1-3": "^unexpected status code 401 when synchronizing the rule \"dash0/group-1 - rule-1-3\": PUT https://api.dash0.com/api/recording-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-3\\?dataset=test-dataset, response body is {}\n$",
 											"dash0/group-2 - rule-2-2": "^unexpected status code 500 when synchronizing the rule \"dash0/group-2 - rule-2-2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2\\?dataset=test-dataset, response body is {}\n$",
 										},
 									},
@@ -1460,28 +1544,8 @@ var _ = Describe(
 		Context(
 			"converting a single Prometheus rule to a check rule", func() {
 				It(
-					"should ignore/skip record rules", func() {
-						rule, validationIssues, ok := convertRuleToCheckRule(
-							prometheusv1.Rule{
-								Record: "record",
-								Alert:  "alert",
-							},
-							upsertAction,
-							"group",
-							ptr.To(prometheusv1.Duration("10m")),
-							nil,
-							logger,
-						)
-
-						Expect(ok).To(BeFalse())
-						Expect(validationIssues).To(BeEmpty())
-						Expect(rule).To(BeNil())
-					},
-				)
-
-				It(
 					"should treat an empty rule as invalid", func() {
-						rule, validationIssues, ok := convertRuleToCheckRule(
+						rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{},
 							upsertAction,
 							"group",
@@ -1492,14 +1556,14 @@ var _ = Describe(
 
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
-						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
+						Expect(validationIssues).To(ContainElement("alerting rule has no alert attribute"))
 						Expect(rule).To(BeNil())
 					},
 				)
 
 				It(
 					"should treat a rule without alert or record as invalid", func() {
-						rule, validationIssues, ok := convertRuleToCheckRule(
+						rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Expr:          intstr.FromString("expr"),
 								For:           ptr.To(prometheusv1.Duration("10s")),
@@ -1514,14 +1578,14 @@ var _ = Describe(
 
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
-						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
+						Expect(validationIssues).To(ContainElement("alerting rule has no alert attribute"))
 						Expect(rule).To(BeNil())
 					},
 				)
 
 				It(
 					"should convert an almost empty rule", func() {
-						rule, validationIssues, ok := convertRuleToCheckRule(
+						rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Alert: "alert",
 							},
@@ -1545,7 +1609,7 @@ var _ = Describe(
 
 				It(
 					"should convert a rule with all attributes", func() {
-						rule, validationIssues, ok := convertRuleToCheckRule(
+						rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Alert:         "alert",
 								Expr:          intstr.FromString("expr"),
@@ -1584,7 +1648,7 @@ var _ = Describe(
 
 				It(
 					"should convert a rule with an int expression", func() {
-						rule, validationIssues, ok := convertRuleToCheckRule(
+						rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Alert: "alert",
 								Expr:  intstr.FromInt32(123),
@@ -1611,7 +1675,7 @@ var _ = Describe(
 				DescribeTable(
 					"threshold validation",
 					func(config thresholdValidationTestConfig) {
-						rule, validationIssues, ok := convertRuleToCheckRule(
+						rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 							prometheusv1.Rule{
 								Alert:       "alert",
 								Expr:        intstr.FromString("foobar $__threshold baz"),
@@ -1768,6 +1832,91 @@ var _ = Describe(
 				)
 
 				It(
+					"should route alerting rules to check-rules API and recording rules to recording-rules API",
+					func() {
+						prometheusRule := map[string]any{}
+						prometheusRuleYaml := `
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mixed-rules
+spec:
+  groups:
+  - name: my-group
+    interval: 5m
+    rules:
+    - alert: high-latency
+      expr: "histogram_quantile(0.99, rate(http_duration_seconds_bucket[5m])) > 1"
+      for: 10m
+      labels:
+        severity: critical
+      annotations:
+        summary: "High latency detected"
+        dash0-threshold-degraded: "0.5"
+        dash0-threshold-critical: "1"
+    - record: job:http_requests:rate5m
+      expr: "sum(rate(http_requests_total[5m])) by (job)"
+      labels:
+        env: production
+    - alert: high-error-rate
+      expr: "rate(http_requests_total{status=~\"5..\"}[5m]) > 0.1"
+      labels:
+        severity: warning
+      annotations:
+        summary: "High error rate"
+        dash0-threshold-degraded: "0.05"
+        dash0-threshold-critical: "0.1"
+`
+						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
+						apiConfig := ApiConfig{
+							Endpoint: "https://api.example.com/",
+							Dataset:  "my-dataset",
+						}
+						preconditionValidationResult := &preconditionValidationResult{
+							k8sName:             "mixed-rules",
+							k8sNamespace:        TestNamespaceName,
+							resource:            prometheusRule,
+							validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
+						}
+						resourceToRequestsResult :=
+							prometheusRuleReconciler.MapResourceToHttpRequests(
+								preconditionValidationResult,
+								apiConfig,
+								upsertAction,
+								logger,
+							)
+
+						// All 3 rules should be processed (2 alerting + 1 recording).
+						Expect(resourceToRequestsResult.TotalProcessed()).To(Equal(3))
+						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(3))
+						Expect(resourceToRequestsResult.OriginsInResource).To(HaveLen(3))
+						Expect(resourceToRequestsResult.ValidationIssues).To(BeEmpty())
+						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
+
+						// First rule: alerting rule "high-latency" → routed to check-rules API.
+						alertReq1 := resourceToRequestsResult.ApiRequests[0]
+						Expect(alertReq1.ItemName).To(Equal("my-group - high-latency"))
+						Expect(alertReq1.Request.URL.Path).To(ContainSubstring("/api/alerting/check-rules/"))
+						Expect(alertReq1.Request.Method).To(Equal(http.MethodPut))
+						verifyRequestBodyContains(alertReq1.Request, "histogram_quantile")
+
+						// Second rule: recording rule "job:http_requests:rate5m" → routed to recording-rules API.
+						recordReq := resourceToRequestsResult.ApiRequests[1]
+						Expect(recordReq.ItemName).To(Equal("my-group - job:http_requests:rate5m"))
+						Expect(recordReq.Request.URL.Path).To(ContainSubstring("/api/recording-rules/"))
+						Expect(recordReq.Request.Method).To(Equal(http.MethodPut))
+						verifyRequestBodyContains(recordReq.Request, "sum(rate(http_requests_total[5m])) by (job)")
+
+						// Third rule: alerting rule "high-error-rate" → routed to check-rules API.
+						alertReq2 := resourceToRequestsResult.ApiRequests[2]
+						Expect(alertReq2.ItemName).To(Equal("my-group - high-error-rate"))
+						Expect(alertReq2.Request.URL.Path).To(ContainSubstring("/api/alerting/check-rules/"))
+						Expect(alertReq2.Request.Method).To(Equal(http.MethodPut))
+						verifyRequestBodyContains(alertReq2.Request, "rate(http_requests_total")
+					},
+				)
+
+				It(
 					"should create unique origins even if alert names are not unique", func() {
 						prometheusRule := map[string]any{}
 						prometheusRuleYaml := `
@@ -1811,8 +1960,8 @@ spec:
 								upsertAction,
 								logger,
 							)
-						Expect(resourceToRequestsResult.ItemsTotal).To(Equal(5))
-						Expect(resourceToRequestsResult.OriginsInResource).To(HaveLen(5))
+						Expect(resourceToRequestsResult.TotalProcessed()).To(Equal(6))
+						Expect(resourceToRequestsResult.OriginsInResource).To(HaveLen(6))
 
 						// verify uniqueness of origins
 						origins := make(map[string]bool, len(resourceToRequestsResult.OriginsInResource))
@@ -1828,13 +1977,14 @@ spec:
 								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2",
 								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_1",
 								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-1_2",
+								"dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1",
 								"dash0-operator___test-namespace_prometheus-rule_group-2_alert-1",
 							),
 						)
 
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeEmpty())
 						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
-						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(5))
+						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(6))
 
 						verifyCheckRuleRequest(
 							resourceToRequestsResult.ApiRequests[0],
@@ -1862,6 +2012,12 @@ spec:
 						)
 						verifyCheckRuleRequest(
 							resourceToRequestsResult.ApiRequests[4],
+							"group-1 - alert-2",
+							"/dash0-operator___test-namespace_prometheus-rule_group-1_alert-2_1",
+							"expression 5",
+						)
+						verifyCheckRuleRequest(
+							resourceToRequestsResult.ApiRequests[5],
 							"group-2 - alert-1",
 							"/dash0-operator___test-namespace_prometheus-rule_group-2_alert-1",
 							"expression 6",
@@ -1875,8 +2031,12 @@ spec:
 			"converting a single Prometheus rule to an http request", func() {
 
 				It(
-					"should ignore/skip a record rule", func() {
-						req, validationIssues, syncError, ok := convertRuleToRequest(
+					"should process a rule that has both record and alert as an alerting rule", func() {
+						// In the production flow, recording rules (rule.Record != "") are handled
+						// separately in MapResourceToHttpRequests before convertAlertingRuleToRequest
+						// is called. If a rule somehow has both Record and Alert set,
+						// convertAlertingRuleToRequest treats it as an alerting rule.
+						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
 							"https://api.dash0.com/alerting/check-rules/rule-origin",
 							upsertAction,
 							ApiConfig{},
@@ -1890,16 +2050,16 @@ spec:
 							logger,
 						)
 
-						Expect(ok).To(BeFalse())
+						Expect(ok).To(BeTrue())
 						Expect(validationIssues).To(BeEmpty())
 						Expect(syncError).To(BeNil())
-						Expect(req).To(BeNil())
+						Expect(req).NotTo(BeNil())
 					},
 				)
 
 				It(
 					"should treat an empty rule as invalid", func() {
-						req, validationIssues, syncError, ok := convertRuleToRequest(
+						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
 							"https://api.dash0.com/alerting/check-rules/rule-origin",
 							upsertAction,
 							ApiConfig{},
@@ -1912,7 +2072,7 @@ spec:
 
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
-						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
+						Expect(validationIssues).To(ContainElement("alerting rule has no alert attribute"))
 						Expect(syncError).To(BeNil())
 						Expect(req).To(BeNil())
 					},
@@ -1920,7 +2080,7 @@ spec:
 
 				It(
 					"should treat a rule without alert or record as invalid", func() {
-						req, validationIssues, syncError, ok := convertRuleToRequest(
+						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
 							"https://api.dash0.com/alerting/check-rules/rule-origin",
 							upsertAction,
 							ApiConfig{},
@@ -1937,7 +2097,7 @@ spec:
 
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
-						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
+						Expect(validationIssues).To(ContainElement("alerting rule has no alert attribute"))
 						Expect(syncError).To(BeNil())
 						Expect(req).To(BeNil())
 					},
@@ -1945,7 +2105,7 @@ spec:
 
 				It(
 					"should treat a rule with empty expression as invalid", func() {
-						req, validationIssues, syncError, ok := convertRuleToRequest(
+						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
 							"https://api.dash0.com/alerting/check-rules/rule-origin",
 							upsertAction,
 							ApiConfig{},
@@ -1969,7 +2129,7 @@ spec:
 
 				It(
 					"should convert an almost empty rule", func() {
-						req, validationIssues, syncError, ok := convertRuleToRequest(
+						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
 							"https://api.dash0.com/alerting/check-rules/rule-origin",
 							upsertAction,
 							ApiConfig{},
@@ -1992,7 +2152,7 @@ spec:
 
 				It(
 					"should convert a rule with all attributes", func() {
-						req, validationIssues, syncError, ok := convertRuleToRequest(
+						req, validationIssues, syncError, ok := convertAlertingRuleToRequest(
 							"https://api.dash0.com/alerting/check-rules/rule-origin",
 							upsertAction,
 							ApiConfig{},
@@ -2028,7 +2188,7 @@ spec:
 					"merging metadata annotations with rule annotations", func() {
 						It(
 							"should use only rule annotations when metadata annotations are nil", func() {
-								rule, validationIssues, ok := convertRuleToCheckRule(
+								rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 									prometheusv1.Rule{
 										Alert: "alert",
 										Expr:  intstr.FromString("vector(1)"),
@@ -2052,7 +2212,7 @@ spec:
 
 						It(
 							"should use only metadata annotations when rule annotations are nil", func() {
-								rule, validationIssues, ok := convertRuleToCheckRule(
+								rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 									prometheusv1.Rule{
 										Alert:       "alert",
 										Expr:        intstr.FromString("vector(1)"),
@@ -2076,7 +2236,7 @@ spec:
 
 						It(
 							"should use only metadata annotations when rule annotations are empty", func() {
-								rule, validationIssues, ok := convertRuleToCheckRule(
+								rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 									prometheusv1.Rule{
 										Alert:       "alert",
 										Expr:        intstr.FromString("vector(1)"),
@@ -2100,7 +2260,7 @@ spec:
 
 						It(
 							"should merge metadata and rule annotations when both have different keys", func() {
-								rule, validationIssues, ok := convertRuleToCheckRule(
+								rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 									prometheusv1.Rule{
 										Alert: "alert",
 										Expr:  intstr.FromString("vector(1)"),
@@ -2127,7 +2287,7 @@ spec:
 
 						It(
 							"should give priority to rule annotations when there are conflicts", func() {
-								rule, validationIssues, ok := convertRuleToCheckRule(
+								rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 									prometheusv1.Rule{
 										Alert: "alert",
 										Expr:  intstr.FromString("vector(1)"),
@@ -2157,7 +2317,7 @@ spec:
 
 						It(
 							"should handle empty map when both annotations are nil", func() {
-								rule, validationIssues, ok := convertRuleToCheckRule(
+								rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 									prometheusv1.Rule{
 										Alert:       "alert",
 										Expr:        intstr.FromString("vector(1)"),
@@ -2179,7 +2339,7 @@ spec:
 
 						It(
 							"should allow rule to override metadata annotation with empty string", func() {
-								rule, validationIssues, ok := convertRuleToCheckRule(
+								rule, validationIssues, ok := convertAlertingRuleToCheckRule(
 									prometheusv1.Rule{
 										Alert: "alert",
 										Expr:  intstr.FromString("vector(1)"),
@@ -2263,13 +2423,21 @@ func expectFetchOriginsGetRequestCustom(clusterId string, endpoint string, authH
 				},
 			},
 		)
+	gock.New(endpoint).
+		Get("/api/recording-rules").
+		MatchHeader("Authorization", authHeader).
+		MatchParam("dataset", dataset).
+		ParamPresent("originPrefix").
+		Times(1).
+		Reply(200).
+		JSON([]map[string]string{})
 }
 
 func expectFetchOriginsGetRequest(clusterId string) {
 	expectFetchOriginsGetRequestCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest)
 }
 
-func expectRulePutRequestsCustom(
+func expectCheckRulePutRequestsCustom(
 	clusterId string,
 	endpoint string,
 	authHeader string,
@@ -2301,15 +2469,60 @@ func expectRulePutRequestsCustom(
 	}
 }
 
-func expectRulePutRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
-	expectRulePutRequestsCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest, expectedRequests)
+func expectCheckRulePutRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
+	expectCheckRulePutRequestsCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest, expectedRequests)
 }
 
-func expectRuleDeleteRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
-	expectRuleDeleteRequestsWithHttpStatus(clusterId, expectedRequests, http.StatusOK)
+func expectRecordingRulePutRequestsCustom(
+	clusterId string,
+	endpoint string,
+	authHeader string,
+	dataset string,
+	expectedRequests []checkRuleRequestExpectation,
+) {
+	for _, expectedRequest := range expectedRequests {
+		origin :=
+			fmt.Sprintf(
+				"dash0-operator_%s_%s_test-namespace_test-rule_%s_%s",
+				clusterId,
+				dataset,
+				strings.ReplaceAll(expectedRequest.group, "/", "|"),
+				expectedRequest.alert,
+			)
+		expectedPath := fmt.Sprintf("%s.*%s", recordingRuleApiBasePath, origin)
+		gock.New(endpoint).
+			Put(expectedPath).
+			MatchHeader("Authorization", authHeader).
+			MatchParam("dataset", dataset).
+			Times(1).
+			Reply(200).
+			JSON(
+				map[string]any{
+					"id":      origin,
+					"dataset": dataset,
+				},
+			)
+	}
 }
 
-func expectRuleDeleteRequestsWithHttpStatus(
+func expectRecordingRulePutRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
+	expectRecordingRulePutRequestsCustom(clusterId, ApiEndpointTest, AuthorizationHeaderTest, DatasetCustomTest, expectedRequests)
+}
+
+func defaultRecordingRuleRequests() []checkRuleRequestExpectation {
+	return []checkRuleRequestExpectation{
+		{
+			group: "dash0/group-1",
+			alert: "rule-1-3",
+		},
+	}
+}
+
+func expectCheckRuleDeleteRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
+	expectCheckRuleDeleteRequestsWithHttpStatus(clusterId, expectedRequests, http.StatusOK)
+}
+
+func expectCheckRuleDeleteRequestsWithHttpStatus(
 	clusterId string,
 	expectedRequests []checkRuleRequestExpectation,
 	status int,
@@ -2332,25 +2545,52 @@ func expectRuleDeleteRequestsWithHttpStatus(
 	}
 }
 
-func createDefaultRuleResource() unstructured.Unstructured {
-	return createDefaultRuleResourceWithEnableLabel("")
+func expectRecordingRuleDeleteRequests(clusterId string, expectedRequests []checkRuleRequestExpectation) {
+	expectRecordingRuleDeleteRequestsWithHttpStatus(clusterId, expectedRequests, http.StatusOK)
 }
 
-func createDefaultRuleResourceWithEnableLabel(dash0EnableLabelValue string) unstructured.Unstructured {
+func expectRecordingRuleDeleteRequestsWithHttpStatus(
+	clusterId string,
+	expectedRequests []checkRuleRequestExpectation,
+	status int,
+) {
+	for _, expectedRequest := range expectedRequests {
+		origin :=
+			fmt.Sprintf(
+				"dash0-operator_%s_test-dataset_test-namespace_test-rule_%s_%s",
+				clusterId,
+				strings.ReplaceAll(expectedRequest.group, "/", "|"),
+				expectedRequest.alert,
+			)
+		expectedPath := fmt.Sprintf("%s.*%s", recordingRuleApiBasePath, origin)
+		gock.New(ApiEndpointTest).
+			Delete(expectedPath).
+			MatchHeader("Authorization", AuthorizationHeaderTest).
+			MatchParam("dataset", DatasetCustomTest).
+			Times(1).
+			Reply(status)
+	}
+}
+
+func createDefaultPrometheusRuleResource() unstructured.Unstructured {
+	return createDefaultPrometheusRuleResourceWithEnableLabel("")
+}
+
+func createDefaultPrometheusRuleResourceWithEnableLabel(dash0EnableLabelValue string) unstructured.Unstructured {
 	objectMeta := defaultRuleObjectMeta
 	if dash0EnableLabelValue != "" {
 		objectMeta.Labels = map[string]string{
 			"dash0.com/enable": dash0EnableLabelValue,
 		}
 	}
-	return createRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
+	return createPrometheusRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
 }
 
-func createRuleResource(spec prometheusv1.PrometheusRuleSpec) unstructured.Unstructured {
-	return createRuleResourceWithObjectMeta(spec, defaultRuleObjectMeta)
+func createPrometheusRuleResource(spec prometheusv1.PrometheusRuleSpec) unstructured.Unstructured {
+	return createPrometheusRuleResourceWithObjectMeta(spec, defaultRuleObjectMeta)
 }
 
-func createRuleResourceWithObjectMeta(
+func createPrometheusRuleResourceWithObjectMeta(
 	spec prometheusv1.PrometheusRuleSpec,
 	objectMeta metav1.ObjectMeta,
 ) unstructured.Unstructured {
@@ -2476,19 +2716,23 @@ func expectedPrometheusSyncResult(
 	return dash0common.PrometheusRuleSynchronizationResult{
 		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
 		AlertingRulesTotal:    4,
+		RecordingRulesTotal:   1,
 		InvalidRulesTotal:     0,
 		InvalidRules:          nil,
 		SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
 			{
 				Dash0ApiEndpoint:       apiEndpoint,
 				Dash0Dataset:           dataset,
-				SynchronizedRulesTotal: 4,
+				SynchronizedRulesTotal: 5,
 				SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
 					"dash0/group-1 - rule-1-1": {
 						Dash0Origin: fmt.Sprintf(originPattern, clusterId, "dash0|group-1", "rule-1-1"),
 					},
 					"dash0/group-1 - rule-1-2": {
 						Dash0Origin: fmt.Sprintf(originPattern, clusterId, "dash0|group-1", "rule-1-2"),
+					},
+					"dash0/group-1 - rule-1-3": {
+						Dash0Origin: fmt.Sprintf(originPattern, clusterId, "dash0|group-1", "rule-1-3"),
 					},
 					"dash0/group-2 - rule-2-1": {
 						Dash0Origin: fmt.Sprintf(originPattern, clusterId, "dash0|group-2", "rule-2-1"),
@@ -2573,7 +2817,7 @@ func verifyNoPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResour
 	).Should(Succeed())
 }
 
-func expectRuleDeleteRequestsCustom(
+func expectCheckRuleDeleteRequestsCustom(
 	clusterId string,
 	endpoint string,
 	authHeader string,
@@ -2616,6 +2860,7 @@ func verifyPrometheusRuleMultiExportSynchronizationResult(
 
 			g.Expect(result.SynchronizationStatus).To(Equal(expectedResult.SynchronizationStatus))
 			g.Expect(result.AlertingRulesTotal).To(Equal(expectedResult.AlertingRulesTotal))
+			g.Expect(result.RecordingRulesTotal).To(Equal(expectedResult.RecordingRulesTotal))
 			g.Expect(result.InvalidRulesTotal).To(Equal(expectedResult.InvalidRulesTotal))
 			g.Expect(result.SynchronizationResults).To(HaveLen(len(expectedResult.SynchronizationResults)))
 
