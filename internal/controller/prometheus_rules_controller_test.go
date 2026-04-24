@@ -2228,7 +2228,7 @@ func expectFetchOriginsGetRequestCustom(clusterId string, endpoint string, authH
 		Get("/api/alerting/check-rules").
 		MatchHeader("Authorization", authHeader).
 		MatchParam("dataset", dataset).
-		ParamPresent("idPrefix").
+		ParamPresent("originPrefix").
 		Times(1).
 		Reply(200).
 		JSON(

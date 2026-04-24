@@ -603,16 +603,12 @@ func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(
 	endpoint string,
 	dataset string,
 ) string {
-	// 08.09.2025: Start sending the prefix already as originPrefix, the Dash0 API will rename the parameter
-	// soon-ish. We can remove the (misnamed) idPrefix query parameter as soon as the Dash0 API has rolled out the
-	// rename. Then, ~1 year later, the Dash0 API can remove support for the legacy query parameter idPrefix.
 	originPrefix :=
 		r.renderCheckRuleOriginPrefix(preconditionChecksResult, url.QueryEscape(dataset))
 	return fmt.Sprintf(
-		"%sapi/alerting/check-rules?dataset=%s&idPrefix=%s&originPrefix=%s",
+		"%sapi/alerting/check-rules?dataset=%s&originPrefix=%s",
 		endpoint,
 		url.QueryEscape(dataset),
-		originPrefix,
 		originPrefix,
 	)
 }
