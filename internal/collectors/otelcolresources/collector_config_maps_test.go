@@ -1991,6 +1991,98 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-barker"))
 			Expect(configContent).ToNot(ContainSubstring("filelog/selfmonitoring"))
 		})
+
+		It("should drop barker-originated OTLP logs when IE + barker + self-monitoring are enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   true,
+					BarkerName:      namePrefix + "-barker",
+				},
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).To(HaveKey("filter/logs/drop_barker_otlp_selfmonitoring"))
+
+			logRecordConditions := ReadFromMap(processors, []string{
+				"filter/logs/drop_barker_otlp_selfmonitoring", "logs", "log_record",
+			}).([]interface{})
+			Expect(logRecordConditions).To(HaveLen(1))
+			Expect(logRecordConditions[0]).To(Equal(
+				`resource.attributes["service.name"] == "barker" and ` +
+					`resource.attributes["service.namespace"] == "dash0-operator" and ` +
+					`resource.attributes["telemetry.sdk.language"] != nil`,
+			))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineProcessors(pipelines, "logs/otlp-to-forwarder")).
+				To(ContainElement("filter/logs/drop_barker_otlp_selfmonitoring"))
+		})
+
+		It("should not drop barker OTLP logs when self-monitoring is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   true,
+					BarkerName:      namePrefix + "-barker",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).ToNot(HaveKey("filter/logs/drop_barker_otlp_selfmonitoring"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineProcessors(pipelines, "logs/otlp-to-forwarder")).
+				ToNot(ContainElement("filter/logs/drop_barker_otlp_selfmonitoring"))
+		})
+
+		It("should not add barker OTLP drop filter when barker is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+					BarkerEnabled:   false,
+				},
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).ToNot(HaveKey("filter/logs/drop_barker_otlp_selfmonitoring"))
+		})
 	})
 
 	DescribeTable("should render batch processor with defaults if no batch size settings are provided", func(cmTypeDef configMapTypeDefinition) {
@@ -2431,6 +2523,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			selfMonitoringEnabled         bool
 			prometheusCrdSupportEnabled   bool
 			operatorManagerDeploymentName string
+			intelligentEdge               IntelligentEdgeConfig
 			expectedExpression            string
 		}
 
@@ -2444,6 +2537,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
+				IntelligentEdge:             testConfig.intelligentEdge,
 			}
 			expression := renderOttlNamespaceFilter(
 				testConfig.monitoredNamespaces,
@@ -2567,6 +2661,56 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n",
 			}),
+			Entry("with no namespaces, self-monitoring enabled, intelligent edge with barker enabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				intelligentEdge: IntelligentEdgeConfig{
+					Enabled:       true,
+					BarkerEnabled: true,
+					BarkerName:    namePrefix + "-barker",
+				},
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + namePrefix + "-barker\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
+			Entry("intelligent edge enabled but barker disabled - no barker exclusion", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         true,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				intelligentEdge: IntelligentEdgeConfig{
+					Enabled:       true,
+					BarkerEnabled: false,
+					BarkerName:    namePrefix + "-barker",
+				},
+				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.daemonset.name\"] != \"" + ExpectedDaemonSetName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
+					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
+					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
+			Entry("self-monitoring disabled - barker exclusion not added even if barker enabled", ottlFilterExpressionTestConfig{
+				monitoredNamespaces:           nil,
+				selfMonitoringEnabled:         false,
+				prometheusCrdSupportEnabled:   false,
+				operatorManagerDeploymentName: OperatorManagerDeploymentName,
+				intelligentEdge: IntelligentEdgeConfig{
+					Enabled:       true,
+					BarkerEnabled: true,
+					BarkerName:    namePrefix + "-barker",
+				},
+				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n",
+			}),
 		)
 
 		type ottlFilterEvaluationTestConfig struct {
@@ -2574,6 +2718,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			selfMonitoringEnabled         bool
 			prometheusCrdSupportEnabled   bool
 			operatorManagerDeploymentName string
+			intelligentEdge               IntelligentEdgeConfig
 			resourceAttributes            map[string]string
 			expectedToBeDropped           bool
 		}
@@ -2588,6 +2733,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
+				IntelligentEdge:             testConfig.intelligentEdge,
 			}
 			expression := renderOttlNamespaceFilter(testConfig.monitoredNamespaces, colConfig)
 
@@ -2787,6 +2933,57 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					resourceAttributes: map[string]string{
 						"k8s.deployment.name": ExpectedTargetAllocatorDeploymentName,
 						"k8s.namespace.name":  "some-namespace",
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("barker metrics are not dropped when self-monitoring and intelligent edge are enabled",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					intelligentEdge: IntelligentEdgeConfig{
+						Enabled:       true,
+						BarkerEnabled: true,
+						BarkerName:    namePrefix + "-barker",
+					},
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": namePrefix + "-barker",
+						"k8s.namespace.name":  OperatorNamespace,
+					},
+					expectedToBeDropped: false,
+				}),
+			Entry("barker metrics in a different namespace are still dropped",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					intelligentEdge: IntelligentEdgeConfig{
+						Enabled:       true,
+						BarkerEnabled: true,
+						BarkerName:    namePrefix + "-barker",
+					},
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": namePrefix + "-barker",
+						"k8s.namespace.name":  "some-namespace",
+					},
+					expectedToBeDropped: true,
+				}),
+			Entry("barker metrics are dropped when barker is disabled in intelligent edge config",
+				ottlFilterEvaluationTestConfig{
+					monitoredNamespaces:           []string{namespace1, namespace2},
+					selfMonitoringEnabled:         true,
+					prometheusCrdSupportEnabled:   false,
+					operatorManagerDeploymentName: OperatorManagerDeploymentName,
+					intelligentEdge: IntelligentEdgeConfig{
+						Enabled:       true,
+						BarkerEnabled: false,
+						BarkerName:    namePrefix + "-barker",
+					},
+					resourceAttributes: map[string]string{
+						"k8s.deployment.name": namePrefix + "-barker",
+						"k8s.namespace.name":  OperatorNamespace,
 					},
 					expectedToBeDropped: true,
 				}),

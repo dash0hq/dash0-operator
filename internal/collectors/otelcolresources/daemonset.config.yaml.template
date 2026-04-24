@@ -834,6 +834,16 @@ processors:
       profile:
         - {{ .NamespaceOttlFilter }}
   {{- end }}
+  {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled }}
+  # Barker's stdout logs are already collected by filelog/selfmonitoring, but the shared OpenTelemetry init helper also
+  # installs an OTLP log exporter whenever OTEL_EXPORTER_OTLP_ENDPOINT is set (no per-signal toggle), so barker also
+  # pushes its logs via OTLP. Drop those SDK-originated records to avoid duplicates. telemetry.sdk.language is set by
+  # the OTel SDK and absent on filelog-scraped records.
+  filter/logs/drop_barker_otlp_selfmonitoring:
+    logs:
+      log_record:
+        - 'resource.attributes["service.name"] == "barker" and resource.attributes["service.namespace"] == "dash0-operator" and resource.attributes["telemetry.sdk.language"] != nil'
+  {{- end }}
 
   {{- if .CustomFilters.HasTraceFilters }}
   filter/traces/custom_telemetry_filter:
@@ -1295,6 +1305,9 @@ service:
         - otlp
       processors:
         - memory_limiter
+        {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled }}
+        - filter/logs/drop_barker_otlp_selfmonitoring
+        {{- end }}
       exporters:
         - forward/logs-processors
 
