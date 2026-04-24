@@ -14,6 +14,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
@@ -51,6 +52,7 @@ func assembleDesiredState(
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
 	barkerImage string,
 	barkerImagePullPolicy corev1.PullPolicy,
+	operatorVersion string,
 	forDeletion bool,
 	logger logd.Logger,
 ) []clientObject {
@@ -67,7 +69,7 @@ func assembleDesiredState(
 	if forDeletion || barkerEnabled {
 		if barkerEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleBarkerDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, barkerImage, barkerImagePullPolicy, logger)),
+				addCommonMetadata(assembleBarkerDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, barkerImage, barkerImagePullPolicy, operatorVersion, logger)),
 				addCommonMetadata(assembleBarkerService(operatorNamespace, namePrefix)),
 			)
 		} else {
@@ -85,7 +87,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", true, logger)
 }
 
 func assembleBarkerDeployment(
@@ -95,6 +97,7 @@ func assembleBarkerDeployment(
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
 	barkerImage string,
 	barkerImagePullPolicy corev1.PullPolicy,
+	operatorVersion string,
 	logger logd.Logger,
 ) *appsv1.Deployment {
 	replicas := int32(1)
@@ -193,6 +196,9 @@ func assembleBarkerDeployment(
 			Value: "true",
 		})
 	}
+	if operatorConfig != nil && util.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
+		barkerContainer.Env = append(barkerContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
+	}
 	deployment := assembleBarkerDeploymentForDeletion(operatorNamespace, namePrefix)
 	deployment.Spec = appsv1.DeploymentSpec{
 		Replicas: &replicas,
@@ -219,6 +225,40 @@ func assembleBarkerDeployment(
 		},
 	}
 	return deployment
+}
+
+// assembleSelfMonitoringEnvVars returns env vars that point barker's OTel SDK exporter at the node-local daemonset
+// collector's OTLP gRPC host-port. DASH0_NODE_IP is resolved via the downward API (status.hostIP) and must be defined
+// before OTEL_EXPORTER_OTLP_ENDPOINT, which references it.
+func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
+	return []corev1.EnvVar{
+		{
+			Name: util.EnvVarDash0NodeIp,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "status.hostIP",
+				},
+			},
+		},
+		{
+			// http:// scheme signals plaintext to the OTel Go SDK's gRPC exporter; dns:// or a bare endpoint would
+			// default to TLS, which the node-local daemonset collector does not terminate.
+			Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
+			Value: fmt.Sprintf("http://$(%s):%d", util.EnvVarDash0NodeIp, otelcolresources.OtlpGrpcHostPort),
+		},
+		{
+			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
+			Value: "grpc",
+		},
+		{
+			Name: "OTEL_RESOURCE_ATTRIBUTES",
+			Value: fmt.Sprintf(
+				"service.namespace=dash0-operator,service.name=%s,service.version=%s",
+				barkerComponentName,
+				operatorVersion,
+			),
+		},
+	}
 }
 
 func assembleAuthTokenEnvVar(authorization *dash0common.Authorization, logger logd.Logger) corev1.EnvVar {

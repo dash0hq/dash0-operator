@@ -31,6 +31,28 @@ func NewIntelligentEdgeManager(
 	}
 }
 
+// Reconcile looks up the Dash0IntelligentEdge singleton and reconciles it. Intended for callers that react to changes
+// in resources other than the IE resource itself (e.g. OperatorConfigurationReconciler on self-monitoring toggles). If
+// no IE resource exists, this is a no-op. The IE controller uses ReconcileIntelligentEdge directly with the resource
+// that triggered its reconcile request.
+func (m *IntelligentEdgeManager) Reconcile(ctx context.Context) (bool, error) {
+	logger := logd.FromContext(ctx)
+	intelligentEdgeResource, err := resources.FindUniqueOrMostRecentResourceInScope(
+		ctx,
+		m.Client,
+		"",
+		&dash0v1alpha1.Dash0IntelligentEdge{},
+		logger,
+	)
+	if err != nil {
+		return false, err
+	}
+	if intelligentEdgeResource == nil {
+		return false, nil
+	}
+	return m.ReconcileIntelligentEdge(ctx, intelligentEdgeResource.(*dash0v1alpha1.Dash0IntelligentEdge))
+}
+
 func (m *IntelligentEdgeManager) ReconcileIntelligentEdge(
 	ctx context.Context,
 	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,

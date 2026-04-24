@@ -1286,6 +1286,7 @@ func startDash0Controllers(
 		}
 	}
 
+	var ieManager *intelligentedge.IntelligentEdgeManager
 	if !cliArgs.featureIntelligentEdgeEnabled {
 		setupLog.Info("Intelligent Edge features are disabled.")
 	} else {
@@ -1298,8 +1299,9 @@ func startDash0Controllers(
 			envVars.oTelCollectorNamePrefix,
 			envVars.barkerImage,
 			envVars.barkerImagePullPolicy,
+			images.GetOperatorVersion(),
 		)
-		ieManager := intelligentedge.NewIntelligentEdgeManager(
+		ieManager = intelligentedge.NewIntelligentEdgeManager(
 			k8sClient,
 			ieResourceManager,
 		)
@@ -1410,6 +1412,7 @@ func startDash0Controllers(
 		apiClients,
 		collectorManager,
 		targetallocatorManager,
+		ieManager,
 		clusterUid,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,
