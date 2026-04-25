@@ -19,3 +19,13 @@ func validateGrpcExportInsecureFlags(export *common.Export) valid {
 			!util.ReadBoolPointerWithDefault(export.Grpc.InsecureSkipVerify, false)
 	}
 }
+
+// validateDash0ApiEndpoint validates that the Dash0 export's apiEndpoint (if set) points to a host on the hard-coded
+// allowlist of permitted Dash0 API hosts. Returns nil if the export does not configure API access or if the endpoint is
+// acceptable, or an error describing why the endpoint was rejected.
+func validateDash0ApiEndpoint(export *common.Export) error {
+	if export == nil || export.Dash0 == nil || export.Dash0.ApiEndpoint == "" {
+		return nil
+	}
+	return common.ValidateDash0ApiEndpoint(export.Dash0.ApiEndpoint)
+}

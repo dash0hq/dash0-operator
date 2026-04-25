@@ -171,6 +171,13 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			logger.Warn(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
 			return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
 		}
+		if err := validateDash0ApiEndpoint(&export); err != nil {
+			msg := fmt.Sprintf(
+				"The provided Dash0 operator configuration resource has an invalid Dash0 API endpoint: %s", err.Error(),
+			)
+			logger.Warn(msg)
+			return admission.Denied(msg)
+		}
 	}
 
 	if spec.MonitoringTemplate != nil {

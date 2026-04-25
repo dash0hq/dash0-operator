@@ -275,6 +275,11 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 		if !validateGrpcExportInsecureFlags(&export) {
 			return admission.Denied(ErrorMessageMonitoringGrpcExportInvalidInsecure), true
 		}
+		if err := validateDash0ApiEndpoint(&export); err != nil {
+			return admission.Denied(fmt.Sprintf(
+				"The provided Dash0 monitoring resource has an invalid Dash0 API endpoint: %s", err.Error(),
+			)), true
+		}
 	}
 
 	return admission.Response{}, false

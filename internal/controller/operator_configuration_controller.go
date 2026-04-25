@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/intelligentedge"
@@ -319,6 +320,20 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 			)
 			continue
 		}
+		if dash0Export.ApiEndpoint != "" {
+			if err := dash0common.ValidateDash0ApiEndpoint(dash0Export.ApiEndpoint); err != nil {
+				logger.Error(
+					err,
+					fmt.Sprintf(
+						"The Dash0 API endpoint for export #%d is not in the allowlist of permitted Dash0 API hosts. "+
+							"This export will be skipped, but other exports will continue to be processed.",
+						idx+1,
+					),
+				)
+				continue
+			}
+		}
+
 		apiConfigs = append(
 			apiConfigs, ApiConfig{
 				Endpoint: dash0Export.ApiEndpoint,

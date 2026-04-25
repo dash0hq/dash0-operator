@@ -258,6 +258,52 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			Expect(err).To(MatchError(ContainSubstring(ErrorMessageMonitoringGrpcExportInvalidInsecure)))
 		})
 
+		It("should reject monitoring resources with an apiEndpoint that is not in the allowlist of permitted Dash0 API hosts", func() {
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
+					},
+					Exports: []dash0common.Export{{
+						Dash0: &dash0common.Dash0Configuration{
+							Endpoint: EndpointDash0Test,
+							Authorization: dash0common.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+							ApiEndpoint: "https://api.evil.example.com",
+						},
+					}},
+				},
+			})
+
+			Expect(err).To(MatchError(ContainSubstring(
+				"The provided Dash0 monitoring resource has an invalid Dash0 API endpoint",
+			)))
+		})
+
+		It("should accept monitoring resources with an in-cluster apiEndpoint", func() {
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
+					},
+					Exports: []dash0common.Export{{
+						Dash0: &dash0common.Dash0Configuration{
+							Endpoint: EndpointDash0Test,
+							Authorization: dash0common.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+							ApiEndpoint: "http://dash0-api-mock-service.dash0-api.svc.cluster.local:8001",
+						},
+					}},
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		DescribeTable("should reject monitoring resource creation with telemetry settings if the operator configuration resource has telemetry collection disabled", func(testConfig validationTestConfig) {
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 				ctx,

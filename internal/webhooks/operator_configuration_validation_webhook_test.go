@@ -280,6 +280,29 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		Expect(err).To(MatchError(ContainSubstring(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)))
 	})
 
+	It("should reject a new operator configuration resource with an apiEndpoint that is not in the allowlist of permitted Dash0 API hosts", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{{
+						Dash0: &dash0common.Dash0Configuration{
+							Endpoint: EndpointDash0Test,
+							Authorization: dash0common.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+							ApiEndpoint: "https://api.evil.example.com",
+						},
+					}},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"The provided Dash0 operator configuration resource has an invalid Dash0 API endpoint",
+		)))
+	})
+
 	It("should allow updating an existing operator configuration resource", func() {
 		operatorConfiguration, err := CreateOperatorConfigurationResource(
 			ctx,

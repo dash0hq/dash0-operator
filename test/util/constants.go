@@ -59,8 +59,8 @@ const (
 
 	ApiEndpointTest                        = "https://api.dash0.com"
 	ApiEndpointStandardizedTest            = "https://api.dash0.com/"
-	ApiEndpointTestAlternative             = "https://api-alt.dash0.com"
-	ApiEndpointStandardizedTestAlternative = "https://api-alt.dash0.com/"
+	ApiEndpointTestAlternative             = "https://api.alt.dash0.com"
+	ApiEndpointStandardizedTestAlternative = "https://api.alt.dash0.com/"
 	DatasetCustomTest                      = "test-dataset"
 	DatasetCustomTestAlternative           = "test-dataset-alt"
 )

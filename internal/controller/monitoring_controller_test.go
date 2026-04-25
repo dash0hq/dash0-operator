@@ -347,7 +347,7 @@ var _ = Describe(
 								Expect(namespacedApiClient2.setNamespacedApiEndpointCalls).To(Equal(1))
 								Expect(namespacedApiClient2.namespacedApiconfigs[TestNamespaceName]).To(Equal([]ApiConfig{apiConfigTest}))
 
-								alternativeApiEndpoint := "alternative-api"
+								alternativeApiEndpoint := ApiEndpointTestAlternative
 								alternativeDataset := "alternative-dataset"
 								alternativeAuthToken := "alternative-auth-token"
 								alternativeExport := Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint()

@@ -304,6 +304,21 @@ func (r *MonitoringReconciler) applyApiAccessSettings(
 				)
 				continue
 			}
+			if dash0Config.ApiEndpoint != "" {
+				if err := dash0common.ValidateDash0ApiEndpoint(dash0Config.ApiEndpoint); err != nil {
+					logger.Error(
+						err,
+						fmt.Sprintf(
+							"The Dash0 API endpoint for export #%d in namespace %s is not in the allowlist of permitted "+
+								"Dash0 API hosts. This export will be skipped, but other exports will continue to be processed.",
+							idx+1,
+							monitoringResource.Namespace,
+						),
+					)
+					continue
+				}
+			}
+
 			apiConfig := ApiConfig{
 				Endpoint: dash0Config.ApiEndpoint,
 				Dataset:  dash0Config.Dataset,
