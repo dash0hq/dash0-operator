@@ -817,6 +817,21 @@ processors:
         action: insert
   {{- end }}
 
+  resource/dash0_operator_attributes:
+    attributes:
+      - key: dash0.operator.collector_managed_by
+        value: "dash0-operator"
+        action: upsert
+      - key: dash0.operator.collector_role
+        value: "daemonset"
+        action: upsert
+      - key: dash0.operator.version
+        value: "{{ .OperatorVersion }}"
+        action: upsert
+      - key: dash0.operator.uid
+        value: "{{ .PseudoClusterUid }}"
+        action: upsert
+
   {{- if .NamespaceOttlFilter }}
   # This is a standard filter which is always on; metrics collection receivers generate metrics for all namespaces in
   # the cluster, however, we only want to collect metrics from monitored namespaces, hence this filter.
@@ -1130,6 +1145,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        - resource/dash0_operator_attributes
         {{- if .CustomFilters.HasTraceFilters }}
         - filter/traces/custom_telemetry_filter
         {{- end }}
@@ -1250,6 +1266,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        - resource/dash0_operator_attributes
         {{- if .NamespaceOttlFilter }}
         - filter/metrics/only_monitored_namespaces
         {{- end }}
@@ -1343,6 +1360,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        - resource/dash0_operator_attributes
         {{- if .CustomFilters.HasLogFilters }}
         - filter/logs/custom_telemetry_filter
         {{- end }}
@@ -1407,6 +1425,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        - resource/dash0_operator_attributes
         {{- if .NamespaceOttlFilter }}
         - filter/profiles/only_monitored_namespaces
         {{- end }}

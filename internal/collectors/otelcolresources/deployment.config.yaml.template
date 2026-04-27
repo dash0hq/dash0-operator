@@ -302,6 +302,21 @@ processors:
         action: insert
   {{- end }}
 
+  resource/dash0_operator_attributes:
+    attributes:
+      - key: dash0.operator.collector_managed_by
+        value: "dash0-operator"
+        action: upsert
+      - key: dash0.operator.collector_role
+        value: "deployment"
+        action: upsert
+      - key: dash0.operator.version
+        value: "{{ .OperatorVersion }}"
+        action: upsert
+      - key: dash0.operator.uid
+        value: "{{ .PseudoClusterUid }}"
+        action: upsert
+
 {{ if (and .KubernetesInfrastructureMetricsCollectionEnabled .NamespaceOttlFilter) }}
   filter/metrics/only_monitored_namespaces:
     metrics:
@@ -465,6 +480,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        - resource/dash0_operator_attributes
         {{- if .NamespaceOttlFilter }}
         - filter/metrics/only_monitored_namespaces
         {{- end }}
@@ -525,6 +541,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        - resource/dash0_operator_attributes
         - batch
         - transform/resources
       exporters:
