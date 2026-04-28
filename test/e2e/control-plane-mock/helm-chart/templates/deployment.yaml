@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane-mock
+  labels:
+    app: control-plane-mock-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: control-plane-mock-app
+  template:
+    metadata:
+      labels:
+        app: control-plane-mock-app
+        app.kubernetes.io/name: "control-plane-mock"
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/part-of: "dash0-operator-test"
+        app.kubernetes.io/instance: "control-plane-mock"
+    spec:
+      containers:
+        - name: control-plane-mock-app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          env:
+            - name: PORT
+              value: "{{ .Values.port }}"
+          ports:
+            - containerPort: {{ .Values.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.port }}
+            initialDelaySeconds: 1
+            periodSeconds: 1

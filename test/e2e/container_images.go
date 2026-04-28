@@ -23,6 +23,8 @@ type Images struct {
 	fileLogOffsetSync            ImageSpec
 	fileLogOffsetVolumeOwnership ImageSpec
 	targetAllocator              ImageSpec
+	intelligentEdgeCollector     ImageSpec
+	barker                       ImageSpec
 }
 
 const (
@@ -33,6 +35,8 @@ const (
 	filelogOffsetSyncImageName            = "filelog-offset-sync"
 	filelogOffsetVolumeOwnershipImageName = "filelog-offset-volume-ownership"
 	targetAllocatorImageName              = "target-allocator"
+	intelligentEdgeCollectorImageName     = "intelligent-edge-collector"
+	barkerImageName                       = "barker"
 
 	tagLatest = "latest"
 
@@ -113,6 +117,20 @@ func createContainerImages(repositoryPrefix string, imageTag string, pullPolicy 
 			"TARGET_ALLOCATOR",
 			repositoryPrefix,
 			targetAllocatorImageName,
+			imageTag,
+			pullPolicy,
+		),
+		intelligentEdgeCollector: determineContainerImage(
+			"INTELLIGENT_EDGE_COLLECTOR",
+			repositoryPrefix,
+			intelligentEdgeCollectorImageName,
+			imageTag,
+			pullPolicy,
+		),
+		barker: determineContainerImage(
+			"BARKER",
+			repositoryPrefix,
+			barkerImageName,
 			imageTag,
 			pullPolicy,
 		),

@@ -82,6 +82,13 @@ spec:
                       to the cloud Decision Maker. This consolidates N collector connections into 1-2 upstream connections.
                       This setting is optional, it defaults to true.
                     type: boolean
+                  insecure:
+                    description: |-
+                      Disables TLS for Barker's upstream gRPC connection to the Decision Maker. Intended for local
+                      development and end-to-end testing against in-cluster mock services. Production deployments
+                      should leave this unset so that Barker requires TLS upstream. This setting is optional, it
+                      defaults to false.
+                    type: boolean
                   logLevel:
                     allOf:
                     - enum:

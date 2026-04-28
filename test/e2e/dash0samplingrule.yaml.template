@@ -1,0 +1,17 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SamplingRule
+metadata:
+  name: sampling-rule-e2e-test
+  labels:
+    app.kubernetes.io/name: sampling-rule-e2e-test
+{{- if .Dash0ComEnabled }}
+    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
+{{- end }}
+spec:
+  enabled: true
+  display:
+    name: E2E test sampling rule
+  conditions:
+    kind: probabilistic
+    spec:
+      rate: "0.1"

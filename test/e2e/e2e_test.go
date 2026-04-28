@@ -6,6 +6,7 @@ package e2e
 import (
 	"fmt"
 	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"slices"
@@ -86,6 +87,8 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 		determineContainerImages()
 		determineTestAppImages()
 		determineDash0ApiMockImage()
+		determineDecisionMakerMockImage()
+		determineControlPlaneMockImage()
 		determineTelemetryMatcherImage()
 		determineUrls()
 
@@ -886,6 +889,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						substringIdx++
 					}
 				})
+
 			})
 
 			//nolint:lll
@@ -1484,6 +1488,254 @@ trace_statements:
 		// deployed Dash0 monitoring resource"
 
 	}) // end of suite "with an existing operator deployment and operation configuration resource"
+
+	// Intelligent Edge (IE) tests need their own operator install: the
+	// `operator.development.intelligentEdge.enabled=true` flag swaps the daemonset
+	// collector image for the IE-specific image and gates the IE/sampling-rule
+	// reconcilers in the operator binary. Mixing this with the standard test
+	// suite would change the collector image for every test, so IE lives in a
+	// separate top-level Context with its own deploy/teardown.
+	Context("with the intelligent edge feature enabled", Ordered, func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator with the intelligent-edge feature flag")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				true,
+				map[string]string{
+					"operator.development.intelligentEdge.enabled": "true",
+				},
+			)
+
+			installDash0ApiMock()
+			installControlPlaneMock()
+			installDecisionMakerMock()
+		})
+
+		AfterAll(func() {
+			uninstallDecisionMakerMock()
+			uninstallControlPlaneMock()
+			uninstallDash0ApiMock()
+			undeployOperator(operatorNamespace)
+		})
+
+		//nolint:dupl
+		It("should synchronize a Dash0SamplingRule to the Dash0 API", func() {
+			deploySamplingRuleResource(dash0ApiResourceValues{})
+
+			// Dash0SamplingRule is cluster-scoped, so the origin has no namespace segment.
+			//nolint:lll
+			routeRegex := "/api/sampling-rules/dash0-operator_.*_default_sampling-rule-e2e-test\\?dataset=default"
+
+			By("verifying the sampling rule has been synchronized to the Dash0 API via PUT")
+			req := fetchCapturedApiRequest(0)
+			Expect(req.Method).To(Equal("PUT"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+			Expect(req.Body).ToNot(BeNil())
+			Expect(*req.Body).To(ContainSubstring("\"kind\":\"Dash0Sampling\""))
+			Expect(*req.Body).To(ContainSubstring("E2E test sampling rule"))
+			Expect(*req.Body).To(ContainSubstring("\"rate\":0.1"))
+			Expect(*req.Body).To(ContainSubstring("\"dash0.com/dataset\":\"default\""))
+			verifySamplingRuleApiSyncRequest(req)
+
+			setOptOutLabelInSamplingRule("false")
+			By("verifying the sampling rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+			req = fetchCapturedApiRequest(1)
+			Expect(req.Method).To(Equal("DELETE"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+
+			setOptOutLabelInSamplingRule("true")
+			//nolint:lll
+			By("verifying the sampling rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+			req = fetchCapturedApiRequest(2)
+			Expect(req.Method).To(Equal("PUT"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+			Expect(*req.Body).To(ContainSubstring("E2E test sampling rule"))
+			Expect(*req.Body).To(ContainSubstring("\"rate\":0.1"))
+			verifySamplingRuleApiSyncRequest(req)
+
+			removeSamplingRuleResource()
+			By("verifying the sampling rule has been deleted via the Dash0 API (after removing the resource)")
+			req = fetchCapturedApiRequest(3)
+			Expect(req.Method).To(Equal("DELETE"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+		})
+
+		Describe("with a deployed Dash0IntelligentEdge resource", Ordered, func() {
+			BeforeAll(func() {
+				deployIntelligentEdgeResource(intelligentEdgeValues{
+					DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
+					ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
+				})
+			})
+
+			AfterAll(func() {
+				removeIntelligentEdgeResource()
+			})
+
+			It("deploys the Barker proxy wired to the configured Decision Maker endpoint", func() {
+				barkerDeployment := operatorHelmReleaseName + "-barker"
+
+				By("waiting for the Barker deployment to become available")
+				Eventually(func(g Gomega) {
+					g.Expect(runAndIgnoreOutput(exec.Command(
+						"kubectl",
+						"-n", operatorNamespace,
+						"wait", "--for=condition=Available",
+						"deployment/"+barkerDeployment,
+						"--timeout=30s",
+					))).To(Succeed())
+				}, 120*time.Second, 2*time.Second).Should(Succeed())
+
+				By("verifying the Barker service exists")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl", "-n", operatorNamespace, "get", "service", barkerDeployment,
+				))).To(Succeed())
+
+				By("verifying the Barker container is configured with the Decision Maker mock endpoint")
+				upstream, err := run(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"get", "deployment", barkerDeployment,
+					"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="barker")].env[?(@.name=="UPSTREAM_ADDRESS")].value}`,
+				), false)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(strings.TrimSpace(upstream)).To(Equal(decisionMakerMockGrpcEndpoint))
+
+				By("verifying that Barker actually connects upstream to the Decision Maker mock")
+				Eventually(func(g Gomega) {
+					counts := fetchDecisionMakerGrpcCallCounts(g)
+					g.Expect(counts).NotTo(BeEmpty())
+					// Barker opens both subscription streams (server-info + sampling-rules)
+					// on connect; either is sufficient signal that the upstream wiring
+					// works end-to-end.
+					g.Expect(counts["SubscribeServerInfo"]+counts["SubscribeSamplingRules"]).To(
+						BeNumerically(">", 0),
+						"expected at least one subscription RPC, got %v", counts)
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+			})
+
+			It("reconfigures the collector daemonset to include the IE pipeline", func() {
+				expectedSnippets := []string{
+					"dash0settingsonedgeextension",
+					"dash0sampling:",
+					"dash0redmetrics:",
+					"dash0resource:",
+					"dash0operation:",
+					// `traces/ie-pre-sampling` is gated on `$hasNamespacedExporters` in
+					// the daemonset template; with only the default Dash0 export it is
+					// not rendered. `traces/sampled` is the always-present marker when
+					// sampling is enabled.
+					"traces/sampled:",
+					"forward/traces-to-sampling",
+				}
+
+				By("verifying the daemonset collector configmap contains the IE components")
+				for _, snippet := range expectedSnippets {
+					verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, snippet)
+				}
+
+				By("verifying the collector daemonset rolls out cleanly after the IE config change")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"rollout", "status", collectorDaemonSetNameQualified,
+					"--timeout=120s",
+				))).To(Succeed())
+
+				By("verifying the dash0settingsonedgeextension polled the control-plane mock")
+				Eventually(func(g Gomega) {
+					stored := getStoredControlPlaneRequests(g)
+					g.Expect(stored).NotTo(BeNil())
+					hasSettingsCall := false
+					for _, r := range stored.Requests {
+						if r.Method == http.MethodGet && strings.Contains(r.Url, "/public/edge/settings") {
+							hasSettingsCall = true
+							break
+						}
+					}
+					g.Expect(hasSettingsCall).To(
+						BeTrue(),
+						"expected at least one GET /public/edge/settings on the control-plane mock, got %v",
+						stored.Requests,
+					)
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+			})
+
+			Describe("with a workload sending traces", Ordered, func() {
+				BeforeAll(func() {
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				AfterAll(func() {
+					removeAllTestApplications(applicationUnderTestNamespace)
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				})
+
+				It("emits dash0.spans.red metrics via the dash0redmetrics connector", func() {
+					timestampLowerBound := time.Now()
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+
+					By("driving trace activity through the test app")
+					verifyThatWorkloadHasBeenInstrumented(
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testId,
+						images,
+						"webhook",
+					)
+
+					By("verifying the dash0redmetrics connector emitted dash0.spans.red")
+					Eventually(func(g Gomega) {
+						askTelemetryMatcherForMetricNames(
+							g,
+							shared.ExpectAtLeastOne,
+							[]string{"dash0.spans.red"},
+							timestampLowerBound,
+						)
+					}, 90*time.Second, pollingInterval).Should(Succeed())
+				})
+			})
+
+			It("tears down Barker and reverts the collector when the resource is deleted", func() {
+				barkerDeployment := operatorHelmReleaseName + "-barker"
+
+				removeIntelligentEdgeResource()
+
+				By("verifying the Barker deployment is removed")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"wait", "--for=delete",
+					"deployment/"+barkerDeployment,
+					"--timeout=60s",
+				))).To(Succeed())
+
+				By("verifying the Barker service is removed")
+				Eventually(func(g Gomega) {
+					_, err := run(exec.Command(
+						"kubectl", "-n", operatorNamespace, "get", "service", barkerDeployment,
+					), false)
+					g.Expect(err).To(HaveOccurred())
+				}, 30*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying the daemonset collector configmap no longer references the IE pipeline")
+				Eventually(func(g Gomega) {
+					verifyConfigMapDoesNotContainStrings(operatorNamespace,
+						collectorDaemonSetConfigMapNameQualified, "dash0settingsonedgeextension")
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+			})
+		})
+	}) // end of suite "with the intelligent edge feature enabled"
 
 	Context("with an existing operator deployment without an operation configuration resource", func() {
 		BeforeAll(func() {
@@ -2925,4 +3177,6 @@ func determineUrls() {
 	determineTestAppBaseUrl(port)
 	determineTelemetryMatcherUrl(port)
 	determineDash0ApiMockBaseUrl(port)
+	determineControlPlaneMockBaseUrl(port)
+	determineDecisionMakerMockBaseUrl(port)
 }
