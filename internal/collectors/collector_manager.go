@@ -72,7 +72,7 @@ func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
 		hasBeenReconciled, err := m.ReconcileOpenTelemetryCollector(ctx)
 		if err != nil {
-			logger.Error(err, "Failed to create/update collector resources after extra config map update.")
+			logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update collector resources after extra config map update.")
 		}
 		if hasBeenReconciled {
 			logger.Info("successfully reconciled collector resources after extra config map update")
@@ -141,7 +141,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	}
 
 	if operatorConfigurationResource == nil {
-		logger.Warn(logMsgOperatorConfigMissing)
+		logger.WarnTelemetryCollectionIssue(logMsgOperatorConfigMissing)
 		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else if !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
@@ -189,7 +189,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 			logger,
 		)
 	if err != nil {
-		logger.Error(
+		logger.ErrorTelemetryCollectionIssue(
 			err,
 			"failed to create one or more of the OpenTelemetry collector DaemonSet/Deployment resources, some or "+
 				"all telemetry will be missing",
@@ -283,7 +283,7 @@ func (m *CollectorManager) findAllMonitoringResources(
 		&monitoringResourceList,
 		&client.ListOptions{},
 	); err != nil {
-		logger.Error(err, "Failed to list all Dash0 monitoring resources, requeuing reconcile request.")
+		logger.ErrorTelemetryCollectionIssue(err, "Failed to list all Dash0 monitoring resources, requeuing reconcile request.")
 		return nil, err
 	}
 

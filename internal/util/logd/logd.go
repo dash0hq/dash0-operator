@@ -12,6 +12,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	telemetryCollectionIssueMarker = "dash0.monitoring.telemetry_collection_issue"
+)
+
 // Logger is a thin wrapper around logr.Logger that adds
 //   - a Debug method using V(1), which maps to zapcore.DebugLevel (-1) via the zapr bridge
 //     (logr V level n maps to zap level -n).
@@ -50,6 +54,21 @@ func (l Logger) Warn(msg string, keysAndValues ...any) {
 // ErrorAsWarn logs an error at level at zapcore.WarnLevel.
 func (l Logger) ErrorAsWarn(err error, msg string, keysAndValues ...any) {
 	l.Warn(msg, append([]any{"error", err}, keysAndValues...)...)
+}
+
+// WarnTelemetryCollectionIssue logs a telemetry collection issue at level at zapcore.WarnLevel.
+func (l Logger) WarnTelemetryCollectionIssue(msg string, keysAndValues ...any) {
+	l.Warn(msg, append([]any{telemetryCollectionIssueMarker, true}, keysAndValues...)...)
+}
+
+// ErrorAsWarnTelemetryCollectionIssue logs an error as a telemetry collection issue at level at zapcore.WarnLevel.
+func (l Logger) ErrorAsWarnTelemetryCollectionIssue(err error, msg string, keysAndValues ...any) {
+	l.ErrorAsWarn(err, msg, append([]any{telemetryCollectionIssueMarker, true}, keysAndValues...)...)
+}
+
+// ErrorTelemetryCollectionIssue logs an error as a telemetry collection issue at level at zapcore.ErrorLevel.
+func (l Logger) ErrorTelemetryCollectionIssue(err error, msg string, keysAndValues ...any) {
+	l.ErrorAsWarn(err, msg, append([]any{telemetryCollectionIssueMarker, true}, keysAndValues...)...)
 }
 
 // WithValues returns a new Logger with additional key-value pairs.

@@ -138,7 +138,7 @@ func (r *CollectorReconciler) Reconcile(
 		ctx,
 	)
 	if err != nil {
-		logger.Error(err, "Failed to create/update collector resources.")
+		logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update collector resources.")
 		return reconcile.Result{}, err
 	}
 	if hasBeenReconciled {

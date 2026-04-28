@@ -723,7 +723,7 @@ func isTlsError(err error) bool {
 }
 
 func (m *OTelColResourceManager) logErrorAndDisableKubeletStatsReceiver(logger logd.Logger) KubeletStatsReceiverConfig {
-	logger.Error(
+	logger.ErrorTelemetryCollectionIssue(
 		fmt.Errorf("cannot determine viable endpoint for kubeletstats receiver endpoint, see above"),
 		"The operator ran out of options when trying to find a viable kubeletstats receiver endpoint. The "+
 			"kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.",
@@ -760,7 +760,7 @@ func intelligentEdgeConfigFromResource(
 		apiEndpoint = resource.Spec.ControlPlaneApiEndpoint
 	}
 	if !hasDash0Export {
-		logger.Warn("No Dash0 export is configured in the operator configuration resource. The " +
+		logger.WarnTelemetryCollectionIssue("No Dash0 export is configured in the operator configuration resource. The " +
 			"sampling processor and barker will not have an authorization token for the Decision Maker. " +
 			"Configure a Dash0 export with an auth token in the operator configuration resource.")
 	}
