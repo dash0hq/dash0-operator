@@ -61,10 +61,16 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
-    # enable the following `ignore` to prevent upgrades to RCs
-    # ignore:
-    #   - dependency-name: "golang"
-    #     update-types: ["version-update:semver-minor"]
+    # The following 'ignore' rules are workarounds to prevent noisy/repeated dependabot PRs
+    # that update dependencies to pre-release versions.
+    # The rules need to be manually disabled when a new stable minor version is available.
+    ignore:
+      # enable the following `ignore` to prevent upgrades to golang pre-releases
+      # - dependency-name: "golang"
+      #   update-types: ["version-update:semver-minor"]
+      # enable the following `ignore` to prevent upgrades to python pre-releases
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
 
   # -----------------------
   # -- Test applications --
