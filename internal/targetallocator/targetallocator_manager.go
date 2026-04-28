@@ -56,10 +56,10 @@ func (m *TargetAllocatorManager) UpdateExtraConfig(ctx context.Context, newConfi
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
 		hasBeenReconciled, err := m.ReconcileTargetAllocator(ctx, TriggeredByWatchEvent)
 		if err != nil {
-			logger.Error(err, "Failed to create/update collector resources after extra config map update.")
+			logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update target-allocator resources after extra config map update.")
 		}
 		if hasBeenReconciled {
-			logger.Info("successfully reconciled collector resources after extra config map update")
+			logger.Info("successfully reconciled target-allocator resources after extra config map update")
 		}
 	} else {
 		logger.Info("ignoring extra config map update, both the new and the old extra config map have the same content")
@@ -84,7 +84,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 
 	if m.updateInProgress.Load() {
 		if m.developmentMode {
-			logger.Info("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +
+			logger.Info("creation/update of the OpenTelemetry target-allocator resources is already in progress, skipping " +
 				"additional reconciliation request.")
 		}
 		return false, nil
@@ -191,7 +191,7 @@ func (m *TargetAllocatorManager) createOrUpdateTargetAllocator(
 			logger)
 
 	if err != nil {
-		logger.Error(
+		logger.ErrorTelemetryCollectionIssue(
 			err,
 			"failed to create one or more of the OpenTelemetry target-allocator resources, "+
 				"support for Prometheus CRDs might not work",
@@ -225,12 +225,12 @@ func (m *TargetAllocatorManager) removeTargetAllocator(
 	if err != nil {
 		logger.Error(
 			err,
-			"Failed to delete the OpenTelemetry collector Kubernetes resources, requeuing reconcile request.",
+			"Failed to delete the OpenTelemetry target-allocator Kubernetes resources, requeuing reconcile request.",
 		)
 		return err
 	}
 	if resourcesHaveBeenDeleted {
-		logger.Info("OpenTelemetry collector Kubernetes resources have been deleted.")
+		logger.Info("OpenTelemetry target-allocator Kubernetes resources have been deleted.")
 	} else {
 		logger.Debug("no OpenTelemetry target-allocator Kubernetes resources to delete")
 	}

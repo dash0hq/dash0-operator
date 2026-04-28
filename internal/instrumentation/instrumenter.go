@@ -159,9 +159,9 @@ func (i *Instrumenter) InstrumentAtStartup(
 			&dash0MonitoringResource,
 			logger,
 		); err != nil {
-			logger.Error(
+			logger.ErrorAsWarnTelemetryCollectionIssue(
 				err,
-				"Failed to apply/update instrumentation instrumentation at startup in one namespace.",
+				"Failed to apply/update instrumentation at startup in one namespace.",
 				"namespace",
 				dash0MonitoringResource.Namespace,
 				"name",
@@ -207,7 +207,7 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 
 	logger.Info("Now instrumenting existing workloads in namespace so they send telemetry to Dash0.")
 	if err := i.instrumentAllWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
-		logger.ErrorAsWarn(err, "Instrumenting existing workloads failed.")
+		logger.ErrorAsWarnTelemetryCollectionIssue(err, "Instrumenting existing workloads failed.")
 		return err
 	}
 
@@ -688,7 +688,7 @@ func (i *Instrumenter) postProcessInstrumentation(
 		if errors.As(retryErr, e) {
 			logger.Info(e.Error())
 		} else {
-			logger.ErrorAsWarn(retryErr, "Dash0 instrumentation by controller has not been successful.")
+			logger.ErrorAsWarnTelemetryCollectionIssue(retryErr, "Dash0 instrumentation by controller has not been successful.")
 		}
 		util.QueueFailedInstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
@@ -750,12 +750,13 @@ func (i *Instrumenter) UninstrumentWorkloadsIfAvailable(
 	if dash0MonitoringResource.IsAvailable() {
 		logger.Info("Reverting Dash0's modifications to workloads that have been instrumented to make them send telemetry to Dash0.")
 		if err := i.uninstrumentAllWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
-			logger.ErrorAsWarn(err, "Uninstrumenting existing workloads failed.")
+			logger.ErrorAsWarnTelemetryCollectionIssue(err, "Uninstrumenting existing workloads failed.")
 			return err
 		}
 	} else {
-		logger.Info("Removing the Dash0 monitoring resource and running finalizers, but the Dash0 monitoring resource is not " +
-			"marked as available. Instrumentation will not be removed from workloads.")
+		logger.WarnTelemetryCollectionIssue(
+			"Removing the Dash0 monitoring resource and running finalizers, but the Dash0 monitoring resource is not " +
+				"marked as available. Instrumentation will not be removed from workloads.")
 	}
 	return nil
 }
@@ -1161,7 +1162,10 @@ func (i *Instrumenter) postProcessUninstrumentation(
 		if errors.As(retryErr, e) {
 			logger.Info(e.Error())
 		} else {
-			logger.ErrorAsWarn(retryErr, "Dash0's removal of instrumentation by controller has not been successful.")
+			logger.ErrorAsWarnTelemetryCollectionIssue(
+				retryErr,
+				"Dash0's removal of instrumentation by controller has not been successful.",
+			)
 		}
 		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
@@ -1207,7 +1211,7 @@ func (i *Instrumenter) restartPodsOfReplicaSet(
 				TimeoutSeconds: &timeoutForListingPods,
 			})
 	if err != nil {
-		logger.Error(
+		logger.ErrorAsWarnTelemetryCollectionIssue(
 			err,
 			fmt.Sprintf(
 				"Failed to list all pods in the namespaces for the purpose of restarting the pods owned by the "+
@@ -1234,7 +1238,7 @@ func (i *Instrumenter) restartPodsOfReplicaSet(
 	logger.Debug(fmt.Sprintf("found %d pod(s) to restart for replica set %s/%s", len(podsOfReplicaSet), replicaSet.Namespace, replicaSet.Name))
 	for _, pod := range podsOfReplicaSet {
 		if err := i.Delete(ctx, &pod); err != nil {
-			logger.Warn(
+			logger.WarnTelemetryCollectionIssue(
 				fmt.Sprintf(
 					"Failed to restart pod owned by the replica "+
 						"set %s/%s (%s), this pod will not be restarted automatically.",

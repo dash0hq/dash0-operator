@@ -99,7 +99,7 @@ func getNamespacedOtlpExporters(
 		for i, export := range monitoringResource.EffectiveExports() {
 			exp, err := convertExportSettingsToExporterList(&export, i, false, &ns)
 			if err != nil {
-				logger.Error(err, fmt.Sprintf("Custom exporters for namespace %s could not be applied. "+
+				logger.ErrorTelemetryCollectionIssue(err, fmt.Sprintf("Custom exporters for namespace %s could not be applied. "+
 					"Default exporters will be used for this namespace.", ns))
 				break
 			} else {

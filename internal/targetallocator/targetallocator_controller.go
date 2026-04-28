@@ -132,7 +132,7 @@ func (r *TargetAllocatorReconciler) Reconcile(
 		TriggeredByWatchEvent,
 	)
 	if err != nil {
-		logger.Error(err, "Failed to create/update target-allocator resources.")
+		logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update target-allocator resources.")
 		return reconcile.Result{}, err
 	}
 	if hasBeenReconciled {
