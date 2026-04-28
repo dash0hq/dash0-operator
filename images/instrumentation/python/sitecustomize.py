@@ -9,7 +9,6 @@ from os.path import dirname
 import sys
 from sys import path, version, version_info, stderr
 
-# Note: We might need to tweak the list of offending opentelemetry-* packages.
 double_instrumentation_check_packages = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
@@ -26,27 +25,35 @@ double_instrumentation_check_packages = [
 debug_enabled = os.environ.get("OTEL_INJECTOR_LOG_LEVEL") == "debug"
 
 
-def _print_to_stderr(message):
-    message = "[dash0] " + message
-    print(message, file=stderr)
+def _log_as_json_to_stderr(level, message):
+    log_body = "{\"level\": \"" + level + "\", \"message\": \"" + message + "\", \"logger_name\": \"dash0\""
+    if level == "warn":
+        # All warnings are Dash0 telemetry collection issues, hence adding the respective marker.
+        log_body += ", \"dash0.monitoring.telemetry_collection_issue\": true"
+    log_body += "}"
+    print(log_body, file=stderr)
 
 
-def _print_debug_msg(message):
+def _log_warn(message):
+     _log_as_json_to_stderr("warn", message)
+
+
+def _log_debug(message):
     if debug_enabled:
-        _print_to_stderr(message)
+        _log_as_json_to_stderr("debug", message)
 
 
-_print_debug_msg("running sitecustomize.py")
-_print_debug_msg("PYTHONPATH: {}".format(os.environ.get("PYTHONPATH")))
+_log_debug("running sitecustomize.py")
+_log_debug("PYTHONPATH: {}".format(os.environ.get("PYTHONPATH")))
 
 
 def _print_cannot_auto_instrument_message(reason):
     if hasattr(sys, "argv"):
         # If sys.argv is available, add the full command line (" ".join(sys.argv)) to the log message, so users know
         # which Python process this is about.
-        _print_to_stderr("warning: cannot auto-instrument Python process: {} [{}]".format(reason, " ".join(sys.argv)))
+        _log_warn("cannot auto-instrument Python process: {} [{}]".format(reason, " ".join(sys.argv)))
     else:
-        _print_to_stderr("warning: cannot auto-instrument Python process: {}".format(reason))
+        _log_warn("cannot auto-instrument Python process: {}".format(reason))
 
 
 def _self_deactivate(current_site):
@@ -69,12 +76,12 @@ def _self_deactivate(current_site):
     current_pythonpath = os.environ.get("PYTHONPATH", "")
     pythonpath_entries = [entry for entry in current_pythonpath.split(",") if entry != current_site]
     new_pythonpath = ",".join(pythonpath_entries)
-    _print_debug_msg("setting PYTHONPATH in _self_deactivate: \"{}\"".format(new_pythonpath))
+    _log_debug("setting PYTHONPATH in _self_deactivate: \"{}\"".format(new_pythonpath))
     os.environ["PYTHONPATH"] = new_pythonpath
 
     # The OpenTelemetry injector will also run for child processes, and it would bring back the PYTHONPATH modification
     # which we have just removed. Instruct it to not do that by disabling Python auto-instrumentation.
-    _print_debug_msg("clearing PYTHON_AUTO_INSTRUMENTATION_AGENT_PATH_PREFIX in _self_deactivate")
+    _log_debug("clearing PYTHON_AUTO_INSTRUMENTATION_AGENT_PATH_PREFIX in _self_deactivate")
     os.environ["PYTHON_AUTO_INSTRUMENTATION_AGENT_PATH_PREFIX"] = ""
 
     if current_site in path:
@@ -130,7 +137,7 @@ def _check_dependency_version_conflict(req_string, version_conflicts):
     from packaging.requirements import Requirement
     from packaging.version import Version
 
-    _print_debug_msg("_check_dependency_version_conflict({})".format(req_string))
+    _log_debug("_check_dependency_version_conflict({})".format(req_string))
     req = Requirement(req_string)
 
     # Skip extras/markers for simplicity in conflict detection
@@ -145,22 +152,22 @@ def _check_dependency_version_conflict(req_string, version_conflicts):
     try:
         installed_distribution = importlib.metadata.distribution(req.name)
         installed_version = Version(installed_distribution.version)
-        _print_debug_msg("installed_version: {}".format(installed_version))
+        _log_debug("installed_version: {}".format(installed_version))
 
         # Check if installed version satisfies the requirement
         if req.specifier and installed_version not in req.specifier:
-            _print_debug_msg("adding version conflict for {}".format(req.name))
+            _log_debug("adding version conflict for {}".format(req.name))
             version_conflicts[req.name] = {
                 "version_required": str(req.specifier),
                 "version_found": str(installed_version),
             }
     except importlib.metadata.PackageNotFoundError:
-        _print_debug_msg("adding version error for {}".format(req.name))
+        _log_debug("adding version error for {}".format(req.name))
         version_conflicts[req.name] = {"error": "required package not found"}
 
 
 def import_distro():
-    _print_debug_msg("checking Python version")
+    _log_debug("checking Python version")
     current_site = dirname(__file__)
 
     # We cannot use `sys.version_info.major` or other named attributes, as they only got introduced only in Python 3.1.
@@ -168,8 +175,8 @@ def import_distro():
         _self_deactivate(current_site)
         _print_cannot_auto_instrument_message("unsupported Python version: {}".format(version))
         return
-    _print_debug_msg("found eligible Python version: {}".format(version_info))
-    _print_debug_msg("checking OTEL_EXPORTER_OTLP_PROTOCOL")
+    _log_debug("found eligible Python version: {}".format(version_info))
+    _log_debug("checking OTEL_EXPORTER_OTLP_PROTOCOL")
 
     otlp_protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
     if otlp_protocol is None:
@@ -196,8 +203,8 @@ def import_distro():
             "to use Python auto-instrumentation.)"
         )
         return
-    _print_debug_msg("found eligible OTEL_EXPORTER_OTLP_PROTOCOL value: {}".format(otlp_protocol))
-    _print_debug_msg("checking for double instrumentation")
+    _log_debug("found eligible OTEL_EXPORTER_OTLP_PROTOCOL value: {}".format(otlp_protocol))
+    _log_debug("checking for double instrumentation")
 
     # Temporarily remove this site to be able to check for problematic dependencies in all other available sites.
     # Without the current site it is easier to differentiate between "our" dependencies and dependencies brought in by
@@ -210,8 +217,8 @@ def import_distro():
     if _check_for_double_instrumentation(current_site):
         return
 
-    _print_debug_msg("no double instrumentation detected")
-    _print_debug_msg("checking for dependency conflicts")
+    _log_debug("no double instrumentation detected")
+    _log_debug("checking for dependency conflicts")
 
     # This "path.append(current_site)" together with "path.remove(current_site)" executed a couple of lines above
     # effectively reorders sys.path to put this site last. This is necessary to evaluate potential conflicting
@@ -237,7 +244,7 @@ def import_distro():
 
     if not version_conflicts:
         try:
-            _print_debug_msg("importing and initializing the Python auto-instrumentation now")
+            _log_debug("importing and initializing the Python auto-instrumentation now")
             from opentelemetry.instrumentation import auto_instrumentation
             auto_instrumentation.initialize()
         except Exception as e:
