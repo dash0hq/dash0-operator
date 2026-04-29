@@ -849,7 +849,7 @@ func (m *ResourceModifier) prependDash0NodeIp(container *corev1.Container) {
 }
 
 // addOtelLogsExporterEnvVar sets OTEL_LOGS_EXPORTER=none when log collection is enabled for the namespace, so the
-// workload's own OTel SDK does not also export logs via OTLP (the collector's filelog receiver already tails stdout,
+// workload's own OTel SDK does not also export logs via OTLP (the collector's file_log receiver already tails stdout,
 // which would result in duplicate log records). If the user has already set OTEL_LOGS_EXPORTER explicitly, we preserve
 // their value.
 //

@@ -507,7 +507,7 @@ receivers:
   {{- end }}
 
   {{- if .NamespacesWithLogCollection }}
-  filelog:
+  file_log:
     include:
     {{- range $i, $namespace := .NamespacesWithLogCollection }}
       - /var/log/pods/{{ $namespace }}_*/*/*.log
@@ -527,7 +527,7 @@ receivers:
   target-allocator is running even though it shouldn't.
   */}}
   {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled)) }}
-  filelog/selfmonitoring:
+  file_log/selfmonitoring:
     include:
       {{- if .PrometheusCrdSupportEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .OperatorResourcesNamePrefix }}-opentelemetry-target-allocator*/*/*.log
@@ -850,10 +850,10 @@ processors:
         - {{ .NamespaceOttlFilter }}
   {{- end }}
   {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled }}
-  # Barker's stdout logs are already collected by filelog/selfmonitoring, but the shared OpenTelemetry init helper also
+  # Barker's stdout logs are already collected by file_log/selfmonitoring, but the shared OpenTelemetry init helper also
   # installs an OTLP log exporter whenever OTEL_EXPORTER_OTLP_ENDPOINT is set (no per-signal toggle), so barker also
   # pushes its logs via OTLP. Drop those SDK-originated records to avoid duplicates. telemetry.sdk.language is set by
-  # the OTel SDK and absent on filelog-scraped records.
+  # the OTel SDK and absent on file_log-scraped records.
   filter/logs/drop_barker_otlp_selfmonitoring:
     logs:
       log_record:
@@ -1331,7 +1331,7 @@ service:
     {{- if .NamespacesWithLogCollection }}
     logs/filelog-to-forwarder:
       receivers:
-        - filelog
+        - file_log
       processors:
         - memory_limiter
       exporters:
@@ -1341,7 +1341,7 @@ service:
     {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled)) }}
     logs/selfmonitoring-filelog-to-forwarder:
       receivers:
-        - filelog/selfmonitoring
+        - file_log/selfmonitoring
       processors:
         - memory_limiter
       exporters:

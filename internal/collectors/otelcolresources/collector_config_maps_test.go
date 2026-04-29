@@ -1902,7 +1902,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 		})
 
-		It("should collect barker logs via filelog/selfmonitoring when IE + barker + self-monitoring enabled [DaemonSet]", func() {
+		It("should collect barker logs via file_log/selfmonitoring when IE + barker + self-monitoring enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -1925,10 +1925,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			// filelog/selfmonitoring should include barker pod log path
+			// file_log/selfmonitoring should include barker pod log path
 			receivers := collectorConfig["receivers"].(map[string]interface{})
-			Expect(receivers).To(HaveKey("filelog/selfmonitoring"))
-			filelogConfig := receivers["filelog/selfmonitoring"].(map[string]interface{})
+			Expect(receivers).To(HaveKey("file_log/selfmonitoring"))
+			filelogConfig := receivers["file_log/selfmonitoring"].(map[string]interface{})
 			includePaths := filelogConfig["include"].([]interface{})
 			barkerPathFound := false
 			for _, p := range includePaths {
@@ -1938,14 +1938,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					}
 				}
 			}
-			Expect(barkerPathFound).To(BeTrue(), "barker pod log path not found in filelog/selfmonitoring include list")
+			Expect(barkerPathFound).To(BeTrue(), "barker pod log path not found in file_log/selfmonitoring include list")
 
 			// logs/selfmonitoring-filelog-to-forwarder pipeline should exist
 			pipelines := readPipelines(collectorConfig)
 			Expect(pipelines).To(HaveKey("logs/selfmonitoring-filelog-to-forwarder"))
 		})
 
-		It("should not include barker logs in filelog/selfmonitoring when barker is disabled [DaemonSet]", func() {
+		It("should not include barker logs in file_log/selfmonitoring when barker is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -1989,7 +1989,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			configContent := configMap.Data["config.yaml"]
 			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-barker"))
-			Expect(configContent).ToNot(ContainSubstring("filelog/selfmonitoring"))
+			Expect(configContent).ToNot(ContainSubstring("file_log/selfmonitoring"))
 		})
 
 		It("should drop barker-originated OTLP logs when IE + barker + self-monitoring are enabled [DaemonSet]", func() {
@@ -3302,25 +3302,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Exporters:         cmTestSingleDefaultOtlpExporter(),
 		}
 
-		It("should not render the filelog receiver if no namespace has log collection enabled", func() {
+		It("should not render the file_log receiver if no namespace has log collection enabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{}, []string{}, []string{}, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			Expect(ReadFromMap(collectorConfig, []string{"receivers", "filelog"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "file_log"})).To(BeNil())
 
 			filelogServiceAttributeProcessor :=
 				ReadFromMap(collectorConfig, []string{"processors", "transform/logs/filelog_service_attributes"})
 			Expect(filelogServiceAttributeProcessor).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(pipelines["logs/filelog"]).To(BeNil())
+			Expect(pipelines["logs/file_log"]).To(BeNil())
 			logsCommonProcessorsPipelineProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
 			Expect(logsCommonProcessorsPipelineProcessors).ToNot(BeNil())
 			Expect(logsCommonProcessorsPipelineProcessors).ToNot(ContainElement("transform/logs/filelog_service_attributes"))
 		})
 
-		It("should render the filelog config with all namespaces for which log collection is enabled", func() {
+		It("should render the file_log config with all namespaces for which log collection is enabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(
 				config,
 				[]string{"namespace-1", "namespace-2", "namespace-3"},
@@ -3333,7 +3333,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			fileLogReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "filelog"})
+			fileLogReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "file_log"})
 			Expect(fileLogReceiverRaw).ToNot(BeNil())
 			fileLogReceiver := fileLogReceiverRaw.(map[string]any)
 			filePatterns := fileLogReceiver["include"].([]any)
@@ -3348,7 +3348,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			pipelines := readPipelines(collectorConfig)
 			logsFilelogReceivers := readPipelineReceivers(pipelines, "logs/filelog-to-forwarder")
 			Expect(logsFilelogReceivers).ToNot(BeNil())
-			Expect(logsFilelogReceivers).To(ContainElement("filelog"))
+			Expect(logsFilelogReceivers).To(ContainElement("file_log"))
 			logsFilelogProcessors := readPipelineProcessors(pipelines, "logs/filelog-to-forwarder")
 			Expect(logsFilelogProcessors).ToNot(BeNil())
 			logsFilelogExporters := readPipelineExporters(pipelines, "logs/filelog-to-forwarder")
@@ -4659,7 +4659,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 	})
 
 	Describe("target-allocator self-monitoring", func() {
-		It("should render the filelog/selfmonitoring receiver and pipeline when both SelfMonitoringEnabled and PrometheusCrdSupportEnabled are true", func() {
+		It("should render the file_log/selfmonitoring receiver and pipeline when both SelfMonitoringEnabled and PrometheusCrdSupportEnabled are true", func() {
 			config := &oTelColConfig{
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
@@ -4674,7 +4674,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			filelogReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "filelog/selfmonitoring"})
+			filelogReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "file_log/selfmonitoring"})
 			Expect(filelogReceiverRaw).ToNot(BeNil())
 			filelogReceiver, ok := filelogReceiverRaw.(map[string]interface{})
 			Expect(ok).To(BeTrue())
@@ -4689,12 +4689,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(filelogReceiver["start_at"]).To(Equal("beginning"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineReceivers(pipelines, "logs/selfmonitoring-filelog-to-forwarder")).To(ConsistOf("filelog/selfmonitoring"))
+			Expect(readPipelineReceivers(pipelines, "logs/selfmonitoring-filelog-to-forwarder")).To(ConsistOf("file_log/selfmonitoring"))
 			Expect(readPipelineProcessors(pipelines, "logs/selfmonitoring-filelog-to-forwarder")).To(ConsistOf("memory_limiter"))
 			Expect(readPipelineExporters(pipelines, "logs/selfmonitoring-filelog-to-forwarder")).To(ConsistOf("forward/logs-processors"))
 		})
 
-		It("should not render the filelog/selfmonitoring receiver and pipeline when SelfMonitoringEnabled is false", func() {
+		It("should not render the file_log/selfmonitoring receiver and pipeline when SelfMonitoringEnabled is false", func() {
 			config := &oTelColConfig{
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
@@ -4709,7 +4709,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			Expect(ReadFromMap(collectorConfig, []string{"receivers", "filelog/selfmonitoring"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "file_log/selfmonitoring"})).To(BeNil())
 			Expect(ReadFromMap(collectorConfig, []string{
 				"service",
 				"pipelines",
@@ -4717,7 +4717,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			})).To(BeNil())
 		})
 
-		It("should not render the filelog/selfmonitoring receiver and pipeline when PrometheusCrdSupportEnabled is false", func() {
+		It("should not render the file_log/selfmonitoring receiver and pipeline when PrometheusCrdSupportEnabled is false", func() {
 			config := &oTelColConfig{
 				OperatorNamespace:           OperatorNamespace,
 				NamePrefix:                  namePrefix,
@@ -4732,7 +4732,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			Expect(ReadFromMap(collectorConfig, []string{"receivers", "filelog/selfmonitoring"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"receivers", "file_log/selfmonitoring"})).To(BeNil())
 			Expect(ReadFromMap(collectorConfig, []string{
 				"service",
 				"pipelines",

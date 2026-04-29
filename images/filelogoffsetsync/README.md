@@ -4,7 +4,7 @@ Filelog Receiver Offset Synchronization
 See opentelemetry-collector-contrib/receiver/filelogreceiver/README.md#offset-tracking.
 
 This container is added to the daemonset OTel collector pod, to keep track of log file offsets.
-Its main purpose is to ensure that log records are not emitted multiple times by the filelog receiver when the collector
+Its main purpose is to ensure that log records are not emitted multiple times by the file_log receiver when the collector
 pod is restarted.
 
 *Note:* If a user-provided volume is configured via the Helm chart property
@@ -19,7 +19,7 @@ the help of this container image.
 Since the whole mechanism requires a couple of components to work together, here is a description of how everything is
 connected:
 
-- The configuration for the filelog receiver (see `daemonset.config.yaml.template`) sets the property
+- The configuration for the file_log receiver (see `daemonset.config.yaml.template`) sets the property
   `storage: file_storage/filelogreceiver_offsets` and also defines a file storage extension with the same name,
   backed by the directory `/var/otelcol/filelogreceiver_offsets`.
 - This directory in turn is backed by a volume mount (`desired_state.go#filelogReceiverOffsetsVolumeMount`), which
@@ -28,11 +28,11 @@ connected:
 - The volume mounts all refer to the volume named `filelogreceiver-offsets` of that pod
   (`desired_state.go#assembleCollectorDaemonSetVolumes`), which is an `EmptyDir` type volume with a limit of 10 MB.
 - This way, the filelog offset sync container as well as the filelog offset sync init container have access to the
-  filelog offset files which the collector container's filelog receiver component writes.
+  filelog offset files which the collector container's file_log receiver component writes.
 
 The `EmptyDir` volume only exists for the lifetime of the pod.
 The purpose of storing the offsets in the first place is to have them available across pod restarts, so we need to
-synchronize them in some kind of permanent storage after the filelog receiver writes them to the
+synchronize them in some kind of permanent storage after the file_log receiver writes them to the
 `filelogreceiver-offsets` volume.
 For that purpose, the operator creates a config map named `${helm release name}-filelogoffsets-cm` (see `desired_state.go#assembleFilelogOffsetsConfigMap`).
 

@@ -161,7 +161,7 @@ func compileTelemetryMatcherUrlForLogRecords(
 	//   lower bound: 2026-01-05 12:59:44.90783     +0000 UTC (1767617984907830000) vs.
 	//    log record: 2026-01-05 12:59:44.907778513 +0000 UTC (1767617984907778513)
 	//
-	// Maybe this is related to the way the filelog receiver determines the log record's timestamp after reading it from
+	// Maybe this is related to the way the file_log receiver determines the log record's timestamp after reading it from
 	// the pod log.
 	timestampLowerBound = timestampLowerBound.Add(-1 * time.Millisecond)
 	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixNano(), 10))

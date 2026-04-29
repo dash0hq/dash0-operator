@@ -2,13 +2,13 @@ Filelog Offset Volume Ownership
 ===============================
 
 This image is attached as an init container to the OpenTelemetry collector DaemonSet pods, when a volume is used to
-store filelog offsets for the filelog receiver.
+store filelog offsets for the file_log receiver.
 The user-provided volume is mounted at /var/otelcol/filelogreceiver_offsets, both for the collector containerand also
 for this init container.
 
 We use the file_storage extension to store log file offsets. This is configured in daemonset.config.yaml.template
 in the section extensions.file_storage/filelogreceiver_offsets.
-The extension is attached to receivers.filelog via the storage attribute.
+The extension is attached to receivers.file_log via the storage attribute.
 The storage directory configured for file_storage/filelogreceiver is /var/otelcol/filelogreceiver_offsets, that is,
 the extension uses the volume mount's directory.
 
@@ -40,8 +40,8 @@ spec:
 Failure to set the ownership correctly will result in `/var/otelcol/filelogreceiver_offsets` to be owned by `root:root`,
 which in turn will result in a CrashLoopBackOff for the DaemonSet collector's `opentelemetry-collector` container:
 ```
-opentelemetry-collector Error: cannot start pipelines: failed to start "filelog" receiver: storage client: open /var/otelcol/filelogreceiver_offsets/receiver_filelog_: permission denied
-opentelemetry-collector 2025/11/19 14:56:38 collector server run finished with error: cannot start pipelines: failed to start "filelog" receiver: storage client: open /var/otelcol/filelogreceiver_offsets/receiver_filelog_: permission denied
+opentelemetry-collector Error: cannot start pipelines: failed to start "file_log" receiver: storage client: open /var/otelcol/filelogreceiver_offsets/receiver_filelog_: permission denied
+opentelemetry-collector 2025/11/19 14:56:38 collector server run finished with error: cannot start pipelines: failed to start "file_log" receiver: storage client: open /var/otelcol/filelogreceiver_offsets/receiver_filelog_: permission denied
 ```
 
 For this reason, we attach this init container, running as root, and executing the following actions:
