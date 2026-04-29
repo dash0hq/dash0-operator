@@ -94,10 +94,16 @@ tests:
       path: metadata.name
       value: dash0-operator-certificates
     asserts:
-      - isNotNullOrEmpty:
+      - exists:
           path: data["ca.crt"]
       - isNotNullOrEmpty:
+          path: data["ca.crt"]
+      - exists:
           path: data["tls.crt"]
+      - isNotNullOrEmpty:
+          path: data["tls.crt"]
+      - exists:
+          path: data["tls.key"]
       - isNotNullOrEmpty:
           path: data["tls.key"]
 
@@ -172,6 +178,8 @@ tests:
         collectors:
           sendBatchMaxSize: 8192
     asserts:
+      - exists:
+          path: spec.template.spec.containers[0]
       - isNotNullOrEmpty:
           path: spec.template.spec.containers[0]
 
@@ -1077,6 +1085,8 @@ tests:
       path: metadata.name
       value: dash0-operator-controller
     asserts:
+      - exists:
+          path: spec.template.metadata.labels["dash0.com/cert-digest"]
       - isNotNullOrEmpty:
           path: spec.template.metadata.labels["dash0.com/cert-digest"]
 
@@ -1400,6 +1410,8 @@ tests:
           name: custom-webhook-service-name
           port: 554
     asserts:
+      - exists:
+          path: spec.selector["dash0.com/cert-digest"]
       - isNotNullOrEmpty:
           path: spec.selector["dash0.com/cert-digest"]
       - equal:
@@ -1436,6 +1448,8 @@ tests:
           annotation1: "metrics service annotation 1"
           annotation2: "metrics service annotation 2"
     asserts:
+      - exists:
+          path: spec.selector["dash0.com/cert-digest"]
       - isNotNullOrEmpty:
           path: spec.selector["dash0.com/cert-digest"]
       - equal:
@@ -1457,15 +1471,17 @@ tests:
           path:
             spec.versions
 
-  - it: monitoring resource CRD should render the "dash0.com/cert-digest" label for the conversion webhook
+  - it: monitoring resource CRD should render the caBundle for the conversion webhook
     documentSelector:
       path: metadata.name
       value: dash0monitorings.operator.dash0.com
     asserts:
+      - exists:
+          path: spec.conversion.webhook.clientConfig.caBundle
       - isNotNullOrEmpty:
-          path: spec.selector["dash0.com/cert-digest"]
+          path: spec.conversion.webhook.clientConfig.caBundle
 
-  - it: monitoring resource CRD should not render the "dash0.com/cert-digest" label if cert-manager is used
+  - it: monitoring resource CRD should not render the caBundle for the conversion webhook if cert-manager is used
     documentSelector:
       path: metadata.name
       value: dash0monitorings.operator.dash0.com
@@ -1478,7 +1494,7 @@ tests:
             cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
     asserts:
       - exists:
-          path: spec.template.metadata.labels["dash0.com/cert-digest"]
+          path: spec.conversion.webhook.clientConfig.caBundle
         not: true
 
   - it: should consider the provided imagePullSecrets
