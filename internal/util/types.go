@@ -166,7 +166,7 @@ type NamespaceInstrumentationConfig struct {
 	InstrumentationLabelSelector    string
 	TraceContextPropagators         *string
 	PreviousTraceContextPropagators *string
-	// LogCollectionEnabled is true if the operator collects pod logs from this namespace via the collector's filelog
+	// LogCollectionEnabled is true if the operator collects pod logs from this namespace via the collector's file_log
 	// receiver. When true, the workload modifier sets OTEL_LOGS_EXPORTER=none on instrumented containers to prevent
 	// the workload's own OTel SDK from also exporting logs via OTLP (which would result in duplicates).
 	LogCollectionEnabled bool

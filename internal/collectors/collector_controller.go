@@ -52,7 +52,7 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			r.withNamePredicate([]string{
 				otelcolresources.DaemonSetCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
 				otelcolresources.DeploymentCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
-				// Note: We are deliberately not watching the filelog receiver offsets ConfigMap, since it is updated
+				// Note: We are deliberately not watching the file_log receiver offsets ConfigMap, since it is updated
 				// frequently by the filelog offset sync container and does not require reconciliation.
 			}, true)).
 		Watches(

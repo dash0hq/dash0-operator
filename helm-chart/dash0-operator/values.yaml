@@ -403,7 +403,7 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
-  # the container image to use for synchronizing the offset files for the filelog receiver to the filelog offset config
+  # the container image to use for synchronizing the offset files for the file_log receiver to the filelog offset config
   # map; will not be used if a filelog offset storage volume is provided via
   # operator.collectors.filelogOffsetSyncStorageVolume
   # (there should usually be no reason to override this)
