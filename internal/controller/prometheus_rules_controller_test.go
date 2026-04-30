@@ -1364,7 +1364,7 @@ var _ = Describe(
 								InvalidRulesTotal:     3,
 								InvalidRules: map[string][]string{
 									"dash0/group-1 - rule-1-1": {thresholdAnnotationsMissingMessage()},
-									"dash0/group-1 - 4":        {"alerting rule has no alert attribute"},
+									"dash0/group-1 - 4":        {"rule has neither the alert nor the record attribute"},
 									"dash0/group-2 - rule-2-2": {thresholdAnnotationsMissingMessage()},
 								},
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
@@ -1516,7 +1516,7 @@ var _ = Describe(
 								InvalidRulesTotal:     3,
 								InvalidRules: map[string][]string{
 									"dash0/group-1 - rule-1-1": {thresholdAnnotationsMissingMessage()},
-									"dash0/group-1 - 3":        {"alerting rule has no alert attribute"},
+									"dash0/group-1 - 3":        {"rule has neither the alert nor the record attribute"},
 									"dash0/group-2 - rule-2-1": {thresholdAnnotationsMissingMessage()},
 								},
 								SynchronizationResults: []dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
@@ -1556,7 +1556,7 @@ var _ = Describe(
 
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
-						Expect(validationIssues).To(ContainElement("alerting rule has no alert attribute"))
+						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
 						Expect(rule).To(BeNil())
 					},
 				)
@@ -1578,7 +1578,7 @@ var _ = Describe(
 
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
-						Expect(validationIssues).To(ContainElement("alerting rule has no alert attribute"))
+						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
 						Expect(rule).To(BeNil())
 					},
 				)
@@ -2072,7 +2072,7 @@ spec:
 
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
-						Expect(validationIssues).To(ContainElement("alerting rule has no alert attribute"))
+						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
 						Expect(syncError).To(BeNil())
 						Expect(req).To(BeNil())
 					},
@@ -2097,7 +2097,7 @@ spec:
 
 						Expect(ok).To(BeFalse())
 						Expect(validationIssues).To(HaveLen(1))
-						Expect(validationIssues).To(ContainElement("alerting rule has no alert attribute"))
+						Expect(validationIssues).To(ContainElement("rule has neither the alert nor the record attribute"))
 						Expect(syncError).To(BeNil())
 						Expect(req).To(BeNil())
 					},

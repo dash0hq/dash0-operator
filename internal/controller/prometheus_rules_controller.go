@@ -1002,10 +1002,10 @@ func convertAlertingRuleToCheckRule(
 	if rule.Alert == "" {
 		logger.Warn(
 			fmt.Sprintf(
-				"Found invalid alerting rule in group %s which has no alert attribute.", groupName,
+				"Found invalid rule in group %s which has neither a record nor an alert attribute.", groupName,
 			),
 		)
-		return nil, []string{"alerting rule has no alert attribute"}, false
+		return nil, []string{"rule has neither the alert nor the record attribute"}, false
 	}
 
 	if action == deleteAction {
