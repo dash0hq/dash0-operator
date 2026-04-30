@@ -239,6 +239,7 @@ helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@echo "-------------------------------- (linting Helm charts)"
 	@$(call lint_helm_chart,helm-chart/dash0-operator)
 	@$(call lint_helm_chart,test-resources/dotnet/helm-chart)
+	@$(call lint_helm_chart,test-resources/ebpf-profiler/helm-chart)
 	@$(call lint_helm_chart,test-resources/jvm/spring-boot/helm-chart)
 	@$(call lint_helm_chart,test-resources/node.js/express/helm-chart)
 	@$(call lint_helm_chart,test-resources/python/flask/helm-chart)

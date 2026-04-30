@@ -94,6 +94,7 @@ updates:
   - package-ecosystem: "helm"
     directories:
       - "/test/e2e/otlp-sink/helm-chart"
+      - "/test-resources/ebpf-profiler/helm-chart"
     schedule:
       interval: "daily"
       time: "09:00"
