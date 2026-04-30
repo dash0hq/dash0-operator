@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -64,8 +65,12 @@ type NamespacedApiClient interface {
 
 type ResourceToRequestsResult struct {
 	ApiConfig ApiConfig
-	// the total number of eligible items in the Kubernetes resource
-	ItemsTotal int
+	// the number of alerting rules in this resource (only relevant for PrometheusRule resources)
+	AlertingRulesTotal int
+	// the number of recording rules in this resource (only relevant for PrometheusRule resources)
+	RecordingRulesTotal int
+	// the number of orphan delete requests (rules removed from the resource but still present in the Dash0 API)
+	OrphanDeletesTotal int
 	// the request objects for which the conversion was successful
 	ApiRequests []WrappedApiRequest
 	// only set for resource types with a one-to-many relationship between Kubernetes resources and Dash0 entities,
@@ -80,7 +85,6 @@ type ResourceToRequestsResult struct {
 
 func NewResourceToRequestsResult(
 	apiConfig ApiConfig,
-	itemsTotal int,
 	apiRequests []WrappedApiRequest,
 	origins []string,
 	validationIssues map[string][]string,
@@ -88,7 +92,6 @@ func NewResourceToRequestsResult(
 ) *ResourceToRequestsResult {
 	return &ResourceToRequestsResult{
 		ApiConfig:             apiConfig,
-		ItemsTotal:            itemsTotal,
 		ApiRequests:           apiRequests,
 		OriginsInResource:     origins,
 		ValidationIssues:      validationIssues,
@@ -104,7 +107,6 @@ func NewResourceToRequestsResultSingleItemSuccess(
 ) *ResourceToRequestsResult {
 	return NewResourceToRequestsResult(
 		apiConfig,
-		1,
 		[]WrappedApiRequest{
 			{
 				Request:  request,
@@ -125,7 +127,6 @@ func NewResourceToRequestsResultSingleItemValidationIssue(
 ) *ResourceToRequestsResult {
 	return NewResourceToRequestsResult(
 		apiConfig,
-		1,
 		nil,
 		nil,
 		map[string][]string{
@@ -140,15 +141,12 @@ func NewResourceToRequestsResultSingleItemError(
 	itemName string,
 	errorMessage string,
 ) *ResourceToRequestsResult {
-	return NewResourceToRequestsResult(apiConfig, 1, nil, nil, nil, map[string]string{itemName: errorMessage})
+	return NewResourceToRequestsResult(apiConfig, nil, nil, nil, map[string]string{itemName: errorMessage})
 }
 
 func NewResourceToRequestsResultPreconditionError(apiConfig ApiConfig, errorMessage string) *ResourceToRequestsResult {
 	return NewResourceToRequestsResult(
 		apiConfig,
-		// There might actually be eligible items in the Kubernetes resource, but at this point we do not
-		// know yet, so return 0.
-		0,
 		nil,
 		nil,
 		nil,
@@ -164,6 +162,13 @@ func (m *ResourceToRequestsResult) IsNoOp() bool {
 
 func (m *ResourceToRequestsResult) HasNoErrorsAndNoIssues() bool {
 	return len(m.ValidationIssues) == 0 && len(m.SynchronizationErrors) == 0
+}
+
+// TotalProcessed returns the total number of items processed, that is, update attempts (including failed attempts due to
+// validation issues or synchronization errors), plus deleted orphans (only relevant for 1-to-many resource types like
+// PrometheusRules).
+func (m *ResourceToRequestsResult) TotalProcessed() int {
+	return len(m.ApiRequests) + len(m.ValidationIssues) + len(m.SynchronizationErrors)
 }
 
 // ApiSyncReconciler is the common interface for reconcilers that synchonize their Kubernetes resources to the Dash0
@@ -219,6 +224,14 @@ type WrappedApiRequest struct {
 
 type Dash0ApiObjectWithOrigin struct {
 	Origin string `json:"origin"`
+}
+
+// Dash0ApiCrdObjectWithOrigin represents the response format from APIs that return full CRD objects (e.g., the
+// recording rules API), where the origin is nested inside metadata.labels.
+type Dash0ApiCrdObjectWithOrigin struct {
+	Metadata struct {
+		Labels map[string]string `json:"labels"`
+	} `json:"metadata"`
 }
 
 type Dash0ApiObjectWithMetadata struct {
@@ -288,9 +301,16 @@ type preconditionValidationResult struct {
 }
 
 type synchronizationResults struct {
-	itemsTotal          int
+	alertingRulesTotal  int
+	recordingRulesTotal int
+	orphanDeletesTotal  int
 	validationIssues    map[string][]string
 	resultsPerApiConfig []synchronizationResultPerApiConfig
+}
+
+func (s *synchronizationResults) totalProcessed() int {
+	return s.alertingRulesTotal + s.recordingRulesTotal + s.orphanDeletesTotal +
+		len(s.validationIssues)
 }
 
 func (s *synchronizationResults) allSynchronizationErrors() []map[string]string {
@@ -431,6 +451,7 @@ func synchronizeViaApiAndUpdateStatus(
 			maps.Copy(resourceToRequestsResult.SynchronizationErrors, httpErrors)
 		}
 
+		totalProcessed := resourceToRequestsResult.TotalProcessed()
 		if resourceToRequestsResult.HasNoErrorsAndNoIssues() {
 			logger.Info(
 				fmt.Sprintf(
@@ -438,7 +459,7 @@ func synchronizeViaApiAndUpdateStatus(
 					apiSyncReconciler.KindDisplayName(),
 					dash0ApiResource.GetNamespace(),
 					dash0ApiResource.GetName(),
-					resourceToRequestsResult.ItemsTotal,
+					totalProcessed,
 					apiSyncReconciler.ShortName(),
 					len(successfullySynchronized),
 					validatedApiConfig.Endpoint,
@@ -452,7 +473,7 @@ func synchronizeViaApiAndUpdateStatus(
 					apiSyncReconciler.KindDisplayName(),
 					dash0ApiResource.GetNamespace(),
 					dash0ApiResource.GetName(),
-					resourceToRequestsResult.ItemsTotal,
+					totalProcessed,
 					apiSyncReconciler.ShortName(),
 					len(successfullySynchronized),
 					validatedApiConfig.Endpoint,
@@ -474,11 +495,14 @@ func synchronizeViaApiAndUpdateStatus(
 
 	var syncResults synchronizationResults
 	if len(synchronizationResultsPerApiConfig) > 0 {
-		// note: properties like itemsTotal and validationIssues do not depend on a specific apiConfig and should be the
-		// same in all entries, so we use the values from the first
+		// note: properties like alertingRulesTotal and validationIssues do not depend on a specific apiConfig and
+		// should be the same in all entries, so we use the values from the first
+		first := synchronizationResultsPerApiConfig[0].resourceToRequestsResult
 		syncResults = synchronizationResults{
-			itemsTotal:          synchronizationResultsPerApiConfig[0].resourceToRequestsResult.ItemsTotal,
-			validationIssues:    synchronizationResultsPerApiConfig[0].resourceToRequestsResult.ValidationIssues,
+			alertingRulesTotal:  first.AlertingRulesTotal,
+			recordingRulesTotal: first.RecordingRulesTotal,
+			orphanDeletesTotal:  first.OrphanDeletesTotal,
+			validationIssues:    first.ValidationIssues,
 			resultsPerApiConfig: synchronizationResultsPerApiConfig,
 		}
 	}
@@ -848,57 +872,101 @@ func fetchExistingOrigins(
 		// API object
 		return nil, nil
 	}
-	if fetchExistingOriginsRequest, err :=
-		thirdPartyResourceReconciler.FetchExistingResourceOriginsRequest(preconditionChecksResult, apiConfig); err != nil {
+	fetchExistingOriginsRequests, err :=
+		thirdPartyResourceReconciler.FetchExistingResourceOriginsRequests(preconditionChecksResult, apiConfig)
+	if err != nil {
 		logger.Error(err, "cannot create request to fetch existing resource origins")
 		return nil, err
-	} else if fetchExistingOriginsRequest != nil {
+	}
+	if len(fetchExistingOriginsRequests) == 0 {
+		// No requests returned — either this reconciler does not support fetching existing origins (e.g. for resource
+		// types with a one-to-one relationship between K8s resource and Dash0 API object, like Perses dashboards), or
+		// there are simply no origin APIs to query.
+		return nil, nil
+	}
+
+	var allExistingOrigins []string
+	for _, fetchExistingOriginsRequest := range fetchExistingOriginsRequests {
 		actionLabel := fmt.Sprintf(
 			"fetch existing origins: %s %s",
 			fetchExistingOriginsRequest.Method,
 			fetchExistingOriginsRequest.URL.String(),
 		)
-		if responseBytes, err := executeSingleHttpRequest(
+		responseBytes, err := executeSingleHttpRequest(
 			apiSyncReconciler,
 			fetchExistingOriginsRequest,
 			actionLabel,
 			true,
 			logger,
-		); err != nil {
+		)
+		if err != nil {
 			logger.Error(err, "cannot fetch existing origins")
 			return nil, err
-		} else {
-			objectsWithOrigin := make([]Dash0ApiObjectWithOrigin, 0)
-			if err = json.Unmarshal(responseBytes, &objectsWithOrigin); err != nil {
-				logger.Error(
-					err,
-					"cannot parse response after querying existing origins",
-					"response",
-					string(responseBytes),
-				)
-				return nil, err
+		}
+		origins, err := extractOriginsFromResponse(responseBytes, logger)
+		if err != nil {
+			return nil, err
+		}
+		allExistingOrigins = append(allExistingOrigins, origins...)
+	}
+	logger.Info(
+		fmt.Sprintf("existing origins for this %s", apiSyncReconciler.ShortName()),
+		"origins",
+		allExistingOrigins,
+	)
+	return allExistingOrigins, nil
+}
+
+// extractOriginsFromResponse parses a JSON array response and extracts origin strings. It handles two formats:
+// 1. Flat format: [{"origin": "..."}] (used by the check-rules API)
+// 2. CRD format: [{"metadata": {"labels": {"dash0.com/origin": "..."}}}] (used by the recording rules API)
+func extractOriginsFromResponse(responseBytes []byte, logger logd.Logger) ([]string, error) {
+	// Try flat format first (check-rules API).
+	flatObjects := make([]Dash0ApiObjectWithOrigin, 0)
+	errFlatFormat := json.Unmarshal(responseBytes, &flatObjects)
+	if errFlatFormat == nil {
+		var origins []string
+		for _, obj := range flatObjects {
+			if obj.Origin != "" {
+				origins = append(origins, obj.Origin)
 			}
-			existingOriginsWithMatchingPrefix := make([]string, 0, len(objectsWithOrigin))
-			for _, objWithOrigin := range objectsWithOrigin {
-				if objWithOrigin.Origin != "" {
-					existingOriginsWithMatchingPrefix =
-						append(existingOriginsWithMatchingPrefix, objWithOrigin.Origin)
-				}
-			}
-			logger.Info(
-				fmt.Sprintf("existing origins for this %s", apiSyncReconciler.ShortName()),
-				"origins",
-				existingOriginsWithMatchingPrefix,
-			)
-			return existingOriginsWithMatchingPrefix, nil
+		}
+		if len(origins) > 0 {
+			return origins, nil
 		}
 	}
 
-	// this third party resource reconciler does not support fetching existing origins, this is expected for
-	// resource types that have a one-to-one relationship between K8s resource and Dash0 API object
-	logger.Debug(fmt.Sprintf(
-		"not executing a request to fetch existing origins, the reconciler for resource type %s does not "+
-			"support fetching existing origins", apiSyncReconciler.KindDisplayName()))
+	// Try format where the origin is in the labels (recording rules API).
+	objectsWithOriginLabel := make([]Dash0ApiCrdObjectWithOrigin, 0)
+	errObjectsWithOriginLabel := json.Unmarshal(responseBytes, &objectsWithOriginLabel)
+	if errObjectsWithOriginLabel == nil {
+		var origins []string
+		for _, obj := range objectsWithOriginLabel {
+			if origin, ok := obj.Metadata.Labels["dash0.com/origin"]; ok && origin != "" {
+				origins = append(origins, origin)
+			}
+		}
+		if len(origins) > 0 {
+			return origins, nil
+		}
+	}
+
+	// If no attempt yielded origins and there were parsing errors (invalid JSON etc.), log and return
+	if errFlatFormat != nil || errObjectsWithOriginLabel != nil {
+		joinedError := errors.Join(errFlatFormat, errObjectsWithOriginLabel)
+		logger.Error(
+			joinedError,
+			"cannot parse responses after querying existing origins",
+			"response",
+			string(responseBytes),
+		)
+		return nil, joinedError
+	}
+
+	// If both parsing attempts yielded no origins, log and return empty.
+	if len(responseBytes) > 2 { // "[]" is 2 bytes
+		logger.Warn("no origins found in response", "responseLength", len(responseBytes), "response", string(responseBytes))
+	}
 	return nil, nil
 }
 
@@ -922,7 +990,7 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 		resourceToRequestsResult.OriginsInResource,
 		logger,
 	)
-	resourceToRequestsResult.ItemsTotal += len(deleteHttpRequests)
+	resourceToRequestsResult.OrphanDeletesTotal = len(deleteHttpRequests)
 	maps.Copy(resourceToRequestsResult.SynchronizationErrors, deleteSynchronizationErrors)
 	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteHttpRequests)
 }

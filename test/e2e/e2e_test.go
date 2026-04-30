@@ -755,90 +755,92 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						dash0ApiResourceValues{},
 					)
 
-					routeRegexes := []string{
+					listRouteRegexes := []string{
 						"/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+						"/api/recording-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+					}
+					ruleRouteRegexes := []string{
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20pod%20crash%20looping\\?dataset=default",
+						"/api/recording-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_job%7Chttp_requests%7Crate5m\\?dataset=default",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ccollector_exporter%20send%20failed%20spans\\?dataset=default",
 					}
 					substrings := []string{
 						"dash0/k8s - K8s Deployment replicas mismatch",
 						"dash0/k8s - K8s pod crash looping",
+						"dash0/k8s - job:http_requests:rate5m",
 						"dash0/collector - exporter send failed spans",
 					}
 
-					By("verifying the check rules have been synchronized to the Dash0 API via PUT")
-					requests := fetchCapturedApiRequests(0, 4)
-					Expect(requests).To(HaveLen(4))
-					Expect(requests[0].Method).To(Equal("GET"))
-					Expect(requests[0].Url).To(MatchRegexp(routeRegexes[0]))
-					regexIdx := 1
-					substringIdx := 0
-					for i := 1; i < 4; i++ {
-						req := requests[i]
+					By("verifying the rules have been synchronized to the Dash0 API via PUT")
+					requests := fetchCapturedApiRequests(0, 6)
+					Expect(requests).To(HaveLen(6))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
+					for i := 0; i < 4; i++ {
+						req := requests[i+2]
 						Expect(req.Method).To(Equal("PUT"))
-						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
-						regexIdx++
+						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
 						Expect(req.Body).ToNot(BeNil())
-						Expect(*req.Body).To(ContainSubstring(substrings[substringIdx]))
+						Expect(*req.Body).To(ContainSubstring(substrings[i]))
 						verifyApiSyncRequest(req)
-						substringIdx++
 					}
 
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "false")
-					By("verifying the check rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
-					requests = fetchCapturedApiRequests(4, 3)
-					Expect(requests).To(HaveLen(3))
-					regexIdx = 1
-					for i := 0; i < 3; i++ {
+					By("verifying the rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
+					requests = fetchCapturedApiRequests(6, 4)
+					Expect(requests).To(HaveLen(4))
+					for i := 0; i < 4; i++ {
 						req := requests[i]
 						Expect(req.Method).To(Equal("DELETE"))
-						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
-						regexIdx++
+						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
 					}
 
 					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "true")
-					By("verifying the check rules have been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-					requests = fetchCapturedApiRequests(7, 4)
-					Expect(requests).To(HaveLen(4))
-					Expect(requests[0].Method).To(Equal("GET"))
-					Expect(requests[0].Url).To(MatchRegexp(routeRegexes[0]))
-					regexIdx = 1
-					substringIdx = 0
-					for i := 1; i < 4; i++ {
-						req := requests[i]
+					By("verifying the rules have been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					requests = fetchCapturedApiRequests(10, 6)
+					Expect(requests).To(HaveLen(6))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
+					for i := 0; i < 4; i++ {
+						req := requests[i+2]
 						Expect(req.Method).To(Equal("PUT"))
-						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
-						regexIdx++
-						Expect(*req.Body).To(ContainSubstring(substrings[substringIdx]))
+						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
+						Expect(*req.Body).To(ContainSubstring(substrings[i]))
 						verifyApiSyncRequest(req)
-						substringIdx++
 					}
 
 					removePrometheusRuleResource(applicationUnderTestNamespace)
-					By("verifying the check rules have been deleted via the Dash0 API (after removing the resource)")
-					requests = fetchCapturedApiRequests(11, 3)
-					Expect(requests).To(HaveLen(3))
-					regexIdx = 1
-					for i := 0; i < 3; i++ {
+					By("verifying the rules have been deleted via the Dash0 API (after removing the resource)")
+					requests = fetchCapturedApiRequests(16, 4)
+					Expect(requests).To(HaveLen(4))
+					for i := 0; i < 4; i++ {
 						req := requests[i]
 						Expect(req.Method).To(Equal("DELETE"))
-						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
-						regexIdx++
+						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
 					}
 				})
 
 				//nolint:lll
 				It("should resync Prometheus rules when synchronizePrometheusRules transitions from false to true", func() {
-					routeRegexes := []string{
+					listRouteRegexes := []string{
 						"/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+						"/api/recording-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_",
+					}
+					ruleRouteRegexes := []string{
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20Deployment%20replicas%20mismatch\\?dataset=default",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_K8s%20pod%20crash%20looping\\?dataset=default",
+						"/api/recording-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ck8s_job%7Chttp_requests%7Crate5m\\?dataset=default",
 						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_dash0%7Ccollector_exporter%20send%20failed%20spans\\?dataset=default",
 					}
 					substrings := []string{
 						"dash0/k8s - K8s Deployment replicas mismatch",
 						"dash0/k8s - K8s pod crash looping",
+						"dash0/k8s - job:http_requests:rate5m",
 						"dash0/collector - exporter send failed spans",
 					}
 
@@ -868,22 +870,20 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						`{"spec":{"synchronizePrometheusRules":true}}`,
 					)
 
-					By("verifying the check rules have been synchronized after re-enabling sync")
-					requests := fetchCapturedApiRequests(0, 4)
-					Expect(requests).To(HaveLen(4))
-					Expect(requests[0].Method).To(Equal("GET"))
-					Expect(requests[0].Url).To(MatchRegexp(routeRegexes[0]))
-					regexIdx := 1
-					substringIdx := 0
-					for i := 1; i < 4; i++ {
-						req := requests[i]
+					By("verifying the rules have been synchronized after re-enabling sync")
+					requests := fetchCapturedApiRequests(0, 6)
+					Expect(requests).To(HaveLen(6))
+					for i := 0; i < 2; i++ {
+						Expect(requests[i].Method).To(Equal("GET"))
+						Expect(requests[i].Url).To(MatchRegexp(listRouteRegexes[i]))
+					}
+					for i := 0; i < 4; i++ {
+						req := requests[i+2]
 						Expect(req.Method).To(Equal("PUT"))
-						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
-						regexIdx++
+						Expect(req.Url).To(MatchRegexp(ruleRouteRegexes[i]))
 						Expect(req.Body).ToNot(BeNil())
-						Expect(*req.Body).To(ContainSubstring(substrings[substringIdx]))
+						Expect(*req.Body).To(ContainSubstring(substrings[i]))
 						verifyApiSyncRequest(req)
-						substringIdx++
 					}
 				})
 			})

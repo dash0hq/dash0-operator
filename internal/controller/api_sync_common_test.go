@@ -123,7 +123,7 @@ var _ = Describe("The API Sync", Ordered, func() {
 	Describe("resourceSyncStatus", func() {
 		It("returns successful when all configs succeed and there are no validation issues", func() {
 			results := synchronizationResults{
-				itemsTotal: 2,
+				alertingRulesTotal: 2,
 				resultsPerApiConfig: []synchronizationResultPerApiConfig{
 					{
 						apiConfig: ApiConfig{Endpoint: "ep1"},
@@ -148,7 +148,7 @@ var _ = Describe("The API Sync", Ordered, func() {
 
 		It("returns partially-successful when some configs succeed and some have sync errors", func() {
 			results := synchronizationResults{
-				itemsTotal: 2,
+				alertingRulesTotal: 2,
 				resultsPerApiConfig: []synchronizationResultPerApiConfig{
 					{
 						apiConfig: ApiConfig{Endpoint: "ep1"},
@@ -174,7 +174,7 @@ var _ = Describe("The API Sync", Ordered, func() {
 
 		It("returns partially-successful when some configs succeed but there are validation issues", func() {
 			results := synchronizationResults{
-				itemsTotal: 2,
+				alertingRulesTotal: 2,
 				validationIssues: map[string][]string{
 					"item2": {"missing field X"},
 				},
@@ -195,7 +195,7 @@ var _ = Describe("The API Sync", Ordered, func() {
 
 		It("returns failed when no configs succeed", func() {
 			results := synchronizationResults{
-				itemsTotal: 2,
+				alertingRulesTotal: 2,
 				resultsPerApiConfig: []synchronizationResultPerApiConfig{
 					{
 						apiConfig: ApiConfig{Endpoint: "ep1"},
