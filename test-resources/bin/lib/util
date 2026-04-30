@@ -1057,8 +1057,10 @@ deploy_cadvisor_scrapeconfig() {
 
 deploy_ebpf_profiler() {
   echo "STEP $step_counter: deploy the eBPF profiler DaemonSet to namespace ${operator_namespace}"
-  kubectl apply -f test-resources/ebpf-profiler/daemonset.yaml
-  kubectl rollout status daemonset/ebpf-profiler --namespace "$operator_namespace" --timeout=120s
+  helm upgrade --install \
+    --namespace "$operator_namespace" \
+    --wait --timeout 120s \
+    ebpf-profiler test-resources/ebpf-profiler/helm-chart
   finish_step
 }
 

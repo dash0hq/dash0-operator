@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: dash0-operator-ebpf-profiler
+description: A Helm chart that deploys the OpenTelemetry eBPF profiler as a DaemonSet for Dash0 operator tests
+type: application
+version: 1.0.0
