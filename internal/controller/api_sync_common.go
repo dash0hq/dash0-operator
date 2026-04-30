@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -231,45 +232,6 @@ type Dash0ApiCrdObjectWithOrigin struct {
 	Metadata struct {
 		Labels map[string]string `json:"labels"`
 	} `json:"metadata"`
-}
-
-// extractOriginsFromResponse parses a JSON array response and extracts origin strings. It handles two formats:
-// 1. Flat format: [{"origin": "..."}] (used by the check-rules API)
-// 2. CRD format: [{"metadata": {"labels": {"dash0.com/origin": "..."}}}] (used by the recording rules API)
-func extractOriginsFromResponse(responseBytes []byte, logger logd.Logger) []string {
-	// Try flat format first (check-rules API).
-	flatObjects := make([]Dash0ApiObjectWithOrigin, 0)
-	if err := json.Unmarshal(responseBytes, &flatObjects); err == nil {
-		var origins []string
-		for _, obj := range flatObjects {
-			if obj.Origin != "" {
-				origins = append(origins, obj.Origin)
-			}
-		}
-		if len(origins) > 0 {
-			return origins
-		}
-	}
-
-	// Try CRD format (recording rules API).
-	crdObjects := make([]Dash0ApiCrdObjectWithOrigin, 0)
-	if err := json.Unmarshal(responseBytes, &crdObjects); err == nil {
-		var origins []string
-		for _, obj := range crdObjects {
-			if origin, ok := obj.Metadata.Labels["dash0.com/origin"]; ok && origin != "" {
-				origins = append(origins, origin)
-			}
-		}
-		if len(origins) > 0 {
-			return origins
-		}
-	}
-
-	// If both parsing attempts yielded no origins, log and return empty.
-	if len(responseBytes) > 2 { // "[]" is 2 bytes
-		logger.Info("no origins found in response", "responseLength", len(responseBytes))
-	}
-	return nil
 }
 
 type Dash0ApiObjectWithMetadata struct {
@@ -941,7 +903,10 @@ func fetchExistingOrigins(
 			logger.Error(err, "cannot fetch existing origins")
 			return nil, err
 		}
-		origins := extractOriginsFromResponse(responseBytes, logger)
+		origins, err := extractOriginsFromResponse(responseBytes, logger)
+		if err != nil {
+			return nil, err
+		}
 		allExistingOrigins = append(allExistingOrigins, origins...)
 	}
 	logger.Info(
@@ -950,6 +915,59 @@ func fetchExistingOrigins(
 		allExistingOrigins,
 	)
 	return allExistingOrigins, nil
+}
+
+// extractOriginsFromResponse parses a JSON array response and extracts origin strings. It handles two formats:
+// 1. Flat format: [{"origin": "..."}] (used by the check-rules API)
+// 2. CRD format: [{"metadata": {"labels": {"dash0.com/origin": "..."}}}] (used by the recording rules API)
+func extractOriginsFromResponse(responseBytes []byte, logger logd.Logger) ([]string, error) {
+	// Try flat format first (check-rules API).
+	flatObjects := make([]Dash0ApiObjectWithOrigin, 0)
+	errFlatFormat := json.Unmarshal(responseBytes, &flatObjects)
+	if errFlatFormat == nil {
+		var origins []string
+		for _, obj := range flatObjects {
+			if obj.Origin != "" {
+				origins = append(origins, obj.Origin)
+			}
+		}
+		if len(origins) > 0 {
+			return origins, nil
+		}
+	}
+
+	// Try format where the origin is in the labels (recording rules API).
+	objectsWithOriginLabel := make([]Dash0ApiCrdObjectWithOrigin, 0)
+	errObjectsWithOriginLabel := json.Unmarshal(responseBytes, &objectsWithOriginLabel)
+	if errObjectsWithOriginLabel == nil {
+		var origins []string
+		for _, obj := range objectsWithOriginLabel {
+			if origin, ok := obj.Metadata.Labels["dash0.com/origin"]; ok && origin != "" {
+				origins = append(origins, origin)
+			}
+		}
+		if len(origins) > 0 {
+			return origins, nil
+		}
+	}
+
+	// If no attempt yielded origins and there were parsing errors (invalid JSON etc.), log and return
+	if errFlatFormat != nil || errObjectsWithOriginLabel != nil {
+		joinedError := errors.Join(errFlatFormat, errObjectsWithOriginLabel)
+		logger.Error(
+			joinedError,
+			"cannot parse responses after querying existing origins",
+			"response",
+			string(responseBytes),
+		)
+		return nil, joinedError
+	}
+
+	// If both parsing attempts yielded no origins, log and return empty.
+	if len(responseBytes) > 2 { // "[]" is 2 bytes
+		logger.Warn("no origins found in response", "responseLength", len(responseBytes), "response", string(responseBytes))
+	}
+	return nil, nil
 }
 
 func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
