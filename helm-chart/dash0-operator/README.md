@@ -2410,15 +2410,24 @@ Status:
   Prometheus Rule Synchronization Results:
     my-namespace/prometheus-example-rules:
       Synchronization Status:        successful
-      Synchronized At:               2024-10-25T11:59:49Z
+      Synchronized At:               2026-04-30T07:12:41Z
       Alerting Rules Total:          3
-      Synchronized Rules Total:      3
-      Synchronized Rules:
-        dash0/k8s - K8s Deployment replicas mismatch
-        dash0/k8s - K8s pod crash looping
-        dash0/collector - exporter send failed spans
+      Recording Rules Total:         1
       Invalid Rules Total:           0
-      Synchronization Errors Total:  0
+      Synchronization Results:
+        dash0ApiEndpoint:              https://api.$region.dash0.com/
+        dash0Dataset:                  default
+        Synchronization Errors Total:  0
+        Synchronized Rules Attributes:
+          dash0/collector - exporter send failed spans:
+            dash0Origin:  dash0-operator_e70c4b03-7e8d-432d-b2cd-addff593076e_default_namespace_prometheus-example-rules_dash0|collector_exporter send failed spans
+          dash0/k8s - K8s Deployment replicas mismatch:
+            dash0Origin:  dash0-operator_e70c4b03-7e8d-432d-b2cd-addff593076e_default_namespace_prometheus-example-rules_dash0|k8s_K8s Deployment replicas mismatch
+          dash0/k8s - K8s pod crash looping:
+            dash0Origin:  dash0-operator_e70c4b03-7e8d-432d-b2cd-addff593076e_default_namespace_prometheus-example-rules_dash0|k8s_K8s pod crash looping
+          dash0/k8s - job:http_requests:rate5m:
+            dash0Origin:           dash0-operator_e70c4b03-7e8d-432d-b2cd-addff593076e_default_namespace_prometheus-example-rules_dash0|k8s_job|http_requests|rate5m
+        Synchronized Rules Total:  4
 ```
 
 Note: If you only want to manage dashboards, check rules, synthetic checks and views via the Dash0 operator, and you do
