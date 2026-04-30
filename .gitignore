@@ -8,6 +8,9 @@
 *.dylib
 /bin/*
 test/e2e/otlp-sink/telemetrymatcher/telemetrymatcher
+test/e2e/dash0-api-mock/dash0-api-mock
+test/e2e/control-plane-mock/control-plane-mock
+test/e2e/decision-maker-mock/decision-maker-mock
 Dockerfile.cross
 
 # Test binary, built with `go test -c`

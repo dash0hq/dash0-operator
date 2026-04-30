@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane-mock-service
+spec:
+  selector:
+    app: control-plane-mock-app
+  ports:
+    - port: {{ .Values.port }}
+      targetPort: {{ .Values.port }}
+  type: ClusterIP

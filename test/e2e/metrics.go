@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	. "github.com/onsi/gomega"
@@ -211,4 +212,40 @@ func compileTelemetryMatcherUrlForMetrics(
 	}
 	requestUrl := baseUrl + "?" + params.Encode()
 	return requestUrl
+}
+
+// askTelemetryMatcherForMetricNames asks the telemetry-matcher whether at
+// least one (or none, depending on expectationMode) of the given metric names
+// has been observed since timestampLowerBound. The matcher pairs this with a
+// match-all resource attribute matcher; resource attributes are not part of
+// the assertion in this mode.
+func askTelemetryMatcherForMetricNames(
+	g Gomega,
+	expectationMode shared.ExpectationMode,
+	metricNames []string,
+	timestampLowerBound time.Time,
+) {
+	requestUrl := compileTelemetryMatcherUrlForMetricNames(
+		expectationMode,
+		metricNames,
+		timestampLowerBound,
+	)
+	executeTelemetryMatcherRequest(g, requestUrl)
+}
+
+func compileTelemetryMatcherUrlForMetricNames(
+	expectationMode shared.ExpectationMode,
+	metricNames []string,
+	timestampLowerBound time.Time,
+) string {
+	baseUrl := fmt.Sprintf("%s/matching-metrics", telemetryMatcherBaseUrl)
+	params := url.Values{}
+	params.Add(shared.QueryParamExpectationMode, string(expectationMode))
+	params.Add(shared.QueryParamMetricsMatchMode, string(shared.MetricsMatchModeMetricNames))
+	params.Add(shared.QueryParamMetricNames, strings.Join(metricNames, ","))
+	params.Add(shared.QueryParamFailOnNamespaceScopedMetric, strconv.FormatBool(false))
+	params.Add(shared.QueryParamClusterName, e2eKubernetesContext)
+	params.Add(shared.QueryParamOperatorNamespace, operatorNamespace)
+	params.Add(shared.QueryParamTimestampLowerBoundStr, strconv.FormatInt(timestampLowerBound.UnixNano(), 10))
+	return baseUrl + "?" + params.Encode()
 }

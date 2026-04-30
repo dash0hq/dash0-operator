@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: control-plane-mock-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /control-plane-mock(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: control-plane-mock-service
+                port:
+                  number: {{ .Values.port }}

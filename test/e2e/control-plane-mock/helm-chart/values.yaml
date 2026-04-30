@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: control-plane-mock
+  tag: latest
+  pullPolicy: Always
+
+port: 8002
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 32Mi
