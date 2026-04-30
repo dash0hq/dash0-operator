@@ -972,7 +972,7 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 		resourceToRequestsResult.OriginsInResource,
 		logger,
 	)
-	resourceToRequestsResult.OrphanDeletesTotal += len(deleteHttpRequests)
+	resourceToRequestsResult.OrphanDeletesTotal = len(deleteHttpRequests)
 	maps.Copy(resourceToRequestsResult.SynchronizationErrors, deleteSynchronizationErrors)
 	resourceToRequestsResult.ApiRequests = slices.Concat(resourceToRequestsResult.ApiRequests, deleteHttpRequests)
 }
