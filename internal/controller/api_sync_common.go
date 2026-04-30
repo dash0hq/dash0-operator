@@ -163,7 +163,9 @@ func (m *ResourceToRequestsResult) HasNoErrorsAndNoIssues() bool {
 	return len(m.ValidationIssues) == 0 && len(m.SynchronizationErrors) == 0
 }
 
-// TotalProcessed returns the total number of items processed: rules from the spec plus orphan deletes.
+// TotalProcessed returns the total number of items processed, that is, update attempts (including failed attempts due to
+// validation issues or synchronization errors), plus deleted orphans (only relevant for 1-to-many resource types like
+// PrometheusRules).
 func (m *ResourceToRequestsResult) TotalProcessed() int {
 	return len(m.ApiRequests) + len(m.ValidationIssues) + len(m.SynchronizationErrors)
 }
