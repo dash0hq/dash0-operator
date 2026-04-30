@@ -72,13 +72,6 @@ type CheckRule struct {
 	Labels        map[string]string `json:"labels"`
 }
 
-type RecordingRule struct {
-	Name       string            `json:"name"`
-	Expression string            `json:"expression"`
-	Interval   string            `json:"interval,omitempty"`
-	Labels     map[string]string `json:"labels,omitempty"`
-}
-
 const (
 	thresholdReference                             = "$__threshold"
 	thresholdDegradedAnnotation                    = "dash0-threshold-degraded"
