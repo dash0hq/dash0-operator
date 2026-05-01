@@ -1353,6 +1353,17 @@ func startDash0Controllers(
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(notificationChannelReconciler)
 
+	spamFilterReconciler := controller.NewSpamFilterReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := spamFilterReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the spam filter reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(spamFilterReconciler)
+
 	var samplingRuleReconciler *controller.SamplingRuleReconciler
 	if cliArgs.featureIntelligentEdgeEnabled {
 		samplingRuleReconciler = controller.NewSamplingRuleReconciler(
@@ -1404,6 +1415,7 @@ func startDash0Controllers(
 		syntheticCheckReconciler,
 		viewReconciler,
 		notificationChannelReconciler,
+		spamFilterReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}
@@ -1440,6 +1452,7 @@ func startDash0Controllers(
 			syntheticCheckReconciler,
 			viewReconciler,
 			notificationChannelReconciler,
+			spamFilterReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
@@ -1493,6 +1506,7 @@ func startDash0Controllers(
 		monitoringReconciler,
 		syntheticCheckReconciler,
 		viewReconciler,
+		spamFilterReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}

@@ -47,6 +47,9 @@ func main() {
 	router.PUT("/api/notification-channels/:origin", handleNotificationChannelRequest)
 	router.DELETE("/api/notification-channels/:origin", handleNotificationChannelRequest)
 
+	router.PUT("/api/spam-filters/:origin", handleSpamFilterRequest)
+	router.DELETE("/api/spam-filters/:origin", handleSpamFilterRequest)
+
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
 	router.DELETE("/api/dashboards/:origin", handleDashboardRequest)
 
@@ -94,6 +97,13 @@ func handleDashboardRequest(ginCtx *gin.Context) {
 }
 
 func handleNotificationChannelRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+func handleSpamFilterRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	ginCtx.JSON(http.StatusOK, map[string]any{
 		"message": "ok",
