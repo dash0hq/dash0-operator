@@ -2028,6 +2028,233 @@ spec:
 		)
 
 		Context(
+			"mapping a PrometheusRule resource for the new /api/check-rules endpoint", func() {
+				var prometheusRuleReconciler *PrometheusRuleReconciler
+
+				BeforeEach(
+					func() {
+						prometheusRuleReconciler = &PrometheusRuleReconciler{}
+					},
+				)
+
+				It(
+					"renderCheckRulesListUrl targets /api/check-rules (not /api/alerting/check-rules)",
+					func() {
+						preconditionValidationResult := &preconditionValidationResult{
+							k8sName:      "test-rule",
+							k8sNamespace: TestNamespaceName,
+						}
+						listUrl := prometheusRuleReconciler.renderCheckRulesListUrl(
+							preconditionValidationResult,
+							"https://api.example.com/",
+							"my-dataset",
+						)
+
+						Expect(listUrl).To(HavePrefix("https://api.example.com/api/check-rules?"))
+						Expect(listUrl).ToNot(ContainSubstring("/api/alerting/"))
+						Expect(listUrl).To(ContainSubstring("dataset=my-dataset"))
+						Expect(listUrl).To(ContainSubstring("originPrefix=dash0-operator__my-dataset_test-namespace_test-rule_"))
+					},
+				)
+
+				It(
+					"renderCheckRulesUrl targets /api/check-rules/<origin> (not /api/alerting/check-rules/<origin>)",
+					func() {
+						perOriginUrl := prometheusRuleReconciler.renderCheckRulesUrl(
+							"my-origin",
+							"https://api.example.com/",
+							"my-dataset",
+						)
+
+						Expect(perOriginUrl).To(Equal("https://api.example.com/api/check-rules/my-origin?dataset=my-dataset"))
+						Expect(perOriginUrl).ToNot(ContainSubstring("/api/alerting/"))
+					},
+				)
+
+				It(
+					"routes alerting rules in an alerts-only PrometheusRule to /api/check-rules",
+					func() {
+						prometheusRule := map[string]any{}
+						prometheusRuleYaml := `
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: alerts-only
+spec:
+  groups:
+  - name: my-group
+    interval: 5m
+    rules:
+    - alert: high-latency
+      expr: "histogram_quantile(0.99, rate(http_duration_seconds_bucket[5m])) > 1"
+      for: 10m
+    - alert: high-error-rate
+      expr: "rate(http_requests_total{status=~\"5..\"}[5m]) > 0.1"
+`
+						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
+						preconditionValidationResult := &preconditionValidationResult{
+							k8sName:             "alerts-only",
+							k8sNamespace:        TestNamespaceName,
+							resource:            prometheusRule,
+							validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
+						}
+
+						resourceToRequestsResult :=
+							prometheusRuleReconciler.MapResourceToCheckRulesRequests(
+								preconditionValidationResult,
+								ApiConfig{Endpoint: "https://api.example.com/", Dataset: "my-dataset"},
+								upsertAction,
+								logger,
+							)
+
+						Expect(resourceToRequestsResult.ValidationIssues).To(BeEmpty())
+						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
+						Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(2))
+						Expect(resourceToRequestsResult.AlertingRulesTotal).To(Equal(2))
+						Expect(resourceToRequestsResult.RecordingRulesTotal).To(Equal(0))
+						for _, req := range resourceToRequestsResult.ApiRequests {
+							Expect(req.Request.Method).To(Equal(http.MethodPut))
+							Expect(req.Request.URL.Path).To(HavePrefix("/api/check-rules/"))
+							Expect(req.Request.URL.Path).ToNot(ContainSubstring("/api/alerting/"))
+						}
+					},
+				)
+
+				It(
+					"rejects the whole resource when any rule has a `record:` entry",
+					func() {
+						prometheusRule := map[string]any{}
+						prometheusRuleYaml := `
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mixed-rules
+spec:
+  groups:
+  - name: my-group
+    interval: 5m
+    rules:
+    - alert: high-latency
+      expr: "vector(1)"
+    - record: job:http_requests:rate5m
+      expr: "sum(rate(http_requests_total[5m])) by (job)"
+    - alert: high-error-rate
+      expr: "vector(2)"
+`
+						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
+						preconditionValidationResult := &preconditionValidationResult{
+							k8sName:             "mixed-rules",
+							k8sNamespace:        TestNamespaceName,
+							resource:            prometheusRule,
+							validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
+						}
+
+						resourceToRequestsResult :=
+							prometheusRuleReconciler.MapResourceToCheckRulesRequests(
+								preconditionValidationResult,
+								ApiConfig{Endpoint: "https://api.example.com/", Dataset: "my-dataset"},
+								upsertAction,
+								logger,
+							)
+
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						Expect(resourceToRequestsResult.OriginsInResource).To(BeEmpty())
+						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
+						Expect(resourceToRequestsResult.ValidationIssues).To(HaveLen(1))
+						Expect(resourceToRequestsResult.ValidationIssues["mixed-rules"]).To(ConsistOf(
+							rejectionMessageRecordingRulesNotAcceptedByCheckRules,
+						))
+					},
+				)
+
+				It(
+					"rejects a records-only PrometheusRule",
+					func() {
+						prometheusRule := map[string]any{}
+						prometheusRuleYaml := `
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: records-only
+spec:
+  groups:
+  - name: my-group
+    rules:
+    - record: job:http_requests:rate5m
+      expr: "sum(rate(http_requests_total[5m])) by (job)"
+`
+						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
+						preconditionValidationResult := &preconditionValidationResult{
+							k8sName:             "records-only",
+							k8sNamespace:        TestNamespaceName,
+							resource:            prometheusRule,
+							validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
+						}
+
+						resourceToRequestsResult :=
+							prometheusRuleReconciler.MapResourceToCheckRulesRequests(
+								preconditionValidationResult,
+								ApiConfig{Endpoint: "https://api.example.com/", Dataset: "my-dataset"},
+								upsertAction,
+								logger,
+							)
+
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						Expect(resourceToRequestsResult.OriginsInResource).To(BeEmpty())
+						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeEmpty())
+						Expect(resourceToRequestsResult.ValidationIssues).To(HaveLen(1))
+						Expect(resourceToRequestsResult.ValidationIssues["records-only"]).To(ConsistOf(
+							rejectionMessageRecordingRulesNotAcceptedByCheckRules,
+						))
+					},
+				)
+
+				It(
+					"rejects the whole resource on deleteAction too when any rule has a `record:` entry",
+					func() {
+						prometheusRule := map[string]any{}
+						prometheusRuleYaml := `
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mixed-rules
+spec:
+  groups:
+  - name: my-group
+    rules:
+    - alert: high-latency
+      expr: "vector(1)"
+    - record: job:http_requests:rate5m
+      expr: "sum(rate(http_requests_total[5m])) by (job)"
+`
+						Expect(yaml.Unmarshal([]byte(prometheusRuleYaml), &prometheusRule)).To(Succeed())
+						preconditionValidationResult := &preconditionValidationResult{
+							k8sName:             "mixed-rules",
+							k8sNamespace:        TestNamespaceName,
+							resource:            prometheusRule,
+							validatedApiConfigs: []ValidatedApiConfigAndToken{{}},
+						}
+
+						resourceToRequestsResult :=
+							prometheusRuleReconciler.MapResourceToCheckRulesRequests(
+								preconditionValidationResult,
+								ApiConfig{Endpoint: "https://api.example.com/", Dataset: "my-dataset"},
+								deleteAction,
+								logger,
+							)
+
+						Expect(resourceToRequestsResult.ApiRequests).To(BeEmpty())
+						Expect(resourceToRequestsResult.OriginsInResource).To(BeEmpty())
+						Expect(resourceToRequestsResult.ValidationIssues).To(HaveLen(1))
+						Expect(resourceToRequestsResult.ValidationIssues["mixed-rules"]).To(ConsistOf(
+							rejectionMessageRecordingRulesNotAcceptedByCheckRules,
+						))
+					},
+				)
+			},
+		)
+
+		Context(
 			"converting a single Prometheus rule to an http request", func() {
 
 				It(

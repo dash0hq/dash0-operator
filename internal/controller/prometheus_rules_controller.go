@@ -661,6 +661,10 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 }
 
 // renderCheckRuleListUrl renders the URL to fetch the list of existing check rule IDs from the Dash0 API.
+//
+// Deprecated: the /api/alerting/check-rules endpoint is being replaced by /api/check-rules. New code should use
+// renderCheckRulesListUrl instead. The new endpoint does not accept PrometheusRule resources that contain any
+// recording rule; see MapResourceToCheckRulesRequests for the corresponding mapping logic.
 func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(
 	preconditionChecksResult *preconditionValidationResult,
 	endpoint string,
@@ -677,6 +681,9 @@ func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(
 }
 
 // renderCheckRuleUrl renders the URL for a single Dash0 check rule.
+//
+// Deprecated: the /api/alerting/check-rules/<origin> endpoint is being replaced by /api/check-rules/<origin>. New
+// code should use renderCheckRulesUrl instead.
 func (r *PrometheusRuleReconciler) renderCheckRuleUrl(
 	checkRuleOrigin string,
 	endpoint string,
@@ -688,6 +695,151 @@ func (r *PrometheusRuleReconciler) renderCheckRuleUrl(
 		checkRuleOrigin,
 		url.QueryEscape(dataset),
 	)
+}
+
+// renderCheckRulesListUrl renders the URL to fetch the list of existing check rule IDs from the new
+// /api/check-rules endpoint that replaces the deprecated /api/alerting/check-rules path.
+func (r *PrometheusRuleReconciler) renderCheckRulesListUrl(
+	preconditionChecksResult *preconditionValidationResult,
+	endpoint string,
+	dataset string,
+) string {
+	originPrefix :=
+		r.renderRuleOriginPrefix(preconditionChecksResult, url.QueryEscape(dataset))
+	return fmt.Sprintf(
+		"%sapi/check-rules?dataset=%s&originPrefix=%s",
+		endpoint,
+		url.QueryEscape(dataset),
+		originPrefix,
+	)
+}
+
+// renderCheckRulesUrl renders the per-origin URL for the new /api/check-rules endpoint that replaces the
+// deprecated /api/alerting/check-rules/<origin> path.
+func (r *PrometheusRuleReconciler) renderCheckRulesUrl(
+	checkRuleOrigin string,
+	endpoint string,
+	dataset string,
+) string {
+	return fmt.Sprintf(
+		"%sapi/check-rules/%s?dataset=%s",
+		endpoint,
+		checkRuleOrigin,
+		url.QueryEscape(dataset),
+	)
+}
+
+// rejectionMessageRecordingRulesNotAcceptedByCheckRules is the validation issue emitted by
+// MapResourceToCheckRulesRequests when a PrometheusRule contains any recording rule.
+const rejectionMessageRecordingRulesNotAcceptedByCheckRules = "the /api/check-rules endpoint does not accept " +
+	"PrometheusRule resources containing recording rules (entries with `record:`); please move recording rules " +
+	"into a separate PrometheusRule resource"
+
+// MapResourceToCheckRulesRequests maps a PrometheusRule resource to per-rule HTTP requests against the new
+// /api/check-rules endpoint, which replaces the deprecated /api/alerting/check-rules. Unlike the deprecated path,
+// /api/check-rules does not accept PrometheusRule resources containing recording rules: when the spec includes any
+// rule with a `record:` entry, the entire resource is rejected with a single validation issue and no requests are
+// emitted (regardless of the action).
+//
+// This method is provided alongside the deprecated MapResourceToHttpRequests so the new behaviour can be validated
+// independently. The operator does not yet call it in production; the switchover happens in a follow-up change.
+func (r *PrometheusRuleReconciler) MapResourceToCheckRulesRequests(
+	preconditionChecksResult *preconditionValidationResult,
+	apiConfig ApiConfig,
+	action apiAction,
+	logger logd.Logger,
+) *ResourceToRequestsResult {
+	specRaw := preconditionChecksResult.resource["spec"]
+	specAsYaml, err := yaml.Marshal(specRaw)
+	if err != nil {
+		logger.Error(err, "unable to marshal the Prometheus rule spec")
+		return NewResourceToRequestsResultPreconditionError(apiConfig, err.Error())
+	}
+	ruleSpec := prometheusv1.PrometheusRuleSpec{}
+	if err = yaml.Unmarshal(specAsYaml, &ruleSpec); err != nil {
+		logger.Error(err, "unable to unmarshal the Prometheus rule spec")
+		return NewResourceToRequestsResultPreconditionError(apiConfig, err.Error())
+	}
+
+	// Whole-resource rejection: if any rule has a `record:` entry, reject the entire resource without emitting
+	// any requests. /api/check-rules does not accept recording rules.
+	for _, group := range ruleSpec.Groups {
+		for _, rule := range group.Rules {
+			if rule.Record != "" {
+				return NewResourceToRequestsResultSingleItemValidationIssue(
+					apiConfig,
+					preconditionChecksResult.k8sName,
+					rejectionMessageRecordingRulesNotAcceptedByCheckRules,
+				)
+			}
+		}
+	}
+
+	var originsInResource []string
+	var requests []WrappedApiRequest
+	var alertingRulesTotal int
+	allValidationIssues := make(map[string][]string)
+	allSynchronizationErrors := make(map[string]string)
+
+	for _, group := range ruleSpec.Groups {
+		duplicateOrigins := make(map[string]int, len(group.Rules))
+		for ruleIdx, rule := range group.Rules {
+			alertingRulesTotal++
+			itemNameSuffix := rule.Alert
+			if itemNameSuffix == "" {
+				itemNameSuffix = strconv.Itoa(ruleIdx)
+			}
+			checkRuleName := fmt.Sprintf("%s - %s", group.Name, itemNameSuffix)
+			checkRuleOriginNotUrlEncoded, checkRuleOriginUrlEncoded :=
+				r.renderRuleOrigin(
+					preconditionChecksResult,
+					apiConfig.Dataset,
+					duplicateOrigins,
+					group.Name,
+					rule.Alert,
+				)
+			checkRuleUrl := r.renderCheckRulesUrl(checkRuleOriginUrlEncoded, apiConfig.Endpoint, apiConfig.Dataset)
+			request, validationIssues, syncError, ok := convertAlertingRuleToRequest(
+				checkRuleUrl,
+				action,
+				apiConfig,
+				rule,
+				group.Name,
+				group.Interval,
+				readTopLevelAnnotations(preconditionChecksResult),
+				logger,
+			)
+			if len(validationIssues) > 0 {
+				allValidationIssues[checkRuleName] = validationIssues
+				originsInResource = append(originsInResource, checkRuleOriginNotUrlEncoded)
+				continue
+			}
+			if syncError != nil {
+				allSynchronizationErrors[checkRuleName] = syncError.Error()
+				continue
+			}
+			if ok {
+				requests = append(
+					requests, WrappedApiRequest{
+						Request:  request,
+						ItemName: checkRuleName,
+						Origin:   checkRuleOriginNotUrlEncoded,
+					},
+				)
+				originsInResource = append(originsInResource, checkRuleOriginNotUrlEncoded)
+			}
+		}
+	}
+
+	result := NewResourceToRequestsResult(
+		apiConfig,
+		requests,
+		originsInResource,
+		allValidationIssues,
+		allSynchronizationErrors,
+	)
+	result.AlertingRulesTotal = alertingRulesTotal
+	return result
 }
 
 // renderRuleOrigin renders the origin of a single alerting or recording rule.
