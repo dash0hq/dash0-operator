@@ -2,26 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // This is a copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.145.0/processor/transformprocessor/internal/metrics/functions.go
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.151.0/processor/transformprocessor/internal/metrics/functions.go
 
 package metrics
 
 import (
 	"maps"
 
-	"go.opentelemetry.io/collector/featuregate"
-
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottldatapoint"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/ottlmetric"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs"
-)
-
-var UseConvertBetweenSumAndGaugeMetricContext = featuregate.GlobalRegistry().MustRegister(
-	"processor.transform.ConvertBetweenSumAndGaugeMetricContext",
-	featuregate.StageStable,
-	featuregate.WithRegisterDescription("When enabled will use metric context for conversion between sum and gauge"),
-	featuregate.WithRegisterToVersion("v0.114.0"),
 )
 
 func DataPointFunctions() map[string]ottl.Factory[*ottldatapoint.TransformContext] {
@@ -44,6 +35,7 @@ func MetricFunctions() map[string]ottl.Factory[*ottlmetric.TransformContext] {
 	metricFunctions := ottl.CreateFactoryMap(
 		newExtractSumMetricFactory(),
 		newExtractCountMetricFactory(),
+		newExtractPercentileMetricFactory(),
 		newConvertGaugeToSumFactory(),
 		newConvertSumToGaugeFactory(),
 		newCopyMetricFactory(),
