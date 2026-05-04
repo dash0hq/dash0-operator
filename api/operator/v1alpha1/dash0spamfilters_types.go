@@ -80,7 +80,3 @@ type Dash0SpamFilterList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0SpamFilter `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Dash0SpamFilter{}, &Dash0SpamFilterList{})
-}
