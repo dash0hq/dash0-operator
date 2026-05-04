@@ -294,7 +294,3 @@ type Dash0SyntheticCheckList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0SyntheticCheck `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Dash0SyntheticCheck{}, &Dash0SyntheticCheckList{})
-}

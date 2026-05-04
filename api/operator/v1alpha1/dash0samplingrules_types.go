@@ -110,7 +110,3 @@ type Dash0SamplingRuleList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0SamplingRule `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Dash0SamplingRule{}, &Dash0SamplingRuleList{})
-}

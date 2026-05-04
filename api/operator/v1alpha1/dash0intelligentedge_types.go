@@ -390,7 +390,3 @@ type Dash0IntelligentEdgeList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0IntelligentEdge `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Dash0IntelligentEdge{}, &Dash0IntelligentEdgeList{})
-}
