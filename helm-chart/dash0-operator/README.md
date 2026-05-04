@@ -2915,25 +2915,6 @@ spec:
         value: my-service
 ```
 
-### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)
-
-If you use the Dash0 operator only for infrastructure-as-code purposes, and not to collect telemetry in the cluster,
-you can set the Helm flag `operator.telemetryCollectionEnabled=false`.
-In this mode, the operator will not deploy any OpenTelemetry collectors to the cluster, and no telemetry will be
-collected.
-
-By default, the operator Helm chart will set up all necessary Kubernetes RBAC permissions to manage OpenTelemetry
-collectors and the target allocator.
-If set to false, these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC
-permissions.
-
-If `operator.telemetryCollectionEnabled=false` is set, it will not be possible to set
-[`spec.telemetryCollection.enabled`](#operatorconfigurationresource.spec.telemetryCollection.enabled)
-to `true` in the [Dash0OperatorConfiguration](#configuring-the-dash0-backend-connection), since the required RBAC
-permissions have not been granted.
-To enable telemetry collection later on, it is required to change this Helm value to `true` and perform a
-`helm upgrade --install` with the updated setting.
-
 ### Managing Spam Filters
 
 You can manage your [spam filters](https://www.dash0.com/docs/dash0/cost-control/spam-filters) via the Dash0 operator.
@@ -3008,6 +2989,25 @@ Status:
   Synchronization Status: successful
   Synchronized At:        2026-05-01T12:00:00Z
 ```
+
+### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)
+
+If you use the Dash0 operator only for infrastructure-as-code purposes, and not to collect telemetry in the cluster,
+you can set the Helm flag `operator.telemetryCollectionEnabled=false`.
+In this mode, the operator will not deploy any OpenTelemetry collectors to the cluster, and no telemetry will be
+collected.
+
+By default, the operator Helm chart will set up all necessary Kubernetes RBAC permissions to manage OpenTelemetry
+collectors and the target allocator.
+If set to false, these RBAC permissions will not be granted, and the operator will run with a reduced set of RBAC
+permissions.
+
+If `operator.telemetryCollectionEnabled=false` is set, it will not be possible to set
+[`spec.telemetryCollection.enabled`](#operatorconfigurationresource.spec.telemetryCollection.enabled)
+to `true` in the [Dash0OperatorConfiguration](#configuring-the-dash0-backend-connection), since the required RBAC
+permissions have not been granted.
+To enable telemetry collection later on, it is required to change this Helm value to `true` and perform a
+`helm upgrade --install` with the updated setting.
 
 ## Notes on AWS EKS
 
