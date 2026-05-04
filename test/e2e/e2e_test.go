@@ -710,6 +710,46 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 
 				//nolint:dupl
+				It("should synchronize a spam filter to the Dash0 API", func() {
+					deploySpamFilterResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					//nolint:lll
+					routeRegex := "/api/spam-filters/dash0-operator_.*_default_e2e-test-ns_spam-filter-e2e-test\\?dataset=default"
+
+					By("verifying the spam filter has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("k8s.namespace.name"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInSpamFilter(applicationUnderTestNamespace, "false")
+					By("verifying the spam filter has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInSpamFilter(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the spam filter has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("k8s.namespace.name"))
+					verifyApiSyncRequest(req)
+
+					removeSpamFilterResource(applicationUnderTestNamespace)
+					By("verifying the spam filter has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:dupl
 				It("should synchronize Perses dashboards to the Dash0 API", func() {
 					deployPersesDashboardResource(
 						applicationUnderTestNamespace,
