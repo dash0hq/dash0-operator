@@ -393,10 +393,6 @@ type Dash0MonitoringList struct {
 	Items           []Dash0Monitoring `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&Dash0Monitoring{}, &Dash0MonitoringList{})
-}
-
 // ConvertFrom converts the hub version (v1beta1) to this Dash0Monitoring resource version (v1alpha1).
 //
 //nolint:staticcheck

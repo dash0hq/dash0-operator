@@ -218,7 +218,3 @@ type Dash0ViewList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0View `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Dash0View{}, &Dash0ViewList{})
-}
