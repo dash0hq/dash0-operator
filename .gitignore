@@ -27,6 +27,7 @@ go.work
 .vscode
 *.swp
 *.swo
+*.sln
 *~
 
 # Idea run configs
