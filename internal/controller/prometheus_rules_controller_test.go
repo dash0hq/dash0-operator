@@ -420,8 +420,17 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
+						VerifyNoUnmatchedGockRequests()
+
+						// Make sure the work queue is empty before tearing down the monitoring resource so an in-flight synchronization job
+						// from a previous test cannot write its (potentially stale) result to the next test's monitoring resource.
+						Eventually(func(g Gomega) {
+							g.Expect(testQueuePrometheusRules.Len()).To(Equal(0))
+						}, 3*time.Second, 20*time.Millisecond).Should(Succeed())
+
 						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 						prometheusRuleCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, logger)
+
 					},
 				)
 
@@ -746,6 +755,25 @@ var _ = Describe(
 								Reply(503).
 								JSON(map[string]string{})
 						}
+						// Recording rule PUT also fails on the second config
+						for _, expectedRequest := range defaultRecordingRuleRequests() {
+							origin :=
+								fmt.Sprintf(
+									"dash0-operator_%s_%s_test-namespace_test-rule_%s_%s",
+									clusterId,
+									DatasetCustomTestAlternative,
+									strings.ReplaceAll(expectedRequest.group, "/", "|"),
+									expectedRequest.alert,
+								)
+							expectedPath := fmt.Sprintf("%s.*%s", recordingRuleApiBasePath, origin)
+							gock.New(ApiEndpointTestAlternative).
+								Put(expectedPath).
+								MatchHeader("Authorization", AuthorizationHeaderTestAlternative).
+								MatchParam("dataset", DatasetCustomTestAlternative).
+								Times(3). // 3 retries
+								Reply(503).
+								JSON(map[string]string{})
+						}
 						defer gock.Off()
 
 						prometheusRuleCrdReconciler.SetDefaultApiConfigs(
@@ -796,12 +824,21 @@ var _ = Describe(
 
 						// Expect DELETE requests for both API configs
 						expectCheckRuleDeleteRequests(clusterId, defaultCheckRuleRequests())
+						expectRecordingRuleDeleteRequests(clusterId, defaultRecordingRuleRequests())
 						expectCheckRuleDeleteRequestsCustom(
 							clusterId,
 							ApiEndpointTestAlternative,
 							AuthorizationHeaderTestAlternative,
 							DatasetCustomTestAlternative,
 							defaultCheckRuleRequests(),
+							http.StatusOK,
+						)
+						expectRecordingRuleDeleteRequestsCustom(
+							clusterId,
+							ApiEndpointTestAlternative,
+							AuthorizationHeaderTestAlternative,
+							DatasetCustomTestAlternative,
+							defaultRecordingRuleRequests(),
 							http.StatusOK,
 						)
 						defer gock.Off()
@@ -832,9 +869,18 @@ var _ = Describe(
 
 						Eventually(
 							func(g Gomega) {
-								g.Expect(gock.IsDone()).To(BeTrue())
+								monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+								results := monRes.Status.PrometheusRuleSynchronizationResults
+								g.Expect(results).NotTo(BeNil())
+								g.Expect(results).To(HaveLen(1))
+								result := results[fmt.Sprintf("%s/%s", TestNamespaceName, "test-rule")]
+								g.Expect(result.SynchronizationStatus).To(
+									Equal(dash0common.ThirdPartySynchronizationStatusSuccessful),
+								)
+								g.Expect(result.SynchronizationResults).To(HaveLen(2))
 							},
 						).Should(Succeed())
+						Expect(gock.IsDone()).To(BeTrue())
 					},
 				)
 
@@ -2673,6 +2719,7 @@ func deletePrometheusRuleCrdIfItExists(ctx context.Context) {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 			},
+			3*time.Second, 20*time.Millisecond,
 		).Should(Succeed())
 
 		prometheusRuleCrd = nil
@@ -2835,6 +2882,33 @@ func expectCheckRuleDeleteRequestsCustom(
 				expectedRequest.alert,
 			)
 		expectedPath := fmt.Sprintf("%s.*%s", checkRuleApiBasePath, origin)
+		gock.New(endpoint).
+			Delete(expectedPath).
+			MatchHeader("Authorization", authHeader).
+			MatchParam("dataset", dataset).
+			Times(1).
+			Reply(status)
+	}
+}
+
+func expectRecordingRuleDeleteRequestsCustom(
+	clusterId string,
+	endpoint string,
+	authHeader string,
+	dataset string,
+	expectedRequests []checkRuleRequestExpectation,
+	status int,
+) {
+	for _, expectedRequest := range expectedRequests {
+		origin :=
+			fmt.Sprintf(
+				"dash0-operator_%s_%s_test-namespace_test-rule_%s_%s",
+				clusterId,
+				dataset,
+				strings.ReplaceAll(expectedRequest.group, "/", "|"),
+				expectedRequest.alert,
+			)
+		expectedPath := fmt.Sprintf("%s.*%s", recordingRuleApiBasePath, origin)
 		gock.New(endpoint).
 			Delete(expectedPath).
 			MatchHeader("Authorization", authHeader).

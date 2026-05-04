@@ -84,6 +84,8 @@ var _ = Describe(
 
 		AfterEach(
 			func() {
+				VerifyNoUnmatchedGockRequests()
+
 				DeleteMonitoringResource(ctx, k8sClient)
 				for _, name := range extraMonitoringResourceNames {
 					DeleteMonitoringResourceByName(ctx, k8sClient, name, true)

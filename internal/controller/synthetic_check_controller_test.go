@@ -124,6 +124,8 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
+						VerifyNoUnmatchedGockRequests()
+
 						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 						deleteSyntheticCheckResourceIfItExists(ctx, k8sClient, TestNamespaceName, syntheticCheckName)
 						deleteSyntheticCheckResourceIfItExists(ctx, k8sClient, extraNamespaceSyntheticChecks, syntheticCheckName2)
