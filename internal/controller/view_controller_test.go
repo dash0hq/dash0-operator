@@ -124,6 +124,8 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
+						VerifyNoUnmatchedGockRequests()
+
 						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 						deleteViewResourceIfItExists(ctx, k8sClient, TestNamespaceName, viewName)
 						deleteViewResourceIfItExists(ctx, k8sClient, extraNamespaceViews, viewName2)

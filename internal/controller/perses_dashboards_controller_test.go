@@ -414,6 +414,14 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
+						VerifyNoUnmatchedGockRequests()
+
+						// Make sure the work queue is empty before tearing down the monitoring resource so an in-flight synchronization job
+						// from a previous test cannot write its (potentially stale) result to the next test's monitoring resource.
+						Eventually(func(g Gomega) {
+							g.Expect(testQueuePersesDashboards.Len()).To(Equal(0))
+						}, 3*time.Second, 20*time.Millisecond).Should(Succeed())
+
 						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 						persesDashboardCrdReconciler.RemoveNamespacedApiConfigs(ctx, TestNamespaceName, logger)
 					},
@@ -1158,6 +1166,7 @@ func deletePersesDashboardCrdIfItExists(ctx context.Context) {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 			},
+			3*time.Second, 20*time.Millisecond,
 		).Should(Succeed())
 
 		persesDashboardCrd = nil

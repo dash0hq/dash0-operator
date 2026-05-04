@@ -96,6 +96,8 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
+						VerifyNoUnmatchedGockRequests()
+
 						deleteSamplingRuleResourceIfItExists(ctx, k8sClient, samplingRuleName)
 						deleteSamplingRuleResourceIfItExists(ctx, k8sClient, samplingRuleName2)
 					},
