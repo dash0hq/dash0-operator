@@ -230,6 +230,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This defaults to "false".
     * `DEPLOY_VIEW`: Set to "true" to deploy a view resource that will be synchronized to Dash0 via the Dash0 API.
       This defaults to "false".
+    * `DEPLOY_SPAM_FILTER`: Set to "true" to deploy a spam filter resource that will be synchronized to Dash0 via the Dash0 API.
+      This defaults to "false".
     * `DEPLOY_NOTIFICATION_CHANNEL`: Set to the name of one of the example files in
     `test-resources/customresources/dash0notificationchannel` to deploy a notification channel resource that will be
     synchronized to Dash0 via the Dash0 API. E.g. `DEPLOY_NOTIFICATION_CHANNEL=slack` will deploy `slack.yaml`.

@@ -1075,6 +1075,11 @@ deploy_dash0_api_sync_resources() {
     kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0view/dash0view.yaml
     finish_step
   fi
+  if [[ "${DEPLOY_SPAM_FILTER:-}" = "true" ]]; then
+    echo "STEP $step_counter: deploy a Dash0 spam filter resource to namespace ${target_namespace}"
+    kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0spamfilter/dash0spamfilter.yaml
+    finish_step
+  fi
   if [[ "${DEPLOY_PERSES_DASHBOARD:-}" = "true" ]]; then
     echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
     kubectl apply -n "$target_namespace" -f test-resources/customresources/persesdashboard/persesdashboard.yaml

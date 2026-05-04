@@ -30,6 +30,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&Dash0IntelligentEdge{}, &Dash0IntelligentEdgeList{},
 		&Dash0SamplingRule{}, &Dash0SamplingRuleList{},
 		&Dash0SyntheticCheck{}, &Dash0SyntheticCheckList{},
+		&Dash0SpamFilter{}, &Dash0SpamFilterList{},
 		&Dash0View{}, &Dash0ViewList{},
 	)
 	metav1.AddToGroupVersion(scheme, GroupVersion)
