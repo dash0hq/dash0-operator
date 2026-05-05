@@ -120,7 +120,7 @@ jobs:
 
       - name: Send Slack notification on success
         if: success()
-        uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
         with:
           errors: true
           method: chat.postMessage
@@ -156,7 +156,7 @@ jobs:
 
       - name: Send Slack notification on failure
         if: failure()
-        uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
         with:
           errors: true
           method: chat.postMessage
