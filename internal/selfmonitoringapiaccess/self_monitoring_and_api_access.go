@@ -19,6 +19,7 @@ import (
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type OtlpProtocol string
@@ -105,7 +106,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 		return SelfMonitoringConfiguration{}, nil
 	}
 
-	selfMonitoringIsEnabled := util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true)
+	selfMonitoringIsEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true)
 	if !selfMonitoringIsEnabled {
 		return SelfMonitoringConfiguration{}, nil
 	}

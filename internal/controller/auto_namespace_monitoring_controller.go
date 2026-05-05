@@ -30,6 +30,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 // The AutoNamespaceMonitoringReconciler watches the operator configuration resource (in parallel to the operator
@@ -844,7 +845,7 @@ func compareAndUpdateSpec(
 		specUpdated = true
 	}
 	// InstrumentWorkloads.TraceContext.Propagators
-	if util.IsStringPointerValueDifferent(
+	if pointers.IsStringPointerValueDifferent(
 		monitoringResourceSpec.InstrumentWorkloads.TraceContext.Propagators,
 		monitoringTemplateSpec.InstrumentWorkloads.TraceContext.Propagators,
 	) {
@@ -852,18 +853,18 @@ func compareAndUpdateSpec(
 			monitoringTemplateSpec.InstrumentWorkloads.TraceContext.Propagators
 		specUpdated = true
 	}
-	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.LogCollection.Enabled, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.LogCollection.Enabled, true) {
+	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.LogCollection.Enabled, true) !=
+		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.LogCollection.Enabled, true) {
 		monitoringResourceSpec.LogCollection.Enabled = monitoringTemplateSpec.LogCollection.Enabled
 		specUpdated = true
 	}
-	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.EventCollection.Enabled, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.EventCollection.Enabled, true) {
+	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.EventCollection.Enabled, true) !=
+		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.EventCollection.Enabled, true) {
 		monitoringResourceSpec.EventCollection.Enabled = monitoringTemplateSpec.EventCollection.Enabled
 		specUpdated = true
 	}
-	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.PrometheusScraping.Enabled, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.PrometheusScraping.Enabled, true) {
+	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.PrometheusScraping.Enabled, true) !=
+		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.PrometheusScraping.Enabled, true) {
 		monitoringResourceSpec.PrometheusScraping.Enabled = monitoringTemplateSpec.PrometheusScraping.Enabled
 		specUpdated = true
 	}
@@ -876,13 +877,13 @@ func compareAndUpdateSpec(
 		monitoringResourceSpec.Transform = monitoringTemplateSpec.Transform
 		specUpdated = true
 	}
-	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.SynchronizePersesDashboards, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.SynchronizePersesDashboards, true) {
+	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.SynchronizePersesDashboards, true) !=
+		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.SynchronizePersesDashboards, true) {
 		monitoringResourceSpec.SynchronizePersesDashboards = monitoringTemplateSpec.SynchronizePersesDashboards
 		specUpdated = true
 	}
-	if util.ReadBoolPointerWithDefault(monitoringResourceSpec.SynchronizePrometheusRules, true) !=
-		util.ReadBoolPointerWithDefault(monitoringTemplateSpec.SynchronizePrometheusRules, true) {
+	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.SynchronizePrometheusRules, true) !=
+		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.SynchronizePrometheusRules, true) {
 		monitoringResourceSpec.SynchronizePrometheusRules = monitoringTemplateSpec.SynchronizePrometheusRules
 		specUpdated = true
 	}

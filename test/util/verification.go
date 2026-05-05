@@ -20,6 +20,7 @@ import (
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,11 +40,12 @@ type ContainerExpectations struct {
 }
 
 type PodSpecExpectations struct {
-	Volumes               int
-	Dash0VolumeIdx        int
-	InitContainers        int
-	Dash0InitContainerIdx int
-	Containers            []ContainerExpectations
+	Volumes                 int
+	Dash0VolumeIdx          int
+	InitContainers          int
+	Dash0InitContainerIdx   int
+	Containers              []ContainerExpectations
+	InstrumentationDelivery cluster.ResolvedInstrumentationDelivery
 }
 
 type VerifyOpts struct {
@@ -70,6 +72,14 @@ var (
 		ExpectManagedFields: false,
 	}
 )
+
+func BasicInstrumentedPodSpecExpectationsWithImageVolume() PodSpecExpectations {
+	expectations := BasicInstrumentedPodSpecExpectations()
+	expectations.InitContainers = 0
+	expectations.Dash0InitContainerIdx = -1
+	expectations.InstrumentationDelivery = cluster.ResolvedInstrumentationDeliveryImageVolume
+	return expectations
+}
 
 func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 	return PodSpecExpectations{
@@ -124,7 +134,7 @@ func VerifyModifiedCronJob(resource *batchv1.CronJob, expectations PodSpecExpect
 	verifyPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
-	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModificationWithInitContainer(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -146,7 +156,7 @@ func VerifyModifiedDaemonSet(resource *appsv1.DaemonSet, expectations PodSpecExp
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
-	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModificationWithInitContainer(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -168,7 +178,11 @@ func VerifyModifiedDeployment(resource *appsv1.Deployment, expectations PodSpecE
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
-	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	if expectations.InstrumentationDelivery == cluster.ResolvedInstrumentationDeliveryImageVolume {
+		verifyPodAnnotationsAfterSuccessfulModificationWithImageVolume(resource.Spec.Template.ObjectMeta)
+	} else {
+		verifyPodAnnotationsAfterSuccessfulModificationWithInitContainer(resource.Spec.Template.ObjectMeta)
+	}
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -201,7 +215,7 @@ func VerifyModifiedJob(resource *batchv1.Job, expectations PodSpecExpectations, 
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
-	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModificationWithInitContainer(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -210,7 +224,7 @@ func VerifyModifiedJobAfterUnsuccessfulOptOut(resource *batchv1.Job) {
 	jobLabels := resource.ObjectMeta.Labels
 	Expect(jobLabels["dash0.com/instrumented"]).To(Equal("true"))
 	Expect(jobLabels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
-	Expect(jobLabels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
+	Expect(jobLabels["dash0.com/instrumentation-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
 	Expect(jobLabels["dash0.com/instrumented-by"]).NotTo(Equal(""))
 	Expect(jobLabels["dash0.com/enable"]).To(Equal("false"))
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
@@ -240,7 +254,7 @@ func VerifyJobWithOptOutLabel(resource *batchv1.Job) {
 func VerifyModifiedPod(resource *corev1.Pod, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
-	verifyPodAnnotationsAfterSuccessfulModification(resource.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModificationWithInitContainer(resource.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -260,7 +274,7 @@ func VerifyModifiedReplicaSet(resource *appsv1.ReplicaSet, expectations PodSpecE
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
-	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModificationWithInitContainer(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -282,7 +296,7 @@ func VerifyModifiedStatefulSet(resource *appsv1.StatefulSet, expectations PodSpe
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
-	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModificationWithInitContainer(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -339,22 +353,35 @@ func verifyDash0InitContainer(initContainer corev1.Container) {
 func verifyContainers(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 	Expect(podSpec.Containers).To(HaveLen(len(expectations.Containers)))
 	for containerIdx, container := range podSpec.Containers {
-		verifyContainer(container, expectations.Containers[containerIdx])
+		verifyContainer(container, expectations.Containers[containerIdx], expectations.InstrumentationDelivery)
 	}
 }
 
-func verifyContainer(container corev1.Container, expectations ContainerExpectations) {
+func verifyContainer(
+	container corev1.Container,
+	expectations ContainerExpectations,
+	instrumentationDelivery cluster.ResolvedInstrumentationDelivery,
+) {
 	Expect(container.Name).To(Equal(expectations.ContainerName))
-	verifyVolumeMounts(container, expectations)
+	verifyVolumeMounts(container, expectations, instrumentationDelivery)
 	verifyEnvironmentVariables(container, expectations, expectations.ContainerName)
 }
 
-func verifyVolumeMounts(container corev1.Container, expectations ContainerExpectations) {
+func verifyVolumeMounts(
+	container corev1.Container,
+	expectations ContainerExpectations,
+	instrumentationDelivery cluster.ResolvedInstrumentationDelivery,
+) {
 	Expect(container.VolumeMounts).To(HaveLen(expectations.VolumeMounts))
 	for j, volumeMount := range container.VolumeMounts {
 		if j == expectations.Dash0VolumeMountIdx {
 			Expect(volumeMount.Name).To(Equal("dash0-instrumentation"))
 			Expect(volumeMount.MountPath).To(Equal("/__otel_auto_instrumentation"))
+			if instrumentationDelivery == cluster.ResolvedInstrumentationDeliveryImageVolume {
+				Expect(volumeMount.SubPath).To(Equal("dash0-instrumentation"))
+			} else {
+				Expect(volumeMount.SubPath).To(BeEmpty())
+			}
 		} else {
 			Expect(volumeMount.Name).To(Equal(fmt.Sprintf("test-volume-%d", j)))
 		}
@@ -398,7 +425,14 @@ func verifyVolumes(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 	for i, volume := range podSpec.Volumes {
 		if i == expectations.Dash0VolumeIdx {
 			Expect(volume.Name).To(Equal("dash0-instrumentation"))
-			Expect(volume.EmptyDir).NotTo(BeNil())
+			if expectations.InstrumentationDelivery == cluster.ResolvedInstrumentationDeliveryImageVolume {
+				Expect(volume.EmptyDir).To(BeNil())
+				Expect(volume.Image).NotTo(BeNil())
+				Expect(volume.Image.Reference).To(Equal(InitContainerImageTest))
+			} else {
+				Expect(volume.EmptyDir).NotTo(BeNil())
+				Expect(volume.Image).To(BeNil())
+			}
 		} else {
 			Expect(volume.Name).To(Equal(fmt.Sprintf("test-volume-%d", i)))
 		}
@@ -408,19 +442,27 @@ func verifyVolumes(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 func verifyLabelsAfterSuccessfulModification(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal("true"))
 	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
-	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
+	Expect(meta.Labels["dash0.com/instrumentation-image"]).
+		To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
 	Expect(meta.Labels["dash0.com/enable"]).To(Or(Equal(""), Equal("true")))
 }
 
-func verifyPodAnnotationsAfterSuccessfulModification(podMeta metav1.ObjectMeta) {
+func verifyPodAnnotationsAfterSuccessfulModificationWithInitContainer(podMeta metav1.ObjectMeta) {
 	Expect(podMeta.Annotations[safeToEvictLocalVolumesAnnotationName]).To(Equal("dash0-instrumentation"))
+	Expect(podMeta.Annotations["dash0.com/instrumentation-delivery"]).To(Equal("init-container"))
+}
+
+func verifyPodAnnotationsAfterSuccessfulModificationWithImageVolume(podMeta metav1.ObjectMeta) {
+	Expect(podMeta.Annotations[safeToEvictLocalVolumesAnnotationName]).To(BeEmpty())
+	Expect(podMeta.Annotations["dash0.com/instrumentation-delivery"]).To(Equal("image-volume"))
 }
 
 func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal("false"))
 	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
-	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
+	Expect(meta.Labels["dash0.com/instrumentation-image"]).
+		To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
 	Expect(meta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
@@ -433,7 +475,7 @@ func verifyNoDash0Labels(meta metav1.ObjectMeta) {
 func verifyNoDash0LabelsEventually(g Gomega, meta metav1.ObjectMeta) {
 	g.Expect(meta.Labels["dash0.com/instrumented"]).To(Equal(""))
 	g.Expect(meta.Labels["dash0.com/operator-image"]).To(Equal(""))
-	g.Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal(""))
+	g.Expect(meta.Labels["dash0.com/instrumentation-image"]).To(Equal(""))
 	g.Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
 	g.Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
 }
@@ -445,12 +487,13 @@ func verifyNoDash0PodAnnotations(podMeta metav1.ObjectMeta) {
 func verifyNoDash0PodAnnotationsEventually(g Gomega, podMeta metav1.ObjectMeta) {
 	g.Expect(podMeta.Annotations[safeToEvictLocalVolumesAnnotationName]).
 		NotTo(ContainSubstring("dash0-instrumentation"))
+	g.Expect(podMeta.Annotations["dash0.com/instrumentation-delivery"]).To(Equal(""))
 }
 
 func verifyLabelsForOptOutWorkload(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal(""))
-	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/instrumentation-image"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/enable"]).To(Equal("false"))

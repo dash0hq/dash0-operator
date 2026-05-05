@@ -12,9 +12,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	taresources "github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
+	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
@@ -112,7 +113,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {
 		namespace := monitoringResource.Namespace
-		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
+		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
 		}
 	}
@@ -133,7 +134,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 		return err == nil, err
 	}
 
-	if !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
+	if !pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
 		logger.Info(
 			fmt.Sprintf("Telemetry collection has been disabled explicitly via the operator configuration "+
 				"resource (\"%s\"), property telemetryCollection.enabled=false, no Dash0 OpenTelemetry target-allocator "+
@@ -142,7 +143,7 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 		)
 		err = m.removeTargetAllocator(ctx, *extraConfig, logger)
 		return err == nil, err
-	} else if !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled, false) {
+	} else if !pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled, false) {
 		logger.Info(
 			fmt.Sprintf("Support for Prometheus CRDs has been disabled explicitly via the operator configuration "+
 				"resource (\"%s\"), property prometheusCrdSupport.enabled=false, no Dash0 OpenTelemetry target-allocator "+

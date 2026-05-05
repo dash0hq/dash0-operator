@@ -39,8 +39,13 @@ func verifyLabels(
 	g.Expect(instrumented).To(Equal(strconv.FormatBool(successful)), "expected dash0.com/instrumented=true but it wasn't")
 	operatorImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/operator-image")
 	verifyImageLabel(g, operatorImage, images.operator, "ghcr.io/dash0hq/operator-controller:")
-	initContainerImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/init-container-image")
-	verifyImageLabel(g, initContainerImage, images.instrumentation, "ghcr.io/dash0hq/instrumentation:")
+	instrumentationImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumentation-image")
+	if instrumentationImage == "" {
+		// This fallback to the old label key is required for "should update instrumentations of workloads at startup",
+		// which uses an older operator release initially. Can be deleted once 0.140.0 has been released.
+		instrumentationImage = readLabel(g, namespace, runtime, workloadType, "dash0.com/init-container-image")
+	}
+	verifyImageLabel(g, instrumentationImage, images.instrumentation, "ghcr.io/dash0hq/instrumentation:")
 	instrumentedBy := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
 }
@@ -91,8 +96,8 @@ func verifyNoDash0LabelsOrOnlyOptOut(
 	g.Expect(instrumented).To(Equal(""))
 	operatorVersion := readLabel(g, namespace, runtime, workloadType, "dash0.com/operator-image")
 	g.Expect(operatorVersion).To(Equal(""))
-	initContainerImageVersion := readLabel(g, namespace, runtime, workloadType, "dash0.com/init-container-image")
-	g.Expect(initContainerImageVersion).To(Equal(""))
+	instrumentationImageVersion := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumentation-image")
+	g.Expect(instrumentationImageVersion).To(Equal(""))
 	instrumentedBy := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(""))
 	dash0Enable := readLabel(g, namespace, runtime, workloadType, "dash0.com/enable")
@@ -104,7 +109,42 @@ func verifyNoDash0LabelsOrOnlyOptOut(
 }
 
 func readLabel(g Gomega, namespace string, runtime runtimeType, workloadType workloadType, labelKey string) string {
-	labelValue, err := run(exec.Command(
+	return readFromMetadataMap(
+		g,
+		namespace,
+		runtime,
+		workloadType,
+		"labels",
+		labelKey,
+	)
+}
+
+func readAnnotation(
+	g Gomega,
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	annotationKey string,
+) string {
+	return readFromMetadataMap(
+		g,
+		namespace,
+		runtime,
+		workloadType,
+		"annotations",
+		annotationKey,
+	)
+}
+
+func readFromMetadataMap(
+	g Gomega,
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	mapName string,
+	key string,
+) string {
+	value, err := run(exec.Command(
 		"kubectl",
 		"get",
 		workloadType.workloadTypeString,
@@ -112,8 +152,8 @@ func readLabel(g Gomega, namespace string, runtime runtimeType, workloadType wor
 		namespace,
 		workloadName(runtime, workloadType),
 		"-o",
-		fmt.Sprintf("jsonpath={.metadata.labels['%s']}", strings.ReplaceAll(labelKey, ".", "\\.")),
+		fmt.Sprintf("jsonpath={.metadata.%s['%s']}", mapName, strings.ReplaceAll(key, ".", "\\.")),
 	), false)
 	g.Expect(err).NotTo(HaveOccurred())
-	return labelValue
+	return value
 }

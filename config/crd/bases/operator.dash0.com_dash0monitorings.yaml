@@ -1682,6 +1682,9 @@ spec:
                   Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
                   the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
                   when they are updated.
+
+                  Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
+                  for workload instrumentation.
                 properties:
                   labelSelector:
                     default: dash0.com/enable!=false

@@ -28,7 +28,7 @@ tests:
           value: ghcr.io/dash0hq/operator-controller:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[7].name
-          value: DASH0_INIT_CONTAINER_IMAGE
+          value: DASH0_INSTRUMENTATION_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[7].value
           value: ghcr.io/dash0hq/instrumentation:99.100.101
@@ -252,8 +252,8 @@ tests:
           repository: custom-operator-image
           tag: "1.2.3"
           pullPolicy: Never
-        initContainerImage:
-          repository: custom-init-container-image
+        instrumentationImage:
+          repository: custom-instrumentation-image
           tag: "4.5.6"
           pullPolicy: Always
         imagePullSecrets:
@@ -434,13 +434,13 @@ tests:
           value: custom-operator-image:1.2.3
       - equal:
           path: spec.template.spec.containers[0].env[7].name
-          value: DASH0_INIT_CONTAINER_IMAGE
+          value: DASH0_INSTRUMENTATION_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[7].value
-          value: custom-init-container-image:4.5.6
+          value: custom-instrumentation-image:4.5.6
       - equal:
           path: spec.template.spec.containers[0].env[8].name
-          value: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
+          value: DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[8].value
           value: Always
@@ -1123,7 +1123,7 @@ tests:
       operator:
         image:
           digest: sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
-        initContainerImage:
+        instrumentationImage:
           digest: sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
         collectorImage:
           digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
@@ -1149,7 +1149,7 @@ tests:
           value: ghcr.io/dash0hq/operator-controller@sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
       - equal:
           path: spec.template.spec.containers[0].env[7].name
-          value: DASH0_INIT_CONTAINER_IMAGE
+          value: DASH0_INSTRUMENTATION_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[7].value
           value: ghcr.io/dash0hq/instrumentation@sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
@@ -1227,7 +1227,7 @@ tests:
       operator:
         image:
           repository: customrepo.io/repo/custom-operator-controller
-        initContainerImage:
+        instrumentationImage:
           repository: customrepo.io/repo/custom-instrumentation
         collectorImage:
           repository: customrepo.io/repo/custom-collector
@@ -1254,7 +1254,7 @@ tests:
           value: customrepo.io/repo/custom-operator-controller:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[7].name
-          value: DASH0_INIT_CONTAINER_IMAGE
+          value: DASH0_INSTRUMENTATION_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[7].value
           value: customrepo.io/repo/custom-instrumentation:99.100.101
@@ -1524,3 +1524,109 @@ tests:
           path: spec.template.spec.imagePullSecrets
           value:
             - name: secret-for-private-reg
+
+  - it: should pass operator.instrumentation.delivery image-volume to the operator manager
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        instrumentation:
+          delivery: image-volume
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--operator-configuration-instrumentation-delivery=image-volume"
+
+  - it: should pass operator.instrumentation.delivery "init-container" to the operator manager
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        instrumentation:
+          delivery: init-container
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--operator-configuration-instrumentation-delivery=init-container"
+
+  - it: should pass operator.instrumentation.delivery "auto" to the operator manager
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        instrumentation:
+          delivery: auto
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--operator-configuration-instrumentation-delivery=auto"
+
+  - it: operator.instrumentation.delivery should default to "init-container"
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--operator-configuration-instrumentation-delivery=init-container"
+
+  - it: should reject an invalid operator.instrumentation.delivery value
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        instrumentation:
+          delivery: invalid
+    asserts:
+      - failedTemplate:
+          errorMessage: 'Error: operator.instrumentation.delivery must be one of "auto", "image-volume" or "init-container", but was "invalid".'
+
+  - it: should ignore operator.instrumentation.delivery if the operator does not manage the operator configuration resource
+    set:
+      operator:
+        dash0Export:
+          enabled: false
+        instrumentation:
+          delivery: auto
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--operator-configuration-instrumentation-delivery=auto"
+        not: true
+
+  - it: should ignore an invalid operator.instrumentation.delivery value if the operator does not manage the operator configuration resource
+    set:
+      operator:
+        dash0Export:
+          enabled: false
+        instrumentation:
+          delivery: invalid
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--operator-configuration-instrumentation-delivery=invalid"
+        not: true
+      - notFailedTemplate: {}

@@ -14,7 +14,6 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -45,7 +44,7 @@ var (
 	}
 	MonitoringResourceDefaultSpec = dash0v1beta1.Dash0MonitoringSpec{
 		InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-			LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+			LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 		},
 		Exports: []dash0common.Export{
 			{
@@ -62,12 +61,12 @@ var (
 	}
 	MonitoringResourceDefaultSpecWithoutExport = dash0v1beta1.Dash0MonitoringSpec{
 		InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-			LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+			LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 		},
 	}
 
-	DefaultNamespaceInstrumentationConfig = util.NamespaceInstrumentationConfig{
-		InstrumentationLabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+	DefaultNamespaceInstrumentationConfig = dash0v1beta1.NamespaceInstrumentationConfig{
+		InstrumentationLabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 		LogCollectionEnabled:         true,
 		PreviousLogCollectionEnabled: true,
 	}
@@ -103,7 +102,7 @@ func DefaultMonitoringResourceWithCustomApiConfigAndToken(
 		},
 		Spec: dash0v1beta1.Dash0MonitoringSpec{
 			InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-				LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+				LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 			},
 			Exports: []dash0common.Export{
 				{

@@ -137,6 +137,7 @@ func waitUntilReplicaSetPodsAreReady(namespace string, runtime runtimeType, work
 		workloadType.workloadTypeString))
 }
 
+//nolint:unparam
 func waitForApplicationToBecomeResponsive(
 	runtime runtimeType,
 	workloadType workloadType,

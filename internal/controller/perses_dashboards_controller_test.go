@@ -25,7 +25,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	"github.com/h2non/gock"
@@ -72,7 +72,7 @@ var _ = Describe(
 			func() {
 				EnsureTestNamespaceExists(ctx, k8sClient)
 				EnsureOperatorNamespaceExists(ctx, k8sClient)
-				clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, logger))
+				clusterId = string(cluster.ReadPseudoClusterUid(ctx, k8sClient, logger))
 			},
 		)
 

@@ -584,9 +584,9 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 		--set operator.image.repository=$(CONTROLLER_IMAGE_REPOSITORY) \
 		--set operator.image.tag=$(CONTROLLER_IMAGE_TAG) \
 		--set operator.image.pullPolicy=$(CONTROLLER_IMAGE_PULL_POLICY) \
-		--set operator.initContainerImage.repository=$(INSTRUMENTATION_IMAGE_REPOSITORY) \
-		--set operator.initContainerImage.tag=$(INSTRUMENTATION_IMAGE_TAG) \
-		--set operator.initContainerImage.pullPolicy=$(INSTRUMENTATION_IMAGE_PULL_POLICY) \
+		--set operator.instrumentationImage.repository=$(INSTRUMENTATION_IMAGE_REPOSITORY) \
+		--set operator.instrumentationImage.tag=$(INSTRUMENTATION_IMAGE_TAG) \
+		--set operator.instrumentationImage.pullPolicy=$(INSTRUMENTATION_IMAGE_PULL_POLICY) \
 		--set operator.collectorImage.repository=$(COLLECTOR_IMAGE_REPOSITORY) \
 		--set operator.collectorImage.tag=$(COLLECTOR_IMAGE_TAG) \
 		--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMAGE_PULL_POLICY) \

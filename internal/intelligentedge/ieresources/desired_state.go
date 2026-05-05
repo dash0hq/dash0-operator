@@ -17,6 +17,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 const (
@@ -58,7 +59,7 @@ func assembleDesiredState(
 ) []clientObject {
 	barkerEnabled := !forDeletion &&
 		intelligentEdgeResource != nil &&
-		util.ReadBoolPointerWithDefault(intelligentEdgeResource.Spec.Barker.Enabled, true)
+		pointers.ReadBoolPointerWithDefault(intelligentEdgeResource.Spec.Barker.Enabled, true)
 
 	if barkerEnabled && barkerImage == "" {
 		logger.Warn("Barker is enabled but no barker image is configured. The barker proxy will not be deployed.")
@@ -202,7 +203,7 @@ func assembleBarkerDeployment(
 			Value: "true",
 		})
 	}
-	if operatorConfig != nil && util.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
+	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
 		barkerContainer.Env = append(barkerContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
 	}
 	deployment := assembleBarkerDeploymentForDeletion(operatorNamespace, namePrefix)

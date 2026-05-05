@@ -151,6 +151,10 @@ spec:
 {{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.permit_without_stream" */}}
         - --operator-configuration-auto-monitor-namespaces-enabled={{ .Values.operator.autoMonitorNamespaces.enabled }}
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
+{{- if not (or (eq .Values.operator.instrumentation.delivery "auto") (eq .Values.operator.instrumentation.delivery "image-volume") (eq .Values.operator.instrumentation.delivery "init-container")) }}
+{{- fail (printf "Error: operator.instrumentation.delivery must be one of \"auto\", \"image-volume\" or \"init-container\", but was %q." .Values.operator.instrumentation.delivery) -}}
+{{- end }}
+        - --operator-configuration-instrumentation-delivery={{ .Values.operator.instrumentation.delivery }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
         - --dash0-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
 {{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
@@ -188,11 +192,11 @@ spec:
           value: {{ .Release.Name | quote }}
         - name: DASH0_OPERATOR_IMAGE
           value: {{ include "dash0-operator.image" . | quote }}
-        - name: DASH0_INIT_CONTAINER_IMAGE
-          value: {{ include "dash0-operator.initContainerImage" . | quote }}
-        {{- if .Values.operator.initContainerImage.pullPolicy }}
-        - name: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
-          value: {{ .Values.operator.initContainerImage.pullPolicy }}
+        - name: DASH0_INSTRUMENTATION_IMAGE
+          value: {{ include "dash0-operator.instrumentationImage" . | quote }}
+        {{- if .Values.operator.instrumentationImage.pullPolicy }}
+        - name: DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.instrumentationImage.pullPolicy }}
         {{- end }}
         {{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
         - name: DASH0_COLLECTOR_IMAGE
@@ -2494,6 +2498,9 @@ spec:
                   Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
                   the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
                   when they are updated.
+
+                  Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
+                  for workload instrumentation.
                 properties:
                   labelSelector:
                     default: dash0.com/enable!=false

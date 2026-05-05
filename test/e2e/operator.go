@@ -306,10 +306,10 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
 	arguments = setIfNotEmpty(arguments, "operator.image.pullPolicy", images.operator.pullPolicy)
 
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
+	arguments = setIfNotEmpty(arguments, "operator.instrumentationImage.repository", images.instrumentation.repository)
+	arguments = setIfNotEmpty(arguments, "operator.instrumentationImage.tag", images.instrumentation.tag)
+	arguments = setIfNotEmpty(arguments, "operator.instrumentationImage.digest", images.instrumentation.digest)
+	arguments = setIfNotEmpty(arguments, "operator.instrumentationImage.pullPolicy", images.instrumentation.pullPolicy)
 
 	arguments = setIfNotEmpty(arguments, "operator.collectorImage.repository", images.collector.repository)
 	arguments = setIfNotEmpty(arguments, "operator.collectorImage.tag", images.collector.tag)

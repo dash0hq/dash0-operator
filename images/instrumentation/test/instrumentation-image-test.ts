@@ -259,7 +259,7 @@ async function buildOrPullInstrumentationImage(): Promise<void> {
     let dockerPlatforms = allDockerPlatforms;
     if (architecturesFilter.length > 0) {
       // If we do not run the tests for multiple CPU architectures, we do not need to spend the time to build a
-      // multi-arch instrumenation image.
+      // multi-arch instrumentation image.
       dockerPlatforms = architecturesFilter.map(architectureToDockerPlatform).join(',');
     }
     log(`starting: building instrumentation image for platform(s) ${dockerPlatforms} from local sources`);

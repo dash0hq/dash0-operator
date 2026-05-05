@@ -29,6 +29,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -129,6 +130,7 @@ var _ = BeforeSuite(func() {
 			TestImages,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
+			cluster.ResolvedInstrumentationDeliveryInitContainer,
 			nil,
 			false,
 			false,

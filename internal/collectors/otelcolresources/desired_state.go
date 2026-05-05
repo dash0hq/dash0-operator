@@ -24,6 +24,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type IntelligentEdgeConfig struct {
@@ -285,7 +286,7 @@ func assembleDesiredStateForUpsert(
 	for _, monitoringResource := range allMonitoringResources {
 		namespace := monitoringResource.Namespace
 		monitoredNamespaces = append(monitoredNamespaces, namespace)
-		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) &&
+		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) &&
 			// We deliberately do not allow collecting logs from the operator namespace, these are available via
 			// self-monitoring. Furthermore, if logs from the operator would be enabled via the normal log collection
 			// pipeline, and there was a log parsing error that is being logged into the collector log, this might
@@ -293,10 +294,10 @@ func assembleDesiredStateForUpsert(
 			namespace != config.OperatorNamespace {
 			namespacesWithLogCollection = append(namespacesWithLogCollection, namespace)
 		}
-		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
+		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
 			namespacesWithEventCollection = append(namespacesWithEventCollection, namespace)
 		}
-		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
+		if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
 		}
 

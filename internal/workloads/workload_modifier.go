@@ -17,9 +17,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type containerHasServiceAttributes struct {
@@ -35,6 +37,7 @@ const (
 	dash0DirectoryEnvVarName                       = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
 	dash0CopyInstrumentationDebugEnvVarName        = "DASH0_COPY_INSTRUMENTATION_DEBUG"
 	otelAutoInstrumentationBaseDirectory           = "/__otel_auto_instrumentation"
+	imageVolumeSubPath                             = "dash0-instrumentation"
 	envVarLdPreloadName                            = "LD_PRELOAD"
 	envVarLdPreloadValue                           = "/__otel_auto_instrumentation/injector/libotelinject.so"
 	envVarOtelInjectorConfigFileName               = "OTEL_INJECTOR_CONFIG_FILE"
@@ -199,7 +202,7 @@ func InstrumentationIsUpToDate(
 	objectMeta *metav1.ObjectMeta,
 	containers []corev1.Container,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 ) bool {
 	if !util.HasBeenInstrumentedSuccessfullyByThisVersion(objectMeta, clusterInstrumentationConfig.Images) {
 		return false
@@ -220,7 +223,7 @@ func InstrumentationIsUpToDate(
 // container would be added or removed by the workload modifier based on the current LogCollectionEnabled setting.
 func otelLogsExporterEnvVarWillBeUpdatedForAtLeastOneContainer(
 	containers []corev1.Container,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 ) bool {
 	for _, container := range containers {
 		envVar := util.GetEnvVar(new(container), envVarOtelLogsExporterName)
@@ -246,7 +249,7 @@ type ResourceModifier struct {
 
 	// configuration values relevant for instrumenting workloads which apply to one namespace, e.g. settings from the
 	// monitoring resource.
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig
 
 	// the name of the component that applies the resource modifications, this will be written to the
 	// dash0.com/instrumented-by label
@@ -258,7 +261,7 @@ type ResourceModifier struct {
 
 func NewResourceModifier(
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	actor util.WorkloadModifierActor,
 	logger logd.Logger,
 ) *ResourceModifier {
@@ -303,7 +306,7 @@ func (m *ResourceModifier) ModifyJob(job *batchv1.Job) ModificationResult {
 }
 
 func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) ModificationResult {
-	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabelsAndAnnotations(&job.ObjectMeta, false, m.clusterInstrumentationConfig, m.actor)
 	// adding labels always works and is a modification that requires an update
 	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
@@ -325,7 +328,7 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabelsAndAnnotations(&pod.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
 	return NewHasBeenModifiedResult(len(pod.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
 }
 
@@ -352,8 +355,8 @@ func (m *ResourceModifier) modifyResource(
 	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabels(workloadMeta, true, m.clusterInstrumentationConfig, m.actor)
-	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabelsAndAnnotations(workloadMeta, true, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabelsAndAnnotations(&podTemplateSpec.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
 	return NewHasBeenModifiedResult(len(podTemplateSpec.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
 }
 
@@ -364,8 +367,20 @@ func (m *ResourceModifier) modifyPodSpec(
 ) modifyPodSpecResult {
 	originalSpec := podSpec.DeepCopy()
 	m.addInstrumentationVolume(podSpec)
-	m.addSafeToEvictLocalVolumesAnnotation(podMeta)
-	m.addInitContainer(podSpec)
+	if m.clusterInstrumentationConfig.IsInstrumentationDeliveryInitContainer() {
+		// The safe-to-evict-local-volumes annotation only matters for emptyDir local volumes; image volumes are
+		// sourced from container images and managed by the kubelet, so they do not prevent eviction.
+		m.addSafeToEvictLocalVolumesAnnotation(podMeta)
+		// Only add the init container when the legacy instrumentation approach is used.
+		m.addInitContainer(podSpec)
+	} else {
+		// The workload may have been instrumented previously via the init-container delivery mode. Remove the  artifacts
+		// that were added back then but are not reconciled by the rest of modifyPodSpec, that is, the init container and
+		// the safe-to-evict-local-volumes annotation entry. (The volume and the container volume mounts are reconciled in
+		// place by addInstrumentationVolume/addMount.)
+		m.removeInitContainer(podSpec)
+		m.removeSafeToEvictLocalVolumesAnnotation(podMeta)
+	}
 	instrumentationIssuesPerContainer := map[string][]string{}
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
@@ -388,18 +403,32 @@ func (m *ResourceModifier) addInstrumentationVolume(podSpec *corev1.PodSpec) {
 		return c.Name == dash0VolumeName
 	})
 	dash0Volume := &corev1.Volume{
-		Name: dash0VolumeName,
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{
-				SizeLimit: resource.NewScaledQuantity(500, resource.Mega),
-			},
-		},
+		Name:         dash0VolumeName,
+		VolumeSource: m.dash0VolumeSource(),
 	}
 
 	if idx < 0 {
 		podSpec.Volumes = append(podSpec.Volumes, *dash0Volume)
 	} else {
 		podSpec.Volumes[idx] = *dash0Volume
+	}
+}
+
+func (m *ResourceModifier) dash0VolumeSource() corev1.VolumeSource {
+	if m.clusterInstrumentationConfig.IsInstrumentationDeliveryImageVolume() {
+		imageVolume := &corev1.ImageVolumeSource{
+			Reference: m.clusterInstrumentationConfig.InitContainerImage,
+		}
+		if m.clusterInstrumentationConfig.InitContainerImagePullPolicy != "" {
+			imageVolume.PullPolicy = m.clusterInstrumentationConfig.InitContainerImagePullPolicy
+		}
+		return corev1.VolumeSource{Image: imageVolume}
+	}
+
+	return corev1.VolumeSource{
+		EmptyDir: &corev1.EmptyDirVolumeSource{
+			SizeLimit: resource.NewScaledQuantity(500, resource.Mega),
+		},
 	}
 }
 
@@ -443,10 +472,9 @@ func parseAndNormalizeVolumeList(annotationValue string) []string {
 
 func (m *ResourceModifier) addInitContainer(podSpec *corev1.PodSpec) {
 	// The init container's file system contains the OpenTelemtry injector and all auto-instrumentation agents for the
-	// supported runtimes, in the directory /dash0-init-container. Its main responsibility is to copy these files to the
+	// supported runtimes, in the directory /dash0-instrumentation. Its main responsibility is to copy these files to the
 	// Kubernetes volume created and mounted in addInstrumentationVolume (mounted at /__otel_auto_instrumentation in the
 	// init container and also in the target containers).
-
 	if podSpec.InitContainers == nil {
 		podSpec.InitContainers = make([]corev1.Container, 0)
 	}
@@ -545,6 +573,11 @@ func (m *ResourceModifier) addMount(container *corev1.Container) {
 	volume := &corev1.VolumeMount{
 		Name:      dash0VolumeName,
 		MountPath: otelAutoInstrumentationBaseDirectory,
+	}
+	if m.clusterInstrumentationConfig.IsInstrumentationDeliveryImageVolume() {
+		// Selecting the directory inside the init container image whose contents the legacy init container approach
+		// would have copied into the emptyDir volume via copy-instrumentation.sh.
+		volume.SubPath = imageVolumeSubPath
 	}
 	if idx < 0 {
 		container.VolumeMounts = append(container.VolumeMounts, *volume)
@@ -999,7 +1032,7 @@ func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 
 func (m *ResourceModifier) addOTelPropagatorsEnvVar(container *corev1.Container) {
 	if otelPropagatorsCanBeUpdatedForContainer(container, m.namespaceInstrumentationConfig) {
-		if util.IsEmpty(m.namespaceInstrumentationConfig.TraceContextPropagators) {
+		if pointers.IsEmpty(m.namespaceInstrumentationConfig.TraceContextPropagators) {
 			removeEnvironmentVariable(container, util.OtelPropagatorsEnvVarName)
 		} else {
 			addOrReplaceEnvironmentVariable(
@@ -1013,7 +1046,7 @@ func (m *ResourceModifier) addOTelPropagatorsEnvVar(container *corev1.Container)
 	}
 }
 
-func otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers []corev1.Container, namespaceInstrumentationConfig util.NamespaceInstrumentationConfig) bool {
+func otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers []corev1.Container, namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig) bool {
 	for _, container := range containers {
 		if otelPropagatorsCanBeUpdatedForContainer(new(container), namespaceInstrumentationConfig) {
 			return true
@@ -1022,7 +1055,7 @@ func otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers []corev
 	return false
 }
 
-func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namespaceInstrumentationConfig util.NamespaceInstrumentationConfig) bool {
+func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig) bool {
 	envVarOnContainer := util.GetEnvVar(container, util.OtelPropagatorsEnvVarName)
 
 	if envVarOnContainer != nil && envVarOnContainer.ValueFrom != nil {
@@ -1031,7 +1064,7 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 		return false
 	}
 
-	if util.IsEmpty(namespaceInstrumentationConfig.TraceContextPropagators) {
+	if pointers.IsEmpty(namespaceInstrumentationConfig.TraceContextPropagators) {
 		// The monitoring resource does not have spec.instrumentWorkloads.traceContext.propagators set. We might need
 		// to remove the environment variable OTEL_PROPAGATORS from the container, but only if there is such an
 		// environment variable, and it has been set by the operator.
@@ -1045,7 +1078,7 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 			// container has the environment variable OTEL_PROPAGATORS set. If it has been set by the operator, we
 			// need to remove it, otherwise we leave it as is. To determine whether it has been set by the operator,
 			// we compare the current env var value against the previous requested setting in the monitoring resource.
-			if util.IsEmpty(namespaceInstrumentationConfig.PreviousTraceContextPropagators) {
+			if pointers.IsEmpty(namespaceInstrumentationConfig.PreviousTraceContextPropagators) {
 				// There is no previous trace context propagators setting, apparently the env var has not been set by
 				// the operator, do nothing.
 				return false
@@ -1061,7 +1094,7 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 				return false
 			}
 		}
-	} // if util.IsEmpty(namespaceInstrumentationConfig.TraceContextPropagators) {
+	} // if pointers.IsEmpty(namespaceInstrumentationConfig.TraceContextPropagators) {
 
 	// The monitoring resource does have a spec.instrumentWorkloads.traceContext.propagators value. We might need
 	// to add or update the environment variable OTEL_PROPAGATORS from the container
@@ -1085,7 +1118,7 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 		// by the operator, which we can determine by checking the previous requested setting in the monitoring
 		// resource's status.
 
-		if util.IsEmpty(namespaceInstrumentationConfig.PreviousTraceContextPropagators) {
+		if pointers.IsEmpty(namespaceInstrumentationConfig.PreviousTraceContextPropagators) {
 			// There is no previous trace context propagators setting, apparently the env var has not been set by
 			// the operator, do nothing.
 			return false
@@ -1279,7 +1312,7 @@ func (m *ResourceModifier) RevertDeployment(deployment *appsv1.Deployment) Modif
 }
 
 func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) ModificationResult {
-	util.RemoveInstrumentationLabels(&job.ObjectMeta)
+	util.RemoveInstrumentationLabelsAndAnnotations(&job.ObjectMeta)
 	// removing labels always works and is a modification that requires an update
 	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
@@ -1310,16 +1343,16 @@ func (m *ResourceModifier) revertResource(
 ) ModificationResult {
 	if util.InstrumentationAttemptHasFailed(workloadMeta) {
 		// workload has never been instrumented successfully, only remove labels
-		util.RemoveInstrumentationLabels(workloadMeta)
-		util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
+		util.RemoveInstrumentationLabelsAndAnnotations(workloadMeta)
+		util.RemoveInstrumentationLabelsAndAnnotations(&podTemplateSpec.ObjectMeta)
 		return NewHasBeenModifiedResult(len(podTemplateSpec.Spec.Containers), nil)
 	}
 	podSpecResult := m.revertPodSpec(&podTemplateSpec.Spec, podMeta)
 	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.RemoveInstrumentationLabels(workloadMeta)
-	util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
+	util.RemoveInstrumentationLabelsAndAnnotations(workloadMeta)
+	util.RemoveInstrumentationLabelsAndAnnotations(&podTemplateSpec.ObjectMeta)
 	return NewHasBeenModifiedResult(len(podTemplateSpec.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
 }
 

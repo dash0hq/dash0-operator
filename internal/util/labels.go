@@ -9,6 +9,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
 const (
@@ -25,17 +27,17 @@ const (
 	// or when the label is missing entirely.
 	instrumentedLabelValueUnknown instrumentedState = "unknown"
 
-	DefaultAutoInstrumentationLabelSelector = "dash0.com/enable!=false"
-
-	operatorImageLabelKey      = "dash0.com/operator-image"
-	initContainerImageLabelKey = "dash0.com/init-container-image"
-	instrumentedByLabelKey     = "dash0.com/instrumented-by"
-	webhookIgnoreOnceLabelKey  = "dash0.com/webhook-ignore-once"
+	operatorImageLabelKey                = "dash0.com/operator-image"
+	instrumentationImageLabelKey         = "dash0.com/instrumentation-image"
+	instrumentedByLabelKey               = "dash0.com/instrumented-by"
+	instrumentationDeliveryAnnotationKey = "dash0.com/instrumentation-delivery"
+	webhookIgnoreOnceLabelKey            = "dash0.com/webhook-ignore-once"
+	// TODO move operator-image, instrumentation-image and instrumented-by to annotations (later)
 )
 
 type instrumentedState string
 
-func AddInstrumentationLabels(
+func AddInstrumentationLabelsAndAnnotations(
 	objectMeta *metav1.ObjectMeta,
 	instrumentationSuccess bool,
 	clusterInstrumentationConfig *ClusterInstrumentationConfig,
@@ -47,8 +49,13 @@ func AddInstrumentationLabels(
 		addLabel(objectMeta, InstrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
 	}
 	addLabel(objectMeta, operatorImageLabelKey, ImageRefToLabel(clusterInstrumentationConfig.OperatorImage))
-	addLabel(objectMeta, initContainerImageLabelKey, ImageRefToLabel(clusterInstrumentationConfig.InitContainerImage))
+	addLabel(objectMeta, instrumentationImageLabelKey, ImageRefToLabel(clusterInstrumentationConfig.InitContainerImage))
 	addLabel(objectMeta, instrumentedByLabelKey, string(actor))
+	addAnnotation(
+		objectMeta,
+		instrumentationDeliveryAnnotationKey,
+		string(clusterInstrumentationConfig.GetInstrumentationDelivery()),
+	)
 }
 
 func AddWebhookIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) {
@@ -62,15 +69,27 @@ func addLabel(objectMeta *metav1.ObjectMeta, key string, value string) {
 	objectMeta.Labels[key] = value
 }
 
-func RemoveInstrumentationLabels(objectMeta *metav1.ObjectMeta) {
+func addAnnotation(objectMeta *metav1.ObjectMeta, key string, value string) {
+	if objectMeta.Annotations == nil {
+		objectMeta.Annotations = make(map[string]string, 1)
+	}
+	objectMeta.Annotations[key] = value
+}
+
+func RemoveInstrumentationLabelsAndAnnotations(objectMeta *metav1.ObjectMeta) {
 	removeLabel(objectMeta, InstrumentedLabelKey)
 	removeLabel(objectMeta, operatorImageLabelKey)
-	removeLabel(objectMeta, initContainerImageLabelKey)
+	removeLabel(objectMeta, instrumentationImageLabelKey)
 	removeLabel(objectMeta, instrumentedByLabelKey)
+	removeAnnotation(objectMeta, instrumentationDeliveryAnnotationKey)
 }
 
 func removeLabel(objectMeta *metav1.ObjectMeta, key string) {
 	delete(objectMeta.Labels, key)
+}
+
+func removeAnnotation(objectMeta *metav1.ObjectMeta, key string) {
+	delete(objectMeta.Annotations, key)
 }
 
 func HasBeenInstrumentedSuccessfully(objectMeta *metav1.ObjectMeta) bool {
@@ -85,13 +104,13 @@ func HasBeenInstrumentedSuccessfullyByThisVersion(
 		return false
 	}
 	operatorImageValue, operatorImageIsSet := readLabel(objectMeta, operatorImageLabelKey)
-	initContainerImageValue, initContainerImageIsSet := readLabel(objectMeta, initContainerImageLabelKey)
-	if !operatorImageIsSet || !initContainerImageIsSet {
+	instrumentationImageValue, instrumentationImageIsSet := readLabel(objectMeta, instrumentationImageLabelKey)
+	if !operatorImageIsSet || !instrumentationImageIsSet {
 		return false
 	}
 	expectedOperatorImageLabel := ImageRefToLabel(images.OperatorImage)
 	expectedInitContainerImageLabel := ImageRefToLabel(images.InitContainerImage)
-	return operatorImageValue == expectedOperatorImageLabel && initContainerImageValue == expectedInitContainerImageLabel
+	return operatorImageValue == expectedOperatorImageLabel && instrumentationImageValue == expectedInitContainerImageLabel
 }
 
 func InstrumentationAttemptHasFailed(objectMeta *metav1.ObjectMeta) bool {
@@ -143,7 +162,7 @@ func shouldBeInstrumented(objectMeta *metav1.ObjectMeta, autoInstrumentationLabe
 	labelSelector, err := labels.Parse(autoInstrumentationLabelSelector)
 	if err != nil {
 		// The setting is validated in the validation webhook for the monitoring resource, so this should never happen.
-		labelSelector, err = labels.Parse(DefaultAutoInstrumentationLabelSelector)
+		labelSelector, err = labels.Parse(dash0common.DefaultAutoInstrumentationLabelSelector)
 		if err != nil {
 			// This also should never, ever happen.
 			panic(err)

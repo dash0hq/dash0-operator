@@ -311,6 +311,20 @@ Here is a list of configuration options for this resource:
   Setting it to `true` and having at least one namespace with `prometheusScraping` enabled, will deploy the OpenTelemetry
   target-allocator and update the `prometheusreceiver` in the OpenTelemetry collectors, so they query the allocator for targets
   to be scraped.
+* <a href="#operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery"><span id="operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery">`spec.instrumentWorkloads.instrumentationDelivery`</span></a>:
+  Whether to use an image volume or an init container plus an emptyDir volume to provide instrumentation files to
+  workloads when applying auto-instrumentation.
+  See [Using Image Volumes for Auto-Instrumentation Files](#using-image-volumes-for-auto-instrumentation-files).
+  Allowed values:
+  - `auto`: use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
+    approach.
+  - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
+    version is older than 1.31, the operator manager will log a warning and fall back to the init container
+    approach, since image volumes are not supported in that version. Note that if you are using
+    Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
+    your cluster, since image volumes are disabled by default in versions older than 1.35.
+  - `init-container`: always use the init container approach, regardless of the Kubernetes version.
+    This is the default.
 * <a href="#operatorconfigurationresource.spec.autoMonitorNamespaces.enabled"><span id="operatorconfigurationresource.spec.autoMonitorNamespaces.enabled">`spec.autoMonitorNamespaces.enabled`</span></a>: Controls whether monitoring is set up for namespaces
   automatically.
   By default, a Dash0Monitoring resource has to be added to each namespace that you want to monitor.
@@ -387,70 +401,6 @@ Any changes you want to be permanent should be applied via Helm and the `operato
 If you would rather retain manual control over the operator configuration resource, you should omit any
 `operator.dash0Export.*` Helm values and create and manage the operator configuration resource manually (that is, via
 kubectl, ArgoCD etc.).
-
-### Python Auto-Instrumentation
-
-To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true`
-via Helm.
-If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled
-immediately for workloads in namespaces that have a Dash0Monitoring resource with
-[`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
-This will cause all pods in these namespaces to be restarted.
-For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
-re-deployment of the workload.
-The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
-Dash0Monitoring resource.
-
-Python auto-instrumentation is only supported for Python 3.9 or later.
-If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.8 or older), it will
-automatically deactivate itself safely and print a warning to `stderr`:
-```
-[dash0] warning: cannot auto-instrument Python process: unsupported Python version: 3.8.0
-```
-This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
-Update the Python version to enable automatic Python instrumentation by Dash0 for this workload.
-
-Python auto-instrumentation only works if the configured OTLP export protocol is `http/protobuf`.
-If the operator is managing the container's `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` variables,
-this will be set correctly automatically.
-If the Dash0 Python auto-instrumentation detects an incompatible `OTEL_EXPORTER_OTLP_PROTOCOL` setting, it will
-automatically deactivate itself safely and print a warning to `stderr`:
-```
-[dash0] warning: cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported
-```
-This can only happen if the container is setting its own `OTEL_EXPORTER_OTLP_ENDPOINT` and/or
-`OTEL_EXPORTER_OTLP_PROTOCOL`.
-Remove these environment variables from the pod spec template to enable automatic Python instrumentation by Dash0 for
-this workload.
-
-Dash0's Python auto-instrumentation is not compatible with workloads that are already instrumented, either
-[manually](https://opentelemetry.io/docs/languages/python/instrumentation/) or using the
-[zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/), e.g. the `opentelemetry-instrument`
-wrapper.
-If existing instrumentation is detected, the Dash0 Python auto-instrumentation will automatically deactivate itself
-safely and print a warning to `stderr`:
-```
-[dash0] warning: cannot auto-instrument Python process: The application has OpenTelemetry dependencies which indicate
-that it is already instrumented. The following problematic dependencies have been found: ...
-Skipping the Dash0 Python auto-instrumentation to avoid double instrumentation.
-```
-This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
-Remove the existing instrumentation from the workload to enable automatic Python instrumentation by Dash0 for
-this, or leave the existing instrumentation in place, in which case Dash0 will refrain from instrumenting it.
-
-Last but not least, due to the nature of Python's dependency management, Python auto-instrumentation has the potential
-to introduce dependency conflicts.
-The Dash0 Python auto-instrumentation checks for potential dependency conflicts before actually instrumenting a process.
-If a dependency conflict is detected, the Dash0 Python auto-instrumentation will automatically deactivate itself safely
-and print a warning to `stderr`:
-```
-[dash0] warning: cannot auto-instrument Python process: dependency conflicts: {'package-name': {'version_required': '>=20.0', 'version_found': '19.0'}}
-```
-This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
-Resolve the version conflicts to enable automatic Python instrumentation by Dash0 for this workload, for example
-by updating the dependency versions used by the workload.
-If the conflicting dependencies cannot be resolved, you might need to instrument this workload individually, for
-example by using the OpenTelemetry Python [zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/).
 
 ### Enable Dash0 Monitoring For a Namespace
 
@@ -936,6 +886,110 @@ operator:
   autoMonitorNamespaces:
     enabled: true
 ```
+
+### Using Image Volumes for Auto-Instrumentation Files
+
+When using auto-instrumentation of workloads, by default the operator adds an
+[`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) and an
+[init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) to provide the instrumentation
+files to the workload.
+
+Image volumes are a new Kubernetes feature that provides a better way to do this.
+They provide the following advantages:
+* No additional ephemeral storage usage.
+* Faster workload startup (because nothing needs to be copied over from the init container to the empty dir volume)
+
+They were introduced in Kubernetes 1.31 as an alpha feature behind a feature gate.
+In version 1.33 they graduated to beta, but were still disabled by default.
+Starting with version 1.35, the image volume feature gate is enabled by default, but they are still considered beta.
+Image volumes finally became a stable feature in version 1.36
+
+Set the [`instrumentationDelivery` setting](#operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery)
+in the operator configuration resource to determine under which circumstances image volumes will be used instead of the
+init container approach.
+When using the operator manager to create and manage the operator configuration resource (i.e. with
+`operator.dash0Export.enabled=true`), set `operator.instrumentation.delivery` in Helm to configure image volumes.
+
+Allowed values for the instrumentation delivery setting:
+- `auto`: use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
+  approach.
+- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
+  version is older than 1.31, the operator manager will log a warning and fall back to the init container
+  approach, since image volumes are not supported in that version. Note that if you are using
+  Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
+  your cluster, since image volumes are disabled by default in versions older than 1.35.
+- `init-container`: always use the init container approach, regardless of the Kubernetes version.
+  This is the default.
+
+Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk
+re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`.
+Once a workload has been successfully instrumented, there is no benefit in re-instrumenting it with a different delivery
+mechanism.
+The new setting will be applied when instrumenting newly deployed workloads, or when a workload is updated/re-deployed.
+
+### Python Auto-Instrumentation
+
+To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true`
+via Helm.
+If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled
+immediately for workloads in namespaces that have a Dash0Monitoring resource with
+[`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
+This will cause all pods in these namespaces to be restarted.
+For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
+re-deployment of the workload.
+The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
+Dash0Monitoring resource.
+
+Python auto-instrumentation is only supported for Python 3.9 or later.
+If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.8 or older), it will
+automatically deactivate itself safely and print a warning to `stderr`:
+```
+[dash0] warning: cannot auto-instrument Python process: unsupported Python version: 3.8.0
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+Update the Python version to enable automatic Python instrumentation by Dash0 for this workload.
+
+Python auto-instrumentation only works if the configured OTLP export protocol is `http/protobuf`.
+If the operator is managing the container's `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` variables,
+this will be set correctly automatically.
+If the Dash0 Python auto-instrumentation detects an incompatible `OTEL_EXPORTER_OTLP_PROTOCOL` setting, it will
+automatically deactivate itself safely and print a warning to `stderr`:
+```
+[dash0] warning: cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported
+```
+This can only happen if the container is setting its own `OTEL_EXPORTER_OTLP_ENDPOINT` and/or
+`OTEL_EXPORTER_OTLP_PROTOCOL`.
+Remove these environment variables from the pod spec template to enable automatic Python instrumentation by Dash0 for
+this workload.
+
+Dash0's Python auto-instrumentation is not compatible with workloads that are already instrumented, either
+[manually](https://opentelemetry.io/docs/languages/python/instrumentation/) or using the
+[zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/), e.g. the `opentelemetry-instrument`
+wrapper.
+If existing instrumentation is detected, the Dash0 Python auto-instrumentation will automatically deactivate itself
+safely and print a warning to `stderr`:
+```
+[dash0] warning: cannot auto-instrument Python process: The application has OpenTelemetry dependencies which indicate
+that it is already instrumented. The following problematic dependencies have been found: ...
+Skipping the Dash0 Python auto-instrumentation to avoid double instrumentation.
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+Remove the existing instrumentation from the workload to enable automatic Python instrumentation by Dash0 for
+this, or leave the existing instrumentation in place, in which case Dash0 will refrain from instrumenting it.
+
+Last but not least, due to the nature of Python's dependency management, Python auto-instrumentation has the potential
+to introduce dependency conflicts.
+The Dash0 Python auto-instrumentation checks for potential dependency conflicts before actually instrumenting a process.
+If a dependency conflict is detected, the Dash0 Python auto-instrumentation will automatically deactivate itself safely
+and print a warning to `stderr`:
+```
+[dash0] warning: cannot auto-instrument Python process: dependency conflicts: {'package-name': {'version_required': '>=20.0', 'version_found': '19.0'}}
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+Resolve the version conflicts to enable automatic Python instrumentation by Dash0 for this workload, for example
+by updating the dependency versions used by the workload.
+If the conflicting dependencies cannot be resolved, you might need to instrument this workload individually, for
+example by using the OpenTelemetry Python [zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/).
 
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 
@@ -2073,13 +2127,21 @@ Dash0 monitoring resource).
 The instrumentation process is performed by modifying the Pod spec template (for CronJobs, DaemonSets, Deployments,
 Jobs, ReplicaSets, and StatefulSets) or the Pod spec itself (for standalone Pods).
 
-The modifications that are performed for workloads are the following:
+The modifications that are performed for workloads are the following, depending on the chosen
+[instrumentation delivery mechanism](#using-image-volumes-for-auto-instrumentation-files).
+With instrumentation delivery `image-volume`:
+* add an [`image` volume](https://kubernetes.io/docs/concepts/storage/volumes/#image) named
+  `dash0-instrumentation` to the pod spec, which contains the instrumentation files
+With instrumentation delivery `init-container`:
 * add an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) named
   `dash0-instrumentation` to the pod spec
-* add a volume mount `dash0-instrumentation` to all containers of the pod
 * add an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) named
   `dash0-instrumentation` that will copy the OpenTelemetry SDKs and distributions for supported runtimes to the
   `dash0-instrumentation` volume mount, so they are available in the target container's file system
+* add the `cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes=dash0-instrumentation` annotation to the pod
+  spec
+Regardless of the instrumentation delivery:
+* add a volume mount `dash0-instrumentation` to all containers of the pod
 * add environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `LD_PRELOAD`, and several
   Dash0-specific variables prefixed with `DASH0_`) to all containers of the pod
 * add the [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) (see below for details) as
@@ -2087,13 +2149,17 @@ The modifications that are performed for workloads are the following:
 * add the following labels to the workload metadata:
     * `dash0.com/instrumented`: `true` or `false` depending on whether the workload has been successfully instrumented
       or not
-    * `dash0.com/operator-image`: the fully qualified image name of the Dash0 operator image that has instrumented this
+    * `dash0.com/operator-image`: the fully qualified name of the Dash0 operator image that has instrumented this
       workload
-    * `dash0.com/init-container-image`: the fully qualified image name of the Dash0 instrumentation image that has been
-      added as an init container to the pod spec
+    * `dash0.com/instrumentation-image`: the fully qualified name of the image that has been used to deliver
+      instrumentation files to the workload
     * `dash0.com/instrumented-by`: either `controller` or `webhook`, depending on which component has instrumented this
       workload. The controller is responsible for instrumenting existing workloads while the webhook is responsible for
       instrumenting new workloads at deploy time.
+* add the following annotations to the workload metadata:
+  * `dash0.com/instrumented-by`: either `controller` or `webhook`, depending on which component has instrumented this
+    workload. The controller is responsible for instrumenting existing workloads while the webhook is responsible for
+    instrumenting new workloads at deploy time.
 
 **Notes:**
 

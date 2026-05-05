@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 const ErrorMessageTelemetryCollectionDisabledViaHelm = "Telemetry collection has been disabled via the Helm chart " +
@@ -108,7 +108,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		logger.Warn("The setting Dash0OperatorConfiguration.spec.kubernetesInfrastructureMetricsCollectionEnabled is deprecated: Please use Dash0OperatorConfiguration.spec.kubernetesInfrastructureMetricsCollection.enabled instead.")
 	}
 
-	if util.ReadBoolPointerWithDefault(spec.SelfMonitoring.Enabled, true) &&
+	if pointers.ReadBoolPointerWithDefault(spec.SelfMonitoring.Enabled, true) &&
 		len(spec.Exports) == 0 {
 		msg := "The provided Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
 			"export configuration. Either disable self-monitoring or provide an export configuration for self-" +
@@ -117,8 +117,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		return admission.Denied(msg)
 	}
 
-	if !util.ReadBoolPointerWithDefault(spec.TelemetryCollection.Enabled, true) {
-		if util.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollection.Enabled, true) {
+	if !pointers.ReadBoolPointerWithDefault(spec.TelemetryCollection.Enabled, true) {
+		if pointers.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollection.Enabled, true) {
 			msg := "The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
 				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 				"Please either set telemetryCollection.enabled=true or " +
@@ -127,7 +127,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			return admission.Denied(msg)
 		}
 		//nolint:staticcheck
-		if util.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollectionEnabled, true) {
+		if pointers.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollectionEnabled, true) {
 			msg := "The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
 				"explicitly enabled (via the deprecated legacy setting " +
 				"kubernetesInfrastructureMetricsCollectionEnabled), although telemetry collection is disabled. " +
@@ -136,7 +136,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
-		if util.ReadBoolPointerWithDefault(spec.CollectPodLabelsAndAnnotations.Enabled, true) {
+		if pointers.ReadBoolPointerWithDefault(spec.CollectPodLabelsAndAnnotations.Enabled, true) {
 			msg := "The provided Dash0 operator configuration resource has pod label and annotation collection " +
 				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 				"Please either set telemetryCollection.enabled=true or " +
@@ -144,7 +144,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
-		if util.ReadBoolPointerWithDefault(spec.CollectNamespaceLabelsAndAnnotations.Enabled, true) {
+		if pointers.ReadBoolPointerWithDefault(spec.CollectNamespaceLabelsAndAnnotations.Enabled, true) {
 			msg := "The provided Dash0 operator configuration resource has namespace label and annotation collection " +
 				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 				"Please either set telemetryCollection.enabled=true or " +
@@ -152,11 +152,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
-		if util.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
+		if pointers.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
 			logger.Warn(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 			return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		}
-		if spec.Profiling != nil && util.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
+		if spec.Profiling != nil && pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
 			msg := "The provided Dash0 operator configuration resource has profiling " +
 				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 				"Please either set telemetryCollection.enabled=true or " +

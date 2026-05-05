@@ -322,7 +322,7 @@ operator:
   # managerPriorityClassName:
 
   # Resource settings for the dash0-instrumentation init container that will be added to each pod when automatic
-  # workload instrumentation is enabled.
+  # workload instrumentation is enabled, and the instrumentation delivery is using the init-container mode.
   initContainerResources: {}
     # By default, this container defines no resource limits, but if required, they can be set here.
     # Note that putting a low CPU limit on the init container might slow down pod startup for instrumented pods
@@ -361,9 +361,9 @@ operator:
 
   # the container image to use for the instrumentation init container
   # (there should usually be no reason to override this)
-  initContainerImage:
-    # Use a different image for the init container entirely. Note that Dash0 does not offer support for Dash0 operator
-    # setups that do not use Dash0's official init container image.
+  instrumentationImage:
+    # Use a different image for instrumentation entirely. Note that Dash0 does not offer support for Dash0 operator
+    # setups that do not use Dash0's official instrumentation image.
     repository: "ghcr.io/dash0hq/instrumentation"
     # overrides the image tag, which defaults to the chart appVersion.
     tag:
@@ -472,6 +472,38 @@ operator:
 
   # Settings related to the modification and instrumentation of workloads in the cluster.
   instrumentation:
+    # Controls how the Dash0 instrumentation files (the OpenTelemetry injector and the auto-instrumentation agents)
+    # are made available to instrumented workload containers. The operator can either use a Kubernetes image volume
+    # sourced from the Dash0 instrumentation image, or the traditional init container plus emptyDir volume approach.
+    # Image volumes are a Kubernetes feature (introduced in 1.31 as alpha, graduated to beta/opt-in in 1.33,
+    # beta/enabled by default since 1.35, stable since 1.36). Using them removes the need to run an init container
+    # that copies the instrumentation files at pod startup, which saves ephemeral storage and improves pod startup
+    # time.
+    #
+    # Allowed values:
+    # - "auto": use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
+    #   approach.
+    # - "image-volume": always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
+    #   version is older than 1.31, the operator manager will log a warning and fall back to the init container
+    #   approach, since image volumes are not supported in that version. Note that if you are using
+    #   Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
+    #   your cluster, since image volumes are disabled by default in versions older than 1.35.
+    # - "init-container": always use the init container approach, regardless of the Kubernetes version.
+    #   This is the default.
+    #
+    # Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a
+    # bulk re-instrumentation of all existing workloads, even for namespaces that are set to
+    # instrumentWorkloadsMode=all. Once a workload has been successfully instrumented, there is no benefit in
+    # re-instrumenting it with a different delivery mechanism. The new setting will be applied when instrumenting
+    # newly deployed workloads, or when a workload is updated/re-deployed.
+    #
+    # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
+    # resource will be created by the Helm chart then.
+    delivery: init-container
+
+    # If set to true, it enables Python auto-instrumentation (beta).
+    enablePythonAutoInstrumentation: false
+
     # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator
     # startup or when enabling instrumentation for a new namespace via the Dash0Monitoring resource. This delay will be
     # applied after each individual workload.
@@ -484,9 +516,6 @@ operator:
 
     # If set to true, it enables verbose output from the Dash0 init container and the OpenTelemetry injector.
     debug: false
-
-    # If set to true, it enables Python auto-instrumentation (beta).
-    enablePythonAutoInstrumentation: false
 
   # If set to true, the operator manager will not watch the resources of the OpenTelemetry collectors it manages. By
   # default, the operator watches all collector resources (config maps, deployment, daemonset etc.) and reconciles them

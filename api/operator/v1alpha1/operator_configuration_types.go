@@ -15,8 +15,8 @@ import (
 	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 // Dash0OperatorConfiguration is the schema for the Dash0OperatorConfiguration API
@@ -125,6 +125,14 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:validation:Optional
 	ClusterName string `json:"clusterName,omitempty"`
 
+	// InstrumentWorkloads contains cluster-wide settings that govern how the operator auto-instruments workloads.
+	//
+	// Note: There are also instrumentWorkloads settings in the Dash0 monitoring resource, for per-namespace settings for
+	// workload instrumentation.
+	//
+	// +kubebuilder:default={instrumentationDelivery: init-container}
+	InstrumentWorkloads InstrumentWorkloads `json:"instrumentWorkloads,omitempty"`
+
 	// An opt-out switch for all telemetry collection, and to avoid having the operator deploy OpenTelemetry collectors
 	// to the cluster. This setting is optional, it defaults to true.
 	//
@@ -177,6 +185,49 @@ type PrometheusCrdSupport struct {
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// InstrumentationDelivery selects how the Dash0 instrumentation files (the OpenTelemetry injector and the
+// auto-instrumentation agents) are made available to instrumented workload containers.
+//
+// +kubebuilder:validation:Enum=auto;image-volume;init-container
+type InstrumentationDelivery string
+
+const (
+	// InstrumentationDeliveryAuto lets the operator decide which delivery mechanism to use, based on the Kubernetes
+	// version. If the cluster runs Kubernetes 1.36 or later, the operator uses image volumes; otherwise it falls back to
+	// the init container approach.
+	InstrumentationDeliveryAuto InstrumentationDelivery = "auto"
+
+	// InstrumentationDeliveryImageVolume forces the operator to use the image volume delivery mechanisms on Kubernetes
+	// versions 1.31 - 1.35. The setting is ignored on Kubernetes versions older than 1.31.
+	InstrumentationDeliveryImageVolume InstrumentationDelivery = "image-volume"
+
+	// InstrumentationDeliveryInitContainer forces the operator to use the init container plus emptyDir volume delivery
+	// approach, even on Kubernetes 1.36 or newer.
+	InstrumentationDeliveryInitContainer InstrumentationDelivery = "init-container"
+)
+
+// InstrumentWorkloads contains cluster-wide settings that govern how the operator instruments workloads.
+type InstrumentWorkloads struct {
+	// InstrumentationDelivery controls how the Dash0 instrumentation files are made available to instrumented
+	// workload containers. Allowed values:
+	//   - "auto": use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container approach.
+	//   - "image-volume": always use a Kubernetes image volume sourced from the Dash0 instrumentation image. If the
+	//     Kubernetes version is older than 1.31, the operator logs a warning and falls back to the init container
+	//     approach. Note that on Kubernetes 1.34 and earlier, image volumes need to be enabled at cluster
+	//     creation time, since the feature gate is disabled by default in versions older than 1.35.
+	//   - "init-container" (default): always use the traditional init container plus emptyDir volume approach, regardless
+	//     of the Kubernetes version.
+	//
+	// Note: Changing the instrumentationDelivery setting in the operator configuration resource while the operator is
+	// running will not trigger a bulk re-instrumentation of all existing workloads, even for namespaces that are set to
+	// instrumentWorkloadsMode=all. Once a workload has been successfully instrumented, there is no benefit in
+	// re-instrumenting it with a different delivery mechanism. The new setting will be applied when instrumenting
+	// newly deployed workloads, or when a workload is updated/re-deployed.
+	//
+	// +kubebuilder:default=init-container
+	InstrumentationDelivery InstrumentationDelivery `json:"instrumentationDelivery,omitempty"`
 }
 
 type CollectPodLabelsAndAnnotations struct {
@@ -261,7 +312,7 @@ type AutoMonitorNamespaces struct {
 }
 
 func (a AutoMonitorNamespaces) IsEnabled() bool {
-	return util.ReadBoolPointerWithDefault(a.Enabled, false)
+	return pointers.ReadBoolPointerWithDefault(a.Enabled, false)
 }
 
 // MonitoringTemplate describes the Dash0Monitoring resources that will be created for namespaces in case

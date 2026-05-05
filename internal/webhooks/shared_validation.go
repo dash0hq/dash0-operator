@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
+
 package webhooks
 
 import (
 	"github.com/dash0hq/dash0-operator/api/operator/common"
-	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type valid = bool
@@ -15,7 +16,7 @@ func validateGrpcExportInsecureFlags(export *common.Export) valid {
 	if export == nil || export.Grpc == nil {
 		return true
 	} else {
-		return !util.ReadBoolPointerWithDefault(export.Grpc.Insecure, false) ||
-			!util.ReadBoolPointerWithDefault(export.Grpc.InsecureSkipVerify, false)
+		return !pointers.ReadBoolPointerWithDefault(export.Grpc.Insecure, false) ||
+			!pointers.ReadBoolPointerWithDefault(export.Grpc.InsecureSkipVerify, false)
 	}
 }

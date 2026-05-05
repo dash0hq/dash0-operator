@@ -533,6 +533,39 @@ spec:
                       type: object
                   type: object
                 type: array
+              instrumentWorkloads:
+                default:
+                  instrumentationDelivery: init-container
+                description: |-
+                  InstrumentWorkloads contains cluster-wide settings that govern how the operator auto-instruments workloads.
+
+                  Note: There are also instrumentWorkloads settings in the Dash0 monitoring resource, for per-namespace settings for
+                  workload instrumentation.
+                properties:
+                  instrumentationDelivery:
+                    default: init-container
+                    description: |-
+                      InstrumentationDelivery controls how the Dash0 instrumentation files are made available to instrumented
+                      workload containers. Allowed values:
+                        - "auto": use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container approach.
+                        - "image-volume": always use a Kubernetes image volume sourced from the Dash0 instrumentation image. If the
+                          Kubernetes version is older than 1.31, the operator logs a warning and falls back to the init container
+                          approach. Note that on Kubernetes 1.34 and earlier, image volumes need to be enabled at cluster
+                          creation time, since the feature gate is disabled by default in versions older than 1.35.
+                        - "init-container" (default): always use the traditional init container plus emptyDir volume approach, regardless
+                          of the Kubernetes version.
+
+                      Note: Changing the instrumentationDelivery setting in the operator configuration resource while the operator is
+                      running will not trigger a bulk re-instrumentation of all existing workloads, even for namespaces that are set to
+                      instrumentWorkloadsMode=all. Once a workload has been successfully instrumented, there is no benefit in
+                      re-instrumenting it with a different delivery mechanism. The new setting will be applied when instrumenting
+                      newly deployed workloads, or when a workload is updated/re-deployed.
+                    enum:
+                    - auto
+                    - image-volume
+                    - init-container
+                    type: string
+                type: object
               kubernetesInfrastructureMetricsCollection:
                 description: |-
                   Settings for collecting Kubernetes infrastructure metrics. This setting is optional, by default, the operator will
@@ -1230,6 +1263,9 @@ spec:
                           Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
                           the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
                           when they are updated.
+
+                          Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
+                          for workload instrumentation.
                         properties:
                           labelSelector:
                             default: dash0.com/enable!=false
@@ -2238,6 +2274,9 @@ spec:
                           Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
                           the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
                           when they are updated.
+
+                          Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
+                          for workload instrumentation.
                         properties:
                           labelSelector:
                             default: dash0.com/enable!=false

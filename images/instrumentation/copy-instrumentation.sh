@@ -14,7 +14,7 @@ fi
 cd -P -- "$(dirname -- "$0")"
 
 if [ -z "${DASH0_INSTRUMENTATION_FOLDER_SOURCE:-}" ]; then
-  DASH0_INSTRUMENTATION_FOLDER_SOURCE=/dash0-init-container
+  DASH0_INSTRUMENTATION_FOLDER_SOURCE=/dash0-instrumentation
 fi
 if [ ! -d "${DASH0_INSTRUMENTATION_FOLDER_SOURCE}" ]; then
   >&2 echo "[Dash0] Instrumentation source directory ${DASH0_INSTRUMENTATION_FOLDER_SOURCE} does not exist."

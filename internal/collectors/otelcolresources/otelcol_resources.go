@@ -28,6 +28,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
@@ -112,29 +113,29 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	clusterName := ""
 
 	kubernetesInfrastructureMetricsCollectionEnabled :=
-		util.IsOptOutFlagWithDeprecatedVariantEnabled(
+		pointers.IsOptOutFlagWithDeprecatedVariantEnabled(
 			//nolint:staticcheck
 			operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled,
 			operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollection.Enabled,
 		)
 	collectPodLabelsAndAnnotationsEnabled :=
-		util.ReadBoolPointerWithDefault(
+		pointers.ReadBoolPointerWithDefault(
 			operatorConfigurationResource.Spec.CollectPodLabelsAndAnnotations.Enabled,
 			true,
 		)
 	collectNamespaceLabelsAndAnnotationsEnabled :=
-		util.ReadBoolPointerWithDefault(
+		pointers.ReadBoolPointerWithDefault(
 			operatorConfigurationResource.Spec.CollectNamespaceLabelsAndAnnotations.Enabled,
 			false,
 		)
 	prometheusCrdSupportEnabled =
-		util.ReadBoolPointerWithDefault(
+		pointers.ReadBoolPointerWithDefault(
 			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
 			false,
 		)
 	profilingEnabled :=
 		operatorConfigurationResource.Spec.Profiling != nil &&
-			util.ReadBoolPointerWithDefault(
+			pointers.ReadBoolPointerWithDefault(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
 				false,
 			)
@@ -741,13 +742,13 @@ func intelligentEdgeConfigFromResource(
 	if resource == nil {
 		return IntelligentEdgeConfig{Enabled: false}
 	}
-	if !util.ReadBoolPointerWithDefault(resource.Spec.Enabled, true) {
+	if !pointers.ReadBoolPointerWithDefault(resource.Spec.Enabled, true) {
 		logger.Info("Intelligent edge is explicitly disabled via the Dash0IntelligentEdge resource.")
 		return IntelligentEdgeConfig{Enabled: false}
 	}
 
-	barkerEnabled := util.ReadBoolPointerWithDefault(resource.Spec.Barker.Enabled, true)
-	samplingEnabled := util.ReadBoolPointerWithDefault(resource.Spec.Sampling.Enabled, true)
+	barkerEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Barker.Enabled, true)
+	samplingEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Sampling.Enabled, true)
 
 	derivedEndpoint, derivedApiEndpoint, dataset := deriveDash0EndpointsAndDataset(operatorConfig)
 	hasDash0Export := derivedEndpoint != "" || derivedApiEndpoint != ""

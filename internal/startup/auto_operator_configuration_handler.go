@@ -37,6 +37,7 @@ type OperatorConfigurationValues struct {
 	KeepalivePermitWithoutStream                     bool
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	InstrumentationDelivery                          string
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	PrometheusCrdSupportEnabled                      bool
@@ -385,6 +386,11 @@ func convertValuesToResource(
 			Enabled:       new(operatorConfigurationValues.AutoMonitorNamespacesEnabled),
 			LabelSelector: operatorConfigurationValues.AutoMonitorNamespacesLabelSelector,
 		},
+	}
+	if operatorConfigurationValues.InstrumentationDelivery != "" {
+		spec.InstrumentWorkloads = dash0v1alpha1.InstrumentWorkloads{
+			InstrumentationDelivery: dash0v1alpha1.InstrumentationDelivery(operatorConfigurationValues.InstrumentationDelivery),
+		}
 	}
 
 	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{

@@ -72,9 +72,9 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.image "context" .) -}}
 {{- end }}
 
-{{/* the init container image */}}
-{{- define "dash0-operator.initContainerImage" -}}
-{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.initContainerImage "context" .) -}}
+{{/* the instrumentation image */}}
+{{- define "dash0-operator.instrumentationImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.instrumentationImage "context" .) -}}
 {{- end }}
 
 {{/* the collector image */}}
