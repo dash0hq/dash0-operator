@@ -19,8 +19,8 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type MonitoringMutatingWebhookHandler struct {
@@ -154,7 +154,7 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 	patchRequired := false
 	telemetryCollectionEnabled := true
 	if operatorConfigurationSpec != nil {
-		telemetryCollectionEnabled = util.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true)
+		telemetryCollectionEnabled = pointers.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true)
 	}
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {
@@ -192,7 +192,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 	logger logd.Logger,
 ) bool {
 	if request.Namespace == h.operatorNamespace &&
-		util.ReadBoolPointerWithDefault(monitoringSpec.LogCollection.Enabled, true) {
+		pointers.ReadBoolPointerWithDefault(monitoringSpec.LogCollection.Enabled, true) {
 		logger.Info(
 			fmt.Sprintf(
 				"Automatically disabling log collection in the operator namespace %s. Logs from the operator can be "+

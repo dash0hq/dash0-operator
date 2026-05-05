@@ -381,7 +381,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 						// if the user omits the label selector, this default is set via
 						// +kubebuilder:default=dash0.com/enable!=false
 						// in api/operator/.../dash0monitoring_types.go
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 				expectedError: "",

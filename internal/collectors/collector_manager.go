@@ -23,6 +23,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type CollectorManager struct {
@@ -144,7 +145,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		logger.WarnTelemetryCollectionIssue(logMsgOperatorConfigMissing)
 		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
 		return err == nil, err
-	} else if !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
+	} else if !pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
 		logger.Info(fmt.Sprintf(logMsgTelemetryDisabled, operatorConfigurationResource.Name))
 		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
 		return err == nil, err

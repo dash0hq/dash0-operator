@@ -1,16 +1,17 @@
-// SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package util
+package cluster
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 func ReadPseudoClusterUid(ctx context.Context, k8sClient client.Client, logger logd.Logger) types.UID {

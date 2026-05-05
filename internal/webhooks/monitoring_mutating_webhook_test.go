@@ -16,7 +16,6 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -693,7 +692,7 @@ spec:
 				spec:                       dash0v1beta1.Dash0MonitoringSpec{},
 				wanted: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 						Mode:          dash0common.InstrumentWorkloadsModeAll,
 					},
 					LogCollection: dash0common.LogCollection{
@@ -714,7 +713,7 @@ spec:
 				spec:                       dash0v1beta1.Dash0MonitoringSpec{},
 				wanted: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 						Mode:          dash0common.InstrumentWorkloadsModeNone,
 					},
 					LogCollection: dash0common.LogCollection{

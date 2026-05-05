@@ -69,6 +69,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				))
 		}
 		kubeContextHasBeenChanged, originalKubeContext = setKubernetesContext(e2eKubernetesContext)
+		readKubernetesServerVersion()
 
 		// Cleans up the test namespace, otlp sink and the operator. Usually this is cleaned up in AfterAll/AfterEach
 		// steps, but for cases where we want to troubleshoot failing e2e tests and have disabled cleanup in After steps
@@ -170,7 +171,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 			undeployOperator(operatorNamespace)
 		})
 
-		Describe("with a deployed Dash0 monitoring resource", func() {
+		Context("with a deployed Dash0 monitoring resource", func() {
 			BeforeAll(func() {
 				deployDash0MonitoringResourceWithRetry(
 					applicationUnderTestNamespace,
@@ -2084,6 +2085,274 @@ trace_statements:
 				Consistently(func(g Gomega) {
 					verifyNoSpans(g, runtimeTypePython, workloadTypeDeployment, testEndpoint, query, timestampLowerBound)
 				}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
+			})
+		})
+
+		Context("with instrumentation delivery", func() {
+			Context("image volume", func() {
+				BeforeAll(func() {
+					if kubernetesMajor == 1 && kubernetesMinor < 35 {
+						Skip(fmt.Sprintf(
+							"image volumes require Kubernetes 1.35+, server is %d.%d",
+							kubernetesMajor, kubernetesMinor,
+						))
+					}
+					By("deploying the Dash0 operator")
+					deployOperatorWithDefaultAutoOperationConfiguration(
+						operatorNamespace,
+						operatorHelmChart,
+						operatorHelmChartUrl,
+						"",
+						&images,
+						true,
+						map[string]string{
+							"operator.instrumentation.delivery": "image-volume",
+						},
+					)
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
+				})
+
+				AfterAll(func() {
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+					undeployOperator(operatorNamespace)
+				})
+
+				//nolint:dupl
+				It("should instrument a workload with an image volume", func() {
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+					query := fmt.Sprintf("id=%s", testId)
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+					By("waiting for the Node.js deployment to get instrumented")
+					Eventually(func(g Gomega) {
+						verifyLabels(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							true,
+							images,
+							"webhook",
+						)
+						instrumentationDeliveryAnnotation := readAnnotation(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							"dash0.com/instrumentation-delivery",
+						)
+						g.Expect(instrumentationDeliveryAnnotation).To(Equal("image-volume"))
+						verifySuccessfulInstrumentationEvent(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							"webhook",
+						)
+					}, labelChangeTimeout, pollingInterval).Should(Succeed())
+					waitForRollout(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+					waitForApplicationToBecomeResponsive(
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testEndpoint,
+						"",
+					)
+
+					By("verifying that the deployment's pod spec has a dash0-instrumentation image volume, " +
+						"no init container, and no emptyDir volume")
+					deploymentName := workloadName(runtimeTypeNodeJs, workloadTypeDeployment)
+					imageReference, err := run(exec.Command(
+						"kubectl",
+						"get",
+						"--namespace",
+						applicationUnderTestNamespace,
+						workloadTypeDeployment.workloadTypeString,
+						deploymentName,
+						"-o=jsonpath={.spec.template.spec.volumes[?(@.name=='dash0-instrumentation')].image.reference}",
+					))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(imageReference).ToNot(BeEmpty(), "the instrumented pod has no image volume")
+
+					initContainers, err := run(exec.Command(
+						"kubectl",
+						"get",
+						"--namespace",
+						applicationUnderTestNamespace,
+						workloadTypeDeployment.workloadTypeString,
+						deploymentName,
+						"-o=jsonpath={.spec.template.spec.initContainers}",
+					))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(initContainers).To(
+						BeEmpty(),
+						"the instrumented pod has an init container, it should have been instrumented with an image volume instead",
+					)
+
+					emptyDirVolumes, err := run(exec.Command(
+						"kubectl",
+						"get",
+						"--namespace",
+						applicationUnderTestNamespace,
+						workloadTypeDeployment.workloadTypeString,
+						deploymentName,
+						"-o=jsonpath={.spec.template.spec.volumes[?(@.emptyDir)].name}",
+					))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(emptyDirVolumes).To(
+						BeEmpty(),
+						"the instrumented pod has an emptydir volume, it should have been instrumented with an image volume instead",
+					)
+
+					By("waiting for spans to be captured")
+					spanTimeout := verifyTelemetryTimeout
+					timestampLowerBound := time.Now()
+					Eventually(func(g Gomega) {
+						verifySpans(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testEndpoint,
+							query,
+							timestampLowerBound,
+							true,
+						)
+					}, spanTimeout, pollingInterval).Should(Succeed())
+				})
+			})
+
+			Context("init container", func() {
+				BeforeAll(func() {
+					By("deploying the Dash0 operator")
+					deployOperatorWithDefaultAutoOperationConfiguration(
+						operatorNamespace,
+						operatorHelmChart,
+						operatorHelmChartUrl,
+						"",
+						&images,
+						true,
+						map[string]string{
+							"operator.instrumentation.delivery": "init-container",
+						},
+					)
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
+				})
+
+				AfterAll(func() {
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+					undeployOperator(operatorNamespace)
+				})
+
+				//nolint:dupl
+				It("should instrument a workload with an init container and emptydir volume", func() {
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+					query := fmt.Sprintf("id=%s", testId)
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+					By("waiting for the Node.js deployment to get instrumented")
+					Eventually(func(g Gomega) {
+						verifyLabels(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							true,
+							images,
+							"webhook",
+						)
+						instrumentationDeliveryAnnotation := readAnnotation(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							"dash0.com/instrumentation-delivery",
+						)
+						g.Expect(instrumentationDeliveryAnnotation).To(Equal("init-container"))
+						verifySuccessfulInstrumentationEvent(
+							g,
+							applicationUnderTestNamespace,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							"webhook",
+						)
+					}, labelChangeTimeout, pollingInterval).Should(Succeed())
+					waitForRollout(applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDeployment)
+					waitForApplicationToBecomeResponsive(
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testEndpoint,
+						"",
+					)
+
+					By("verifying that the deployment's pod spec has the the dash0-instrumentation init container, " +
+						"a dash0-instrumentation emptydir volume, and no image volume")
+					deploymentName := workloadName(runtimeTypeNodeJs, workloadTypeDeployment)
+					initContainer, err := run(exec.Command(
+						"kubectl",
+						"get",
+						"--namespace",
+						applicationUnderTestNamespace,
+						workloadTypeDeployment.workloadTypeString,
+						deploymentName,
+						"-o=jsonpath={.spec.template.spec.initContainers[?(@.name=='dash0-instrumentation')].name}",
+					))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(initContainer).ToNot(
+						BeEmpty(),
+						"the instrumented pod did not have the dash0-instrumentation init container",
+					)
+
+					emptyDirVolume, err := run(exec.Command(
+						"kubectl",
+						"get",
+						"--namespace",
+						applicationUnderTestNamespace,
+						workloadTypeDeployment.workloadTypeString,
+						deploymentName,
+						"-o=jsonpath={.spec.template.spec.volumes[?(@.emptyDir)].name}",
+					))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(emptyDirVolume).To(Equal("dash0-instrumentation"))
+
+					imageVolumes, err := run(exec.Command(
+						"kubectl",
+						"get",
+						"--namespace",
+						applicationUnderTestNamespace,
+						workloadTypeDeployment.workloadTypeString,
+						deploymentName,
+						"-o=jsonpath={.spec.template.spec.volumes[?(@.image)].name}",
+					))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(imageVolumes).To(
+						BeEmpty(),
+						"the instrumented pod has an image volume, it should have been instrumented with an init container",
+					)
+
+					By("waiting for spans to be captured")
+					spanTimeout := verifyTelemetryTimeout
+					timestampLowerBound := time.Now()
+					Eventually(func(g Gomega) {
+						verifySpans(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testEndpoint,
+							query,
+							timestampLowerBound,
+							true,
+						)
+					}, spanTimeout, pollingInterval).Should(Succeed())
+				})
 			})
 		})
 

@@ -16,8 +16,8 @@ import (
 
 	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
-	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 // Dash0Monitoring is the schema for the Dash0Monitoring API
@@ -75,6 +75,9 @@ type Dash0MonitoringSpec struct {
 	// Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
 	// the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
 	// when they are updated.
+	//
+	// Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
+	// for workload instrumentation.
 	//
 	// +kubebuilder:validation:Optional
 	InstrumentWorkloads InstrumentWorkloads `json:"instrumentWorkloads,omitempty"`
@@ -249,6 +252,22 @@ type TraceContext struct {
 	//
 	// +kubebuilder:validation:Optional
 	Propagators *string `json:"propagators,omitempty"`
+}
+
+// NamespaceInstrumentationConfig holds configuration values relevant for instrumenting workloads which apply to one
+// namespace, e.g. settings from the monitoring resource.
+type NamespaceInstrumentationConfig struct {
+	InstrumentationLabelSelector    string
+	TraceContextPropagators         *string
+	PreviousTraceContextPropagators *string
+	// LogCollectionEnabled is true if the operator collects pod logs from this namespace via the collector's file_log
+	// receiver. When true, the workload modifier sets OTEL_LOGS_EXPORTER=none on instrumented containers to prevent
+	// the workload's own OTel SDK from also exporting logs via OTLP (which would result in duplicates).
+	LogCollectionEnabled bool
+	// PreviousLogCollectionEnabled reflects the LogCollectionEnabled value at the time of the previous reconcile. Used
+	// during uninstrumentation / re-instrumentation to decide whether to remove a previously set OTEL_LOGS_EXPORTER
+	// env var.
+	PreviousLogCollectionEnabled bool
 }
 
 // Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.
@@ -442,13 +461,13 @@ func (d *Dash0Monitoring) At(list client.ObjectList, index int) dash0operator.Da
 	return &list.(*Dash0MonitoringList).Items[index]
 }
 
-func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInstrumentationConfig {
-	return util.NamespaceInstrumentationConfig{
+func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() NamespaceInstrumentationConfig {
+	return NamespaceInstrumentationConfig{
 		InstrumentationLabelSelector:    d.Spec.InstrumentWorkloads.LabelSelector,
 		TraceContextPropagators:         d.Spec.InstrumentWorkloads.TraceContext.Propagators,
 		PreviousTraceContextPropagators: d.Status.PreviousInstrumentWorkloads.TraceContext.Propagators,
-		LogCollectionEnabled:            util.ReadBoolPointerWithDefault(d.Spec.LogCollection.Enabled, true),
-		PreviousLogCollectionEnabled:    util.ReadBoolPointerWithDefault(d.Status.PreviousLogCollection.Enabled, true),
+		LogCollectionEnabled:            pointers.ReadBoolPointerWithDefault(d.Spec.LogCollection.Enabled, true),
+		PreviousLogCollectionEnabled:    pointers.ReadBoolPointerWithDefault(d.Status.PreviousLogCollection.Enabled, true),
 	}
 }
 

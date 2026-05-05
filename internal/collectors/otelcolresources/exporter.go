@@ -12,6 +12,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type otlpExporter struct {
@@ -251,7 +252,7 @@ func convertHttpExporterToOtlpExporter(http *dash0common.HttpConfiguration, name
 }
 
 func setInsecureSkipVerify(endpoint string, insecureSkipVerify *bool, exporter *otlpExporter) {
-	if !hasNonTlsPrefix(endpoint) && util.ReadBoolPointerWithDefault(insecureSkipVerify, false) {
+	if !hasNonTlsPrefix(endpoint) && pointers.ReadBoolPointerWithDefault(insecureSkipVerify, false) {
 		exporter.InsecureSkipVerify = true
 	}
 }

@@ -57,6 +57,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
@@ -69,8 +70,8 @@ type environmentVariables struct {
 	oTelCollectorNamePrefix                     string
 	targetAllocatorNamePrefix                   string
 	operatorImage                               string
-	initContainerImage                          string
-	initContainerImagePullPolicy                corev1.PullPolicy
+	instrumentationImage                        string
+	instrumentationImagePullPolicy              corev1.PullPolicy
 	collectorImage                              string
 	collectorImagePullPolicy                    corev1.PullPolicy
 	targetAllocatorImage                        string
@@ -123,6 +124,7 @@ type commandLineArguments struct {
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
+	operatorConfigurationInstrumentationDelivery                          string
 	telemetryCollectionEnabled                                            bool
 	featureIntelligentEdgeEnabled                                         bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
@@ -144,8 +146,8 @@ const (
 	oTelCollectorNamePrefixEnvVarName                     = "OTEL_COLLECTOR_NAME_PREFIX"
 	targetAllocatorNamePrefixEnvVarName                   = "OTEL_TARGET_ALLOCATOR_NAME_PREFIX"
 	operatorImageEnvVarName                               = "DASH0_OPERATOR_IMAGE"
-	initContainerImageEnvVarName                          = "DASH0_INIT_CONTAINER_IMAGE"
-	initContainerImagePullPolicyEnvVarName                = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
+	instrumentationImageEnvVarName                        = "DASH0_INSTRUMENTATION_IMAGE"
+	instrumentationImagePullPolicyEnvVarName              = "DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY"
 	collectorImageEnvVarName                              = "DASH0_COLLECTOR_IMAGE"
 	collectorImageImagePullPolicyEnvVarName               = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
 	targetAllocatorImageEnvVarName                        = "DASH0_TARGET_ALLOCATOR_IMAGE"
@@ -357,6 +359,7 @@ func Start() {
 			SelfMonitoringEnabled: cliArgs.operatorConfigurationSelfMonitoringEnabled,
 			//nolint:lll
 			KubernetesInfrastructureMetricsCollectionEnabled: cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+			InstrumentationDelivery:                          cliArgs.operatorConfigurationInstrumentationDelivery,
 			CollectPodLabelsAndAnnotationsEnabled:            cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
@@ -574,6 +577,14 @@ func defineCommandLineArguments() *commandLineArguments {
 		"The value for autoMonitorNamespaces.labelSelector on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationInstrumentationDelivery,
+		"operator-configuration-instrumentation-delivery",
+		"",
+		"The value for spec.instrumentWorkloads.instrumentationDelivery on the operator configuration resource. "+
+			"Allowed values are \"auto\", \"image-volume\" and \"init-container\". Will be ignored if "+
+			"operator-configuration-endpoint is not set.",
+	)
 	flag.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"dash0-force-use-otel-collector-service-url",
@@ -740,12 +751,12 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
 	}
 
-	initContainerImage, isSet := os.LookupEnv(initContainerImageEnvVarName)
+	instrumentationImage, isSet := os.LookupEnv(instrumentationImageEnvVarName)
 	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, instrumentationImageEnvVarName)
 	}
-	initContainerImagePullPolicy :=
-		readOptionalPullPolicyFromEnvironmentVariable(initContainerImagePullPolicyEnvVarName)
+	instrumentationImagePullPolicy :=
+		readOptionalPullPolicyFromEnvironmentVariable(instrumentationImagePullPolicyEnvVarName)
 
 	collectorImage, isSet := os.LookupEnv(collectorImageEnvVarName)
 	if !isSet {
@@ -850,8 +861,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		oTelCollectorNamePrefix:                     oTelCollectorNamePrefix,
 		targetAllocatorNamePrefix:                   targetAllocatorNamePrefix,
 		operatorImage:                               operatorImage,
-		initContainerImage:                          initContainerImage,
-		initContainerImagePullPolicy:                initContainerImagePullPolicy,
+		instrumentationImage:                        instrumentationImage,
+		instrumentationImagePullPolicy:              instrumentationImagePullPolicy,
 		collectorImage:                              collectorImage,
 		collectorImagePullPolicy:                    collectorImagePullPolicy,
 		targetAllocatorImage:                        targetAllocatorImage,
@@ -1000,6 +1011,14 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
+	kubernetesVersionInfo, kubernetesVersionDetected := cluster.DetectKubernetesVersion(clientset, setupLog)
+	resolvedInstrumentationDelivery := cluster.ResolveInstrumentationDelivery(
+		cliArgs.operatorConfigurationInstrumentationDelivery,
+		kubernetesVersionInfo,
+		kubernetesVersionDetected,
+		setupLog,
+	)
+
 	operatorConfigurationTokenRedacted := ""
 	if cliArgs.operatorConfigurationToken != "" {
 		operatorConfigurationTokenRedacted = "<redacted>"
@@ -1011,9 +1030,9 @@ func startOperatorManager(
 		envVars.operatorImage,
 
 		"init container image",
-		envVars.initContainerImage,
+		envVars.instrumentationImage,
 		"init container image pull policy override",
-		envVars.initContainerImagePullPolicy,
+		envVars.instrumentationImagePullPolicy,
 
 		"collector image",
 		envVars.collectorImage,
@@ -1098,6 +1117,10 @@ func startOperatorManager(
 		"extra config",
 		extraConfig,
 
+		"requested instrumentation delivery",
+		cliArgs.operatorConfigurationInstrumentationDelivery,
+		"resolved instrumentation delivery",
+		resolvedInstrumentationDelivery,
 		"instrumentation delays",
 		cliArgs.instrumentationDelays,
 		"development mode",
@@ -1114,6 +1137,10 @@ func startOperatorManager(
 		envVars.enablePythonAutoInstrumentation,
 		"watch collector resources",
 		!envVars.disableCollectorResourceWatches,
+		"Kubernetes version",
+		kubernetesVersionInfo.VersionString,
+		"Kubernetes version detected",
+		kubernetesVersionDetected,
 	)
 
 	err = startDash0Controllers(
@@ -1122,6 +1149,9 @@ func startOperatorManager(
 		clientset,
 		cliArgs,
 		operatorConfigurationValues,
+		kubernetesVersionInfo,
+		kubernetesVersionDetected,
+		resolvedInstrumentationDelivery,
 		delegatingZapCoreWrapper,
 		developmentMode,
 	)
@@ -1160,13 +1190,16 @@ func startDash0Controllers(
 	clientset *kubernetes.Clientset,
 	cliArgs *commandLineArguments,
 	operatorConfigurationValues *OperatorConfigurationValues,
+	kubernetesVersionInfo cluster.KubernetesVersionInfo,
+	kubernetesVersionDetected bool,
+	instrumentationDelivery cluster.ResolvedInstrumentationDelivery,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	developmentMode bool,
 ) error {
 	images := util.Images{
 		OperatorImage:                               envVars.operatorImage,
-		InitContainerImage:                          envVars.initContainerImage,
-		InitContainerImagePullPolicy:                envVars.initContainerImagePullPolicy,
+		InitContainerImage:                          envVars.instrumentationImage,
+		InitContainerImagePullPolicy:                envVars.instrumentationImagePullPolicy,
 		CollectorImage:                              envVars.collectorImage,
 		CollectorImagePullPolicy:                    envVars.collectorImagePullPolicy,
 		TargetAllocatorImage:                        envVars.targetAllocatorImage,
@@ -1206,11 +1239,13 @@ func startDash0Controllers(
 		images,
 		oTelCollectorBaseUrl,
 		extraConfig,
+		instrumentationDelivery,
 		cliArgs.instrumentationDelays,
 		envVars.instrumentationDebug,
 		envVars.enablePythonAutoInstrumentation,
 	)
-	clusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, setupLog)
+	clusterInstrumentationConfig.SetKubernetesVersion(kubernetesVersionInfo, kubernetesVersionDetected)
+	clusterUid, err := cluster.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, setupLog)
 	if err != nil {
 		return err
 	}
@@ -1475,6 +1510,7 @@ func startDash0Controllers(
 		collectorManager,
 		targetallocatorManager,
 		ieManager,
+		clusterInstrumentationConfig,
 		clusterUid,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,

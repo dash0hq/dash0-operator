@@ -20,7 +20,7 @@ import (
 	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 const (
@@ -404,7 +404,7 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Spec.Exports = src.Spec.Exports
 	dst.Spec.InstrumentWorkloads = src.Spec.InstrumentWorkloads.Mode
 	if strings.TrimSpace(src.Spec.InstrumentWorkloads.LabelSelector) != "" &&
-		src.Spec.InstrumentWorkloads.LabelSelector != util.DefaultAutoInstrumentationLabelSelector {
+		src.Spec.InstrumentWorkloads.LabelSelector != dash0common.DefaultAutoInstrumentationLabelSelector {
 		if dst.Annotations == nil {
 			dst.Annotations = make(map[string]string)
 		}
@@ -437,7 +437,7 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Status.Conditions = src.Status.Conditions
 	dst.Status.PreviousInstrumentWorkloads = src.Status.PreviousInstrumentWorkloads.Mode
 	if strings.TrimSpace(src.Status.PreviousInstrumentWorkloads.LabelSelector) != "" &&
-		src.Status.PreviousInstrumentWorkloads.LabelSelector != util.DefaultAutoInstrumentationLabelSelector {
+		src.Status.PreviousInstrumentWorkloads.LabelSelector != dash0common.DefaultAutoInstrumentationLabelSelector {
 		if dst.Annotations == nil {
 			dst.Annotations = make(map[string]string)
 		}
@@ -471,7 +471,7 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Spec.Export = src.Spec.Export
 	dst.Spec.Exports = src.Spec.Exports
 	dst.Spec.InstrumentWorkloads = dash0v1beta1.InstrumentWorkloads{
-		LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+		LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 		Mode:          src.Spec.InstrumentWorkloads,
 	}
 	if src.Annotations != nil {
@@ -501,8 +501,8 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 	}
 	dst.Spec.LogCollection = src.Spec.LogCollection
 	dst.Spec.PrometheusScraping = src.Spec.PrometheusScraping
-	prometheusScrapingEnabledLegacy := util.ReadBoolPointerWithDefault(src.Spec.PrometheusScrapingEnabled, true)
-	prometheusScrapingEnabledNew := util.ReadBoolPointerWithDefault(src.Spec.PrometheusScraping.Enabled, true)
+	prometheusScrapingEnabledLegacy := pointers.ReadBoolPointerWithDefault(src.Spec.PrometheusScrapingEnabled, true)
+	prometheusScrapingEnabledNew := pointers.ReadBoolPointerWithDefault(src.Spec.PrometheusScraping.Enabled, true)
 	if !prometheusScrapingEnabledLegacy || !prometheusScrapingEnabledNew {
 		// If either setting has been disabled explicitly, the Prometheus scraping has to be disabled in the v1beta1
 		// version as well.
@@ -515,7 +515,7 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Spec.SynchronizePrometheusRules = src.Spec.SynchronizePrometheusRules
 	dst.Status.Conditions = src.Status.Conditions
 	dst.Status.PreviousInstrumentWorkloads = dash0v1beta1.InstrumentWorkloads{
-		LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+		LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 		Mode:          src.Status.PreviousInstrumentWorkloads,
 	}
 	if src.Annotations != nil {

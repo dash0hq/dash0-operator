@@ -14,6 +14,7 @@ import (
 
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -58,6 +59,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				TestImages,
 				OTelCollectorNodeLocalBaseUrlTest,
 				util.ExtraConfigDefaults,
+				cluster.ResolvedInstrumentationDeliveryInitContainer,
 				nil,
 				false,
 				false,
@@ -798,6 +800,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 					TestImages,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
+					cluster.ResolvedInstrumentationDeliveryInitContainer,
 					nil,
 					true,
 					false,
@@ -892,7 +895,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 		createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 		workload.GetObjectMeta().Labels["dash0.com/operator-image"] = olderOperatorControllerImageLabel
-		workload.GetObjectMeta().Labels["dash0.com/init-container-image"] = olderInitContainerImageLabel
+		workload.GetObjectMeta().Labels["dash0.com/instrumentation-image"] = olderInitContainerImageLabel
 		UpdateWorkload(ctx, k8sClient, workload.Get())
 
 		instrumenter.InstrumentAtStartup(ctx, logger)
@@ -943,7 +946,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			workload := CreateInstrumentedJob(ctx, k8sClient, TestNamespaceName, name)
 			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload)
 			workload.ObjectMeta.Labels["dash0.com/operator-image"] = "some-registry.com_1234_dash0hq_operator-controller_0.9.8"
-			workload.ObjectMeta.Labels["dash0.com/init-container-image"] = "some-registry.com_1234_dash0hq_instrumentation_2.3.4"
+			workload.ObjectMeta.Labels["dash0.com/instrumentation-image"] = "some-registry.com_1234_dash0hq_instrumentation_2.3.4"
 			UpdateWorkload(ctx, k8sClient, workload)
 			instrumenter.InstrumentAtStartup(ctx, logger)
 
@@ -952,7 +955,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			jobLabels := workload.ObjectMeta.Labels
 			Expect(jobLabels["dash0.com/instrumented"]).To(Equal("true"))
 			Expect(jobLabels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_0.9.8"))
-			Expect(jobLabels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_2.3.4"))
+			Expect(jobLabels["dash0.com/instrumentation-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_2.3.4"))
 			VerifyNoEvents(ctx, clientset, namespace)
 		})
 	})

@@ -39,7 +39,7 @@ type resourceHandler func(
 	h *InstrumentationWebhookHandler,
 	request admission.Request,
 	gvkLabel string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) admission.Response
 type routing map[string]map[string]map[string]resourceHandler
@@ -89,7 +89,7 @@ var (
 		h *InstrumentationWebhookHandler,
 		request admission.Request,
 		gvkLabel string,
-		namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+		namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 		logger logd.Logger,
 	) admission.Response {
 		return logAndReturnAllowed(fmt.Sprintf("resource type not supported: %s", gvkLabel), logger)
@@ -236,7 +236,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 func (h *InstrumentationWebhookHandler) handleCronJob(
 	request admission.Request,
 	gvkLabel string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) admission.Response {
 	cronJob := &batchv1.CronJob{}
@@ -278,7 +278,7 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 func (h *InstrumentationWebhookHandler) handleDaemonSet(
 	request admission.Request,
 	gvkLabel string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) admission.Response {
 	daemonSet := &appsv1.DaemonSet{}
@@ -314,7 +314,7 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 func (h *InstrumentationWebhookHandler) handleDeployment(
 	request admission.Request,
 	gvkLabel string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) admission.Response {
 	deployment := &appsv1.Deployment{}
@@ -350,7 +350,7 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 func (h *InstrumentationWebhookHandler) handleJob(
 	request admission.Request,
 	gvkLabel string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) admission.Response {
 	job := &batchv1.Job{}
@@ -388,7 +388,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 func (h *InstrumentationWebhookHandler) handlePod(
 	request admission.Request,
 	gvkLabel string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) admission.Response {
 	pod := &corev1.Pod{}
@@ -427,7 +427,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	request admission.Request,
 	gvkLabel string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) admission.Response {
 	replicaSet := &appsv1.ReplicaSet{}
@@ -463,7 +463,7 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	request admission.Request,
 	gvkLabel string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) admission.Response {
 	statefulSet := &appsv1.StatefulSet{}
@@ -591,7 +591,7 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 }
 
 func (h *InstrumentationWebhookHandler) newWorkloadModifier(
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(

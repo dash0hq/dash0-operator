@@ -31,7 +31,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
@@ -120,7 +120,7 @@ func SetupThirdPartyCrdReconcilerWithManager(
 	crdReconciler ThirdPartyCrdReconciler,
 	logger logd.Logger,
 ) error {
-	pseudoClusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, k8sClient, logger)
+	pseudoClusterUid, err := cluster.ReadPseudoClusterUidOrFail(ctx, k8sClient, logger)
 	if err != nil {
 		return err
 	}

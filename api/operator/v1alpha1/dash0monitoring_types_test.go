@@ -12,7 +12,6 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -64,12 +63,12 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: metav1.ObjectMeta{},
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -92,12 +91,12 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -108,12 +107,12 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -148,7 +147,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Export: testExport(),
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 					LogCollection: dash0common.LogCollection{
 						Enabled: new(false),
@@ -171,7 +170,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					},
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -206,7 +205,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Exports: []dash0common.Export{*testExport()},
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 					LogCollection: dash0common.LogCollection{
 						Enabled: new(false),
@@ -229,7 +228,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					},
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -241,7 +240,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: new(false),
@@ -249,7 +248,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -264,7 +263,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: new(false),
@@ -272,7 +271,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -287,7 +286,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: new(false),
@@ -295,7 +294,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -310,7 +309,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: new(false),
@@ -318,7 +317,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -339,7 +338,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 						TraceContext: dash0v1beta1.TraceContext{
 							Propagators: new("tracecontext,xray"),
 						},
@@ -347,7 +346,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -368,12 +367,12 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 						TraceContext: dash0v1beta1.TraceContext{
 							Propagators: new("tracecontext,xray"),
 						},
@@ -402,7 +401,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -423,7 +422,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
@@ -449,7 +448,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 					EventCollection: dash0common.EventCollection{
 						Enabled: new(true),
@@ -457,7 +456,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -478,7 +477,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 					EventCollection: dash0common.EventCollection{
 						Enabled: new(false),
@@ -486,7 +485,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -507,12 +506,12 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),

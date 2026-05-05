@@ -23,6 +23,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -47,6 +48,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 				TestImages,
 				OTelCollectorNodeLocalBaseUrlTest,
 				util.ExtraConfigDefaults,
+				cluster.ResolvedInstrumentationDeliveryInitContainer,
 				nil,
 				false,
 				false,

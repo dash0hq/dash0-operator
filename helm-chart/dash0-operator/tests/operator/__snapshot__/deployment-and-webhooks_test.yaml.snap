@@ -72,7 +72,7 @@ deployment should match snapshot (default values):
                   value: RELEASE-NAME
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
-                - name: DASH0_INIT_CONTAINER_IMAGE
+                - name: DASH0_INSTRUMENTATION_IMAGE
                   value: ghcr.io/dash0hq/instrumentation:0.0.0
                 - name: DASH0_COLLECTOR_IMAGE
                   value: ghcr.io/dash0hq/collector:0.0.0
@@ -234,7 +234,7 @@ deployment should match snapshot when using cert-manager:
                   value: RELEASE-NAME
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
-                - name: DASH0_INIT_CONTAINER_IMAGE
+                - name: DASH0_INSTRUMENTATION_IMAGE
                   value: ghcr.io/dash0hq/instrumentation:0.0.0
                 - name: DASH0_COLLECTOR_IMAGE
                   value: ghcr.io/dash0hq/collector:0.0.0
@@ -1942,6 +1942,9 @@ monitoring resource CRD should match snapshot:
                     Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
                     the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
                     when they are updated.
+
+                    Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
+                    for workload instrumentation.
                   properties:
                     labelSelector:
                       default: dash0.com/enable!=false

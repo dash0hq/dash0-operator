@@ -4,6 +4,8 @@
 package e2e
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -17,7 +19,7 @@ func runAndIgnoreOutput(cmd *exec.Cmd, logCommandArgs ...bool) error {
 	return err
 }
 
-// run executes the provided command within this context
+// run executes the provided command and returns the combined output from stdout and stderr
 func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 	logCommand := true
 	logOutputOnSuccess := false
@@ -46,6 +48,52 @@ func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 		e2ePrint("output: %s\n", string(output))
 	}
 	return string(output), nil
+}
+
+// runAndReturnStdoutStderr executes the provided command and returns stdout and stderr as separate strings
+func runAndReturnStdoutStderr(cmd *exec.Cmd, logCommandArgs ...bool) (string, string, error) {
+	logCommand := true
+	logOutputOnSuccess := false
+	logOutputOnError := true
+	if len(logCommandArgs) >= 1 {
+		logCommand = logCommandArgs[0]
+	}
+	if len(logCommandArgs) >= 2 {
+		logOutputOnSuccess = logCommandArgs[1]
+	}
+	if len(logCommandArgs) >= 3 {
+		logOutputOnError = logCommandArgs[2]
+	}
+
+	command := strings.Join(cmd.Args, " ")
+	if logCommand {
+		e2ePrint("running: %s\n", command)
+	}
+
+	if cmd.Stdout != nil {
+		return "", "", errors.New("exec: Stdout already set")
+	}
+	if cmd.Stderr != nil {
+		return "", "", errors.New("exec: Stderr already set")
+	}
+	var o bytes.Buffer
+	cmd.Stdout = &o
+	var e bytes.Buffer
+	cmd.Stderr = &e
+	err := cmd.Run()
+
+	stdout := string(o.Bytes())
+	stderr := string(e.Bytes())
+
+	if err != nil {
+		if logOutputOnError {
+			e2ePrint(fmt.Sprintf("%s failed with error: (%v), stdout: %s, stderr: %s", command, err, stdout, stderr))
+		}
+		return stdout, stderr, fmt.Errorf("%s failed with error: (%v)stdout: %s, stderr: %s\"", command, err, stdout, stderr)
+	} else if logOutputOnSuccess {
+		e2ePrint("stdout: %s; stderr: %s\n", stdout, stderr)
+	}
+	return stdout, stderr, nil
 }
 
 // getNonEmptyLines converts given command output string into individual objects

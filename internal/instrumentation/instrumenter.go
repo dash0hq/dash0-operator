@@ -244,7 +244,7 @@ func (i *Instrumenter) instrumentAllWorkloads(
 func (i *Instrumenter) findAndInstrumentCronJobs(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -267,7 +267,7 @@ func (i *Instrumenter) findAndInstrumentCronJobs(
 func (i *Instrumenter) instrumentCronJob(
 	ctx context.Context,
 	cronJob *batchv1.CronJob,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	i.instrumentWorkload(
@@ -282,7 +282,7 @@ func (i *Instrumenter) instrumentCronJob(
 func (i *Instrumenter) findAndInstrumentyDaemonSets(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -305,7 +305,7 @@ func (i *Instrumenter) findAndInstrumentyDaemonSets(
 func (i *Instrumenter) instrumentDaemonSet(
 	ctx context.Context,
 	daemonSet *appsv1.DaemonSet,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	i.instrumentWorkload(
@@ -321,7 +321,7 @@ func (i *Instrumenter) instrumentDaemonSet(
 func (i *Instrumenter) findAndInstrumentDeployments(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -344,7 +344,7 @@ func (i *Instrumenter) findAndInstrumentDeployments(
 func (i *Instrumenter) instrumentDeployment(
 	ctx context.Context,
 	deployment *appsv1.Deployment,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	i.instrumentWorkload(
@@ -359,7 +359,7 @@ func (i *Instrumenter) instrumentDeployment(
 func (i *Instrumenter) findAndAddLabelsToImmutableJobsOnInstrumentation(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -382,7 +382,7 @@ func (i *Instrumenter) findAndAddLabelsToImmutableJobsOnInstrumentation(
 func (i *Instrumenter) handleJobOnInstrumentation(
 	ctx context.Context,
 	job *batchv1.Job,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	logger := reconcileLogger.WithValues(
@@ -500,7 +500,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 func (i *Instrumenter) findAndInstrumentReplicaSets(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -523,7 +523,7 @@ func (i *Instrumenter) findAndInstrumentReplicaSets(
 func (i *Instrumenter) instrumentReplicaSet(
 	ctx context.Context,
 	replicaSet *appsv1.ReplicaSet,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	hasBeenUpdated := i.instrumentWorkload(
@@ -543,7 +543,7 @@ func (i *Instrumenter) instrumentReplicaSet(
 func (i *Instrumenter) findAndInstrumentStatefulSets(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -566,7 +566,7 @@ func (i *Instrumenter) findAndInstrumentStatefulSets(
 func (i *Instrumenter) instrumentStatefulSet(
 	ctx context.Context,
 	statefulSet *appsv1.StatefulSet,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	i.instrumentWorkload(
@@ -581,7 +581,7 @@ func (i *Instrumenter) instrumentStatefulSet(
 func (i *Instrumenter) instrumentWorkload(
 	ctx context.Context,
 	workload instrumentableWorkload,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) bool {
 	workloadMeta := workload.getObjectMeta()
@@ -791,7 +791,7 @@ func (i *Instrumenter) uninstrumentAllWorkloads(
 func (i *Instrumenter) findAndUninstrumentCronJobs(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -813,7 +813,7 @@ func (i *Instrumenter) findAndUninstrumentCronJobs(
 func (i *Instrumenter) uninstrumentCronJob(
 	ctx context.Context,
 	cronJob *batchv1.CronJob,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	i.revertWorkloadInstrumentation(
@@ -829,7 +829,7 @@ func (i *Instrumenter) uninstrumentCronJob(
 func (i *Instrumenter) findAndUninstrumentDaemonSets(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -851,7 +851,7 @@ func (i *Instrumenter) findAndUninstrumentDaemonSets(
 func (i *Instrumenter) uninstrumentDaemonSet(
 	ctx context.Context,
 	daemonSet *appsv1.DaemonSet,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	i.revertWorkloadInstrumentation(
@@ -867,7 +867,7 @@ func (i *Instrumenter) uninstrumentDaemonSet(
 func (i *Instrumenter) findAndUninstrumentDeployments(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -889,7 +889,7 @@ func (i *Instrumenter) findAndUninstrumentDeployments(
 func (i *Instrumenter) uninstrumentDeployment(
 	ctx context.Context,
 	deployment *appsv1.Deployment,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	i.revertWorkloadInstrumentation(
@@ -905,7 +905,7 @@ func (i *Instrumenter) uninstrumentDeployment(
 func (i *Instrumenter) findAndHandleJobOnUninstrumentation(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -927,7 +927,7 @@ func (i *Instrumenter) findAndHandleJobOnUninstrumentation(
 func (i *Instrumenter) handleJobOnUninstrumentation(
 	ctx context.Context,
 	job *batchv1.Job,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	logger := reconcileLogger.WithValues(
@@ -1012,7 +1012,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 func (i *Instrumenter) findAndUninstrumentReplicaSets(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -1034,7 +1034,7 @@ func (i *Instrumenter) findAndUninstrumentReplicaSets(
 func (i *Instrumenter) uninstrumentReplicaSet(
 	ctx context.Context,
 	replicaSet *appsv1.ReplicaSet,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	hasBeenUpdated := i.revertWorkloadInstrumentation(
@@ -1054,7 +1054,7 @@ func (i *Instrumenter) uninstrumentReplicaSet(
 func (i *Instrumenter) findAndUninstrumentStatefulSets(
 	ctx context.Context,
 	namespace string,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) error {
 	pgr := pager.New(pager.SimplePageFunc(
@@ -1076,7 +1076,7 @@ func (i *Instrumenter) findAndUninstrumentStatefulSets(
 func (i *Instrumenter) uninstrumentStatefulSet(
 	ctx context.Context,
 	statefulSet *appsv1.StatefulSet,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) {
 	i.revertWorkloadInstrumentation(
@@ -1092,7 +1092,7 @@ func (i *Instrumenter) uninstrumentStatefulSet(
 func (i *Instrumenter) revertWorkloadInstrumentation(
 	ctx context.Context,
 	workload instrumentableWorkload,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	reconcileLogger logd.Logger,
 ) bool {
 	objectMeta := workload.getObjectMeta()
@@ -1184,7 +1184,7 @@ func (i *Instrumenter) postProcessUninstrumentation(
 
 func newWorkloadModifier(
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
-	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 	logger logd.Logger,
 ) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(

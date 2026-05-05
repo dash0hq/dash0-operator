@@ -595,16 +595,16 @@ run_helm() {
   fi
 
   if [[ -n "$instrumentation_image_repository" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.repository=$instrumentation_image_repository"
+    helm_install_command+=" --set operator.instrumentationImage.repository=$instrumentation_image_repository"
   fi
   if [[ -n "$instrumentation_image_tag" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.tag=$instrumentation_image_tag"
+    helm_install_command+=" --set operator.instrumentationImage.tag=$instrumentation_image_tag"
   fi
   if [[ -n "$instrumentation_image_digest" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.digest=$instrumentation_image_digest"
+    helm_install_command+=" --set operator.instrumentationImage.digest=$instrumentation_image_digest"
   fi
   if [[ -n "$instrumentation_image_pull_policy" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.pullPolicy=$instrumentation_image_pull_policy"
+    helm_install_command+=" --set operator.instrumentationImage.pullPolicy=$instrumentation_image_pull_policy"
   fi
 
   if [[ -n "$collector_image_repository" ]]; then

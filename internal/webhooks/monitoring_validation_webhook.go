@@ -26,6 +26,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/internal_/filter/filterottl"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/common"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/logs"
@@ -291,7 +292,7 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 		return admission.Response{}, false
 	}
 	operatorConfigurationSpec := availableOperatorConfigurations[0].Spec
-	if util.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true) {
+	if pointers.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true) {
 		return admission.Response{}, false
 	}
 
@@ -306,21 +307,21 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 				monitoringResource.Spec.InstrumentWorkloads.Mode,
 			)), true
 	}
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) {
+	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) {
 		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
 			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
 			"logCollection.enabled=true. This is an invalid combination. Please either set " +
 			"telemetryCollection.enabled=true in the operator configuration resource or set " +
 			"logCollection.enabled=false in the monitoring resource (or leave it unspecified)."), true
 	}
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
+	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.EventCollection.Enabled, true) {
 		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
 			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
 			"eventCollection.enabled=true. This is an invalid combination. Please either set " +
 			"telemetryCollection.enabled=true in the operator configuration resource or set " +
 			"eventCollection.enabled=false in the monitoring resource (or leave it unspecified)."), true
 	}
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
+	if pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
 		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
 			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
 			"prometheusScraping.enabled=true. This is an invalid combination. Please either set " +

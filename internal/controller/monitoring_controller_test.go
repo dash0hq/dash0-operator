@@ -31,6 +31,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -83,6 +84,7 @@ var _ = Describe(
 						TestImages,
 						OTelCollectorNodeLocalBaseUrlTest,
 						util.ExtraConfigDefaults,
+						cluster.ResolvedInstrumentationDeliveryInitContainer,
 						nil,
 						false,
 						false,
@@ -2346,7 +2348,7 @@ var _ = Describe(
 
 						specWithoutExport := dash0v1beta1.Dash0MonitoringSpec{
 							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-								LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+								LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
 							},
 						}
 						EnsureMonitoringResourceWithSpecExistsInNamespace(

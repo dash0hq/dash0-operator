@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
-	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -28,8 +26,11 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type MonitoringReconciler struct {
@@ -369,8 +370,8 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	previousTraceContextPropagators := monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
 	currentTraceContextPropagators := monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators
 
-	previousLogCollectionEnabled := util.ReadBoolPointerWithDefault(monitoringResource.Status.PreviousLogCollection.Enabled, true)
-	currentLogCollectionEnabled := util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true)
+	previousLogCollectionEnabled := pointers.ReadBoolPointerWithDefault(monitoringResource.Status.PreviousLogCollection.Enabled, true)
+	currentLogCollectionEnabled := pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true)
 
 	var requiredAction util.ModificationMode
 	if !isFirstReconcile {
@@ -404,7 +405,7 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 			if strings.TrimSpace(previousLabelSelector) != strings.TrimSpace(currentLabelSelector) {
 				requiredAction = util.ModificationModeInstrumentation
 			}
-			if util.IsStringPointerValueDifferent(previousTraceContextPropagators, currentTraceContextPropagators) {
+			if pointers.IsStringPointerValueDifferent(previousTraceContextPropagators, currentTraceContextPropagators) {
 				requiredAction = util.ModificationModeInstrumentation
 			}
 			if previousLogCollectionEnabled != currentLogCollectionEnabled {
@@ -641,7 +642,7 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 	if strings.TrimSpace(statusUpdate.previousInstrumentWorkloadsLabelSelector) != strings.TrimSpace(statusUpdate.currentInstrumentWorkloadsLabelSelector) {
 		monitoringResource.Status.PreviousInstrumentWorkloads.LabelSelector = statusUpdate.currentInstrumentWorkloadsLabelSelector
 	}
-	if util.IsStringPointerValueDifferent(
+	if pointers.IsStringPointerValueDifferent(
 		statusUpdate.previousTraceContextPropagators,
 		statusUpdate.currentTraceContextPropagators,
 	) {

@@ -23,26 +23,28 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type OperatorConfigurationReconciler struct {
 	client.Client
-	clientset                   *kubernetes.Clientset
-	apiClients                  []ApiClient
-	collectorManager            *collectors.CollectorManager
-	targetAllocatorManager      *targetallocator.TargetAllocatorManager
-	intelligentEdgeManager      *intelligentedge.IntelligentEdgeManager
-	pseudoClusterUid            types.UID
-	operatorDeploymentNamespace string
-	operatorDeploymentUID       types.UID
-	operatorDeploymentName      string
-	OperatorManagerPodName      string
-	oTelSdkStarter              *selfmonitoringapiaccess.OTelSdkStarter
-	DanglingEventsTimeouts      *util.DanglingEventsTimeouts
-	images                      util.Images
-	operatorNamespace           string
-	developmentMode             bool
+	clientset                    *kubernetes.Clientset
+	apiClients                   []ApiClient
+	collectorManager             *collectors.CollectorManager
+	targetAllocatorManager       *targetallocator.TargetAllocatorManager
+	intelligentEdgeManager       *intelligentedge.IntelligentEdgeManager
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig
+	pseudoClusterUid             types.UID
+	operatorDeploymentNamespace  string
+	operatorDeploymentUID        types.UID
+	operatorDeploymentName       string
+	OperatorManagerPodName       string
+	oTelSdkStarter               *selfmonitoringapiaccess.OTelSdkStarter
+	DanglingEventsTimeouts       *util.DanglingEventsTimeouts
+	images                       util.Images
+	operatorNamespace            string
+	developmentMode              bool
 }
 
 const (
@@ -61,6 +63,7 @@ func NewOperatorConfigurationReconciler(
 	collectorManager *collectors.CollectorManager,
 	targetAllocatorManager *targetallocator.TargetAllocatorManager,
 	intelligentEdgeManager *intelligentedge.IntelligentEdgeManager,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	pseudoClusterUid types.UID,
 	operatorDeploymentNamespace string,
 	operatorDeploymentUID types.UID,
@@ -71,20 +74,21 @@ func NewOperatorConfigurationReconciler(
 	developmentMode bool,
 ) *OperatorConfigurationReconciler {
 	return &OperatorConfigurationReconciler{
-		Client:                      k8sClient,
-		clientset:                   clientset,
-		apiClients:                  apiClients,
-		collectorManager:            collectorManager,
-		targetAllocatorManager:      targetAllocatorManager,
-		intelligentEdgeManager:      intelligentEdgeManager,
-		pseudoClusterUid:            pseudoClusterUid,
-		operatorDeploymentNamespace: operatorDeploymentNamespace,
-		operatorDeploymentUID:       operatorDeploymentUID,
-		operatorDeploymentName:      operatorDeploymentName,
-		oTelSdkStarter:              oTelSdkStarter,
-		images:                      images,
-		operatorNamespace:           operatorNamespace,
-		developmentMode:             developmentMode,
+		Client:                       k8sClient,
+		clientset:                    clientset,
+		apiClients:                   apiClients,
+		collectorManager:             collectorManager,
+		targetAllocatorManager:       targetAllocatorManager,
+		intelligentEdgeManager:       intelligentEdgeManager,
+		clusterInstrumentationConfig: clusterInstrumentationConfig,
+		pseudoClusterUid:             pseudoClusterUid,
+		operatorDeploymentNamespace:  operatorDeploymentNamespace,
+		operatorDeploymentUID:        operatorDeploymentUID,
+		operatorDeploymentName:       operatorDeploymentName,
+		oTelSdkStarter:               oTelSdkStarter,
+		images:                       images,
+		operatorNamespace:            operatorNamespace,
+		developmentMode:              developmentMode,
 	}
 }
 
@@ -219,6 +223,8 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 
 	r.applyApiAccessSettings(ctx, operatorConfigurationResource, logger)
 
+	r.applyInstrumentationDelivery(operatorConfigurationResource, logger)
+
 	if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -341,6 +347,34 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 
 	for _, apiClient := range r.apiClients {
 		apiClient.SetDefaultApiConfigs(ctx, apiConfigs, logger)
+	}
+}
+
+// applyInstrumentationDelivery resolves spec.instrumentWorkloads.instrumentationDelivery against the detected
+// Kubernetes version and stores the result into the clusterInstrumentationConfig.
+func (r *OperatorConfigurationReconciler) applyInstrumentationDelivery(
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	logger logd.Logger,
+) {
+	if r.clusterInstrumentationConfig == nil {
+		return
+	}
+	originalDeliverySetting := string(operatorConfigurationResource.Spec.InstrumentWorkloads.InstrumentationDelivery)
+	resolvedDelivery := cluster.ResolveInstrumentationDelivery(
+		originalDeliverySetting,
+		r.clusterInstrumentationConfig.KubernetesVersion,
+		r.clusterInstrumentationConfig.KubernetesVersionDetected,
+		logger,
+	)
+	previous := r.clusterInstrumentationConfig.SetInstrumentationDelivery(resolvedDelivery)
+	if previous != resolvedDelivery {
+		logger.Info(
+			"Changed spec.instrumentWorkloads.instrumentationDelivery detected. The new setting will become effective for "+
+				"subsequent workload instrumentations. (Existing instrumented workloads will not be re-instrumented.)",
+			"instrumentation delivery setting in operator configuration", originalDeliverySetting,
+			"previous instrumentation delivery setting", previous,
+			"updated instrumentation delivery setting", resolvedDelivery,
+		)
 	}
 }
 
