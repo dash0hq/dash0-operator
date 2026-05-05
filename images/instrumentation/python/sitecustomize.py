@@ -26,11 +26,11 @@ debug_enabled = os.environ.get("OTEL_INJECTOR_LOG_LEVEL") == "debug"
 
 
 def _log_as_json_to_stderr(level, message):
-    log_body = "{\"level\": \"" + level + "\", \"message\": \"" + message + "\", \"logger_name\": \"dash0\""
+    log_body = '{{"level": "{}", "message": "{}", "logger_name": "dash0"'.format(level, message)
     if level == "warn":
         # All warnings are Dash0 telemetry collection issues, hence adding the respective marker.
-        log_body += ", \"dash0.monitoring.telemetry_collection_issue\": true"
-    log_body += "}"
+        log_body += ', "dash0.monitoring.telemetry_collection_issue": true'
+    log_body += '}'
     print(log_body, file=stderr)
 
 
@@ -76,7 +76,7 @@ def _self_deactivate(current_site):
     current_pythonpath = os.environ.get("PYTHONPATH", "")
     pythonpath_entries = [entry for entry in current_pythonpath.split(",") if entry != current_site]
     new_pythonpath = ",".join(pythonpath_entries)
-    _log_debug("setting PYTHONPATH in _self_deactivate: \"{}\"".format(new_pythonpath))
+    _log_debug('setting PYTHONPATH in _self_deactivate: "{}"'.format(new_pythonpath))
     os.environ["PYTHONPATH"] = new_pythonpath
 
     # The OpenTelemetry injector will also run for child processes, and it would bring back the PYTHONPATH modification
