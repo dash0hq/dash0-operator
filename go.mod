@@ -3,11 +3,12 @@ module github.com/dash0hq/dash0-operator
 go 1.26.1
 
 require (
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/bep/debounce v1.2.1
 	github.com/cisco-open/k8s-objectmatcher v1.10.0
 	github.com/dash0hq/dash0-api-client-go v1.12.0
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000
-	github.com/fsnotify/fsnotify v1.10.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/zapr v1.3.0
 	github.com/google/uuid v1.6.0
@@ -18,7 +19,6 @@ require (
 	github.com/perses/perses-operator v0.2.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.90.1
 	go.opentelemetry.io/collector/component v1.57.0
-	go.opentelemetry.io/collector/featuregate v1.57.0
 	go.opentelemetry.io/collector/pdata v1.57.0
 	go.opentelemetry.io/collector/pdata/pprofile v0.151.0
 	go.opentelemetry.io/otel v1.43.0
@@ -39,7 +39,6 @@ require (
 require (
 	cel.dev/expr v0.25.1 // indirect
 	emperror.dev/errors v0.8.1 // indirect
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/PaesslerAG/gval v1.2.4 // indirect
 	github.com/PaesslerAG/jsonpath v0.1.2-0.20240726212847-3a740cf7976f // indirect
 	github.com/alecthomas/participle/v2 v2.1.4 // indirect
@@ -126,6 +125,7 @@ require (
 	github.com/zitadel/schema v1.3.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector/client v1.57.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.57.0 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.18.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.19.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.19.0 // indirect
