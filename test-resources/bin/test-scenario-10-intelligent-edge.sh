@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+# enable Intelligent Edge features (IE collector image, barker image)
+export FEATURE_INTELLIGENT_EDGE_ENABLED=true
+
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"
 
@@ -22,9 +25,6 @@ operator_webhook_service_name="$default_operator_webhook_service_name"
 
 # shellcheck source=./lib/util
 source "$scripts_lib/util"
-
-# Enable Intelligent Edge features (IE collector image, barker image).
-export FEATURE_INTELLIGENT_EDGE_ENABLED=true
 
 load_env_file
 verify_kubectx

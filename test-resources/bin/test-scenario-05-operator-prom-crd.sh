@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+# this scenario only works as expected when Prometheus CRD support is enabled
+export PROMETHEUS_CRD_SUPPORT_ENABLED="true"
+
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"
 

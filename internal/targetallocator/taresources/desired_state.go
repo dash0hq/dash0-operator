@@ -37,6 +37,9 @@ const (
 	AppKubernetesIoManagedByValue = "dash0-operator"
 	gkeAutopilotAllowlistKey      = "cloud.google.com/matching-allowlist"
 	gkeAutopilotAllowlistValue    = "dash0-target-allocator-v1.0.2"
+
+	defaultUser  int64 = 65532
+	defaultGroup int64 = 0
 )
 
 var (
@@ -376,6 +379,17 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		Image:        c.Images.TargetAllocatorImage,
 		Ports:        ports,
 		VolumeMounts: volumeMounts,
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(false),
+			RunAsNonRoot:             new(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
@@ -488,6 +502,14 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		Tolerations:                  extraConfig.TargetAllocatorTolerations,
 		Containers: []corev1.Container{
 			taContainer,
+		},
+		SecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: new(true),
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+			RunAsUser:  new(defaultUser),
+			RunAsGroup: new(defaultGroup),
 		},
 		Volumes: podVolumes,
 	}
