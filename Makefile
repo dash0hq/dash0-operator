@@ -203,16 +203,28 @@ golangci-lint-install:
 .PHONY: golangci-lint
 golangci-lint: golangci-lint-install ## Run static code analysis for Go code.
 	@echo "-------------------------------- (linting Go code)"
-	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run; popd > /dev/null'
+	@set -eo pipefail; \
+	while IFS= read -r -d '' f; do \
+		dir=$$(dirname "$$f"); echo $$dir; \
+		(cd "$$dir" && $(GOLANGCI_LINT) run); \
+	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
 
 .PHONY: golangci-lint-fix
 golangci-lint-fix: golangci-lint-install ## Run static code analysis for Go code and fix issues automatically.
-	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run --fix; popd > /dev/null'
+	@set -eo pipefail; \
+	while IFS= read -r -d '' f; do \
+		dir=$$(dirname "$$f"); echo $$dir; \
+		(cd "$$dir" && $(GOLANGCI_LINT) run --fix); \
+	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
 
 .PHONY: go-mod-tidy
 go-mod-tidy: ## Run go mod tidy for all modules
 	@echo "-------------------------------- (running go mod tidy for all modules)"
-	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; GOBIN=$(LOCALBIN) go mod tidy; popd > /dev/null'
+	@set -eo pipefail; \
+	while IFS= read -r -d '' f; do \
+		dir=$$(dirname "$$f"); echo $$dir; \
+		(cd "$$dir" && GOBIN=$(LOCALBIN) go mod tidy); \
+	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
 
 .PHONY: internal-config-map-lint
 internal-config-map-lint: ## Verify config map templates for resources managed by the collector.
