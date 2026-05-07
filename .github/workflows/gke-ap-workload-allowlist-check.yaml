@@ -118,7 +118,7 @@ jobs:
       - name: run check
         env:
           USE_LOCAL_CHART: ${{ inputs.use_branch_chart && 'true' || 'false' }}
-          OPERATOR_IMAGE_TAG: ${{ inputs.use_branch_chart && needs.build_and_push_images.outputs.image_tag || '' }}
+          IMAGE_TAG: ${{ inputs.use_branch_chart && needs.build_and_push_images.outputs.image_tag || '' }}
         run: |-
           .github/workflows/scripts/gke-ap-workload-allowlist-check.sh
 
