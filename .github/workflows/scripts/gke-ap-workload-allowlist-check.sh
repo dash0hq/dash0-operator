@@ -33,8 +33,8 @@ fi
 helm_release_name=dash0-operator
 
 cleanup() {
-  set +x
   set +e
+  set -x
   echo "running cleanup"
 
   helm uninstall \
@@ -53,6 +53,7 @@ cleanup() {
   helm uninstall --namespace ensure-at-least-one-node podinfo
   kubectl delete namespace ensure-at-least-one-node --ignore-not-found --grace-period=0 --force
 
+  set +x
   set -e
   return 0
 }
