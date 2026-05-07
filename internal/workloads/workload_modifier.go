@@ -8,6 +8,7 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -88,6 +89,15 @@ var (
 		envVarOtelExporterOtlpEndpointName,
 		envVarOtelExporterOtlpProtocolName,
 	)
+
+	// Do not instrument workloads via init container and EmptyDir instrumentation volume when one of its containers has
+	// an ephemeral storage limit below this threshold. The EmptyDir adds about 400 MB of ephemeral storage; on top of
+	// that, the container's ephemeral-storage budget also has to cover its own writable layer plus logs, we budget ~100M
+	// for that.  Containers with a tighter limit are skipped to avoid evictions caused by adding the instrumentation
+	// volume.
+	ephemeralStorageLimitThresholdMB    int64 = 500
+	ephemeralStorageLimitThresholdBytes       = ephemeralStorageLimitThresholdMB * 1000 * 1000
+	ephemeralStorageLimitThresholdLabel       = strconv.FormatInt(ephemeralStorageLimitThresholdMB, 10) + "M"
 )
 
 var (
@@ -153,6 +163,17 @@ func NewNotModifiedUnsupportedOperatingSystemResult(details string) Modification
 		return fmt.Sprintf(
 			"The %s has not modified this workload since it seems to be targeting a non-Linux operating system, workload "+
 				"modifications are only supported for Linux workloads. Details: %s", actor, details)
+	})
+}
+
+func NewNotModifiedEphemeralStorageLimitTooLowResult(containerName string, limit string) ModificationResult {
+	return newNotModifiedResult(func(actor util.WorkloadModifierActor) string {
+		return fmt.Sprintf(
+			"The %s has not modified this workload since container %q has an ephemeral-storage limit of %s, which is below "+
+				"the required threshold of %s. The Dash0 init-container instrumentation requires at least %s of ephemeral "+
+				"storage, raise the limit or remove it to enable instrumentation, or use image volume instrumentation "+
+				"delivery.",
+			actor, containerName, limit, ephemeralStorageLimitThresholdLabel, ephemeralStorageLimitThresholdLabel)
 	})
 }
 
@@ -1626,8 +1647,8 @@ func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Conta
 
 // checkEligibleForModification checks whether the given PodTemplateSpec is eligible for modification.
 // If it is, the function returns nil, otherwise it returns a ModificationResult describing why it is not eligible.
-// In particular, this function checks whether the pod spec template is a non-Linux workload. (Other checks might be
-// added in the future.)
+// In particular, this function checks whether the pod spec template is a non-Linux workload, or whether any container
+// has an ephemeral-storage limit too low to accommodate the Dash0 instrumentation volume.
 func (m *ResourceModifier) checkEligibleForModification(podSpec *corev1.PodSpec) *ModificationResult {
 	if podSpec.OS != nil && podSpec.OS.Name != "" && podSpec.OS.Name != corev1.Linux {
 		return new(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf("pod.spec.os.name: \"%s\"", podSpec.OS.Name)))
@@ -1654,6 +1675,32 @@ func (m *ResourceModifier) checkEligibleForModification(podSpec *corev1.PodSpec)
 					)))
 				}
 			}
+		}
+	}
+	if m.clusterInstrumentationConfig.IsInstrumentationDeliveryInitContainer() {
+		if notModifiedResult := m.checkEphemeralStorageLimit(podSpec); notModifiedResult != nil {
+			return notModifiedResult
+		}
+	}
+	return nil
+}
+
+// checkEphemeralStorageLimit returns a not-modified result if any container in the pod spec declares an ephemeral
+// storage limit below the threshold (to not cause pod eviction once we add the instrumentation volume). Init containers
+// and ephemeral containers are not checked, since we do not instrument them. A telemetry-collection-issue warning is
+// logged for the first offending container; subsequent offenders are not reported.
+func (m *ResourceModifier) checkEphemeralStorageLimit(podSpec *corev1.PodSpec) *ModificationResult {
+	for i := range podSpec.Containers {
+		container := &podSpec.Containers[i]
+		limit, hasLimit := container.Resources.Limits[corev1.ResourceEphemeralStorage]
+		if !hasLimit {
+			continue
+		}
+		if limit.Value() < ephemeralStorageLimitThresholdBytes {
+			result := NewNotModifiedEphemeralStorageLimitTooLowResult(container.Name, limit.String())
+			m.logger.WithValues("container", container.Name).
+				WarnTelemetryCollectionIssue(result.RenderReasonMessage(m.actor))
+			return &result
 		}
 	}
 	return nil

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -480,6 +481,58 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"system, workload modifications are only supported for Linux workloads. " +
 					"Details: pod.spec.nodeSelector: \"kubernetes.io/os=windows\""))
 			VerifyUnmodifiedDeployment(workload)
+		})
+
+		It("should not instrument workloads with init container where a container's ephemeral-storage limit is below the threshold", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
+			workload.Spec.Template.Spec.Containers[0].Resources.Limits = corev1.ResourceList{
+				corev1.ResourceEphemeralStorage: resource.MustParse("100M"),
+			}
+			modificationResult := workloadModifierInitCnt.ModifyDeployment(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeFalse())
+			Expect(modificationResult.RenderReasonMessage(testActor)).To(Equal(
+				"The actor has not modified this workload since container \"test-container-0\" has an ephemeral-storage " +
+					"limit of 100M, which is below the required threshold of 500M. The Dash0 init-container instrumentation " +
+					"requires at least 500M of ephemeral storage, raise the limit or remove it to enable instrumentation, or " +
+					"use image volume instrumentation delivery."))
+			VerifyUnmodifiedDeployment(workload)
+		})
+
+		It("should instrument workloads with image volume even if a container's ephemeral-storage limit is below the threshold", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
+			workload.Spec.Template.Spec.Containers[0].Resources.Limits = corev1.ResourceList{
+				corev1.ResourceEphemeralStorage: resource.MustParse("100M"),
+			}
+			modificationResult := workloadModifierImgVol.ModifyDeployment(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+		})
+
+		It("should instrument workloads where the ephemeral-storage limit equals the threshold", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
+			workload.Spec.Template.Spec.Containers[0].Resources.Limits = corev1.ResourceList{
+				corev1.ResourceEphemeralStorage: resource.MustParse("500M"),
+			}
+			modificationResult := workloadModifierInitCnt.ModifyDeployment(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+		})
+
+		It("should instrument workloads where the ephemeral-storage limit is only set on an init container", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
+			workload.Spec.Template.Spec.InitContainers = []corev1.Container{{
+				Name:  "user-init-container",
+				Image: "ubuntu",
+				Resources: corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{
+						corev1.ResourceEphemeralStorage: resource.MustParse("10M"),
+					},
+				},
+			}}
+			modificationResult := workloadModifierInitCnt.ModifyDeployment(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
 		})
 	})
 
@@ -1008,6 +1061,81 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						"Details: pod.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution." +
 						"nodeSelectorTerms.matchExpression: key: \"kubernetes.io/os\", operator: \"NotIn\", " +
 						"values: \"[linux some-operating-system]\"",
+				),
+			}),
+		)
+
+		type ephemeralStorageLimitTest struct {
+			// Per-container ephemeral-storage limit, parsed via resource.MustParse. Empty string means "no limit set".
+			containerLimits []string
+			expectedMessage *string
+		}
+
+		buildPodSpec := func(containerLimits []string) corev1.PodSpec {
+			containers := make([]corev1.Container, len(containerLimits))
+			for i, limitStr := range containerLimits {
+				containers[i] = corev1.Container{
+					Name:  fmt.Sprintf("c%d", i),
+					Image: "ubuntu",
+				}
+				if limitStr != "" {
+					containers[i].Resources.Limits = corev1.ResourceList{
+						corev1.ResourceEphemeralStorage: resource.MustParse(limitStr),
+					}
+				}
+			}
+			return corev1.PodSpec{Containers: containers}
+		}
+
+		DescribeTable("should detect containers with too-low ephemeral-storage limits",
+			func(testConfig ephemeralStorageLimitTest) {
+				podSpec := buildPodSpec(testConfig.containerLimits)
+				result := workloadModifier.checkEligibleForModification(&podSpec)
+				if testConfig.expectedMessage == nil {
+					Expect(result).To(BeNil())
+				} else {
+					Expect(result).ToNot(BeNil())
+					Expect(result.HasBeenModified).To(BeFalse())
+					Expect(result.RenderReasonMessage(testActor)).To(Equal(*testConfig.expectedMessage))
+				}
+			},
+			Entry("no ephemeral-storage limit set is eligible", ephemeralStorageLimitTest{
+				containerLimits: []string{""},
+				expectedMessage: nil,
+			}),
+			Entry("ephemeral-storage limit equal to the threshold is eligible", ephemeralStorageLimitTest{
+				containerLimits: []string{"500M"},
+				expectedMessage: nil,
+			}),
+			Entry("ephemeral-storage limit above the threshold is eligible", ephemeralStorageLimitTest{
+				containerLimits: []string{"1Gi"},
+				expectedMessage: nil,
+			}),
+			Entry("ephemeral-storage limit below the threshold is non-eligible", ephemeralStorageLimitTest{
+				containerLimits: []string{"100M"},
+				expectedMessage: new(
+					"The actor has not modified this workload since container \"c0\" has an ephemeral-storage limit " +
+						"of 100M, which is below the required threshold of 500M. The Dash0 init-container instrumentation " +
+						"requires at least 500M of ephemeral storage, raise the limit or remove it to enable " +
+						"instrumentation, or use image volume instrumentation delivery.",
+				),
+			}),
+			Entry("ephemeral-storage limit just below the threshold is non-eligible", ephemeralStorageLimitTest{
+				containerLimits: []string{"499999999"},
+				expectedMessage: new(
+					"The actor has not modified this workload since container \"c0\" has an ephemeral-storage limit " +
+						"of 499999999, which is below the required threshold of 500M. The Dash0 init-container instrumentation " +
+						"requires at least 500M of ephemeral storage, raise the limit or remove it to enable instrumentation, " +
+						"or use image volume instrumentation delivery.",
+				),
+			}),
+			Entry("only the second container has a too-low limit; workload is non-eligible", ephemeralStorageLimitTest{
+				containerLimits: []string{"1Gi", "50M"},
+				expectedMessage: new(
+					"The actor has not modified this workload since container \"c1\" has an ephemeral-storage limit " +
+						"of 50M, which is below the required threshold of 500M. The Dash0 init-container instrumentation " +
+						"requires at least 500M of ephemeral storage, raise the limit or remove it to enable " +
+						"instrumentation, or use image volume instrumentation delivery.",
 				),
 			}),
 		)
