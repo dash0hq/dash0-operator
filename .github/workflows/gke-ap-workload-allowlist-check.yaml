@@ -6,6 +6,15 @@ on:
     types:
       - completed
   workflow_dispatch:
+    inputs:
+      use_branch_chart:
+        description: "Build images from this branch and run the check using the local Helm chart from this branch instead of the most recently published chart."
+        required: false
+        default: false
+        type: boolean
+      pr_number:
+        description: "PR number to report results back to (set automatically when triggered via PR comment)."
+        required: false
 
 env:
   PROJECT_ID: ${{ secrets.GKE_PROJECT }}
@@ -20,11 +29,76 @@ concurrency:
 
 # Note: We could potentially optimize this check by only running it when the Helm chart has changed.
 jobs:
+  build_and_push_images:
+    name: Build and push images
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 60
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_branch_chart }}
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+
+    outputs:
+      image_tag: ${{ steps.compute-tag.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: log in to GitHub container registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Replace any character that is not allowed in container image tags with an underscore (most notably, slashes in
+      # dependabot PR branches).
+      - name: compute sanitized image tag from branch name
+        id: compute-tag
+        run: |
+          image_tag=$(echo "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" | sed 's/[^a-zA-Z0-9_\.\-]/\_/g')
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+
+      - name: build and push images
+        env:
+          IMAGE_REPOSITORY_PREFIX: ghcr.io/dash0hq/gke-ap-
+          IMAGE_TAG: ${{ steps.compute-tag.outputs.image_tag }}
+        run: |-
+          make images push-images
+
+      - name: Post PR comment on build failure
+        if: ${{ failure() && inputs.pr_number != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body: [
+                '### :x: GKE Autopilot WorkloadAllowlist check failed (image build)',
+                '',
+                `- **Branch**: \`${process.env.GITHUB_REF_NAME}\``,
+                `- **Run**: [#${process.env.GITHUB_RUN_ID}](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`,
+              ].join('\n'),
+            });
+
   check_workload_allowlists:
     name: Check WorkloadAllowlists
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    needs: build_and_push_images
+    if: |
+      always() && (
+        (github.event_name == 'workflow_dispatch' && (!inputs.use_branch_chart || needs.build_and_push_images.result == 'success')) ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      )
     timeout-minutes: 8
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -42,11 +116,14 @@ jobs:
           location: ${{ env.GKE_ZONE }}
 
       - name: run check
+        env:
+          USE_LOCAL_CHART: ${{ inputs.use_branch_chart && 'true' || 'false' }}
+          OPERATOR_IMAGE_TAG: ${{ inputs.use_branch_chart && needs.build_and_push_images.outputs.image_tag || '' }}
         run: |-
           .github/workflows/scripts/gke-ap-workload-allowlist-check.sh
 
       - name: send Slack notification on success
-        if: success()
+        if: ${{ success() && !inputs.use_branch_chart }}
         uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
         with:
           errors: true
@@ -69,7 +146,7 @@ jobs:
                     text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
 
       - name: send Slack notification on failure
-        if: failure()
+        if: ${{ failure() && !inputs.use_branch_chart }}
         uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
         with:
           errors: true
@@ -90,3 +167,72 @@ jobs:
                     text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
                   - type: mrkdwn
                     text: ':diff: <${{ github.event.head_commit.url }}|Commit>'
+
+      - name: Post PR comment on success
+        if: ${{ success() && inputs.pr_number != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body: [
+                '### :white_check_mark: GKE Autopilot WorkloadAllowlist check successful',
+                '',
+                `- **Branch**: \`${process.env.GITHUB_REF_NAME}\``,
+                `- **Run**: [#${process.env.GITHUB_RUN_ID}](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`,
+              ].join('\n'),
+            });
+
+      - name: Post PR comment on failure
+        if: ${{ failure() && inputs.pr_number != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body: [
+                '### :x: GKE Autopilot WorkloadAllowlist check has failed',
+                '',
+                `- **Branch**: \`${process.env.GITHUB_REF_NAME}\``,
+                `- **Run**: [#${process.env.GITHUB_RUN_ID}](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`,
+              ].join('\n'),
+            });
+
+  cleanup_branch_images:
+    name: Cleanup branch images
+    runs-on: ubuntu-latest
+    needs:
+      - build_and_push_images
+      - check_workload_allowlists
+    if: ${{ always() && inputs.use_branch_chart && needs.build_and_push_images.outputs.image_tag != '' }}
+    permissions:
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - gke-ap-operator-controller
+          - gke-ap-instrumentation
+          - gke-ap-collector
+          - gke-ap-configuration-reloader
+          - gke-ap-filelog-offset-sync
+          - gke-ap-filelog-offset-volume-ownership
+          - gke-ap-target-allocator
+
+    steps:
+      - name: delete branch image tag
+        uses: bots-house/ghcr-delete-image-action@3827559c68cb4dcdf54d813ea9853be6d468d3a4
+        continue-on-error: true
+        with:
+          owner: dash0hq
+          name: ${{ matrix.image }}
+          tag: ${{ needs.build_and_push_images.outputs.image_tag }}
+          token: ${{ secrets.GITHUB_TOKEN }}

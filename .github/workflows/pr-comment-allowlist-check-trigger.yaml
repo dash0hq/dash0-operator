@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Trigger GKE Autopilot WorkloadAllowlist check via PR comment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  trigger-allowlist-check:
+    name: Trigger GKE Autopilot WorkloadAllowlist check from PR comment
+    runs-on: ubuntu-latest
+    # Only run for PR comments (not issue comments) that start with /run-allowlist-check
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/run-allowlist-check')
+
+    steps:
+      - name: Check commenter permissions
+        id: check-permissions
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor,
+              });
+              const allowed = ['admin', 'write', 'maintain'].includes(data.permission);
+              if (!allowed) {
+                core.warning(`User ${context.actor} has '${data.permission}' permission — not enough to trigger the GKE Autopilot WorkloadAllowlist check.`);
+              }
+              return allowed;
+            } catch (err) {
+              core.warning(`Could not check permissions for ${context.actor}: ${err.message}`);
+              return false;
+            }
+
+      - name: Acknowledge comment with reaction
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
+      - name: Get PR branch
+        id: pr-info
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            return { ref: pr.head.ref, sha: pr.head.sha };
+
+      - name: Dispatch GKE Autopilot WorkloadAllowlist check workflow
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PR_INFO: ${{ steps.pr-info.outputs.result }}
+        with:
+          # E2E_DISPATCH_PAT is required because GITHUB_TOKEN cannot trigger workflow_dispatch
+          # events on the same repository.
+          github-token: ${{ secrets.E2E_DISPATCH_PAT }}
+          script: |
+            const prInfo = JSON.parse(process.env.PR_INFO);
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'gke-ap-workload-allowlist-check.yaml',
+              ref: prInfo.ref,
+              inputs: {
+                use_branch_chart: 'true',
+                pr_number: String(context.issue.number),
+              },
+            });
+
+      - name: Post trigger comment
+        if: fromJson(steps.check-permissions.outputs.result) == true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PR_INFO: ${{ steps.pr-info.outputs.result }}
+        with:
+          script: |
+            const prInfo = JSON.parse(process.env.PR_INFO);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '### :mag: GKE Autopilot WorkloadAllowlist check triggered',
+                '',
+                `- **Branch**: \`${prInfo.ref}\``,
+                `- **Triggered by**: @${context.actor}`,
+                '',
+                `Results will be posted here once the check completes. You can also [view the workflow runs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/gke-ap-workload-allowlist-check.yaml) directly.`,
+              ].join('\n'),
+            });
