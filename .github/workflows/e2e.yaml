@@ -20,8 +20,7 @@ on:
         description: PR number to report results back to (set automatically when triggered via PR comment).
       ie_image_tag:
         required: false
-        default: latest
-        description: Tag of ghcr.io/dash0hq/intelligent-edge-collector and ghcr.io/dash0hq/barker to pull.
+        description: Tag of ghcr.io/dash0hq/intelligent-edge-collector and ghcr.io/dash0hq/barker to pull. If empty, the highest vX.Y.Z tag published to ghcr is resolved at runtime.
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -32,7 +31,6 @@ env:
   ALLOWED_KUBECTXS: kind-dash0-operator-ci
   E2E_KUBECTX: kind-dash0-operator-ci
   IMAGE_REPOSITORY_PREFIX: "localhost:5001/"
-  IE_IMAGE_TAG: ${{ inputs.ie_image_tag || 'latest' }}
 
 jobs:
   run-e2e-tests-on-kind:
@@ -54,6 +52,37 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve IE image tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_IE_TAG: ${{ inputs.ie_image_tag }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${INPUT_IE_TAG:-}" ]]; then
+            tag="$INPUT_IE_TAG"
+            echo "Using ie_image_tag from workflow input: $tag"
+          else
+            resolve() {
+              gh api --paginate "/orgs/dash0hq/packages/container/$1/versions" \
+                --jq '.[].metadata.container.tags[]' \
+                | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
+                | sort -V | tail -1
+            }
+            iec=$(resolve intelligent-edge-collector)
+            barker=$(resolve barker)
+            if [[ -z "$iec" || -z "$barker" ]]; then
+              echo "Failed to resolve highest vX.Y.Z tag (intelligent-edge-collector='$iec', barker='$barker')" >&2
+              exit 1
+            fi
+            if [[ "$iec" != "$barker" ]]; then
+              echo "intelligent-edge-collector ($iec) and barker ($barker) have different highest tags; aborting (they are expected to move in lockstep)." >&2
+              exit 1
+            fi
+            tag="$iec"
+            echo "Resolved highest IE image tag: $tag"
+          fi
+          echo "IE_IMAGE_TAG=$tag" >> "$GITHUB_ENV"
 
       - name: go version
         run: |
