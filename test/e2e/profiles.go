@@ -6,9 +6,7 @@ package e2e
 import (
 	"fmt"
 	"net/url"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -19,7 +17,8 @@ import (
 )
 
 const (
-	ebpfProfilerImage = "otel/opentelemetry-collector-ebpf-profiler:0.148.0"
+	ebpfProfilerHelmReleaseName = "ebpf-profiler"
+	ebpfProfilerHelmChartPath   = "test-resources/ebpf-profiler/helm-chart"
 )
 
 // Note: we need to hardcode the k8s.namespace.name here so the e2e tests work on kind, where the ebpf profiler can't
@@ -34,126 +33,25 @@ func deployEbpfProfiler(operatorNs string, targetNamespace string) {
 		operatorNs,
 	)
 
-	manifest := fmt.Sprintf(`apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ebpf-profiler-config
-  namespace: %s
-data:
-  config.yaml: |
-    receivers:
-      profiling:
-
-    processors:
-      resource:
-        attributes:
-          - key: k8s.namespace.name
-            value: %s
-            action: upsert
-
-    exporters:
-      otlp/collector:
-        endpoint: %s
-        tls:
-          insecure: true
-      debug:
-        verbosity: detailed
-
-    service:
-      telemetry:
-        logs:
-          level: info
-      pipelines:
-        profiles:
-          receivers: [profiling]
-          processors: [resource]
-          exporters: [otlp/collector, debug]
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: ebpf-profiler
-  namespace: %s
-  labels:
-    app: ebpf-profiler
-    dash0.com/enable: "false"
-spec:
-  selector:
-    matchLabels:
-      app: ebpf-profiler
-  template:
-    metadata:
-      labels:
-        app: ebpf-profiler
-        dash0.com/enable: "false"
-    spec:
-      hostPID: true
-      containers:
-        - name: ebpf-profiler
-          image: %s
-          args:
-            - --config=file:/etc/otelcol/config.yaml
-            - --feature-gates=service.profilesSupport
-          securityContext:
-            capabilities:
-              add:
-                - SYS_ADMIN
-                - SYS_PTRACE
-                - SYS_RESOURCE
-                - SYSLOG
-          volumeMounts:
-            - name: config
-              mountPath: /etc/otelcol
-            - name: proc
-              mountPath: /proc
-              readOnly: true
-            - name: sys
-              mountPath: /sys
-              readOnly: true
-      volumes:
-        - name: config
-          configMap:
-            name: ebpf-profiler-config
-        - name: proc
-          hostPath:
-            path: /proc
-        - name: sys
-          hostPath:
-            path: /sys
-`, operatorNs, targetNamespace, collectorServiceEndpoint, operatorNs, ebpfProfilerImage)
-
-	tmpFile := filepath.Join(os.TempDir(), "ebpf-profiler-manifest.yaml")
-	err := os.WriteFile(tmpFile, []byte(manifest), 0600)
-	Expect(err).NotTo(HaveOccurred())
-	defer func() {
-		_ = os.Remove(tmpFile)
-	}()
-
-	output, err := run(exec.Command("kubectl", "apply", "-f", tmpFile))
+	output, err := run(exec.Command(
+		"helm", "install",
+		"--namespace", operatorNs,
+		"--wait",
+		"--timeout", "300s",
+		"--set", fmt.Sprintf("collector.endpoint=%s", collectorServiceEndpoint),
+		"--set", fmt.Sprintf("namespaceOverride=%s", targetNamespace),
+		ebpfProfilerHelmReleaseName,
+		ebpfProfilerHelmChartPath,
+	))
 	if err != nil {
 		Fail(fmt.Sprintf("failed to deploy eBPF profiler: %s, output: %s", err, output))
 	}
-
-	By("waiting for eBPF profiler to be ready")
-	Eventually(func(g Gomega) {
-		output, err := run(exec.Command(
-			"kubectl", "rollout", "status", "daemonset/ebpf-profiler",
-			"--namespace", operatorNs,
-			"--timeout=10s",
-		))
-		g.Expect(err).NotTo(HaveOccurred(), "eBPF profiler rollout status: %s", output)
-	}, 300*time.Second, 5*time.Second).Should(Succeed())
 }
 
 func teardownEbpfProfiler(operatorNs string) {
 	By("tearing down eBPF profiler")
 	_, _ = run(exec.Command(
-		"kubectl", "delete", "daemonset", "ebpf-profiler",
-		"--namespace", operatorNs,
-		"--ignore-not-found",
-	))
-	_, _ = run(exec.Command(
-		"kubectl", "delete", "configmap", "ebpf-profiler-config",
+		"helm", "uninstall", ebpfProfilerHelmReleaseName,
 		"--namespace", operatorNs,
 		"--ignore-not-found",
 	))

@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: otel/opentelemetry-collector-ebpf-profiler
+  tag: 0.151.0
+
+collector:
+  endpoint: dash0-operator-opentelemetry-collector-service.dash0-system.svc.cluster.local:4317
+  insecure: true
+
+# Optional override for the k8s.namespace.name resource attribute. Required on
+# kind clusters where the profiler cannot determine container.id, which prevents
+# the k8sattributes processor from populating the namespace attribute. When
+# empty (the default), no resource processor is added to the pipeline.
+namespaceOverride: ""

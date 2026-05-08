@@ -221,6 +221,26 @@ rules:
   - patch
   - update
 
+# Permissions required to read Dash0 spam filter resources:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0spamfilters
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to Dash0 spam filter resource status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0spamfilters/status
+  verbs:
+  - get
+  - patch
+  - update
+
 # Permissions required to manage the Dash0 intelligent edge resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com

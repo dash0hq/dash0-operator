@@ -281,13 +281,13 @@ func syncOffsets(ctx context.Context, settings *Settings) {
 			select {
 			case <-ticker.C:
 				if err := doSyncOffsetsAndMeasure(ctx, settings); err != nil {
-					logger.Info("cannot update offset files", errorLabel, err)
+					logger.Warn("cannot update offset files", errorLabel, err)
 				}
 			case <-shutdown:
 				ticker.Stop()
 
 				if err := doSyncOffsetsAndMeasure(ctx, settings); err != nil {
-					logger.Info(
+					logger.Warn(
 						"cannot update offset files on shutdown",
 						errorLabel,
 						err,

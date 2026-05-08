@@ -93,7 +93,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 
 	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
-		logger.Info("rejecting invalid monitoring resource", "error", err)
+		logger.Warn("rejecting invalid monitoring resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
@@ -114,7 +114,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 			request.Namespace,
 			instrumentWorkloadsMode,
 		)
-		logger.Info(msg)
+		logger.Warn(msg)
 		return admission.Denied(msg)
 	}
 	if request.Namespace == h.operatorNamespace && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
@@ -125,7 +125,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 			request.Namespace,
 			instrumentWorkloadsMode,
 		)
-		logger.Info(msg)
+		logger.Warn(msg)
 		return admission.Denied(msg)
 	}
 

@@ -78,9 +78,10 @@ class TestImportDistro(unittest.TestCase):
             with patch('sys.path', [mock_site]):
                 module, spec = load_sitecustomize_module()
                 spec.loader.exec_module(module)
+                spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
-        self.assertIn("[dash0] warning: cannot auto-instrument Python process: unsupported Python version: 2.7.0",
+        self.assertIn("\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: unsupported Python version: 2.7.0",
                       output)
 
     @patch('sys.stderr', new_callable=StringIO)
@@ -96,7 +97,7 @@ class TestImportDistro(unittest.TestCase):
                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
-        self.assertIn("[dash0] warning: cannot auto-instrument Python process: unsupported Python version: 3.8.0",
+        self.assertIn("\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: unsupported Python version: 3.8.0",
                       output)
 
     @patch('sys.stderr', new_callable=StringIO)
@@ -144,7 +145,7 @@ class TestImportDistro(unittest.TestCase):
                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
-        self.assertIn("[dash0] warning: cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL is not set",
+        self.assertIn("\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL is not set",
                       output)
 
     @patch('sys.stderr', new_callable=StringIO)
@@ -161,7 +162,7 @@ class TestImportDistro(unittest.TestCase):
 
         output = mock_stderr.getvalue()
         self.assertIn(
-            "[dash0] warning: cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported",
+            "\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported",
             output)
 
     @patch('sys.stderr', new_callable=StringIO)
@@ -196,7 +197,7 @@ class TestImportDistro(unittest.TestCase):
         output = mock_stderr.getvalue()
         # Should report dependency conflicts
         self.assertIn(
-            "[dash0] warning: cannot auto-instrument Python process: dependency conflicts: {'packaging': {'version_required': '>=20.0', 'version_found': '19.0'}}",
+            "\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: dependency conflicts: {'packaging': {'version_required': '>=20.0', 'version_found': '19.0'}}",
             output)
 
     @patch('sys.stderr', new_callable=StringIO)
@@ -226,7 +227,7 @@ class TestImportDistro(unittest.TestCase):
                             spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
-        self.assertIn("[dash0] importing and initializing the Python auto-instrumentation now", output)
+        self.assertIn("\"level\": \"debug\", \"message\": \"importing and initializing the Python auto-instrumentation now", output)
 
     @patch('sys.stderr', new_callable=StringIO)
     @patch('sys.version_info', (3, 9, 0, 'final', 0))
@@ -256,7 +257,7 @@ class TestImportDistro(unittest.TestCase):
 
         output = mock_stderr.getvalue()
         # Should report dependency conflicts for the missing required package
-        self.assertIn("[dash0] warning: cannot auto-instrument Python process: dependency conflicts", output)
+        self.assertIn("\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: dependency conflicts", output)
 
     @patch('sys.stderr', new_callable=StringIO)
     @patch('sys.version_info', (3, 9, 0, 'final', 0))
@@ -277,7 +278,7 @@ class TestImportDistro(unittest.TestCase):
 
         output = mock_stderr.getvalue()
         self.assertIn(
-            "[dash0] warning: cannot auto-instrument Python process: The application has OpenTelemetry dependencies which indicate that it is already instrumented. The following problematic dependencies have been found: /app/site-packages/opentelemetry_sdk-1.0.0.dist-info. Skipping the Dash0 Python auto-instrumentation to avoid double instrumentation.",
+            "\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: The application has OpenTelemetry dependencies which indicate that it is already instrumented. The following problematic dependencies have been found: /app/site-packages/opentelemetry_sdk-1.0.0.dist-info. Skipping the Dash0 Python auto-instrumentation to avoid double instrumentation.",
             output)
         self.assertIn("/app/site-packages/opentelemetry_sdk-1.0.0.dist-info", output)
         # Verify self-deactivation happened
@@ -306,7 +307,7 @@ class TestImportDistro(unittest.TestCase):
 
         output = mock_stderr.getvalue()
         self.assertIn(
-            "[dash0] warning: cannot auto-instrument Python process: The application has OpenTelemetry dependencies which indicate that it is already instrumented. The following problematic dependencies have been found:",
+            "\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: The application has OpenTelemetry dependencies which indicate that it is already instrumented. The following problematic dependencies have been found:",
             output)
         self.assertIn("/app/site-packages/opentelemetry_sdk-1.0.0.dist-info", output)
         self.assertIn("/app/site-packages/opentelemetry_distro-1.0.0.dist-info", output)
@@ -341,8 +342,8 @@ class TestImportDistro(unittest.TestCase):
                                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
-        self.assertIn("no double instrumentation detected", output)
-        self.assertIn("importing and initializing the Python auto-instrumentation now", output)
+        self.assertIn("\"level\": \"debug\", \"message\": \"no double instrumentation detected", output)
+        self.assertIn("\"level\": \"debug\", \"message\": \"importing and initializing the Python auto-instrumentation now", output)
 
 
 if __name__ == '__main__':

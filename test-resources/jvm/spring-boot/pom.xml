@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.0.5</version>
+		<version>4.0.6</version>
 		<relativePath/>
 	</parent>
 	<groupId>com.dash0.app_under_test</groupId>
@@ -16,6 +16,20 @@
 	<properties>
 		<java.version>17</java.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<!-- Override the prometheus-metrics-bom version managed by Spring Boot's parent BOM,
+			     so all prometheus-metrics-* artifacts (including the transitive
+			     prometheus-metrics-model) move in lockstep. -->
+			<dependency>
+				<groupId>io.prometheus</groupId>
+				<artifactId>prometheus-metrics-bom</artifactId>
+				<version>1.6.1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -29,12 +43,10 @@
 		<dependency>
 			<groupId>io.prometheus</groupId>
 			<artifactId>prometheus-metrics-core</artifactId>
-			<version>1.5.1</version>
 		</dependency>
 		<dependency>
 			<groupId>io.prometheus</groupId>
 			<artifactId>prometheus-metrics-exporter-servlet-jakarta</artifactId>
-			<version>1.5.1</version>
 		</dependency>
 	</dependencies>
 	<build>

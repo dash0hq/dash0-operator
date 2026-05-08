@@ -29,8 +29,10 @@ spec:
             summary: "K8s pod crash looping K8s pod crash looping {{ $label. k8s_node_name }}"
             dash0-threshold-degraded: "10"
             dash0-threshold-critical: "15"
-        - record: will be skipped
-          expr: "vector(1)"
+        - record: job:http_requests:rate5m
+          expr: "sum(rate(http_requests_total[5m])) by (job)"
+          labels:
+            env: production
     - name: dash0/collector
       interval: 10m
       rules:

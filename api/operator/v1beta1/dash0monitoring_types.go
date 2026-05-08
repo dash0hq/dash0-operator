@@ -543,7 +543,3 @@ type Dash0MonitoringList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0Monitoring `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Dash0Monitoring{}, &Dash0MonitoringList{})
-}

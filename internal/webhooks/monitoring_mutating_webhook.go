@@ -63,7 +63,7 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 
 	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
-		logger.Info("rejecting invalid monitoring resource", "error", err)
+		logger.Warn("rejecting invalid monitoring resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
@@ -198,7 +198,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 				"Automatically disabling log collection in the operator namespace %s. Logs from the operator can be "+
 					"collected via self monitoring, see "+
 					"https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#operatorconfigurationresource.spec.selfMonitoring.enabled. "+
-					"Collecting them via the filelog receiver is not supported. You can get rid of this log message "+
+					"Collecting them via the file_log receiver is not supported. You can get rid of this log message "+
 					"by explicitly disabling log collection for this namespace, see "+
 					"https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#monitoringresource.spec.logCollection.enabled.",
 				h.operatorNamespace))
@@ -310,7 +310,7 @@ func normalizeTransformGroupsForOneSignal(
 					em := dash0common.FilterTransformErrorMode(errorMode)
 					normalizedGroup.ErrorMode = &em
 				} else {
-					logger.Error(
+					logger.ErrorAsWarn(
 						err,
 						fmt.Sprintf(
 							"ignoring invalid error mode %v for spec.transform.%s[%d]: ",

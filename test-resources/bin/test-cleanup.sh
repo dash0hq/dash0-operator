@@ -47,6 +47,9 @@ fi
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0view/dash0view.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
+if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0spamfilter/dash0spamfilter.yaml; then
+  wait_for_third_party_resource_deletion="true"
+fi
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/persesdashboard/persesdashboard.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
@@ -102,8 +105,7 @@ if [[ "${delete_namespaces}" = "true" ]]; then
   kubectl delete ns test-namespace-6 --ignore-not-found
 fi
 
-kubectl delete daemonset ebpf-profiler --namespace "$operator_namespace" --ignore-not-found || true
-kubectl delete configmap ebpf-profiler-config --namespace "$operator_namespace" --ignore-not-found || true
+helm uninstall --namespace "$operator_namespace" ebpf-profiler --ignore-not-found || true
 
 helm uninstall --namespace "$operator_namespace" dash0-operator --timeout 30s || true
 

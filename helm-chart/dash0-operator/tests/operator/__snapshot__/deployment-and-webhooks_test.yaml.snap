@@ -1254,6 +1254,8 @@ monitoring resource CRD should match snapshot:
                         type: object
                       invalidRulesTotal:
                         type: integer
+                      recordingRulesTotal:
+                        type: integer
                       synchronizationResults:
                         items:
                           properties:
@@ -1297,6 +1299,7 @@ monitoring resource CRD should match snapshot:
                     required:
                       - alertingRulesTotal
                       - invalidRulesTotal
+                      - recordingRulesTotal
                       - synchronizationResults
                       - synchronizationStatus
                       - synchronizedAt
@@ -2397,6 +2400,8 @@ monitoring resource CRD should match snapshot:
                         type: object
                       invalidRulesTotal:
                         type: integer
+                      recordingRulesTotal:
+                        type: integer
                       synchronizationResults:
                         items:
                           properties:
@@ -2440,6 +2445,7 @@ monitoring resource CRD should match snapshot:
                     required:
                       - alertingRulesTotal
                       - invalidRulesTotal
+                      - recordingRulesTotal
                       - synchronizationResults
                       - synchronizationStatus
                       - synchronizedAt

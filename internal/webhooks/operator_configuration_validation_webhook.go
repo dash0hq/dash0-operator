@@ -79,21 +79,21 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	logger := logd.FromContext(ctx)
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
-		logger.Info("rejecting invalid operator configuration resource", "error", err)
+		logger.Warn("rejecting invalid operator configuration resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
 	spec := operatorConfigurationResource.Spec
 
 	if !h.telemetryCollectionEnabledViaHelm && spec.TelemetryCollection.Enabled != nil && *spec.TelemetryCollection.Enabled {
-		logger.Info(ErrorMessageTelemetryCollectionDisabledViaHelm)
+		logger.Warn(ErrorMessageTelemetryCollectionDisabledViaHelm)
 		return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm)
 	}
 
 	// Reject if both the deprecated export and the new exports field are set.
 	//nolint:staticcheck
 	if spec.Export != nil && len(spec.Exports) > 0 {
-		logger.Info(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)
+		logger.Warn(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)
 		return admission.Denied(ErrorMessageOperatorConfigurationExportAndExportsAreMutuallyExclusive)
 	}
 
@@ -105,7 +105,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		// spec.KubernetesInfrastructureMetricsCollectionEnabled = false ourselves in the mutating webhook.
 		*spec.TelemetryCollection.Enabled {
 		// The deprecated option has been explicitly set to false, log warning to ask users to switch to the new option.
-		logger.Info("Warning: The setting Dash0OperatorConfiguration.spec.kubernetesInfrastructureMetricsCollectionEnabled is deprecated: Please use Dash0OperatorConfiguration.spec.kubernetesInfrastructureMetricsCollection.enabled instead.")
+		logger.Warn("The setting Dash0OperatorConfiguration.spec.kubernetesInfrastructureMetricsCollectionEnabled is deprecated: Please use Dash0OperatorConfiguration.spec.kubernetesInfrastructureMetricsCollection.enabled instead.")
 	}
 
 	if util.ReadBoolPointerWithDefault(spec.SelfMonitoring.Enabled, true) &&
@@ -113,7 +113,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		msg := "The provided Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
 			"export configuration. Either disable self-monitoring or provide an export configuration for self-" +
 			"monitoring telemetry."
-		logger.Info(msg)
+		logger.Warn(msg)
 		return admission.Denied(msg)
 	}
 
@@ -123,7 +123,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 				"Please either set telemetryCollection.enabled=true or " +
 				"kubernetesInfrastructureMetricsCollection.enabled=false."
-			logger.Info(msg)
+			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
 		//nolint:staticcheck
@@ -133,7 +133,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 				"kubernetesInfrastructureMetricsCollectionEnabled), although telemetry collection is disabled. " +
 				"This is an invalid combination. Please either set telemetryCollection.enabled=true or " +
 				"kubernetesInfrastructureMetricsCollection.enabled=false."
-			logger.Info(msg)
+			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
 		if util.ReadBoolPointerWithDefault(spec.CollectPodLabelsAndAnnotations.Enabled, true) {
@@ -141,7 +141,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 				"Please either set telemetryCollection.enabled=true or " +
 				"collectPodLabelsAndAnnotations.enabled=false."
-			logger.Info(msg)
+			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
 		if util.ReadBoolPointerWithDefault(spec.CollectNamespaceLabelsAndAnnotations.Enabled, true) {
@@ -149,11 +149,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 				"Please either set telemetryCollection.enabled=true or " +
 				"collectNamespaceLabelsAndAnnotations.enabled=false."
-			logger.Info(msg)
+			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
 		if util.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
-			logger.Info(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
+			logger.Warn(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 			return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 		}
 		if spec.Profiling != nil && util.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
@@ -161,14 +161,14 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 				"Please either set telemetryCollection.enabled=true or " +
 				"profiling.enabled=false."
-			logger.Info(msg)
+			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
 	}
 
 	for _, export := range spec.Exports {
 		if !validateGrpcExportInsecureFlags(&export) {
-			logger.Info(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
+			logger.Warn(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
 			return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
 		}
 	}
@@ -180,11 +180,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 
 		//nolint:staticcheck
 		if spec.MonitoringTemplate.Spec.Export != nil {
-			logger.Info(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
+			logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
 			return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExport)
 		}
 		if len(spec.MonitoringTemplate.Spec.Exports) > 0 {
-			logger.Info(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
+			logger.Warn(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
 			return admission.Denied(ErrorMessageOperatorConfigurationMonitoringTemplateWithExports)
 		}
 	}
@@ -201,7 +201,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 				"Only one operator configuration resource is allowed per cluster.",
 				allOperatorConfigurationResources.Items[0].Name,
 			)
-			logger.Info(msg)
+			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
 	}

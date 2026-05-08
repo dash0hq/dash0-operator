@@ -56,6 +56,16 @@ TARGET_ALLOCATOR_IMAGE_TAG ?= $(IMAGE_TAG)
 TARGET_ALLOCATOR_IMAGE ?= $(TARGET_ALLOCATOR_IMAGE_REPOSITORY):$(TARGET_ALLOCATOR_IMAGE_TAG)
 TARGET_ALLOCATOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
+INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)intelligent-edge-collector
+INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
+INTELLIGENT_EDGE_COLLECTOR_IMAGE ?= $(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY):$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG)
+INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
+BARKER_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)barker
+BARKER_IMAGE_TAG ?= $(IMAGE_TAG)
+BARKER_IMAGE ?= $(BARKER_IMAGE_REPOSITORY):$(BARKER_IMAGE_TAG)
+BARKER_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
 # Variables for test application container images:
 
 TEST_IMAGE_REPOSITORY_PREFIX ?= $(IMAGE_REPOSITORY_PREFIX)
@@ -209,16 +219,28 @@ golangci-lint-install:
 .PHONY: golangci-lint
 golangci-lint: golangci-lint-install ## Run static code analysis for Go code.
 	@echo "-------------------------------- (linting Go code)"
-	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run; popd > /dev/null'
+	@set -eo pipefail; \
+	while IFS= read -r -d '' f; do \
+		dir=$$(dirname "$$f"); echo $$dir; \
+		(cd "$$dir" && $(GOLANGCI_LINT) run); \
+	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
 
 .PHONY: golangci-lint-fix
 golangci-lint-fix: golangci-lint-install ## Run static code analysis for Go code and fix issues automatically.
-	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; $(GOLANGCI_LINT) run --fix; popd > /dev/null'
+	@set -eo pipefail; \
+	while IFS= read -r -d '' f; do \
+		dir=$$(dirname "$$f"); echo $$dir; \
+		(cd "$$dir" && $(GOLANGCI_LINT) run --fix); \
+	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
 
 .PHONY: go-mod-tidy
 go-mod-tidy: ## Run go mod tidy for all modules
 	@echo "-------------------------------- (running go mod tidy for all modules)"
-	@find . -maxdepth 5 -type f -name go.mod -print0 | xargs -0 -I{} $(SHELL) -c 'set -eo pipefail; dir=$$(dirname {}); echo $$dir; pushd $$dir > /dev/null; GOBIN=$(LOCALBIN) go mod tidy; popd > /dev/null'
+	@set -eo pipefail; \
+	while IFS= read -r -d '' f; do \
+		dir=$$(dirname "$$f"); echo $$dir; \
+		(cd "$$dir" && GOBIN=$(LOCALBIN) go mod tidy); \
+	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
 
 .PHONY: internal-config-map-lint
 internal-config-map-lint: ## Verify config map templates for resources managed by the collector.
@@ -245,6 +267,7 @@ helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@echo "-------------------------------- (linting Helm charts)"
 	@$(call lint_helm_chart,helm-chart/dash0-operator)
 	@$(call lint_helm_chart,test-resources/dotnet/helm-chart)
+	@$(call lint_helm_chart,test-resources/ebpf-profiler/helm-chart)
 	@$(call lint_helm_chart,test-resources/jvm/spring-boot/helm-chart)
 	@$(call lint_helm_chart,test-resources/node.js/express/helm-chart)
 	@$(call lint_helm_chart,test-resources/python/flask/helm-chart)
@@ -313,6 +336,20 @@ all-auxiliary-images: \
   control-plane-mock-image \
   telemetry-matcher-image ## Build all auxiliary images that are used in test scripts and/or e2e tests, that is, test applications, dash0-api-mock, telemetry-matcher etc. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
+# This target is a helper for testing. The production images will be built in the source repo of the IE images.
+.PHONY: all-images-with-ie
+all-images-with-ie: ## Build all images including the intelligent edge collector and barker. Requires DASH0_REPO_ROOT.
+	@if [ -z "$$DASH0_REPO_ROOT" ]; then \
+		echo "Error: DASH0_REPO_ROOT must be set to the dash0 monorepo path, e.g. DASH0_REPO_ROOT=/path/to/dash0 make all-images-with-ie" >&2; \
+		exit 1; \
+	fi
+	@$(MAKE) all-images
+	@INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY) \
+	  INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG) \
+	  BARKER_IMAGE_REPOSITORY=$(BARKER_IMAGE_REPOSITORY) \
+	  BARKER_IMAGE_TAG=$(BARKER_IMAGE_TAG) \
+	  test-resources/intelligentedge/build-ie-and-barker.sh
+
 PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
@@ -364,6 +401,16 @@ push-all-auxiliary-images: \
   push-decision-maker-mock-image \
   push-control-plane-mock-image \
   push-telemetry-matcher-image ## Push all auxiliary images that are used in test scripts and/or e2e tests, that is, test applications, dash0-api-mock, telemetry-matcher etc.
+
+# This target is a helper for testing. The production images will be pushed in the source repo of the IE images.
+.PHONY: push-all-images-with-ie
+push-all-images-with-ie: ## Push all images including the intelligent edge collector and barker.
+	@$(MAKE) push-all-images
+	@INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY) \
+	  INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG) \
+	  BARKER_IMAGE_REPOSITORY=$(BARKER_IMAGE_REPOSITORY) \
+	  BARKER_IMAGE_TAG=$(BARKER_IMAGE_TAG) \
+	  test-resources/intelligentedge/build-ie-and-barker.sh --push-only
 
 PHONY: push-test-app-images
 push-test-app-images: \
@@ -555,6 +602,12 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 		--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
 		--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
 		--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
+		--set operator.intelligentEdgeCollectorImage.repository=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY) \
+		--set operator.intelligentEdgeCollectorImage.tag=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG) \
+		--set operator.intelligentEdgeCollectorImage.pullPolicy=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY) \
+		--set operator.barkerImage.repository=$(BARKER_IMAGE_REPOSITORY) \
+		--set operator.barkerImage.tag=$(BARKER_IMAGE_TAG) \
+		--set operator.barkerImage.pullPolicy=$(BARKER_IMAGE_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)

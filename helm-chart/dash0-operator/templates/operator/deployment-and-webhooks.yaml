@@ -1750,6 +1750,8 @@ spec:
                       type: object
                     invalidRulesTotal:
                       type: integer
+                    recordingRulesTotal:
+                      type: integer
                     synchronizationResults:
                       items:
                         properties:
@@ -1793,6 +1795,7 @@ spec:
                   required:
                     - alertingRulesTotal
                     - invalidRulesTotal
+                    - recordingRulesTotal
                     - synchronizationResults
                     - synchronizationStatus
                     - synchronizedAt
@@ -2937,6 +2940,8 @@ spec:
                       type: object
                     invalidRulesTotal:
                       type: integer
+                    recordingRulesTotal:
+                      type: integer
                     synchronizationResults:
                       items:
                         properties:
@@ -2980,6 +2985,7 @@ spec:
                   required:
                     - alertingRulesTotal
                     - invalidRulesTotal
+                    - recordingRulesTotal
                     - synchronizationResults
                     - synchronizationStatus
                     - synchronizedAt

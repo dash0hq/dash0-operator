@@ -1,0 +1,11 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SpamFilter
+metadata:
+  name: drop-health-checks
+spec:
+  contexts:
+    - log
+  filter:
+    - key: "k8s.namespace.name"
+      operator: "is"
+      value: "kube-system"

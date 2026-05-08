@@ -123,7 +123,7 @@ func (r *SamplingRuleReconciler) SetDefaultApiConfigs(
 	logger logd.Logger,
 ) {
 	if len(apiConfigs) > 1 {
-		logger.Info("Sampling rules only support a single API config, using the first one and ignoring the rest.",
+		logger.Warn("Sampling rules only support a single API config, using the first one and ignoring the rest.",
 			"total", len(apiConfigs))
 		apiConfigs = apiConfigs[:1]
 	}

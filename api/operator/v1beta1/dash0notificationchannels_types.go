@@ -326,7 +326,3 @@ type Dash0NotificationChannelList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0NotificationChannel `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Dash0NotificationChannel{}, &Dash0NotificationChannelList{})
-}

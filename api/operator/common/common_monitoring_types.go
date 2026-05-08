@@ -372,6 +372,7 @@ type PrometheusRuleSynchronizationResult struct {
 	SynchronizationStatus  ThirdPartySynchronizationStatus                            `json:"synchronizationStatus"`
 	SynchronizedAt         metav1.Time                                                `json:"synchronizedAt"`
 	AlertingRulesTotal     int                                                        `json:"alertingRulesTotal"`
+	RecordingRulesTotal    int                                                        `json:"recordingRulesTotal"`
 	InvalidRulesTotal      int                                                        `json:"invalidRulesTotal"`
 	InvalidRules           map[string][]string                                        `json:"invalidRules,omitempty"`
 	SynchronizationResults []PrometheusRuleSynchronizationResultPerEndpointAndDataset `json:"synchronizationResults"`

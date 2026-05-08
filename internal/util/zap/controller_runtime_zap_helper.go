@@ -73,7 +73,7 @@ func addDefaults(o *crzap.Options) {
 			o.Level = &lvl
 		}
 		if o.StacktraceLevel == nil {
-			lvl := zap.NewAtomicLevelAt(zap.WarnLevel)
+			lvl := zap.NewAtomicLevelAt(zap.ErrorLevel)
 			o.StacktraceLevel = &lvl
 		}
 		o.ZapOpts = append(o.ZapOpts, zap.Development())

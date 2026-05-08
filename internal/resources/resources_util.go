@@ -200,7 +200,7 @@ func VerifyThatResourceIsUniqueInScope(
 	sort.Sort(SortByCreationTimestamp(allResourcesAsClientObjects))
 	mostRecentResource := allResourcesAsClientObjects[len(allResourcesAsClientObjects)-1]
 	if mostRecentResource.GetUID() == resource.GetUID() {
-		logger.Info(fmt.Sprintf(
+		logger.Warn(fmt.Sprintf(
 			"At least one other %[1]s exists in this %[2]s. This %[1]s resource (%[3]s) is the most recent one."+
 				" The state of the other resource(s) will be set to degraded.",
 			resource.GetNaturalLanguageResourceTypeName(),
@@ -267,7 +267,7 @@ func VerifyThatResourceIsUniqueInScope(
 }
 
 func markAsDegradedDueToNonUniqueResource(resource dash0operator.Dash0Resource, scope string, logger logd.Logger) {
-	logger.Info(fmt.Sprintf("Marking %s (%s) as degraded.", resource.GetName(), resource.GetUID()))
+	logger.Warn(fmt.Sprintf("Marking %s (%s) as degraded.", resource.GetName(), resource.GetUID()))
 	resource.EnsureResourceIsMarkedAsDegraded(
 		"NewerResourceIsPresent",
 		fmt.Sprintf("There is a more recently created %s in this %s, please remove all but one resource "+

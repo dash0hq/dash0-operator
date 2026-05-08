@@ -104,6 +104,7 @@ type collectorConfigurationTemplateValues struct {
 	IsGkeAutopilot                                   bool
 	PseudoClusterUid                                 string
 	ClusterName                                      string
+	OperatorVersion                                  string
 	NamespacesWithLogCollection                      []string
 	NamespacesWithEventCollection                    []string
 	NamespaceOttlFilter                              string
@@ -265,6 +266,7 @@ func assembleCollectorConfigMap(
 			IsGkeAutopilot:                                   config.IsGkeAutopilot,
 			PseudoClusterUid:                                 string(config.PseudoClusterUid),
 			ClusterName:                                      config.ClusterName,
+			OperatorVersion:                                  config.Images.GetOperatorVersion(),
 			NamespacesWithLogCollection:                      namespacesWithLogCollection,
 			NamespacesWithEventCollection:                    namespacesWithEventCollection,
 			NamespaceOttlFilter:                              namespaceOttlFilter,

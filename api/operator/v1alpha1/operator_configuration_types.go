@@ -562,7 +562,3 @@ type Dash0OperatorConfigurationList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0OperatorConfiguration `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Dash0OperatorConfiguration{}, &Dash0OperatorConfigurationList{})
-}

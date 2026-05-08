@@ -111,7 +111,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	}
 
 	if !resource.HasExportsConfigured() {
-		logger.Info(
+		logger.Warn(
 			"Invalid configuration of Dash0OperatorConfiguration resource: Self-monitoring is enabled " +
 				"but no export configuration is set. Self-monitoring telemetry will not be sent.",
 		)
@@ -123,7 +123,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	if export.Dash0 != nil {
 		token, err := GetAuthTokenForDash0Export(ctx, k8sClient, operatorNamespace, *export.Dash0, logger)
 		if err != nil || token == nil {
-			logger.Info(
+			logger.Warn(
 				"Self-monitoring is enabled but either no authorization is defined or the token could not be retrieved. " +
 					"Self-monitoring telemetry will not be sent.",
 			)

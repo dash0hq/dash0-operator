@@ -124,6 +124,8 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
+						VerifyNoUnmatchedGockRequests()
+
 						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 						deleteViewResourceIfItExists(ctx, k8sClient, TestNamespaceName, viewName)
 						deleteViewResourceIfItExists(ctx, k8sClient, extraNamespaceViews, viewName2)
@@ -917,7 +919,7 @@ var _ = Describe(
 						}
 						resourceToRequestsResult :=
 							viewReconciler.MapResourceToHttpRequests(preconditionValidationResult, apiConfig, upsertAction, logger)
-						Expect(resourceToRequestsResult.ItemsTotal).To(Equal(1))
+						Expect(resourceToRequestsResult.TotalProcessed()).To(Equal(1))
 						Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
 						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())

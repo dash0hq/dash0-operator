@@ -47,7 +47,7 @@ func (h *IntelligentEdgeValidationWebhookHandler) Handle(ctx context.Context, re
 	logger := logd.FromContext(ctx)
 	intelligentEdgeResource := &dash0v1alpha1.Dash0IntelligentEdge{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, intelligentEdgeResource); err != nil {
-		logger.Info("Rejecting invalid intelligent edge resource.", "error", err)
+		logger.Warn("Rejecting invalid intelligent edge resource.", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
@@ -57,7 +57,7 @@ func (h *IntelligentEdgeValidationWebhookHandler) Handle(ctx context.Context, re
 			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("failed to list all Dash0 intelligent edge resources: %w", err))
 		}
 		if len(allIntelligentEdgeResources.Items) > 0 {
-			logger.Info("Rejecting intelligent edge resource, another one already exists.",
+			logger.Warn("Rejecting intelligent edge resource, another one already exists.",
 				"existing", allIntelligentEdgeResources.Items[0].Name)
 			return admission.Denied(
 				fmt.Sprintf("At least one Dash0 intelligent edge resource (%s) already exists in this cluster. "+
@@ -69,7 +69,7 @@ func (h *IntelligentEdgeValidationWebhookHandler) Handle(ctx context.Context, re
 
 	if request.Operation == admissionv1.Create || request.Operation == admissionv1.Update {
 		if !h.hasDash0ExportConfigured(ctx) {
-			logger.Info("Rejecting intelligent edge resource, no Dash0 export configured.")
+			logger.Warn("Rejecting intelligent edge resource, no Dash0 export configured.")
 			return admission.Denied(
 				"No Dash0 operator configuration with a Dash0 export was found. Intelligent edge " +
 					"requires a Dash0 export with an auth token for the Decision Maker connection. " +

@@ -96,6 +96,8 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
+						VerifyNoUnmatchedGockRequests()
+
 						deleteSamplingRuleResourceIfItExists(ctx, k8sClient, samplingRuleName)
 						deleteSamplingRuleResourceIfItExists(ctx, k8sClient, samplingRuleName2)
 					},
@@ -497,7 +499,7 @@ spec:
 							upsertAction,
 							logger,
 						)
-					Expect(resourceToRequestsResult.ItemsTotal).To(Equal(1))
+					Expect(resourceToRequestsResult.TotalProcessed()).To(Equal(1))
 					Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())
 					Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
 

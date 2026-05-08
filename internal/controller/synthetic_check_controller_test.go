@@ -124,6 +124,8 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
+						VerifyNoUnmatchedGockRequests()
+
 						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 						deleteSyntheticCheckResourceIfItExists(ctx, k8sClient, TestNamespaceName, syntheticCheckName)
 						deleteSyntheticCheckResourceIfItExists(ctx, k8sClient, extraNamespaceSyntheticChecks, syntheticCheckName2)
@@ -744,7 +746,7 @@ var _ = Describe(
 								upsertAction,
 								logger,
 							)
-						Expect(resourceToRequestsResult.ItemsTotal).To(Equal(1))
+						Expect(resourceToRequestsResult.TotalProcessed()).To(Equal(1))
 						Expect(resourceToRequestsResult.OriginsInResource).To(BeNil())
 						Expect(resourceToRequestsResult.ValidationIssues).To(BeNil())
 						Expect(resourceToRequestsResult.SynchronizationErrors).To(BeNil())

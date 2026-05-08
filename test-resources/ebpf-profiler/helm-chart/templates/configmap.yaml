@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ebpf-profiler-config
+data:
+  config.yaml: |
+    receivers:
+      profiling:
+
+    {{- if .Values.namespaceOverride }}
+    processors:
+      resource:
+        attributes:
+          - key: k8s.namespace.name
+            value: {{ .Values.namespaceOverride }}
+            action: upsert
+    {{- end }}
+
+    exporters:
+      otlp/collector:
+        endpoint: {{ .Values.collector.endpoint }}
+        tls:
+          insecure: {{ .Values.collector.insecure }}
+      debug:
+        verbosity: detailed
+
+    service:
+      telemetry:
+        logs:
+          level: info
+      pipelines:
+        profiles:
+          receivers: [profiling]
+          {{- if .Values.namespaceOverride }}
+          processors: [resource]
+          {{- end }}
+          exporters: [otlp/collector, debug]

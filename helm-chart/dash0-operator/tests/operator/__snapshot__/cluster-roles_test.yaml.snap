@@ -186,6 +186,22 @@ cluster roles should match snapshot:
       - apiGroups:
           - operator.dash0.com
         resources:
+          - dash0spamfilters
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0spamfilters/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
           - dash0intelligentedges
         verbs:
           - create

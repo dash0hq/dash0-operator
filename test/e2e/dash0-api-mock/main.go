@@ -24,6 +24,9 @@ var (
 
 	checkRuleOrigins     []string
 	checkRuleOriginMutex sync.RWMutex
+
+	recordingRuleOrigins     []string
+	recordingRuleOriginMutex sync.RWMutex
 )
 
 func main() {
@@ -44,11 +47,18 @@ func main() {
 	router.PUT("/api/notification-channels/:origin", handleNotificationChannelRequest)
 	router.DELETE("/api/notification-channels/:origin", handleNotificationChannelRequest)
 
+	router.PUT("/api/spam-filters/:origin", handleSpamFilterRequest)
+	router.DELETE("/api/spam-filters/:origin", handleSpamFilterRequest)
+
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
 	router.DELETE("/api/dashboards/:origin", handleDashboardRequest)
 
 	router.PUT("/api/sampling-rules/:origin", handleSamplingRuleRequest)
 	router.DELETE("/api/sampling-rules/:origin", handleSamplingRuleRequest)
+
+	router.GET("/api/recording-rules", handleGetRecordingRuleOriginsRequest)
+	router.PUT("/api/recording-rules/:origin", handlePutRecordingRuleRequest)
+	router.DELETE("/api/recording-rules/:origin", handleDeleteRecordingRuleRequest)
 
 	router.GET("/api/alerting/check-rules", handleGetCheckRuleOriginsRequest)
 	router.PUT("/api/alerting/check-rules/:origin", handlePutCheckRuleRequest)
@@ -97,6 +107,13 @@ func handleNotificationChannelRequest(ginCtx *gin.Context) {
 }
 
 func handleSamplingRuleRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+func handleSpamFilterRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	ginCtx.JSON(http.StatusOK, map[string]any{
 		"message": "ok",
@@ -167,6 +184,73 @@ func deleteCheckRuleOrigin(ginCtx *gin.Context) bool {
 	checkRuleOriginMutex.Lock()
 	defer checkRuleOriginMutex.Unlock()
 	checkRuleOrigins = slices.DeleteFunc(checkRuleOrigins, func(val string) bool { return val == checkRuleOrigin })
+	return true
+}
+
+func handleGetRecordingRuleOriginsRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+
+	recordingRuleOriginMutex.RLock()
+	defer recordingRuleOriginMutex.RUnlock()
+
+	responsePayload := make([]any, 0, len(recordingRuleOrigins))
+	for _, recordingRuleOrigin := range recordingRuleOrigins {
+		responsePayload = append(responsePayload, map[string]any{
+			"origin": recordingRuleOrigin,
+		})
+	}
+	ginCtx.JSON(http.StatusOK, responsePayload)
+}
+
+func handlePutRecordingRuleRequest(ginCtx *gin.Context) {
+	ok := storeRecordingRuleOrigin(ginCtx)
+	if !ok {
+		return
+	}
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+func storeRecordingRuleOrigin(ginCtx *gin.Context) bool {
+	recordingRuleOrigin := ginCtx.Param("origin")
+	if recordingRuleOrigin == "" {
+		ginCtx.JSON(http.StatusBadRequest, map[string]any{
+			"message": "recording rule origin is required",
+		})
+		return false
+	}
+
+	recordingRuleOriginMutex.Lock()
+	defer recordingRuleOriginMutex.Unlock()
+	recordingRuleOrigins = append(recordingRuleOrigins, recordingRuleOrigin)
+	return true
+}
+
+func handleDeleteRecordingRuleRequest(ginCtx *gin.Context) {
+	ok := deleteRecordingRuleOrigin(ginCtx)
+	if !ok {
+		return
+	}
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+func deleteRecordingRuleOrigin(ginCtx *gin.Context) bool {
+	recordingRuleOrigin := ginCtx.Param("origin")
+	if recordingRuleOrigin == "" {
+		ginCtx.JSON(http.StatusBadRequest, map[string]any{
+			"message": "recording rule origin is required",
+		})
+		return false
+	}
+
+	recordingRuleOriginMutex.Lock()
+	defer recordingRuleOriginMutex.Unlock()
+	recordingRuleOrigins = slices.DeleteFunc(recordingRuleOrigins, func(val string) bool { return val == recordingRuleOrigin })
 	return true
 }
 

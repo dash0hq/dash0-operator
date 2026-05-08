@@ -84,6 +84,8 @@ var _ = Describe(
 
 		AfterEach(
 			func() {
+				VerifyNoUnmatchedGockRequests()
+
 				DeleteMonitoringResource(ctx, k8sClient)
 				for _, name := range extraMonitoringResourceNames {
 					DeleteMonitoringResourceByName(ctx, k8sClient, name, true)
@@ -486,7 +488,7 @@ var _ = Describe(
 							logger,
 						)
 
-						Expect(result.ItemsTotal).To(Equal(1))
+						Expect(result.TotalProcessed()).To(Equal(1))
 						Expect(result.SynchronizationErrors).To(BeNil())
 						Expect(result.ApiRequests).To(HaveLen(1))
 
