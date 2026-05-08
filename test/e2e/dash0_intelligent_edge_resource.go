@@ -16,6 +16,10 @@ import (
 
 const intelligentEdgeName = "dash0-intelligent-edge"
 
+func shouldRunIntelligentEdgeTests() bool {
+	return os.Getenv("E2E_ENABLE_INTELLIGENT_EDGE_TESTS") == "true"
+}
+
 type intelligentEdgeValues struct {
 	DecisionMakerEndpoint   string
 	ControlPlaneApiEndpoint string
