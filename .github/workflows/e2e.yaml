@@ -18,14 +18,9 @@ on:
       pr_number:
         required: false
         description: PR number to report results back to (set automatically when triggered via PR comment).
-      enable_ie_tests:
-        required: false
-        default: false
-        description: Enable the Intelligent Edge e2e tests. Requires pulling the private IE images from ghcr.io.
-        type: boolean
       ie_image_tag:
         required: false
-        description: Tag of ghcr.io/dash0hq/intelligent-edge-collector and ghcr.io/dash0hq/barker to pull. If empty, the highest vX.Y.Z tag published to ghcr is resolved at runtime. Only used when enable_ie_tests is true.
+        description: Tag of ghcr.io/dash0hq/intelligent-edge-collector and ghcr.io/dash0hq/barker to pull. If empty, the highest vX.Y.Z tag published to ghcr is resolved at runtime.
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -36,6 +31,7 @@ env:
   ALLOWED_KUBECTXS: kind-dash0-operator-ci
   E2E_KUBECTX: kind-dash0-operator-ci
   IMAGE_REPOSITORY_PREFIX: "localhost:5001/"
+  E2E_ENABLE_INTELLIGENT_EDGE_TESTS: "true"
 
 jobs:
   run-e2e-tests-on-kind:
@@ -59,7 +55,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve IE image tag
-        if: ${{ inputs.enable_ie_tests }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_IE_TAG: ${{ inputs.ie_image_tag }}
@@ -161,7 +156,6 @@ jobs:
           curl -s http://localhost:5001/v2/_catalog || echo "Registry catalog endpoint responded"
 
       - name: Pull private IE images and load into kind
-        if: ${{ inputs.enable_ie_tests }}
         run: |
           images=(
             "ghcr.io/dash0hq/intelligent-edge-collector:${IE_IMAGE_TAG}"
@@ -175,7 +169,6 @@ jobs:
       - name: Run e2e tests
         env:
           GINKGO_FOCUS: ${{ inputs.focus }}
-          E2E_ENABLE_INTELLIGENT_EDGE_TESTS: ${{ inputs.enable_ie_tests }}
           INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY: ghcr.io/dash0hq/intelligent-edge-collector
           INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG: ${{ env.IE_IMAGE_TAG }}
           INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY: Never
