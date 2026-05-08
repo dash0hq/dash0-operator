@@ -56,6 +56,16 @@ TARGET_ALLOCATOR_IMAGE_TAG ?= $(IMAGE_TAG)
 TARGET_ALLOCATOR_IMAGE ?= $(TARGET_ALLOCATOR_IMAGE_REPOSITORY):$(TARGET_ALLOCATOR_IMAGE_TAG)
 TARGET_ALLOCATOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
+INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)intelligent-edge-collector
+INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
+INTELLIGENT_EDGE_COLLECTOR_IMAGE ?= $(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY):$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG)
+INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
+BARKER_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)barker
+BARKER_IMAGE_TAG ?= $(IMAGE_TAG)
+BARKER_IMAGE ?= $(BARKER_IMAGE_REPOSITORY):$(BARKER_IMAGE_TAG)
+BARKER_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
 # Variables for test application container images:
 
 TEST_IMAGE_REPOSITORY_PREFIX ?= $(IMAGE_REPOSITORY_PREFIX)
@@ -316,6 +326,20 @@ all-auxiliary-images: \
   dash0-api-mock-image \
   telemetry-matcher-image ## Build all auxiliary images that are used in test scripts and/or e2e tests, that is, test applications, dash0-api-mock, telemetry-matcher etc. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
+# This target is a helper for testing. The production images will be built in the source repo of the IE images.
+.PHONY: all-images-with-ie
+all-images-with-ie: ## Build all images including the intelligent edge collector and barker. Requires DASH0_REPO_ROOT.
+	@if [ -z "$$DASH0_REPO_ROOT" ]; then \
+		echo "Error: DASH0_REPO_ROOT must be set to the dash0 monorepo path, e.g. DASH0_REPO_ROOT=/path/to/dash0 make all-images-with-ie" >&2; \
+		exit 1; \
+	fi
+	@$(MAKE) all-images
+	@INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY) \
+	  INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG) \
+	  BARKER_IMAGE_REPOSITORY=$(BARKER_IMAGE_REPOSITORY) \
+	  BARKER_IMAGE_TAG=$(BARKER_IMAGE_TAG) \
+	  test-resources/intelligentedge/build-ie-and-barker.sh
+
 PHONY: test-app-images
 test-app-images: \
   test-app-image-dotnet \
@@ -357,6 +381,16 @@ push-all-auxiliary-images: \
   push-test-app-images \
   push-dash0-api-mock-image \
   push-telemetry-matcher-image ## Push all auxiliary images that are used in test scripts and/or e2e tests, that is, test applications, dash0-api-mock, telemetry-matcher etc.
+
+# This target is a helper for testing. The production images will be pushed in the source repo of the IE images.
+.PHONY: push-all-images-with-ie
+push-all-images-with-ie: ## Push all images including the intelligent edge collector and barker.
+	@$(MAKE) push-all-images
+	@INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY) \
+	  INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG) \
+	  BARKER_IMAGE_REPOSITORY=$(BARKER_IMAGE_REPOSITORY) \
+	  BARKER_IMAGE_TAG=$(BARKER_IMAGE_TAG) \
+	  test-resources/intelligentedge/build-ie-and-barker.sh --push-only
 
 PHONY: push-test-app-images
 push-test-app-images: \
@@ -525,6 +559,12 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 		--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
 		--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
 		--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
+		--set operator.intelligentEdgeCollectorImage.repository=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY) \
+		--set operator.intelligentEdgeCollectorImage.tag=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG) \
+		--set operator.intelligentEdgeCollectorImage.pullPolicy=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY) \
+		--set operator.barkerImage.repository=$(BARKER_IMAGE_REPOSITORY) \
+		--set operator.barkerImage.tag=$(BARKER_IMAGE_TAG) \
+		--set operator.barkerImage.pullPolicy=$(BARKER_IMAGE_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
