@@ -18,6 +18,10 @@ on:
       pr_number:
         required: false
         description: PR number to report results back to (set automatically when triggered via PR comment).
+      ie_image_tag:
+        required: false
+        default: latest
+        description: Tag of ghcr.io/dash0hq/intelligent-edge-collector and ghcr.io/dash0hq/barker to pull.
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -28,6 +32,7 @@ env:
   ALLOWED_KUBECTXS: kind-dash0-operator-ci
   E2E_KUBECTX: kind-dash0-operator-ci
   IMAGE_REPOSITORY_PREFIX: "localhost:5001/"
+  IE_IMAGE_TAG: ${{ inputs.ie_image_tag || 'latest' }}
 
 jobs:
   run-e2e-tests-on-kind:
@@ -37,10 +42,18 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      packages: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: go version
         run: |
@@ -112,9 +125,26 @@ jobs:
           echo "Testing registry connectivity..."
           curl -s http://localhost:5001/v2/_catalog || echo "Registry catalog endpoint responded"
 
+      - name: Pull private IE images and load into kind
+        run: |
+          images=(
+            "ghcr.io/dash0hq/intelligent-edge-collector:${IE_IMAGE_TAG}"
+            "ghcr.io/dash0hq/barker:${IE_IMAGE_TAG}"
+          )
+          for img in "${images[@]}"; do
+            docker pull "$img"
+            kind load docker-image "$img" --name "$DASH0_KIND_CLUSTER"
+          done
+
       - name: Run e2e tests
         env:
           GINKGO_FOCUS: ${{ inputs.focus }}
+          INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY: ghcr.io/dash0hq/intelligent-edge-collector
+          INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG: ${{ env.IE_IMAGE_TAG }}
+          INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY: Never
+          BARKER_IMAGE_REPOSITORY: ghcr.io/dash0hq/barker
+          BARKER_IMAGE_TAG: ${{ env.IE_IMAGE_TAG }}
+          BARKER_IMAGE_PULL_POLICY: Never
         run: |
           make build-all-push-all-test-e2e
 
