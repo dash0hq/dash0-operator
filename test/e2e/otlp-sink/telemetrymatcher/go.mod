@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/test/e2e/otlp-sink/telemetrymatcher
 
-go 1.26.1
+go 1.26.3
 
 require (
 	github.com/dash0hq/dash0-operator/test/e2e/pkg/shared v0.0.0-00010101000000-000000000000
