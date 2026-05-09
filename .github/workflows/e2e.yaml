@@ -18,9 +18,6 @@ on:
       pr_number:
         required: false
         description: PR number to report results back to (set automatically when triggered via PR comment).
-      ie_image_tag:
-        required: false
-        description: Tag of ghcr.io/dash0hq/intelligent-edge-collector and ghcr.io/dash0hq/barker to pull. If empty, the highest vX.Y.Z tag published to ghcr is resolved at runtime.
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -47,44 +44,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
 
-      - name: Log in to ghcr.io
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve IE image tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_IE_TAG: ${{ inputs.ie_image_tag }}
-        run: |
-          set -euo pipefail
-          if [[ -n "${INPUT_IE_TAG:-}" ]]; then
-            tag="$INPUT_IE_TAG"
-            echo "Using ie_image_tag from workflow input: $tag"
-          else
-            resolve() {
-              gh api --paginate "/orgs/dash0hq/packages/container/$1/versions" \
-                --jq '.[].metadata.container.tags[]' \
-                | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
-                | sort -V | tail -1
-            }
-            iec=$(resolve intelligent-edge-collector)
-            barker=$(resolve barker)
-            if [[ -z "$iec" || -z "$barker" ]]; then
-              echo "Failed to resolve highest vX.Y.Z tag (intelligent-edge-collector='$iec', barker='$barker')" >&2
-              exit 1
-            fi
-            if [[ "$iec" != "$barker" ]]; then
-              echo "intelligent-edge-collector ($iec) and barker ($barker) have different highest tags; aborting (they are expected to move in lockstep)." >&2
-              exit 1
-            fi
-            tag="$iec"
-            echo "Resolved highest IE image tag: $tag"
-          fi
-          echo "IE_IMAGE_TAG=$tag" >> "$GITHUB_ENV"
-
       - name: go version
         run: |
           go version
@@ -108,6 +67,14 @@ jobs:
           cat > /tmp/kind-config.yaml << 'EOF'
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
+          # ghcr.io auth so kind nodes can pull the private IE collector and barker images
+          # directly using the workflow-issued GITHUB_TOKEN (requires packages: read on the job).
+          # See https://kind.sigs.k8s.io/docs/user/private-registries/.
+          containerdConfigPatches:
+            - |-
+              [plugins."io.containerd.grpc.v1.cri".registry.configs."ghcr.io".auth]
+                username = "${{ github.repository_owner }}"
+                password = "${{ secrets.GITHUB_TOKEN }}"
           nodes:
             - role: control-plane
               extraMounts:
@@ -155,26 +122,9 @@ jobs:
           echo "Testing registry connectivity..."
           curl -s http://localhost:5001/v2/_catalog || echo "Registry catalog endpoint responded"
 
-      - name: Pull private IE images and load into kind
-        run: |
-          images=(
-            "ghcr.io/dash0hq/intelligent-edge-collector:${IE_IMAGE_TAG}"
-            "ghcr.io/dash0hq/barker:${IE_IMAGE_TAG}"
-          )
-          for img in "${images[@]}"; do
-            docker pull "$img"
-            kind load docker-image "$img" --name "$DASH0_KIND_CLUSTER"
-          done
-
       - name: Run e2e tests
         env:
           GINKGO_FOCUS: ${{ inputs.focus }}
-          INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY: ghcr.io/dash0hq/intelligent-edge-collector
-          INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG: ${{ env.IE_IMAGE_TAG }}
-          INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY: Never
-          BARKER_IMAGE_REPOSITORY: ghcr.io/dash0hq/barker
-          BARKER_IMAGE_TAG: ${{ env.IE_IMAGE_TAG }}
-          BARKER_IMAGE_PULL_POLICY: Never
         run: |
           make build-all-push-all-test-e2e
 
