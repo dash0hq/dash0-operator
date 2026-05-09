@@ -1742,12 +1742,12 @@ trace_statements:
 							"webhook",
 						)
 
-						By("verifying the dash0redmetrics connector emitted dash0.spans.red")
+						By("verifying the dash0redmetrics connector emitted dash0.spans.red_services")
 						Eventually(func(g Gomega) {
 							askTelemetryMatcherForMetricNames(
 								g,
 								shared.ExpectAtLeastOne,
-								[]string{"dash0.spans.red"},
+								[]string{"dash0.spans.red_services"},
 								timestampLowerBound,
 							)
 						}, 90*time.Second, pollingInterval).Should(Succeed())

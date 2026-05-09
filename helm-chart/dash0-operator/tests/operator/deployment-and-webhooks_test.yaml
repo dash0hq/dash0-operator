@@ -1021,15 +1021,18 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[8].name
           value: DASH0_COLLECTOR_IMAGE
+      # Expected tag matches the pinned tag in helm-chart/dash0-operator/values.yaml
+      # (operator.intelligentEdgeCollectorImage.tag and operator.barkerImage.tag). IE
+      # images are sourced as external dependencies; bump these alongside values.yaml.
       - equal:
           path: spec.template.spec.containers[0].env[8].value
-          value: "ghcr.io/dash0hq/intelligent-edge-collector:1.2.3"
+          value: "ghcr.io/dash0hq/intelligent-edge-collector:v2.0.1940"
       - equal:
           path: spec.template.spec.containers[0].env[13].name
           value: DASH0_BARKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "ghcr.io/dash0hq/barker:1.2.3"
+          value: "ghcr.io/dash0hq/barker:v2.0.1940"
       - equal:
           path: spec.template.spec.containers[0].env[14].name
           value: K8S_POD_UID
