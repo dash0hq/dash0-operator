@@ -1720,6 +1720,21 @@ trace_statements:
 							dash0MonitoringValuesDefault,
 							operatorNamespace,
 						)
+						// Applying the Dash0Monitoring resource re-renders the IE daemonset
+						// collector configmap, which triggers a configuration-reloader-driven
+						// graceful restart of the collector binary. Wait for the daemonset to
+						// settle before driving traffic, otherwise spans sent during the reload
+						// window are dropped and the trace verification flakes. Mirrors the
+						// rollout-status wait used after applying the IntelligentEdge resource
+						// (see "reconfigures the collector daemonset to include the IE pipeline"
+						// test above).
+						By("verifying the collector daemonset rolls out cleanly after the Dash0Monitoring config change")
+						Expect(runAndIgnoreOutput(exec.Command(
+							"kubectl",
+							"-n", operatorNamespace,
+							"rollout", "status", collectorDaemonSetNameQualified,
+							"--timeout=120s",
+						))).To(Succeed())
 						Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 					})
 
