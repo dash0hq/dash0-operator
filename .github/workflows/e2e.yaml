@@ -5,6 +5,12 @@ name: E2E tests on kind
 
 on:
   workflow_call:
+    inputs:
+      notify_slack:
+        required: false
+        default: true
+        type: boolean
+        description: Send a Slack notification with the test outcome. Defaults to true.
     secrets:
       SLACK_BOT_TOKEN:
         required: true
@@ -18,6 +24,11 @@ on:
       pr_number:
         required: false
         description: PR number to report results back to (set automatically when triggered via PR comment).
+      notify_slack:
+        required: false
+        default: true
+        type: boolean
+        description: Send a Slack notification with the test outcome. Defaults to true.
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -129,7 +140,7 @@ jobs:
           make build-all-push-all-test-e2e
 
       - name: Send Slack notification on success
-        if: success()
+        if: success() && inputs.notify_slack
         uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
         with:
           errors: true
@@ -165,7 +176,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Send Slack notification on failure
-        if: failure()
+        if: failure() && inputs.notify_slack
         uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
         with:
           errors: true
