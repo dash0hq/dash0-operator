@@ -1529,23 +1529,15 @@ trace_statements:
 
 	}) // end of suite "with an existing operator deployment and operation configuration resource"
 
-	// Intelligent Edge (IE) tests need their own operator install: the
-	// `operator.development.intelligentEdge.enabled=true` flag swaps the daemonset
-	// collector image for the IE-specific image and gates the IE/sampling-rule
-	// reconcilers in the operator binary. Mixing this with the standard test
-	// suite would change the collector image for every test, so IE lives in a
-	// separate top-level Context with its own deploy/teardown.
+	// Intelligent Edge (IE) tests need their own operator install since IE swaps out the
+	// collector image.
 	//
-	// Gated behind E2E_ENABLE_INTELLIGENT_EDGE_TESTS=true: the IE images live in
-	// a private ghcr.io registry and would otherwise fail to pull on default runs.
+	// Gated behind E2E_ENABLE_INTELLIGENT_EDGE_TESTS=true so the e2e runs can be run without
+	// requring access to the currently private images by default.
 	if shouldRunIntelligentEdgeTests() {
 		Context("with the intelligent edge feature enabled", Ordered, func() {
 			BeforeAll(func() {
 				By("deploying the Dash0 operator with the intelligent-edge feature flag")
-				// Self-monitoring is disabled here because the IE collector binary's OTel
-				// base is older than v0.151.0 and rejects the declarative
-				// service.telemetry.resource.attributes shape emitted when internal
-				// telemetry is enabled. Re-enable once the IE base catches up.
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -1673,10 +1665,6 @@ trace_statements:
 						"dash0redmetrics:",
 						"dash0resource:",
 						"dash0operation:",
-						// `traces/ie-pre-sampling` is gated on `$hasNamespacedExporters` in
-						// the daemonset template; with only the default Dash0 export it is
-						// not rendered. `traces/sampled` is the always-present marker when
-						// sampling is enabled.
 						"traces/sampled:",
 						"forward/traces-to-sampling",
 					}
@@ -1720,14 +1708,6 @@ trace_statements:
 							dash0MonitoringValuesDefault,
 							operatorNamespace,
 						)
-						// Applying the Dash0Monitoring resource re-renders the IE daemonset
-						// collector configmap, which triggers a configuration-reloader-driven
-						// graceful restart of the collector binary. Wait for the daemonset to
-						// settle before driving traffic, otherwise spans sent during the reload
-						// window are dropped and the trace verification flakes. Mirrors the
-						// rollout-status wait used after applying the IntelligentEdge resource
-						// (see "reconfigures the collector daemonset to include the IE pipeline"
-						// test above).
 						By("verifying the collector daemonset rolls out cleanly after the Dash0Monitoring config change")
 						Expect(runAndIgnoreOutput(exec.Command(
 							"kubectl",
