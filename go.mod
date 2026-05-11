@@ -3,7 +3,7 @@ module github.com/dash0hq/dash0-operator
 go 1.26.3
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/bep/debounce v1.2.1
 	github.com/cisco-open/k8s-objectmatcher v1.10.0
 	github.com/dash0hq/dash0-api-client-go v1.12.0
@@ -17,7 +17,7 @@ require (
 	github.com/onsi/gomega v1.40.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.151.0
 	github.com/perses/perses-operator v0.2.0
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.90.1
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.91.0
 	go.opentelemetry.io/collector/component v1.57.0
 	go.opentelemetry.io/collector/pdata v1.57.0
 	go.opentelemetry.io/collector/pdata/pprofile v0.151.0
