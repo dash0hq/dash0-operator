@@ -183,11 +183,17 @@ func VerifyThatResourceIsUniqueInScope(
 
 	allResourcesAsClientObjects := make([]client.Object, 0)
 	for _, r := range allResources {
-		if !resource.IsMarkedForDeletion() {
+		if !r.IsMarkedForDeletion() {
 			// For the purpose of determining whether the resource we are currently reconciling is unique in its scope,
-			// we ignore other resources that have already been marked for deletion.
+			// we ignore resources that have already been marked for deletion.
 			allResourcesAsClientObjects = append(allResourcesAsClientObjects, r.Get())
 		}
+	}
+
+	if len(allResourcesAsClientObjects) <= 1 {
+		// After excluding resources marked for deletion there is at most one resource in scope, so the resource
+		// currently being reconciled is unique.
+		return false, nil
 	}
 
 	// We already know that there actually are multiple instances of the resource in scope (that is, in the same

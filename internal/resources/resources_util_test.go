@@ -7,10 +7,12 @@ import (
 	"context"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -112,8 +114,40 @@ var _ = Describe("resource util functions", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		createdObjectsResourcesUtilTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsResourcesUtilTest)
+		// Some tests mark monitoring resources for deletion by adding a finalizer and calling Delete. Strip those
+		// finalizers here; once the finalizer is gone the API server reaps the already-deleting resource, so the
+		// subsequent Delete call below must tolerate NotFound.
+		for _, obj := range createdObjectsResourcesUtilTest {
+			m, ok := obj.(*dash0v1beta1.Dash0Monitoring)
+			if !ok {
+				continue
+			}
+			latest := &dash0v1beta1.Dash0Monitoring{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: m.Name}, latest); err != nil {
+				continue
+			}
+			if controllerutil.RemoveFinalizer(latest, dash0common.MonitoringFinalizerId) {
+				Expect(k8sClient.Update(ctx, latest)).To(Succeed())
+			}
+		}
+		for _, obj := range createdObjectsResourcesUtilTest {
+			err := k8sClient.Delete(ctx, obj, &client.DeleteOptions{GracePeriodSeconds: new(int64)})
+			if err != nil && !apierrors.IsNotFound(err) {
+				Expect(err).NotTo(HaveOccurred())
+			}
+		}
+		createdObjectsResourcesUtilTest = make([]client.Object, 0)
 	})
+
+	markMonitoringResourceForDeletion := func(resource *dash0v1beta1.Dash0Monitoring) *dash0v1beta1.Dash0Monitoring {
+		controllerutil.AddFinalizer(resource, dash0common.MonitoringFinalizerId)
+		Expect(k8sClient.Update(ctx, resource)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		name := types.NamespacedName{Namespace: resource.Namespace, Name: resource.Name}
+		Expect(k8sClient.Get(ctx, name, resource)).To(Succeed())
+		Expect(resource.IsMarkedForDeletion()).To(BeTrue())
+		return resource
+	}
 
 	DescribeTable("VerifyThatResourceIsUniqueInScope", func(testConfig verifyThatResourceIsUniqueInScopeTest) {
 		reconciledResource := testConfig.createResources()
@@ -273,6 +307,56 @@ var _ = Describe("resource util functions", Ordered, func() {
 				// The most recent one, but it was degraded before, we do not expect VerifyThatResourceIsUniqueInScope
 				// to set its status to available, this is done by code calling VerifyThatResourceIsUniqueInScope.
 				resourceName3: resourceIsDegradedTestReason,
+			},
+		}),
+		// Regression test for an index-out-of-range panic: when the reconciled resource was marked for deletion and
+		// other resources existed in the namespace, the filter loop excluded every resource and the subsequent
+		// most-recent lookup indexed into an empty slice.
+		Entry("the reconciled resource is marked for deletion", verifyThatResourceIsUniqueInScopeTest{
+			createResources: func() *dash0v1beta1.Dash0Monitoring {
+				resource1 := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName1)
+				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource1)
+				resource1.EnsureResourceIsMarkedAsAvailable()
+				Expect(k8sClient.Status().Update(ctx, resource1)).To(Succeed())
+				time.Sleep(10 * time.Millisecond)
+
+				resource2 := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName2)
+				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource2)
+				resource2.EnsureResourceIsMarkedAsAvailable()
+				Expect(k8sClient.Status().Update(ctx, resource2)).To(Succeed())
+
+				// simulate a reconcile request for resource2 after it has been marked for deletion
+				return markMonitoringResourceForDeletion(resource2)
+			},
+			// After excluding the deletion-marked reconciled resource, only resource1 remains in scope, so the
+			// uniqueness check returns without flipping any status.
+			expectedStopReconcile: false,
+			expectedStatusConditions: map[types.NamespacedName]statusExpectations{
+				resourceName1: resourceIsAvailable,
+			},
+		}),
+		Entry("multiple resources exist but only one is not marked for deletion", verifyThatResourceIsUniqueInScopeTest{
+			createResources: func() *dash0v1beta1.Dash0Monitoring {
+				resource1 := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName1)
+				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource1)
+				resource1.EnsureResourceIsMarkedAsAvailable()
+				Expect(k8sClient.Status().Update(ctx, resource1)).To(Succeed())
+				markMonitoringResourceForDeletion(resource1)
+				time.Sleep(10 * time.Millisecond)
+
+				resource2 := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName2)
+				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource2)
+				resource2.EnsureResourceIsMarkedAsAvailable()
+				Expect(k8sClient.Status().Update(ctx, resource2)).To(Succeed())
+
+				// simulate a reconcile request for resource2, the only live resource
+				return resource2
+			},
+			expectedStopReconcile: false,
+			expectedStatusConditions: map[types.NamespacedName]statusExpectations{
+				// The deletion-marked sibling must not be flipped to degraded by the uniqueness check.
+				resourceName1: resourceIsAvailable,
+				resourceName2: resourceIsAvailable,
 			},
 		}),
 	)
