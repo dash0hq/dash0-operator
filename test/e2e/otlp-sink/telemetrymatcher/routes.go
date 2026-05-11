@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -282,6 +283,28 @@ func (r *Routes) matchingMetricsRouteHandler(c *gin.Context) {
 	case shared.MetricsMatchModeSelfMonitoringCollector:
 		resourceMatchFn = resourceAttributeMatcherSelfMonitoringCollector(commonParams.operatorNamespace)
 		metricMatchFn = hasOtelColPrefixMatcher()
+
+	case shared.MetricsMatchModeMetricNames:
+		raw := c.Query(shared.QueryParamMetricNames)
+		var metricNames []string
+		for _, name := range strings.Split(raw, ",") {
+			trimmed := strings.TrimSpace(name)
+			if trimmed != "" {
+				metricNames = append(metricNames, trimmed)
+			}
+		}
+		if len(metricNames) == 0 {
+			c.JSON(400, shared.ExpectationResult{
+				Success: false,
+				Description: fmt.Sprintf(
+					"the %s query parameter must contain at least one non-empty metric name",
+					shared.QueryParamMetricNames,
+				),
+			})
+			return
+		}
+		resourceMatchFn = matchAllResourceAttributeMatcher()
+		metricMatchFn = metricNameIsMemberOfList(metricNames)
 
 	case shared.MetricsMatchModeMatchAll:
 		resourceMatchFn = matchAllResourceAttributeMatcher()

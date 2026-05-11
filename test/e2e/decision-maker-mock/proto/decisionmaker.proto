@@ -1,0 +1,85 @@
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Vendored from the dash0 monorepo
+// (modules/proto/internal/decisionmaker/decisionmaker.proto). The vtproto
+// extensions (mempool option, vtproto/ext.proto import) have been stripped
+// because the e2e mock does not need them and stripping avoids the extra
+// dependency.
+//
+// To re-vendor: copy the upstream file, remove the vtproto import + options,
+// then run `make proto-gen-decision-maker-mock` from the repo root.
+
+syntax = "proto3";
+
+package decisionmaker;
+
+option go_package = "decision-maker-mock/proto";
+
+service DecisionMakerService {
+  // DecisionStream provides bidirectional communication for trace decisions.
+  // Clients stream satisfaction reports and receive sampling decisions.
+  rpc DecisionStream(stream TraceReports) returns (stream TraceDecisions);
+
+  // SubscribeServerInfo creates a server-side stream that pushes
+  // information about the upstream decision makers. This information can be used to calculate
+  // the appropriate distribution of upstream requests.
+  rpc SubscribeServerInfo(SubscribeServerInfoRequest) returns (stream SubscribeServerInfoResponse);
+
+  // SubscribeSamplingRules creates a server-side stream that pushes
+  // sampling rule definitions for the authenticated organization.
+  // Initial response contains all current rules; subsequent messages
+  // contain updated rules when changes are detected.
+  rpc SubscribeSamplingRules(SubscribeSamplingRulesRequest) returns (stream SubscribeSamplingRulesResponse);
+}
+
+// TraceReports contains one or more trace satisfaction reports (batched).
+message TraceReports {
+  repeated TraceSatisfaction items = 1;
+}
+
+// TraceDecisions contains one or more trace IDs to persist (batched).
+message TraceDecisions {
+  // Trace IDs that should be sampled (16-byte each).
+  repeated bytes trace_id = 1;
+  // Rule IDs that triggered each decision (parallel array, rule_id[i] corresponds to trace_id[i]).
+  // Optional for backwards compatibility - old decision-makers won't populate this field.
+  repeated bytes rule_id = 2;
+}
+
+// TraceSatisfaction represents satisfied conditions for a single trace.
+message TraceSatisfaction {
+  bytes trace_id = 1;
+  repeated Condition satisfied_conditions = 2;
+}
+
+message Condition {
+  // UUID of tail sampling rules
+  bytes tail_sampling_rule_id = 1;
+  // Which individual condition within the tail-sampling rule was satisfied
+  uint32 part = 2;
+}
+
+message SubscribeServerInfoRequest {}
+
+message SubscribeServerInfoResponse {
+  int32 number_of_decision_makers = 1;
+  // Unique identifier for this decision-maker instance.
+  string instance_id = 2;
+}
+
+message SubscribeSamplingRulesRequest {}
+
+message SubscribeSamplingRulesResponse {
+  // Sampling rules for the authenticated organization, one entry per rule.
+  repeated SamplingRule rules = 1;
+}
+
+message SamplingRule {
+  // Organization technical ID this rule belongs to.
+  string org_technical_id = 1;
+  // Dataset name (from dash0.com/dataset label, empty string for default dataset).
+  string dataset = 2;
+  // SamplingDefinition serialized as JSON bytes.
+  bytes sampling_definition_json = 3;
+}

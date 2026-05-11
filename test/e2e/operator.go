@@ -346,6 +346,20 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.targetAllocatorImage.digest", images.targetAllocator.digest)
 	arguments = setIfNotEmpty(arguments, "operator.targetAllocatorImage.pullPolicy", images.targetAllocator.pullPolicy)
 
+	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.repository",
+		images.intelligentEdgeCollector.repository)
+	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.tag",
+		images.intelligentEdgeCollector.tag)
+	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.digest",
+		images.intelligentEdgeCollector.digest)
+	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.pullPolicy",
+		images.intelligentEdgeCollector.pullPolicy)
+
+	arguments = setIfNotEmpty(arguments, "operator.barkerImage.repository", images.barker.repository)
+	arguments = setIfNotEmpty(arguments, "operator.barkerImage.tag", images.barker.tag)
+	arguments = setIfNotEmpty(arguments, "operator.barkerImage.digest", images.barker.digest)
+	arguments = setIfNotEmpty(arguments, "operator.barkerImage.pullPolicy", images.barker.pullPolicy)
+
 	return arguments
 }
 

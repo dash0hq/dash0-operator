@@ -196,6 +196,12 @@ func assembleBarkerDeployment(
 			Value: "true",
 		})
 	}
+	if spec.Barker.Insecure != nil && *spec.Barker.Insecure {
+		barkerContainer.Env = append(barkerContainer.Env, corev1.EnvVar{
+			Name:  "UPSTREAM_INSECURE",
+			Value: "true",
+		})
+	}
 	if operatorConfig != nil && util.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
 		barkerContainer.Env = append(barkerContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
 	}

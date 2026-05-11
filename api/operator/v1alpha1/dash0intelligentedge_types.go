@@ -98,6 +98,14 @@ type BarkerConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	Debug *bool `json:"debug,omitempty"`
+
+	// Disables TLS for Barker's upstream gRPC connection to the Decision Maker. Intended for local
+	// development and end-to-end testing against in-cluster mock services. Production deployments
+	// should leave this unset so that Barker requires TLS upstream. This setting is optional, it
+	// defaults to false.
+	//
+	// +kubebuilder:validation:Optional
+	Insecure *bool `json:"insecure,omitempty"`
 }
 
 // BarkerLogLevel describes the log level for the Barker proxy.

@@ -42,4 +42,5 @@ const (
 	QueryParamFailOnNamespaceOtherThan    = "fail-on-namespace-other-than"
 	QueryParamFailOnNamespaceScopedMetric = "fail-on-namespace-scoped-metric"
 	QueryParamMetricNameList              = "metric-name-list"
+	QueryParamMetricNames                 = "metric-names"
 )

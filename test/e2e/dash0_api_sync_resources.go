@@ -24,6 +24,7 @@ const (
 	persesDashboardName     = "perses-dashboard-e2e-test"
 	prometheusRuleName      = "prometheus-rules-e2e-test"
 	notificationChannelName = "notification-channel-e2e-test"
+	samplingRuleName        = "sampling-rule-e2e-test"
 	spamFilterName          = "spam-filter-e2e-test"
 )
 
@@ -47,6 +48,10 @@ var (
 	//go:embed dash0notificationchannel.yaml.template
 	notificationChannelSource   string
 	notificationChannelTemplate *template.Template
+
+	//go:embed dash0samplingrule.yaml.template
+	samplingRuleSource   string
+	samplingRuleTemplate *template.Template
 
 	//go:embed dash0spamfilter.yaml.template
 	spamFilterSource   string
@@ -381,6 +386,33 @@ func removeNotificationChannelResource(namespace string) {
 	))
 }
 
+func renderSamplingRuleTemplate(values dash0ApiResourceValues) string {
+	samplingRuleTemplate = initTemplateOnce(
+		samplingRuleTemplate,
+		samplingRuleSource,
+		"dash0samplingrule",
+	)
+	return renderResourceTemplate(samplingRuleTemplate, values, "dash0samplingrule")
+}
+
+// Dash0SamplingRule is cluster-scoped, so the helpers below do not take a namespace.
+
+func deploySamplingRuleResource(values dash0ApiResourceValues) {
+	renderedResourceFileName := renderSamplingRuleTemplate(values)
+	defer func() {
+		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
+	}()
+
+	By(fmt.Sprintf(
+		"deploying a Dash0SamplingRule resource with values %v", values))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"apply",
+		"-f",
+		renderedResourceFileName,
+	))).To(Succeed())
+}
+
 func renderSpamFilterTemplate(values dash0ApiResourceValues) string {
 	spamFilterTemplate = initTemplateOnce(
 		spamFilterTemplate,
@@ -411,6 +443,20 @@ func deploySpamFilterResource(
 	))).To(Succeed())
 }
 
+func setOptOutLabelInSamplingRule(value string) {
+	By(fmt.Sprintf("setting the opt-out label in the sampling rule with value %s", value))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"--overwrite",
+			"Dash0SamplingRule",
+			samplingRuleName,
+			fmt.Sprintf("dash0.com/enable=%s", value),
+		)),
+	).To(Succeed())
+}
+
 func setOptOutLabelInSpamFilter(namespace string, value string) {
 	By(fmt.Sprintf("setting the opt-out label in the spam filter with value %s", value))
 	Expect(
@@ -425,6 +471,16 @@ func setOptOutLabelInSpamFilter(namespace string, value string) {
 			fmt.Sprintf("dash0.com/enable=%s", value),
 		)),
 	).To(Succeed())
+}
+
+func removeSamplingRuleResource() {
+	_ = runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"delete",
+		"--ignore-not-found",
+		"Dash0SamplingRule",
+		samplingRuleName,
+	))
 }
 
 func removeSpamFilterResource(namespace string) {
@@ -445,5 +501,6 @@ func removeDash0ApiSyncResources(namespace string) {
 	removePrometheusRuleResource(namespace)
 	removeViewResource(namespace)
 	removeNotificationChannelResource(namespace)
+	removeSamplingRuleResource()
 	removeSpamFilterResource(namespace)
 }

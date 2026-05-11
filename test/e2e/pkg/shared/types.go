@@ -41,6 +41,7 @@ const (
 	MetricsMatchModeWorkload                      MetricsMatchMode = "metrics-match-mode-workload"
 	MetricsMatchModeSelfMonitoringOperatorManager MetricsMatchMode = "metrics-match-mode-self-monitoring-operator-manager"
 	MetricsMatchModeSelfMonitoringCollector       MetricsMatchMode = "metrics-match-mode-self-monitoring-collector"
+	MetricsMatchModeMetricNames                   MetricsMatchMode = "metrics-match-mode-metric-names"
 	MetricsMatchModeMatchAll                      MetricsMatchMode = "metrics-match-mode-match-all"
 )
 
@@ -49,6 +50,7 @@ var (
 		string(MetricsMatchModeWorkload),
 		string(MetricsMatchModeSelfMonitoringOperatorManager),
 		string(MetricsMatchModeSelfMonitoringCollector),
+		string(MetricsMatchModeMetricNames),
 		string(MetricsMatchModeMatchAll),
 	}
 )

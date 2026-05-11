@@ -53,6 +53,9 @@ func main() {
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
 	router.DELETE("/api/dashboards/:origin", handleDashboardRequest)
 
+	router.PUT("/api/sampling-rules/:origin", handleSamplingRuleRequest)
+	router.DELETE("/api/sampling-rules/:origin", handleSamplingRuleRequest)
+
 	router.GET("/api/recording-rules", handleGetRecordingRuleOriginsRequest)
 	router.PUT("/api/recording-rules/:origin", handlePutRecordingRuleRequest)
 	router.DELETE("/api/recording-rules/:origin", handleDeleteRecordingRuleRequest)
@@ -97,6 +100,13 @@ func handleDashboardRequest(ginCtx *gin.Context) {
 }
 
 func handleNotificationChannelRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+func handleSamplingRuleRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	ginCtx.JSON(http.StatusOK, map[string]any{
 		"message": "ok",

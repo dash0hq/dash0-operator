@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Ingress only exposes the HTTP debug port. The gRPC port is consumed in-cluster
+# by Barker and does not need external access.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: decision-maker-mock-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /decision-maker-mock(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: decision-maker-mock-service
+                port:
+                  number: {{ .Values.debugPort }}

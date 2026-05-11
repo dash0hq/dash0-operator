@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: decision-maker-mock
+  tag: latest
+  pullPolicy: Always
+
+grpcPort: 8011
+debugPort: 8101
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 32Mi
