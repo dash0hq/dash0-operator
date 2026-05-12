@@ -1227,10 +1227,6 @@ monitoring resource CRD should match snapshot:
                         items:
                           type: string
                         type: array
-                    required:
-                      - synchronizationResults
-                      - synchronizationStatus
-                      - synchronizedAt
                     type: object
                   description: Shows results of synchronizing Perses dashboard resources in this namespace via the Dash0 API.
                   type: object
@@ -1280,8 +1276,6 @@ monitoring resource CRD should match snapshot:
                               type: integer
                           required:
                             - dash0ApiEndpoint
-                            - synchronizationErrorsTotal
-                            - synchronizedRulesTotal
                           type: object
                         type: array
                       synchronizationStatus:
@@ -1296,13 +1290,6 @@ monitoring resource CRD should match snapshot:
                       synchronizedAt:
                         format: date-time
                         type: string
-                    required:
-                      - alertingRulesTotal
-                      - invalidRulesTotal
-                      - recordingRulesTotal
-                      - synchronizationResults
-                      - synchronizationStatus
-                      - synchronizedAt
                     type: object
                   description: Shows results of synchronizing Prometheus rule resources in this namespace via the Dash0 API.
                   type: object
@@ -2267,10 +2254,6 @@ monitoring resource CRD should match snapshot:
                         items:
                           type: string
                         type: array
-                    required:
-                      - synchronizationResults
-                      - synchronizationStatus
-                      - synchronizedAt
                     type: object
                   description: Shows results of synchronizing Perses dashboard resources in this namespace via the Dash0 API.
                   type: object
@@ -2426,8 +2409,6 @@ monitoring resource CRD should match snapshot:
                               type: integer
                           required:
                             - dash0ApiEndpoint
-                            - synchronizationErrorsTotal
-                            - synchronizedRulesTotal
                           type: object
                         type: array
                       synchronizationStatus:
@@ -2442,13 +2423,6 @@ monitoring resource CRD should match snapshot:
                       synchronizedAt:
                         format: date-time
                         type: string
-                    required:
-                      - alertingRulesTotal
-                      - invalidRulesTotal
-                      - recordingRulesTotal
-                      - synchronizationResults
-                      - synchronizationStatus
-                      - synchronizedAt
                     type: object
                   description: Shows results of synchronizing Prometheus rule resources in this namespace via the Dash0 API.
                   type: object
