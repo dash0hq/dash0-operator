@@ -137,9 +137,13 @@ async function runAllTests(): Promise<void> {
         );
         process.exit(1);
       }
-    } catch (error) {
-      console.error('Error checking Docker driver status:', error);
-      process.exit(1);
+    } catch {
+      // The "{{ .DriverStatus }}" Go template only resolves against Docker's Info schema.
+      // Under podman, nerdctl, finch, etc. the template fails to evaluate — that is not a
+      // problem for the test runner since this guard is specific to Docker Desktop's
+      // classic image store. Log and proceed; any real engine misconfiguration will surface
+      // on the subsequent `docker build`/`docker run` calls.
+      log('could not evaluate Docker driver status (engine is not Docker, or daemon unavailable); skipping containerd image-store check');
     }
   }
 
