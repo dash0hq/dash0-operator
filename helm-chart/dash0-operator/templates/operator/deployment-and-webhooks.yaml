@@ -1736,10 +1736,6 @@ spec:
                       items:
                         type: string
                       type: array
-                  required:
-                    - synchronizationResults
-                    - synchronizationStatus
-                    - synchronizedAt
                   type: object
                 description: Shows results of synchronizing Perses dashboard resources
                   in this namespace via the Dash0 API.
@@ -1790,9 +1786,7 @@ spec:
                           synchronizedRulesTotal:
                             type: integer
                         required:
-                          - dash0ApiEndpoint
-                          - synchronizationErrorsTotal
-                          - synchronizedRulesTotal
+                        - dash0ApiEndpoint
                         type: object
                       type: array
                     synchronizationStatus:
@@ -1807,13 +1801,6 @@ spec:
                     synchronizedAt:
                       format: date-time
                       type: string
-                  required:
-                    - alertingRulesTotal
-                    - invalidRulesTotal
-                    - recordingRulesTotal
-                    - synchronizationResults
-                    - synchronizationStatus
-                    - synchronizedAt
                   type: object
                 description: Shows results of synchronizing Prometheus rule resources
                   in this namespace via the Dash0 API.
@@ -2819,10 +2806,6 @@ spec:
                       items:
                         type: string
                       type: array
-                  required:
-                    - synchronizationResults
-                    - synchronizationStatus
-                    - synchronizedAt
                   type: object
                 description: Shows results of synchronizing Perses dashboard resources
                   in this namespace via the Dash0 API.
@@ -2980,9 +2963,7 @@ spec:
                           synchronizedRulesTotal:
                             type: integer
                         required:
-                          - dash0ApiEndpoint
-                          - synchronizationErrorsTotal
-                          - synchronizedRulesTotal
+                        - dash0ApiEndpoint
                         type: object
                       type: array
                     synchronizationStatus:
@@ -2997,13 +2978,6 @@ spec:
                     synchronizedAt:
                       format: date-time
                       type: string
-                  required:
-                    - alertingRulesTotal
-                    - invalidRulesTotal
-                    - recordingRulesTotal
-                    - synchronizationResults
-                    - synchronizationStatus
-                    - synchronizedAt
                   type: object
                 description: Shows results of synchronizing Prometheus rule resources
                   in this namespace via the Dash0 API.
