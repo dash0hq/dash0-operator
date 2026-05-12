@@ -203,7 +203,6 @@ func assembleServiceAccount(c *targetAllocatorConfig) *corev1.ServiceAccount {
 			Namespace: c.OperatorNamespace,
 			Labels:    labels(),
 		},
-		AutomountServiceAccountToken: new(false),
 	}
 }
 
@@ -333,7 +332,6 @@ func assembleService(c *targetAllocatorConfig, extraConfig util.ExtraConfig) *co
 
 func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap, extraConfig util.ExtraConfig) (*appsv1.Deployment, error) {
 	replicas := int32(1)
-	defaultMode := int32(0444)
 	cmSha, err := getSHAfromConfigmap(taConfigMap)
 	if err != nil {
 		return nil, err
@@ -354,11 +352,6 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		{
 			Name:      "config-volume",
 			MountPath: "/conf/",
-		},
-		{
-			Name:      "serviceaccount-token",
-			MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
-			ReadOnly:  true,
 		},
 	}
 
@@ -442,47 +435,6 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 				},
 			},
 		},
-		{
-			Name: "serviceaccount-token",
-			VolumeSource: corev1.VolumeSource{
-				Projected: &corev1.ProjectedVolumeSource{
-					DefaultMode: &defaultMode,
-					Sources: []corev1.VolumeProjection{
-						{
-							ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-								Path: "token",
-							},
-						},
-						{
-							ConfigMap: &corev1.ConfigMapProjection{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "kube-root-ca.crt",
-								},
-								Items: []corev1.KeyToPath{
-									{
-										Key:  "ca.crt",
-										Path: "ca.crt",
-									},
-								},
-							},
-						},
-						{
-							DownwardAPI: &corev1.DownwardAPIProjection{
-								Items: []corev1.DownwardAPIVolumeFile{
-									{
-										Path: "namespace",
-										FieldRef: &corev1.ObjectFieldSelector{
-											APIVersion: "v1",
-											FieldPath:  "metadata.namespace",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	if extraConfig.TargetAllocatorMtlsEnabled {
@@ -497,9 +449,8 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 	}
 
 	taPodSpec := corev1.PodSpec{
-		ServiceAccountName:           ServiceAccountName(c.NamePrefix),
-		AutomountServiceAccountToken: new(false),
-		Tolerations:                  extraConfig.TargetAllocatorTolerations,
+		ServiceAccountName: ServiceAccountName(c.NamePrefix),
+		Tolerations:        extraConfig.TargetAllocatorTolerations,
 		Containers: []corev1.Container{
 			taContainer,
 		},
