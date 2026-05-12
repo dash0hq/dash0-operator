@@ -88,7 +88,10 @@ jobs:
           github-token: ${{ secrets.E2E_DISPATCH_PAT }}
           script: |
             const prInfo = JSON.parse(process.env.PR_INFO);
-            const inputs = { pr_number: String(context.issue.number) };
+            const inputs = {
+              pr_number: String(context.issue.number),
+              notify_slack: 'false',
+            };
             if (process.env.FOCUS) {
               inputs.focus = process.env.FOCUS;
             }
