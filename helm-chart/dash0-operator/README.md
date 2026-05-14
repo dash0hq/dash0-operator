@@ -627,7 +627,7 @@ The Dash0 monitoring resource supports additional configuration settings:
        A list of OTTL conditions for filtering individual data points of metrics.
        All data points where at least one condition evaluates to true will be dropped.
 	   If all datapoints for a metric are dropped, the metric will also be dropped.
-    * `spec.filter.logs.log_record`:
+    * `spec.filter.logs.log_records`:
        A list of OTTL conditions for filtering log records.
        All log records where at least one condition evaluates to true will be dropped.
     * `spec.filter.profiles.profile`:
