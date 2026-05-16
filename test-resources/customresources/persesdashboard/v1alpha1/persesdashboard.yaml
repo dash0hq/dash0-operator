@@ -1,7 +1,7 @@
 apiVersion: perses.dev/v1alpha1
 kind: PersesDashboard
 metadata:
-  name: perses-dashboard-test
+  name: perses-dashboard-test-v1alpha1
   labels:
     app.kubernetes.io/name: perses-dashboard
     app.kubernetes.io/instance: perses-dashboard-sample

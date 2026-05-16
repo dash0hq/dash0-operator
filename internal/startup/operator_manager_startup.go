@@ -19,6 +19,7 @@ import (
 	dash0apiclient "github.com/dash0hq/dash0-api-client-go"
 	"github.com/go-logr/zapr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
+	persesv1alpha2 "github.com/perses/perses-operator/api/v1alpha2"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -67,6 +68,8 @@ type environmentVariables struct {
 	operatorNamespace                           string
 	deploymentName                              string
 	webhookServiceName                          string
+	webhookServicePort                          int32
+	autoPatchPersesDashboardConversionWebhook   bool
 	oTelCollectorNamePrefix                     string
 	targetAllocatorNamePrefix                   string
 	operatorImage                               string
@@ -143,6 +146,8 @@ const (
 	operatorNamespaceEnvVarName                           = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                              = "DASH0_DEPLOYMENT_NAME"
 	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
+	webhookServicePortEnvVarName                          = "DASH0_WEBHOOK_SERVICE_PORT"
+	persesDashboardAutoPatchConversionWebhookEnvVarName   = "DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK"
 	oTelCollectorNamePrefixEnvVarName                     = "OTEL_COLLECTOR_NAME_PREFIX"
 	targetAllocatorNamePrefixEnvVarName                   = "OTEL_TARGET_ALLOCATOR_NAME_PREFIX"
 	operatorImageEnvVarName                               = "DASH0_OPERATOR_IMAGE"
@@ -214,6 +219,7 @@ func init() {
 	// required for Perses dashboard controller and Prometheus rules controller.
 	utilruntime.Must(apiextensionsv1.AddToScheme(runtimeScheme))
 	utilruntime.Must(persesv1alpha1.AddToScheme(runtimeScheme))
+	utilruntime.Must(persesv1alpha2.AddToScheme(runtimeScheme))
 	utilruntime.Must(prometheusv1.AddToScheme(runtimeScheme))
 }
 
@@ -731,6 +737,14 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, webhookServiceNameEnvVarName)
 	}
 
+	webhookServicePort, err := readWebhookServicePortFromEnvironmentVariable()
+	if err != nil {
+		return err
+	}
+
+	autoPatchPersesDashboardConversionWebhook :=
+		readOptionalBoolFromEnvironmentVariable(persesDashboardAutoPatchConversionWebhookEnvVarName, true)
+
 	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
@@ -853,6 +867,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		operatorNamespace:                           operatorNamespace,
 		deploymentName:                              deploymentName,
 		webhookServiceName:                          webhookServiceName,
+		webhookServicePort:                          webhookServicePort,
+		autoPatchPersesDashboardConversionWebhook:   autoPatchPersesDashboardConversionWebhook,
 		oTelCollectorNamePrefix:                     oTelCollectorNamePrefix,
 		targetAllocatorNamePrefix:                   targetAllocatorNamePrefix,
 		operatorImage:                               operatorImage,
@@ -898,6 +914,26 @@ func readExtraConfigMap() error {
 		return err
 	}
 	return nil
+}
+
+func readWebhookServicePortFromEnvironmentVariable() (int32, error) {
+	raw, isSet := os.LookupEnv(webhookServicePortEnvVarName)
+	if !isSet {
+		return 0, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, webhookServicePortEnvVarName)
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("cannot parse %s=%q as integer: %w", webhookServicePortEnvVarName, raw, err)
+	}
+	return int32(parsed), nil
+}
+
+func readOptionalBoolFromEnvironmentVariable(envVarName string, defaultValue bool) bool {
+	raw, isSet := os.LookupEnv(envVarName)
+	if !isSet {
+		return defaultValue
+	}
+	return strings.ToLower(raw) == envVarValueTrue
 }
 
 func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.PullPolicy {
@@ -1486,6 +1522,12 @@ func startDash0Controllers(
 		thirdPartyResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
+		controller.PersesDashboardConversionWebhookSettings{
+			AutoPatchConversionWebhook: envVars.autoPatchPersesDashboardConversionWebhook,
+			OperatorNamespace:          envVars.operatorNamespace,
+			WebhookServiceName:         envVars.webhookServiceName,
+			WebhookServicePort:         envVars.webhookServicePort,
+		},
 	)
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
@@ -1875,6 +1917,9 @@ func setupResourceWebhooks(mgr ctrl.Manager, k8sClient client.Client, operatorNa
 	}
 	if err := webhooks.SetupDash0MonitoringConversionWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring conversion webhook: %w", err)
+	}
+	if err := webhooks.SetupPersesDashboardConversionWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the Perses dashboard conversion webhook: %w", err)
 	}
 	return nil
 }

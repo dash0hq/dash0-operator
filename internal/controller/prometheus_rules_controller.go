@@ -20,6 +20,7 @@ import (
 
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -141,6 +142,17 @@ func (r *PrometheusRuleCrdReconciler) SkipNameValidation() bool {
 	return r.skipNameValidation
 }
 
+func (r *PrometheusRuleCrdReconciler) WantsCrdUpdateEvents() bool {
+	return false
+}
+
+// OnCrdChange is a no-op for PrometheusRule — the CRD has a single version (v1) and we have
+// nothing to derive from observing the CRD object. The hook is required to satisfy the
+// ThirdPartyCrdReconciler interface (see PersesDashboardCrdReconciler for a reconciler that
+// uses it to choose between served versions).
+func (r *PrometheusRuleCrdReconciler) OnCrdChange(_ *apiextensionsv1.CustomResourceDefinition, _ logd.Logger) {
+}
+
 func (r *PrometheusRuleCrdReconciler) OperatorManagerIsLeader() bool {
 	return r.leaderElectionAware.IsLeader()
 }
@@ -177,7 +189,7 @@ func (r *PrometheusRuleCrdReconciler) SetupWithManager(
 
 func (r *PrometheusRuleCrdReconciler) Create(
 	ctx context.Context,
-	_ event.TypedCreateEvent[client.Object],
+	e event.TypedCreateEvent[client.Object],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	if prometheusRuleCrdReconcileRequestMetric != nil {
@@ -185,6 +197,9 @@ func (r *PrometheusRuleCrdReconciler) Create(
 	}
 	logger := logd.FromContext(ctx)
 	r.prometheusRuleCrdExists.Store(true)
+	if crd, ok := e.Object.(*apiextensionsv1.CustomResourceDefinition); ok {
+		r.OnCrdChange(crd, logger)
+	}
 	maybeStartWatchingThirdPartyResources(r, logger)
 }
 
@@ -193,8 +208,7 @@ func (r *PrometheusRuleCrdReconciler) Update(
 	event.TypedUpdateEvent[client.Object],
 	workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
-	// should not be called, we are not interested in updates
-	// note: update is called twice prior to delete, it is also called twice after an actual create
+	// We are not interested in updates of the PrometheusRule CRD.
 }
 
 func (r *PrometheusRuleCrdReconciler) Delete(

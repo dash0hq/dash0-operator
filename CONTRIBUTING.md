@@ -219,9 +219,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM`: Set this to "false" to omit the Helm settings which make the operator
       deploy the Dash0 operator configuration resource (aka auto configuration resource) automatically at startup.
       This defaults to "true".
-    * `DEPLOY_PERSES_DASHBOARD`: Set to "true" to deploy a Perses dashboard resource that will be synchronized to Dash0
-      via the Dash0 API.
-      This defaults to "false".
+    * `DEPLOY_PERSES_DASHBOARD`: Set to "v1alpha2" or "v1alpha1" to deploy a Perses dashboard resource that will be
+      synchronized to Dash0 via the Dash0 API. This defaults to "false". Use "true" to deploy the latest version.
     * `DEPLOY_PROMETHEUS_RULE`: Set to "true" to deploy Prometheus rule resource that will be synchronized to Dash0 via
       the Dash0 API.
       This defaults to "false".

@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"text/template"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -19,14 +21,16 @@ type dash0ApiResourceValues struct {
 }
 
 const (
-	syntheticCheckName      = "synthetic-check-e2e-test"
-	viewName                = "view-e2e-test"
-	persesDashboardName     = "perses-dashboard-e2e-test"
-	prometheusRuleName      = "prometheus-rules-e2e-test"
-	notificationChannelName = "notification-channel-e2e-test"
-	samplingRuleName        = "sampling-rule-e2e-test"
-	signalToMetricsName     = "signal-to-metrics-e2e-test"
-	spamFilterName          = "spam-filter-e2e-test"
+	syntheticCheckName        = "synthetic-check-e2e-test"
+	viewName                  = "view-e2e-test"
+	persesDashboardNamePrefix = "perses-dashboard-e2e-test"
+	persesDashboardV1Alpha1   = "v1alpha1"
+	persesDashboardV1Alpha2   = "v1alpha2"
+	prometheusRuleName        = "prometheus-rules-e2e-test"
+	notificationChannelName   = "notification-channel-e2e-test"
+	samplingRuleName          = "sampling-rule-e2e-test"
+	signalToMetricsName       = "signal-to-metrics-e2e-test"
+	spamFilterName            = "spam-filter-e2e-test"
 )
 
 var (
@@ -38,9 +42,13 @@ var (
 	viewSource   string
 	viewTemplate *template.Template
 
-	//go:embed persesdashboard.yaml.template
-	persesDashboardSource   string
-	persesDashboardTemplate *template.Template
+	//go:embed persesdashboard.v1alpha1.yaml.template
+	persesDashboardV1Alpha1Source   string
+	persesDashboardV1Alpha1Template *template.Template
+
+	//go:embed persesdashboard.v1alpha2.yaml.template
+	persesDashboardV1Alpha2Source   string
+	persesDashboardV1Alpha2Template *template.Template
 
 	//go:embed prometheusrule.yaml.template
 	prometheusRuleSource   string
@@ -217,26 +225,41 @@ func removeViewResource(namespace string) {
 	))
 }
 
-func renderPersesDashboardTemplate(values dash0ApiResourceValues) string {
-	persesDashboardTemplate = initTemplateOnce(
-		persesDashboardTemplate,
-		persesDashboardSource,
-		"persesdashboard",
-	)
-	return renderResourceTemplate(persesDashboardTemplate, values, "persesdashboard")
+func renderPersesDashboardTemplate(version string, values dash0ApiResourceValues) string {
+	switch version {
+	case persesDashboardV1Alpha1:
+		persesDashboardV1Alpha1Template = initTemplateOnce(
+			persesDashboardV1Alpha1Template,
+			persesDashboardV1Alpha1Source,
+			"persesdashboard-v1alpha1",
+		)
+		return renderResourceTemplate(persesDashboardV1Alpha1Template, values, "persesdashboard-v1alpha1")
+	case persesDashboardV1Alpha2:
+		persesDashboardV1Alpha2Template = initTemplateOnce(
+			persesDashboardV1Alpha2Template,
+			persesDashboardV1Alpha2Source,
+			"persesdashboard-v1alpha2",
+		)
+		return renderResourceTemplate(persesDashboardV1Alpha2Template, values, "persesdashboard-v1alpha2")
+	default:
+		Fail(fmt.Sprintf("unsupported PersesDashboard template version %q (must be v1alpha1 or v1alpha2)", version))
+		return ""
+	}
 }
 
 func deployPersesDashboardResource(
 	namespace string,
+	version string,
 	values dash0ApiResourceValues,
 ) {
-	renderedResourceFileName := renderPersesDashboardTemplate(values)
+	renderedResourceFileName := renderPersesDashboardTemplate(version, values)
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a PersesDashboard resource to namespace %s with values %v", namespace, values))
+		"deploying a PersesDashboard %s resource to namespace %s with values %v",
+		version, namespace, values))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -247,7 +270,7 @@ func deployPersesDashboardResource(
 	))).To(Succeed())
 }
 
-func setOptOutLabelInPersesDashboard(namespace string, value string) {
+func setOptOutLabelInPersesDashboard(namespace string, version string, value string) {
 	By(fmt.Sprintf("setting the opt-out label in the Perses dashboard with value %s", value))
 	Expect(
 		runAndIgnoreOutput(exec.Command(
@@ -257,13 +280,13 @@ func setOptOutLabelInPersesDashboard(namespace string, value string) {
 			namespace,
 			"--overwrite",
 			"PersesDashboard",
-			persesDashboardName,
+			persesDashboardName(version),
 			fmt.Sprintf("dash0.com/enable=%s", value),
 		)),
 	).To(Succeed())
 }
 
-func removePersesDashboardResource(namespace string) {
+func removePersesDashboardResource(namespace string, version string) {
 	_ = runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"delete",
@@ -271,8 +294,12 @@ func removePersesDashboardResource(namespace string) {
 		"-n",
 		namespace,
 		"PersesDashboard",
-		persesDashboardName,
+		persesDashboardName(version),
 	))
+}
+
+func persesDashboardName(version string) string {
+	return fmt.Sprintf("%s-%s", persesDashboardNamePrefix, version)
 }
 
 func renderPrometheusRuleTemplate(values dash0ApiResourceValues) string {
@@ -560,11 +587,42 @@ func removeSignalToMetricsResource(namespace string) {
 
 func removeDash0ApiSyncResources(namespace string) {
 	removeSyntheticCheckResource(namespace)
-	removePersesDashboardResource(namespace)
+	removePersesDashboardResource(namespace, persesDashboardV1Alpha1)
+	removePersesDashboardResource(namespace, persesDashboardV1Alpha2)
 	removePrometheusRuleResource(namespace)
 	removeViewResource(namespace)
 	removeNotificationChannelResource(namespace)
 	removeSamplingRuleResource()
 	removeSignalToMetricsResource(namespace)
 	removeSpamFilterResource(namespace)
+}
+
+// verifyPersesDashboardCrdConversionWebhookConfigured polls the perses.dev PersesDashboard CRD and asserts that the Dash0
+// operator has patched its spec.conversion stanza to point at the  operator's webhook. The operator applies the patch at startup;
+// this verification proves the patch landed before any dashboard write reaches the API server. Without it, v1alpha1 dashboards
+// would be silently pruned to the v1alpha2 storage schema.
+func verifyPersesDashboardCrdConversionWebhookConfigured(operatorNamespace string) {
+	By("verifying the Dash0 operator has patched the perses.dev PersesDashboard CRD's conversion webhook")
+	Eventually(func(g Gomega) {
+		output, err := run(exec.Command(
+			"kubectl",
+			"get",
+			"crd",
+			"persesdashboards.perses.dev",
+			"-o",
+			"jsonpath={.spec.conversion.strategy}|"+
+				"{.spec.conversion.webhook.clientConfig.service.namespace}|"+
+				"{.spec.conversion.webhook.clientConfig.service.name}|"+
+				"{.spec.conversion.webhook.clientConfig.service.path}|"+
+				"{.spec.conversion.webhook.clientConfig.service.port}",
+		))
+		g.Expect(err).NotTo(HaveOccurred())
+		parts := strings.Split(strings.TrimSpace(output), "|")
+		g.Expect(parts).To(HaveLen(5), "unexpected jsonpath output: %q", output)
+		g.Expect(parts[0]).To(Equal("Webhook"), "expected conversion strategy Webhook, got %q (full output: %q)", parts[0], output)
+		g.Expect(parts[1]).To(Equal(operatorNamespace), "expected service namespace %q, got %q", operatorNamespace, parts[1])
+		g.Expect(parts[2]).To(Equal("dash0-operator-webhook-service"))
+		g.Expect(parts[3]).To(Equal("/convert-persesdashboard"))
+		g.Expect(parts[4]).To(Equal("443"))
+	}, 30*time.Second, 1*time.Second).Should(Succeed())
 }

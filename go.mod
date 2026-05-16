@@ -16,7 +16,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.29.0
 	github.com/onsi/gomega v1.41.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.152.0
-	github.com/perses/perses-operator v0.2.0
+	github.com/perses/perses-operator v0.4.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.91.0
 	go.opentelemetry.io/collector/component v1.58.0
 	go.opentelemetry.io/collector/pdata v1.58.0
@@ -87,6 +87,7 @@ require (
 	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -103,8 +104,11 @@ require (
 	github.com/nexucis/lamenv v0.5.2 // indirect
 	github.com/oapi-codegen/runtime v1.4.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.152.0 // indirect
+	github.com/openshift/api v0.0.0-20260416215613-f9587f6e7c60 // indirect
+	github.com/openshift/controller-runtime-common v0.0.0-20260318085703-1812aed6dbd2 // indirect
+	github.com/openshift/library-go v0.0.0-20260213153706-03f1709971c5 // indirect
 	github.com/perses/common v0.30.2 // indirect
-	github.com/perses/perses v0.53.0 // indirect
+	github.com/perses/perses v0.53.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
@@ -113,6 +117,7 @@ require (
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
+	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/twmb/murmur3 v1.1.8 // indirect
@@ -156,6 +161,9 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
+	k8s.io/apiserver v0.36.1 // indirect
+	k8s.io/component-base v0.36.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect

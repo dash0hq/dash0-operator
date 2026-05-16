@@ -20,11 +20,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const (
-	OperatorWebhookServiceName        = "dash0-operator-webhook-service"
-	OperatorConfigurationResourceName = "dash0-operator-configuration-test"
-)
-
 var (
 	OperatorConfigurationResourceDefaultObjectMeta = metav1.ObjectMeta{
 		Name: OperatorConfigurationResourceName,

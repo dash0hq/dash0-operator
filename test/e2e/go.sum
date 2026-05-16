@@ -230,10 +230,10 @@ github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.152.0
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.152.0/go.mod h1:0QtMW3LsiCIZ2pAYqs9xkxg4GIfMMZND9mcRWOB/OvE=
 github.com/perses/common v0.30.2 h1:RAiVxUpX76lTCb4X7pfcXSvYdXQmZwKi4oDKAEO//u0=
 github.com/perses/common v0.30.2/go.mod h1:DFtur1QPah2/ChXbKKhw7djYdwNgz27s5fPKpiK0Xao=
-github.com/perses/perses v0.53.0 h1:gh0m/OE3yTG4jCkseORuT3B1qAL3VlsnBckJSbpFjPs=
-github.com/perses/perses v0.53.0/go.mod h1:HsCfkI+EZta2UEDCFa//HUyLRY0Z0fElJkpAWdARbGs=
-github.com/perses/perses-operator v0.2.0 h1:gIhKUWca8ncaxyvOk2USaGfQ32eNcXzjDN97UlQAP0M=
-github.com/perses/perses-operator v0.2.0/go.mod h1:91gFy0XicXrWSYSr4ChkMp16GSOkeXjKdkXlfEECw5g=
+github.com/perses/perses v0.53.1 h1:9VY/6p9QWrZwPSV7qiwTMSOsgcB37Lb1AXKT0ORXc6I=
+github.com/perses/perses v0.53.1/go.mod h1:ro8fsgBkHYOdrL/MV+fdP9mflKzYCy/+gcbxiaReI/A=
+github.com/perses/perses-operator v0.4.0 h1:BA5LG7xUCB0Z/FYIrYXcxtsH9/W53cyTn+hXn4xtRFI=
+github.com/perses/perses-operator v0.4.0/go.mod h1:6eDQZrm6lpIemcsfrDHOzpOE4yXr5wSXL2G4aGxjP/M=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

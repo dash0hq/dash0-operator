@@ -99,8 +99,8 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.152.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.152.0 // indirect
 	github.com/perses/common v0.30.2 // indirect
-	github.com/perses/perses v0.53.0 // indirect
-	github.com/perses/perses-operator v0.2.0 // indirect
+	github.com/perses/perses v0.53.1 // indirect
+	github.com/perses/perses-operator v0.4.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.91.0 // indirect
