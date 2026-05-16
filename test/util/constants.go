@@ -46,6 +46,10 @@ const (
 	FilelogOffsetSyncImageTest            = "some-registry.com:1234/dash0hq/filelog-offset-sync:13.14.15"
 	FilelogOffsetVolumeOwnershipImageTest = "some-registry.com:1234/dash0hq/filelog-offset-volume-ownership:16.17.18"
 
+	OperatorWebhookServiceName              = "dash0-operator-webhook-service"
+	OperatorWebhookServicePort        int32 = 443
+	OperatorConfigurationResourceName       = "dash0-operator-configuration-test"
+
 	OTelCollectorNodeLocalBaseUrlTest = "http://$(DASH0_NODE_IP):40318"
 	OTelCollectorServiceBaseUrlTest   = //
 	"http://unit-test-opentelemetry-collector-service.test-operator-namespace.svc.cluster.local:4318"

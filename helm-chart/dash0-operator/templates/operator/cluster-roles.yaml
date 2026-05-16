@@ -141,6 +141,18 @@ rules:
   - list
   - watch
 
+# Permission to patch the Perses dashboard CRD so the operator can configure its conversion
+# webhook (scoped to that single CRD by name to avoid broad CRD-mutation privileges).
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  resourceNames:
+  - persesdashboards.perses.dev
+  verbs:
+  - patch
+  - update
+
 # Permissions required to watch Perses dashboard resources:
 - apiGroups:
   - perses.dev

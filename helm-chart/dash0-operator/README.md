@@ -338,7 +338,7 @@ Here is a list of configuration options for this resource:
     * automatically add monitoring to new namespaces, as they are created.
   Even when enabled, individual namespaces can opt out of automatic monitoring via [label selectors](#operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector).
   Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of the
-  [monitoringTemplate](#operatorconfigurationresource.spec.monitoringTemplat).
+  [monitoringTemplate](#operatorconfigurationresource.spec.monitoringTemplate).
 * <a href="#operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector"><span id="operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector">`operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector`</span></a>:
   An optional configurable label selector for controlling which namespaces are automatically monitored.
   Namespaces which match this label selector will be monitored automatically (if `autoMonitorNamespaces.enabled` is
@@ -350,7 +350,7 @@ Here is a list of configuration options for this resource:
     * namespaces which do not have the label dash0.com/enable at all, and
     * namespaces which have the label dash0.com/enable with a value other than "false".
   Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of the
-  [monitoringTemplate](#operatorconfigurationresource.spec.monitoringTemplat).
+  [monitoringTemplate](#operatorconfigurationresource.spec.monitoringTemplate).
 * <a href="#operatorconfigurationresource.spec.monitoringTemplate"><span id="operatorconfigurationresource.spec.monitoringTemplate">`operatorconfigurationresource.spec.monitoringTemplate`</span></a>:
   Specification of the desired settings for automatically monitoring namespaces.
 
@@ -2344,7 +2344,7 @@ Furthermore, the custom resource definition for Perses dashboards needs to be in
 ways to achieve this:
 * Install the Perses dashboard custom resource definition with the following command:
 ```console
-kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.2.0/config/crd/bases/perses.dev_persesdashboards.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.4.0/config/crd/bases/perses.dev_persesdashboards.yaml
 ```
 * Alternatively, install the full Perses operator: Go to <https://github.com/perses/perses-operator> and follow the
   installation instructions there.
@@ -2387,6 +2387,53 @@ and signal-to-metrics rules via the Dash0 operator, and you do not want it to co
 `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
+
+#### Conversion Webhook for the PersesDashboard CRD
+
+Starting with version v0.3.0, the `persesdashboards.perses.dev` CRD manifest provides two CRD versions, `v1alpha1` and `v1alpha2`,
+with `v1alpha2` as the storage version.
+Converting between them requires a conversion webhook.
+If you install only the standalone CRD without the Perses operator (the first option above), no conversion webhook is present in
+the cluster.
+The Kubernetes API server would silently prune fields when a `v1alpha1` resource is deployed, resulting in an empty dashboard.
+
+To prevent this, the Dash0 operator can host the conversion webhook itself.
+When the Dash0 operator discovers the PersesDashboard CRD, it will check if a conversion webhook is already configured.
+If it is, the Dash0 operator will assume that the full Perses operator including its conversion webhook has been deployed,
+and that no additional conversion webhook is required.
+If there is no conversion webhook configured, the Dash0 operator patches the CRD's `spec.conversion` stanza to point at its own
+webhook endpoint.
+This can be disabled by setting the Helm value `operator.iac.persesDashboard.autoPatchConversionWebhook` to `false` (the default
+is `true`).
+If you manage the PersesDashboard CRD via GitOps (Argo CD, Flux, etc.), configure it to ignore `spec.conversion` in the
+`persesdashboards.perses.dev` CRD.
+Alternatively, set `operator.iac.persesDashboard.autoPatchConversionWebhook` to `false` and make sure to only deploy resources in
+version `v1alpha2`, or add the conversion webhook to the CRD in your GitOps sources:
+
+```
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: persesdashboards.perses.dev
+  ...
+spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          name: dash0-operator-webhook-service-name
+          namespace: operator-namespace
+          path: /convert-persesdashboard
+          port: 443
+      conversionReviewVersions:
+      - v1
+...
+```
+
+If you leave `operator.iac.persesDashboard.autoPatchConversionWebhook` enabled and your GitOps tooling removes
+`spec.conversion` on every sync, the operator will re-apply the patch on each CRD update event and log a warning, so the
+back-and-forth patching between the Dash0 operator and the GitOps system is observable.
 
 ### Managing Dash0 Check Rules
 

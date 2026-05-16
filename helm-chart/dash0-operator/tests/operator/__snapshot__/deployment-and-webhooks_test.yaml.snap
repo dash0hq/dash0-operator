@@ -66,6 +66,10 @@ deployment should match snapshot (default values):
                   value: dash0-operator-controller
                 - name: DASH0_WEBHOOK_SERVICE_NAME
                   value: dash0-operator-webhook-service
+                - name: DASH0_WEBHOOK_SERVICE_PORT
+                  value: "443"
+                - name: DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK
+                  value: "true"
                 - name: OTEL_COLLECTOR_NAME_PREFIX
                   value: RELEASE-NAME
                 - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
@@ -228,6 +232,10 @@ deployment should match snapshot when using cert-manager:
                   value: dash0-operator-controller
                 - name: DASH0_WEBHOOK_SERVICE_NAME
                   value: dash0-operator-webhook-service
+                - name: DASH0_WEBHOOK_SERVICE_PORT
+                  value: "443"
+                - name: DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK
+                  value: "true"
                 - name: OTEL_COLLECTOR_NAME_PREFIX
                   value: RELEASE-NAME
                 - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX

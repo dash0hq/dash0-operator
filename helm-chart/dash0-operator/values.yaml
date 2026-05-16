@@ -264,6 +264,26 @@ operator:
     # the port for the webhook service
     port: 443
 
+  # Settings related to the operator's infrastructure-as-code (IaC) features, i.e. synchronizing Prometheus rules, dashboards,
+  # views etc.
+  iac:
+
+    # Settings for synchronizing perses.dev PersesDashboard resources to Dash0 dashboards.
+    persesDashboard:
+      # As of Perses operator 0.3.0, the PersesDashboard CRD has two versions (v1alpha1, v1alpha2) with v1alpha2 as the
+      # storage version. Converting between them requires a conversion webhook. If the Perses operator (which ships its
+      # own conversion webhook) is not installed in the cluster, the Dash0 operator can host that conversion webhook
+      # itself. When this setting is true (the default), and the Dash0 operator detects the PersesDashboard CRD in the
+      # cluster with no conversion webhook configured, it will patch the CRD's spec.conversion stanza to point at its
+      # own webhook endpoint. If the Perses operator is installed and has already configured a conversion webhook on the
+      # CRD, the Dash0 operator ignores the autoPatchConversionWebhook setting and leaves the CRD untouched.
+      #
+      # If you manage the PersesDashboard CRD via GitOps (Argo CD, Flux, etc.) and do not want the Dash0 operator to
+      # patch it, set this to false. With auto-patch disabled, you are responsible for ensuring that some conversion
+      # webhook for the PersesDashboard CRD is configured; or to only deploy v1alpha2 resources. Otherwise, v1alpha1 dashboard
+      # resources will lose fields when stored.
+      autoPatchConversionWebhook: true
+
   # settings for the service account to be used
   serviceAccount:
     # whether to create a dedicated service account, set this to false if you want to provide a separately

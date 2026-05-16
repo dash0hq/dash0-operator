@@ -794,15 +794,17 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
 
-				//nolint:dupl
-				It("should synchronize Perses dashboards to the Dash0 API", func() {
+				runPersesDashboardSyncTest := func(persesDashboardCrdVersion string) {
+					verifyPersesDashboardCrdConversionWebhookConfigured(operatorNamespace)
+
 					deployPersesDashboardResource(
 						applicationUnderTestNamespace,
+						persesDashboardCrdVersion,
 						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
-					routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test\\?dataset=default"
+					routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha\\d\\?dataset=default"
 
 					By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
 					req := fetchCapturedApiRequest(0)
@@ -812,13 +814,13 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
 					verifyApiSyncRequest(req)
 
-					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, "false")
+					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, persesDashboardCrdVersion, "false")
 					By("verifying the dashboard has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
 					req = fetchCapturedApiRequest(1)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 
-					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, "true")
+					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, persesDashboardCrdVersion, "true")
 					By("verifying the dashboard has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
 					req = fetchCapturedApiRequest(2)
 					Expect(req.Method).To(Equal("PUT"))
@@ -826,11 +828,19 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
 					verifyApiSyncRequest(req)
 
-					removePersesDashboardResource(applicationUnderTestNamespace)
+					removePersesDashboardResource(applicationUnderTestNamespace, persesDashboardCrdVersion)
 					By("verifying the dashboard has been deleted via the Dash0 API (after removing the resource)")
 					req = fetchCapturedApiRequest(3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
+				}
+
+				It("should synchronize Perses v1alpha1 dashboards to the Dash0 API", func() {
+					runPersesDashboardSyncTest(persesDashboardV1Alpha1)
+				})
+
+				It("should synchronize Perses v1alpha2 dashboards to the Dash0 API", func() {
+					runPersesDashboardSyncTest(persesDashboardV1Alpha2)
 				})
 
 				//nolint:lll

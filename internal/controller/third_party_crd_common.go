@@ -54,6 +54,20 @@ type ThirdPartyCrdReconciler interface {
 	OperatorManagerIsLeader() bool
 	CreateThirdPartyResourceReconciler(types.UID)
 	ThirdPartyResourceReconciler() ThirdPartyResourceReconciler
+
+	// WantsCrdUpdateEvents reports whether the reconciler needs to react to CRD update events (in addition to create / delete).
+	// The default for most third-party CRDs is false — we only watch for the CRD coming into / leaving existence.
+	// PersesDashboardCrdReconciler overrides this to true so it can re-apply its conversion-webhook patch if something else
+	// (a GitOps system etc.) removes spec.conversion on the CRD.
+	WantsCrdUpdateEvents() bool
+
+	// OnCrdChange is called whenever a change in the third-party CRD object is detected. This happens at startup (when checking for
+	// the CRD existence), on Create events, and — for reconcilers that opt into update events via WantsCrdUpdateEvents — on Update
+	// events. Reconcilers that need to derive state from the CRD can implement this in OnCrdChange. For example,
+	// PersesDashboardCrdReconciler uses this hook to choose which version to watch, and to signal (via SetCrdExists(false)) that the
+	// CRD does not provide any supported version so the watch should not be started. OnCrdChange is called before
+	// maybeStartWatchingThirdPartyResources.
+	OnCrdChange(crd *apiextensionsv1.CustomResourceDefinition, logger logd.Logger)
 }
 
 // ThirdPartyResourceReconciler extends the ApiSyncReconciler interface with methods that are specific to
@@ -126,10 +140,11 @@ func SetupThirdPartyCrdReconcilerWithManager(
 	}
 	crdReconciler.CreateThirdPartyResourceReconciler(pseudoClusterUid)
 
+	crd := &apiextensionsv1.CustomResourceDefinition{}
 	if err := k8sClient.Get(
 		ctx, client.ObjectKey{
 			Name: crdReconciler.QualifiedKind(),
-		}, &apiextensionsv1.CustomResourceDefinition{},
+		}, crd,
 	); err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(
@@ -143,6 +158,7 @@ func SetupThirdPartyCrdReconcilerWithManager(
 		}
 	} else {
 		crdReconciler.SetCrdExists(true)
+		crdReconciler.OnCrdChange(crd, logger)
 		maybeStartWatchingThirdPartyResources(crdReconciler, logger)
 	}
 
@@ -158,6 +174,7 @@ func SetupThirdPartyCrdReconcilerWithManager(
 				makeFilterPredicate(
 					crdReconciler.Group(),
 					crdReconciler.Kind(),
+					crdReconciler.WantsCrdUpdateEvents(),
 				),
 			),
 		)
@@ -182,16 +199,16 @@ func SetupThirdPartyCrdReconcilerWithManager(
 	return nil
 }
 
-func makeFilterPredicate(group string, kind string) predicate.Funcs {
+func makeFilterPredicate(group string, kind string, wantsUpdates bool) predicate.Funcs {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return isMatchingCrd(group, kind, e.Object)
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// We are not interested in updates, but we still need to define a filter predicate for it, otherwise _all_
-			// update events for CRDs would be passed to our event handler. We always return false to ignore update
-			// events entirely. Same for generic events.
-			return false
+			if !wantsUpdates {
+				return false
+			}
+			return isMatchingCrd(group, kind, e.ObjectNew)
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return isMatchingCrd(group, kind, e.Object)
@@ -279,13 +296,18 @@ func maybeStartWatchingThirdPartyResources(
 	logger.Info(
 		fmt.Sprintf(
 			"The %s custom resource definition is present in this cluster, and a Dash0 API endpoint and a Dash0 auth "+
-				"token have been provided. The operator will watch for %s resources.",
+				"token have been provided. The operator will watch for %s (%s) resources.",
 			crdReconciler.QualifiedKind(),
 			crdReconciler.KindDisplayName(),
+			crdReconciler.Version(),
 		),
 	)
 
-	logger.Info(fmt.Sprintf("Setting up a watch for %s custom resources.", crdReconciler.KindDisplayName()))
+	logger.Info(fmt.Sprintf(
+		"Setting up a watch for %s (%s) custom resources.",
+		crdReconciler.KindDisplayName(),
+		crdReconciler.Version(),
+	))
 
 	// Create or recreate the controller for the third-party resource type.
 	// Note: We cannot use the controller builder API here since it does not allow passing in a context for starting the
@@ -312,6 +334,18 @@ func maybeStartWatchingThirdPartyResources(
 	}
 	logger.Info(fmt.Sprintf("successfully created a new %s", resourceReconciler.ControllerName()))
 
+	crdVersion := crdReconciler.Version()
+	if crdVersion == "" {
+		logger.Info(
+			fmt.Sprintf(
+				"No supported CRD version has been derived from the %s custom resource definition, the operator will not "+
+					"watch for %s resources.",
+				crdReconciler.QualifiedKind(),
+				crdReconciler.KindDisplayName(),
+			),
+		)
+	}
+
 	// Add the watch for the third-party resource type to the controller.
 	//
 	// Note: We cannot watch for the specific third-party resource type here directly, that is, we cannot establish the
@@ -327,7 +361,7 @@ func maybeStartWatchingThirdPartyResources(
 	if err = resourceController.Watch(
 		source.Kind(
 			crdReconciler.Manager().GetCache(),
-			createUnstructuredGvk(crdReconciler),
+			createUnstructuredGvk(crdReconciler, crdVersion),
 			resourceReconciler,
 		),
 	); err != nil {
@@ -339,14 +373,24 @@ func maybeStartWatchingThirdPartyResources(
 	// Start the controller.
 	backgroundCtx := context.Background()
 	childContextForResourceController, stopResourceController := context.WithCancel(backgroundCtx)
-	resourceReconciler.SetControllerStopFunction(&stopResourceController)
+	ownStopFunc := &stopResourceController
+	resourceReconciler.SetControllerStopFunction(ownStopFunc)
 	go func() {
-		if err = resourceController.Start(childContextForResourceController); err != nil {
+		err := resourceController.Start(childContextForResourceController)
+		resourceReconciler.ControllerStopFunctionLock().Lock()
+		defer resourceReconciler.ControllerStopFunctionLock().Unlock()
+		if resourceReconciler.GetControllerStopFunction() == ownStopFunc {
+			// Only clear the stop function if it still points at the this goroutine has set. A restart of the watch
+			// (e.g. stopWatchingThirdPartyResources, followed by maybeStartWatchingThirdPartyResources) that races ahead of
+			// this goroutine returning from resourceController.Start might have already set a new stop function.
+			// Unconditionally clearing the stop fn would make IsWatching report false, although a watch is in place.
 			resourceReconciler.SetControllerStopFunction(nil)
+		}
+
+		if err != nil {
 			logger.Error(err, fmt.Sprintf("unable to start the controller %s", resourceReconciler.ControllerName()))
 			return
 		}
-		resourceReconciler.SetControllerStopFunction(nil)
 		logger.Info(fmt.Sprintf("the controller %s has been stopped", resourceReconciler.ControllerName()))
 	}()
 }
@@ -374,7 +418,7 @@ func stopWatchingThirdPartyResources(
 	logger.Info(fmt.Sprintf("removing the informer for %s", crdReconciler.KindDisplayName()))
 	if err := crdReconciler.Manager().GetCache().RemoveInformer(
 		ctx,
-		createUnstructuredGvk(crdReconciler),
+		createUnstructuredGvk(crdReconciler, crdReconciler.Version()),
 	); err != nil {
 		logger.Error(err, fmt.Sprintf("unable to remove the informer for %s", crdReconciler.KindDisplayName()))
 	}
@@ -407,13 +451,13 @@ func filterValidApiConfigs(apiConfigs []ApiConfig, logger logd.Logger, configCon
 	return validConfigs
 }
 
-func createUnstructuredGvk(crdReconciler ThirdPartyCrdReconciler) *unstructured.Unstructured {
+func createUnstructuredGvk(crdReconciler ThirdPartyCrdReconciler, crdVersion string) *unstructured.Unstructured {
 	unstructuredGvkForThirdPartyResourceType := &unstructured.Unstructured{}
 	unstructuredGvkForThirdPartyResourceType.SetGroupVersionKind(
 		schema.GroupVersionKind{
 			Kind:    crdReconciler.Kind(),
 			Group:   crdReconciler.Group(),
-			Version: crdReconciler.Version(),
+			Version: crdVersion,
 		},
 	)
 	return unstructuredGvkForThirdPartyResourceType

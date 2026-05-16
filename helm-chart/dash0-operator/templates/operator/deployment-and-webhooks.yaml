@@ -186,6 +186,10 @@ spec:
           value: {{ include "dash0-operator.deploymentName" . }}
         - name: DASH0_WEBHOOK_SERVICE_NAME
           value: {{ include "dash0-operator.webhookServiceName" . }}
+        - name: DASH0_WEBHOOK_SERVICE_PORT
+          value: {{ include "dash0-operator.webhookServicePort" . | quote }}
+        - name: DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK
+          value: {{ .Values.operator.iac.persesDashboard.autoPatchConversionWebhook | toString | quote }}
         - name: OTEL_COLLECTOR_NAME_PREFIX
           value: {{ .Release.Name | quote }}
         - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
