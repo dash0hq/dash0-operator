@@ -236,6 +236,10 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     `test-resources/customresources/dash0notificationchannel` to deploy a notification channel resource that will be
     synchronized to Dash0 via the Dash0 API. E.g. `DEPLOY_NOTIFICATION_CHANNEL=slack` will deploy `slack.yaml`.
     This defaults to being empty, which means no resource will be deployed.
+    * `DEPLOY_SIGNAL_TO_METRICS`: Set to the name of one of the example files in
+    `test-resources/customresources/dash0signaltometrics` to deploy a signal-to-metrics resource that will be
+    synchronized to Dash0 via the Dash0 API. E.g. `DEPLOY_SIGNAL_TO_METRICS=spans` will deploy `spans.yaml`.
+    This defaults to being empty, which means no resource will be deployed.
     * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
       based storage. Possible values:
         * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters

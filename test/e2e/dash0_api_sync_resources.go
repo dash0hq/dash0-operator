@@ -25,6 +25,7 @@ const (
 	prometheusRuleName      = "prometheus-rules-e2e-test"
 	notificationChannelName = "notification-channel-e2e-test"
 	samplingRuleName        = "sampling-rule-e2e-test"
+	signalToMetricsName     = "signal-to-metrics-e2e-test"
 	spamFilterName          = "spam-filter-e2e-test"
 )
 
@@ -52,6 +53,10 @@ var (
 	//go:embed dash0samplingrule.yaml.template
 	samplingRuleSource   string
 	samplingRuleTemplate *template.Template
+
+	//go:embed dash0signaltometrics.yaml.template
+	signalToMetricsSource   string
+	signalToMetricsTemplate *template.Template
 
 	//go:embed dash0spamfilter.yaml.template
 	spamFilterSource   string
@@ -495,6 +500,64 @@ func removeSpamFilterResource(namespace string) {
 	))
 }
 
+func renderSignalToMetricsTemplate(values dash0ApiResourceValues) string {
+	signalToMetricsTemplate = initTemplateOnce(
+		signalToMetricsTemplate,
+		signalToMetricsSource,
+		"signaltometrics",
+	)
+	return renderResourceTemplate(signalToMetricsTemplate, values, "signaltometrics")
+}
+
+func deploySignalToMetricsResource(
+	namespace string,
+	values dash0ApiResourceValues,
+) {
+	renderedResourceFileName := renderSignalToMetricsTemplate(values)
+	defer func() {
+		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
+	}()
+
+	By(fmt.Sprintf(
+		"deploying a Dash0SignalToMetrics resource to namespace %s with values %v", namespace, values))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"apply",
+		"-n",
+		namespace,
+		"-f",
+		renderedResourceFileName,
+	))).To(Succeed())
+}
+
+func setOptOutLabelInSignalToMetrics(namespace string, value string) {
+	By(fmt.Sprintf("setting the opt-out label in the signal-to-metrics rule with value %s", value))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"-n",
+			namespace,
+			"--overwrite",
+			"Dash0SignalToMetrics",
+			signalToMetricsName,
+			fmt.Sprintf("dash0.com/enable=%s", value),
+		)),
+	).To(Succeed())
+}
+
+func removeSignalToMetricsResource(namespace string) {
+	_ = runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"delete",
+		"--ignore-not-found",
+		"-n",
+		namespace,
+		"Dash0SignalToMetrics",
+		signalToMetricsName,
+	))
+}
+
 func removeDash0ApiSyncResources(namespace string) {
 	removeSyntheticCheckResource(namespace)
 	removePersesDashboardResource(namespace)
@@ -502,5 +565,6 @@ func removeDash0ApiSyncResources(namespace string) {
 	removeViewResource(namespace)
 	removeNotificationChannelResource(namespace)
 	removeSamplingRuleResource()
+	removeSignalToMetricsResource(namespace)
 	removeSpamFilterResource(namespace)
 }

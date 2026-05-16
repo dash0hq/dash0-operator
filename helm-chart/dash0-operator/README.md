@@ -232,7 +232,7 @@ spec:
 
 Here is a list of configuration options for this resource:
 * <a href="#operatorconfigurationresource.spec.exports[]"><span id="operatorconfigurationresource.spec.exports[]">`spec.exports[]`</span></a>: One or more `export` configs defining endpoints and authorization (see below for details).
-  If multiple exports are defined, the telemetry will be exported to all defined exports and CRs (views, synthetic checks, dashboards, check rules, notification channels, spam filters) will be synced to all defined Dash0 exports.
+  If multiple exports are defined, the telemetry will be exported to all defined exports and CRs (views, synthetic checks, dashboards, check rules, notification channels, spam filters, signal-to-metrics rules) will be synced to all defined Dash0 exports.
 * <a href="#operatorconfigurationresource.spec.exports[].dash0.endpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.endpoint">`spec.exports[].dash0.endpoint`</span></a>: The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
@@ -263,13 +263,13 @@ Here is a list of configuration options for this resource:
       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
 * <a href="#operatorconfigurationresource.spec.exports[].dash0.apiEndpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.apiEndpoint">`spec.exports[].dash0.apiEndpoint`</span></a>:
   The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-  dashboards, check rules, synthetic checks, views, notification channels and spam filters via the operator.
+  dashboards, check rules, synthetic checks, views, notification channels, spam filters and signal-to-metrics rules via the operator.
   This property is optional.
   The value needs to be the API endpoint of your Dash0 organization.
   The correct API endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints" -> "API".
   The correct endpoint value will always start with "https://api." and end in ".dash0.com".
-  If this property is omitted, managing dashboards, check rules, synthetic checks, views, notification channels and
-  spam filters via the operator will not work.
+  If this property is omitted, managing dashboards, check rules, synthetic checks, views, notification channels, spam
+  filters and signal-to-metrics rules via the operator will not work.
 * <a href="#operatorconfigurationresource.spec.selfMonitoring.enabled"><span id="operatorconfigurationresource.spec.selfMonitoring.enabled">`spec.selfMonitoring.enabled`</span></a>:
   An opt-out for self-monitoring for the operator.
   If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
@@ -2293,8 +2293,8 @@ Status:
       Synchronized At:            2024-10-25T12:02:12Z
 ```
 
-Note: If you only want to manage dashboards, check rules, synthetic checks, views, notification channels and spam
-filters via the Dash0 operator, and you do not want it to collect telemetry, you can set
+Note: If you only want to manage dashboards, check rules, synthetic checks, views, notification channels, spam filters
+and signal-to-metrics rules via the Dash0 operator, and you do not want it to collect telemetry, you can set
 `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
@@ -2430,8 +2430,8 @@ Status:
         Synchronized Rules Total:  4
 ```
 
-Note: If you only want to manage dashboards, check rules, synthetic checks, views, notification channels and spam
-filters via the Dash0 operator, and you do not want it to collect telemetry, you can set
+Note: If you only want to manage dashboards, check rules, synthetic checks, views, notification channels, spam filters
+and signal-to-metrics rules via the Dash0 operator, and you do not want it to collect telemetry, you can set
 `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
@@ -2500,8 +2500,8 @@ Status:
   Synchronized At:        2025-09-05T11:47:56Z
 ```
 
-Note: If you only want to manage dashboards, check rules, synthetic checks, views, notification channels and spam
-filters via the Dash0 operator, and you do not want it to collect telemetry, you can set
+Note: If you only want to manage dashboards, check rules, synthetic checks, views, notification channels, spam filters
+and signal-to-metrics rules via the Dash0 operator, and you do not want it to collect telemetry, you can set
 `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
@@ -2566,8 +2566,8 @@ Status:
   Synchronized At:        2025-09-05T11:47:56Z
 ```
 
-Note: If you only want to manage dashboards, check rules, synthetic checks, views, notification channels and spam
-filters via the Dash0 operator, and you do not want it to collect telemetry, you can set
+Note: If you only want to manage dashboards, check rules, synthetic checks, views, notification channels, spam filters
+and signal-to-metrics rules via the Dash0 operator, and you do not want it to collect telemetry, you can set
 `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
@@ -2988,6 +2988,75 @@ Kind: Dash0SpamFilter
 Status:
   Synchronization Status: successful
   Synchronized At:        2026-05-01T12:00:00Z
+```
+
+### Managing Dash0 Signal-to-Metrics
+
+You can manage your Dash0 signal-to-metrics rules via the Dash0 operator.
+Signal-to-metrics rules derive custom metrics from spans or log records based on user-defined filter criteria. Span
+matches produce exponential histograms (latency distributions); log record matches produce monotonic counters.
+
+Pre-requisites for this feature:
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have at least one Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+* The operator will only pick up signal-to-metrics resources in namespaces that have a Dash0 monitoring resource
+  deployed.
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
+  monitoring resource.
+
+With the prerequisites in place, you can manage Dash0 signal-to-metrics rules via the operator.
+The Dash0 operator will watch for signal-to-metrics resources in all namespaces that have a Dash0 monitoring resource
+deployed, and synchronize the signal-to-metrics resources with the Dash0 backend:
+* When a new signal-to-metrics resource is created, the operator will create a corresponding rule via Dash0's API.
+* When a signal-to-metrics resource is changed, the operator will update the corresponding rule via Dash0's API.
+* When a signal-to-metrics resource is deleted, the operator will delete the corresponding rule via Dash0's API.
+
+The custom resource definition for Dash0 signal-to-metrics rules can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-signal-to-metrics.yaml).
+
+Here is an example of a signal-to-metrics rule that derives a latency histogram for requests to a specific HTTP route:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalToMetrics
+metadata:
+  name: checkout-latency
+spec:
+  enabled: true
+  display:
+    name: Checkout Service Latency
+  match:
+    signal: spans
+    filters:
+      - key: http.route
+        operator: is
+        value: /api/v1/checkout
+  output:
+    name: checkout.request.duration
+    description: How long calls to our checkout API take
+    interval: 60s
+```
+
+You can opt out of synchronization for individual signal-to-metrics resources by adding the Kubernetes label
+`dash0.com/enable: false` to the resource.
+If this label is added to a signal-to-metrics resource which has previously been synchronized to Dash0, the operator
+will delete the corresponding rule in Dash0.
+
+When a signal-to-metrics resource has been synchronized to Dash0, the operator will write a summary of that
+synchronization operation to its status.
+The result of the synchronization operation will be written directly to the signal-to-metrics resource status (not to
+the Dash0 monitoring resource).
+The status will also show whether any error occurred during synchronization.
+
+```yaml
+Kind: Dash0SignalToMetrics
+...
+Status:
+  Synchronization Status: successful
+  Synchronized At:        2026-05-16T12:00:00Z
 ```
 
 ### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)

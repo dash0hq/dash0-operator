@@ -195,7 +195,7 @@ func (r *NotificationChannelReconciler) maybeDoInitialSynchronizationOfAllResour
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
 			fmt.Sprintf(
-				"Waiting for the this operator manager replica to become leader before running initial " +
+				"Waiting for this operator manager replica to become leader before running initial " +
 					"synchronization of notification channels.",
 			),
 		)
@@ -257,7 +257,7 @@ func (r *NotificationChannelReconciler) synchronizeNamespacedResources(
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
 			fmt.Sprintf(
-				"Waiting for the this operator manager replica to become leader before running " +
+				"Waiting for this operator manager replica to become leader before running " +
 					"synchronization of notification channels.",
 			),
 		)

@@ -183,7 +183,7 @@ func (r *SpamFilterReconciler) maybeDoInitialSynchronizationOfAllResources(ctx c
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
 			fmt.Sprintf(
-				"Waiting for the this operator manager replica to become leader before running initial " +
+				"Waiting for this operator manager replica to become leader before running initial " +
 					"synchronization of spam filters.",
 			),
 		)
@@ -241,7 +241,7 @@ func (r *SpamFilterReconciler) synchronizeNamespacedResources(ctx context.Contex
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
 			fmt.Sprintf(
-				"Waiting for the this operator manager replica to become leader before running " +
+				"Waiting for this operator manager replica to become leader before running " +
 					"synchronization of spam filters.",
 			),
 		)
