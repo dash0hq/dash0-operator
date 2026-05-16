@@ -1181,6 +1181,8 @@ func startDash0Controllers(
 		BarkerImagePullPolicy:                       envVars.barkerImagePullPolicy,
 	}
 
+	httpClient = util.WithUserAgent(httpClient, images.GetOperatorVersion())
+
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 	oTelCollectorBaseUrl := determineCollectorBaseUrl(cliArgs.forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
 
