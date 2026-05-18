@@ -35,8 +35,8 @@ type Dash0IntelligentEdge struct {
 
 // Dash0IntelligentEdgeSpec describes the cluster-wide configuration for the intelligent edge tail-sampling feature.
 // When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
-// dash0operation, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors) and optionally
-// deploys the Barker proxy.
+// dash0operation, dash0filter, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors)
+// and optionally deploys the Barker proxy.
 type Dash0IntelligentEdgeSpec struct {
 	// Whether intelligent edge is enabled. When disabled, no IE components are added to the collector pipeline
 	// and no IE resources (e.g. barker) are deployed, regardless of other settings in this resource. This
@@ -69,6 +69,13 @@ type Dash0IntelligentEdgeSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	SignalToMetrics SignalToMetricsConfig `json:"signalToMetrics,omitempty"`
+
+	// Configuration for the dash0filter processor in the collector pipeline. The processor drops spans and
+	// log records that match Dash0SpamFilter rules synced to the Dash0 control plane, allowing high-volume
+	// or low-value telemetry to be filtered out at the edge before it leaves the cluster.
+	//
+	// +kubebuilder:validation:Optional
+	SpamFilter SpamFilterConfig `json:"spamFilter,omitempty"`
 
 	// Configuration for the dash0operation processor. This processor derives dash0.operation.* and dash0.span.*
 	// attributes from OpenTelemetry semantic conventions.
@@ -205,6 +212,31 @@ type SignalToMetricsConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	FlushInterval *metav1.Duration `json:"flushInterval,omitempty"`
+}
+
+// SpamFilterConfig configures the dash0filter processor. The processor drops spans and log records
+// that match Dash0SpamFilter rules synced to the Dash0 control plane.
+type SpamFilterConfig struct {
+	// Whether to wire the dash0filter processor into the daemonset collector pipeline. When disabled,
+	// Dash0SpamFilter rules synced to the Dash0 control plane are not evaluated at the edge and no
+	// telemetry is dropped by the spam filter. This setting is optional, it defaults to true.
+	//
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
+
+	// How long compiled filter rules are cached before the processor re-fetches them from the
+	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h.
+	// This setting is optional; the processor default applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	CacheExpiration *metav1.Duration `json:"cacheExpiration,omitempty"`
+
+	// Allow the dash0filter processor to start even when the dash0settingsonedgeextension is not
+	// loaded. Intended for testing and development; in production this should remain unset so the
+	// processor fails fast on a misconfigured pipeline. This setting is optional, it defaults to false.
+	//
+	// +kubebuilder:validation:Optional
+	AllowNoSettingsExt *bool `json:"allowNoSettingsExt,omitempty"`
 }
 
 // OperationProcessorConfig configures the dash0operation processor.

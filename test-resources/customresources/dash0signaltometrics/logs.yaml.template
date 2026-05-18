@@ -1,0 +1,19 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SignalToMetrics
+metadata:
+  name: all-log-count
+  labels:
+    dash0.com/dataset: $DASH0_DATASET
+spec:
+  enabled: true
+  display:
+    name: All log records count
+  match:
+    signal: logs
+    filters:
+      - key: definitely.not.a.real.key
+        operator: is_not_set
+  output:
+    name: log.all.count
+    description: Count of every log record (smoke-test rule — matches every record by checking absence of a key nothing sets)
+    interval: 30s
