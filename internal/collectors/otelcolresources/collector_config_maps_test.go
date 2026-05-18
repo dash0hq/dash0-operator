@@ -4490,6 +4490,246 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					}),
 
+				Entry(fmt.Sprintf("[config map type: %s]: should AND-prepend the namespace condition to a single existing condition per signal", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						profilingEnabled:        true,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace1,
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+									Traces: []dash0common.NormalizedTransformGroup{
+										{
+											Conditions: []string{`attributes["http.status_code"] >= 500`},
+											Statements: []string{"trace statement 1"},
+										},
+									},
+									Metrics: []dash0common.NormalizedTransformGroup{
+										{
+											Conditions: []string{`name == "system.cpu.usage"`},
+											Statements: []string{"metric statement 1"},
+										},
+									},
+									Logs: []dash0common.NormalizedTransformGroup{
+										{
+											Conditions: []string{`severity_number >= SEVERITY_NUMBER_WARN`},
+											Statements: []string{"log statement 1"},
+										},
+									},
+									Profiles: []dash0common.NormalizedTransformGroup{
+										{
+											Conditions: []string{`attributes["profile.kind"] == "cpu"`},
+											Statements: []string{"profile statement 1"},
+										},
+									},
+								},
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs, signalTypeProfiles},
+								signalsWithoutTransforms: nil,
+								groups: groupExpectationsPerSignalType{
+									signalTypeTraces: []groupExpectations{
+										{
+											statements: []string{"trace statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (attributes["http.status_code"] >= 500)`,
+											},
+										},
+									},
+									signalTypeMetrics: []groupExpectations{
+										{
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (name == "system.cpu.usage")`,
+											},
+										},
+									},
+									signalTypeLogs: []groupExpectations{
+										{
+											statements: []string{"log statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (severity_number >= SEVERITY_NUMBER_WARN)`,
+											},
+										},
+									},
+									signalTypeProfiles: []groupExpectations{
+										{
+											statements: []string{"profile statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (attributes["profile.kind"] == "cpu")`,
+											},
+										},
+									},
+								},
+							},
+							deployment: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: []groupExpectations{
+										{
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (name == "system.cpu.usage")`,
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should AND-prepend the namespace condition to each of multiple existing conditions", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace1,
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+									Metrics: []dash0common.NormalizedTransformGroup{
+										{
+											Conditions: []string{
+												`name == "system.cpu.usage"`,
+												`name == "system.memory.usage"`,
+											},
+											Statements: []string{"metric statement 1"},
+										},
+									},
+								},
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: []groupExpectations{
+										{
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (name == "system.cpu.usage")`,
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (name == "system.memory.usage")`,
+											},
+										},
+									},
+								},
+							},
+							deployment: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: []groupExpectations{
+										{
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (name == "system.cpu.usage")`,
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (name == "system.memory.usage")`,
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should mix groups with and without existing conditions across namespaces", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace1,
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+									Metrics: []dash0common.NormalizedTransformGroup{
+										{
+											Conditions: []string{`name == "system.cpu.usage"`},
+											Statements: []string{"metric statement 1"},
+										},
+										{
+											// no user-defined conditions on this group
+											Statements: []string{"metric statement 2"},
+										},
+									},
+								},
+							},
+							{
+								Namespace: namespace2,
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+									Metrics: []dash0common.NormalizedTransformGroup{
+										{
+											Conditions: []string{
+												`name == "http.server.duration"`,
+												`name == "http.client.duration"`,
+											},
+											Statements: []string{"metric statement 3"},
+										},
+									},
+								},
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: []groupExpectations{
+										{
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (name == "system.cpu.usage")`,
+											},
+										},
+										{
+											statements: []string{"metric statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"metric statement 3"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-2" and (name == "http.server.duration")`,
+												`resource.attributes["k8s.namespace.name"] == "namespace-2" and (name == "http.client.duration")`,
+											},
+										},
+									},
+								},
+							},
+							deployment: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs, signalTypeProfiles},
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: []groupExpectations{
+										{
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1" and (name == "system.cpu.usage")`,
+											},
+										},
+										{
+											statements: []string{"metric statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"metric statement 3"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-2" and (name == "http.server.duration")`,
+												`resource.attributes["k8s.namespace.name"] == "namespace-2" and (name == "http.client.duration")`,
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+
 				//
 			})
 		}
@@ -5280,7 +5520,7 @@ func prependNamespaceCheckToAllOttlCondition(namespace string, conditions []stri
 	for _, condition := range conditions {
 		processedConditions = append(
 			processedConditions,
-			prependNamespaceCheckToOttlFilterCondition(namespace, condition),
+			prependNamespaceCheckToOttlCondition(namespace, condition),
 		)
 	}
 	return processedConditions

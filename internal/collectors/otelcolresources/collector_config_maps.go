@@ -396,13 +396,13 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 			if len(filterSpecForNamespace.Traces.SpanFilter) > 0 {
 				for _, condition := range filterSpecForNamespace.Traces.SpanFilter {
 					allSpanFilters =
-						append(allSpanFilters, prependNamespaceCheckToOttlFilterCondition(namespace, condition))
+						append(allSpanFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 				}
 			}
 			if len(filterSpecForNamespace.Traces.SpanEventFilter) > 0 {
 				for _, condition := range filterSpecForNamespace.Traces.SpanEventFilter {
 					allSpanEventFilters =
-						append(allSpanEventFilters, prependNamespaceCheckToOttlFilterCondition(namespace, condition))
+						append(allSpanEventFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 				}
 			}
 		}
@@ -410,13 +410,13 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 			if len(filterSpecForNamespace.Metrics.MetricFilter) > 0 {
 				for _, condition := range filterSpecForNamespace.Metrics.MetricFilter {
 					allMetricFilters =
-						append(allMetricFilters, prependNamespaceCheckToOttlFilterCondition(namespace, condition))
+						append(allMetricFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 				}
 			}
 			if len(filterSpecForNamespace.Metrics.DataPointFilter) > 0 {
 				for _, condition := range filterSpecForNamespace.Metrics.DataPointFilter {
 					allDataPointFilters =
-						append(allDataPointFilters, prependNamespaceCheckToOttlFilterCondition(namespace, condition))
+						append(allDataPointFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 				}
 			}
 		}
@@ -424,7 +424,7 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 			if len(filterSpecForNamespace.Logs.LogRecordFilter) > 0 {
 				for _, condition := range filterSpecForNamespace.Logs.LogRecordFilter {
 					allLogRecordFilters =
-						append(allLogRecordFilters, prependNamespaceCheckToOttlFilterCondition(namespace, condition))
+						append(allLogRecordFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 				}
 			}
 		}
@@ -432,7 +432,7 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 			if len(filterSpecForNamespace.Profiles.ProfileFilter) > 0 {
 				for _, condition := range filterSpecForNamespace.Profiles.ProfileFilter {
 					allProfileFilters =
-						append(allProfileFilters, prependNamespaceCheckToOttlFilterCondition(namespace, condition))
+						append(allProfileFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
 				}
 			}
 		}
@@ -460,7 +460,7 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 	}
 }
 
-func prependNamespaceCheckToOttlFilterCondition(namespace string, condition string) string {
+func prependNamespaceCheckToOttlCondition(namespace string, condition string) string {
 	return fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s" and (%s)`, namespace, condition)
 }
 
@@ -479,22 +479,22 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 		if len(transform.Traces) > 0 {
 			allTraceGroups =
 				slices.Concat(allTraceGroups,
-					addNamespaceConditionToTransformGroups(namespace, transform.Traces))
+					prependNamespaceConditionToTransformGroupConditions(namespace, transform.Traces))
 		}
 		if len(transform.Metrics) > 0 {
 			allMetricTraceGroups =
 				slices.Concat(allMetricTraceGroups,
-					addNamespaceConditionToTransformGroups(namespace, transform.Metrics))
+					prependNamespaceConditionToTransformGroupConditions(namespace, transform.Metrics))
 		}
 		if len(transform.Logs) > 0 {
 			allLogGroups =
 				slices.Concat(allLogGroups,
-					addNamespaceConditionToTransformGroups(namespace, transform.Logs))
+					prependNamespaceConditionToTransformGroupConditions(namespace, transform.Logs))
 		}
 		if len(transform.Profiles) > 0 {
 			allProfileGroups =
 				slices.Concat(allProfileGroups,
-					addNamespaceConditionToTransformGroups(namespace, transform.Profiles))
+					prependNamespaceConditionToTransformGroupConditions(namespace, transform.Profiles))
 		}
 
 		// Each namespace could specify a different error mode, however, we only render one transform processor per
@@ -520,7 +520,7 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 	}
 }
 
-func addNamespaceConditionToTransformGroups(
+func prependNamespaceConditionToTransformGroupConditions(
 	namespace string,
 	transformGroups []dash0common.NormalizedTransformGroup,
 ) []customTransformGroup {
@@ -533,13 +533,21 @@ func addNamespaceConditionToTransformGroups(
 		if transformGroup.ErrorMode != nil && *transformGroup.ErrorMode != "" {
 			transformGroupWithNamespaceCondition.ErrorMode = *transformGroup.ErrorMode
 		}
+		// The transformprocessor ORs items in the list of conditions for a group. To scope the user's conditions to a specific
+		// namespace, we prepend the namespace check with AND to each existing condition.
 		if len(transformGroup.Conditions) > 0 {
-			transformGroupWithNamespaceCondition.Conditions = transformGroup.Conditions
-		}
-		transformGroupWithNamespaceCondition.Conditions =
-			append(transformGroupWithNamespaceCondition.Conditions,
+			transformGroupWithNamespaceCondition.Conditions = make([]string, 0, len(transformGroup.Conditions))
+			for _, condition := range transformGroup.Conditions {
+				transformGroupWithNamespaceCondition.Conditions = append(
+					transformGroupWithNamespaceCondition.Conditions,
+					prependNamespaceCheckToOttlCondition(namespace, condition),
+				)
+			}
+		} else {
+			transformGroupWithNamespaceCondition.Conditions = []string{
 				fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s"`, namespace),
-			)
+			}
+		}
 		if len(transformGroup.Statements) > 0 {
 			transformGroupWithNamespaceCondition.Statements = transformGroup.Statements
 		}
