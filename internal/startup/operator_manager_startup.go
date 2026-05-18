@@ -1459,6 +1459,17 @@ func startDash0Controllers(
 		leaderElectionAwareRunnable.AddLeaderElectionClient(samplingRuleReconciler)
 	}
 
+	signalToMetricsReconciler := controller.NewSignalToMetricsReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := signalToMetricsReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the signal-to-metrics reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(signalToMetricsReconciler)
+
 	thirdPartyResourceSynchronizationQueue =
 		workqueue.NewTypedWithConfig(
 			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
@@ -1497,6 +1508,7 @@ func startDash0Controllers(
 		viewReconciler,
 		notificationChannelReconciler,
 		spamFilterReconciler,
+		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}
@@ -1535,6 +1547,7 @@ func startDash0Controllers(
 			viewReconciler,
 			notificationChannelReconciler,
 			spamFilterReconciler,
+			signalToMetricsReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
@@ -1589,6 +1602,7 @@ func startDash0Controllers(
 		syntheticCheckReconciler,
 		viewReconciler,
 		spamFilterReconciler,
+		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}

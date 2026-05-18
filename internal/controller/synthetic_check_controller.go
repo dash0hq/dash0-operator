@@ -194,7 +194,7 @@ func (r *SyntheticCheckReconciler) maybeDoInitialSynchronizationOfAllResources(
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
 			fmt.Sprintf(
-				"Waiting for the this operator manager replica to become leader before running initial " +
+				"Waiting for this operator manager replica to become leader before running initial " +
 					"synchronization of synthetic checks.",
 			),
 		)
@@ -256,7 +256,7 @@ func (r *SyntheticCheckReconciler) synchronizeNamespacedResources(
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
 			fmt.Sprintf(
-				"Waiting for the this operator manager replica to become leader before running " +
+				"Waiting for this operator manager replica to become leader before running " +
 					"synchronization of synthetic checks.",
 			),
 		)

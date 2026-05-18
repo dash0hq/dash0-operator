@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package controller
@@ -36,7 +36,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
-type ViewReconciler struct {
+type SignalToMetricsReconciler struct {
 	client.Client
 	pseudoClusterUid      types.UID
 	leaderElectionAware   util.LeaderElectionAware
@@ -50,16 +50,16 @@ type ViewReconciler struct {
 }
 
 var (
-	viewReconcileRequestMetric otelmetric.Int64Counter
+	signalToMetricsReconcileRequestMetric otelmetric.Int64Counter
 )
 
-func NewViewReconciler(
+func NewSignalToMetricsReconciler(
 	k8sClient client.Client,
 	pseudoClusterUid types.UID,
 	leaderElectionAware util.LeaderElectionAware,
 	httpClient *http.Client,
-) *ViewReconciler {
-	return &ViewReconciler{
+) *SignalToMetricsReconciler {
+	return &SignalToMetricsReconciler{
 		Client:               k8sClient,
 		pseudoClusterUid:     pseudoClusterUid,
 		leaderElectionAware:  leaderElectionAware,
@@ -70,68 +70,71 @@ func NewViewReconciler(
 	}
 }
 
-func (r *ViewReconciler) SetupWithManager(mgr manager.Manager) error {
+func (r *SignalToMetricsReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dash0v1alpha1.Dash0View{}).
-		// ignore changes in the status subresource, but react on changes to spec, label and annotations
-		WithEventFilter(viewPredicate{}).
+		For(&dash0v1alpha1.Dash0SignalToMetrics{}).
+		WithEventFilter(signalToMetricsPredicate{}).
 		Complete(r)
 }
 
-func (r *ViewReconciler) InitializeSelfMonitoringMetrics(
+func (r *SignalToMetricsReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
 	logger logd.Logger,
 ) {
-	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "view.reconcile_requests")
+	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "signaltometrics.reconcile_requests")
 	var err error
-	if viewReconcileRequestMetric, err = meter.Int64Counter(
+	if signalToMetricsReconcileRequestMetric, err = meter.Int64Counter(
 		reconcileRequestMetricName,
 		otelmetric.WithUnit("1"),
-		otelmetric.WithDescription("Counter for view reconcile requests"),
+		otelmetric.WithDescription("Counter for signal-to-metrics reconcile requests"),
 	); err != nil {
 		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 }
 
-func (r *ViewReconciler) KindDisplayName() string {
-	return "view"
+func (r *SignalToMetricsReconciler) KindDisplayName() string {
+	return "signal to metrics rule"
 }
 
-func (r *ViewReconciler) ShortName() string {
-	return "view"
+func (r *SignalToMetricsReconciler) ShortName() string {
+	return "signal-to-metrics"
 }
 
-func (r *ViewReconciler) GetDefaultApiConfigs() []ApiConfig {
+func (r *SignalToMetricsReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }
 
-func (r *ViewReconciler) GetNamespacedApiConfigs(namespace string) ([]ApiConfig, bool) {
+func (r *SignalToMetricsReconciler) GetNamespacedApiConfigs(namespace string) ([]ApiConfig, bool) {
 	return r.namespacedApiConfigs.Get(namespace)
 }
 
-func (r *ViewReconciler) ControllerName() string {
-	return "dash0_view_controller"
+func (r *SignalToMetricsReconciler) ControllerName() string {
+	return "dash0_signal_to_metrics_controller"
 }
 
-func (r *ViewReconciler) K8sClient() client.Client {
+func (r *SignalToMetricsReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
-func (r *ViewReconciler) HttpClient() *http.Client {
+func (r *SignalToMetricsReconciler) HttpClient() *http.Client {
 	return r.httpClient
 }
 
-func (r *ViewReconciler) SetDefaultApiConfigs(ctx context.Context, apiConfigs []ApiConfig, logger logd.Logger) {
+func (r *SignalToMetricsReconciler) SetDefaultApiConfigs(
+	ctx context.Context,
+	apiConfigs []ApiConfig,
+	logger logd.Logger,
+) {
 	r.defaultApiConfigs.Set(apiConfigs)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *ViewReconciler) RemoveDefaultApiConfigs(_ context.Context, _ logd.Logger) {
+func (r *SignalToMetricsReconciler) RemoveDefaultApiConfigs(_ context.Context, _ logd.Logger) {
 	r.defaultApiConfigs.Clear()
 }
 
-func (r *ViewReconciler) SetNamespacedApiConfigs(
+func (r *SignalToMetricsReconciler) SetNamespacedApiConfigs(
 	ctx context.Context,
 	namespace string,
 	updatedApiConfigs []ApiConfig,
@@ -148,31 +151,38 @@ func (r *ViewReconciler) SetNamespacedApiConfigs(
 	}
 }
 
-func (r *ViewReconciler) RemoveNamespacedApiConfigs(ctx context.Context, namespace string, logger logd.Logger) {
+func (r *SignalToMetricsReconciler) RemoveNamespacedApiConfigs(
+	ctx context.Context,
+	namespace string,
+	logger logd.Logger,
+) {
 	if _, exists := r.namespacedApiConfigs.Get(namespace); exists {
 		r.namespacedApiConfigs.Delete(namespace)
 		r.synchronizeNamespacedResources(ctx, namespace, logger)
 	}
 }
 
-func (r *ViewReconciler) SetSynchronizationEnabled(
+func (r *SignalToMetricsReconciler) SetSynchronizationEnabled(
 	_ context.Context,
 	_ string,
 	_ *dash0v1beta1.Dash0Monitoring,
 	_ logd.Logger,
 ) {
-	// no-op: views do not have a per-namespace sync toggle
+	// no-op: signal-to-metrics rules do not have a per-namespace sync toggle
 }
 
-func (r *ViewReconciler) RemoveSynchronizationEnabled(_ string) {
-	// no-op: views do not have a per-namespace sync toggle
+func (r *SignalToMetricsReconciler) RemoveSynchronizationEnabled(_ string) {
+	// no-op: signal-to-metrics rules do not have a per-namespace sync toggle
 }
 
-func (r *ViewReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
+func (r *SignalToMetricsReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
-func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context.Context, logger logd.Logger) {
+func (r *SignalToMetricsReconciler) maybeDoInitialSynchronizationOfAllResources(
+	ctx context.Context,
+	logger logd.Logger,
+) {
 	r.initialSyncMutex.Lock()
 	defer r.initialSyncMutex.Unlock()
 
@@ -182,16 +192,14 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
-			fmt.Sprintf(
-				"Waiting for this operator manager replica to become leader before running initial " +
-					"synchronization of views.",
-			),
+			"Waiting for this operator manager replica to become leader before running initial " +
+				"synchronization of signal-to-metrics rules.",
 		)
 		return
 	}
 	if len(filterValidApiConfigs(r.defaultApiConfigs.Get(), logger, "default operator configuration")) == 0 {
 		logger.Info(
-			"Waiting for the Dash0 API config before running initial synchronization of views. Either " +
+			"Waiting for the Dash0 API config before running initial synchronization of signal-to-metrics rules. Either " +
 				"no Dash0 API config has been provided via the operator configuration resource, or the operator " +
 				"configuration resource has not been reconciled yet. If there is an operator configuration resource " +
 				"with an API endpoint and a Dash0 auth token or a secret ref present in the cluster, it will be " +
@@ -200,102 +208,100 @@ func (r *ViewReconciler) maybeDoInitialSynchronizationOfAllResources(ctx context
 		return
 	}
 
-	logger.Info("Running initial synchronization of views now.")
+	logger.Info("Running initial synchronization of signal-to-metrics rules now.")
 	r.initialSyncInProgress.Store(true)
 
 	go func() {
 		defer r.initialSyncInProgress.Store(false)
 
-		allViewResourcesInCluster := dash0v1alpha1.Dash0ViewList{}
+		allResourcesInCluster := dash0v1alpha1.Dash0SignalToMetricsList{}
 		if err := r.List(
 			ctx,
-			&allViewResourcesInCluster,
+			&allResourcesInCluster,
 			&client.ListOptions{},
 		); err != nil {
-			logger.Error(err, "Failed to list all Dash0 view resources.")
+			logger.Error(err, "Failed to list all Dash0 signal-to-metrics resources.")
 			return
 		}
 
-		for _, viewResource := range allViewResourcesInCluster.Items {
+		for _, resource := range allResourcesInCluster.Items {
 			pseudoReconcileRequest := ctrl.Request{
 				NamespacedName: client.ObjectKey{
-					Namespace: viewResource.Namespace,
-					Name:      viewResource.Name,
+					Namespace: resource.Namespace,
+					Name:      resource.Name,
 				},
 			}
 			_, _ = r.Reconcile(ctx, pseudoReconcileRequest)
 			// stagger API requests a bit
 			time.Sleep(50 * time.Millisecond)
 		}
-		logger.Info("Initial synchronization of views has finished.")
+		logger.Info("Initial synchronization of signal-to-metrics rules has finished.")
 		r.initialSyncHasHappend.Store(true)
 	}()
 }
 
-func (r *ViewReconciler) synchronizeNamespacedResources(ctx context.Context, namespace string, logger logd.Logger) {
-	// namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
-	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
-	// config and auth token at almost the same time, triggering two resyncs.
+func (r *SignalToMetricsReconciler) synchronizeNamespacedResources(
+	ctx context.Context,
+	namespace string,
+	logger logd.Logger,
+) {
 	r.namespacedSyncMutex.Lock(namespace)
 
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
-			fmt.Sprintf(
-				"Waiting for this operator manager replica to become leader before running " +
-					"synchronization of views.",
-			),
+			"Waiting for this operator manager replica to become leader before running " +
+				"synchronization of signal-to-metrics rules.",
 		)
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Running synchronization of views in namespace %s now.", namespace))
+	logger.Info(fmt.Sprintf("Running synchronization of signal-to-metrics rules in namespace %s now.", namespace))
 
 	go func() {
 		defer r.namespacedSyncMutex.Unlock(namespace)
 
-		allViewResourcesInNamespace := dash0v1alpha1.Dash0ViewList{}
+		allResourcesInNamespace := dash0v1alpha1.Dash0SignalToMetricsList{}
 		if err := r.List(
 			ctx,
-			&allViewResourcesInNamespace,
+			&allResourcesInNamespace,
 			&client.ListOptions{
 				Namespace: namespace,
 			},
 		); err != nil {
-			logger.Error(err, fmt.Sprintf("Failed to list Dash0 view resources in namespace %s.", namespace))
+			logger.Error(err, fmt.Sprintf("Failed to list Dash0 signal-to-metrics resources in namespace %s.", namespace))
 			return
 		}
 
-		for _, viewResource := range allViewResourcesInNamespace.Items {
+		for _, resource := range allResourcesInNamespace.Items {
 			pseudoReconcileRequest := ctrl.Request{
 				NamespacedName: client.ObjectKey{
-					Namespace: viewResource.Namespace,
-					Name:      viewResource.Name,
+					Namespace: resource.Namespace,
+					Name:      resource.Name,
 				},
 			}
 			_, _ = r.Reconcile(ctx, pseudoReconcileRequest)
-			// stagger API requests a bit
 			time.Sleep(50 * time.Millisecond)
 		}
-		logger.Info(fmt.Sprintf("Synchronization of views in namespace %s has finished.", namespace))
+		logger.Info(fmt.Sprintf("Synchronization of signal-to-metrics rules in namespace %s has finished.", namespace))
 	}()
 }
 
-func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	if viewReconcileRequestMetric != nil {
-		viewReconcileRequestMetric.Add(ctx, 1)
+func (r *SignalToMetricsReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+	if signalToMetricsReconcileRequestMetric != nil {
+		signalToMetricsReconcileRequestMetric.Add(ctx, 1)
 	}
 
 	qualifiedName := req.NamespacedName.String() //nolint:staticcheck
 	logger := logd.FromContext(ctx)
-	logger.Info("processing reconcile request for a view resource", "name", qualifiedName)
+	logger.Info("processing reconcile request for a signal-to-metrics resource", "name", qualifiedName)
 
 	action := upsertAction
-	viewResource := &dash0v1alpha1.Dash0View{}
-	if err := r.Get(ctx, req.NamespacedName, viewResource); err != nil {
+	resource := &dash0v1alpha1.Dash0SignalToMetrics{}
+	if err := r.Get(ctx, req.NamespacedName, resource); err != nil {
 		if apierrors.IsNotFound(err) {
 			action = deleteAction
-			logger.Info("reconciling the deletion of the view resource", "name", qualifiedName)
-			viewResource = &dash0v1alpha1.Dash0View{
+			logger.Info("reconciling the deletion of the signal-to-metrics resource", "name", qualifiedName)
+			resource = &dash0v1alpha1.Dash0SignalToMetrics{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: req.Namespace,
 					Name:      req.Name,
@@ -305,7 +311,7 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 			logger.Error(
 				err,
 				fmt.Sprintf(
-					"Failed to get the view \"%s\", requeuing reconcile request.",
+					"Failed to get the signal-to-metrics rule \"%s\", requeuing reconcile request.",
 					qualifiedName,
 				),
 			)
@@ -313,12 +319,17 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 		}
 	}
 
-	unstructuredResource, err := structToMap(viewResource)
+	unstructuredResource, err := structToMap(resource)
 	if err != nil {
-		msg := "cannot serialize the view resource"
+		msg := "cannot serialize the signal-to-metrics resource"
 		logger.Error(err, msg)
 		if action != deleteAction {
-			r.WriteSynchronizationResultToSynchronizedResource(ctx, viewResource, synchronizationResults{}, logger)
+			r.WriteSynchronizationResultToSynchronizedResource(
+				ctx,
+				resource,
+				synchronizationResults{},
+				logger,
+			)
 		}
 		return reconcile.Result{}, nil
 	}
@@ -327,7 +338,7 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 		ctx,
 		r,
 		unstructuredResource,
-		viewResource,
+		resource,
 		action,
 		logger,
 	)
@@ -335,15 +346,18 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 	return reconcile.Result{}, nil
 }
 
-func (r *ViewReconciler) MapResourceToHttpRequests(
+func (r *SignalToMetricsReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	apiConfig ApiConfig,
 	action apiAction,
 	logger logd.Logger,
 ) *ResourceToRequestsResult {
 	itemName := preconditionChecksResult.k8sName
-
-	viewUrl, viewOrigin := r.renderViewUrl(preconditionChecksResult, apiConfig.Endpoint, apiConfig.Dataset)
+	signalToMetricsUrl, signalToMetricsOrigin := r.renderSignalToMetricsUrl(
+		preconditionChecksResult,
+		apiConfig.Endpoint,
+		apiConfig.Dataset,
+	)
 
 	var req *http.Request
 	var method string
@@ -351,20 +365,20 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 
 	switch action {
 	case upsertAction:
-		view := preconditionChecksResult.resource
-		serializedView, _ := json.Marshal(view)
-		requestPayload := bytes.NewBuffer(serializedView)
+		signalToMetrics := preconditionChecksResult.resource
+		serialized, _ := json.Marshal(signalToMetrics)
+		requestPayload := bytes.NewBuffer(serialized)
 		method = http.MethodPut
 		req, err = http.NewRequest(
 			method,
-			viewUrl,
+			signalToMetricsUrl,
 			requestPayload,
 		)
 	case deleteAction:
 		method = http.MethodDelete
 		req, err = http.NewRequest(
 			method,
-			viewUrl,
+			signalToMetricsUrl,
 			nil,
 		)
 	default:
@@ -375,9 +389,9 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 
 	if err != nil {
 		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to synchronize the view: %s %s: %w",
+			"unable to create a new HTTP request to synchronize the signal-to-metrics rule: %s %s: %w",
 			method,
-			viewUrl,
+			signalToMetricsUrl,
 			err,
 		)
 		logger.Error(httpError, "error creating http request")
@@ -393,17 +407,17 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 		apiConfig,
 		req,
 		itemName,
-		viewOrigin,
+		signalToMetricsOrigin,
 	)
 }
 
-func (r *ViewReconciler) renderViewUrl(
+func (r *SignalToMetricsReconciler) renderSignalToMetricsUrl(
 	preconditionChecksResult *preconditionValidationResult,
 	endpoint string,
 	dataset string,
 ) (string, string) {
 	datasetUrlEncoded := url.QueryEscape(dataset)
-	viewOrigin := fmt.Sprintf(
+	signalToMetricsOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
@@ -413,14 +427,14 @@ func (r *ViewReconciler) renderViewUrl(
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(
-		"%sapi/views/%s?dataset=%s",
+		"%sapi/signal-to-metrics/%s?dataset=%s",
 		endpoint,
-		viewOrigin,
+		signalToMetricsOrigin,
 		datasetUrlEncoded,
-	), viewOrigin
+	), signalToMetricsOrigin
 }
 
-func (r *ViewReconciler) ExtractIdFromResponseBody(
+func (r *SignalToMetricsReconciler) ExtractIdFromResponseBody(
 	responseBytes []byte,
 	logger logd.Logger,
 ) (id string, err error) {
@@ -437,41 +451,36 @@ func (r *ViewReconciler) ExtractIdFromResponseBody(
 	return objectWithMetadata.Metadata.Labels.Id, nil
 }
 
-func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
+func (r *SignalToMetricsReconciler) WriteSynchronizationResultToSynchronizedResource(
 	ctx context.Context,
 	synchronizedResource client.Object,
 	syncResults synchronizationResults,
 	logger logd.Logger,
 ) {
-	view := synchronizedResource.(*dash0v1alpha1.Dash0View)
+	signalToMetrics := synchronizedResource.(*dash0v1alpha1.Dash0SignalToMetrics)
 
-	// common result
-	view.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
-	view.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
-	view.Status.ValidationIssues = nil // we do not validate anything for views
+	signalToMetrics.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
+	signalToMetrics.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
+	signalToMetrics.Status.ValidationIssues = nil
 
-	// result(s) per apiConfig
-	viewSyncResults := make([]dash0v1alpha1.Dash0ViewSynchronizationResultPerEndpointAndDataset, 0,
+	syncResultsForStatus := make([]dash0v1alpha1.Dash0SignalToMetricsSynchronizationResultPerEndpointAndDataset, 0,
 		len(syncResults.resultsPerApiConfig))
 	for _, res := range syncResults.resultsPerApiConfig {
 		synchronizationStatus := dash0common.Dash0ApiResourceSynchronizationStatusFailed
 		synchronizationError := ""
 		if len(res.resourceToRequestsResult.SynchronizationErrors) > 0 {
-			// for views there can be only one sync error per endpoint/dataset
 			synchronizationError = slices.Collect(maps.Values(res.resourceToRequestsResult.SynchronizationErrors))[0]
 		} else {
-			// clear out errors from previous synchronization attempts
 			synchronizationError = ""
 			synchronizationStatus = dash0common.Dash0ApiResourceSynchronizationStatusSuccessful
 		}
-		syncResultPerEndpointAndDataset := dash0v1alpha1.Dash0ViewSynchronizationResultPerEndpointAndDataset{
+		syncResultPerEndpointAndDataset := dash0v1alpha1.Dash0SignalToMetricsSynchronizationResultPerEndpointAndDataset{
 			SynchronizationStatus: synchronizationStatus,
 			Dash0ApiEndpoint:      res.apiConfig.Endpoint,
 			Dash0Dataset:          res.apiConfig.Dataset,
 			SynchronizationError:  synchronizationError,
 		}
 		if len(res.successfullySynchronized) > 0 {
-			// for views we only have at most one successful result per endpoint/dataset
 			synchronized := res.successfullySynchronized[0]
 			if synchronized.Labels.Id != "" {
 				syncResultPerEndpointAndDataset.Dash0Id = synchronized.Labels.Id
@@ -480,30 +489,28 @@ func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
 				syncResultPerEndpointAndDataset.Dash0Origin = synchronized.Labels.Origin
 			}
 		}
-		viewSyncResults = append(viewSyncResults, syncResultPerEndpointAndDataset)
+		syncResultsForStatus = append(syncResultsForStatus, syncResultPerEndpointAndDataset)
 	}
-	view.Status.SynchronizationResults = viewSyncResults
+	signalToMetrics.Status.SynchronizationResults = syncResultsForStatus
 
-	if err := r.Status().Update(ctx, view); err != nil {
-		logger.Error(err, "Failed to update Dash0 view status.")
+	if err := r.Status().Update(ctx, signalToMetrics); err != nil {
+		logger.Error(err, "Failed to update Dash0 signal-to-metrics rule status.")
 	}
 }
 
 // An event filter that ignores changes in the status subresource but reacts on changes to spec, label and annotations.
-// Ideally we would just use predicate.GenerationChangedPredicate, but it unfortunately also ignores label and
-// annotation changes. This is necessary because we update the status subresource when reconciling the resource, and
-// without the filter this would cause another no-op reconcile request.
-type viewPredicate struct {
+// Mirrors the predicate used by the other owned sync reconcilers.
+type signalToMetricsPredicate struct {
 	predicate.Funcs
 }
 
-func (p viewPredicate) Update(e event.UpdateEvent) bool {
+func (p signalToMetricsPredicate) Update(e event.UpdateEvent) bool {
 	if e.ObjectOld == nil || e.ObjectNew == nil {
 		return true
 	}
 
-	oldObj, okOld := e.ObjectOld.(*dash0v1alpha1.Dash0View)
-	newObj, okNew := e.ObjectNew.(*dash0v1alpha1.Dash0View)
+	oldObj, okOld := e.ObjectOld.(*dash0v1alpha1.Dash0SignalToMetrics)
+	newObj, okNew := e.ObjectNew.(*dash0v1alpha1.Dash0SignalToMetrics)
 
 	if !okOld || !okNew {
 		return true

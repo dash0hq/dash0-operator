@@ -61,6 +61,11 @@ for notification_channel_file in test-resources/customresources/dash0notificatio
     wait_for_third_party_resource_deletion="true"
   fi
 done
+for signal_to_metrics_file in test-resources/customresources/dash0signaltometrics/*.yaml; do
+  if kubectl delete -n "$target_namespace" -f "$signal_to_metrics_file"; then
+    wait_for_third_party_resource_deletion="true"
+  fi
+done
 
 
 if [[ "$wait_for_third_party_resource_deletion" = "true" ]]; then

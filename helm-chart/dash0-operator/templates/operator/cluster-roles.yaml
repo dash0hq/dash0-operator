@@ -181,6 +181,26 @@ rules:
   - patch
   - update
 
+# Permissions required to watch Dash0 signal-to-metrics resources:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0signaltometrics
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to Dash0 signal-to-metrics resource status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0signaltometrics/status
+  verbs:
+  - get
+  - patch
+  - update
+
 # Permissions required to watch Dash0 view resources:
 - apiGroups:
   - operator.dash0.com

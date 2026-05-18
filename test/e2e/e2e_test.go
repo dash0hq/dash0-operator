@@ -632,6 +632,47 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 
 				//nolint:dupl
+				It("should synchronize a Dash0SignalToMetrics to the Dash0 API", func() {
+					deploySignalToMetricsResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					//nolint:lll
+					routeRegex := "/api/signal-to-metrics/dash0-operator_.*_default_e2e-test-ns_signal-to-metrics-e2e-test\\?dataset=default"
+
+					By("verifying the signal-to-metrics rule has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("E2E test signal-to-metrics rule"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInSignalToMetrics(applicationUnderTestNamespace, "false")
+					//nolint:lll
+					By("verifying the signal-to-metrics rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInSignalToMetrics(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the signal-to-metrics rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("E2E test signal-to-metrics rule"))
+					verifyApiSyncRequest(req)
+
+					removeSignalToMetricsResource(applicationUnderTestNamespace)
+					By("verifying the signal-to-metrics rule has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:dupl
 				It("should synchronize a view to the Dash0 API", func() {
 					deployViewResource(
 						applicationUnderTestNamespace,
@@ -1556,6 +1597,10 @@ trace_statements:
 				installDecisionMakerMock()
 			})
 
+			AfterEach(func() {
+				cleanupStoredApiRequests()
+			})
+
 			AfterAll(func() {
 				uninstallDecisionMakerMock()
 				uninstallControlPlaneMock()
@@ -1566,6 +1611,7 @@ trace_statements:
 			//nolint:dupl
 			It("should synchronize a Dash0SamplingRule to the Dash0 API", func() {
 				deploySamplingRuleResource(dash0ApiResourceValues{})
+				defer removeSamplingRuleResource()
 
 				// Dash0SamplingRule is cluster-scoped, so the origin has no namespace segment.
 				//nolint:lll

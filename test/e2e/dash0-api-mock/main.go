@@ -56,6 +56,9 @@ func main() {
 	router.PUT("/api/sampling-rules/:origin", handleSamplingRuleRequest)
 	router.DELETE("/api/sampling-rules/:origin", handleSamplingRuleRequest)
 
+	router.PUT("/api/signal-to-metrics/:origin", handleSignalToMetricsRequest)
+	router.DELETE("/api/signal-to-metrics/:origin", handleSignalToMetricsRequest)
+
 	router.GET("/api/recording-rules", handleGetRecordingRuleOriginsRequest)
 	router.PUT("/api/recording-rules/:origin", handlePutRecordingRuleRequest)
 	router.DELETE("/api/recording-rules/:origin", handleDeleteRecordingRuleRequest)
@@ -107,6 +110,13 @@ func handleNotificationChannelRequest(ginCtx *gin.Context) {
 }
 
 func handleSamplingRuleRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+func handleSignalToMetricsRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	ginCtx.JSON(http.StatusOK, map[string]any{
 		"message": "ok",
