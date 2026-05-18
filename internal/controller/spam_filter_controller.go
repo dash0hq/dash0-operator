@@ -233,11 +233,6 @@ func (r *SpamFilterReconciler) maybeDoInitialSynchronizationOfAllResources(ctx c
 }
 
 func (r *SpamFilterReconciler) synchronizeNamespacedResources(ctx context.Context, namespace string, logger logd.Logger) {
-	// namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
-	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
-	// config and auth token at almost the same time, triggering two resyncs.
-	r.namespacedSyncMutex.Lock(namespace)
-
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
 			fmt.Sprintf(
@@ -247,6 +242,11 @@ func (r *SpamFilterReconciler) synchronizeNamespacedResources(ctx context.Contex
 		)
 		return
 	}
+
+	// namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
+	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
+	// config and auth token at almost the same time, triggering two resyncs.
+	r.namespacedSyncMutex.Lock(namespace)
 
 	logger.Info(fmt.Sprintf("Running synchronization of spam filters in namespace %s now.", namespace))
 
