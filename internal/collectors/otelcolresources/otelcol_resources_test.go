@@ -745,6 +745,67 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SignalToMetricsFlushInterval).To(BeEmpty())
 	})
+
+	It("should have spam filter enabled by default", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.SpamFilterEnabled).To(BeTrue())
+		Expect(config.SpamFilterCacheExpiration).To(BeEmpty())
+		Expect(config.SpamFilterAllowNoSettingsExt).To(BeFalse())
+	})
+
+	It("should allow disabling spam filter while keeping IE enabled", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				SpamFilter: dash0v1alpha1.SpamFilterConfig{
+					Enabled: boolPtr(false),
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.SpamFilterEnabled).To(BeFalse())
+	})
+
+	It("should pass spam filter tunables through when set", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				SpamFilter: dash0v1alpha1.SpamFilterConfig{
+					Enabled:            boolPtr(true),
+					CacheExpiration:    &metav1.Duration{Duration: 45 * time.Second},
+					AllowNoSettingsExt: boolPtr(true),
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SpamFilterEnabled).To(BeTrue())
+		Expect(config.SpamFilterCacheExpiration).To(Equal("45s"))
+		Expect(config.SpamFilterAllowNoSettingsExt).To(BeTrue())
+	})
+
+	It("should drop a non-positive spam filter cache expiration rather than forward it", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				SpamFilter: dash0v1alpha1.SpamFilterConfig{
+					CacheExpiration: &metav1.Duration{Duration: 0},
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SpamFilterCacheExpiration).To(BeEmpty())
+	})
 })
 
 func boolPtr(b bool) *bool {

@@ -2263,6 +2263,146 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")).
 				ToNot(ContainElement("dash0signaltometrics"))
 		})
+
+		It("should wire the dash0filter processor when IE + spamFilter are enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).To(HaveKey("dash0filter"))
+			webFilter := processors["dash0filter"].(map[string]interface{})
+			Expect(webFilter).To(BeEmpty(), "dash0filter should render as `{}` when no tunables set")
+
+			pipelines := readPipelines(collectorConfig)
+			tracesCommonProcessors := readPipelineProcessors(pipelines, "traces/common-processors")
+			Expect(tracesCommonProcessors).To(ContainElement("dash0filter"))
+			Expect(tracesCommonProcessors).To(ContainElements("dash0resource", "dash0operation", "dash0filter"),
+				"dash0filter must run after dash0resource and dash0operation set IE attributes")
+			logsCommonProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
+			Expect(logsCommonProcessors).To(ContainElement("dash0filter"))
+			Expect(logsCommonProcessors).To(ContainElements("resource/ie_attributes", "dash0filter"),
+				"dash0filter must run after resource/ie_attributes")
+		})
+
+		It("should render dash0filter tunables when set on the IE config [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                      true,
+					SamplingEnabled:              true,
+					SpamFilterEnabled:            true,
+					SpamFilterCacheExpiration:    "30s",
+					SpamFilterAllowNoSettingsExt: true,
+					Endpoint:                     "decision-maker.example.com:443",
+					ApiEndpoint:                  "https://control-plane-api.dash0.com",
+					Dataset:                      "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).To(HaveKey("dash0filter"))
+			webFilter := processors["dash0filter"].(map[string]interface{})
+			Expect(webFilter["cache_expiration"]).To(Equal("30s"))
+			Expect(webFilter["allow_no_settings_ext"]).To(BeTrue())
+		})
+
+		It("should wire dash0filter into common-processors even with namespaced exporters [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).To(ContainElement("dash0filter"))
+		})
+
+		It("should still wire dash0filter when sampling is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:           true,
+					SamplingEnabled:   false,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).To(HaveKey("dash0filter"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).To(ContainElement("dash0filter"))
+		})
+
+		It("should not wire the dash0filter processor when spamFilter is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: false,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).ToNot(HaveKey("dash0filter"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).
+				ToNot(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).
+				ToNot(ContainElement("dash0filter"))
+		})
 	})
 
 	DescribeTable("should render batch processor with defaults if no batch size settings are provided", func(cmTypeDef configMapTypeDefinition) {
