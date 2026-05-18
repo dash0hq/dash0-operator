@@ -48,9 +48,18 @@ var (
 	notificationChannelSource   string
 	notificationChannelTemplate *template.Template
 
-	//go:embed dash0spamfilter.yaml.template
-	spamFilterSource   string
-	spamFilterTemplate *template.Template
+	//go:embed dash0spamfilter_v1alpha1.yaml.template
+	spamFilterV1Alpha1Source   string
+	spamFilterV1Alpha1Template *template.Template
+
+	//go:embed dash0spamfilter_v1alpha2.yaml.template
+	spamFilterV1Alpha2Source   string
+	spamFilterV1Alpha2Template *template.Template
+)
+
+const (
+	spamFilterAPIVersionV1Alpha1 = "v1alpha1"
+	spamFilterAPIVersionV1Alpha2 = "v1alpha2"
 )
 
 func deployThirdPartyCrds(cleanupSteps *neccessaryCleanupSteps) {
@@ -381,26 +390,41 @@ func removeNotificationChannelResource(namespace string) {
 	))
 }
 
-func renderSpamFilterTemplate(values dash0ApiResourceValues) string {
-	spamFilterTemplate = initTemplateOnce(
-		spamFilterTemplate,
-		spamFilterSource,
-		"dash0spamfilter",
-	)
-	return renderResourceTemplate(spamFilterTemplate, values, "dash0spamfilter")
+func renderSpamFilterTemplate(values dash0ApiResourceValues, apiVersion string) string {
+	switch apiVersion {
+	case spamFilterAPIVersionV1Alpha1:
+		spamFilterV1Alpha1Template = initTemplateOnce(
+			spamFilterV1Alpha1Template,
+			spamFilterV1Alpha1Source,
+			"dash0spamfilter_v1alpha1",
+		)
+		return renderResourceTemplate(spamFilterV1Alpha1Template, values, "dash0spamfilter_v1alpha1")
+	case spamFilterAPIVersionV1Alpha2:
+		spamFilterV1Alpha2Template = initTemplateOnce(
+			spamFilterV1Alpha2Template,
+			spamFilterV1Alpha2Source,
+			"dash0spamfilter_v1alpha2",
+		)
+		return renderResourceTemplate(spamFilterV1Alpha2Template, values, "dash0spamfilter_v1alpha2")
+	default:
+		Fail(fmt.Sprintf("unsupported Dash0SpamFilter API version %q", apiVersion))
+		return ""
+	}
 }
 
 func deploySpamFilterResource(
 	namespace string,
 	values dash0ApiResourceValues,
+	apiVersion string,
 ) {
-	renderedResourceFileName := renderSpamFilterTemplate(values)
+	renderedResourceFileName := renderSpamFilterTemplate(values, apiVersion)
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0SpamFilter resource to namespace %s with values %v", namespace, values))
+		"deploying a Dash0SpamFilter resource (%s) to namespace %s with values %v",
+		apiVersion, namespace, values))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -411,6 +435,7 @@ func deploySpamFilterResource(
 	))).To(Succeed())
 }
 
+//nolint:unparam // namespace is always applicationUnderTestNamespace, kept for symmetry with peer setOptOutLabel* functions
 func setOptOutLabelInSpamFilter(namespace string, value string) {
 	By(fmt.Sprintf("setting the opt-out label in the spam filter with value %s", value))
 	Expect(

@@ -5,8 +5,10 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1alpha2 "github.com/dash0hq/dash0-operator/api/operator/v1alpha2"
 )
 
 // Dash0SpamFilter is the Schema for the Dash0SpamFilter API
@@ -14,6 +16,7 @@ import (
 // +kubebuilder:object:root=true
 // +groupName=operator.dash0.com
 // +kubebuilder:subresource:status
+// +kubebuilder:conversion:spoke
 type Dash0SpamFilter struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -24,9 +27,12 @@ type Dash0SpamFilter struct {
 
 // Dash0SpamFilterSpec defines the desired state of Dash0SpamFilter
 type Dash0SpamFilterSpec struct {
-	// The signal contexts this spam filter applies to (e.g., log, span, metric).
+	// The signal contexts this spam filter applies to. Only the first element is used;
+	// additional elements are ignored when converting to the v1alpha2 hub version.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=1
+	// +kubebuilder:validation:items:Enum=datapoint;log;span;web_event
 	Contexts []string `json:"contexts"`
 
 	// The filter conditions that define which telemetry data to drop.
@@ -79,4 +85,87 @@ type Dash0SpamFilterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Dash0SpamFilter `json:"items"`
+}
+
+// Ensure Dash0SpamFilter implements the conversion.Convertible interface.
+var _ conversion.Convertible = &Dash0SpamFilter{}
+
+// ConvertTo converts this Dash0SpamFilter resource (v1alpha1) to the hub version (v1alpha2).
+func (src *Dash0SpamFilter) ConvertTo(dstRaw conversion.Hub) error {
+	dst := dstRaw.(*dash0v1alpha2.Dash0SpamFilter)
+	dst.ObjectMeta = src.ObjectMeta
+
+	// Spec: contexts (array) → context (scalar)
+	if len(src.Spec.Contexts) > 0 {
+		dst.Spec.Context = src.Spec.Contexts[0]
+	}
+	dst.Spec.Filter = make([]dash0v1alpha2.Dash0SpamFilterCondition, len(src.Spec.Filter))
+	for i, f := range src.Spec.Filter {
+		dst.Spec.Filter[i] = dash0v1alpha2.Dash0SpamFilterCondition{
+			Key:      f.Key,
+			Operator: f.Operator,
+			Value:    f.Value,
+		}
+	}
+
+	// Status
+	dst.Status.SynchronizationStatus = src.Status.SynchronizationStatus
+	dst.Status.SynchronizedAt = src.Status.SynchronizedAt
+	dst.Status.ValidationIssues = src.Status.ValidationIssues
+	dst.Status.SynchronizationResults = make(
+		[]dash0v1alpha2.Dash0SpamFilterSynchronizationResultPerEndpointAndDataset,
+		len(src.Status.SynchronizationResults),
+	)
+	for i, r := range src.Status.SynchronizationResults {
+		dst.Status.SynchronizationResults[i] = dash0v1alpha2.Dash0SpamFilterSynchronizationResultPerEndpointAndDataset{
+			SynchronizationStatus: r.SynchronizationStatus,
+			Dash0ApiEndpoint:      r.Dash0ApiEndpoint,
+			Dash0Dataset:          r.Dash0Dataset,
+			Dash0Id:               r.Dash0Id,
+			Dash0Origin:           r.Dash0Origin,
+			SynchronizationError:  r.SynchronizationError,
+		}
+	}
+
+	return nil
+}
+
+// ConvertFrom converts the hub version (v1alpha2) to this Dash0SpamFilter resource version (v1alpha1).
+func (dst *Dash0SpamFilter) ConvertFrom(srcRaw conversion.Hub) error {
+	src := srcRaw.(*dash0v1alpha2.Dash0SpamFilter)
+	dst.ObjectMeta = src.ObjectMeta
+
+	// Spec: context (scalar) → contexts (array)
+	if src.Spec.Context != "" {
+		dst.Spec.Contexts = []string{src.Spec.Context}
+	}
+	dst.Spec.Filter = make([]Dash0SpamFilterCondition, len(src.Spec.Filter))
+	for i, f := range src.Spec.Filter {
+		dst.Spec.Filter[i] = Dash0SpamFilterCondition{
+			Key:      f.Key,
+			Operator: f.Operator,
+			Value:    f.Value,
+		}
+	}
+
+	// Status
+	dst.Status.SynchronizationStatus = src.Status.SynchronizationStatus
+	dst.Status.SynchronizedAt = src.Status.SynchronizedAt
+	dst.Status.ValidationIssues = src.Status.ValidationIssues
+	dst.Status.SynchronizationResults = make(
+		[]Dash0SpamFilterSynchronizationResultPerEndpointAndDataset,
+		len(src.Status.SynchronizationResults),
+	)
+	for i, r := range src.Status.SynchronizationResults {
+		dst.Status.SynchronizationResults[i] = Dash0SpamFilterSynchronizationResultPerEndpointAndDataset{
+			SynchronizationStatus: r.SynchronizationStatus,
+			Dash0ApiEndpoint:      r.Dash0ApiEndpoint,
+			Dash0Dataset:          r.Dash0Dataset,
+			Dash0Id:               r.Dash0Id,
+			Dash0Origin:           r.Dash0Origin,
+			SynchronizationError:  r.SynchronizationError,
+		}
+	}
+
+	return nil
 }

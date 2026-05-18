@@ -42,6 +42,7 @@ import (
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1alpha2 "github.com/dash0hq/dash0-operator/api/operator/v1alpha2"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
@@ -208,6 +209,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1alpha1.AddToScheme(runtimeScheme))
+	utilruntime.Must(dash0v1alpha2.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1beta1.AddToScheme(runtimeScheme))
 
 	// required for Perses dashboard controller and Prometheus rules controller.

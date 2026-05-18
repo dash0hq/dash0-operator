@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -29,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1alpha2 "github.com/dash0hq/dash0-operator/api/operator/v1alpha2"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -72,7 +73,7 @@ func NewSpamFilterReconciler(
 
 func (r *SpamFilterReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dash0v1alpha1.Dash0SpamFilter{}).
+		For(&dash0v1alpha2.Dash0SpamFilter{}).
 		// ignore changes in the status subresource, but react on changes to spec, label and annotations
 		WithEventFilter(spamFilterPredicate{}).
 		Complete(r)
@@ -206,7 +207,7 @@ func (r *SpamFilterReconciler) maybeDoInitialSynchronizationOfAllResources(ctx c
 	go func() {
 		defer r.initialSyncInProgress.Store(false)
 
-		allResources := dash0v1alpha1.Dash0SpamFilterList{}
+		allResources := dash0v1alpha2.Dash0SpamFilterList{}
 		if err := r.List(
 			ctx,
 			&allResources,
@@ -253,7 +254,7 @@ func (r *SpamFilterReconciler) synchronizeNamespacedResources(ctx context.Contex
 	go func() {
 		defer r.namespacedSyncMutex.Unlock(namespace)
 
-		allResources := dash0v1alpha1.Dash0SpamFilterList{}
+		allResources := dash0v1alpha2.Dash0SpamFilterList{}
 		if err := r.List(
 			ctx,
 			&allResources,
@@ -290,12 +291,12 @@ func (r *SpamFilterReconciler) Reconcile(ctx context.Context, req reconcile.Requ
 	logger.Info("processing reconcile request for a spam filter resource", "name", qualifiedName)
 
 	action := upsertAction
-	spamFilterResource := &dash0v1alpha1.Dash0SpamFilter{}
+	spamFilterResource := &dash0v1alpha2.Dash0SpamFilter{}
 	if err := r.Get(ctx, req.NamespacedName, spamFilterResource); err != nil {
 		if apierrors.IsNotFound(err) {
 			action = deleteAction
 			logger.Info("reconciling the deletion of the spam filter resource", "name", qualifiedName)
-			spamFilterResource = &dash0v1alpha1.Dash0SpamFilter{
+			spamFilterResource = &dash0v1alpha2.Dash0SpamFilter{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: req.Namespace,
 					Name:      req.Name,
@@ -352,6 +353,13 @@ func (r *SpamFilterReconciler) MapResourceToHttpRequests(
 	switch action {
 	case upsertAction:
 		resource := preconditionChecksResult.resource
+		// The Dash0 API recognizes only the bare version token (e.g. "v1alpha2") and treats anything else,
+		// including the K8s group-qualified form "operator.dash0.com/v1alpha2", as v1alpha1.
+		if apiVersion, ok := resource["apiVersion"].(string); ok {
+			if idx := strings.LastIndex(apiVersion, "/"); idx >= 0 {
+				resource["apiVersion"] = apiVersion[idx+1:]
+			}
+		}
 		serializedResource, _ := json.Marshal(resource)
 		requestPayload := bytes.NewBuffer(serializedResource)
 		method = http.MethodPut
@@ -443,7 +451,7 @@ func (r *SpamFilterReconciler) WriteSynchronizationResultToSynchronizedResource(
 	syncResults synchronizationResults,
 	logger logd.Logger,
 ) {
-	spamFilter := synchronizedResource.(*dash0v1alpha1.Dash0SpamFilter)
+	spamFilter := synchronizedResource.(*dash0v1alpha2.Dash0SpamFilter)
 
 	// common result
 	spamFilter.Status.SynchronizationStatus = syncResults.resourceSyncStatus()
@@ -451,7 +459,7 @@ func (r *SpamFilterReconciler) WriteSynchronizationResultToSynchronizedResource(
 	spamFilter.Status.ValidationIssues = nil // we do not validate anything for spam filters
 
 	// result(s) per apiConfig
-	spamFilterSyncResults := make([]dash0v1alpha1.Dash0SpamFilterSynchronizationResultPerEndpointAndDataset, 0,
+	spamFilterSyncResults := make([]dash0v1alpha2.Dash0SpamFilterSynchronizationResultPerEndpointAndDataset, 0,
 		len(syncResults.resultsPerApiConfig))
 	for _, res := range syncResults.resultsPerApiConfig {
 		synchronizationStatus := dash0common.Dash0ApiResourceSynchronizationStatusFailed
@@ -464,7 +472,7 @@ func (r *SpamFilterReconciler) WriteSynchronizationResultToSynchronizedResource(
 			synchronizationError = ""
 			synchronizationStatus = dash0common.Dash0ApiResourceSynchronizationStatusSuccessful
 		}
-		syncResultPerEndpointAndDataset := dash0v1alpha1.Dash0SpamFilterSynchronizationResultPerEndpointAndDataset{
+		syncResultPerEndpointAndDataset := dash0v1alpha2.Dash0SpamFilterSynchronizationResultPerEndpointAndDataset{
 			SynchronizationStatus: synchronizationStatus,
 			Dash0ApiEndpoint:      res.apiConfig.Endpoint,
 			Dash0Dataset:          res.apiConfig.Dataset,
@@ -502,8 +510,8 @@ func (p spamFilterPredicate) Update(e event.UpdateEvent) bool {
 		return true
 	}
 
-	oldObj, okOld := e.ObjectOld.(*dash0v1alpha1.Dash0SpamFilter)
-	newObj, okNew := e.ObjectNew.(*dash0v1alpha1.Dash0SpamFilter)
+	oldObj, okOld := e.ObjectOld.(*dash0v1alpha2.Dash0SpamFilter)
+	newObj, okNew := e.ObjectNew.(*dash0v1alpha2.Dash0SpamFilter)
 
 	if !okOld || !okNew {
 		return true

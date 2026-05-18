@@ -20,7 +20,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1alpha2 "github.com/dash0hq/dash0-operator/api/operator/v1alpha2"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -283,7 +283,7 @@ var _ = Describe(
 						Expect(k8sClient.Create(ctx, spamFilterResource)).To(Succeed())
 
 						// Modify the resource
-						spamFilterResource.Spec.Contexts = []string{"log", "span"}
+						spamFilterResource.Spec.Context = "span"
 						Expect(k8sClient.Update(ctx, spamFilterResource)).To(Succeed())
 
 						result, err := spamFilterReconciler.Reconcile(
@@ -714,7 +714,7 @@ func expectSpamFilterDeleteRequestWithHttpStatus(expectedPath string, status int
 		Reply(status)
 }
 
-func createSpamFilterResource(namespace string, name string) *dash0v1alpha1.Dash0SpamFilter {
+func createSpamFilterResource(namespace string, name string) *dash0v1alpha2.Dash0SpamFilter {
 	return createSpamFilterResourceWithEnableLabel(namespace, name, "")
 }
 
@@ -722,7 +722,7 @@ func createSpamFilterResourceWithEnableLabel(
 	namespace string,
 	name string,
 	dash0EnableLabelValue string,
-) *dash0v1alpha1.Dash0SpamFilter {
+) *dash0v1alpha2.Dash0SpamFilter {
 	objectMeta := metav1.ObjectMeta{
 		Name:      name,
 		Namespace: namespace,
@@ -732,15 +732,15 @@ func createSpamFilterResourceWithEnableLabel(
 			"dash0.com/enable": dash0EnableLabelValue,
 		}
 	}
-	return &dash0v1alpha1.Dash0SpamFilter{
+	return &dash0v1alpha2.Dash0SpamFilter{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "operator.dash0.com/v1alpha1",
+			APIVersion: "operator.dash0.com/v1alpha2",
 			Kind:       "Dash0SpamFilter",
 		},
 		ObjectMeta: objectMeta,
-		Spec: dash0v1alpha1.Dash0SpamFilterSpec{
-			Contexts: []string{"log"},
-			Filter: []dash0v1alpha1.Dash0SpamFilterCondition{
+		Spec: dash0v1alpha2.Dash0SpamFilterSpec{
+			Context: "log",
+			Filter: []dash0v1alpha2.Dash0SpamFilterCondition{
 				{
 					Key:      "k8s.namespace.name",
 					Operator: "is",
@@ -752,7 +752,7 @@ func createSpamFilterResourceWithEnableLabel(
 }
 
 func deleteSpamFilterResourceIfItExists(ctx context.Context, k8sClient client.Client, namespace string, name string) {
-	spamFilter := &dash0v1alpha1.Dash0SpamFilter{
+	spamFilter := &dash0v1alpha2.Dash0SpamFilter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -783,7 +783,7 @@ func verifySpamFilterSynchronizationStatus(
 ) {
 	Eventually(
 		func(g Gomega) {
-			spamFilter := &dash0v1alpha1.Dash0SpamFilter{}
+			spamFilter := &dash0v1alpha2.Dash0SpamFilter{}
 			err := k8sClient.Get(
 				ctx, types.NamespacedName{
 					Namespace: namespace,
@@ -817,7 +817,7 @@ func verifySpamFilterHasNoSynchronizationStatus(
 ) {
 	Eventually(
 		func(g Gomega) {
-			spamFilter := &dash0v1alpha1.Dash0SpamFilter{}
+			spamFilter := &dash0v1alpha2.Dash0SpamFilter{}
 			err := k8sClient.Get(
 				ctx, types.NamespacedName{
 					Namespace: namespace,
