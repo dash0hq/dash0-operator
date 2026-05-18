@@ -245,8 +245,6 @@ func (r *SignalToMetricsReconciler) synchronizeNamespacedResources(
 	namespace string,
 	logger logd.Logger,
 ) {
-	r.namespacedSyncMutex.Lock(namespace)
-
 	if !r.leaderElectionAware.IsLeader() {
 		logger.Info(
 			"Waiting for this operator manager replica to become leader before running " +
@@ -254,6 +252,11 @@ func (r *SignalToMetricsReconciler) synchronizeNamespacedResources(
 		)
 		return
 	}
+
+	// The namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
+	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
+	// config and auth token at almost the same time, triggering two resyncs.
+	r.namespacedSyncMutex.Lock(namespace)
 
 	logger.Info(fmt.Sprintf("Running synchronization of signal-to-metrics rules in namespace %s now.", namespace))
 
