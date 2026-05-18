@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package util
@@ -13,12 +13,16 @@ import (
 
 var _ = Describe("user agent", func() {
 	Describe("RenderUserAgent", func() {
-		It("renders the Dash0 Operator product with the given version", func() {
-			Expect(RenderUserAgent("1.2.3")).To(Equal("Dash0 Operator/1.2.3"))
+		It("renders the Dash0Operator product with the given version", func() {
+			Expect(RenderUserAgent("1.2.3")).To(Equal("Dash0Operator/1.2.3"))
 		})
 
 		It("falls back to /unknown when version is empty", func() {
-			Expect(RenderUserAgent("")).To(Equal("Dash0 Operator/unknown"))
+			Expect(RenderUserAgent("")).To(Equal("Dash0Operator/unknown"))
+		})
+
+		It("replaces colons in digest-pinned versions so the token is RFC 7230 compliant", func() {
+			Expect(RenderUserAgent("sha256:abc123")).To(Equal("Dash0Operator/sha256-abc123"))
 		})
 	})
 
@@ -48,7 +52,7 @@ var _ = Describe("user agent", func() {
 			Expect(resp.Body.Close()).To(Succeed())
 
 			Expect(lastRequest).NotTo(BeNil())
-			Expect(lastRequest.Header.Get("User-Agent")).To(Equal("Dash0 Operator/1.2.3"))
+			Expect(lastRequest.Header.Get("User-Agent")).To(Equal("Dash0Operator/1.2.3"))
 		})
 
 		It("uses the unknown fallback when no version is given", func() {
@@ -58,7 +62,7 @@ var _ = Describe("user agent", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.Body.Close()).To(Succeed())
 
-			Expect(lastRequest.Header.Get("User-Agent")).To(Equal("Dash0 Operator/unknown"))
+			Expect(lastRequest.Header.Get("User-Agent")).To(Equal("Dash0Operator/unknown"))
 		})
 
 		It("preserves a User-Agent header that the caller already set", func() {

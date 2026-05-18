@@ -1,28 +1,31 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package util
 
 import (
 	"net/http"
+	"strings"
 )
 
 const (
-	UserAgentHeaderName = "User-Agent"
+	userAgentHeaderName = "User-Agent"
 
-	userAgentProduct        = "Dash0 Operator"
+	userAgentProduct        = "Dash0Operator"
 	userAgentUnknownVersion = "unknown"
 )
 
 // RenderUserAgent returns the value the operator uses for the User-Agent header
 // when calling the Dash0 API. If version is empty (for example when the operator
 // image carries neither a tag nor a digest) the version segment is reported as
-// "unknown" so that the header is always well-formed.
+// "unknown" so that the header is always well-formed. Colons in the version
+// (as produced for digest-pinned images like "sha256:abc...") are replaced with
+// "-" so the result is a valid RFC 7230 token.
 func RenderUserAgent(version string) string {
 	if version == "" {
 		version = userAgentUnknownVersion
 	}
-	return userAgentProduct + "/" + version
+	return userAgentProduct + "/" + strings.ReplaceAll(version, ":", "-")
 }
 
 type userAgentRoundTripper struct {
@@ -31,16 +34,16 @@ type userAgentRoundTripper struct {
 }
 
 func (rt *userAgentRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Header.Get(UserAgentHeaderName) != "" {
+	if req.Header.Get(userAgentHeaderName) != "" {
 		return rt.base.RoundTrip(req)
 	}
 	clone := req.Clone(req.Context())
-	clone.Header.Set(UserAgentHeaderName, rt.userAgent)
+	clone.Header.Set(userAgentHeaderName, rt.userAgent)
 	return rt.base.RoundTrip(clone)
 }
 
 // WithUserAgent returns a copy of the given http.Client whose transport adds
-// "User-Agent: Dash0 Operator/<version>" to every outgoing request that does
+// "User-Agent: Dash0Operator/<version>" to every outgoing request that does
 // not already carry a User-Agent header. Timeout, redirect policy and cookie
 // jar are preserved.
 func WithUserAgent(client *http.Client, version string) *http.Client {
