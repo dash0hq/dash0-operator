@@ -1710,6 +1710,7 @@ trace_statements:
 						"dash0settingsonedgeextension",
 						"dash0sampling:",
 						"dash0redmetrics:",
+						"dash0signaltometrics:",
 						"dash0resource:",
 						"dash0operation:",
 						"traces/sampled:",

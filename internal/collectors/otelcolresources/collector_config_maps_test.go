@@ -2083,6 +2083,186 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			processors := collectorConfig["processors"].(map[string]interface{})
 			Expect(processors).ToNot(HaveKey("filter/logs/drop_barker_otlp_selfmonitoring"))
 		})
+
+		It("should wire the dash0signaltometrics connector when IE + signalToMetrics are enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                true,
+					SamplingEnabled:        true,
+					SignalToMetricsEnabled: true,
+					Endpoint:               "decision-maker.example.com:443",
+					ApiEndpoint:            "https://control-plane-api.dash0.com",
+					Dataset:                "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// Connector is defined with empty body (no tunables set)
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			Expect(connectors).To(HaveKey("dash0signaltometrics"))
+			s2m := connectors["dash0signaltometrics"].(map[string]interface{})
+			Expect(s2m).To(BeEmpty(), "dash0signaltometrics should render as `{}` when no tunables set")
+
+			// Spans flow into the connector pre-sampling, alongside dash0redmetrics
+			pipelines := readPipelines(collectorConfig)
+			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
+			Expect(tracesCommonExporters).To(ContainElement("dash0redmetrics"))
+			Expect(tracesCommonExporters).To(ContainElement("dash0signaltometrics"))
+
+			// Logs fan out to the connector alongside the default forward
+			logsCommonExporters := readPipelineExporters(pipelines, "logs/common-processors")
+			Expect(logsCommonExporters).To(ContainElement("forward/logs-default-exporter"))
+			Expect(logsCommonExporters).To(ContainElement("dash0signaltometrics"))
+
+			// Emitted metrics enter the standard metrics path via metrics/otlp-to-forwarder
+			metricsForwarderReceivers := readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")
+			Expect(metricsForwarderReceivers).To(ContainElement("dash0redmetrics"))
+			Expect(metricsForwarderReceivers).To(ContainElement("dash0signaltometrics"))
+		})
+
+		It("should also wire the dash0signaltometrics connector in traces/ie-pre-sampling when namespaced exporters are configured [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                true,
+					SamplingEnabled:        true,
+					SignalToMetricsEnabled: true,
+					Endpoint:               "decision-maker.example.com:443",
+					ApiEndpoint:            "https://control-plane-api.dash0.com",
+					Dataset:                "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			iePreSamplingExporters := readPipelineExporters(pipelines, "traces/ie-pre-sampling")
+			Expect(iePreSamplingExporters).To(ContainElement("dash0redmetrics"))
+			Expect(iePreSamplingExporters).To(ContainElement("dash0signaltometrics"))
+		})
+
+		It("should render dash0signaltometrics tunables when set on the IE config [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                      true,
+					SamplingEnabled:              true,
+					SignalToMetricsEnabled:       true,
+					SignalToMetricsMaxTimeSeries: ptr.To(int32(50000)),
+					SignalToMetricsFlushInterval: "30s",
+					Endpoint:                     "decision-maker.example.com:443",
+					ApiEndpoint:                  "https://control-plane-api.dash0.com",
+					Dataset:                      "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			Expect(connectors).To(HaveKey("dash0signaltometrics"))
+			s2m := connectors["dash0signaltometrics"].(map[string]interface{})
+			Expect(s2m["max_time_series"]).To(Equal(50000))
+			Expect(s2m["metrics_flush_interval"]).To(Equal("30s"))
+		})
+
+		It("should wire dash0signaltometrics into logs/common-processors even with namespaced exporters [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                true,
+					SamplingEnabled:        true,
+					SignalToMetricsEnabled: true,
+					Endpoint:               "decision-maker.example.com:443",
+					ApiEndpoint:            "https://control-plane-api.dash0.com",
+					Dataset:                "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			logsCommonExporters := readPipelineExporters(pipelines, "logs/common-processors")
+			Expect(logsCommonExporters).To(ContainElement("routing/logs"))
+			Expect(logsCommonExporters).To(ContainElement("dash0signaltometrics"))
+		})
+
+		It("should still wire dash0signaltometrics when sampling is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                true,
+					SamplingEnabled:        false,
+					SignalToMetricsEnabled: true,
+					Endpoint:               "decision-maker.example.com:443",
+					ApiEndpoint:            "https://control-plane-api.dash0.com",
+					Dataset:                "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			Expect(connectors).To(HaveKey("dash0signaltometrics"))
+			Expect(connectors).ToNot(HaveKey("dash0sampling"), "sampling processor is in processors map, not connectors")
+
+			pipelines := readPipelines(collectorConfig)
+			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
+			Expect(tracesCommonExporters).To(ContainElement("dash0signaltometrics"))
+			Expect(tracesCommonExporters).To(ContainElement("dash0redmetrics"))
+			Expect(tracesCommonExporters).To(ContainElement("forward/traces-default-exporter"))
+			Expect(tracesCommonExporters).ToNot(ContainElement("forward/traces-to-sampling"))
+		})
+
+		It("should not wire the dash0signaltometrics connector when signalToMetrics is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                true,
+					SamplingEnabled:        true,
+					SignalToMetricsEnabled: false,
+					Endpoint:               "decision-maker.example.com:443",
+					ApiEndpoint:            "https://control-plane-api.dash0.com",
+					Dataset:                "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			Expect(connectors).ToNot(HaveKey("dash0signaltometrics"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineExporters(pipelines, "traces/common-processors")).
+				ToNot(ContainElement("dash0signaltometrics"))
+			Expect(readPipelineExporters(pipelines, "logs/common-processors")).
+				ToNot(ContainElement("dash0signaltometrics"))
+			Expect(readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")).
+				ToNot(ContainElement("dash0signaltometrics"))
+		})
 	})
 
 	DescribeTable("should render batch processor with defaults if no batch size settings are provided", func(cmTypeDef configMapTypeDefinition) {
