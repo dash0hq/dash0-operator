@@ -35,7 +35,8 @@ type Dash0IntelligentEdge struct {
 
 // Dash0IntelligentEdgeSpec describes the cluster-wide configuration for the intelligent edge tail-sampling feature.
 // When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
-// dash0operation, dash0sampling processors and dash0redmetrics connector) and optionally deploys the Barker proxy.
+// dash0operation, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors) and optionally
+// deploys the Barker proxy.
 type Dash0IntelligentEdgeSpec struct {
 	// Whether intelligent edge is enabled. When disabled, no IE components are added to the collector pipeline
 	// and no IE resources (e.g. barker) are deployed, regardless of other settings in this resource. This
@@ -61,6 +62,13 @@ type Dash0IntelligentEdgeSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	RedMetrics RedMetricsConfig `json:"redMetrics,omitempty"`
+
+	// Configuration for the dash0signaltometrics connector in the collector pipeline. The connector derives
+	// custom metrics from spans and log records at the edge based on Dash0SignalToMetrics rules synced to
+	// the Dash0 control plane.
+	//
+	// +kubebuilder:validation:Optional
+	SignalToMetrics SignalToMetricsConfig `json:"signalToMetrics,omitempty"`
 
 	// Configuration for the dash0operation processor. This processor derives dash0.operation.* and dash0.span.*
 	// attributes from OpenTelemetry semantic conventions.
@@ -171,6 +179,32 @@ type RedMetricsConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	AdditionalSpanAttributes []string `json:"additionalSpanAttributes,omitempty"`
+}
+
+// SignalToMetricsConfig configures the dash0signaltometrics connector. The connector derives
+// custom metrics from spans and log records at the edge based on Dash0SignalToMetrics rules synced to
+// the Dash0 control plane.
+type SignalToMetricsConfig struct {
+	// Whether to wire the dash0signaltometrics connector into the daemonset collector pipeline. When
+	// disabled, Dash0SignalToMetrics rules synced to the Dash0 control plane are not evaluated at the
+	// edge. This setting is optional, it defaults to true.
+	//
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
+
+	// Soft cap on the number of time series held in memory by the connector. When exceeded, the
+	// connector starts expiring idle time series progressively until the count is within the limit.
+	// This setting is optional; the connector default applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	MaxTimeSeries *int32 `json:"maxTimeSeries,omitempty"`
+
+	// How often accumulated metrics are flushed to the metrics pipeline. Go duration syntax (e.g.
+	// "60s", "5m"). This setting is optional; the connector default applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	FlushInterval *metav1.Duration `json:"flushInterval,omitempty"`
 }
 
 // OperationProcessorConfig configures the dash0operation processor.

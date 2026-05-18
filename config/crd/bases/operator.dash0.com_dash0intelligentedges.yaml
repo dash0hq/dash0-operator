@@ -55,7 +55,8 @@ spec:
             description: |-
               Dash0IntelligentEdgeSpec describes the cluster-wide configuration for the intelligent edge tail-sampling feature.
               When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
-              dash0operation, dash0sampling processors and dash0redmetrics connector) and optionally deploys the Barker proxy.
+              dash0operation, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors) and optionally
+              deploys the Barker proxy.
             properties:
               barker:
                 description: |-
@@ -237,6 +238,35 @@ spec:
                       representation of a float between 0.0 and 1.0.
                     pattern: ^(0(\.\d+)?|1(\.0+)?)$
                     type: string
+                required:
+                - enabled
+                type: object
+              signalToMetrics:
+                description: |-
+                  Configuration for the dash0signaltometrics connector in the collector pipeline. The connector derives
+                  custom metrics from spans and log records at the edge based on Dash0SignalToMetrics rules synced to
+                  the Dash0 control plane.
+                properties:
+                  enabled:
+                    default: true
+                    description: |-
+                      Whether to wire the dash0signaltometrics connector into the daemonset collector pipeline. When
+                      disabled, Dash0SignalToMetrics rules synced to the Dash0 control plane are not evaluated at the
+                      edge. This setting is optional, it defaults to true.
+                    type: boolean
+                  flushInterval:
+                    description: |-
+                      How often accumulated metrics are flushed to the metrics pipeline. Go duration syntax (e.g.
+                      "60s", "5m"). This setting is optional; the connector default applies when unset.
+                    type: string
+                  maxTimeSeries:
+                    description: |-
+                      Soft cap on the number of time series held in memory by the connector. When exceeded, the
+                      connector starts expiring idle time series progressively until the count is within the limit.
+                      This setting is optional; the connector default applies when unset.
+                    format: int32
+                    minimum: 1
+                    type: integer
                 required:
                 - enabled
                 type: object

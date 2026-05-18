@@ -682,6 +682,69 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeFalse())
 	})
+
+	It("should have signal-to-metrics enabled by default", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.SignalToMetricsEnabled).To(BeTrue())
+		Expect(config.SignalToMetricsMaxTimeSeries).To(BeNil())
+		Expect(config.SignalToMetricsFlushInterval).To(BeEmpty())
+	})
+
+	It("should allow disabling signal-to-metrics while keeping IE enabled", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
+					Enabled: boolPtr(false),
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.Enabled).To(BeTrue())
+		Expect(config.SignalToMetricsEnabled).To(BeFalse())
+	})
+
+	It("should pass signal-to-metrics tunables through when set", func() {
+		maxTs := int32(42_000)
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
+					Enabled:       boolPtr(true),
+					MaxTimeSeries: &maxTs,
+					FlushInterval: &metav1.Duration{Duration: 30 * time.Second},
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SignalToMetricsEnabled).To(BeTrue())
+		Expect(config.SignalToMetricsMaxTimeSeries).ToNot(BeNil())
+		Expect(*config.SignalToMetricsMaxTimeSeries).To(Equal(int32(42_000)))
+		Expect(config.SignalToMetricsFlushInterval).To(Equal("30s"))
+	})
+
+	It("should drop a non-positive flush interval rather than forward it", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
+					FlushInterval: &metav1.Duration{Duration: 0},
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SignalToMetricsFlushInterval).To(BeEmpty())
+	})
 })
 
 func boolPtr(b bool) *bool {

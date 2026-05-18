@@ -52,6 +52,19 @@ connectors:
   forward/traces-to-sampling: {}
 {{- end }}
   dash0redmetrics: {}
+{{- if .IntelligentEdge.SignalToMetricsEnabled }}
+{{- if or .IntelligentEdge.SignalToMetricsMaxTimeSeries .IntelligentEdge.SignalToMetricsFlushInterval }}
+  dash0signaltometrics:
+{{- if .IntelligentEdge.SignalToMetricsMaxTimeSeries }}
+    max_time_series: {{ .IntelligentEdge.SignalToMetricsMaxTimeSeries }}
+{{- end }}
+{{- if .IntelligentEdge.SignalToMetricsFlushInterval }}
+    metrics_flush_interval: {{ .IntelligentEdge.SignalToMetricsFlushInterval }}
+{{- end }}
+{{- else }}
+  dash0signaltometrics: {}
+{{- end }}
+{{- end }}
 {{- end }}
   {{- if .ProfilingEnabled }}
   forward/profiles-default-exporter: {}
@@ -1167,6 +1180,9 @@ service:
         - forward/traces-to-sampling
         {{- end }}
         - dash0redmetrics
+        {{- if .IntelligentEdge.SignalToMetricsEnabled }}
+        - dash0signaltometrics
+        {{- end }}
         {{- if not .IntelligentEdge.SamplingEnabled }}
         - forward/traces-default-exporter
         {{- end }}
@@ -1184,6 +1200,9 @@ service:
         - forward/traces-to-sampling
         {{- end }}
         - dash0redmetrics
+        {{- if .IntelligentEdge.SignalToMetricsEnabled }}
+        - dash0signaltometrics
+        {{- end }}
         {{- if not .IntelligentEdge.SamplingEnabled }}
         - forward/traces-default-exporter
         {{- end }}
@@ -1240,6 +1259,9 @@ service:
         {{- end }}
         {{- if .IntelligentEdge.Enabled }}
         - dash0redmetrics
+        {{- if .IntelligentEdge.SignalToMetricsEnabled }}
+        - dash0signaltometrics
+        {{- end }}
         {{- end }}
       processors:
         - memory_limiter
@@ -1377,6 +1399,9 @@ service:
         - routing/logs
         {{- else }}
         - forward/logs-default-exporter
+        {{- end }}
+        {{- if and .IntelligentEdge.Enabled .IntelligentEdge.SignalToMetricsEnabled }}
+        - dash0signaltometrics
         {{- end }}
 
     logs/export/default:

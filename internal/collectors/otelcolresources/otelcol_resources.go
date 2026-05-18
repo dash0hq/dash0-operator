@@ -749,6 +749,11 @@ func intelligentEdgeConfigFromResource(
 
 	barkerEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Barker.Enabled, true)
 	samplingEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Sampling.Enabled, true)
+	signalToMetricsEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SignalToMetrics.Enabled, true)
+	var signalToMetricsFlushInterval string
+	if d := resource.Spec.SignalToMetrics.FlushInterval; d != nil && d.Duration > 0 {
+		signalToMetricsFlushInterval = d.Duration.String()
+	}
 
 	derivedEndpoint, derivedApiEndpoint, dataset := deriveDash0EndpointsAndDataset(operatorConfig)
 	hasDash0Export := derivedEndpoint != "" || derivedApiEndpoint != ""
@@ -780,15 +785,18 @@ func intelligentEdgeConfigFromResource(
 	}
 
 	return IntelligentEdgeConfig{
-		Enabled:         true,
-		SamplingEnabled: samplingEnabled,
-		Endpoint:        endpoint,
-		ApiEndpoint:     apiEndpoint,
-		AuthEnvVar:      authEnvVarNameDefaultIndexed(0),
-		Dataset:         dataset,
-		Insecure:        insecure,
-		BarkerEnabled:   barkerEnabled,
-		BarkerName:      namePrefix + "-barker",
+		Enabled:                      true,
+		SamplingEnabled:              samplingEnabled,
+		SignalToMetricsEnabled:       signalToMetricsEnabled,
+		SignalToMetricsMaxTimeSeries: resource.Spec.SignalToMetrics.MaxTimeSeries,
+		SignalToMetricsFlushInterval: signalToMetricsFlushInterval,
+		Endpoint:                     endpoint,
+		ApiEndpoint:                  apiEndpoint,
+		AuthEnvVar:                   authEnvVarNameDefaultIndexed(0),
+		Dataset:                      dataset,
+		Insecure:                     insecure,
+		BarkerEnabled:                barkerEnabled,
+		BarkerName:                   namePrefix + "-barker",
 	}
 }
 

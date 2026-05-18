@@ -28,15 +28,18 @@ import (
 )
 
 type IntelligentEdgeConfig struct {
-	Enabled         bool
-	SamplingEnabled bool
-	Endpoint        string
-	ApiEndpoint     string
-	AuthEnvVar      string
-	Dataset         string
-	Insecure        bool
-	BarkerEnabled   bool
-	BarkerName      string
+	Enabled                      bool
+	SamplingEnabled              bool
+	SignalToMetricsEnabled       bool
+	SignalToMetricsMaxTimeSeries *int32
+	SignalToMetricsFlushInterval string
+	Endpoint                     string
+	ApiEndpoint                  string
+	AuthEnvVar                   string
+	Dataset                      string
+	Insecure                     bool
+	BarkerEnabled                bool
+	BarkerName                   string
 }
 
 type oTelColConfig struct {
