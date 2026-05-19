@@ -24,12 +24,14 @@ import (
 )
 
 const (
-	annotationNameSpecInstrumentWorkloadsTraceContextPropagators           = "dash0.com/spec.instrumentWorkloads.traceContext.propagators"
-	annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators = "dash0.com/status.previousInstrumentWorkloads.traceContext.propagators"
-	annotationNameSpecInstrumentWorkloadsLabelSelector                     = "dash0.com/spec.instrumentWorkloads.labelSelector"
-	annotationNameStatusPreviousInstrumentWorkloadsLabelSelector           = "dash0.com/status.previousInstrumentWorkloads.labelSelector"
-	annotationNameSpecEventCollectionEnabled                               = "dash0.com/spec.eventCollection.enabled"
-	annotationNameStatusPreviousLogCollectionEnabled                       = "dash0.com/status.previousLogCollection.enabled"
+	annotationNameSpecInstrumentWorkloadsTraceContextPropagators             = "dash0.com/spec.instrumentWorkloads.traceContext.propagators"
+	annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators   = "dash0.com/status.previousInstrumentWorkloads.traceContext.propagators"
+	annotationNameSpecInstrumentWorkloadsCaptureSqlQueryParameters           = "dash0.com/spec.instrumentWorkloads.captureSqlQueryParameters"
+	annotationNameStatusPreviousInstrumentWorkloadsCaptureSqlQueryParameters = "dash0.com/status.previousInstrumentWorkloads.captureSqlQueryParameters"
+	annotationNameSpecInstrumentWorkloadsLabelSelector                       = "dash0.com/spec.instrumentWorkloads.labelSelector"
+	annotationNameStatusPreviousInstrumentWorkloadsLabelSelector             = "dash0.com/status.previousInstrumentWorkloads.labelSelector"
+	annotationNameSpecEventCollectionEnabled                                 = "dash0.com/spec.eventCollection.enabled"
+	annotationNameStatusPreviousLogCollectionEnabled                         = "dash0.com/status.previousLogCollection.enabled"
 )
 
 // Dash0Monitoring is the schema for the Dash0Monitoring API
@@ -418,6 +420,13 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 		dst.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators] =
 			*src.Spec.InstrumentWorkloads.TraceContext.Propagators
 	}
+	if src.Spec.InstrumentWorkloads.CaptureSqlQueryParameters != nil {
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
+		}
+		dst.Annotations[annotationNameSpecInstrumentWorkloadsCaptureSqlQueryParameters] =
+			strconv.FormatBool(*src.Spec.InstrumentWorkloads.CaptureSqlQueryParameters)
+	}
 	if src.Spec.EventCollection.Enabled != nil {
 		if dst.Annotations == nil {
 			dst.Annotations = make(map[string]string)
@@ -451,6 +460,13 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 		dst.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators] =
 			*src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
 	}
+	if src.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters != nil {
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
+		}
+		dst.Annotations[annotationNameStatusPreviousInstrumentWorkloadsCaptureSqlQueryParameters] =
+			strconv.FormatBool(*src.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters)
+	}
 	if src.Status.PreviousLogCollection.Enabled != nil {
 		if dst.Annotations == nil {
 			dst.Annotations = make(map[string]string)
@@ -464,6 +480,8 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 }
 
 // ConvertTo converts this Dash0Monitoring resource (v1alpha1) to the hub version (v1beta1).
+//
+//nolint:dupl
 func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*dash0v1beta1.Dash0Monitoring)
 	dst.ObjectMeta = src.ObjectMeta
@@ -488,6 +506,16 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 			dst.Spec.InstrumentWorkloads.TraceContext.Propagators = new(propagators)
 		}
 		delete(dst.Annotations, annotationNameSpecInstrumentWorkloadsTraceContextPropagators)
+
+		captureSqlQueryParametersAnnotationValue, captureSqlQueryParametersFound :=
+			src.Annotations[annotationNameSpecInstrumentWorkloadsCaptureSqlQueryParameters]
+		if captureSqlQueryParametersFound && strings.TrimSpace(captureSqlQueryParametersAnnotationValue) != "" {
+			if captureSqlQueryParameters, err := strconv.ParseBool(captureSqlQueryParametersAnnotationValue); err == nil {
+				dst.Spec.InstrumentWorkloads.CaptureSqlQueryParameters = ptr.To(captureSqlQueryParameters)
+			}
+			// Deliberately not handling the error here, if the annotation has an invalid value, we ignore it.
+		}
+		delete(dst.Annotations, annotationNameSpecInstrumentWorkloadsCaptureSqlQueryParameters)
 
 		eventCollectionEnabledAnnotationValue, eventCollectionEnabledFound :=
 			src.Annotations[annotationNameSpecEventCollectionEnabled]
@@ -532,6 +560,16 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 			dst.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = new(previousPropagators)
 		}
 		delete(dst.Annotations, annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators)
+
+		previousCaptureSqlQueryParametersAnnotationValue, previousCaptureSqlQueryParametersFound :=
+			src.Annotations[annotationNameStatusPreviousInstrumentWorkloadsCaptureSqlQueryParameters]
+		if previousCaptureSqlQueryParametersFound && strings.TrimSpace(previousCaptureSqlQueryParametersAnnotationValue) != "" {
+			if previousCaptureSqlQueryParameters, err := strconv.ParseBool(previousCaptureSqlQueryParametersAnnotationValue); err == nil {
+				dst.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters = ptr.To(previousCaptureSqlQueryParameters)
+			}
+			// Deliberately not handling the error here, if the annotation has an invalid value, we ignore it.
+		}
+		delete(dst.Annotations, annotationNameStatusPreviousInstrumentWorkloadsCaptureSqlQueryParameters)
 
 		previousLogCollectionEnabledAnnotationValue, previousLogCollectionEnabledFound :=
 			src.Annotations[annotationNameStatusPreviousLogCollectionEnabled]

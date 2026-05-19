@@ -526,6 +526,25 @@ The Dash0 monitoring resource supports additional configuration settings:
   and not by the operator.
   (For that purpose, the previous setting is stored in the monitoring resource's status.)
 
+* <a href="#monitoringresource.spec.instrumentWorkloads.captureSqlQueryParameters"><span id="monitoringresource.spec.instrumentWorkloads.captureSqlQueryParameters">`spec.instrumentWorkloads.captureSqlQueryParameters`</span></a>:
+  When set to `true`, the operator enables SQL query parameter capture in the language agents that support it.
+  Currently this causes the OpenTelemetry Java agent's JDBC instrumentation to record query parameter values as part of
+  the `db.statement` span attribute, by adding the environment variable
+  `OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true` to instrumented containers in the target
+  namespace.
+  Only the OpenTelemetry Java agent's JDBC instrumentation consumes this variable; other language agents ignore it.
+
+  Note that this is an experimental upstream OpenTelemetry Java agent flag and may be renamed or removed in future agent
+  releases.
+  Recorded query parameter values may include sensitive data such as personally identifiable information (PII), so
+  enable this only for namespaces where capturing query parameter values is acceptable.
+
+  When the option is not set or set to `false`, the operator will not set the environment variable.
+  If the option is set to `true` at some point and then later set to `false` or removed, the operator will remove the
+  environment variable from instrumented workloads if and only if the value still matches what the operator would have
+  set (the literal `true`); a user-set value that differs is preserved.
+  (For that purpose, the previous setting is stored in the monitoring resource's status.)
+
 * <a href="#monitoringresource.spec.logCollection.enabled"><span id="monitoringresource.spec.logCollection.enabled">`spec.logCollection.enabled`</span></a>:
   A namespace-wide opt-out for collecting pod logs via the `filelog` receiver.
   If enabled, the operator will configure its OpenTelemetry collector to watch the log output of all pods in the

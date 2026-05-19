@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -2186,6 +2187,75 @@ var _ = Describe(
 							monitoringResource = LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 							Expect(monitoringResource.Status.PreviousLogCollection.Enabled).ToNot(BeNil())
 							Expect(*monitoringResource.Status.PreviousLogCollection.Enabled).To(BeTrue())
+						})
+					},
+				)
+
+				Describe(
+					"captureSqlQueryParameters setting change on an existing Dash0 monitoring resource", Ordered, func() {
+
+						It("should re-instrument a deployment and add OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS when captureSqlQueryParameters is enabled", func() {
+							EnsureMonitoringResourceExists(ctx, k8sClient)
+
+							name := UniqueName(DeploymentNamePrefix)
+							workload := CreateInstrumentedDeployment(ctx, k8sClient, TestNamespaceName, name)
+							createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload)
+
+							triggerReconcileRequest(ctx, monitoringReconciler)
+							VerifyNoEvents(ctx, clientset, TestNamespaceName)
+							podSpec := GetDeployment(ctx, k8sClient, TestNamespaceName, name).Spec.Template.Spec
+							for _, container := range podSpec.Containers {
+								Expect(FindEnvVarByName(container.Env, "OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS")).To(BeNil(), container.Name)
+							}
+
+							UpdateInstrumentWorkloadsCaptureSqlQueryParameters(ctx, k8sClient, ptr.To(true))
+							triggerReconcileRequest(ctx, monitoringReconciler)
+							verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
+							podSpec = GetDeployment(ctx, k8sClient, TestNamespaceName, name).Spec.Template.Spec
+							for _, container := range podSpec.Containers {
+								VerifyEnvVar(
+									EnvVarExpectation{Value: "true"},
+									container.Env,
+									"OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS",
+									container.Name,
+								)
+							}
+
+							monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+							Expect(monitoringResource.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters).ToNot(BeNil())
+							Expect(*monitoringResource.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters).To(BeTrue())
+						})
+
+						It("should re-instrument a deployment and remove OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS when captureSqlQueryParameters is disabled again", func() {
+							monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
+							monitoringResource.Spec.InstrumentWorkloads.CaptureSqlQueryParameters = ptr.To(true)
+							Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+
+							name := UniqueName(DeploymentNamePrefix)
+							workload := CreateInstrumentedDeployment(ctx, k8sClient, TestNamespaceName, name)
+							createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload)
+
+							triggerReconcileRequest(ctx, monitoringReconciler)
+							podSpec := GetDeployment(ctx, k8sClient, TestNamespaceName, name).Spec.Template.Spec
+							for _, container := range podSpec.Containers {
+								VerifyEnvVar(
+									EnvVarExpectation{Value: "true"},
+									container.Env,
+									"OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS",
+									container.Name,
+								)
+							}
+
+							UpdateInstrumentWorkloadsCaptureSqlQueryParameters(ctx, k8sClient, nil)
+							triggerReconcileRequest(ctx, monitoringReconciler)
+							verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, TestNamespaceName, name)
+							podSpec = GetDeployment(ctx, k8sClient, TestNamespaceName, name).Spec.Template.Spec
+							for _, container := range podSpec.Containers {
+								Expect(FindEnvVarByName(container.Env, "OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS")).To(BeNil(), container.Name)
+							}
+
+							monitoringResource = LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+							Expect(monitoringResource.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters).To(BeNil())
 						})
 					},
 				)

@@ -434,6 +434,16 @@ func UpdateInstrumentWorkloadsTraceContextPropagators(
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }
 
+func UpdateInstrumentWorkloadsCaptureSqlQueryParameters(
+	ctx context.Context,
+	k8sClient client.Client,
+	captureSqlQueryParameters *bool,
+) {
+	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+	monitoringResource.Spec.InstrumentWorkloads.CaptureSqlQueryParameters = captureSqlQueryParameters
+	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+}
+
 func UpdateLogCollectionEnabled(
 	ctx context.Context,
 	k8sClient client.Client,

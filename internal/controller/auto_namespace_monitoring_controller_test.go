@@ -658,6 +658,21 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 						Expect(*r.Spec.InstrumentWorkloads.TraceContext.Propagators).To(Equal("tracecontext,xray"))
 					},
 				}),
+			Entry("returns true and updates InstrumentWorkloads.CaptureSqlQueryParameters when it differs",
+				compareMonitoringResourceAndMonitoringTemplateTest{
+					template: dash0v1alpha1.MonitoringTemplate{
+						Spec: dash0v1beta1.Dash0MonitoringSpec{
+							InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+								CaptureSqlQueryParameters: ptr.To(true),
+							},
+						},
+					},
+					resource: &dash0v1beta1.Dash0Monitoring{ObjectMeta: metav1.ObjectMeta{Labels: autoLabel}},
+					verify: func(hasBeenUpdated bool, r *dash0v1beta1.Dash0Monitoring) {
+						Expect(hasBeenUpdated).To(BeTrue())
+						Expect(*r.Spec.InstrumentWorkloads.CaptureSqlQueryParameters).To(BeTrue())
+					},
+				}),
 			Entry("returns true and updates LogCollection.Enabled when it differs",
 				compareMonitoringResourceAndMonitoringTemplateTest{
 					template: dash0v1alpha1.MonitoringTemplate{
@@ -846,6 +861,20 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 							TraceContext: dash0v1beta1.TraceContext{Propagators: ptr.To("tracecontext,xray")},
+						},
+					}},
+					expect: true,
+				}),
+			Entry("InstrumentWorkloads.CaptureSqlQueryParameters differs → changed",
+				compareMonitoringTemplatesTest{
+					t1: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							CaptureSqlQueryParameters: ptr.To(false),
+						},
+					}},
+					t2: &dash0v1alpha1.MonitoringTemplate{Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							CaptureSqlQueryParameters: ptr.To(true),
 						},
 					}},
 					expect: true,

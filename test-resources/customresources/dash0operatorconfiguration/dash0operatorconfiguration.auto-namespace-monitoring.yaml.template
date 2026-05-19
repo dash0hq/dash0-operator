@@ -25,6 +25,7 @@ spec:
     spec:
       instrumentWorkloads:
         mode: $INSTRUMENT_WORKLOADS_MODE
+        captureSqlQueryParameters: $CAPTURE_SQL_QUERY_PARAMETERS
       logCollection:
         enabled: $LOG_COLLECTION
       prometheusScraping:
