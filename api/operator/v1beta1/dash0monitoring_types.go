@@ -231,6 +231,27 @@ type InstrumentWorkloads struct {
 	//
 	// +kubebuilder:validation:Optional
 	TraceContext TraceContext `json:"traceContext,omitempty"`
+
+	// If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
+	// this causes the OpenTelemetry Java agent's JDBC instrumentation to record query parameter values as part of the
+	// db.statement span attribute, by adding the environment variable
+	// OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true to instrumented containers. Only the
+	// OpenTelemetry Java agent's JDBC instrumentation consumes this variable; other language agents ignore it.
+	//
+	// If a container already has this environment variable set to a value other than "true", the existing value is
+	// preserved.
+	//
+	// Note: This is an experimental upstream OpenTelemetry Java agent flag and may be renamed or removed in future agent
+	// releases. Recorded query parameter values may include sensitive data such as personally identifiable information
+	// (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
+	//
+	// By default, the value is not set and the environment variable will not be added to workloads. If this option is
+	// set to true at some point and then later set to false or removed, the operator will remove the environment variable
+	// from instrumented workloads if and only if its current value still matches what the operator would have set
+	// ("true").
+	//
+	// +kubebuilder:validation:Optional
+	CaptureSqlQueryParameters *bool `json:"captureSqlQueryParameters,omitempty"`
 }
 
 type TraceContext struct {
@@ -260,6 +281,13 @@ type NamespaceInstrumentationConfig struct {
 	InstrumentationLabelSelector    string
 	TraceContextPropagators         *string
 	PreviousTraceContextPropagators *string
+	// CaptureSqlQueryParameters reflects spec.instrumentWorkloads.captureSqlQueryParameters. When true, the workload
+	// modifier sets OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true on instrumented containers.
+	CaptureSqlQueryParameters *bool
+	// PreviousCaptureSqlQueryParameters reflects the CaptureSqlQueryParameters value at the time of the previous
+	// reconcile. Used during uninstrumentation / re-instrumentation to decide whether to remove a previously set
+	// OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS env var.
+	PreviousCaptureSqlQueryParameters *bool
 	// LogCollectionEnabled is true if the operator collects pod logs from this namespace via the collector's file_log
 	// receiver. When true, the workload modifier sets OTEL_LOGS_EXPORTER=none on instrumented containers to prevent
 	// the workload's own OTel SDK from also exporting logs via OTLP (which would result in duplicates).
@@ -463,11 +491,13 @@ func (d *Dash0Monitoring) At(list client.ObjectList, index int) dash0operator.Da
 
 func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() NamespaceInstrumentationConfig {
 	return NamespaceInstrumentationConfig{
-		InstrumentationLabelSelector:    d.Spec.InstrumentWorkloads.LabelSelector,
-		TraceContextPropagators:         d.Spec.InstrumentWorkloads.TraceContext.Propagators,
-		PreviousTraceContextPropagators: d.Status.PreviousInstrumentWorkloads.TraceContext.Propagators,
-		LogCollectionEnabled:            pointers.ReadBoolPointerWithDefault(d.Spec.LogCollection.Enabled, true),
-		PreviousLogCollectionEnabled:    pointers.ReadBoolPointerWithDefault(d.Status.PreviousLogCollection.Enabled, true),
+		InstrumentationLabelSelector:      d.Spec.InstrumentWorkloads.LabelSelector,
+		TraceContextPropagators:           d.Spec.InstrumentWorkloads.TraceContext.Propagators,
+		PreviousTraceContextPropagators:   d.Status.PreviousInstrumentWorkloads.TraceContext.Propagators,
+		CaptureSqlQueryParameters:         d.Spec.InstrumentWorkloads.CaptureSqlQueryParameters,
+		PreviousCaptureSqlQueryParameters: d.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters,
+		LogCollectionEnabled:              pointers.ReadBoolPointerWithDefault(d.Spec.LogCollection.Enabled, true),
+		PreviousLogCollectionEnabled:      pointers.ReadBoolPointerWithDefault(d.Status.PreviousLogCollection.Enabled, true),
 	}
 }
 

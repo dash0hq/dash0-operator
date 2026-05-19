@@ -379,6 +379,60 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					},
 				},
 			}),
+			Entry("with captureSqlQueryParameters annotation", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsCaptureSqlQueryParameters: "true",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector:             dash0common.DefaultAutoInstrumentationLabelSelector,
+						CaptureSqlQueryParameters: ptr.To(true),
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+			}),
+			Entry("with previous captureSqlQueryParameters annotation", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameStatusPreviousInstrumentWorkloadsCaptureSqlQueryParameters: "true",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: dash0common.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector:             dash0common.DefaultAutoInstrumentationLabelSelector,
+						CaptureSqlQueryParameters: ptr.To(true),
+					},
+				},
+			}),
 			Entry("with auto-instrumentation label selector annotation", convertToTestCase{
 				srcObjectMeta: metav1.ObjectMeta{
 					Namespace: TestNamespaceName,
@@ -774,6 +828,50 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Annotations: map[string]string{
 						"test-annotation": "test-value",
 						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with spec.instrumentWorkloads.captureSqlQueryParameters", convertFromTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						CaptureSqlQueryParameters: ptr.To(true),
+					},
+				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsCaptureSqlQueryParameters: "true",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with status.previousInstrumentWorkloads.captureSqlQueryParameters", convertFromTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec:       dash0v1beta1.Dash0MonitoringSpec{},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						CaptureSqlQueryParameters: ptr.To(true),
+					},
+				},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameStatusPreviousInstrumentWorkloadsCaptureSqlQueryParameters: "true",
 					},
 				},
 				expectedDstSpec:   Dash0MonitoringSpec{},

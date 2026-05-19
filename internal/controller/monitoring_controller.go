@@ -51,6 +51,8 @@ type statusUpdateInfo struct {
 	currentInstrumentWorkloadsLabelSelector  string
 	previousTraceContextPropagators          *string
 	currentTraceContextPropagators           *string
+	previousCaptureSqlQueryParameters        *bool
+	currentCaptureSqlQueryParameters         *bool
 	previousLogCollectionEnabled             bool
 	currentLogCollectionEnabled              bool
 }
@@ -370,6 +372,9 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	previousTraceContextPropagators := monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
 	currentTraceContextPropagators := monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators
 
+	previousCaptureSqlQueryParameters := monitoringResource.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters
+	currentCaptureSqlQueryParameters := monitoringResource.Spec.InstrumentWorkloads.CaptureSqlQueryParameters
+
 	previousLogCollectionEnabled := pointers.ReadBoolPointerWithDefault(monitoringResource.Status.PreviousLogCollection.Enabled, true)
 	currentLogCollectionEnabled := pointers.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true)
 
@@ -408,6 +413,10 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 			if pointers.IsStringPointerValueDifferent(previousTraceContextPropagators, currentTraceContextPropagators) {
 				requiredAction = util.ModificationModeInstrumentation
 			}
+			if pointers.ReadBoolPointerWithDefault(previousCaptureSqlQueryParameters, false) !=
+				pointers.ReadBoolPointerWithDefault(currentCaptureSqlQueryParameters, false) {
+				requiredAction = util.ModificationModeInstrumentation
+			}
 			if previousLogCollectionEnabled != currentLogCollectionEnabled {
 				requiredAction = util.ModificationModeInstrumentation
 			}
@@ -426,6 +435,8 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 		currentInstrumentWorkloadsLabelSelector:  currentLabelSelector,
 		previousTraceContextPropagators:          previousTraceContextPropagators,
 		currentTraceContextPropagators:           currentTraceContextPropagators,
+		previousCaptureSqlQueryParameters:        previousCaptureSqlQueryParameters,
+		currentCaptureSqlQueryParameters:         currentCaptureSqlQueryParameters,
 		previousLogCollectionEnabled:             previousLogCollectionEnabled,
 		currentLogCollectionEnabled:              currentLogCollectionEnabled,
 	}
@@ -647,6 +658,10 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 		statusUpdate.currentTraceContextPropagators,
 	) {
 		monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = statusUpdate.currentTraceContextPropagators
+	}
+	if pointers.ReadBoolPointerWithDefault(statusUpdate.previousCaptureSqlQueryParameters, false) !=
+		pointers.ReadBoolPointerWithDefault(statusUpdate.currentCaptureSqlQueryParameters, false) {
+		monitoringResource.Status.PreviousInstrumentWorkloads.CaptureSqlQueryParameters = statusUpdate.currentCaptureSqlQueryParameters
 	}
 	if statusUpdate.previousLogCollectionEnabled != statusUpdate.currentLogCollectionEnabled ||
 		monitoringResource.Status.PreviousLogCollection.Enabled == nil {
