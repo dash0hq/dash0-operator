@@ -34,30 +34,32 @@ type containerHasServiceAttributes struct {
 const (
 	initContainerName = "dash0-instrumentation"
 
-	dash0VolumeName                                = "dash0-instrumentation"
-	dash0DirectoryEnvVarName                       = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
-	dash0CopyInstrumentationDebugEnvVarName        = "DASH0_COPY_INSTRUMENTATION_DEBUG"
-	otelAutoInstrumentationBaseDirectory           = "/__otel_auto_instrumentation"
-	imageVolumeSubPath                             = "dash0-instrumentation"
-	envVarLdPreloadName                            = "LD_PRELOAD"
-	envVarLdPreloadValue                           = "/__otel_auto_instrumentation/injector/libotelinject.so"
-	envVarOtelInjectorConfigFileName               = "OTEL_INJECTOR_CONFIG_FILE"
-	envVarOtelInjectorConfigFileValue              = "/__otel_auto_instrumentation/injector/injector.conf"
-	envVarOtelInjectorConfigFilePythonEnabledValue = "/__otel_auto_instrumentation/injector/injector-with-python.conf"
-	envVarOtelExporterOtlpEndpointName             = "OTEL_EXPORTER_OTLP_ENDPOINT"
-	envVarOtelExporterOtlpProtocolName             = "OTEL_EXPORTER_OTLP_PROTOCOL"
-	envVarOtelLogsExporterName                     = "OTEL_LOGS_EXPORTER"
-	envVarOtelLogsExporterNoneValue                = "none"
-	envVarDash0CollectorBaseUrlName                = "DASH0_OTEL_COLLECTOR_BASE_URL"
-	envVarOTelInjectorNamespaceName                = "OTEL_INJECTOR_K8S_NAMESPACE_NAME"
-	envVarOTelInjectorPodName                      = "OTEL_INJECTOR_K8S_POD_NAME"
-	envVarOTelInjectorPodUidName                   = "OTEL_INJECTOR_K8S_POD_UID"
-	envVarOTelInjectorContainerName                = "OTEL_INJECTOR_K8S_CONTAINER_NAME"
-	envVarOTelInjectorServiceName                  = "OTEL_INJECTOR_SERVICE_NAME"
-	envVarOTelInjectorServiceNamespace             = "OTEL_INJECTOR_SERVICE_NAMESPACE"
-	envVarOTelInjectorServiceVersionName           = "OTEL_INJECTOR_SERVICE_VERSION"
-	envVarOTelInjectorResourceAttributesName       = "OTEL_INJECTOR_RESOURCE_ATTRIBUTES"
-	otelInjectorLogLevelEnvVarName                 = "OTEL_INJECTOR_LOG_LEVEL"
+	dash0VolumeName                                                     = "dash0-instrumentation"
+	dash0DirectoryEnvVarName                                            = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
+	dash0CopyInstrumentationDebugEnvVarName                             = "DASH0_COPY_INSTRUMENTATION_DEBUG"
+	otelAutoInstrumentationBaseDirectory                                = "/__otel_auto_instrumentation"
+	imageVolumeSubPath                                                  = "dash0-instrumentation"
+	envVarLdPreloadName                                                 = "LD_PRELOAD"
+	envVarLdPreloadValue                                                = "/__otel_auto_instrumentation/injector/libotelinject.so"
+	envVarOtelInjectorConfigFileName                                    = "OTEL_INJECTOR_CONFIG_FILE"
+	envVarOtelInjectorConfigFileValue                                   = "/__otel_auto_instrumentation/injector/injector.conf"
+	envVarOtelInjectorConfigFilePythonEnabledValue                      = "/__otel_auto_instrumentation/injector/injector-with-python.conf"
+	envVarOtelExporterOtlpEndpointName                                  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	envVarOtelExporterOtlpProtocolName                                  = "OTEL_EXPORTER_OTLP_PROTOCOL"
+	envVarOtelLogsExporterName                                          = "OTEL_LOGS_EXPORTER"
+	envVarOtelLogsExporterNoneValue                                     = "none"
+	envVarDash0CollectorBaseUrlName                                     = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	envVarOTelInjectorNamespaceName                                     = "OTEL_INJECTOR_K8S_NAMESPACE_NAME"
+	envVarOTelInjectorPodName                                           = "OTEL_INJECTOR_K8S_POD_NAME"
+	envVarOTelInjectorPodUidName                                        = "OTEL_INJECTOR_K8S_POD_UID"
+	envVarOTelInjectorContainerName                                     = "OTEL_INJECTOR_K8S_CONTAINER_NAME"
+	envVarOTelInjectorServiceName                                       = "OTEL_INJECTOR_SERVICE_NAME"
+	envVarOTelInjectorServiceNamespace                                  = "OTEL_INJECTOR_SERVICE_NAMESPACE"
+	envVarOTelInjectorServiceVersionName                                = "OTEL_INJECTOR_SERVICE_VERSION"
+	envVarOTelInjectorResourceAttributesName                            = "OTEL_INJECTOR_RESOURCE_ATTRIBUTES"
+	otelInjectorLogLevelEnvVarName                                      = "OTEL_INJECTOR_LOG_LEVEL"
+	envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName = "OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS"
+	captureSqlQueryParametersValueTrue                                  = "true"
 
 	serviceName      = "service.name"
 	serviceNamespace = "service.namespace"
@@ -235,6 +237,9 @@ func InstrumentationIsUpToDate(
 		return false
 	}
 	if otelLogsExporterEnvVarWillBeUpdatedForAtLeastOneContainer(containers, namespaceInstrumentationConfig) {
+		return false
+	}
+	if captureSqlQueryParametersEnvVarWillBeUpdatedForAtLeastOneContainer(containers, namespaceInstrumentationConfig) {
 		return false
 	}
 	return true
@@ -666,6 +671,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	)
 
 	m.addOTelPropagatorsEnvVar(container)
+
+	m.addCaptureSqlQueryParametersEnvVar(container)
 
 	addOrReplaceEnvironmentVariable(
 		container,
@@ -1161,6 +1168,98 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 	}
 }
 
+// addCaptureSqlQueryParametersEnvVar sets OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true when the
+// monitoring resource enables it, and removes it when the previous reconcile had it enabled and the current container
+// value still matches what the operator would have set. User-set values whose payload differs from "true" are preserved,
+// as are values set via ValueFrom. Note: a user-set Value of exactly "true" is indistinguishable from an operator-set
+// value and will be removed on toggle-off if the previous reconcile had the field enabled.
+func (m *ResourceModifier) addCaptureSqlQueryParametersEnvVar(container *corev1.Container) {
+	if !captureSqlQueryParametersCanBeUpdatedForContainer(container, m.namespaceInstrumentationConfig) {
+		return
+	}
+	if pointers.ReadBoolPointerWithDefault(m.namespaceInstrumentationConfig.CaptureSqlQueryParameters, false) {
+		addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
+				Value: captureSqlQueryParametersValueTrue,
+			},
+		)
+	} else {
+		removeEnvironmentVariable(container, envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName)
+	}
+}
+
+func captureSqlQueryParametersEnvVarWillBeUpdatedForAtLeastOneContainer(
+	containers []corev1.Container,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
+) bool {
+	for _, container := range containers {
+		if captureSqlQueryParametersCanBeUpdatedForContainer(new(container), namespaceInstrumentationConfig) {
+			return true
+		}
+	}
+	return false
+}
+
+func captureSqlQueryParametersCanBeUpdatedForContainer(
+	container *corev1.Container,
+	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
+) bool {
+	envVarOnContainer := util.GetEnvVar(container, envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName)
+
+	if envVarOnContainer != nil && envVarOnContainer.ValueFrom != nil {
+		// The environment variable is set via ValueFrom, it was not set by the Dash0 operator (the operator only ever
+		// writes Value), and the operator is not supposed to change it, no matter what the monitoring resource specifies.
+		return false
+	}
+
+	desiredOn := pointers.ReadBoolPointerWithDefault(namespaceInstrumentationConfig.CaptureSqlQueryParameters, false)
+	previousOn := pointers.ReadBoolPointerWithDefault(namespaceInstrumentationConfig.PreviousCaptureSqlQueryParameters, false)
+
+	if !desiredOn {
+		// The monitoring resource does not request capturing SQL query parameters. We might need to remove the
+		// environment variable, but only if it was previously set by the operator.
+
+		if util.IsEnvVarUnsetOrEmpty(envVarOnContainer) {
+			// The env var is not set on the container, nothing to do.
+			return false
+		}
+		if !previousOn {
+			// There is no previous "true" setting, apparently the env var has not been set by the operator, do nothing.
+			return false
+		}
+		if envVarOnContainer != nil &&
+			strings.TrimSpace(envVarOnContainer.Value) == captureSqlQueryParametersValueTrue {
+			// The previous setting was on and the current env var value matches what we would have set, apparently the
+			// env var has been set by the operator, remove it.
+			return true
+		}
+		// The previous setting was on but the current env var value differs from what we would have set, hence the env
+		// var has been changed by the user, do not remove it.
+		return false
+	}
+
+	// The monitoring resource requests capturing SQL query parameters. We might need to add the environment variable.
+
+	if util.IsEnvVarUnsetOrEmpty(envVarOnContainer) {
+		// The container currently does not have the environment variable set. It is safe to add it.
+		return true
+	}
+
+	if strings.TrimSpace(envVarOnContainer.Value) == captureSqlQueryParametersValueTrue {
+		// The environment variable is already up to date, no change is required.
+		return false
+	}
+
+	// The container has the environment variable set with a value different from what we would set. The operator only
+	// ever writes "true", so any non-"true" value must have been set by the user. Do not overwrite. (Unlike the
+	// OTEL_PROPAGATORS sibling, the operator-ownership check via PreviousCaptureSqlQueryParameters is not meaningful
+	// in this branch: the "previous operator-written value" is implicitly the literal "true", which is exactly what the
+	// "already up to date" check above caught.)
+	return false
+}
+
 func otelInjectorConfEnvVarWillBeUpdatedForAtLeastOneContainer(
 	containers []corev1.Container,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
@@ -1475,6 +1574,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 
 	m.removeOtelExporterOtlpEnvVarsIfCurrentValueMatchesConfig(container)
 	m.removeOtelPropagatorsIfCurrentValueMatchesConfig(container)
+	m.removeCaptureSqlQueryParametersIfCurrentValueMatchesConfig(container)
 	m.removeOtelLogsExporterEnvVar(container)
 
 	removeEnvironmentVariable(container, envVarOTelInjectorNamespaceName)
@@ -1561,6 +1661,26 @@ func (m *ResourceModifier) removeOtelPropagatorsIfCurrentValueMatchesConfig(cont
 		if strings.TrimSpace(existingEnvVar.Value) == strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators) {
 			removeEnvironmentVariable(container, util.OtelPropagatorsEnvVarName)
 		}
+	}
+}
+
+func (m *ResourceModifier) removeCaptureSqlQueryParametersIfCurrentValueMatchesConfig(container *corev1.Container) {
+	if !pointers.ReadBoolPointerWithDefault(m.namespaceInstrumentationConfig.CaptureSqlQueryParameters, false) {
+		return
+	}
+	idx := findEnvVarIdx(container, envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName)
+	if idx < 0 {
+		return
+	}
+	existingEnvVar := container.Env[idx]
+	if existingEnvVar.ValueFrom != nil {
+		// set via ValueFrom, not by us, leave alone
+		return
+	}
+	if existingEnvVar.Value == captureSqlQueryParametersValueTrue {
+		// Compare without TrimSpace: the operator only ever writes the bare literal "true", so a value of " true " or
+		// similar must have been set by the user and should be left alone.
+		removeEnvironmentVariable(container, envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName)
 	}
 }
 

@@ -853,6 +853,12 @@ func compareAndUpdateSpec(
 			monitoringTemplateSpec.InstrumentWorkloads.TraceContext.Propagators
 		specUpdated = true
 	}
+	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.InstrumentWorkloads.CaptureSqlQueryParameters, false) !=
+		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.InstrumentWorkloads.CaptureSqlQueryParameters, false) {
+		monitoringResourceSpec.InstrumentWorkloads.CaptureSqlQueryParameters =
+			monitoringTemplateSpec.InstrumentWorkloads.CaptureSqlQueryParameters
+		specUpdated = true
+	}
 	if pointers.ReadBoolPointerWithDefault(monitoringResourceSpec.LogCollection.Enabled, true) !=
 		pointers.ReadBoolPointerWithDefault(monitoringTemplateSpec.LogCollection.Enabled, true) {
 		monitoringResourceSpec.LogCollection.Enabled = monitoringTemplateSpec.LogCollection.Enabled

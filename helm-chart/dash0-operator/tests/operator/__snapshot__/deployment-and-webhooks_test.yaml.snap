@@ -1946,6 +1946,26 @@ monitoring resource CRD should match snapshot:
                     Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
                     for workload instrumentation.
                   properties:
+                    captureSqlQueryParameters:
+                      description: |-
+                        If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
+                        this causes the OpenTelemetry Java agent's JDBC instrumentation to record query parameter values as part of the
+                        db.statement span attribute, by adding the environment variable
+                        OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true to instrumented containers. Only the
+                        OpenTelemetry Java agent's JDBC instrumentation consumes this variable; other language agents ignore it.
+
+                        If a container already has this environment variable set to a value other than "true", the existing value is
+                        preserved.
+
+                        Note: This is an experimental upstream OpenTelemetry Java agent flag and may be renamed or removed in future agent
+                        releases. Recorded query parameter values may include sensitive data such as personally identifiable information
+                        (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
+
+                        By default, the value is not set and the environment variable will not be added to workloads. If this option is
+                        set to true at some point and then later set to false or removed, the operator will remove the environment variable
+                        from instrumented workloads if and only if its current value still matches what the operator would have set
+                        ("true").
+                      type: boolean
                     labelSelector:
                       default: dash0.com/enable!=false
                       description: |-
@@ -2265,6 +2285,26 @@ monitoring resource CRD should match snapshot:
                 previousInstrumentWorkloads:
                   description: The spec.instrumentWorkloads.mode setting that has been observed in the previous reconcile cycle.
                   properties:
+                    captureSqlQueryParameters:
+                      description: |-
+                        If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
+                        this causes the OpenTelemetry Java agent's JDBC instrumentation to record query parameter values as part of the
+                        db.statement span attribute, by adding the environment variable
+                        OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true to instrumented containers. Only the
+                        OpenTelemetry Java agent's JDBC instrumentation consumes this variable; other language agents ignore it.
+
+                        If a container already has this environment variable set to a value other than "true", the existing value is
+                        preserved.
+
+                        Note: This is an experimental upstream OpenTelemetry Java agent flag and may be renamed or removed in future agent
+                        releases. Recorded query parameter values may include sensitive data such as personally identifiable information
+                        (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
+
+                        By default, the value is not set and the environment variable will not be added to workloads. If this option is
+                        set to true at some point and then later set to false or removed, the operator will remove the environment variable
+                        from instrumented workloads if and only if its current value still matches what the operator would have set
+                        ("true").
+                      type: boolean
                     labelSelector:
                       default: dash0.com/enable!=false
                       description: |-
