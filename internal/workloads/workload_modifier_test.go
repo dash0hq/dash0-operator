@@ -2740,7 +2740,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			expectedEnvVars                       map[string]*EnvVarExpectation
 		}
 
-		DescribeTable("should add or remove OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS",
+		DescribeTable("should add or remove SQL query parameter capture env vars",
 			func(testConfig captureSqlQueryParametersTest) {
 				container := &corev1.Container{}
 				if testConfig.existingEnvVars != nil {
@@ -2766,32 +2766,75 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
 			},
-			Entry("should not add the env var if not configured", captureSqlQueryParametersTest{
+			Entry("should not add the env vars if not configured", captureSqlQueryParametersTest{
 				namespaceInstrumentationConfig:        DefaultNamespaceInstrumentationConfig,
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: nil,
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     nil,
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        nil,
 				},
 			}),
-			Entry("should not add the env var if configured to false", captureSqlQueryParametersTest{
+			Entry("should not add the env vars if configured to false", captureSqlQueryParametersTest{
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(false),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: nil,
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     nil,
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        nil,
 				},
 			}),
-			Entry("should add the env var if configured to true and the env var does not exist on the container", captureSqlQueryParametersTest{
+			Entry("should add all env vars if configured to true and none exist on the container", captureSqlQueryParametersTest{
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(true),
 				},
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
 				},
 			}),
-			Entry("should not update the env var if already set to true", captureSqlQueryParametersTest{
+			Entry("should do nothing if configured to true and all env vars are already set to true", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName, Value: "true"},
+				},
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					CaptureSqlQueryParameters: ptr.To(true),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
+				},
+			}),
+			Entry("should apply per-env-var decisions independently when configured to true (mix of true, user-set non-true and ValueFrom)", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "false"},
+					{
+						Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName,
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
+						},
+					},
+				},
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					CaptureSqlQueryParameters: ptr.To(true),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "false"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {ValueFrom: "field.path"},
+				},
+			}),
+			Entry("should not update JDBC env var if already set to true, but should add missing .NET env vars", captureSqlQueryParametersTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
 					Value: "true",
@@ -2799,12 +2842,29 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(true),
 				},
-				expectedPreInstrumentationCheckResult: false,
+				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
 				},
 			}),
-			Entry("should leave existing env var with non-true value alone if configured to true (user-set, no previous)", captureSqlQueryParametersTest{
+			Entry("should not update .NET SqlClient env var if already set to true, but should add missing JDBC and EF Core env vars", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName,
+					Value: "true",
+				}},
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					CaptureSqlQueryParameters: ptr.To(true),
+				},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
+				},
+			}),
+			Entry("should leave existing JDBC env var with non-true value alone if configured to true (user-set, no previous), but should add .NET env vars", captureSqlQueryParametersTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
 					Value: "false",
@@ -2812,12 +2872,29 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(true),
 				},
-				expectedPreInstrumentationCheckResult: false,
+				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "false"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
 				},
 			}),
-			Entry("should leave existing env var via ValueFrom alone even if configured to true", captureSqlQueryParametersTest{
+			Entry("should leave existing .NET EF Core env var with non-true value alone if configured to true (user-set, no previous), but should add other env vars", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName,
+					Value: "false",
+				}},
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					CaptureSqlQueryParameters: ptr.To(true),
+				},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "false"},
+				},
+			}),
+			Entry("should leave existing JDBC env var via ValueFrom alone even if configured to true, but should add .NET env vars", captureSqlQueryParametersTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
 					ValueFrom: &corev1.EnvVarSource{
@@ -2829,29 +2906,54 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(true),
 				},
-				expectedPreInstrumentationCheckResult: false,
+				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {ValueFrom: "field.path"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
 				},
 			}),
-			Entry("should remove existing env var if not configured anymore and previous was true and value matches", captureSqlQueryParametersTest{
+			Entry("should leave existing .NET SqlClient env var via ValueFrom alone even if configured to true, but should add other env vars", captureSqlQueryParametersTest{
 				existingEnvVars: []corev1.EnvVar{{
-					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-					Value: "true",
+					Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "field.path",
+						},
+					},
 				}},
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					CaptureSqlQueryParameters: ptr.To(true),
+				},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {ValueFrom: "field.path"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
+				},
+			}),
+			Entry("should remove existing env vars if not configured anymore and previous was true and value matches", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName, Value: "true"},
+				},
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					PreviousCaptureSqlQueryParameters: ptr.To(true),
 				},
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: nil,
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     nil,
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        nil,
 				},
 			}),
-			Entry("should remove existing env var if configured to false and previous was true and value matches", captureSqlQueryParametersTest{
-				existingEnvVars: []corev1.EnvVar{{
-					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-					Value: "true",
-				}},
+			Entry("should remove existing env vars if configured to false and previous was true and value matches", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName, Value: "true"},
+				},
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters:         ptr.To(false),
 					PreviousCaptureSqlQueryParameters: ptr.To(true),
@@ -2859,35 +2961,43 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: nil,
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     nil,
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        nil,
 				},
 			}),
-			Entry("should not remove existing env var if previous was true but value differs (user changed it)", captureSqlQueryParametersTest{
-				existingEnvVars: []corev1.EnvVar{{
-					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-					Value: "false",
-				}},
+			Entry("should not remove existing env vars if previous was true but value differs (user changed them)", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "false"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "false"},
+					{Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName, Value: "false"},
+				},
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					PreviousCaptureSqlQueryParameters: ptr.To(true),
 				},
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "false"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "false"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "false"},
 				},
 			}),
-			Entry("should not remove existing env var if no previous setting (env var is user-set)", captureSqlQueryParametersTest{
-				existingEnvVars: []corev1.EnvVar{{
-					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-					Value: "true",
-				}},
+			Entry("should not remove existing env vars if no previous setting (env vars are user-set)", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName, Value: "true"},
+				},
 				namespaceInstrumentationConfig:        DefaultNamespaceInstrumentationConfig,
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
 				},
 			}),
 		)
 
-		DescribeTable("should remove OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS when uninstrumenting workloads",
+		DescribeTable("should remove SQL query parameter capture env vars when uninstrumenting workloads",
 			func(testConfig captureSqlQueryParametersTest) {
 				container := &corev1.Container{}
 				if testConfig.existingEnvVars != nil {
@@ -2903,62 +3013,107 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
 			},
-			Entry("should not remove the env var if not configured", captureSqlQueryParametersTest{
-				existingEnvVars: []corev1.EnvVar{{
-					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-					Value: "true",
-				}},
+			Entry("should not remove any env var if not configured", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName, Value: "true"},
+				},
 				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "true"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "true"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "true"},
 				},
 			}),
-			Entry("should not remove the env var if configured but current value differs from what we would set", captureSqlQueryParametersTest{
-				existingEnvVars: []corev1.EnvVar{{
-					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-					Value: "false",
-				}},
+			Entry("should not remove any env var if configured but current values differ from what we would set", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "false"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "false"},
+					{Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName, Value: "false"},
+				},
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(true),
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {Value: "false"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "false"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {Value: "false"},
 				},
 			}),
-			Entry("should not remove the env var if configured but existing env var uses ValueFrom", captureSqlQueryParametersTest{
-				existingEnvVars: []corev1.EnvVar{{
-					Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-					ValueFrom: &corev1.EnvVarSource{
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "field.path",
+			Entry("should not remove any env var if configured but existing env vars use ValueFrom", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
 						},
 					},
-				}},
+					{
+						Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName,
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
+						},
+					},
+					{
+						Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName,
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
+						},
+					},
+				},
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(true),
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: {ValueFrom: "field.path"},
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {ValueFrom: "field.path"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {ValueFrom: "field.path"},
 				},
 			}),
-			Entry("should remove the env var if configured and current value matches what we would set", captureSqlQueryParametersTest{
-				existingEnvVars: []corev1.EnvVar{{
-					Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-					Value: "true",
-				}},
+			Entry("should remove env vars individually based on per-env-var state (mix of matching, user-set and ValueFrom)", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "false"},
+					{
+						Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName,
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{FieldPath: "field.path"},
+						},
+					},
+				},
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(true),
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: nil,
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     {Value: "false"},
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        {ValueFrom: "field.path"},
 				},
 			}),
-			Entry("should do nothing if env var is not set", captureSqlQueryParametersTest{
+			Entry("should remove all env vars if configured and current values match what we would set", captureSqlQueryParametersTest{
+				existingEnvVars: []corev1.EnvVar{
+					{Name: envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName, Value: "true"},
+					{Name: envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName, Value: "true"},
+				},
 				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
 					CaptureSqlQueryParameters: ptr.To(true),
 				},
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: nil,
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     nil,
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        nil,
+				},
+			}),
+			Entry("should do nothing if env vars are not set", captureSqlQueryParametersTest{
+				namespaceInstrumentationConfig: dash0v1beta1.NamespaceInstrumentationConfig{
+					CaptureSqlQueryParameters: ptr.To(true),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName: nil,
+					envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName:     nil,
+					envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName:        nil,
 				},
 			}),
 		)
