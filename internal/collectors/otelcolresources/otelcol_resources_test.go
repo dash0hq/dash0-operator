@@ -80,7 +80,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		Expect(k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(OperatorNamespace))).To(Succeed())
 	})
 
-	Describe("when dealing with individual resources", func() {
+	Context("when dealing with individual resources", func() {
 		It("should create a single resource", func() {
 			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, testResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
@@ -120,7 +120,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 
-	Describe("when creating all OpenTelemetry collector resources", func() {
+	Context("when creating all OpenTelemetry collector resources", func() {
 		AfterEach(func() {
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 		})
@@ -331,7 +331,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 
-	Describe("when OpenTelemetry collector resources have been modified externally", func() {
+	Context("when OpenTelemetry collector resources have been modified externally", func() {
 		It("should reconcile the resources back into the desired state", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResource()
 			_, _, err :=
@@ -392,7 +392,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 
-	Describe("when OpenTelemetry collector resources have been deleted externally", func() {
+	Context("when OpenTelemetry collector resources have been deleted externally", func() {
 		It("should re-created the resources", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResource()
 			_, _, err :=
@@ -434,7 +434,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 
-	Describe("when all OpenTelemetry collector resources are up to date", func() {
+	Context("when all OpenTelemetry collector resources are up to date", func() {
 		It("should report that nothing has changed", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResource()
 
@@ -483,7 +483,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 	})
 
-	Describe("when deleting all OpenTelemetry collector resources", func() {
+	Context("when deleting all OpenTelemetry collector resources", func() {
 		It("should delete the resources", func() {
 			operatorConfiguration := DefaultOperatorConfigurationResource()
 
@@ -521,7 +521,41 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenDeleted).To(BeFalse())
 		})
 	})
+
+	Context("when caching the kubeletstats receiver config", func() {
+		It("should invalidate the cached kubeletstats receiver config when switching infrastructure metrics collection off", func() {
+			// start with kubernetesInfrastructureMetricsCollection enabled
+			result := oTelColResourceManager.determineKubeletstatsReceiverEndpoint(true, probeKubeletStatsEndpointMock, logger)
+			Expect(result.Enabled).To(BeTrue())
+			// simulate disabling kubernetesInfrastructureMetricsCollection at runtime
+			result = oTelColResourceManager.determineKubeletstatsReceiverEndpoint(false, probeKubeletStatsEndpointMock, logger)
+			Expect(result.Enabled).To(BeFalse())
+			// verify the kubeletStatsReceiverConfig resulting from kubernetesInfrastructureMetricsCollection disabled result has not
+			// been cached
+			Expect(oTelColResourceManager.kubeletStatsReceiverConfig.Load()).To(BeNil())
+		})
+
+		It("should invalidate the cached kubeletstats receiver config when switching infrastructure metrics collection on", func() {
+			// start with kubernetesInfrastructureMetricsCollection disabled
+			result := oTelColResourceManager.determineKubeletstatsReceiverEndpoint(false, probeKubeletStatsEndpointMock, logger)
+			Expect(result.Enabled).To(BeFalse())
+			// simulate enabling kubernetesInfrastructureMetricsCollection at runtime
+			result = oTelColResourceManager.determineKubeletstatsReceiverEndpoint(true, probeKubeletStatsEndpointMock, logger)
+			Expect(result.Enabled).To(BeTrue())
+			// verify the kubeletStatsReceiverConfig has been cached
+			Expect(oTelColResourceManager.kubeletStatsReceiverConfig.Load()).ToNot(BeNil())
+		})
+	})
 })
+
+func probeKubeletStatsEndpointMock(util.CollectorConfig, logd.Logger) (KubeletStatsReceiverConfig, bool) {
+	return KubeletStatsReceiverConfig{
+		Enabled:            true,
+		Endpoint:           kubeletStatsNodeNameEndpoint,
+		AuthType:           kubeletStatsAuthTypeServiceAccount,
+		InsecureSkipVerify: false,
+	}, true
+}
 
 var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	logger := logd.FromContext(context.Background())
