@@ -199,11 +199,6 @@ var (
 	extraConfig                     util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
-	httpClient = dash0apiclient.NewTransport(
-		dash0apiclient.WithTransportMaxRetries(2),
-		dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
-		dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
-	).HTTPClient()
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
 
@@ -1213,6 +1208,15 @@ func startDash0Controllers(
 		BarkerImage:                                 envVars.barkerImage,
 		BarkerImagePullPolicy:                       envVars.barkerImagePullPolicy,
 	}
+
+	httpClient := util.WithUserAgent(
+		dash0apiclient.NewTransport(
+			dash0apiclient.WithTransportMaxRetries(2),
+			dash0apiclient.WithTransportRetryWaitMin(1*time.Second),
+			dash0apiclient.WithTransportRetryWaitMax(3*time.Second),
+		).HTTPClient(),
+		images.GetOperatorVersion(),
+	)
 
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 	oTelCollectorBaseUrl := determineCollectorBaseUrl(cliArgs.forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
