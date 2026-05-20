@@ -26,6 +26,13 @@ The directory `test/util` contains additional Go code only used in unit tests.
 The directory `test/e2e` contains the end-to-end test suite.
 The directory `test-resources` contains a collection of scripts for running semi-manual tests scenarios.
 
+## Formatting
+
+Use the current year in the license header comment when adding new files.
+Do not update the copyright year when editing files.
+Use lines of 120 characters when formatting files with line breaks.
+Use 120 characters per line when formatting comments in Go code.
+
 ## Make Commands
 
 Build, lint and test tasks in this repository are performed via the Makefile in the root of the repository.
