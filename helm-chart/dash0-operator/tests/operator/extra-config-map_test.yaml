@@ -748,3 +748,15 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.monitoringTemplate.spec.exports: Providing custom export settings in the monitoring template is not allowed, please remove the field."
+
+  - it: should disallow monitoringTemplate nested under autoMonitorNamespaces
+    set:
+      operator:
+        autoMonitorNamespaces:
+          monitoringTemplate:
+            spec:
+              instrumentWorkloads:
+                mode: created-and-updated
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.autoMonitorNamespaces.monitoringTemplate is not a valid setting. The monitoring template is a top-level operator setting; please use operator.monitoringTemplate instead."

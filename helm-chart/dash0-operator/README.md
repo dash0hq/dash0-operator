@@ -528,21 +528,25 @@ The Dash0 monitoring resource supports additional configuration settings:
 
 * <a href="#monitoringresource.spec.instrumentWorkloads.captureSqlQueryParameters"><span id="monitoringresource.spec.instrumentWorkloads.captureSqlQueryParameters">`spec.instrumentWorkloads.captureSqlQueryParameters`</span></a>:
   When set to `true`, the operator enables SQL query parameter capture in the language agents that support it.
-  Currently this causes the OpenTelemetry Java agent's JDBC instrumentation to record query parameter values as part of
-  the `db.statement` span attribute, by adding the environment variable
-  `OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true` to instrumented containers in the target
-  namespace.
-  Only the OpenTelemetry Java agent's JDBC instrumentation consumes this variable; other language agents ignore it.
+  Currently this covers the OpenTelemetry Java agent's JDBC instrumentation and the OpenTelemetry .NET
+  auto-instrumentation for Microsoft.Data.SqlClient and Entity Framework Core, by adding the following environment
+  variables (all set to `true`) to instrumented containers in the target namespace:
+  - `OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS`
+  - `OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS`
+  - `OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS`
 
-  Note that this is an experimental upstream OpenTelemetry Java agent flag and may be renamed or removed in future agent
+  Recorded query parameter values are added to the resulting database span attributes.
+  Other language agents ignore these variables.
+
+  Note that these are experimental upstream OpenTelemetry agent flags and may be renamed or removed in future agent
   releases.
   Recorded query parameter values may include sensitive data such as personally identifiable information (PII), so
   enable this only for namespaces where capturing query parameter values is acceptable.
 
-  When the option is not set or set to `false`, the operator will not set the environment variable.
-  If the option is set to `true` at some point and then later set to `false` or removed, the operator will remove the
-  environment variable from instrumented workloads if and only if the value still matches what the operator would have
-  set (the literal `true`); a user-set value that differs is preserved.
+  When the option is not set or set to `false`, the operator will not set the environment variables.
+  If the option is set to `true` at some point and then later set to `false` or removed, the operator will remove each
+  environment variable from instrumented workloads if and only if its current value still matches what the operator
+  would have set (the literal `true`); a user-set value that differs is preserved.
   (For that purpose, the previous setting is stored in the monitoring resource's status.)
 
 * <a href="#monitoringresource.spec.logCollection.enabled"><span id="monitoringresource.spec.logCollection.enabled">`spec.logCollection.enabled`</span></a>:
