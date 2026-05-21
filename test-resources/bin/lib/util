@@ -181,14 +181,18 @@ determine_container_images() {
   target_allocator_image_tag="$image_tag"
   target_allocator_image_digest=""
   target_allocator_image_pull_policy="$pull_policy"
-  intelligent_edge_collector_image_repository="${image_repository_prefix}intelligent-edge-collector"
-  intelligent_edge_collector_image_tag="$image_tag"
+  # The intelligent edge collector and barker images are not built in this repo. By default we let the values.yaml
+  # pinned tag win (the published ghcr image), and only override when an explicit env var is set. Set
+  # INTELLIGENT_EDGE_COLLECTOR_IMAGE_{REPOSITORY,TAG,DIGEST,PULL_POLICY} or BARKER_IMAGE_* to use a locally built
+  # image (see "make all-images-with-ie").
+  intelligent_edge_collector_image_repository=""
+  intelligent_edge_collector_image_tag=""
   intelligent_edge_collector_image_digest=""
-  intelligent_edge_collector_image_pull_policy="$pull_policy"
-  barker_image_repository="${image_repository_prefix}barker"
-  barker_image_tag="$image_tag"
+  intelligent_edge_collector_image_pull_policy=""
+  barker_image_repository=""
+  barker_image_tag=""
   barker_image_digest=""
-  barker_image_pull_policy="$pull_policy"
+  barker_image_pull_policy=""
 
   operator_helm_chart=${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}
 
@@ -219,12 +223,6 @@ determine_container_images() {
     target_allocator_image_repository=""
     target_allocator_image_tag=""
     target_allocator_image_pull_policy=""
-    intelligent_edge_collector_image_repository=""
-    intelligent_edge_collector_image_tag=""
-    intelligent_edge_collector_image_pull_policy=""
-    barker_image_repository=""
-    barker_image_tag=""
-    barker_image_pull_policy=""
   fi
 
   if [[ -n "${CONTROLLER_IMAGE_REPOSITORY:-}" ]]; then

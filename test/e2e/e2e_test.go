@@ -1711,6 +1711,7 @@ trace_statements:
 						"dash0sampling:",
 						"dash0redmetrics:",
 						"dash0signaltometrics:",
+						"dash0filter:",
 						"dash0resource:",
 						"dash0operation:",
 						"traces/sampled:",

@@ -1032,13 +1032,13 @@ tests:
       # images are sourced as external dependencies; bump these alongside values.yaml.
       - equal:
           path: spec.template.spec.containers[0].env[8].value
-          value: "ghcr.io/dash0hq/intelligent-edge-collector:v2.0.1940"
+          value: "ghcr.io/dash0hq/intelligent-edge-collector:v2.0.2051"
       - equal:
           path: spec.template.spec.containers[0].env[13].name
           value: DASH0_BARKER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "ghcr.io/dash0hq/barker:v2.0.1940"
+          value: "ghcr.io/dash0hq/barker:v2.0.2051"
       - equal:
           path: spec.template.spec.containers[0].env[14].name
           value: K8S_POD_UID

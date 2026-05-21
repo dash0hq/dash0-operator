@@ -188,3 +188,27 @@ cat \
   TARGET_NAMESPACE="$target_namespace" \
   envsubst > \
   test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml
+
+DASH0_DATASET_RESOLVED="${OPERATOR_CONFIGURATION_VIA_HELM_DATASET:-${DASH0_DATASET:-default}}"
+
+# shellcheck disable=SC2002
+cat \
+  test-resources/customresources/dash0spamfilter/dash0spamfilter.yaml.template | \
+  DASH0_DATASET="$DASH0_DATASET_RESOLVED" \
+  TARGET_NAMESPACE="$target_namespace" \
+  envsubst > \
+  test-resources/customresources/dash0spamfilter/dash0spamfilter.yaml
+
+# shellcheck disable=SC2002
+cat \
+  test-resources/customresources/dash0signaltometrics/logs.yaml.template | \
+  DASH0_DATASET="$DASH0_DATASET_RESOLVED" \
+  envsubst > \
+  test-resources/customresources/dash0signaltometrics/logs.yaml
+
+# shellcheck disable=SC2002
+cat \
+  test-resources/customresources/dash0signaltometrics/spans.yaml.template | \
+  DASH0_DATASET="$DASH0_DATASET_RESOLVED" \
+  envsubst > \
+  test-resources/customresources/dash0signaltometrics/spans.yaml
