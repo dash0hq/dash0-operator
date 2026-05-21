@@ -59,6 +59,8 @@ const (
 	envVarOTelInjectorResourceAttributesName                            = "OTEL_INJECTOR_RESOURCE_ATTRIBUTES"
 	otelInjectorLogLevelEnvVarName                                      = "OTEL_INJECTOR_LOG_LEVEL"
 	envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName = "OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS"
+	envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName     = "OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS"
+	envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName        = "OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS"
 	captureSqlQueryParametersValueTrue                                  = "true"
 
 	serviceName      = "service.name"
@@ -84,6 +86,13 @@ var (
 	defaultInitContainerGroup int64 = 13020
 
 	serviceAttributes = []string{serviceName, serviceNamespace, serviceVersion}
+
+	// CaptureSqlQueryParametersEnvVarNames are the env vars set when captureSqlQueryParameters is enabled.
+	CaptureSqlQueryParametersEnvVarNames = []string{
+		envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
+		envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName,
+		envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName,
+	}
 
 	otelExporterOtlpNoOverwriteMsg = fmt.Sprintf(
 		"Dash0 will not set %s/%s since the container already has at least one of those environment "+
@@ -1168,25 +1177,35 @@ func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namesp
 	}
 }
 
-// addCaptureSqlQueryParametersEnvVar sets OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true when the
-// monitoring resource enables it, and removes it when the previous reconcile had it enabled and the current container
-// value still matches what the operator would have set. User-set values whose payload differs from "true" are preserved,
-// as are values set via ValueFrom. Note: a user-set Value of exactly "true" is indistinguishable from an operator-set
-// value and will be removed on toggle-off if the previous reconcile had the field enabled.
+// addCaptureSqlQueryParametersEnvVar reconciles the SQL query parameter capture environment variables on the
+// container. When the monitoring resource enables capture, missing env vars in CaptureSqlQueryParametersEnvVarNames
+// are added with Value="true". When capture is disabled, env vars previously written by the operator (i.e. whose
+// current Value is the literal "true" and whose PreviousCaptureSqlQueryParameters was true) are removed.
+//
+// Each env var is evaluated independently. User-set Values whose payload differs from "true" are preserved, as are
+// values set via ValueFrom. Today the slice contains the OpenTelemetry Java agent's
+// OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS and the OpenTelemetry .NET auto-instrumentation's
+// OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS and
+// OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS. Note: a user-set Value of exactly "true" is
+// indistinguishable from an operator-set value and will be removed on toggle-off if the previous reconcile had the
+// field enabled.
 func (m *ResourceModifier) addCaptureSqlQueryParametersEnvVar(container *corev1.Container) {
-	if !captureSqlQueryParametersCanBeUpdatedForContainer(container, m.namespaceInstrumentationConfig) {
-		return
-	}
-	if pointers.ReadBoolPointerWithDefault(m.namespaceInstrumentationConfig.CaptureSqlQueryParameters, false) {
-		addOrReplaceEnvironmentVariable(
-			container,
-			corev1.EnvVar{
-				Name:  envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName,
-				Value: captureSqlQueryParametersValueTrue,
-			},
-		)
-	} else {
-		removeEnvironmentVariable(container, envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName)
+	desiredOn := pointers.ReadBoolPointerWithDefault(m.namespaceInstrumentationConfig.CaptureSqlQueryParameters, false)
+	for _, envVarName := range CaptureSqlQueryParametersEnvVarNames {
+		if !captureSqlQueryParametersCanBeUpdatedForContainer(container, envVarName, m.namespaceInstrumentationConfig) {
+			continue
+		}
+		if desiredOn {
+			addOrReplaceEnvironmentVariable(
+				container,
+				corev1.EnvVar{
+					Name:  envVarName,
+					Value: captureSqlQueryParametersValueTrue,
+				},
+			)
+		} else {
+			removeEnvironmentVariable(container, envVarName)
+		}
 	}
 }
 
@@ -1195,8 +1214,10 @@ func captureSqlQueryParametersEnvVarWillBeUpdatedForAtLeastOneContainer(
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 ) bool {
 	for _, container := range containers {
-		if captureSqlQueryParametersCanBeUpdatedForContainer(new(container), namespaceInstrumentationConfig) {
-			return true
+		for _, envVarName := range CaptureSqlQueryParametersEnvVarNames {
+			if captureSqlQueryParametersCanBeUpdatedForContainer(new(container), envVarName, namespaceInstrumentationConfig) {
+				return true
+			}
 		}
 	}
 	return false
@@ -1204,9 +1225,10 @@ func captureSqlQueryParametersEnvVarWillBeUpdatedForAtLeastOneContainer(
 
 func captureSqlQueryParametersCanBeUpdatedForContainer(
 	container *corev1.Container,
+	envVarName string,
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig,
 ) bool {
-	envVarOnContainer := util.GetEnvVar(container, envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName)
+	envVarOnContainer := util.GetEnvVar(container, envVarName)
 
 	if envVarOnContainer != nil && envVarOnContainer.ValueFrom != nil {
 		// The environment variable is set via ValueFrom, it was not set by the Dash0 operator (the operator only ever
@@ -1668,19 +1690,21 @@ func (m *ResourceModifier) removeCaptureSqlQueryParametersIfCurrentValueMatchesC
 	if !pointers.ReadBoolPointerWithDefault(m.namespaceInstrumentationConfig.CaptureSqlQueryParameters, false) {
 		return
 	}
-	idx := findEnvVarIdx(container, envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName)
-	if idx < 0 {
-		return
-	}
-	existingEnvVar := container.Env[idx]
-	if existingEnvVar.ValueFrom != nil {
-		// set via ValueFrom, not by us, leave alone
-		return
-	}
-	if existingEnvVar.Value == captureSqlQueryParametersValueTrue {
-		// Compare without TrimSpace: the operator only ever writes the bare literal "true", so a value of " true " or
-		// similar must have been set by the user and should be left alone.
-		removeEnvironmentVariable(container, envVarOtelInstrumentationJdbcExperimentalCaptureQueryParametersName)
+	for _, envVarName := range CaptureSqlQueryParametersEnvVarNames {
+		idx := findEnvVarIdx(container, envVarName)
+		if idx < 0 {
+			continue
+		}
+		existingEnvVar := container.Env[idx]
+		if existingEnvVar.ValueFrom != nil {
+			// set via ValueFrom, not by us, leave alone
+			continue
+		}
+		if existingEnvVar.Value == captureSqlQueryParametersValueTrue {
+			// Compare without TrimSpace: the operator only ever writes the bare literal "true", so a value of " true " or
+			// similar must have been set by the user and should be left alone.
+			removeEnvironmentVariable(container, envVarName)
+		}
 	}
 }
 
