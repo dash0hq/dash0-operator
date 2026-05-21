@@ -113,6 +113,7 @@ func (r *AutoNamespaceMonitoringReconciler) Reconcile(ctx context.Context, req c
 	} else if checkResourceResult.ResourceDoesNotExist {
 		logger.Debug("operator configuration resource does not exist, stopping namespace watch")
 		r.ensureNamespaceWatchIsStopped(ctx, logger)
+		r.deleteAllAutoMonitoringResourcesInCluster(ctx, logger)
 		return ctrl.Result{}, nil
 	} else if checkResourceResult.StopReconcile {
 		return ctrl.Result{}, nil
@@ -121,6 +122,9 @@ func (r *AutoNamespaceMonitoringReconciler) Reconcile(ctx context.Context, req c
 	operatorConfigurationResource := checkResourceResult.Resource.(*dash0v1alpha1.Dash0OperatorConfiguration)
 
 	if !operatorConfigurationResource.IsAvailable() {
+		// Note: Deliberately not deleting auto-monitoring resources here. An unavailable operator configuration may be a transient
+		// state; deleting all auto-monitoring resources could introduce a lot of unnecessary churn. This will resolve itself if
+		// either the unavailable resource becomes available again or is deleted.
 		logger.Debug("operator configuration unavailable, stopping namespace watch")
 		r.ensureNamespaceWatchIsStopped(ctx, logger)
 		return ctrl.Result{}, nil
@@ -138,6 +142,7 @@ func (r *AutoNamespaceMonitoringReconciler) Reconcile(ctx context.Context, req c
 	} else {
 		logger.Debug("AutoMonitorNamespaces disabled, stopping namespace watch")
 		r.ensureNamespaceWatchIsStopped(ctx, logger)
+		r.deleteAllAutoMonitoringResourcesInCluster(ctx, logger)
 	}
 	return ctrl.Result{}, nil
 }
@@ -343,6 +348,36 @@ func (r *AutoNamespaceMonitoringReconciler) unmonitorNamespacesThatNoLongerMatch
 					"cannot unmonitor namespace after the auto-namespace-monitoring label selector has changed",
 					"namespace",
 					ns.Name,
+				)
+			}
+		}
+	}()
+}
+
+// deleteAllAutoMonitoringResourcesInCluster deletes all Dash0Monitoring resources across the cluster that were created by the
+// auto-namespace-monitoring controller (identified by the dash0.com/auto-monitored-namespace=true label). The list is
+// filtered server/cache-side by label, so it returns only the auto-monitored resources. Per-item delete failures are
+// logged and iteration continues; the next reconcile retries any remaining resources.
+func (r *AutoNamespaceMonitoringReconciler) deleteAllAutoMonitoringResourcesInCluster(ctx context.Context, logger logd.Logger) {
+	go func() {
+		list := &dash0v1beta1.Dash0MonitoringList{}
+		if err := r.List(ctx, list, client.MatchingLabels{util.AutoMonitoredNamespaceLabel: util.TrueString}); err != nil {
+			logger.Error(err, "cannot list auto-monitoring resources for deletion after auto-namespace-monitoring has been disabled")
+			return
+		}
+		for i := range list.Items {
+			resource := &list.Items[i]
+			logger.Info(
+				"removing monitoring resource after auto-namespace-monitoring has been disabled",
+				"namespace", resource.Namespace,
+				"name", resource.Name,
+			)
+			if err := r.Delete(ctx, resource); err != nil && !apierrors.IsNotFound(err) {
+				logger.Error(
+					err,
+					"cannot delete auto-monitoring resource after auto-namespace-monitoring has been disabled",
+					"namespace", resource.Namespace,
+					"name", resource.Name,
 				)
 			}
 		}
@@ -646,12 +681,15 @@ func (w *NamespaceWatcher) ensureNamespaceIsUnmonitored(
 		return err
 	}
 	for i := range existingList.Items {
+		resource := &existingList.Items[i]
 		logger.Info(
-			"removing monitoring resource from namespace after the auto-namespace-monitoring label selector has changed",
+			"removing auto-monitoring resource from namespace",
 			"namespace",
 			ns.Name,
+			"name",
+			resource.Name,
 		)
-		if err := w.Delete(ctx, &existingList.Items[i]); err != nil && !apierrors.IsNotFound(err) {
+		if err := w.Delete(ctx, resource); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
