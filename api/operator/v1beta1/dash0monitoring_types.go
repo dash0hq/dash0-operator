@@ -233,22 +233,26 @@ type InstrumentWorkloads struct {
 	TraceContext TraceContext `json:"traceContext,omitempty"`
 
 	// If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
-	// this causes the OpenTelemetry Java agent's JDBC instrumentation to record query parameter values as part of the
-	// db.statement span attribute, by adding the environment variable
-	// OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true to instrumented containers. Only the
-	// OpenTelemetry Java agent's JDBC instrumentation consumes this variable; other language agents ignore it.
+	// this covers the OpenTelemetry Java agent's JDBC instrumentation and the OpenTelemetry .NET auto-instrumentation
+	// for Microsoft.Data.SqlClient and Entity Framework Core, by adding the following environment variables (all set to
+	// "true") to instrumented containers:
+	//   - OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS
+	//   - OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS
+	//   - OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS
+	// Recorded query parameter values are added to the resulting database span attributes. Other language agents ignore
+	// these variables.
 	//
-	// If a container already has this environment variable set to a value other than "true", the existing value is
-	// preserved.
+	// If a container already has one of these environment variables set to a value other than "true", the existing value
+	// is preserved.
 	//
-	// Note: This is an experimental upstream OpenTelemetry Java agent flag and may be renamed or removed in future agent
+	// Note: These are experimental upstream OpenTelemetry agent flags and may be renamed or removed in future agent
 	// releases. Recorded query parameter values may include sensitive data such as personally identifiable information
 	// (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
 	//
-	// By default, the value is not set and the environment variable will not be added to workloads. If this option is
-	// set to true at some point and then later set to false or removed, the operator will remove the environment variable
-	// from instrumented workloads if and only if its current value still matches what the operator would have set
-	// ("true").
+	// By default, the value is not set and the environment variables will not be added to workloads. If this option is
+	// set to true at some point and then later set to false or removed, the operator will remove each environment
+	// variable from instrumented workloads if and only if its current value still matches what the operator would have
+	// set ("true").
 	//
 	// +kubebuilder:validation:Optional
 	CaptureSqlQueryParameters *bool `json:"captureSqlQueryParameters,omitempty"`
@@ -282,11 +286,11 @@ type NamespaceInstrumentationConfig struct {
 	TraceContextPropagators         *string
 	PreviousTraceContextPropagators *string
 	// CaptureSqlQueryParameters reflects spec.instrumentWorkloads.captureSqlQueryParameters. When true, the workload
-	// modifier sets OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS=true on instrumented containers.
+	// modifier sets the SQL query parameter capture environment variables to "true" on instrumented containers.
 	CaptureSqlQueryParameters *bool
 	// PreviousCaptureSqlQueryParameters reflects the CaptureSqlQueryParameters value at the time of the previous
-	// reconcile. Used during uninstrumentation / re-instrumentation to decide whether to remove a previously set
-	// OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS env var.
+	// reconcile. Used during uninstrumentation / re-instrumentation to decide whether to remove previously set SQL
+	// query parameter capture environment variables.
 	PreviousCaptureSqlQueryParameters *bool
 	// LogCollectionEnabled is true if the operator collects pod logs from this namespace via the collector's file_log
 	// receiver. When true, the workload modifier sets OTEL_LOGS_EXPORTER=none on instrumented containers to prevent
