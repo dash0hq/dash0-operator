@@ -758,6 +758,12 @@ func intelligentEdgeConfigFromResource(
 	if d := resource.Spec.SignalToMetrics.FlushInterval; d != nil && d.Duration > 0 {
 		signalToMetricsFlushInterval = d.Duration.String()
 	}
+	spamFilterEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.Enabled, true)
+	var spamFilterCacheExpiration string
+	if d := resource.Spec.SpamFilter.CacheExpiration; d != nil && d.Duration > 0 {
+		spamFilterCacheExpiration = d.Duration.String()
+	}
+	spamFilterAllowNoSettingsExt := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.AllowNoSettingsExt, false)
 
 	derivedEndpoint, derivedApiEndpoint, dataset := deriveDash0EndpointsAndDataset(operatorConfig)
 	hasDash0Export := derivedEndpoint != "" || derivedApiEndpoint != ""
@@ -794,6 +800,9 @@ func intelligentEdgeConfigFromResource(
 		SignalToMetricsEnabled:       signalToMetricsEnabled,
 		SignalToMetricsMaxTimeSeries: resource.Spec.SignalToMetrics.MaxTimeSeries,
 		SignalToMetricsFlushInterval: signalToMetricsFlushInterval,
+		SpamFilterEnabled:            spamFilterEnabled,
+		SpamFilterCacheExpiration:    spamFilterCacheExpiration,
+		SpamFilterAllowNoSettingsExt: spamFilterAllowNoSettingsExt,
 		Endpoint:                     endpoint,
 		ApiEndpoint:                  apiEndpoint,
 		AuthEnvVar:                   authEnvVarNameDefaultIndexed(0),

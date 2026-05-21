@@ -2,6 +2,8 @@ apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0SignalToMetrics
 metadata:
   name: nodejs-test-endpoint-latency
+  labels:
+    dash0.com/dataset: $DASH0_DATASET
 spec:
   enabled: true
   display:
@@ -15,4 +17,4 @@ spec:
   output:
     name: nodejs.test_endpoint.duration
     description: Latency distribution of requests to the Node.js test endpoint
-    interval: 60s
+    interval: 30s

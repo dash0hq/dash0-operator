@@ -433,7 +433,7 @@ operator:
   intelligentEdgeCollectorImage:
     repository: "ghcr.io/dash0hq/intelligent-edge-collector"
     # overrides the image tag, which defaults to the chart appVersion.
-    tag: "v2.0.1940"
+    tag: "v2.0.2051"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -443,7 +443,7 @@ operator:
   barkerImage:
     repository: "ghcr.io/dash0hq/barker"
     # overrides the image tag, which defaults to the chart appVersion.
-    tag: "v2.0.1940"
+    tag: "v2.0.2051"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy

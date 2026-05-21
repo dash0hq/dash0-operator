@@ -33,6 +33,9 @@ type IntelligentEdgeConfig struct {
 	SignalToMetricsEnabled       bool
 	SignalToMetricsMaxTimeSeries *int32
 	SignalToMetricsFlushInterval string
+	SpamFilterEnabled            bool
+	SpamFilterCacheExpiration    string
+	SpamFilterAllowNoSettingsExt bool
 	Endpoint                     string
 	ApiEndpoint                  string
 	AuthEnvVar                   string
