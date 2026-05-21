@@ -925,9 +925,8 @@ operator:
   # false. If omitted, the Dash0 operator will use default values for automatically created Dash0Monitoring resources.
   # The commeted out monitoringTemplate below shows the default values.
   #
-  # Note: This is a top level value, e.g. it's operator.monitoringTemplate, not
-  # operator.autoMonitorNamespaces.monitoringTemplate.
-  #
+  # NOTE: This is a top level value, e.g. it is **operator.monitoringTemplate**,
+  #       _not_ **operator.autoMonitorNamespaces.monitoringTemplate**.
   #monitoringTemplate:
   #  spec:
   #    instrumentWorkloads:
