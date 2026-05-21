@@ -3201,6 +3201,43 @@ trace_statements:
 					workloadTestConfigExistingAlwaysOptIn.workloadType,
 					false,
 				)
+
+				// Part Five: Disable automatic namespace monitoring entirely. This deletes all remaining auto-monitoring
+				// resources, and the workloads in those namespaces will be uninstrumented.
+
+				By("auto-monitoring test, part V: disabling automatic namespace monitoring")
+				updateOperatorConfigurationAutoNamespaceMonitoringEnabled(false)
+
+				// Namespaces that still had auto-monitoring resources at the end of part IV, which now should become unmonitored.
+				namespaces := []string{
+					namespaceExisting,
+					namespaceExistingDefaultOptOut,
+					namespaceNewDefaultOptOut,
+					namespaceNewAlwaysOptIn,
+				}
+				wlConfigs := []runtimeWorkloadTestConfig{
+					workloadTestConfigExisting,
+					workloadTestConfigExistingDefaultOptOut,
+					workloadTestConfigNewDefaultOptOut,
+					workloadTestConfigNewAlwaysOptIn,
+				}
+
+				Eventually(func(g Gomega) {
+					for _, ns := range namespaces {
+						verifyDash0MonitoringResourceDoesNotExist(g, ns, util.MonitoringAutoResourceDefaultName)
+					}
+				}, 60*time.Second, time.Second).Should(Succeed())
+
+				runInParallel(wlConfigs, func(c runtimeWorkloadTestConfig) {
+					By(fmt.Sprintf("verifying that the %s %s in namespace %s is no longer instrumented",
+						c.runtime.runtimeTypeLabel,
+						c.workloadType.workloadTypeString,
+						c.namespace,
+					))
+					Eventually(func(g Gomega) {
+						verifyNoDash0LabelsOrOnlyOptOut(g, c.namespace, c.runtime, c.workloadType, false)
+					}, labelChangeTimeout, pollingInterval).Should(Succeed())
+				})
 			})
 
 			It("automatically monitors namespaces when managing the operator configuration resource via Helm", func() {
