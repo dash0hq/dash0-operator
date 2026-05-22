@@ -3202,10 +3202,26 @@ trace_statements:
 					false,
 				)
 
-				// Part Five: Disable automatic namespace monitoring entirely. This deletes all remaining auto-monitoring
+				// Part Five: Delete the auto-monitoring resource in a namespace and verify that it is recreated automatically.
+
+				By("auto-monitoring test, part V: deleting the auto-monitoring resource in namespaceExisting")
+				Expect(runAndIgnoreOutput(
+					exec.Command(
+						"kubectl",
+						"delete",
+						"--namespace",
+						namespaceExisting,
+						"dash0monitoring",
+						util.MonitoringAutoResourceDefaultName,
+						"--wait",
+					))).To(Succeed())
+
+				waitForMonitoringResourceToBecomeAvailable(namespaceExisting, util.MonitoringAutoResourceDefaultName)
+
+				// Part Six: Disable automatic namespace monitoring entirely. This deletes all remaining auto-monitoring
 				// resources, and the workloads in those namespaces will be uninstrumented.
 
-				By("auto-monitoring test, part V: disabling automatic namespace monitoring")
+				By("auto-monitoring test, part VI: disabling automatic namespace monitoring")
 				updateOperatorConfigurationAutoNamespaceMonitoringEnabled(false)
 
 				// Namespaces that still had auto-monitoring resources at the end of part IV, which now should become unmonitored.
