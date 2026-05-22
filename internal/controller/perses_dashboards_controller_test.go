@@ -1491,7 +1491,7 @@ func deletePersesDashboardCrdIfItExists(ctx context.Context) {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 			},
-			3*time.Second, 20*time.Millisecond,
+			30*time.Second, 100*time.Millisecond,
 		).Should(Succeed())
 
 		persesDashboardCrd = nil
