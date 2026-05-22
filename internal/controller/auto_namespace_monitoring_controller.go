@@ -247,7 +247,7 @@ func (r *AutoNamespaceMonitoringReconciler) ensureNamespaceWatchIsActive(labelSe
 	if labelSelectorPredicate != nil {
 		watchPredicates = append(watchPredicates, labelSelectorPredicate)
 	}
-	logger.Debug("(re)creating the namespace watch")
+	logger.Debug("(re)creating the the namespace controller's namespace watch")
 	if err = namespaceController.Watch(
 		source.TypedKind[*corev1.Namespace, reconcile.Request](
 			r.manager.GetCache(),
@@ -260,6 +260,28 @@ func (r *AutoNamespaceMonitoringReconciler) ensureNamespaceWatchIsActive(labelSe
 		return
 	}
 	logger.Info("successfully created a new watch for namespaces")
+
+	// Also watch for deletion of Dash0Monitoring resources. When a manually managed monitoring resource is removed from
+	// a namespace that should be auto-monitored, we want to create the auto-monitoring resource immediately rather than
+	// waiting for the next namespace reconcile. When an auto-monitoring is deleted by a user, we also want to recreate
+	// it.
+	logger.Debug("(re)creating the namespace controller's watch for monitoring resource deletions")
+	if err = namespaceController.Watch(
+		source.TypedKind[*dash0v1beta1.Dash0Monitoring, reconcile.Request](
+			r.manager.GetCache(),
+			&dash0v1beta1.Dash0Monitoring{},
+			handler.TypedEnqueueRequestsFromMapFunc[*dash0v1beta1.Dash0Monitoring, reconcile.Request](
+				func(_ context.Context, mr *dash0v1beta1.Dash0Monitoring) []reconcile.Request {
+					return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: mr.Namespace}}}
+				},
+			),
+			&monitoringResourceDeletePredicate{},
+		),
+	); err != nil {
+		logger.Error(err, "unable to create a new watch for monitoring resource deletions")
+		return
+	}
+	logger.Info("successfully created a new watch for monitoring resource deletions")
 
 	// start the controller
 	backgroundCtx := context.Background()
@@ -969,4 +991,27 @@ func namespaceMatchesLabelSelector(ns *corev1.Namespace, selectorStr string) boo
 		return false
 	}
 	return selector.Matches(labels.Set(ns.Labels))
+}
+
+// monitoringResourceDeletePredicate fires on the deletion of any Dash0Monitoring resource. Create/Update/Generic
+// events are ignored. The triggered namespace reconcile is idempotent: it (re)creates the auto-managed resource
+// only when the namespace should be auto-monitored, otherwise it is a no-op. Deletes initiated by the controller
+// itself in deleteAllAutoMonitoringResourcesInCluster happen after the namespace watch has been stopped, so they
+// do not feed back into this predicate.
+type monitoringResourceDeletePredicate struct{}
+
+func (p *monitoringResourceDeletePredicate) Create(_ event.TypedCreateEvent[*dash0v1beta1.Dash0Monitoring]) bool {
+	return false
+}
+
+func (p *monitoringResourceDeletePredicate) Update(_ event.TypedUpdateEvent[*dash0v1beta1.Dash0Monitoring]) bool {
+	return false
+}
+
+func (p *monitoringResourceDeletePredicate) Delete(_ event.TypedDeleteEvent[*dash0v1beta1.Dash0Monitoring]) bool {
+	return true
+}
+
+func (p *monitoringResourceDeletePredicate) Generic(_ event.TypedGenericEvent[*dash0v1beta1.Dash0Monitoring]) bool {
+	return false
 }

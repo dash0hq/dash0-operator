@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -299,7 +300,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
 		})
 
-		It("does not create a Dash0Monitoring with dash0.com/auto-monitored-namespace when the namespace already contains non-auto monitoring resource", func() {
+		It("does not create a Dash0Monitoring resource with dash0.com/auto-monitored-namespace when the namespace already contains a non-auto monitoring resource", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			EnsureMonitoringResourceWithSpecExistsInNamespace(
 				ctx,
@@ -315,6 +316,49 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			Expect(monitoringResource.Name).To(Equal(manualMonitoringResourceName.Name))
 			_, hasAutoMonitoredLabel := monitoringResource.Labels[util.AutoMonitoredNamespaceLabel]
 			Expect(hasAutoMonitoredLabel).To(BeFalse())
+		})
+
+		It("creates the auto-monitoring resource when a manually managed monitoring resource is deleted", func() {
+			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			EnsureMonitoringResourceWithSpecExistsInNamespace(
+				ctx,
+				k8sClient,
+				MonitoringResourceDefaultSpec,
+				manualMonitoringResourceName,
+			)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			// While the manual resource is in place, no auto-monitoring resource is created.
+			monitoringResources := listMonitoringResources(ctx, Default, testAutoNamespace1)
+			Expect(monitoringResources).To(HaveLen(1))
+			Expect(monitoringResources[0].Name).To(Equal(manualMonitoringResourceName.Name))
+
+			// Simulate the user deleting the manually managed monitoring resource. Once the watch on Dash0Monitoring
+			// deletions observes this, it enqueues a reconcile for the namespace; this test exercises that reconcile
+			// directly.
+			DeleteMonitoringResourceByName(ctx, k8sClient, manualMonitoringResourceName, false)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+		})
+
+		It("recreates the auto-monitoring resource when the auto-managed resource is deleted by the user", func() {
+			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+
+			// Simulate the user deleting the auto-managed monitoring resource. The monitoringResourceDeletePredicate
+			// triggers a namespace reconcile, which should recreate the auto-managed resource.
+			autoMonitoringResourceName := types.NamespacedName{
+				Name:      util.MonitoringAutoResourceDefaultName,
+				Namespace: testAutoNamespace1,
+			}
+			DeleteMonitoringResourceByName(ctx, k8sClient, autoMonitoringResourceName, false)
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
+
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
 		})
 
 		It("uses custom settings from the MonitoringTemplate when set", func() {
@@ -1019,6 +1063,55 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			compareMonitoringTemplates(t1, t2)
 			Expect(t1.Labels).To(Equal(map[string]string{"key": "value-1"}))
 			Expect(t2.Labels).To(Equal(map[string]string{"key": "value-2"}))
+		})
+	})
+
+	Context("monitoringResourceDeletePredicate", func() {
+		var p monitoringResourceDeletePredicate
+
+		It("ignores Create events", func() {
+			Expect(p.Create(event.TypedCreateEvent[*dash0v1beta1.Dash0Monitoring]{
+				Object: &dash0v1beta1.Dash0Monitoring{},
+			})).To(BeFalse())
+		})
+
+		It("ignores Update events", func() {
+			Expect(p.Update(event.TypedUpdateEvent[*dash0v1beta1.Dash0Monitoring]{
+				ObjectOld: &dash0v1beta1.Dash0Monitoring{},
+				ObjectNew: &dash0v1beta1.Dash0Monitoring{},
+			})).To(BeFalse())
+		})
+
+		It("ignores Generic events", func() {
+			Expect(p.Generic(event.TypedGenericEvent[*dash0v1beta1.Dash0Monitoring]{
+				Object: &dash0v1beta1.Dash0Monitoring{},
+			})).To(BeFalse())
+		})
+
+		It("fires on Delete of a manually managed monitoring resource (no auto-monitored label)", func() {
+			Expect(p.Delete(event.TypedDeleteEvent[*dash0v1beta1.Dash0Monitoring]{
+				Object: &dash0v1beta1.Dash0Monitoring{},
+			})).To(BeTrue())
+		})
+
+		It("fires on Delete of a monitoring resource with unrelated labels", func() {
+			Expect(p.Delete(event.TypedDeleteEvent[*dash0v1beta1.Dash0Monitoring]{
+				Object: &dash0v1beta1.Dash0Monitoring{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"some": "label"},
+					},
+				},
+			})).To(BeTrue())
+		})
+
+		It("fires on Delete of an auto-managed monitoring resource", func() {
+			Expect(p.Delete(event.TypedDeleteEvent[*dash0v1beta1.Dash0Monitoring]{
+				Object: &dash0v1beta1.Dash0Monitoring{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{util.AutoMonitoredNamespaceLabel: util.TrueString},
+					},
+				},
+			})).To(BeTrue())
 		})
 	})
 })
