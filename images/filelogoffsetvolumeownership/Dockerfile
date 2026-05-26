@@ -10,7 +10,7 @@
 # Note: This container needs to run as root, since its purpose is to change file ownership settings in a mounted volume;
 # in particular for host path volumes, the path inside the volume is owned by root by default.
 
-FROM busybox:1.37.0-glibc
+FROM busybox:1.38.0-glibc
 
 COPY filelogoffsetvolumeownership/entrypoint.sh /
 
