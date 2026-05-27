@@ -145,7 +145,7 @@ receivers:
   kubeletstats:
     endpoint: '{{ .KubeletStatsReceiverConfig.Endpoint }}'
     auth_type: "{{ .KubeletStatsReceiverConfig.AuthType }}"
-    collection_interval: 20s
+    collection_interval: 30s
     {{- if .KubeletStatsReceiverConfig.InsecureSkipVerify }}
     insecure_skip_verify: true
     {{- end }}
