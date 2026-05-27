@@ -1449,7 +1449,7 @@ traces:
   span:
   - 'attributes["http.route"] == "/ready"'
 `
-					minTimestampCollectorRestart := time.Now()
+					minTimestampCollectorConfigReload := time.Now()
 					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
@@ -1465,11 +1465,7 @@ traces:
 						// nolint:lll
 						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns" and (attributes["http.route"] == "/ready")'`,
 					)
-					By("verify that the collector has reloaded its configuration")
-					Eventually(func(g Gomega) {
-						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
-						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-					}, 2*time.Minute, time.Second).Should(Succeed())
+					verifyCollectorHasReloadedItsConfiguration(collectorDaemonSetNameQualified, minTimestampCollectorConfigReload)
 
 					testId := uuid.New().String()
 					timestampLowerBound := time.Now()
@@ -1518,7 +1514,7 @@ traces:
 trace_statements:
 - truncate_all(span.attributes, 10)
 `
-					minTimestampCollectorRestart := time.Now()
+					minTimestampCollectorConfigReload := time.Now()
 					deployDash0MonitoringResourceWithRetry(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
@@ -1537,11 +1533,7 @@ trace_statements:
 						operatorNamespace,
 						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns"'`,
 					)
-					By("verify that the collector has reloaded its configuration")
-					Eventually(func(g Gomega) {
-						mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
-						g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
-					}, 2*time.Minute, time.Second).Should(Succeed())
+					verifyCollectorHasReloadedItsConfiguration(collectorDaemonSetNameQualified, minTimestampCollectorConfigReload)
 
 					testId := uuid.New().String()
 					timestampLowerBound := time.Now()
@@ -2566,10 +2558,10 @@ trace_statements:
 				var firstDaemonSetCollectorReadyTimeStamp time.Time
 				var firstDeploymentCollectorReadyTimeStamp time.Time
 				Eventually(func(g Gomega) {
-					firstDaemonSetCollectorReadyTimeStamp = findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
+					firstDaemonSetCollectorReadyTimeStamp = findCollectorReadyLogTimestamp(g, collectorDaemonSetNameQualified)
 				}, 30*time.Second, time.Second).Should(Succeed())
 				Eventually(func(g Gomega) {
-					firstDeploymentCollectorReadyTimeStamp = findMostRecentCollectorReadyLogLine(g, collectorDeploymentNameQualified)
+					firstDeploymentCollectorReadyTimeStamp = findCollectorReadyLogTimestamp(g, collectorDeploymentNameQualified)
 				}, 30*time.Second, time.Second).Should(Succeed())
 
 				daemonSetRestartCountsBeforeConfigChange := getDaemonSetCollectorPodRestartCounts(operatorNamespace)
@@ -2583,20 +2575,14 @@ trace_statements:
 				verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, newEndpoint)
 				verifyDeploymentCollectorConfigMapContainsString(operatorNamespace, newEndpoint)
 
-				By("verify that the collectors have reloaded their configuration")
-				// Note: It can take up to a minute until the config change can be detected by the configreloader, due to the
-				// default of 1 minute for kubelet's syncFrequency setting, see
-				// https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/#kubelet-config-k8s-io-v1beta1-KubeletConfiguration.
-				// And then it also takes a couple of seconds until the collector has actually reloaded its configuration after
-				// receiving SIGHUB. Hence, we use a 2 minute timeout here.
-				Eventually(func(g Gomega) {
-					secondDaemonSetCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
-					g.Expect(secondDaemonSetCollectorReadyTimeStamp).To(BeTemporally(">", firstDaemonSetCollectorReadyTimeStamp))
-				}, 2*time.Minute, time.Second).Should(Succeed())
-				Eventually(func(g Gomega) {
-					secondDeploymentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g, collectorDaemonSetNameQualified)
-					g.Expect(secondDeploymentCollectorReadyTimeStamp).To(BeTemporally(">", firstDeploymentCollectorReadyTimeStamp))
-				}, 2*time.Minute, time.Second).Should(Succeed())
+				verifyCollectorHasReloadedItsConfiguration(
+					collectorDaemonSetNameQualified,
+					firstDaemonSetCollectorReadyTimeStamp,
+				)
+				verifyCollectorHasReloadedItsConfiguration(
+					collectorDeploymentNameQualified,
+					firstDeploymentCollectorReadyTimeStamp,
+				)
 
 				// Verify that the collector has reloaded the configuration in-process, instead of restarting the process.
 				By("verify that the collectors have not restarted")

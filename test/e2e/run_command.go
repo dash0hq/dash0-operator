@@ -19,7 +19,15 @@ func runAndIgnoreOutput(cmd *exec.Cmd, logCommandArgs ...bool) error {
 	return err
 }
 
-// run executes the provided command and returns the combined output from stdout and stderr
+// run executes the provided command and returns the combined output from stdout and stderr.
+//
+// The command takes optional boolean flags that control what is logged while executing the command:
+//   - argument 1 is the command to be executed
+//   - argument 2 determines whether the command is logged (default: true)
+//   - argument 3 determines whether the output is logged when the command has been successful (default: false);
+//     even when this is set to false, the output will still be logged in case the command has failed
+//     (but see argument 4)
+//   - argument 4 determines whether the command is logged when the command has failed (default: true)
 func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 	logCommand := true
 	logOutputOnSuccess := false
@@ -50,7 +58,16 @@ func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 	return string(output), nil
 }
 
-// runAndReturnStdoutStderr executes the provided command and returns stdout and stderr as separate strings
+// runAndReturnStdoutStderr executes the provided command, similar to the run function, but it returns stdout and stderr
+// as separate strings.
+//
+// The command takes optional boolean flags that control what is logged while executing the command:
+//   - argument 1 is the command to be executed
+//   - argument 2 determines whether the command is logged (default: true)
+//   - argument 3 determines whether the output is logged when the command has been successful (default: false);
+//     even when this is set to false, the output will still be logged in case the command has failed
+//     (but see argument 4)
+//   - argument 4 determines whether the command is logged when the command has failed (default: true)
 func runAndReturnStdoutStderr(cmd *exec.Cmd, logCommandArgs ...bool) (string, string, error) {
 	logCommand := true
 	logOutputOnSuccess := false
