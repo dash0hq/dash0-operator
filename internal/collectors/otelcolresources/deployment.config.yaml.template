@@ -48,6 +48,7 @@ connectors:
 receivers:
   {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
   k8s_cluster:
+    collection_interval: 30s
     metrics:
       k8s.container.status.reason:
         enabled: true
