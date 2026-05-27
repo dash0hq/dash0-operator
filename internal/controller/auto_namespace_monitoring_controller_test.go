@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -197,27 +198,15 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 		It("creates a Dash0Monitoring resource when autoMonitorNamespaces is enabled and the namespace labels match the default selector", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
-
-			autoMonitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
-			Expect(autoMonitoringResources).To(HaveLen(1))
-			autoMonitoringResource := autoMonitoringResources[0]
-			Expect(autoMonitoringResource.Name).To(Equal(util.MonitoringAutoResourceDefaultName))
-			Expect(autoMonitoringResource.Labels[util.AutoMonitoredNamespaceLabel]).To(Equal("true"))
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
 		})
 
 		It("creates a Dash0Monitoring resources for multiple namespaces", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace2)
-			autoMonitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
-			Expect(autoMonitoringResources).To(HaveLen(1))
-			autoMonitoringResourceNs1 := autoMonitoringResources[0]
-			Expect(autoMonitoringResourceNs1.Labels[util.AutoMonitoredNamespaceLabel]).To(Equal("true"))
-
-			autoMonitoringResources = listMonitoringResources(ctx, testAutoNamespace2)
-			Expect(autoMonitoringResources).To(HaveLen(1))
-			autoMonitoringResourceNs2 := autoMonitoringResources[0]
-			Expect(autoMonitoringResourceNs2.Labels[util.AutoMonitoredNamespaceLabel]).To(Equal("true"))
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace2)
 		})
 
 		It("creates a Dash0Monitoring resource when autoMonitorNamespaces is enabled and the namespace labels match a custom selector", func() {
@@ -235,9 +224,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			autoMonitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
-			Expect(autoMonitoringResources).To(HaveLen(1))
-			Expect(autoMonitoringResources[0].Labels[util.AutoMonitoredNamespaceLabel]).To(Equal("true"))
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
 		})
 
 		It("does not create a Dash0Monitoring resource when autoMonitorNamespaces is disabled", func() {
@@ -248,14 +235,14 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(false), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(BeEmpty())
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
 		})
 
 		It("does not create a Dash0Monitoring resource when the autoMonitorNamespaces is not enabled", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, nil, "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(BeEmpty())
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
 		})
 
 		It("does not create a Dash0Monitoring resource when namespace labels do not match the default selector", func() {
@@ -267,30 +254,30 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(BeEmpty())
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
 		})
 
 		It("does not create a Dash0Monitoring resource when namespace labels do not match a custom selector", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "dash0.com/monitor-this-namespace=true", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(BeEmpty())
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
 		})
 
 		It("does not create a Dash0Monitoring resource for a restricted namespace", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, "kube-system")
-			Expect(listMonitoringResources(ctx, "kube-system")).To(BeEmpty())
+			Expect(listMonitoringResources(ctx, Default, "kube-system")).To(BeEmpty())
 		})
 
 		It("does not create a Dash0Monitoring resource for the operator namespace", func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, OperatorNamespace)
-			Expect(listMonitoringResources(ctx, OperatorNamespace)).To(BeEmpty())
+			Expect(listMonitoringResources(ctx, Default, OperatorNamespace)).To(BeEmpty())
 		})
 
 		It("does not create a Dash0Monitoring resource when no OperatorConfiguration exists", func() {
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(BeEmpty())
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
 		})
 
 		It("does not create a Dash0Monitoring resource when the OperatorConfiguration resource is not in status available", func() {
@@ -300,7 +287,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			autoMonitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
+			autoMonitoringResources := listMonitoringResources(ctx, Default, testAutoNamespace1)
 			Expect(autoMonitoringResources).To(BeEmpty())
 		})
 
@@ -309,11 +296,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			monitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
-			Expect(monitoringResources).To(HaveLen(1))
-			monitoringResource := monitoringResources[0]
-			Expect(monitoringResource.Name).To(Equal(util.MonitoringAutoResourceDefaultName))
-			Expect(monitoringResource.Labels[util.AutoMonitoredNamespaceLabel]).To(Equal("true"))
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
 		})
 
 		It("does not create a Dash0Monitoring with dash0.com/auto-monitored-namespace when the namespace already contains non-auto monitoring resource", func() {
@@ -326,7 +309,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			monitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
+			monitoringResources := listMonitoringResources(ctx, Default, testAutoNamespace1)
 			Expect(monitoringResources).To(HaveLen(1))
 			monitoringResource := monitoringResources[0]
 			Expect(monitoringResource.Name).To(Equal(manualMonitoringResourceName.Name))
@@ -378,7 +361,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			autoMonitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
+			autoMonitoringResources := listMonitoringResources(ctx, Default, testAutoNamespace1)
 			Expect(autoMonitoringResources).To(HaveLen(1))
 			autoMonitoringResource := autoMonitoringResources[0]
 			Expect(autoMonitoringResource.Name).To(Equal("custom-auto-monitoring-resource-name"))
@@ -438,7 +421,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			// reconcile again and verify the monitoring resource reflects the new monitoring template
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			monitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
+			monitoringResources := listMonitoringResources(ctx, Default, testAutoNamespace1)
 			Expect(monitoringResources).To(HaveLen(1))
 			monitoringResource := monitoringResources[0]
 			Expect(monitoringResource.Labels).To(HaveLen(3))
@@ -474,7 +457,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			autoMonitoringResources := listMonitoringResources(ctx, testAutoNamespace1)
+			autoMonitoringResources := listMonitoringResources(ctx, Default, testAutoNamespace1)
 			Expect(autoMonitoringResources).To(HaveLen(1))
 			Expect(autoMonitoringResources[0].Name).To(Equal(util.MonitoringAutoResourceDefaultName))
 		})
@@ -483,7 +466,7 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 			// first: namespace does not have the opt-out label, hence the monitoring resource is created
 			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(HaveLen(1))
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(HaveLen(1))
 
 			ns := &corev1.Namespace{}
 			// now set the opt-out label so namespace no longer matches the label selector
@@ -493,21 +476,104 @@ var _ = Describe("The auto-namespace-monitoring controller", Ordered, func() {
 
 			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
 
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(BeEmpty())
+			Expect(listMonitoringResources(ctx, Default, testAutoNamespace1)).To(BeEmpty())
+		})
+	})
+
+	Context("cleaning up auto-monitoring resources when auto-monitoring is disabled", func() {
+		const (
+			testAutoNamespace1 = "auto-cleanup-test-ns-01"
+			testAutoNamespace2 = "auto-cleanup-test-ns-02"
+		)
+
+		var (
+			autoNamespaceMonitoringReconciler *AutoNamespaceMonitoringReconciler
+			namespaceWatcher                  *NamespaceWatcher
+			testAutoNamespaces                = []string{testAutoNamespace1, testAutoNamespace2}
+		)
+
+		BeforeAll(func() {
+			EnsureNamespaceExists(ctx, k8sClient, testAutoNamespace1)
+			EnsureNamespaceExists(ctx, k8sClient, testAutoNamespace2)
 		})
 
-		It("deletes the auto Dash0Monitoring resource when autoMonitorNamespaces is disabled", func() {
-			// First: enabled, monitoring resource is created
-			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
-			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(HaveLen(1))
+		BeforeEach(func() {
+			namespaceWatcher = NewNamespaceWatcher(k8sClient, OperatorNamespace)
+			autoNamespaceMonitoringReconciler = &AutoNamespaceMonitoringReconciler{
+				Client:           k8sClient,
+				manager:          mgr,
+				namespaceWatcher: namespaceWatcher,
+			}
+		})
 
-			// now disable autoMonitorNamespaces
+		AfterEach(func() {
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
-			createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(false), "", nil)
-			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+			for _, namespaceName := range testAutoNamespaces {
+				Expect(
+					k8sClient.DeleteAllOf(
+						ctx,
+						&dash0v1beta1.Dash0Monitoring{},
+						client.InNamespace(namespaceName))).
+					To(Succeed())
+			}
 
-			Expect(listMonitoringResources(ctx, testAutoNamespace1)).To(BeEmpty())
+			// Stop the namespace watch if it was started, to clean up the background goroutine.
+			autoNamespaceMonitoringReconciler.namespaceWatcher.controllerStopFunctionLock.Lock()
+			if autoNamespaceMonitoringReconciler.namespaceWatcher.controllerStopFunction != nil {
+				(*autoNamespaceMonitoringReconciler.namespaceWatcher.controllerStopFunction)()
+				autoNamespaceMonitoringReconciler.namespaceWatcher.controllerStopFunction = nil
+			}
+			autoNamespaceMonitoringReconciler.namespaceWatcher.controllerStopFunctionLock.Unlock()
+		})
+
+		It("deletes all auto-monitoring resources across multiple namespaces when auto-monitoring is disabled", func() {
+			operatorConfiguration := createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace2)
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace2)
+
+			disableAutoNamespaceMonitoring(ctx, operatorConfiguration)
+			triggerAutoNamespaceMonitoringReconcilerForOperatorConfiguration(ctx, autoNamespaceMonitoringReconciler)
+
+			Eventually(func(g Gomega) {
+				g.Expect(listMonitoringResources(ctx, g, testAutoNamespace1)).To(BeEmpty())
+				g.Expect(listMonitoringResources(ctx, g, testAutoNamespace2)).To(BeEmpty())
+			}).Should(Succeed())
+		})
+
+		It("deletes all auto-monitoring resources when the operator configuration is deleted", func() {
+			operatorConfiguration := createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace2)
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace2)
+
+			Expect(k8sClient.Delete(ctx, operatorConfiguration)).To(Succeed())
+			triggerAutoNamespaceMonitoringReconcilerForOperatorConfiguration(ctx, autoNamespaceMonitoringReconciler)
+
+			Eventually(func(g Gomega) {
+				Expect(listMonitoringResources(ctx, g, testAutoNamespace1)).To(BeEmpty())
+				Expect(listMonitoringResources(ctx, g, testAutoNamespace2)).To(BeEmpty())
+			})
+		})
+
+		It("does not delete manually-created Dash0Monitoring resources when auto-monitoring is disabled", func() {
+			createManualMonitoringResource(ctx, testAutoNamespace2)
+			operatorConfiguration := createOperatorConfigurationResourceWithAutoMonitorNamespaces(ctx, new(true), "", nil)
+			triggerNamespaceWatcherReconcile(ctx, namespaceWatcher, testAutoNamespace1)
+			verifyNamespaceHasAutoMonitoringResource(ctx, Default, testAutoNamespace1)
+			verifyNamespaceHasManualMonitoringResource(ctx, Default, testAutoNamespace2)
+
+			disableAutoNamespaceMonitoring(ctx, operatorConfiguration)
+			triggerAutoNamespaceMonitoringReconcilerForOperatorConfiguration(ctx, autoNamespaceMonitoringReconciler)
+
+			Eventually(func(g Gomega) {
+				g.Expect(listMonitoringResources(ctx, g, testAutoNamespace1)).To(BeEmpty())
+			}).Should(Succeed())
+			Consistently(func(g Gomega) {
+				verifyNamespaceHasManualMonitoringResource(ctx, g, testAutoNamespace2)
+			}, 300*time.Millisecond, 30*time.Millisecond).Should(Succeed())
 		})
 	})
 
@@ -994,6 +1060,14 @@ func createOperatorConfigurationResourceWithAutoMonitorNamespaces(
 	return operatorConfigurationResource
 }
 
+func disableAutoNamespaceMonitoring(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) {
+	operatorConfigurationResource.Spec.AutoMonitorNamespaces.Enabled = new(false)
+	Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+}
+
 func triggerAutoNamespaceMonitoringReconcilerForOperatorConfiguration(
 	ctx context.Context,
 	autoNamespaceMonitoringReconciler *AutoNamespaceMonitoringReconciler,
@@ -1015,10 +1089,36 @@ func triggerNamespaceWatcherReconcile(
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func listMonitoringResources(ctx context.Context, namespaceName string) []dash0v1beta1.Dash0Monitoring {
+func verifyNamespaceHasAutoMonitoringResource(ctx context.Context, g Gomega, namespace string) {
+	monitoringResources := listMonitoringResources(ctx, g, namespace)
+	g.Expect(monitoringResources).To(HaveLen(1))
+	monitoringResource := monitoringResources[0]
+	g.Expect(monitoringResource.Name).To(Equal(util.MonitoringAutoResourceDefaultName))
+	g.Expect(monitoringResource.Labels[util.AutoMonitoredNamespaceLabel]).To(Equal("true"))
+}
+
+func verifyNamespaceHasManualMonitoringResource(ctx context.Context, g Gomega, namespace string) {
+	monitoringResources := listMonitoringResources(ctx, g, namespace)
+	g.Expect(monitoringResources).To(HaveLen(1))
+	monitoringResource := monitoringResources[0]
+	g.Expect(monitoringResource.Name).To(Equal("manual-monitoring-resource"))
+	g.Expect(monitoringResource.Labels[util.AutoMonitoredNamespaceLabel]).To(BeEmpty())
+}
+
+func listMonitoringResources(ctx context.Context, g Gomega, namespaceName string) []dash0v1beta1.Dash0Monitoring {
 	list := &dash0v1beta1.Dash0MonitoringList{}
-	Expect(k8sClient.List(ctx, list,
+	g.Expect(k8sClient.List(ctx, list,
 		client.InNamespace(namespaceName),
 	)).To(Succeed())
 	return list.Items
+}
+
+func createManualMonitoringResource(ctx context.Context, namespaceName string) {
+	resource := &dash0v1beta1.Dash0Monitoring{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "manual-monitoring-resource",
+			Namespace: namespaceName,
+		},
+	}
+	Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 }
