@@ -219,6 +219,17 @@ func updateOperatorConfigurationAutoNamespaceMonitoringLabelSelector(
 	updateDash0OperatorConfigurationResource(jsonPatch)
 }
 
+func updateOperatorConfigurationAutoNamespaceMonitoringEnabled(
+	enabled bool,
+) {
+	jsonPatch := fmt.Sprintf(`[{
+   "op":"replace",
+   "path":"/spec/autoMonitorNamespaces/enabled",
+   "value":%t
+	}]`, enabled)
+	updateDash0OperatorConfigurationResource(jsonPatch)
+}
+
 func updateOperatorConfigurationMonitoringTemplateInstrumentWorkloadsMode(
 	newInstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode,
 ) {
