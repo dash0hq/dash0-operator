@@ -242,23 +242,93 @@ func verifyConfigMapDoesNotContainStrings(operatorNamespace string, configMapNam
 	)
 }
 
-func findMostRecentCollectorReadyLogLine(g Gomega, collectorName string) time.Time {
-	allCollectorReadyLogLines := getMatchingLogLinesFomCollectorContainerLog(
-		g,
-		operatorNamespace,
-		collectorName,
-		"opentelemetry-collector",
-		collectorReadyLogMessage,
-	)
-	g.Expect(allCollectorReadyLogLines).ToNot(BeEmpty(),
-		"Expected to find a log line containing the string \"%s\", but no such line has been found.",
-		collectorReadyLogMessage)
+func verifyCollectorHasReloadedItsConfiguration(collectorNameQualified string, minTimestamp time.Time) {
+	// nolint:lll
+	// Note: It can take up to a minute until the config change can be detected by the configreloader, due to the
+	// default of 1 minute for kubelet's syncFrequency setting, see
+	// https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/#kubelet-config-k8s-io-v1beta1-KubeletConfiguration.
+	// And then it also takes a couple of seconds until the collector has actually reloaded its configuration after
+	// receiving SIGHUB. Hence, we use a 2-minute timeout here.
+	By(fmt.Sprintf("verify that %s has reloaded its configuration", collectorNameQualified))
+	Eventually(func(g Gomega) {
+		mostRecentCollectorReadyTimeStamp := findCollectorReadyLogTimestamp(g, collectorNameQualified)
+		g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestamp))
+	}, 2*time.Minute, time.Second).Should(Succeed())
+}
 
-	mostRecentCollectorReadyLogLine := allCollectorReadyLogLines[len(allCollectorReadyLogLines)-1]
-	timeStampRaw := strings.Split(mostRecentCollectorReadyLogLine, "\t")[0]
-	timeStamp, err := time.Parse(time.RFC3339, timeStampRaw)
-	Expect(err).ToNot(HaveOccurred(), "could not parse time stamp from collector startup log line")
-	return timeStamp
+// findCollectorReadyLogTimestamp searches through the pod logs of all pods belonging to the given collector
+// workload. For each pod, it looks for the most recent timestamp of the log line
+// "Everything is ready. Begin running and processing data."
+// It then returns the oldest of all these timestamps. By returning the oldest of the per-pod most-recent timestamps,
+// callers can use this function to wait until every pod has reported readiness (for example after the initial start, or
+// after a hot-reloaded of the collector configuration).
+func findCollectorReadyLogTimestamp(g Gomega, collectorNameQualified string) time.Time {
+	podNames := getCollectorPodNames(g, collectorNameQualified)
+	g.Expect(podNames).ToNot(BeEmpty(),
+		"Expected to find at least one pod for collector %s, but found none.", collectorNameQualified)
+
+	mostRecentPerPod := map[string]time.Time{}
+	for _, podName := range podNames {
+		allCollectorReadyLogLines := getMatchingLogLinesFomCollectorContainerLog(
+			g,
+			operatorNamespace,
+			podName,
+			"opentelemetry-collector",
+			collectorReadyLogMessage,
+		)
+		g.Expect(allCollectorReadyLogLines).ToNot(BeEmpty(),
+			"Expected to find a log line containing the string \"%s\" in pod %s, but no such line has been found.",
+			collectorReadyLogMessage, podName)
+
+		mostRecentCollectorReadyLogLine := allCollectorReadyLogLines[len(allCollectorReadyLogLines)-1]
+		timeStampRaw := strings.Split(mostRecentCollectorReadyLogLine, "\t")[0]
+		timeStamp, err := time.Parse(time.RFC3339, timeStampRaw)
+		g.Expect(err).ToNot(HaveOccurred(), "could not parse time stamp from collector startup log line")
+		mostRecentPerPod[podName] = timeStamp
+	}
+
+	var oldestTimestampAcrossAllPods time.Time
+	first := true
+	for _, ts := range mostRecentPerPod {
+		if first || ts.Before(oldestTimestampAcrossAllPods) {
+			oldestTimestampAcrossAllPods = ts
+			first = false
+		}
+	}
+	return oldestTimestampAcrossAllPods
+}
+
+func getCollectorPodNames(g Gomega, collectorNameQualified string) []string {
+	labelSelector := labelSelectorForCollector(collectorNameQualified)
+	g.Expect(labelSelector).ToNot(BeEmpty(),
+		"no label selector known for collector workload %q", collectorNameQualified)
+
+	output, err := run(
+		exec.Command(
+			"kubectl",
+			"get",
+			"pods",
+			"--namespace",
+			operatorNamespace,
+			"-l",
+			labelSelector,
+			"-o",
+			"jsonpath={.items[*].metadata.name}",
+		),
+		false,
+	)
+	g.Expect(err).ToNot(HaveOccurred())
+	return strings.Fields(strings.TrimSpace(output))
+}
+
+func labelSelectorForCollector(collectorNameQualified string) string {
+	switch collectorNameQualified {
+	case collectorDaemonSetNameQualified:
+		return "app.kubernetes.io/name=opentelemetry-collector,app.kubernetes.io/component=agent-collector"
+	case collectorDeploymentNameQualified:
+		return "app.kubernetes.io/name=opentelemetry-collector,app.kubernetes.io/component=cluster-metrics-collector"
+	}
+	return ""
 }
 
 func getMatchingLogLinesFomCollectorContainerLog(
