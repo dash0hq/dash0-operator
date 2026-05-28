@@ -274,6 +274,38 @@ func cmTestGrpcExporterWithPartialKeepalive() otlpExporters {
 	}
 }
 
+func cmTestGrpcExporterWithBalancerName() otlpExporters {
+	grpcExporter, err := convertGrpcExporterToOtlpExporter(&dash0common.GrpcConfiguration{
+		Endpoint:     grpcEndpointTest,
+		BalancerName: dash0common.PickFirst,
+	}, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default:    []otlpExporter{*grpcExporter},
+		Namespaced: make(map[string][]otlpExporter),
+	}
+}
+
+func cmTestNamespacedExportersWithBalancerName() otlpExporters {
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(export.Dash0, "default", auth)
+	Expect(err).ToNot(HaveOccurred())
+
+	grpcExporterNs1, err := convertGrpcExporterToOtlpExporter(&dash0common.GrpcConfiguration{
+		Endpoint:     grpcEndpointTest,
+		BalancerName: dash0common.PickFirst,
+	}, "ns/"+namespace1)
+	Expect(err).ToNot(HaveOccurred())
+
+	return otlpExporters{
+		Default: []otlpExporter{*dash0ExporterDefault},
+		Namespaced: map[string][]otlpExporter{
+			namespace1: {*grpcExporterNs1},
+		},
+	}
+}
+
 func cmTestNamespacedExportersWithKeepalive() otlpExporters {
 	export := Dash0ExportWithEndpointAndToken()
 	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
@@ -941,6 +973,89 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(keepalive2["time"]).To(Equal("45s"))
 			Expect(keepalive2).ToNot(HaveKey("timeout"))
 			Expect(keepalive2).ToNot(HaveKey("permit_without_stream"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should always render balancer_name: pick_first on the Dash0 exporter", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]any)
+
+			dash0Exporter := exporters["otlp_grpc/dash0/default"]
+			Expect(dash0Exporter).ToNot(BeNil())
+			dash0OtlpExporter := dash0Exporter.(map[string]any)
+			Expect(dash0OtlpExporter["balancer_name"]).To(Equal("pick_first"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render balancer_name on gRPC exporter when configured", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestGrpcExporterWithBalancerName(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]any)
+
+			grpcExporter := exporters["otlp_grpc/default"]
+			Expect(grpcExporter).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporter.(map[string]any)
+			Expect(grpcOtlpExporter["balancer_name"]).To(Equal("pick_first"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should not render balancer_name on gRPC exporter when not configured", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestGrpcExporterWithKeepalive(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]any)
+
+			grpcExporter := exporters["otlp_grpc/default"]
+			Expect(grpcExporter).ToNot(BeNil())
+			grpcOtlpExporter := grpcExporter.(map[string]any)
+			Expect(grpcOtlpExporter).ToNot(HaveKey("balancer_name"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render balancer_name in namespaced exporters", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedExportersWithBalancerName(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]any)
+
+			// Default Dash0 exporter always pick_first
+			defaultDash0 := exporters["otlp_grpc/dash0/default"].(map[string]any)
+			Expect(defaultDash0["balancer_name"]).To(Equal("pick_first"))
+
+			// Namespaced gRPC exporter with the configured value
+			grpcNs1 := exporters["otlp_grpc/ns/"+namespace1].(map[string]any)
+			Expect(grpcNs1["balancer_name"]).To(Equal("pick_first"))
 		}, daemonSetAndDeployment)
 
 		DescribeTable("should render namespaced OTLP exporters", func(cmTypeDef configMapTypeDefinition) {

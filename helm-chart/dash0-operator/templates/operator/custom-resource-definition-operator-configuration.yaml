@@ -255,6 +255,14 @@ spec:
                     description: The settings for an exporter to send telemetry to
                       an arbitrary OTLP-compatible receiver via gRPC.
                     properties:
+                      balancer_name:
+                        description: |-
+                          The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
+                          collector's default (round_robin) is used.
+                        enum:
+                        - round_robin
+                        - pick_first
+                        type: string
                       endpoint:
                         description: The URL of the OTLP-compatible receiver to which
                           telemetry data will be sent. This property is mandatory.
@@ -448,6 +456,14 @@ spec:
                       description: The settings for an exporter to send telemetry
                         to an arbitrary OTLP-compatible receiver via gRPC.
                       properties:
+                        balancer_name:
+                          description: |-
+                            The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
+                            collector's default (round_robin) is used.
+                          enum:
+                          - round_robin
+                          - pick_first
+                          type: string
                         endpoint:
                           description: The URL of the OTLP-compatible receiver to
                             which telemetry data will be sent. This property is mandatory.
@@ -847,6 +863,14 @@ spec:
                             description: The settings for an exporter to send telemetry
                               to an arbitrary OTLP-compatible receiver via gRPC.
                             properties:
+                              balancer_name:
+                                description: |-
+                                  The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
+                                  collector's default (round_robin) is used.
+                                enum:
+                                - round_robin
+                                - pick_first
+                                type: string
                               endpoint:
                                 description: The URL of the OTLP-compatible receiver
                                   to which telemetry data will be sent. This property
@@ -1046,6 +1070,14 @@ spec:
                               description: The settings for an exporter to send telemetry
                                 to an arbitrary OTLP-compatible receiver via gRPC.
                               properties:
+                                balancer_name:
+                                  description: |-
+                                    The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
+                                    collector's default (round_robin) is used.
+                                  enum:
+                                  - round_robin
+                                  - pick_first
+                                  type: string
                                 endpoint:
                                   description: The URL of the OTLP-compatible receiver
                                     to which telemetry data will be sent. This property
@@ -1858,6 +1890,14 @@ spec:
                             description: The settings for an exporter to send telemetry
                               to an arbitrary OTLP-compatible receiver via gRPC.
                             properties:
+                              balancer_name:
+                                description: |-
+                                  The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
+                                  collector's default (round_robin) is used.
+                                enum:
+                                - round_robin
+                                - pick_first
+                                type: string
                               endpoint:
                                 description: The URL of the OTLP-compatible receiver
                                   to which telemetry data will be sent. This property
@@ -2057,6 +2097,14 @@ spec:
                               description: The settings for an exporter to send telemetry
                                 to an arbitrary OTLP-compatible receiver via gRPC.
                               properties:
+                                balancer_name:
+                                  description: |-
+                                    The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
+                                    collector's default (round_robin) is used.
+                                  enum:
+                                  - round_robin
+                                  - pick_first
+                                  type: string
                                 endpoint:
                                   description: The URL of the OTLP-compatible receiver
                                     to which telemetry data will be sent. This property

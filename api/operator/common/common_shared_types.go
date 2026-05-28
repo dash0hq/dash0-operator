@@ -158,6 +158,12 @@ type GrpcConfiguration struct {
 	//
 	// +kubebuilder:validation:Optional
 	Keepalive *KeepaliveClientConfig `json:"keepalive,omitempty"`
+
+	// The name of the load balancer to use. Can be either round_robin or pick_first. Optional; when omitted, the
+	// collector's default (round_robin) is used.
+	//
+	// +kubebuilder:validation:Optional
+	BalancerName BalancerName `json:"balancer_name,omitempty"`
 }
 
 // OtlpEncoding describes the encoding of the OTLP data when sent via HTTP.
@@ -191,6 +197,17 @@ type KeepaliveClientConfig struct {
 	// +kubebuilder:validation:Optional
 	PermitWithoutStream *bool `json:"permit_without_stream,omitempty"`
 }
+
+// BalancerName describes the load balancer used by the OTLP gRPC exporter.
+// See https://github.com/grpc/grpc-go/blob/master/examples/features/load_balancing/README.md
+//
+// +kubebuilder:validation:Enum=round_robin;pick_first
+type BalancerName string
+
+const (
+	RoundRobin BalancerName = "round_robin"
+	PickFirst  BalancerName = "pick_first"
+)
 
 func (e *Export) HasDash0ExportConfigured() bool {
 	return e != nil && e.Dash0 != nil

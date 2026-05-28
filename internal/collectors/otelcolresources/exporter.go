@@ -24,6 +24,7 @@ type otlpExporter struct {
 	Insecure           bool
 	InsecureSkipVerify bool
 	Keepalive          *dash0common.KeepaliveClientConfig
+	BalancerName       string
 }
 
 type defaultOtlpExporters = []otlpExporter
@@ -204,6 +205,11 @@ func convertDash0ExporterToOtlpExporter(
 		Headers:       headers,
 		Authorization: auth,
 		Keepalive:     d0.Keepalive,
+		// For the dash0 exporter we always use pick_first, since client-side load balancing is
+		// not needed and it avoids the issue of the exporter trying both the IPv4 and IPv6
+		// addresses continuously, which leads to excessive warning logs since one will fail.
+		// (Which one will fail, depends on whether the cluster has IPv4 or IPv6 networking.)
+		BalancerName: string(dash0common.PickFirst),
 	}
 	setGrpcTlsFromPrefix(d0.Endpoint, &dash0Exporter)
 	return &dash0Exporter, nil
@@ -214,10 +220,11 @@ func convertGrpcExporterToOtlpExporter(grpc *dash0common.GrpcConfiguration, name
 		return nil, fmt.Errorf("no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")
 	}
 	grpcExporter := otlpExporter{
-		Name:      fmt.Sprintf("%s/%s", grpcExporterNamePrefix, nameSuffix),
-		Endpoint:  grpc.Endpoint,
-		Headers:   grpc.Headers,
-		Keepalive: grpc.Keepalive,
+		Name:         fmt.Sprintf("%s/%s", grpcExporterNamePrefix, nameSuffix),
+		Endpoint:     grpc.Endpoint,
+		Headers:      grpc.Headers,
+		Keepalive:    grpc.Keepalive,
+		BalancerName: string(grpc.BalancerName),
 	}
 	if grpc.Insecure != nil {
 		grpcExporter.Insecure = *grpc.Insecure
