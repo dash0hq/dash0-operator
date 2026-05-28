@@ -186,6 +186,26 @@ var _ = Describe("Exporter Conversion", func() {
 			Expect(exporter.Keepalive.Timeout).To(BeNil())
 			Expect(exporter.Keepalive.PermitWithoutStream).To(BeNil())
 		})
+
+		It("should always set balancer_name to pick_first", func() {
+			d0Config := &dash0common.Dash0Configuration{
+				Endpoint: EndpointDash0Test,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			}
+			auth := &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			}
+
+			exporter, err := convertDash0ExporterToOtlpExporter(d0Config, "default", auth)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.BalancerName).To(Equal(string(dash0common.PickFirst)))
+		})
 	})
 
 	Describe("ConvertGrpcExporterToOtlpExporter", func() {
@@ -329,6 +349,29 @@ var _ = Describe("Exporter Conversion", func() {
 			Expect(exporter.Keepalive.Time).To(BeNil())
 			Expect(exporter.Keepalive.Timeout).To(BeNil())
 			Expect(*exporter.Keepalive.PermitWithoutStream).To(BeTrue())
+		})
+
+		It("should propagate balancer_name when configured", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint:     EndpointGrpcTest,
+				BalancerName: dash0common.PickFirst,
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.BalancerName).To(Equal(string(dash0common.PickFirst)))
+		})
+
+		It("should leave balancer_name empty when not configured", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.BalancerName).To(BeEmpty())
 		})
 	})
 

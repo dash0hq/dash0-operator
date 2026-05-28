@@ -1105,6 +1105,9 @@ exporters:
       permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
       {{- end }}
     {{- end }}
+    {{- if $exporter.BalancerName }}
+    balancer_name: "{{ $exporter.BalancerName }}"
+    {{- end }}
   {{- end }}
 
   {{- range $ns := .Exporters.AllNamespaceKeys }}
@@ -1139,6 +1142,9 @@ exporters:
       {{- if $exporter.Keepalive.PermitWithoutStream }}
       permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
       {{- end }}
+    {{- end }}
+    {{- if $exporter.BalancerName }}
+    balancer_name: "{{ $exporter.BalancerName }}"
     {{- end }}
   {{- end }}
   {{- end }}
