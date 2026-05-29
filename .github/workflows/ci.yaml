@@ -271,3 +271,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           echo "publishing helm chart version ${{ github.ref_name }}"
           helm-chart/bin/publish.sh ${{ github.ref_name }}
+
+  # After publishing a release, sync the Helm chart docs to the documentation on https://www.dash0.com/docs.
+  sync_docs_to_website:
+    name: Synchronize Helm chart docs to dash0.com/docs
+    needs:
+      - publish_helm_chart
+    if: ${{ contains(github.ref, 'refs/tags/') && needs.publish_helm_chart.result == 'success' }}
+    uses: ./.github/workflows/sync-docs-to-website.yaml
+    secrets:
+      DASH0_DOCS_REPO_GITHUB_PAT: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
+      SYNC_DOCUMENTATION_TARGET_REPOSITORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
+      SYNC_DOCUMENTATION_TARGET_FILE: ${{ secrets.SYNC_DOCUMENTATION_TARGET_FILE }}
