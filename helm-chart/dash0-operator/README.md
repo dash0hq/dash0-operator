@@ -5,15 +5,16 @@
 
 This repository contains the [Helm](https://helm.sh/) chart for the Dash0 operator.
 
-The Dash0 Operator makes observability for Kubernetes _easy_.
+There is no faster or easier way to monitor your Kubernetes cluster and workloads than using the Dash0 operator for
+Kubernetes.
+It is built on open standards and tailored for the optimal user experience.
 Simply install the operator into your cluster to get OpenTelemetry data flowing from your Kubernetes workloads to Dash0.
 
 ## Description
 
-The Dash0 operator installs an OpenTelemetry collector into your cluster that sends data to your Dash0 ingress
-endpoint, with authentication already configured out of the box.
-It also collects OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes,
-including traces, logs and metrics.
+The Dash0 operator for Kubernetes installs an OpenTelemetry collector into your cluster that sends data to your Dash0
+ingress endpoint, with authentication already configured out of the box.
+It also gathers OpenTelemetry data from applications deployed to the cluster, including traces, logs and metrics.
 
 ## Supported Runtimes
 
@@ -24,7 +25,7 @@ Supported runtimes for automatic workload instrumentation:
 * .NET
 * Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/0.100.0/helm-chart/dash0-operator/values.yaml#L408-L409))
 
-Other features like metrics and log collection are independent of the runtime of workloads.
+Metrics and log collection are independent of the runtime of workloads.
 
 ## Prerequisites
 
@@ -2571,8 +2572,8 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
 | `annotations/summary`                  | "Summary"                                                                                                         |                                                                                                                                                            |
 | `annotations/description`              | "Description"                                                                                                     |                                                                                                                                                            |
 | `annotations/dash0-enabled`            | Denotes whether the check rule is enabled and should be evaluated.                                                | default: "true"; must be either "true" or "false"                                                                                                          |
-| `annotations/dash0-threshold-degraded` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is degraded   | If present, needs to be string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals.   |
-| `annotations/dash0-threshold-critical` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is critical   | If present, needs to be string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals.   |
+| `annotations/dash0-threshold-degraded` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is degraded   | If present, it needs to be a string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals.   |
+| `annotations/dash0-threshold-critical` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is critical   | If present, it needs to be a string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals.   |
 | `annotations/*`                        | "Annotations"                                                                                                     | |
 | `labels/*`                             | "Additional labels"                                                                                               | |
 
@@ -2667,7 +2668,7 @@ checks with the same name but different internal IDs.
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the synthetic
 checks in that dataset, otherwise they will be created in the `default` dataset.
 
-You can opt out of synchronization for individual synthetic checks resources by adding the Kubernetes label
+You can opt out of synchronization for individual synthetic check resources by adding the Kubernetes label
 `dash0.com/enable: false` to the synthetic check resource.
 If this label is added to a synthetic check which has previously been synchronized to Dash0, the operator will delete
 the corresponding synthetic check in Dash0.

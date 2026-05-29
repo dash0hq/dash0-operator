@@ -1,13 +1,111 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 name: Synchronize Helm chart docs to dash0.com/docs
+
+# Copies the docs from helm-chart/dash0-operator into the documentation on https://www.dash0.com/docs, applying the
+# modifications declared in sync-docs/transformations.yaml, and opens a pull request against the target repository.
+#
+# This workflow can be run manually (workflow_dispatch) and is also invoked from ci.yaml (workflow_call) after a new
+# release has been published.
+#
+# The target repository and the target file within it are configured via the repository secrets
+# SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_FILE (the path of the documentation page within
+# that repository).
+#
+# Authentication to the (private) target repository is done via the DASH0_DOCS_REPO_GITHUB_PAT secret. This must be a
+# fine-grained personal access token scoped to the target repository with the following repository permissions:
+# - Contents: Read and write (to push the branch)
+# - Pull requests: Read and write (to open the PR)
 
 on:
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      DASH0_DOCS_REPO_GITHUB_PAT:
+        description: Fine-grained PAT with contents + pull-requests write access for the documentation repository.
+        required: true
+      SYNC_DOCUMENTATION_TARGET_REPOSITORY:
+        description: The owner/name of the documentation repository to sync the docs into.
+        required: true
+      SYNC_DOCUMENTATION_TARGET_FILE:
+        description: The path of the documentation page within the target repository.
+        required: true
+
+env:
+  PR_BRANCH: sync-dash0-operator-helm-chart-docs
 
 jobs:
   sync-docs:
     name: Synchronize Helm chart docs with dash0.com/docs
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - name: dummy step
-        run: echo "not implemented"
+      - name: checkout dash0-operator
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          path: dash0-operator
+
+      - name: set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.x'
+
+      - name: install dependencies
+        run: pip install -r dash0-operator/.github/workflows/sync-docs/requirements.txt
+
+      - name: apply doc transformations
+        run: |
+          python dash0-operator/.github/workflows/sync-docs/apply-transformations.py \
+            dash0-operator/helm-chart/dash0-operator/README.md \
+            dash0-operator/.github/workflows/sync-docs/transformations.yaml \
+            "${RUNNER_TEMP}/transformed-readme.md"
+
+      - name: checkout target repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
+          token: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
+          path: target-repository
+
+      - name: copy transformed docs
+        env:
+          TARGET_FILE: ${{ secrets.SYNC_DOCUMENTATION_TARGET_FILE }}
+        run: |
+          target_path="target-repository/${TARGET_FILE}"
+          mkdir -p "$(dirname "$target_path")"
+          cp "${RUNNER_TEMP}/transformed-readme.md" "$target_path"
+
+      - name: create pull request in target repository
+        working-directory: target-repository
+        env:
+          GH_TOKEN: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
+          TARGET_FILE: ${{ secrets.SYNC_DOCUMENTATION_TARGET_FILE }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # git diff --quiet exits with 1 if there are differences, 0 means the docs page is already up to date.
+          if git diff --quiet -- "${TARGET_FILE}"; then
+            echo "The documentation page is already up to date, nothing to do."
+            exit 0
+          fi
+
+          echo "The documentation page has changed, creating/updating a pull request."
+          git checkout -B "${PR_BRANCH}"
+          git add -- "${TARGET_FILE}"
+          git commit --message "docs: synchronize Dash0 operator docs"
+          git push --force origin "${PR_BRANCH}"
+
+          # Only open a new PR if there is no open one for this branch yet (otherwise the force-push above already
+          # updated the existing PR).
+          if [ -z "$(gh pr list --head "${PR_BRANCH}" --state open --json number --jq '.[].number')" ]; then
+            gh pr create \
+              --base main \
+              --head "${PR_BRANCH}" \
+              --title "docs: synchronize Dash0 operator documentation" \
+              --body "This PR synchronizes the content of the Dash0 operator documentation from [dash0hq/dash0-operator](https://github.com/dash0hq/dash0-operator) into the documentation on https://www.dash0.com/docs."
+          else
+            echo "An open pull request for branch ${PR_BRANCH} already exists, it was updated by the force-push above."
+          fi
