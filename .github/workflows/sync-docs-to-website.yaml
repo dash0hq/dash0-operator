@@ -1,0 +1,13 @@
+name: Synchronize Helm chart docs to dash0.com/docs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync-docs:
+    name: Synchronize Helm chart docs with dash0.com/docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: dummy step
+        run: echo "not implemented"
