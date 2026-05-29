@@ -157,7 +157,7 @@ spec:
         - --operator-configuration-instrumentation-delivery={{ .Values.operator.instrumentation.delivery }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
         - --dash0-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
-{{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+{{- if .Values.operator.intelligentEdge.enabled }}
         - --dash0-feature-intelligent-edge-enabled=true
 {{- end }}
         - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
@@ -202,7 +202,7 @@ spec:
         - name: DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY
           value: {{ .Values.operator.instrumentationImage.pullPolicy }}
         {{- end }}
-        {{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+        {{- if .Values.operator.intelligentEdge.enabled }}
         - name: DASH0_COLLECTOR_IMAGE
           value: {{ include "dash0-operator.intelligentEdgeCollectorImage" . | quote }}
         {{- if .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
@@ -241,7 +241,7 @@ spec:
         - name: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY
           value: {{ .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
         {{- end }}
-        {{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+        {{- if .Values.operator.intelligentEdge.enabled }}
         - name: DASH0_BARKER_IMAGE
           value: {{ include "dash0-operator.barkerImage" . | quote }}
         {{- if .Values.operator.barkerImage.pullPolicy }}
@@ -620,7 +620,7 @@ webhooks:
         scope: Cluster
     sideEffects: None
     timeoutSeconds: 5
-{{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+{{- if .Values.operator.intelligentEdge.enabled }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration

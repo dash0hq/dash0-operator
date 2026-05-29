@@ -959,3 +959,9 @@ operator:
   #      enabled: true
   #    synchronizePersesDashboards: true
   #    synchronizePrometheusRules: true
+
+  # Settings related to Intelligent Edge. This feature is currently under development and should
+  # not be enabled.
+  intelligentEdge:
+    # Whether to enable Intelligent Edge features for this operator install.
+    enabled: false

@@ -141,12 +141,3 @@ securityContext:
   seccompProfile:
     type: RuntimeDefault
 {{- end }}
-
-{{/* development settings */}}
-{{/* note: defaults are defined here instead of values.yaml, since they should usually not be overridden by users. */}}
-
-{{/* Enable/Disable IntelligentEdge features. When IE is disabled, no IE-related CRDs will be created and the collector
-image will not include any IE components. */}}
-{{- define "dash0-operator.development.intelligentEdge.enabled" -}}
-{{- if ((((.Values.operator).development).intelligentEdge).enabled) -}}true{{- else -}}false{{- end -}}
-{{- end }}

@@ -555,7 +555,7 @@ to the source code).
 ### Testing
 
 - Set `IMAGE_REPOSITORY_PREFIX` to a repo containing the images or set the individual images explicitly via helm values.
-- Install the operator helm chart with `operator.development.intelligentEdge.enabled=true`
+- Install the operator helm chart with `operator.intelligentEdge.enabled=true`
   - This will instruct helm to set the right collector image and also install the IE CRDs.
 - You can now create a `Dash0IntelligentEdge` CR and add `Dash0SamplingRule`s.
 
