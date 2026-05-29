@@ -1029,9 +1029,8 @@ tests:
       value: dash0-operator-controller
     set:
       operator:
-        development:
-          intelligentEdge:
-            enabled: true
+        intelligentEdge:
+          enabled: true
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[4]
@@ -1064,9 +1063,8 @@ tests:
       value: dash0-operator-controller
     set:
       operator:
-        development:
-          intelligentEdge:
-            enabled: true
+        intelligentEdge:
+          enabled: true
         intelligentEdgeCollectorImage:
           repository: custom-ie-collector
           tag: "9.9.9"

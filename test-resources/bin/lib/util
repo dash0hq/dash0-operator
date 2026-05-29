@@ -736,7 +736,7 @@ run_helm() {
       helm_install_command+=" --set operator.telemetryCollectionEnabled=false"
     fi
     if [[ "${FEATURE_INTELLIGENT_EDGE_ENABLED:-}" = "true" ]]; then
-      helm_install_command+=" --set operator.development.intelligentEdge.enabled=true"
+      helm_install_command+=" --set operator.intelligentEdge.enabled=true"
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi

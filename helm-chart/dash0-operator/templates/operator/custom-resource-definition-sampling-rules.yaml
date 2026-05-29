@@ -1,4 +1,4 @@
-{{- if eq (include "dash0-operator.development.intelligentEdge.enabled" .) "true" }}
+{{- if .Values.operator.intelligentEdge.enabled }}
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition

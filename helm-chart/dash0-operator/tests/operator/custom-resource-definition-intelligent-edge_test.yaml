@@ -10,9 +10,8 @@ tests:
   - it: should render the intelligent edge CRD when IE is enabled
     set:
       operator:
-        development:
-          intelligentEdge:
-            enabled: true
+        intelligentEdge:
+          enabled: true
     asserts:
       - hasDocuments:
           count: 1

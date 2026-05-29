@@ -1590,7 +1590,7 @@ trace_statements:
 					&images,
 					false,
 					map[string]string{
-						"operator.development.intelligentEdge.enabled": "true",
+						"operator.intelligentEdge.enabled": "true",
 					},
 				)
 
