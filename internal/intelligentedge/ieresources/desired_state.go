@@ -54,6 +54,7 @@ func assembleDesiredState(
 	barkerImage string,
 	barkerImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	extraConfig util.ExtraConfig,
 	forDeletion bool,
 	logger logd.Logger,
 ) []clientObject {
@@ -70,7 +71,7 @@ func assembleDesiredState(
 	if forDeletion || barkerEnabled {
 		if barkerEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleBarkerDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, barkerImage, barkerImagePullPolicy, operatorVersion, logger)),
+				addCommonMetadata(assembleBarkerDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, barkerImage, barkerImagePullPolicy, operatorVersion, extraConfig, logger)),
 				addCommonMetadata(assembleBarkerService(operatorNamespace, namePrefix)),
 			)
 		} else {
@@ -88,7 +89,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, true, logger)
 }
 
 func assembleBarkerDeployment(
@@ -99,6 +100,7 @@ func assembleBarkerDeployment(
 	barkerImage string,
 	barkerImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) *appsv1.Deployment {
 	replicas := int32(1)
@@ -140,6 +142,10 @@ func assembleBarkerDeployment(
 			},
 		},
 		Env: []corev1.EnvVar{
+			{
+				Name:  util.EnvVarGoMemLimit,
+				Value: extraConfig.BarkerContainerResources.GoMemLimit,
+			},
 			authTokenEnvVar,
 			{
 				Name:  "UPSTREAM_ADDRESS",
@@ -158,6 +164,7 @@ func assembleBarkerDeployment(
 				Value: fmt.Sprintf(":%d", barkerInternalPort),
 			},
 		},
+		Resources: extraConfig.BarkerContainerResources.ToResourceRequirements(),
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				GRPC: &corev1.GRPCAction{
@@ -206,6 +213,26 @@ func assembleBarkerDeployment(
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
 		barkerContainer.Env = append(barkerContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
 	}
+	podSpec := corev1.PodSpec{
+		AutomountServiceAccountToken: new(false),
+		SecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: new(true),
+			RunAsUser:    new(barkerUserID),
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Tolerations: extraConfig.BarkerTolerations,
+		Containers: []corev1.Container{
+			barkerContainer,
+		},
+	}
+	if extraConfig.BarkerNodeAffinity != nil {
+		podSpec.Affinity = &corev1.Affinity{
+			NodeAffinity: extraConfig.BarkerNodeAffinity,
+		}
+	}
+
 	deployment := assembleBarkerDeploymentForDeletion(operatorNamespace, namePrefix)
 	deployment.Spec = appsv1.DeploymentSpec{
 		Replicas: &replicas,
@@ -216,19 +243,7 @@ func assembleBarkerDeployment(
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: barkerLabels(),
 			},
-			Spec: corev1.PodSpec{
-				AutomountServiceAccountToken: new(false),
-				SecurityContext: &corev1.PodSecurityContext{
-					RunAsNonRoot: new(true),
-					RunAsUser:    new(barkerUserID),
-					SeccompProfile: &corev1.SeccompProfile{
-						Type: corev1.SeccompProfileTypeRuntimeDefault,
-					},
-				},
-				Containers: []corev1.Container{
-					barkerContainer,
-				},
-			},
+			Spec: podSpec,
 		},
 	}
 	return deployment
