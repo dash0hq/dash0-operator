@@ -195,6 +195,7 @@ tests:
                       values:
                         - value-09
         intelligentEdge:
+          enabled: true
           barker:
             containerResources:
               limits:
@@ -714,26 +715,6 @@ tests:
             targetAllocatorTolerations:
               []
             targetAllocatorNodeAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                nodeSelectorTerms:
-                - matchExpressions:
-                  - key: dash0.com/enable
-                    operator: NotIn
-                    values:
-                    - "false"
-                  - key: kubernetes.io/os
-                    operator: In
-                    values:
-                    - linux
-            barkerContainerResources:
-              gomemlimit: 100MiB
-              limits:
-                memory: 128Mi
-              requests:
-                memory: 64Mi
-            barkerTolerations:
-              []
-            barkerNodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
                 nodeSelectorTerms:
                 - matchExpressions:

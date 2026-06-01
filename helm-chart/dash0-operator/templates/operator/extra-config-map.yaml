@@ -93,12 +93,14 @@ data:
       {{- toYaml .Values.operator.targetAllocator.tolerations | nindent 6 }}
     targetAllocatorNodeAffinity:
       {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}
+{{- if .Values.operator.intelligentEdge.enabled }}
     barkerContainerResources:
       {{- toYaml .Values.operator.intelligentEdge.barker.containerResources | nindent 6 }}
     barkerTolerations:
       {{- toYaml .Values.operator.intelligentEdge.barker.tolerations | nindent 6 }}
     barkerNodeAffinity:
       {{- toYaml .Values.operator.intelligentEdge.barker.nodeAffinity | nindent 6 }}
+{{- end }}
 
     {{- if .Values.operator.autoMonitorNamespaces.monitoringTemplate }}
     {{- fail "Error: operator.autoMonitorNamespaces.monitoringTemplate is not a valid setting. The monitoring template is a top-level operator setting; please use operator.monitoringTemplate instead." -}}
