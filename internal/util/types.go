@@ -121,12 +121,26 @@ func getImageVersion(image string) string {
 	return ""
 }
 
+// PossibleCollectorUrls holds the two possible base URLs for routing telemetry from instrumented workloads to the
+// OpenTelemetry collector daemonset: the service URL of the collector DaemonSet and the node-local URL (node IP plus
+// host port). The actual URL used for instrumentation is selected from these two values depending on the cluster setup.
+type PossibleCollectorUrls struct {
+	NodeLocalBaseUrl string
+	ServiceBaseUrl   string
+}
+
+// All returns all possible collector base URLs as a slice.
+func (u PossibleCollectorUrls) All() []string {
+	return []string{u.NodeLocalBaseUrl, u.ServiceBaseUrl}
+}
+
 // ClusterInstrumentationConfig holds configuration values relevant for instrumenting workloads which apply to the whole
 // cluster, e.g. settings from the helm chart or the operator configuration resource.
 type ClusterInstrumentationConfig struct {
 	Images
-	OTelCollectorBaseUrl string
-	ExtraConfig          atomic.Pointer[ExtraConfig]
+	PossibleCollectorUrls PossibleCollectorUrls
+	OTelCollectorBaseUrl  string
+	ExtraConfig           atomic.Pointer[ExtraConfig]
 
 	// KubernetesVersion holds the Kubernetes version of the cluster detected at operator manager startup.
 	// KubernetesVersionDetected indicates whether detection succeeded; if false, KubernetesVersion is the zero value.
@@ -148,6 +162,7 @@ type ClusterInstrumentationConfig struct {
 
 func NewClusterInstrumentationConfig(
 	images Images,
+	possibleCollectorUrls PossibleCollectorUrls,
 	oTelCollectorBaseUrl string,
 	extraConfig ExtraConfig,
 	instrumentationDelivery cluster.ResolvedInstrumentationDelivery,
@@ -157,6 +172,7 @@ func NewClusterInstrumentationConfig(
 ) *ClusterInstrumentationConfig {
 	c := &ClusterInstrumentationConfig{
 		Images:                          images,
+		PossibleCollectorUrls:           possibleCollectorUrls,
 		OTelCollectorBaseUrl:            oTelCollectorBaseUrl,
 		InstrumentationDelays:           instrumentationDelays,
 		InstrumentationDebug:            instrumentationDebug,

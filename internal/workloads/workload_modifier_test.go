@@ -37,6 +37,7 @@ const (
 var (
 	clusterInstrumentationConfigWithInitContainer = util.NewClusterInstrumentationConfig(
 		TestImages,
+		PossibleCollectorUrlsTest,
 		OTelCollectorNodeLocalBaseUrlTest,
 		util.ExtraConfigDefaults,
 		cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -47,9 +48,21 @@ var (
 
 	clusterInstrumentationConfigWithImageVolumes = util.NewClusterInstrumentationConfig(
 		TestImages,
+		PossibleCollectorUrlsTest,
 		OTelCollectorNodeLocalBaseUrlTest,
 		util.ExtraConfigDefaults,
 		cluster.ResolvedInstrumentationDeliveryImageVolume,
+		nil,
+		false,
+		false,
+	)
+
+	clusterInstrumentationConfigWithServiceUrl = util.NewClusterInstrumentationConfig(
+		TestImages,
+		PossibleCollectorUrlsTest,
+		OTelCollectorServiceBaseUrlTest,
+		util.ExtraConfigDefaults,
+		cluster.ResolvedInstrumentationDeliveryInitContainer,
 		nil,
 		false,
 		false,
@@ -117,6 +130,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				NewResourceModifier(
 					util.NewClusterInstrumentationConfig(
 						TestImages,
+						PossibleCollectorUrlsTest,
 						OTelCollectorServiceBaseUrlTest,
 						util.ExtraConfigDefaults,
 						cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -1657,21 +1671,40 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		)
 
 		type otelExporterEnvVarsTest struct {
-			existingEnvVars              []corev1.EnvVar
-			expectedEnvVars              map[string]*EnvVarExpectation
-			expectedInstrumentationIssue string
-			expectedLogMessage           string
+			existingEnvVars                       []corev1.EnvVar
+			clusterInstrumentationConfig          *util.ClusterInstrumentationConfig
+			expectedPreInstrumentationCheckResult bool
+			expectedEnvVars                       map[string]*EnvVarExpectation
+			expectedInstrumentationIssue          string
+			expectedLogMessage                    string
 		}
 
-		DescribeTable("should add (but not replace) OTEL_EXPORTER_OTLP_ENDPOINT/OTEL_EXPORTER_OTLP_PROTOCOL",
+		DescribeTable("should add or update OTEL_EXPORTER_OTLP_ENDPOINT/OTEL_EXPORTER_OTLP_PROTOCOL",
 			func(testConfig otelExporterEnvVarsTest) {
 				container := &corev1.Container{}
 				if testConfig.existingEnvVars != nil {
 					container.Env = testConfig.existingEnvVars
 				}
 
+				clusterInstrumentationConfig := testConfig.clusterInstrumentationConfig
+				if clusterInstrumentationConfig == nil {
+					clusterInstrumentationConfig = clusterInstrumentationConfigWithInitContainer
+				}
+
+				preInstrumentationCheckResult := otelExportEnvVarsWillBeUpdatedForAtLeastOneContainer([]corev1.Container{
+					*container,
+				}, clusterInstrumentationConfig)
+				Expect(preInstrumentationCheckResult).To(Equal(testConfig.expectedPreInstrumentationCheckResult))
+
+				modifier := NewResourceModifier(
+					clusterInstrumentationConfig,
+					DefaultNamespaceInstrumentationConfig,
+					testActor,
+					logger,
+				)
+
 				capturingLogger, capturingLogSink := NewCapturingLogger()
-				instrumentationIssues := workloadModifier.addEnvironmentVariables(
+				instrumentationIssues := modifier.addEnvironmentVariables(
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
@@ -1694,7 +1727,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}
 			},
 			Entry("should add OTEL_EXPORTER_OTLP_* to container without environment variables", otelExporterEnvVarsTest{
-				existingEnvVars: nil,
+				existingEnvVars:                       nil,
+				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
@@ -1708,16 +1742,75 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Name:  "ENV_VAR_2",
 					Value: "VALUE 2",
 				}},
+				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
 				},
 			}),
-			Entry("should not overwrite OTEL_EXPORTER_OTLP_* when OTEL_EXPORTER_OTLP_ENDPOINT is already set", otelExporterEnvVarsTest{
+			Entry("should update OTEL_EXPORTER_OTLP_ENDPOINT when switching from node-local to service URL", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelExporterOtlpEndpointName,
+					Value: OTelCollectorNodeLocalBaseUrlTest,
+				}, {
+					Name:  envVarOtelExporterOtlpProtocolName,
+					Value: common.ProtocolHttpProtobuf,
+				}},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorServiceBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+				clusterInstrumentationConfig: clusterInstrumentationConfigWithServiceUrl,
+			}),
+			Entry("should update OTEL_EXPORTER_OTLP_ENDPOINT when switching from service URL to node-local", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelExporterOtlpEndpointName,
+					Value: OTelCollectorServiceBaseUrlTest,
+				}, {
+					Name:  envVarOtelExporterOtlpProtocolName,
+					Value: common.ProtocolHttpProtobuf,
+				}},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+			}),
+			Entry("should update OTEL_EXPORTER_OTLP_ENDPOINT and add missing _PROTOCOL when switching from node-local to service URL", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelExporterOtlpEndpointName,
+					Value: OTelCollectorNodeLocalBaseUrlTest,
+				}},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorServiceBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
+				clusterInstrumentationConfig: clusterInstrumentationConfigWithServiceUrl,
+			}),
+			Entry("should not update OTEL_EXPORTER_OTLP_ENDPOINT when _PROTOCOL is set and has an unexpected value", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelExporterOtlpEndpointName,
+					Value: OTelCollectorServiceBaseUrlTest,
+				}, {
+					Name:  envVarOtelExporterOtlpProtocolName,
+					Value: common.ProtocolGrpc,
+				}},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorServiceBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolGrpc},
+				},
+				expectedInstrumentationIssue: otelExporterOtlpNoOverwriteMsg,
+				expectedLogMessage:           otelExporterOtlpNoOverwriteMsg,
+			}),
+			Entry("should not overwrite OTEL_EXPORTER_OTLP_* when OTEL_EXPORTER_OTLP_ENDPOINT is already set to a value not set by the operator", otelExporterEnvVarsTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelExporterOtlpEndpointName,
 					Value: "http://some-endpoint.tld",
 				}},
+				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: {Value: "http://some-endpoint.tld"},
 					envVarOtelExporterOtlpProtocolName: nil,
@@ -1730,6 +1823,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Name:  envVarOtelExporterOtlpProtocolName,
 					Value: common.ProtocolGrpc,
 				}},
+				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: nil,
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolGrpc},
@@ -1747,6 +1841,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Name:  envVarOtelExporterOtlpProtocolName,
 						Value: common.ProtocolGrpc,
 					}},
+				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: {Value: "http://some-endpoint.tld"},
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolGrpc},
@@ -1764,6 +1859,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Name:  envVarOtelExporterOtlpProtocolName,
 						Value: common.ProtocolHttpProtobuf,
 					}},
+				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
@@ -1775,6 +1871,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Name:  envVarOtelExporterOtlpEndpointName,
 						Value: OTelCollectorNodeLocalBaseUrlTest,
 					}},
+				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
@@ -1790,6 +1887,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Name:  envVarOtelExporterOtlpProtocolName,
 						Value: common.ProtocolHttpProtobuf,
 					}},
+				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: {Value: " "},
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
@@ -1803,6 +1901,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Name:  envVarOtelExporterOtlpProtocolName,
 						Value: common.ProtocolHttpProtobuf,
 					}},
+				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelExporterOtlpEndpointName: nil,
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
@@ -1819,12 +1918,22 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container.Env = testConfig.existingEnvVars
 				}
 
-				workloadModifier.removeEnvironmentVariables(container)
+				clusterInstrumentationConfig := testConfig.clusterInstrumentationConfig
+				if clusterInstrumentationConfig == nil {
+					clusterInstrumentationConfig = clusterInstrumentationConfigWithInitContainer
+				}
+				modifier := NewResourceModifier(
+					clusterInstrumentationConfig,
+					DefaultNamespaceInstrumentationConfig,
+					testActor,
+					logger,
+				)
+				modifier.removeEnvironmentVariables(container)
 
 				envVars := container.Env
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
 			},
-			Entry("should remove OTEL_EXPORTER_OTLP_* when values match config", otelExporterEnvVarsTest{
+			Entry("should remove OTEL_EXPORTER_OTLP_* when values match the current config", otelExporterEnvVarsTest{
 				existingEnvVars: []corev1.EnvVar{
 					{
 						Name:  envVarOtelExporterOtlpEndpointName,
@@ -1839,7 +1948,39 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelExporterOtlpProtocolName: nil,
 				},
 			}),
-			Entry("should leave OTEL_EXPORTER_OTLP_* in place when values do not match config", otelExporterEnvVarsTest{
+			Entry("should remove OTEL_EXPORTER_OTLP_* when current env var is service and new config is node-local", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: OTelCollectorServiceBaseUrlTest,
+					},
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolHttpProtobuf,
+					}},
+				clusterInstrumentationConfig: clusterInstrumentationConfigWithInitContainer,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: nil,
+					envVarOtelExporterOtlpProtocolName: nil,
+				},
+			}),
+			Entry("should remove OTEL_EXPORTER_OTLP_* when current env var is node local and new config is service", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: OTelCollectorNodeLocalBaseUrlTest,
+					},
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolHttpProtobuf,
+					}},
+				clusterInstrumentationConfig: clusterInstrumentationConfigWithServiceUrl,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: nil,
+					envVarOtelExporterOtlpProtocolName: nil,
+				},
+			}),
+			Entry("should leave OTEL_EXPORTER_OTLP_* in place when value is not a value that the operator would set", otelExporterEnvVarsTest{
 				existingEnvVars: []corev1.EnvVar{
 					{
 						Name:  envVarOtelExporterOtlpEndpointName,
@@ -3159,6 +3300,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
+					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -3178,6 +3320,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
+					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -3197,6 +3340,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
+					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -3216,6 +3360,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
+					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -3239,6 +3384,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
+					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -3262,6 +3408,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
+					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -3277,6 +3424,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf if the env var does not exist", pythonAutoInstrumentationTest{
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
+					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					cluster.ResolvedInstrumentationDeliveryInitContainer,
@@ -3296,6 +3444,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}},
 				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
 					TestImages,
+					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
 					cluster.ResolvedInstrumentationDeliveryInitContainer,

@@ -70,6 +70,11 @@ const (
 )
 
 var (
+	PossibleCollectorUrlsTest = util.PossibleCollectorUrls{
+		NodeLocalBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
+		ServiceBaseUrl:   OTelCollectorServiceBaseUrlTest,
+	}
+
 	AuthorizationDefaultEnvVar         = "OTELCOL_AUTH_TOKEN_DEFAULT_0"
 	AuthorizationTokenTest             = "authorization-token-test"
 	AuthorizationHeaderTest            = fmt.Sprintf("Bearer %s", AuthorizationTokenTest)

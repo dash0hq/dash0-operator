@@ -84,6 +84,7 @@ var _ = Describe(
 					recorder,
 					util.NewClusterInstrumentationConfig(
 						TestImages,
+						PossibleCollectorUrlsTest,
 						OTelCollectorNodeLocalBaseUrlTest,
 						util.ExtraConfigDefaults,
 						cluster.ResolvedInstrumentationDeliveryInitContainer,

@@ -169,9 +169,6 @@ const (
 	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
 
-	oTelCollectorServiceBaseUrlPattern   = "http://%s-opentelemetry-collector-service.%s.svc.cluster.local:4318"
-	oTelCollectorNodeLocalBaseUrlPattern = "http://$(%s):%d"
-
 	developmentModeEnvVarName                        = "DASH0_DEVELOPMENT_MODE"
 	pprofPortEnvVarName                              = "DASH0_PPROF_PORT"
 	instrumentationDebugEnvVarName                   = "DASH0_INSTRUMENTATION_DEBUG"
@@ -1255,7 +1252,15 @@ func startDash0Controllers(
 	)
 
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
-	oTelCollectorBaseUrl := determineCollectorBaseUrl(cliArgs.forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
+	possibleCollectorUrls := collectors.RenderCollectorBaseUrls(
+		envVars.oTelCollectorNamePrefix,
+		envVars.operatorNamespace,
+	)
+	oTelCollectorBaseUrl := collectors.SelectCollectorBaseUrl(
+		possibleCollectorUrls,
+		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
+		isIPv6Cluster,
+	)
 
 	readyCheckExecuter, err := registerHealthAndReadyChecks(ctx, mgr)
 	if err != nil {
@@ -1277,6 +1282,7 @@ func startDash0Controllers(
 
 	clusterInstrumentationConfig := util.NewClusterInstrumentationConfig(
 		images,
+		possibleCollectorUrls,
 		oTelCollectorBaseUrl,
 		extraConfig,
 		instrumentationDelivery,
@@ -1692,46 +1698,6 @@ func registerHealthAndReadyChecks(ctx context.Context, mgr manager.Manager) (*Re
 		return readyCheckExecuter, fmt.Errorf("unable to set up the operator manager ready check: %w", err)
 	}
 	return readyCheckExecuter, nil
-}
-
-func determineCollectorBaseUrl(forceOTelCollectorServiceUrl bool, isIPv6Cluster bool) string {
-	oTelCollectorServiceBaseUrl :=
-		fmt.Sprintf(
-			oTelCollectorServiceBaseUrlPattern,
-			envVars.oTelCollectorNamePrefix,
-			envVars.operatorNamespace,
-		)
-	oTelCollectorNodeLocalBaseUrl := fmt.Sprintf(
-		oTelCollectorNodeLocalBaseUrlPattern,
-		util.EnvVarDash0NodeIp,
-		otelcolresources.OtlpHttpHostPort,
-	)
-
-	if forceOTelCollectorServiceUrl {
-		return oTelCollectorServiceBaseUrl
-	}
-
-	// Using the node's IPv6 address for the collector base URL should actually just work:
-	// if m.clusterInstrumentationConfig.IsIPv6Cluster {
-	//	 oTelCollectorNodeLocalBaseUrlPattern = "http://[$(%s)]:%d"
-	// }
-	//
-	// But apparently the Node.js OpenTelemetry SDK tries to resolve that as a hostname, resulting in
-	// Error: getaddrinfo ENOTFOUND [2a05:d014:1bc2:3702:fc43:fec6:1d88:ace5]\n    at GetAddrInfoReqWrap.onlookup
-	// all [as oncomplete] (node:dns:120:26)
-	//
-	// To avoid that, we fall back to the service URL of the collector in IPv6 clusters.
-	//
-	// Would be worth to give this another try after implementing
-	// https://linear.app/dash0/issue/ENG-2132.
-	if isIPv6Cluster {
-		return oTelCollectorServiceBaseUrl
-	}
-
-	// By default, and if forceOTelCollectorServiceUrl has not been set, and it is also not an IPv6 cluster, use a
-	// node-local route by sending telemetry from workloads to the OTel collector daemonset pod on the same node via
-	// the node's IP address and the collector's host port.
-	return oTelCollectorNodeLocalBaseUrl
 }
 
 func findDeploymentReference(
