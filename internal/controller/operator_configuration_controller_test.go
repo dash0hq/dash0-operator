@@ -1329,6 +1329,7 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 		nil,
 		util.NewClusterInstrumentationConfig(
 			TestImages,
+			PossibleCollectorUrlsTest,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
 			cluster.ResolvedInstrumentationDeliveryInitContainer,

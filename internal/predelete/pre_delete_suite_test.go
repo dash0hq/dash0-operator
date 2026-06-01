@@ -101,6 +101,7 @@ var _ = BeforeSuite(func() {
 		mgr.GetEventRecorder("dash0-monitoring-controller"),
 		util.NewClusterInstrumentationConfig(
 			TestImages,
+			PossibleCollectorUrlsTest,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
 			cluster.ResolvedInstrumentationDeliveryInitContainer,

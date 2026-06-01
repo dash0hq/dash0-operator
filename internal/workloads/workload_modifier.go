@@ -239,6 +239,9 @@ func InstrumentationIsUpToDate(
 	if !util.HasBeenInstrumentedSuccessfullyByThisVersion(objectMeta, clusterInstrumentationConfig.Images) {
 		return false
 	}
+	if otelExportEnvVarsWillBeUpdatedForAtLeastOneContainer(containers, clusterInstrumentationConfig) {
+		return false
+	}
 	if otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers, namespaceInstrumentationConfig) {
 		return false
 	}
@@ -657,7 +660,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	// - Finally, setting OTEL_EXPORTER_OTLP_* if LD_PRELOAD cannot be modified is probably not very useful, but it also
 	//   should not have any detrimental effects. Plus, the only reason for not being able to modfiy LD_PRELOAD would be
 	//   if it is set via valueFrom, which probably never happens in practice anyway.
-	instrumentationIssues = m.addOtelExporterOtlpEnvVars(
+	instrumentationIssues = m.addOrUpdateOtelExporterOtlpEnvVars(
 		container,
 		collectorBaseUrl,
 		instrumentationIssues,
@@ -960,46 +963,14 @@ func (m *ResourceModifier) removeOtelLogsExporterEnvVar(container *corev1.Contai
 	removeEnvironmentVariable(container, envVarOtelLogsExporterName)
 }
 
-func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
+func (m *ResourceModifier) addOrUpdateOtelExporterOtlpEnvVars(
 	container *corev1.Container,
 	otelExporterOtlpEndpointValue string,
 	instrumentationIssues []string,
 	perContainerLogger logd.Logger,
 ) []string {
-	otelExporterOtlpEndpointIsSet, otelExporterOtlpEndpointIdx :=
-		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpEndpointName)
-	otelExporterOtlpProtocolIsSet, otelExporterOtlpProtocolIdx :=
-		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpProtocolName)
-
-	if otelExporterOtlpEndpointIsSet &&
-		envVarHasValue(container, otelExporterOtlpEndpointIdx, otelExporterOtlpEndpointValue) &&
-		otelExporterOtlpProtocolIsSet &&
-		envVarHasValue(container, otelExporterOtlpProtocolIdx, defaultOtelExporterOtlpProtocol) {
-		// Both env vars are already set and have the value that we would set anyway. No action required.
-		return instrumentationIssues
-	}
-
-	if otelExporterOtlpEndpointIsSet &&
-		envVarHasValue(container, otelExporterOtlpEndpointIdx, otelExporterOtlpEndpointValue) &&
-		!otelExporterOtlpProtocolIsSet {
-		// The container only has OTEL_EXPORTER_OTLP_ENDPOINT=http://$(DASH0_NODE_IP):40318 set, but
-		// OTEL_EXPORTER_OTLP_PROTOCOL is missing. It is safe to add OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf.
-		// Note: In the reverse case (only OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf set, but no
-		// OTEL_EXPORTER_OTLP_ENDPOINT), we will not assume that it is safe to instrument this container. This would be
-		// a very unusual scenario (why would you set OTEL_EXPORTER_OTLP_PROTOCOL without _ENDPOINT?), and sine we don't
-		// know what is going in, we leave this container alone.
-		addOrReplaceEnvironmentVariable(
-			container,
-			corev1.EnvVar{
-				Name:  envVarOtelExporterOtlpProtocolName,
-				Value: defaultOtelExporterOtlpProtocol,
-			},
-		)
-		return instrumentationIssues
-	}
-
-	if !otelExporterOtlpEndpointIsSet && !otelExporterOtlpProtocolIsSet {
-		// Both env vars are either not set or are set to an empty value. We can set/overwrite them.
+	if otelExportEnvVarsCanBeUpdatedForContainer(container, m.clusterInstrumentationConfig) {
+		// It is safe to set/update the OTEL_EXPORTER_OTLP_* env vars, and at least one of them needs to be changed.
 		addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
@@ -1017,9 +988,14 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 		return instrumentationIssues
 	}
 
-	// The two OTEL_EXPORTER_OTLP_* (or at least one of them) are set to values that are different from what we would
-	// set. Replacing/overwriting them could lead to breaking the telemetry export of a container that is configured
-	// manually. For example:
+	if otelExporterOtlpEnvVarsAlreadyHaveDesiredValues(container, otelExporterOtlpEndpointValue) {
+		// Both env vars are already set to the values we would set. There is nothing to do and nothing to warn about.
+		return instrumentationIssues
+	}
+
+	// At least one of the OTEL_EXPORTER_OTLP_* env vars is set to a value that we did not set (a manual configuration),
+	// so it is not safe to update them. Replacing/overwriting them could lead to breaking the telemetry export of a
+	// container that is configured manually. For example:
 	// * If a Go workload uses otlptracegrpc.New(context.Background()), this will respect OTEL_EXPORTER_OTLP_ENDPOINT
 	//   but not OTEL_EXPORTER_OTLP_PROTOCOL, and with us overriding the endpoint to an HTTP endpoint, the workload
 	//   would send GRPC traffic to an endpoint expecting HTTP traffic. This can also occur in other scenarios where
@@ -1029,6 +1005,86 @@ func (m *ResourceModifier) addOtelExporterOtlpEnvVars(
 	perContainerLogger.WarnTelemetryCollectionIssue(otelExporterOtlpNoOverwriteMsg)
 	instrumentationIssues = append(instrumentationIssues, otelExporterOtlpNoOverwriteMsg)
 	return instrumentationIssues
+}
+
+func otelExportEnvVarsWillBeUpdatedForAtLeastOneContainer(
+	containers []corev1.Container,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+) bool {
+	for _, container := range containers {
+		if otelExportEnvVarsCanBeUpdatedForContainer(new(container), clusterInstrumentationConfig) {
+			return true
+		}
+	}
+	return false
+}
+
+// otelExportEnvVarsCanBeUpdatedForContainer reports whether the operator can (and needs to) set or update the
+// OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_EXPORTER_OTLP_PROTOCOL env vars on the given container. It returns true only if
+// touching the env vars is safe (i.e. they have not been configured manually to a value the operator would not set)
+// AND at least one of them needs to be changed to match the current configuration. It returns false when the env vars
+// are already set to the desired values (nothing to do) or when they have been configured manually and must not be
+// overwritten.
+func otelExportEnvVarsCanBeUpdatedForContainer(
+	container *corev1.Container,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+) bool {
+	otelExporterOtlpEndpointIsSet, otelExporterOtlpEndpointIdx :=
+		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpEndpointName)
+	otelExporterOtlpProtocolIsSet, otelExporterOtlpProtocolIdx :=
+		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpProtocolName)
+
+	if !otelExporterOtlpEndpointIsSet && !otelExporterOtlpProtocolIsSet {
+		// Neither env var is set (or both are empty). It is safe to add both.
+		return true
+	}
+
+	if !otelExporterOtlpEndpointIsSet ||
+		!envVarHasAnyValueFrom(
+			container,
+			otelExporterOtlpEndpointIdx,
+			clusterInstrumentationConfig.PossibleCollectorUrls.All(),
+		) {
+		// Either OTEL_EXPORTER_OTLP_ENDPOINT is set to a value we did not set (a manual configuration we must not
+		// overwrite), or only OTEL_EXPORTER_OTLP_PROTOCOL is set while OTEL_EXPORTER_OTLP_ENDPOINT is missing. In the
+		// latter case we do not assume it is safe to instrument the container (why would anyone set
+		// OTEL_EXPORTER_OTLP_PROTOCOL without OTEL_EXPORTER_OTLP_ENDPOINT?). In both cases we must not touch the env vars.
+		return false
+	}
+
+	// At this point OTEL_EXPORTER_OTLP_ENDPOINT is set to one of the collector base URLs that the operator uses.
+
+	if otelExporterOtlpProtocolIsSet &&
+		!envVarHasValue(container, otelExporterOtlpProtocolIdx, defaultOtelExporterOtlpProtocol) {
+		// OTEL_EXPORTER_OTLP_PROTOCOL is set to a value that is different from what we would set. Replacing/overwriting
+		// any OTEL_EXPORTER_OTLP_* setting could break the telemetry export of a container that is configured manually.
+		return false
+	}
+
+	endpointMatchesCurrentConfig :=
+		envVarHasValue(container, otelExporterOtlpEndpointIdx, clusterInstrumentationConfig.OTelCollectorBaseUrl)
+	if endpointMatchesCurrentConfig && otelExporterOtlpProtocolIsSet {
+		// Both env vars are already set to the values we would set for the current configuration, nothing to do.
+		return false
+	}
+
+	// Either OTEL_EXPORTER_OTLP_ENDPOINT needs to be updated to match the current configuration (e.g. when switching
+	// between the node-local URL and the service URL), or OTEL_EXPORTER_OTLP_PROTOCOL still needs to be added.
+	return true
+}
+
+// otelExporterOtlpEnvVarsAlreadyHaveDesiredValues reports whether OTEL_EXPORTER_OTLP_ENDPOINT and
+// OTEL_EXPORTER_OTLP_PROTOCOL are both already set to the values the operator would set for the current configuration.
+func otelExporterOtlpEnvVarsAlreadyHaveDesiredValues(
+	container *corev1.Container,
+	otelExporterOtlpEndpointValue string,
+) bool {
+	endpointIsSet, endpointIdx := envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpEndpointName)
+	protocolIsSet, protocolIdx := envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpProtocolName)
+	return endpointIsSet &&
+		envVarHasValue(container, endpointIdx, otelExporterOtlpEndpointValue) &&
+		protocolIsSet &&
+		envVarHasValue(container, protocolIdx, defaultOtelExporterOtlpProtocol)
 }
 
 func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
@@ -1429,6 +1485,14 @@ func envVarHasValue(container *corev1.Container, idx int, value string) bool {
 	return container.Env[idx].ValueFrom == nil && strings.TrimSpace(container.Env[idx].Value) == value
 }
 
+func envVarHasAnyValueFrom(container *corev1.Container, idx int, values []string) bool {
+	if container.Env[idx].ValueFrom != nil {
+		return false
+	}
+	currentValue := strings.TrimSpace(container.Env[idx].Value)
+	return slices.Contains(values, currentValue)
+}
+
 func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) ModificationResult {
 	return m.revertResource(
 		&cronJob.Spec.JobTemplate.Spec.Template,
@@ -1594,7 +1658,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	removeEnvironmentVariable(container, envVarOtelInjectorConfigFileName)
 	removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
 
-	m.removeOtelExporterOtlpEnvVarsIfCurrentValueMatchesConfig(container)
+	m.removeOtelExporterOtlpEnvVarsIfSetByOperator(container)
 	m.removeOtelPropagatorsIfCurrentValueMatchesConfig(container)
 	m.removeCaptureSqlQueryParametersIfCurrentValueMatchesConfig(container)
 	m.removeOtelLogsExporterEnvVar(container)
@@ -1649,7 +1713,7 @@ func (m *ResourceModifier) removeEntryFromLdPreload(container *corev1.Container,
 	container.Env[idx].Value = strings.Join(libraries, separator)
 }
 
-func (m *ResourceModifier) removeOtelExporterOtlpEnvVarsIfCurrentValueMatchesConfig(container *corev1.Container) {
+func (m *ResourceModifier) removeOtelExporterOtlpEnvVarsIfSetByOperator(container *corev1.Container) {
 	otelExporterOtlpEndpointIsSet, otelExporterOtlpEndpointIdx :=
 		envVarIsSetAndNotEmpty(container, envVarOtelExporterOtlpEndpointName)
 	otelExporterOtlpProtocolIsSet, otelExporterOtlpProtocolIdx :=
@@ -1658,7 +1722,11 @@ func (m *ResourceModifier) removeOtelExporterOtlpEnvVarsIfCurrentValueMatchesCon
 		return
 	}
 
-	if !envVarHasValue(container, otelExporterOtlpEndpointIdx, m.clusterInstrumentationConfig.OTelCollectorBaseUrl) ||
+	if !envVarHasAnyValueFrom(
+		container,
+		otelExporterOtlpEndpointIdx,
+		m.clusterInstrumentationConfig.PossibleCollectorUrls.All(),
+	) ||
 		!envVarHasValue(container, otelExporterOtlpProtocolIdx, defaultOtelExporterOtlpProtocol) {
 		return
 	}
