@@ -40,11 +40,6 @@ func verifyLabels(
 	operatorImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/operator-image")
 	verifyImageLabel(g, operatorImage, images.operator, "ghcr.io/dash0hq/operator-controller:")
 	instrumentationImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumentation-image")
-	if instrumentationImage == "" {
-		// This fallback to the old label key is required for "should update instrumentations of workloads at startup",
-		// which uses an older operator release initially. Can be deleted once 0.140.0 has been released.
-		instrumentationImage = readLabel(g, namespace, runtime, workloadType, "dash0.com/init-container-image")
-	}
 	verifyImageLabel(g, instrumentationImage, images.instrumentation, "ghcr.io/dash0hq/instrumentation:")
 	instrumentedBy := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
