@@ -5,6 +5,8 @@ package intelligentedge
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"sync/atomic"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -12,22 +14,42 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/intelligentedge/ieresources"
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type IntelligentEdgeManager struct {
 	client.Client
 	resourceManager  *ieresources.IntelligentEdgeResourceManager
+	extraConfig      atomic.Pointer[util.ExtraConfig]
 	updateInProgress atomic.Bool
 }
 
 func NewIntelligentEdgeManager(
 	k8sClient client.Client,
 	resourceManager *ieresources.IntelligentEdgeResourceManager,
+	extraConfig util.ExtraConfig,
 ) *IntelligentEdgeManager {
-	return &IntelligentEdgeManager{
+	m := &IntelligentEdgeManager{
 		Client:          k8sClient,
 		resourceManager: resourceManager,
+	}
+	m.extraConfig.Store(&extraConfig)
+	return m
+}
+
+func (m *IntelligentEdgeManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logd.Logger) {
+	previousConfig := m.extraConfig.Swap(&newConfig)
+	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
+		hasBeenReconciled, err := m.Reconcile(ctx)
+		if err != nil {
+			logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update intelligent edge resources after extra config map update.")
+		}
+		if hasBeenReconciled {
+			logger.Info("successfully reconciled intelligent edge resources after extra config map update")
+		}
+	} else {
+		logger.Info("ignoring extra config map update, both the new and the old extra config map have the same content")
 	}
 }
 
@@ -99,8 +121,13 @@ func (m *IntelligentEdgeManager) createOrUpdateIntelligentEdge(
 			"configuration resource with a Dash0 export to complete the setup.")
 	}
 
+	extraConfig := m.extraConfig.Load()
+	if extraConfig == nil {
+		return false, fmt.Errorf("extra config is nil in IntelligentEdgeManager#createOrUpdateIntelligentEdge")
+	}
+
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
-		m.resourceManager.CreateOrUpdateResources(ctx, intelligentEdgeResource, operatorConfig, logger)
+		m.resourceManager.CreateOrUpdateResources(ctx, intelligentEdgeResource, operatorConfig, *extraConfig, logger)
 	if err != nil {
 		logger.Error(err, "failed to create/update intelligent edge resources")
 		return false, err

@@ -67,6 +67,10 @@ type ExtraConfig struct {
 	TargetAllocatorTolerations              []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
 	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 
+	BarkerContainerResources ResourceRequirementsWithGoMemLimit `json:"barkerContainerResources"`
+	BarkerTolerations        []corev1.Toleration                `json:"barkerTolerations,omitempty"`
+	BarkerNodeAffinity       *corev1.NodeAffinity               `json:"barkerNodeAffinity,omitempty"`
+
 	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
 	// dependencies. We should revisit how to untangle this.
 	MonitoringTemplateRaw *json.RawMessage `json:"monitoringTemplate,omitempty"`

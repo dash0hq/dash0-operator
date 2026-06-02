@@ -194,6 +194,41 @@ tests:
                       operator: In
                       values:
                         - value-09
+        intelligentEdge:
+          enabled: true
+          barker:
+            containerResources:
+              limits:
+                memory: 256Mi
+                cpu: 250m
+                ephemeral-storage: 256Mi
+              gomemlimit: 200MiB
+              requests:
+                memory: 128Mi
+                cpu: 100m
+                ephemeral-storage: 128Mi
+            tolerations:
+              - key: key5
+                operator: Equal
+                value: value5
+                effect: NoSchedule
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-label-key-07
+                        operator: In
+                        values:
+                          - value-10
+                          - value-11
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 1
+                  preference:
+                    matchExpressions:
+                      - key: node-label-key-08
+                        operator: In
+                        values:
+                          - value-12
         monitoringTemplate:
           metadata:
             name: monitoring-template-name
@@ -431,6 +466,38 @@ tests:
                     values:
                     - value-07
                     - value-08
+            barkerContainerResources:
+              gomemlimit: 200MiB
+              limits:
+                cpu: 250m
+                ephemeral-storage: 256Mi
+                memory: 256Mi
+              requests:
+                cpu: 100m
+                ephemeral-storage: 128Mi
+                memory: 128Mi
+            barkerTolerations:
+              - effect: NoSchedule
+                key: key5
+                operator: Equal
+                value: value5
+            barkerNodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - preference:
+                  matchExpressions:
+                  - key: node-label-key-08
+                    operator: In
+                    values:
+                    - value-12
+                weight: 1
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-07
+                    operator: In
+                    values:
+                    - value-10
+                    - value-11
             monitoringTemplate:
               metadata:
                 annotations:

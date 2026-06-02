@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
@@ -56,9 +57,10 @@ func (m *IntelligentEdgeResourceManager) CreateOrUpdateResources(
 	ctx context.Context,
 	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
+	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, intelligentEdgeResource, operatorConfig, m.barkerImage, m.barkerImagePullPolicy, m.operatorVersion, false, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, intelligentEdgeResource, operatorConfig, m.barkerImage, m.barkerImagePullPolicy, m.operatorVersion, extraConfig, false, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false

@@ -1429,7 +1429,11 @@ func startDash0Controllers(
 		ieManager = intelligentedge.NewIntelligentEdgeManager(
 			k8sClient,
 			ieResourceManager,
+			extraConfig,
 		)
+		// Update the extra config in the intelligent edge manager when the extra config map changes, and also trigger a
+		// reconciliation of the intelligent edge resources.
+		extraConfigMapWatcher.AddClient(ieManager)
 		ieReconciler := intelligentedge.NewIntelligentEdgeReconciler(
 			k8sClient,
 			ieManager,

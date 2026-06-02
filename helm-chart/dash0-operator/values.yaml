@@ -965,3 +965,44 @@ operator:
   intelligentEdge:
     # Whether to enable Intelligent Edge features for this operator install.
     enabled: false
+
+    # Settings for the barker proxy deployed when intelligentEdge.enabled=true.
+    barker:
+      # Resource settings for the barker container of the barker deployment managed by the operator.
+      containerResources:
+        limits:
+          memory: 128Mi
+        # The GOMEMLIMIT environment variable value for the barker container, the recommended value is 80% of
+        # containerResources.limits.memory. Note that valid units are different from Kubernetes resource settings, use
+        # MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+        gomemlimit: 100MiB
+        requests:
+          memory: 64Mi
+
+      # An array of tolerations for the barker deployment managed by the operator. This can be used to make sure that
+      # the barker pod can be scheduled on nodes where it would not be scheduled otherwise due to Kubernetes taints.
+      # Example:
+      # tolerations:
+      #   - key: "key1"
+      #     operator: "Equal"
+      #     value: "value1"
+      #     effect: "NoSchedule"
+      #   - key: "key2"
+      #     operator: "Exists"
+      #     effect: "NoSchedule"
+      tolerations: []
+
+      # The nodeAffinity for the barker deployment managed by the operator. This can be used to constrain which nodes
+      # the barker pod will be scheduled on.
+      #
+      # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: "dash0.com/enable"
+                  operator: "NotIn"
+                  values: ["false"]
+                - key: "kubernetes.io/os"
+                  operator: "In"
+                  values: ["linux"]
