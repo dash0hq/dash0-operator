@@ -29,6 +29,7 @@ const (
 
 	operatorImageLabelKey                = "dash0.com/operator-image"
 	instrumentationImageLabelKey         = "dash0.com/instrumentation-image"
+	legacyInitContainerImageLabelKey     = "dash0.com/init-container-image"
 	instrumentedByLabelKey               = "dash0.com/instrumented-by"
 	instrumentationDeliveryAnnotationKey = "dash0.com/instrumentation-delivery"
 	webhookIgnoreOnceLabelKey            = "dash0.com/webhook-ignore-once"
@@ -56,6 +57,7 @@ func AddInstrumentationLabelsAndAnnotations(
 		instrumentationDeliveryAnnotationKey,
 		string(clusterInstrumentationConfig.GetInstrumentationDelivery()),
 	)
+	removeLabel(objectMeta, legacyInitContainerImageLabelKey)
 }
 
 func AddWebhookIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) {
@@ -82,6 +84,7 @@ func RemoveInstrumentationLabelsAndAnnotations(objectMeta *metav1.ObjectMeta) {
 	removeLabel(objectMeta, instrumentationImageLabelKey)
 	removeLabel(objectMeta, instrumentedByLabelKey)
 	removeAnnotation(objectMeta, instrumentationDeliveryAnnotationKey)
+	removeLabel(objectMeta, legacyInitContainerImageLabelKey)
 }
 
 func removeLabel(objectMeta *metav1.ObjectMeta, key string) {
