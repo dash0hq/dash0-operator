@@ -25,6 +25,7 @@ var _ = Describe("ResolveInstrumentationDelivery", func() {
 				testConfig.delivery,
 				testConfig.versionInfo,
 				testConfig.versionDetected,
+				true,
 				logd.Discard(),
 			)
 			Expect(result).To(Equal(testConfig.expectedDelivery))

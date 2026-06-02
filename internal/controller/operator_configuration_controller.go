@@ -364,6 +364,7 @@ func (r *OperatorConfigurationReconciler) applyInstrumentationDelivery(
 		originalDeliverySetting,
 		r.clusterInstrumentationConfig.KubernetesVersion,
 		r.clusterInstrumentationConfig.KubernetesVersionDetected,
+		true,
 		logger,
 	)
 	previous := r.clusterInstrumentationConfig.SetInstrumentationDelivery(resolvedDelivery)
