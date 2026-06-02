@@ -29,6 +29,7 @@ func ResolveInstrumentationDelivery(
 	delivery string,
 	versionInfo KubernetesVersionInfo,
 	versionDetected bool,
+	logWarningForEmptyValue bool,
 	logger logd.Logger,
 ) ResolvedInstrumentationDelivery {
 	// maintenance note: this switch statement needs to be updated once we move to the default being "auto"
@@ -81,12 +82,17 @@ func ResolveInstrumentationDelivery(
 		return ResolvedInstrumentationDeliveryInitContainer
 
 	default:
-		// Should not happen, there should always be a valid delivery mode set on the operator configuration CRD and also
-		// via Helm.
-		logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
-			"unknown instrumentation delivery: \"%s\". Falling back to the init container approach for instrumenting workloads.",
-			delivery,
-		))
+		if delivery != "" || logWarningForEmptyValue {
+			logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
+				"unknown instrumentation delivery: \"%s\". Falling back to the init container approach for instrumenting workloads.",
+				delivery,
+			))
+		} else {
+			logger.Debug(fmt.Sprintf(
+				"unknown instrumentation delivery: \"%s\". Falling back to the init container approach for instrumenting workloads.",
+				delivery,
+			))
+		}
 		return ResolvedInstrumentationDeliveryInitContainer
 	}
 }

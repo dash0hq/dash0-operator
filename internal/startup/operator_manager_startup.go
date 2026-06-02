@@ -346,7 +346,7 @@ func Start() {
 	}
 
 	var operatorConfigurationValues *OperatorConfigurationValues
-	if len(cliArgs.operatorConfigurationEndpoint) > 0 {
+	if operatorConfigurationIsManagedViaHelm(cliArgs) {
 		operatorConfigurationValues = &OperatorConfigurationValues{
 			Endpoint: cliArgs.operatorConfigurationEndpoint,
 			Token:    cliArgs.operatorConfigurationToken,
@@ -1044,6 +1044,7 @@ func startOperatorManager(
 		cliArgs.operatorConfigurationInstrumentationDelivery,
 		kubernetesVersionInfo,
 		kubernetesVersionDetected,
+		operatorConfigurationIsManagedViaHelm(cliArgs),
 		setupLog,
 	)
 
@@ -1726,6 +1727,11 @@ func findDeploymentReference(
 	}
 	logger.Debug(fmt.Sprintf("found deployment reference with UID: %s", deploymentReference.UID))
 	return deploymentReference, nil
+}
+
+func operatorConfigurationIsManagedViaHelm(cliArgs *commandLineArguments) bool {
+	// cliArgs.operatorConfigurationEndpoint is provided via Helm if and only if operator.dash0Export.enabled is true.
+	return len(cliArgs.operatorConfigurationEndpoint) > 0
 }
 
 func createOrUpdateAutoOperatorConfigurationResource(
