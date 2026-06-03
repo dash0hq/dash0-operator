@@ -10,10 +10,10 @@ Simply install the operator into your cluster to get OpenTelemetry data flowing 
 
 ## Description
 
-The Dash0 operator installs an OpenTelemetry collector into your cluster that sends data to your Dash0
-ingress endpoint, with authentication already configured out of the box. Additionally, it will enable gathering
-OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes, plus automatic log
-collection and metrics.
+The Dash0 operator installs an OpenTelemetry collector into your cluster that sends data to your Dash0 ingress
+endpoint, with authentication already configured out of the box.
+It also collects OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes,
+including traces, logs and metrics.
 
 ## Supported Runtimes
 
@@ -233,11 +233,13 @@ spec:
 ```
 
 Here is a list of configuration options for this resource:
+
 * <a href="#operatorconfigurationresource.spec.exports[]"><span id="operatorconfigurationresource.spec.exports[]">**`spec.exports[]`**</span></a>:
   One or more `export` configs defining endpoints and authorization (see below for details).
   If multiple exports are defined, the telemetry will be exported to all defined exports and CRs (views, synthetic
   checks, dashboards, check rules, notification channels, spam filters, signal-to-metrics rules) will be synced to all
   defined Dash0 exports.
+
 * <a href="#operatorconfigurationresource.spec.exports[].dash0.endpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.endpoint">**`spec.exports[].dash0.endpoint`**</span></a>:
   The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
@@ -246,9 +248,11 @@ Here is a list of configuration options for this resource:
   "OTLP/gRPC".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
+
 * **`spec.exports[].dash0.authorization.token`** or **`spec.exports[].dash0.authorization.secretRef`**:
   Exactly one of these two properties needs to be provided.
   Providing both will cause a validation error when installing the Dash0Monitoring resource.
+
     * <a href="#operatorconfigurationresource.spec.export.dash0.authorization.token"><span id="operatorconfigurationresource.spec.export.dash0.authorization.token">**`spec.export.dash0.authorization.token`**</span></a>:
       Replace the value in the example above with the Dash0 authorization token of your organization.
       The authorization token for your Dash0 organization can be copied from https://app.dash0.com → organization
@@ -257,6 +261,7 @@ Here is a list of configuration options for this resource:
       Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
       Anyone with API access to the Kubernetes cluster will be able to read the value.
       Use the `secretRef` property and a Kubernetes secret if you want to avoid that.
+
     * <a href="#operatorconfigurationresource.spec.export.dash0.authorization.secretRef"><span id="operatorconfigurationresource.spec.export.dash0.authorization.secretRef">**`spec.export.dash0.authorization.secretRef`**</span></a>:
       A reference to an existing Kubernetes secret in the Dash0 operator's namespace.
       See the section [Using a Kubernetes Secret for the Dash0 Authorization Token](#using-a-kubernetes-secret-for-the-dash0-authorization-token)
@@ -267,40 +272,48 @@ Here is a list of configuration options for this resource:
       cluster will be able to read the value.
       Additional steps are required to make sure secret values are encrypted.
       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
+
 * <a href="#operatorconfigurationresource.spec.exports[].dash0.apiEndpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.apiEndpoint">**`spec.exports[].dash0.apiEndpoint`**</span></a>:
-  The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-  dashboards, check rules, synthetic checks, views, notification channels, spam filters and signal-to-metrics rules via the operator.
+  The base URL of the Dash0 API to talk to.
+  This is not where telemetry will be sent, but it is used for managing dashboards, check rules, synthetic checks,
+  views, notification channels, spam filters and signal-to-metrics rules via the operator.
   This property is optional.
   The value needs to be the API endpoint of your Dash0 organization.
   The correct API endpoint can be copied from https://app.dash0.com → organization settings → "Endpoints" → "API".
   The correct endpoint value will always start with "https://api." and end in ".dash0.com".
   If this property is omitted, managing dashboards, check rules, synthetic checks, views, notification channels, spam
   filters and signal-to-metrics rules via the operator will not work.
+
 * <a href="#operatorconfigurationresource.spec.selfMonitoring.enabled"><span id="operatorconfigurationresource.spec.selfMonitoring.enabled">**`spec.selfMonitoring.enabled`**</span></a>:
   An opt-out for self-monitoring for the operator.
   If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
-  This setting is optional, it defaults to true.
+  This setting is optional, it defaults to `true`.
+
 * <a href="#operatorconfigurationresource.spec.kubernetesInfrastructureMetricsCollection.enabled"><span id="operatorconfigurationresource.spec.kubernetesInfrastructureMetricsCollection.enabled">**`spec.kubernetesInfrastructureMetricsCollection.enabled`**</span></a>:
   If enabled, the operator will collect Kubernetes infrastructure metrics.
-  This setting is optional, it defaults to true; unless `telemetryCollection.enabled` is set to `false`, then
+  This setting is optional, it defaults to `true`; unless `telemetryCollection.enabled` is set to `false`, then
   `kubernetesInfrastructureMetricsCollection.enabled` defaults to `false` as well.
   It is a validation error to set `telemetryCollection.enabled=false` and
   `kubernetesInfrastructureMetricsCollection.enabled=true` at the same time.
+
 * <a href="#operatorconfigurationresource.spec.collectPodLabelsAndAnnotations.enabled"><span id="operatorconfigurationresource.spec.collectPodLabelsAndAnnotations.enabled">**`spec.collectPodLabelsAndAnnotations.enabled`**</span></a>:
-  If enabled, the operator will collect all Kubernetes pod labels and annotations and convert them to resource attributes
-  for all spans, log records and metrics.
+  If enabled, the operator will collect all Kubernetes pod labels and annotations and convert them to resource
+  attributes for all spans, log records and metrics.
   The resulting resource attributes are prefixed with `k8s.pod.label.` or `k8s.pod.annotation.` respectively.
-  This setting is optional, it defaults to true; unless `telemetryCollection.enabled` is set to `false`, then
+  This setting is optional, it defaults to `true`; unless `telemetryCollection.enabled` is set to `false`, then
   `collectPodLabelsAndAnnotations.enabled` defaults to `false` as well.
   It is a validation error to set `telemetryCollection.enabled=false` and `collectPodLabelsAndAnnotations.enabled=true`
   at the same time.
+
 * <a href="#operatorconfigurationresource.spec.clusterName"><span id="operatorconfigurationresource.spec.clusterName">**`spec.clusterName`**</span></a>:
   If set, the value will be added as the resource attribute `k8s.cluster.name` to all telemetry.
-  This setting is optional. By default, `k8s.cluster.name` will not be added to telemetry.
+  This setting is optional.
+  By default, `k8s.cluster.name` will not be added to telemetry.
+
 * <a href="#operatorconfigurationresource.spec.telemetryCollection.enabled"><span id="operatorconfigurationresource.spec.telemetryCollection.enabled">**`spec.telemetryCollection.enabled`**</span></a>:
   An opt-out switch for all telemetry collection, and to avoid having the operator deploy OpenTelemetry collectors in
   the cluster.
-  This setting is optional, it defaults to true (that is, by default, OpenTelemetry collectors will be deployed and
+  This setting is optional, it defaults to `true` (that is, by default, OpenTelemetry collectors will be deployed and
   telemetry will be collected).
   If telemetry collection is disabled via this switch, the operator will not collect any telemetry, in particular it
   will not deploy any OpenTelemetry collectors in the cluster.
@@ -309,14 +322,17 @@ Here is a list of configuration options for this resource:
   Note that setting this to `false` does not disable the operator's self-monitoring telemetry, use the setting
   `spec.selfMonitoring.enabled` to disable self-monitoring if required (self-monitoring does not require an
   OpenTelemetry collector).
-  Also note that this setting is not exposed via Helm, i.e. if you want to set this to false you need to deploy the
-  operator configuration resource manually, i.e. omit the Helm value `operator.dash0Export.enabled` or set it to false,
-  then deploy an operator configuration resource via `kubectl apply -f` or similar.
+  Also note that this setting is not exposed via Helm, i.e. if you want to set this to `false` you need to deploy the
+  operator configuration resource manually, i.e. omit the Helm value `operator.dash0Export.enabled` or set it to
+  `false`, then deploy an operator configuration resource via `kubectl apply -f` or similar.
+
 * <a href="#operatorconfigurationresource.spec.prometheusCrdSupport.enabled"><span id="operatorconfigurationresource.spec.prometheusCrdSupport.enabled">**`spec.prometheusCrdSupport.enabled`**</span></a>:
-  A flag controlling whether support for Prometheus CRDs will be enabled. This setting is optional and the default is `false`.
-  Setting it to `true` and having at least one namespace with `prometheusScraping` enabled, will deploy the OpenTelemetry
-  target-allocator and update the `prometheusreceiver` in the OpenTelemetry collectors, so they query the allocator for targets
-  to be scraped.
+  A flag controlling whether support for Prometheus CRDs will be enabled.
+  This setting is optional and the default is `false`.
+  Setting it to `true` and having at least one namespace with `prometheusScraping` enabled, will deploy the
+  OpenTelemetry target-allocator and update the `prometheusreceiver` in the OpenTelemetry collectors, so they query the
+  allocator for targets to be scraped.
+
 * <a href="#operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery"><span id="operatorconfigurationresource.spec.instrumentWorkloads.instrumentationDelivery">**`spec.instrumentWorkloads.instrumentationDelivery`**</span></a>:
   Whether to use an image volume or an init container plus an emptyDir volume to provide instrumentation files to
   workloads when applying auto-instrumentation.
@@ -331,6 +347,7 @@ Here is a list of configuration options for this resource:
     your cluster, since image volumes are disabled by default in versions older than 1.35.
   - `init-container`: always use the init container approach, regardless of the Kubernetes version.
     This is the default.
+
 * <a href="#operatorconfigurationresource.spec.autoMonitorNamespaces.enabled"><span id="operatorconfigurationresource.spec.autoMonitorNamespaces.enabled">**`spec.autoMonitorNamespaces.enabled`**</span></a>: Controls whether monitoring is set up for namespaces
   automatically.
   By default, a Dash0Monitoring resource has to be added to each namespace that you want to monitor.
@@ -345,6 +362,7 @@ Here is a list of configuration options for this resource:
   Even when enabled, individual namespaces can opt out of automatic monitoring via [label selectors](#operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector).
   Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of the
   [monitoringTemplate](#operatorconfigurationresource.spec.monitoringTemplate).
+
 * <a href="#operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector"><span id="operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector">**`operatorconfigurationresource.spec.autoMonitorNamespaces.labelSelector`**</span></a>:
   An optional configurable label selector for controlling which namespaces are automatically monitored.
   Namespaces which match this label selector will be monitored automatically (if `autoMonitorNamespaces.enabled` is
@@ -357,6 +375,7 @@ Here is a list of configuration options for this resource:
     * namespaces which have the label dash0.com/enable with a value other than "false".
   Namespaces which are subject to automatic namespace monitoring will be monitored according to the settings of the
   [monitoringTemplate](#operatorconfigurationresource.spec.monitoringTemplate).
+
 * <a href="#operatorconfigurationresource.spec.monitoringTemplate"><span id="operatorconfigurationresource.spec.monitoringTemplate">**`operatorconfigurationresource.spec.monitoringTemplate`**</span></a>:
   Specification of the desired settings for automatically monitoring namespaces.
 
@@ -1205,7 +1224,7 @@ The service name is derived as follows:
    Prometheus metrics.
 
 > **Note:** In contrast to
-> [Resource Attributes for Workloads via Labels and Annotations](#specifying-additional-resource-attributes-for-workloads-via-labels-and-annotations),
+> [Resource Attributes for Workloads via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations),
 > Prometheus scraping can only see pod labels, not workload level (deployment, daemonset, ...) labels.
 
 ### Providing a Filelog Offset Volume
