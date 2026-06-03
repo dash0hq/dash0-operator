@@ -3074,6 +3074,10 @@ spec:
 
 **`routing`**: Defines which assets and filters determine when this channel is notified.
 
+`filters` is a list of filter groups. The conditions within a single group (the inner list) are combined with
+**AND**, and the groups (the outer list) are combined with **OR**. This two-level structure is what allows
+expressing rules like "(A and B) or (C and D)", which a flat list could not.
+
 ```yaml
 spec:
   # ...type and config fields...
@@ -3085,10 +3089,26 @@ spec:
         name: "My Check Rule"
         dataset: "default"
     filters:
-      - key: service.name
-        operator: is
-        value: my-service
+      # Group 1: service.name is "checkout" AND severity is "error" or "critical"
+      - - key: service.name
+          operator: is
+          value: checkout
+        - key: severity
+          operator: is_one_of
+          values:
+            - error
+            - critical
+      # Group 2: service.name is "payments" AND environment is "production"
+      - - key: service.name
+          operator: is
+          value: payments
+        - key: environment
+          operator: is
+          value: production
 ```
+
+With the example above, the channel is notified when
+`(service.name = checkout AND severity in [error, critical]) OR (service.name = payments AND environment = production)`.
 
 ### Managing Spam Filters
 
