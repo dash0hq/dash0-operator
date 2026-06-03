@@ -265,9 +265,15 @@ func (in *Dash0NotificationChannelRouting) DeepCopyInto(out *Dash0NotificationCh
 	}
 	if in.Filters != nil {
 		in, out := &in.Filters, &out.Filters
-		*out = make([]Dash0NotificationChannelRoutingFilter, len(*in))
+		*out = make([][]Dash0NotificationChannelRoutingFilter, len(*in))
 		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = make([]Dash0NotificationChannelRoutingFilter, len(*in))
+				for i := range *in {
+					(*in)[i].DeepCopyInto(&(*out)[i])
+				}
+			}
 		}
 	}
 }

@@ -1,0 +1,34 @@
+apiVersion: operator.dash0.com/v1beta1
+kind: Dash0NotificationChannel
+metadata:
+  name: operator-test-email-with-routing
+spec:
+  display:
+    name: Email Alerts (with routing)
+  type: email_v2
+  emailV2Config:
+    recipients:
+      - oncall@example.com
+      - alerts@example.com
+    plaintext: false
+  frequency: 10m
+  routing:
+    assets:
+      - kind: check_rule
+        id: "check-rule-id"
+        name: "My Check Rule"
+        dataset: "default"
+    # The outer list is a set of filter groups combined with OR; the conditions
+    # within each inner group are combined with AND.
+    filters:
+      - - key: service.name
+          operator: is
+          value: my-service
+        - key: severity
+          operator: is_one_of
+          values:
+            - error
+            - critical
+      - - key: environment
+          operator: is
+          value: production

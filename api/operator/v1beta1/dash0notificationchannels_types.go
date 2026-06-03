@@ -254,9 +254,10 @@ type Dash0NotificationChannelRouting struct {
 	// +kubebuilder:validation:Required
 	Assets []Dash0NotificationChannelRoutingAsset `json:"assets"`
 
-	// Filter criteria for routing notifications.
+	// Filter criteria for routing notifications. The outer array is a set of filter groups combined with OR; the
+	// conditions within each inner group are combined with AND.
 	// +kubebuilder:validation:Required
-	Filters []Dash0NotificationChannelRoutingFilter `json:"filters"`
+	Filters [][]Dash0NotificationChannelRoutingFilter `json:"filters"`
 }
 
 // Dash0NotificationChannelRoutingAsset defines a routing asset.

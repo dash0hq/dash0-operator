@@ -199,50 +199,54 @@ spec:
                       type: object
                     type: array
                   filters:
-                    description: Filter criteria for routing notifications.
+                    description: |-
+                      Filter criteria for routing notifications. The outer array is a set of filter groups combined with OR; the
+                      conditions within each inner group are combined with AND.
                     items:
-                      description: Dash0NotificationChannelRoutingFilter defines a
-                        filter condition for notification routing.
-                      properties:
-                        key:
-                          description: The attribute key to be filtered.
-                          type: string
-                        operator:
-                          description: The match operation for filtering attributes.
-                          enum:
-                          - is
-                          - is_not
-                          - is_set
-                          - is_not_set
-                          - is_one_of
-                          - is_not_one_of
-                          - gt
-                          - lt
-                          - gte
-                          - lte
-                          - matches
-                          - does_not_match
-                          - contains
-                          - does_not_contain
-                          - starts_with
-                          - does_not_start_with
-                          - ends_with
-                          - does_not_end_with
-                          - is_any
-                          type: string
-                        value:
-                          description: The value to match against.
-                          type: string
-                        values:
-                          description: List of values to match against. This parameter
-                            is mandatory for the is_one_of and is_not_one_of operators.
-                          items:
+                      items:
+                        description: Dash0NotificationChannelRoutingFilter defines
+                          a filter condition for notification routing.
+                        properties:
+                          key:
+                            description: The attribute key to be filtered.
                             type: string
-                          type: array
-                      required:
-                      - key
-                      - operator
-                      type: object
+                          operator:
+                            description: The match operation for filtering attributes.
+                            enum:
+                            - is
+                            - is_not
+                            - is_set
+                            - is_not_set
+                            - is_one_of
+                            - is_not_one_of
+                            - gt
+                            - lt
+                            - gte
+                            - lte
+                            - matches
+                            - does_not_match
+                            - contains
+                            - does_not_contain
+                            - starts_with
+                            - does_not_start_with
+                            - ends_with
+                            - does_not_end_with
+                            - is_any
+                            type: string
+                          value:
+                            description: The value to match against.
+                            type: string
+                          values:
+                            description: List of values to match against. This parameter
+                              is mandatory for the is_one_of and is_not_one_of operators.
+                            items:
+                              type: string
+                            type: array
+                        required:
+                        - key
+                        - operator
+                        type: object
+                      type: array
                     type: array
                 required:
                 - assets
