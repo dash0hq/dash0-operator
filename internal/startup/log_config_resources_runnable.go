@@ -7,9 +7,6 @@ import (
 	"context"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/pager"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -19,8 +16,7 @@ import (
 )
 
 const (
-	logInterval                     = 24 * time.Hour
-	monitoringResourcesListPageSize = 50
+	logInterval = 24 * time.Hour
 )
 
 // LogConfigurationResourcesRunnable is a repeating task that lists all Dash0OperatorConfiguration and Dash0Monitoring
@@ -76,25 +72,15 @@ func (r *LogConfigurationResourcesRunnable) logOperatorConfigurationResources(ct
 }
 
 func (r *LogConfigurationResourcesRunnable) logMonitoringResources(ctx context.Context, logger logd.Logger) {
-	pgr := pager.New(pager.SimplePageFunc(
-		func(opts metav1.ListOptions) (runtime.Object, error) {
-			list := &dash0v1beta1.Dash0MonitoringList{}
-			if err := r.client.List(ctx, list, &client.ListOptions{
-				Limit:    opts.Limit,
-				Continue: opts.Continue,
-			}); err != nil {
-				return nil, err
-			}
-			return list, nil
-		},
-	))
-	pgr.PageSize = monitoringResourcesListPageSize
-	if err := pgr.EachListItem(ctx, metav1.ListOptions{},
-		func(resource runtime.Object) error {
-			resource.(*dash0v1beta1.Dash0Monitoring).LogResourceAsEvent(logger)
-			return nil
-		},
-	); err != nil {
+	allMonitoringResources := &dash0v1beta1.Dash0MonitoringList{}
+	// Deliberately not using pagination (Limit/Continue) here, since the k8sClient is backed by the controller-runtime
+	// cache, which holds all objects in memory and does not support pagination (it ignores Limit and rejects a
+	// non-empty Continue token).
+	if err := r.client.List(ctx, allMonitoringResources); err != nil {
 		logger.Error(err, "failed to list Dash0Monitoring resources for logging")
+		return
+	}
+	for i := range allMonitoringResources.Items {
+		allMonitoringResources.Items[i].LogResourceAsEvent(logger)
 	}
 }
