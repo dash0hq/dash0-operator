@@ -70,6 +70,10 @@ deployment should match snapshot (default values):
                   value: "443"
                 - name: DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK
                   value: "true"
+                - name: DASH0_IAC_PERIODIC_RETRY_ENABLED
+                  value: "true"
+                - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
+                  value: 10m
                 - name: OTEL_COLLECTOR_NAME_PREFIX
                   value: RELEASE-NAME
                 - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
@@ -236,6 +240,10 @@ deployment should match snapshot when using cert-manager:
                   value: "443"
                 - name: DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK
                   value: "true"
+                - name: DASH0_IAC_PERIODIC_RETRY_ENABLED
+                  value: "true"
+                - name: DASH0_IAC_PERIODIC_RETRY_INTERVAL
+                  value: 10m
                 - name: OTEL_COLLECTOR_NAME_PREFIX
                   value: RELEASE-NAME
                 - name: OTEL_TARGET_ALLOCATOR_NAME_PREFIX
@@ -1231,6 +1239,13 @@ monitoring resource CRD should match snapshot:
                               type: string
                             dash0Origin:
                               type: string
+                            httpStatusCode:
+                              description: |-
+                                HttpStatusCode is the HTTP status code that the Dash0 API returned for the failed synchronization attempt, if the
+                                failure was caused by an unexpected HTTP response. It is 0 (absent) for successful synchronizations and for
+                                transport-level errors (network errors, timeouts) where no HTTP response was received. It is used to decide
+                                whether a failed synchronization should be retried.
+                              type: integer
                             synchronizationError:
                               type: string
                           required:
@@ -1285,6 +1300,16 @@ monitoring resource CRD should match snapshot:
                               type: string
                             dash0Dataset:
                               type: string
+                            synchronizationErrorHttpStatusCodes:
+                              additionalProperties:
+                                type: integer
+                              description: |-
+                                SynchronizationErrorHttpStatusCodes maps the name of a rule that failed to synchronize to the HTTP status code
+                                that the Dash0 API returned for that rule, if the failure was caused by an unexpected HTTP response. The status
+                                code is 0 (absent) for transport-level errors (network errors, timeouts) where no HTTP response was received. It
+                                is used to decide whether a failed synchronization should be retried. The keys match the keys of
+                                SynchronizationErrors.
+                              type: object
                             synchronizationErrors:
                               additionalProperties:
                                 type: string
@@ -2301,6 +2326,13 @@ monitoring resource CRD should match snapshot:
                               type: string
                             dash0Origin:
                               type: string
+                            httpStatusCode:
+                              description: |-
+                                HttpStatusCode is the HTTP status code that the Dash0 API returned for the failed synchronization attempt, if the
+                                failure was caused by an unexpected HTTP response. It is 0 (absent) for successful synchronizations and for
+                                transport-level errors (network errors, timeouts) where no HTTP response was received. It is used to decide
+                                whether a failed synchronization should be retried.
+                              type: integer
                             synchronizationError:
                               type: string
                           required:
@@ -2485,6 +2517,16 @@ monitoring resource CRD should match snapshot:
                               type: string
                             dash0Dataset:
                               type: string
+                            synchronizationErrorHttpStatusCodes:
+                              additionalProperties:
+                                type: integer
+                              description: |-
+                                SynchronizationErrorHttpStatusCodes maps the name of a rule that failed to synchronize to the HTTP status code
+                                that the Dash0 API returned for that rule, if the failure was caused by an unexpected HTTP response. The status
+                                code is 0 (absent) for transport-level errors (network errors, timeouts) where no HTTP response was received. It
+                                is used to decide whether a failed synchronization should be retried. The keys match the keys of
+                                SynchronizationErrors.
+                              type: object
                             synchronizationErrors:
                               additionalProperties:
                                 type: string

@@ -69,6 +69,8 @@ type environmentVariables struct {
 	deploymentName                              string
 	webhookServiceName                          string
 	webhookServicePort                          int32
+	iacPeriodicRetryEnabled                     bool
+	iacPeriodicRetryInterval                    time.Duration
 	autoPatchPersesDashboardConversionWebhook   bool
 	oTelCollectorNamePrefix                     string
 	targetAllocatorNamePrefix                   string
@@ -148,6 +150,8 @@ const (
 	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
 	webhookServicePortEnvVarName                          = "DASH0_WEBHOOK_SERVICE_PORT"
 	persesDashboardAutoPatchConversionWebhookEnvVarName   = "DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK"
+	periodicRetryEnabledEnvVarName                        = "DASH0_IAC_PERIODIC_RETRY_ENABLED"
+	periodicRetryIntervalEnvVarName                       = "DASH0_IAC_PERIODIC_RETRY_INTERVAL"
 	oTelCollectorNamePrefixEnvVarName                     = "OTEL_COLLECTOR_NAME_PREFIX"
 	targetAllocatorNamePrefixEnvVarName                   = "OTEL_TARGET_ALLOCATOR_NAME_PREFIX"
 	operatorImageEnvVarName                               = "DASH0_OPERATOR_IMAGE"
@@ -187,6 +191,10 @@ const (
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
 
 	envVarValueTrue = "true"
+
+	// defaultPeriodicRetryInterval is the fallback interval for the periodic synchronization retry job, used when
+	// DASH0_IAC_PERIODIC_RETRY_INTERVAL is unset or cannot be parsed as a positive duration.
+	defaultPeriodicRetryInterval = 10 * time.Minute
 )
 
 var (
@@ -742,6 +750,10 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	autoPatchPersesDashboardConversionWebhook :=
 		readOptionalBoolFromEnvironmentVariable(persesDashboardAutoPatchConversionWebhookEnvVarName, true)
 
+	iacPeriodicRetryEnabled := readOptionalBoolFromEnvironmentVariable(periodicRetryEnabledEnvVarName, true)
+	iacPeriodicRetryInterval :=
+		readOptionalDurationFromEnvironmentVariable(periodicRetryIntervalEnvVarName, defaultPeriodicRetryInterval)
+
 	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
@@ -865,6 +877,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		deploymentName:                              deploymentName,
 		webhookServiceName:                          webhookServiceName,
 		webhookServicePort:                          webhookServicePort,
+		iacPeriodicRetryEnabled:                     iacPeriodicRetryEnabled,
+		iacPeriodicRetryInterval:                    iacPeriodicRetryInterval,
 		autoPatchPersesDashboardConversionWebhook:   autoPatchPersesDashboardConversionWebhook,
 		oTelCollectorNamePrefix:                     oTelCollectorNamePrefix,
 		targetAllocatorNamePrefix:                   targetAllocatorNamePrefix,
@@ -931,6 +945,93 @@ func readOptionalBoolFromEnvironmentVariable(envVarName string, defaultValue boo
 		return defaultValue
 	}
 	return strings.ToLower(raw) == envVarValueTrue
+}
+
+// readOptionalDurationFromEnvironmentVariable reads a Go duration string (as understood by time.ParseDuration, e.g.
+// "30s", "10m", "2h") from the given environment variable. If the variable is unset, cannot be parsed, or is not a
+// positive duration, the provided default value is used (and a warning is logged for unparseable/non-positive values).
+func readOptionalDurationFromEnvironmentVariable(envVarName string, defaultValue time.Duration) time.Duration {
+	raw, isSet := os.LookupEnv(envVarName)
+	if !isSet || raw == "" {
+		return defaultValue
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil {
+		setupLog.Warn(
+			fmt.Sprintf(
+				"Ignoring invalid value for %s (%q): %v. Using the default of %s instead.",
+				envVarName, raw, err, defaultValue,
+			),
+		)
+		return defaultValue
+	}
+	if parsed <= 0 {
+		setupLog.Warn(
+			fmt.Sprintf(
+				"Ignoring non-positive value for %s (%q). Using the default of %s instead.",
+				envVarName, raw, defaultValue,
+			),
+		)
+		return defaultValue
+	}
+	return parsed
+}
+
+// allOwnedIacResourceSynchronizationControllers gathers the reconcilers of the operator-owned resource types into a
+// slice of OwnedIacResourceSynchronizationController for the periodic synchronization retry runnable. The sampling rule
+// reconciler is optional (it is only created when the corresponding feature is enabled), so it is only included when
+// non-nil.
+func allOwnedIacResourceSynchronizationControllers(
+	notificationChannelReconciler *controller.NotificationChannelReconciler,
+	signalToMetricsReconciler *controller.SignalToMetricsReconciler,
+	spamFilterReconciler *controller.SpamFilterReconciler,
+	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
+	viewReconciler *controller.ViewReconciler,
+	samplingRuleReconciler *controller.SamplingRuleReconciler,
+) []controller.OwnedIacResourceSynchronizationController {
+	controllers := []controller.OwnedIacResourceSynchronizationController{
+		notificationChannelReconciler,
+		signalToMetricsReconciler,
+		spamFilterReconciler,
+		syntheticCheckReconciler,
+		viewReconciler,
+	}
+	if samplingRuleReconciler != nil {
+		controllers = append(controllers, samplingRuleReconciler)
+	}
+	return controllers
+}
+
+// setupSynchronizationRetryRunnable adds the periodic synchronization retry runnable to the manager, unless it has been
+// disabled via operator.iac.periodicRetry.enabled=false in the Helm values.
+func setupSynchronizationRetryRunnable(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	persesDashboardCrdReconciler *controller.PersesDashboardCrdReconciler,
+	prometheusRuleCrdReconciler *controller.PrometheusRuleCrdReconciler,
+	ownedIacResourceSynchronizationControllers []controller.OwnedIacResourceSynchronizationController,
+) error {
+	if !envVars.iacPeriodicRetryEnabled {
+		setupLog.Info("The periodic synchronization retry job is disabled (operator.iac.periodicRetry.enabled=false).")
+		return nil
+	}
+	setupLog.Info(
+		fmt.Sprintf(
+			"The periodic synchronization retry job is enabled and will run every %s.",
+			envVars.iacPeriodicRetryInterval,
+		),
+	)
+	if err := mgr.Add(controller.NewSynchronizationRetryRunnable(
+		k8sClient,
+		persesDashboardCrdReconciler,
+		prometheusRuleCrdReconciler,
+		ownedIacResourceSynchronizationControllers,
+		envVars.iacPeriodicRetryInterval,
+		setupLog,
+	)); err != nil {
+		return fmt.Errorf("unable to add the synchronization retry runnable to the manager: %w", err)
+	}
+	return nil
 }
 
 func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.PullPolicy {
@@ -1556,6 +1657,27 @@ func startDash0Controllers(
 
 	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, setupLog)
 
+	// Periodically retry synchronizing iac resources (Prometheus rules, Perses dashboards, notification channels,
+	// sampling rules, etc.) for which the previous synchronization attempt failed due to a transient error (server error
+	// or rate limiting). This can be disabled or have its interval adjusted via operator.iac.periodicRetry in the Helm
+	// values.
+	if err = setupSynchronizationRetryRunnable(
+		mgr,
+		k8sClient,
+		persesDashboardCrdReconciler,
+		prometheusRuleCrdReconciler,
+		allOwnedIacResourceSynchronizationControllers(
+			notificationChannelReconciler,
+			signalToMetricsReconciler,
+			spamFilterReconciler,
+			syntheticCheckReconciler,
+			viewReconciler,
+			samplingRuleReconciler,
+		),
+	); err != nil {
+		return err
+	}
+
 	setupLog.Info("Creating the self-monitoring OTel SDK starter.")
 	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
 
@@ -1649,7 +1771,13 @@ func startDash0Controllers(
 		extraConfigMapWatcher.AddClient(instrumentationWebhookHandler)
 	}
 
-	if err := setupResourceWebhooks(mgr, k8sClient, envVars.operatorNamespace, cliArgs.telemetryCollectionEnabled, cliArgs.featureIntelligentEdgeEnabled); err != nil {
+	if err := setupResourceWebhooks(
+		mgr,
+		k8sClient,
+		envVars.operatorNamespace,
+		cliArgs.telemetryCollectionEnabled,
+		cliArgs.featureIntelligentEdgeEnabled,
+	); err != nil {
 		return err
 	}
 

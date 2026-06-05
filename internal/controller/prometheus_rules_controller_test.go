@@ -1449,6 +1449,10 @@ var _ = Describe(
 											"dash0/group-1 - rule-1-2": "^unexpected status code 401 when synchronizing the rule \"dash0/group-1 - rule-1-2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2\\?dataset=test-dataset, response body is {}\n$",
 											"dash0/group-2 - rule-2-3": "^unexpected status code 401 when synchronizing the rule \"dash0/group-2 - rule-2-3\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-3\\?dataset=test-dataset, response body is {}\n$",
 										},
+										SynchronizationErrorHttpStatusCodes: map[string]int{
+											"dash0/group-1 - rule-1-2": 401,
+											"dash0/group-2 - rule-2-3": 401,
+										},
 									},
 								},
 							},
@@ -1576,6 +1580,11 @@ var _ = Describe(
 											"dash0/group-1 - rule-1-2": "^unexpected status code 401 when synchronizing the rule \"dash0/group-1 - rule-1-2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-2\\?dataset=test-dataset, response body is {}\n$",
 											"dash0/group-1 - rule-1-3": "^unexpected status code 401 when synchronizing the rule \"dash0/group-1 - rule-1-3\": PUT https://api.dash0.com/api/recording-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-1_rule-1-3\\?dataset=test-dataset, response body is {}\n$",
 											"dash0/group-2 - rule-2-2": "^unexpected status code 500 when synchronizing the rule \"dash0/group-2 - rule-2-2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group-2_rule-2-2\\?dataset=test-dataset, response body is {}\n$",
+										},
+										SynchronizationErrorHttpStatusCodes: map[string]int{
+											"dash0/group-1 - rule-1-2": 401,
+											"dash0/group-1 - rule-1-3": 401,
+											"dash0/group-2 - rule-2-2": 500,
 										},
 									},
 								},
@@ -2840,11 +2849,21 @@ func verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResource
 				}
 			}
 
+			// The HTTP status codes for failed synchronizations are only verified when the expectation provides them
+			// (most tests do not care about the exact codes); otherwise they are ignored below.
+			if expectedSyncResult.SynchronizationErrorHttpStatusCodes != nil {
+				g.Expect(actualSyncResult.SynchronizationErrorHttpStatusCodes).
+					To(Equal(expectedSyncResult.SynchronizationErrorHttpStatusCodes))
+			}
+
 			// we do not verify the exact timestamp
 			expectedResult.SynchronizedAt = result.SynchronizedAt
 			// errors have been verified using regex
 			expectedSyncResult.SynchronizationErrors = nil
 			actualSyncResult.SynchronizationErrors = nil
+			// status codes have been verified above (if provided)
+			expectedSyncResult.SynchronizationErrorHttpStatusCodes = nil
+			actualSyncResult.SynchronizationErrorHttpStatusCodes = nil
 
 			g.Expect(result).To(Equal(expectedResult))
 		},

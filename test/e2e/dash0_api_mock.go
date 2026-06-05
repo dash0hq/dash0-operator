@@ -4,12 +4,14 @@
 package e2e
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -26,6 +28,19 @@ type StoredRequests struct {
 	Requests []StoredRequest `json:"requests"`
 }
 
+// apiMockResponseOverride configures the Dash0 API mock to respond to the first Times requests with HTTP method Method
+// whose URL contains RouteSubstring with the given StatusCode (e.g. to simulate a transient HTTP 503/429 failure for a
+// specific rule, dashboard or spam filter), after which it responds with HTTP 200 again.
+type apiMockResponseOverride struct {
+	// Method is the HTTP method (e.g. "PUT") the override applies to.
+	Method string `json:"method"`
+	// RouteSubstring is matched against the request URL: the override applies to requests whose URL contains this
+	// substring (e.g. the name of a specific rule, dashboard or spam filter).
+	RouteSubstring string `json:"routeSubstring"`
+	StatusCode     int    `json:"statusCode"`
+	Times          int    `json:"times"`
+}
+
 const (
 	dash0ApiMockChartPath   = "test/e2e/dash0-api-mock/helm-chart"
 	dash0ApiMockReleaseName = "dash0-api-mock"
@@ -33,6 +48,14 @@ const (
 	dash0ApiMockNamespace   = "dash0-api"
 	dash0ApiMockServiceName = "dash0-api-mock-service"
 	dash0ApiMockServicePort = 8001
+
+	// apiMockFailTimesForOneSyncAttempt is the number of times the API mock must reject a request in order to make a single
+	// synchronization attempt by the operator fail completely. It equals the number of HTTP requests the operator's API
+	// client transport issues per sync attempt: the initial request plus the retries configured via
+	// WithTransportMaxRetries(2) in internal/startup/operator_manager_startup.go (1 + 2 = 3). Failing exactly this many
+	// requests makes the first sync attempt fail (so the periodic retry kicks in) while letting the first request of the
+	// subsequent retry attempt succeed.
+	apiMockFailTimesForOneSyncAttempt = 3
 )
 
 var (
@@ -158,6 +181,71 @@ func getStoredApiRequests(g Gomega) *StoredRequests {
 	var storedRequests StoredRequests
 	g.Expect(json.Unmarshal(body, &storedRequests)).To(Succeed())
 	return &storedRequests
+}
+
+// configureApiMockResponseOverrides instructs the Dash0 API mock to respond with specific status codes for matching PUT
+// requests (see apiMockResponseOverride). It replaces any previously configured overrides.
+func configureApiMockResponseOverrides(overrides ...apiMockResponseOverride) {
+	By(fmt.Sprintf("configuring response overrides on the Dash0 API mock server: %v", overrides))
+	payload, err := json.Marshal(overrides)
+	Expect(err).NotTo(HaveOccurred())
+	Eventually(func(g Gomega) {
+		req, err := http.NewRequest(
+			http.MethodPut,
+			fmt.Sprintf("%s/control/response-overrides", dash0ApiMockServerBaseUrl),
+			bytes.NewReader(payload),
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		req.Header.Set("Content-Type", "application/json")
+		res, err := dash0ApiMockServerHttpClient.Do(req)
+		g.Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			_, _ = io.Copy(io.Discard, res.Body)
+			_ = res.Body.Close()
+		}()
+		g.Expect(res.StatusCode).To(BeNumerically("<", http.StatusMultipleChoices))
+		g.Expect(res.StatusCode).To(BeNumerically(">=", http.StatusOK))
+	}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
+}
+
+// clearApiMockResponseOverrides removes all response overrides previously configured via
+// configureApiMockResponseOverrides.
+func clearApiMockResponseOverrides() {
+	By("clearing response overrides from the Dash0 API mock server")
+	Eventually(func(g Gomega) {
+		req, err := http.NewRequest(
+			http.MethodDelete,
+			fmt.Sprintf("%s/control/response-overrides", dash0ApiMockServerBaseUrl),
+			nil,
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		res, err := dash0ApiMockServerHttpClient.Do(req)
+		g.Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			_, _ = io.Copy(io.Discard, res.Body)
+			_ = res.Body.Close()
+		}()
+		g.Expect(res.StatusCode).To(BeNumerically("<", http.StatusMultipleChoices))
+		g.Expect(res.StatusCode).To(BeNumerically(">=", http.StatusOK))
+	}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
+}
+
+// countCapturedApiRequests returns how many captured requests have the given HTTP method and a URL matching urlRegex.
+func countCapturedApiRequests(g Gomega, method string, urlRegex string) int {
+	storedRequests := getStoredApiRequests(g)
+	g.Expect(storedRequests).NotTo(BeNil())
+	count := 0
+	for _, req := range storedRequests.Requests {
+		if req.Method != method {
+			continue
+		}
+		matched, err := regexp.MatchString(urlRegex, req.Url)
+		g.Expect(err).NotTo(HaveOccurred())
+		if matched {
+			count++
+		}
+	}
+	return count
 }
 
 func cleanupStoredApiRequests() {

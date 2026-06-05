@@ -1064,6 +1064,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 									Dash0Origin:          "",
 									Dash0Dataset:         DatasetCustomTest,
 									SynchronizationError: "^unexpected status code 503 when trying to synchronize the dashboard \"test-dashboard\": PUT https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
+									HttpStatusCode:       503,
 								},
 							},
 						},
@@ -1527,11 +1528,20 @@ func verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourc
 			}
 			g.Expect(actualSyncResult.Dash0Origin).To(Equal(expectedSyncResult.Dash0Origin))
 
+			// The HTTP status code for a failed synchronization is only verified when the expectation provides it
+			// (most tests do not care about the exact code); otherwise it is ignored below.
+			if expectedSyncResult.HttpStatusCode != 0 {
+				g.Expect(actualSyncResult.HttpStatusCode).To(Equal(expectedSyncResult.HttpStatusCode))
+			}
+
 			// we do not verify the exact timestamp
 			expectedResult.SynchronizedAt = result.SynchronizedAt
 			// errors have been verified using regex
 			actualSyncResult.SynchronizationError = ""
 			expectedSyncResult.SynchronizationError = ""
+			// status code has been verified above (if provided)
+			actualSyncResult.HttpStatusCode = 0
+			expectedSyncResult.HttpStatusCode = 0
 
 			g.Expect(result).To(Equal(expectedResult))
 		},

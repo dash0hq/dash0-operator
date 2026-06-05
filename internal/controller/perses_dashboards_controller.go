@@ -858,7 +858,9 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 
 		if len(syncResult.resourceToRequestsResult.SynchronizationErrors) > 0 {
 			// there can only be at most one synchronization error for a Perses dashboard resource
-			persesSyncResult.SynchronizationError = slices.Collect(maps.Values(syncResult.resourceToRequestsResult.SynchronizationErrors))[0]
+			errorItemName := slices.Collect(maps.Keys(syncResult.resourceToRequestsResult.SynchronizationErrors))[0]
+			persesSyncResult.SynchronizationError = syncResult.resourceToRequestsResult.SynchronizationErrors[errorItemName]
+			persesSyncResult.HttpStatusCode = syncResult.resourceToRequestsResult.SynchronizationErrorStatusCodes[errorItemName]
 		}
 		if len(syncResult.successfullySynchronized) > 0 {
 			// there can only be at most one successfullySynchronized object for a Perses dashboard resource
