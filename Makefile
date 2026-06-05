@@ -305,6 +305,30 @@ instrumentation-test-lint: npm-installed
 	@echo "-------------------------------- (linting the instrumentation tests)"
 	cd images/instrumentation/test && npm ci && npm run lint
 
+# Pairs of go.mod and Dockerfile whose Go versions must be in sync, encoded as "dockerfile:<go.mod>:<Dockerfile>".
+GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
+  dockerfile:go.mod:Dockerfile \
+  dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
+  dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
+  dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \
+  dockerfile:test/e2e/dash0-api-mock/go.mod:test/e2e/dash0-api-mock/Dockerfile \
+  dockerfile:test/e2e/decision-maker-mock/go.mod:test/e2e/decision-maker-mock/Dockerfile \
+  dockerfile:test/e2e/otlp-sink/telemetrymatcher/go.mod:test/e2e/otlp-sink/telemetrymatcher/Dockerfile
+
+# Pairs of go.mod files whose Go versions must be in sync, encoded as "gomod:<go.mod>:<go.mod>".
+GO_VERSION_CHECK_GOMOD_GOMOD_PAIRS := \
+  gomod:go.mod:images/pkg/common/go.mod \
+  gomod:go.mod:test/e2e/go.mod \
+  gomod:test/e2e/go.mod:test/e2e/pkg/shared/go.mod \
+  gomod:test/e2e/pkg/shared/go.mod:test/e2e/otlp-sink/telemetrymatcher/go.mod
+
+.PHONY: go-version-check
+go-version-check: ## Check whether go.mod Go versions are in sync with the associated Dockerfile base images and go.mod files.
+	@echo "-------------------------------- (verifying the Go versions are in sync)"
+	./test-resources/bin/go-version-check.sh \
+	  $(GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS) \
+	  $(GO_VERSION_CHECK_GOMOD_GOMOD_PAIRS)
+
 .PHONY: prometheus-crd-version-check
 prometheus-crd-version-check: ## Check whether all references to the PrometheusRule CRD are in sync.
 	@echo "-------------------------------- (verifying the Prometheus CRD version is in sync)"
@@ -316,7 +340,7 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
+lint: go-version-check golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
 
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix
