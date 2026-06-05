@@ -1,0 +1,57 @@
+name: Sync go.mod Go version with Dockerfile golang base image
+
+# When a pull request changes the golang base image tag in one of the Dockerfiles below (for example a Dependabot
+# PR bumping golang:1.26.3-alpine3.23 to golang:1.26.4-alpine3.23), this workflow updates the `go` directive in the
+# associated go.mod file so that the two Go versions stay in sync. The change is added as a separate commit to the
+# same branch (the pull request's head branch).
+#
+# Dependabot's docker and gomod ecosystem updaters are independent and have no awareness of each other, so without
+# this workflow the golang base image and the `go` directive in go.mod drift apart over time.
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - "Dockerfile"
+      - "images/configreloader/Dockerfile"
+      - "images/filelogoffsetsync/Dockerfile"
+      - "test/e2e/otlp-sink/telemetrymatcher/Dockerfile"
+      - "test/e2e/dash0-api-mock/Dockerfile"
+      - "test/e2e/control-plane-mock/Dockerfile"
+      - "test/e2e/decision-maker-mock/Dockerfile"
+
+# contents: write is required to push the synchronizing commit back to the pull request branch. Workflows triggered
+# by Dependabot pull requests respect this permissions key (see
+# https://github.blog/changelog/2021-10-06-github-actions-workflows-triggered-by-dependabot-prs-will-respect-permissions-key-in-workflows/).
+permissions:
+  contents: write
+
+# Avoid races and redundant runs when Dependabot force-pushes updates to the same branch in quick succession.
+concurrency:
+  group: sync-go-version-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  sync-go-version:
+    name: sync go.mod Go version with Dockerfile golang base image
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # We can only push commits to branches that live in this repository. Pull requests from forks (head.repo differs
+    # from the base repository) cannot be updated with the default GITHUB_TOKEN, so we skip them. Dependabot pushes its
+    # branches to this repository, so its pull requests are always handled.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          # Check out the pull request's head branch (not the merge ref) so that we can commit and push back to it.
+          ref: ${{ github.head_ref }}
+
+      - name: sync go directive in go.mod with golang base image
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: .github/workflows/scripts/sync-go-version-with-dockerfile.sh
