@@ -70,6 +70,12 @@ type Dash0SpamFilterSynchronizationResultPerEndpointAndDataset struct {
 	// +kubebuilder:validation:Optional
 	Dash0Origin          string `json:"dash0Origin,omitempty"`
 	SynchronizationError string `json:"synchronizationError,omitempty"`
+	// HttpStatusCode is the HTTP status code that the Dash0 API returned for the failed synchronization attempt, if the
+	// failure was caused by an unexpected HTTP response. It is 0 (absent) for successful synchronizations and for
+	// transport-level errors (network errors, timeouts) where no HTTP response was received. It is used to decide
+	// whether a failed synchronization should be retried.
+	// +kubebuilder:validation:Optional
+	HttpStatusCode int `json:"httpStatusCode,omitempty"`
 }
 
 //+kubebuilder:object:root=true

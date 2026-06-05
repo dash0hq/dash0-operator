@@ -1262,12 +1262,13 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 		}
 
 		rulesSyncRes := dash0common.PrometheusRuleSynchronizationResultPerEndpointAndDataset{
-			Dash0ApiEndpoint:            resultPerApiConfig.resourceToRequestsResult.ApiConfig.Endpoint,
-			Dash0Dataset:                resultPerApiConfig.resourceToRequestsResult.ApiConfig.Dataset,
-			SynchronizedRulesTotal:      len(resultPerApiConfig.successfullySynchronized),
-			SynchronizedRulesAttributes: synchronizedRuleAttributes,
-			SynchronizationErrorsTotal:  len(resultPerApiConfig.resourceToRequestsResult.SynchronizationErrors),
-			SynchronizationErrors:       resultPerApiConfig.resourceToRequestsResult.SynchronizationErrors,
+			Dash0ApiEndpoint:                    resultPerApiConfig.resourceToRequestsResult.ApiConfig.Endpoint,
+			Dash0Dataset:                        resultPerApiConfig.resourceToRequestsResult.ApiConfig.Dataset,
+			SynchronizedRulesTotal:              len(resultPerApiConfig.successfullySynchronized),
+			SynchronizedRulesAttributes:         synchronizedRuleAttributes,
+			SynchronizationErrorsTotal:          len(resultPerApiConfig.resourceToRequestsResult.SynchronizationErrors),
+			SynchronizationErrors:               resultPerApiConfig.resourceToRequestsResult.SynchronizationErrors,
+			SynchronizationErrorHttpStatusCodes: resultPerApiConfig.resourceToRequestsResult.SynchronizationErrorStatusCodes,
 		}
 
 		rulesSyncResults = append(rulesSyncResults, rulesSyncRes)

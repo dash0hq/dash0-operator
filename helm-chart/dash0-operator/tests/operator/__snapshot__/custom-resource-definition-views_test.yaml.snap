@@ -352,7 +352,6 @@ custom resource definition for views should match snapshot:
                   description: Dash0ViewStatus defines the observed state of Dash0View
                   properties:
                     synchronizationResults:
-                      description: SynchronizationResults map[string]Dash0ViewSynchronizationResultPerEndpoint `json:"synchronizationResults"`
                       items:
                         description: Dash0ViewSynchronizationResultPerEndpointAndDataset defines the synchronization result per endpoint and dataset
                         properties:
@@ -364,6 +363,13 @@ custom resource definition for views should match snapshot:
                             type: string
                           dash0Origin:
                             type: string
+                          httpStatusCode:
+                            description: |-
+                              HttpStatusCode is the HTTP status code that the Dash0 API returned for the failed synchronization attempt, if the
+                              failure was caused by an unexpected HTTP response. It is 0 (absent) for successful synchronizations and for
+                              transport-level errors (network errors, timeouts) where no HTTP response was received. It is used to decide
+                              whether a failed synchronization should be retried.
+                            type: integer
                           synchronizationError:
                             type: string
                           synchronizationStatus:

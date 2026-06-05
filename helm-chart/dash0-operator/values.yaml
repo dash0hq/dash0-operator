@@ -267,6 +267,22 @@ operator:
   # Settings related to the operator's infrastructure-as-code (IaC) features, i.e. synchronizing Prometheus rules, dashboards,
   # views etc.
   iac:
+    # Settings for periodically retrying the synchronization of IaC resources (Prometheus rules, Perses
+    # dashboards, ...) to Dash0. Whenever the operator synchronizes such a resource and the synchronization fails due to
+    # a transient error (a server error or rate limiting from the Dash0 API), the operator periodically retries the
+    # synchronization. Synchronization failures caused by validation issues or other client errors are not retried, as
+    # retrying them would not change the outcome.
+    periodicRetry:
+      # Whether to periodically retry failed synchronizations. Defaults to true. Set this to false to disable the
+      # periodic retry job entirely.
+      enabled: true
+
+      # How often the operator checks for and retries failed synchronizations. The value is a duration string as
+      # understood by Go's time.ParseDuration, that is, a sequence of decimal numbers each with a unit suffix, such as
+      # "30s", "10m", "2h" or "1h30m". Valid time units are "s" (seconds), "m" (minutes) and "h" (hours).
+      # Defaults to "10m" (ten minutes). Values that cannot be parsed, or that are zero or negative, are ignored and the
+      # default ("10m") is used instead.
+      interval: 10m
 
     # Settings for synchronizing perses.dev PersesDashboard resources to Dash0 dashboards.
     persesDashboard:

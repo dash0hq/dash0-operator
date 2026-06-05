@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
 	"reflect"
 	"slices"
@@ -542,19 +541,17 @@ func (r *NotificationChannelReconciler) WriteSynchronizationResultToSynchronized
 	)
 	for _, res := range syncResults.resultsPerApiConfig {
 		synchronizationStatus := dash0common.Dash0ApiResourceSynchronizationStatusFailed
-		synchronizationError := ""
-		if len(res.resourceToRequestsResult.SynchronizationErrors) > 0 {
-			// for notification channels there can be only one sync error per endpoint
-			synchronizationError = slices.Collect(maps.Values(res.resourceToRequestsResult.SynchronizationErrors))[0]
-		} else {
-			// clear out errors from previous synchronization attempts
-			synchronizationError = ""
+		// for notification channels there can be only one sync error per endpoint
+		synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(res.resourceToRequestsResult)
+		if synchronizationError == "" {
+			// no error: mark this endpoint as successful (this also clears errors from previous attempts)
 			synchronizationStatus = dash0common.Dash0ApiResourceSynchronizationStatusSuccessful
 		}
 		syncResultPerEndpoint := dash0v1beta1.Dash0NotificationChannelSynchronizationResultPerEndpointAndDataset{
 			SynchronizationStatus: synchronizationStatus,
 			Dash0ApiEndpoint:      res.apiConfig.Endpoint,
 			SynchronizationError:  synchronizationError,
+			HttpStatusCode:        httpStatusCode,
 		}
 		if len(res.successfullySynchronized) > 0 {
 			// for notification channels we only have at most one successful result per endpoint
@@ -573,6 +570,28 @@ func (r *NotificationChannelReconciler) WriteSynchronizationResultToSynchronized
 	if err := r.Status().Update(ctx, notificationChannel); err != nil {
 		logger.Error(err, "Failed to update Dash0 notification channel status.")
 	}
+}
+
+func (r *NotificationChannelReconciler) CreateReconcileRequestsForRetryableSyncErrors(
+	ctx context.Context,
+) ([]reconcile.Request, error) {
+	allResources := &dash0v1beta1.Dash0NotificationChannelList{}
+	if err := r.List(ctx, allResources); err != nil {
+		return nil, err
+	}
+	var requests []reconcile.Request
+	for i := range allResources.Items {
+		resource := &allResources.Items[i]
+		for _, syncResult := range resource.Status.SynchronizationResults {
+			if isRetryableSynchronizationError(syncResult.SynchronizationError, syncResult.HttpStatusCode) {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: client.ObjectKey{Namespace: resource.Namespace, Name: resource.Name},
+				})
+				break
+			}
+		}
+	}
+	return requests, nil
 }
 
 // An event filter that ignores changes in the status subresource but reacts on changes to spec, label and annotations.

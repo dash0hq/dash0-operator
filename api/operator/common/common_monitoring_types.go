@@ -372,6 +372,12 @@ type PersesDashboardSynchronizationResultPerEndpointAndDataset struct {
 	Dash0Origin string `json:"dash0Origin,omitempty"`
 	// +kubebuilder:validation:Optional
 	SynchronizationError string `json:"synchronizationError,omitempty"`
+	// HttpStatusCode is the HTTP status code that the Dash0 API returned for the failed synchronization attempt, if the
+	// failure was caused by an unexpected HTTP response. It is 0 (absent) for successful synchronizations and for
+	// transport-level errors (network errors, timeouts) where no HTTP response was received. It is used to decide
+	// whether a failed synchronization should be retried.
+	// +kubebuilder:validation:Optional
+	HttpStatusCode int `json:"httpStatusCode,omitempty"`
 }
 
 type PrometheusRuleSynchronizationResult struct {
@@ -403,6 +409,13 @@ type PrometheusRuleSynchronizationResultPerEndpointAndDataset struct {
 	SynchronizationErrorsTotal int `json:"synchronizationErrorsTotal"`
 	// +kubebuilder:validation:Optional
 	SynchronizationErrors map[string]string `json:"synchronizationErrors,omitempty"`
+	// SynchronizationErrorHttpStatusCodes maps the name of a rule that failed to synchronize to the HTTP status code
+	// that the Dash0 API returned for that rule, if the failure was caused by an unexpected HTTP response. The status
+	// code is 0 (absent) for transport-level errors (network errors, timeouts) where no HTTP response was received. It
+	// is used to decide whether a failed synchronization should be retried. The keys match the keys of
+	// SynchronizationErrors.
+	// +kubebuilder:validation:Optional
+	SynchronizationErrorHttpStatusCodes map[string]int `json:"synchronizationErrorHttpStatusCodes,omitempty"`
 }
 
 type PrometheusRuleSynchronizedRuleAttributes struct {

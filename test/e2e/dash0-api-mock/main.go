@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +19,23 @@ type StoredRequest struct {
 	Body   *[]byte `json:"body,omitempty"`
 }
 
+// responseOverride instructs the mock to respond to requests with the given HTTP Method whose URL contains
+// RouteSubstring with the given StatusCode, for the first Times matching requests. Once Times reaches zero, the mock
+// responds with HTTP 200 again. This is used by the e2e tests to simulate transient failures (HTTP 503 etc.) for a
+// specific resource, so that the operator's periodic synchronization retry can be tested.
+type responseOverride struct {
+	// Method is the HTTP method (e.g. "PUT", "DELETE") the override applies to. Only requests with this method are
+	// matched.
+	Method string `json:"method"`
+	// RouteSubstring is matched against the request URL: the override applies to requests whose URL contains this
+	// substring (e.g. the name of a specific rule, dashboard or spam filter).
+	RouteSubstring string `json:"routeSubstring"`
+	StatusCode     int    `json:"statusCode"`
+	// Times is the number of matching requests that should still receive StatusCode. It is decremented on each match
+	// and is also accepted (as the initial value) when configuring overrides via PUT /control/response-overrides.
+	Times int `json:"times"`
+}
+
 var (
 	requests     = make([]StoredRequest, 0)
 	requestMutex sync.RWMutex
@@ -27,6 +45,9 @@ var (
 
 	recordingRuleOrigins     []string
 	recordingRuleOriginMutex sync.RWMutex
+
+	responseOverrides     []responseOverride
+	responseOverrideMutex sync.Mutex
 )
 
 func main() {
@@ -70,6 +91,9 @@ func main() {
 	router.GET("/requests", getAllRequests)
 	router.DELETE("/requests", deleteStoredRequests)
 
+	router.PUT("/control/response-overrides", setResponseOverrides)
+	router.DELETE("/control/response-overrides", clearResponseOverrides)
+
 	server := &http.Server{
 		Addr:    ":8001",
 		Handler: router,
@@ -83,51 +107,37 @@ func main() {
 
 func handleSyntheticCheckRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func handleViewRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func handleDashboardRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func handleNotificationChannelRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func handleSamplingRuleRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func handleSignalToMetricsRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func handleSpamFilterRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func handleGetCheckRuleOriginsRequest(ginCtx *gin.Context) {
@@ -151,9 +161,7 @@ func handlePutCheckRuleRequest(ginCtx *gin.Context) {
 		return
 	}
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func storeCheckRuleOrigin(ginCtx *gin.Context) bool {
@@ -177,9 +185,7 @@ func handleDeleteCheckRuleRequest(ginCtx *gin.Context) {
 		return
 	}
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func deleteCheckRuleOrigin(ginCtx *gin.Context) bool {
@@ -218,9 +224,7 @@ func handlePutRecordingRuleRequest(ginCtx *gin.Context) {
 		return
 	}
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func storeRecordingRuleOrigin(ginCtx *gin.Context) bool {
@@ -244,9 +248,7 @@ func handleDeleteRecordingRuleRequest(ginCtx *gin.Context) {
 		return
 	}
 	storeRequest(ginCtx)
-	ginCtx.JSON(http.StatusOK, map[string]any{
-		"message": "ok",
-	})
+	respondWithOverrideOrOK(ginCtx)
 }
 
 func deleteRecordingRuleOrigin(ginCtx *gin.Context) bool {
@@ -299,8 +301,73 @@ func getAllRequests(ginCtx *gin.Context) {
 func deleteStoredRequests(ginCtx *gin.Context) {
 	fmt.Printf("deleting stored requests: %s %s\n", ginCtx.Request.Method, ginCtx.Request.URL.String())
 	requestMutex.Lock()
-	defer requestMutex.Unlock()
 	requests = make([]StoredRequest, 0)
+	requestMutex.Unlock()
+
+	// Also reset any configured response overrides, so each test starts from a clean slate.
+	responseOverrideMutex.Lock()
+	responseOverrides = nil
+	responseOverrideMutex.Unlock()
+
+	ginCtx.Status(http.StatusNoContent)
+}
+
+// respondWithOverrideOrOK responds to a request, taking any configured response override into account. If the request's
+// method and URL match a configured override with a remaining count greater than zero, it responds with the configured
+// status code (and decrements the remaining count). In all other cases it responds with HTTP 200.
+func respondWithOverrideOrOK(ginCtx *gin.Context) {
+	if statusCode, ok := consumeResponseOverride(ginCtx.Request); ok {
+		fmt.Printf("responding with override status code %d for %s %s\n",
+			statusCode, ginCtx.Request.Method, ginCtx.Request.URL.String())
+		ginCtx.JSON(statusCode, map[string]any{
+			"message": "simulated failure",
+		})
+		return
+	}
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+// consumeResponseOverride returns the status code that should be used for the given request if a matching response
+// override with a remaining count greater than zero exists, decrementing that override's remaining count. A request
+// matches an override when its HTTP method equals the override's Method and its URL contains the override's
+// RouteSubstring.
+func consumeResponseOverride(req *http.Request) (int, bool) {
+	url := req.URL.String()
+
+	responseOverrideMutex.Lock()
+	defer responseOverrideMutex.Unlock()
+	for i := range responseOverrides {
+		override := &responseOverrides[i]
+		if req.Method == override.Method && strings.Contains(url, override.RouteSubstring) && override.Times > 0 {
+			override.Times--
+			return override.StatusCode, true
+		}
+	}
+	return 0, false
+}
+
+func setResponseOverrides(ginCtx *gin.Context) {
+	fmt.Printf("setting response overrides: %s %s\n", ginCtx.Request.Method, ginCtx.Request.URL.String())
+	var overrides []responseOverride
+	if err := ginCtx.ShouldBindJSON(&overrides); err != nil {
+		ginCtx.JSON(http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("invalid request body: %v", err)})
+		return
+	}
+
+	responseOverrideMutex.Lock()
+	responseOverrides = overrides
+	responseOverrideMutex.Unlock()
+
+	ginCtx.Status(http.StatusNoContent)
+}
+
+func clearResponseOverrides(ginCtx *gin.Context) {
+	fmt.Printf("clearing response overrides: %s %s\n", ginCtx.Request.Method, ginCtx.Request.URL.String())
+	responseOverrideMutex.Lock()
+	responseOverrides = nil
+	responseOverrideMutex.Unlock()
 	ginCtx.Status(http.StatusNoContent)
 }
 

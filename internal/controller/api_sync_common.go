@@ -79,6 +79,12 @@ type ResourceToRequestsResult struct {
 	// synchronization errors that occurred during the conversion - if there is a synchronization error for a resource,
 	// ApiRequests must not contain a request for the associated resource
 	SynchronizationErrors map[string]string
+	// SynchronizationErrorStatusCodes maps an item name (the same keys as in SynchronizationErrors) to the HTTP status
+	// code that the Dash0 API returned for the failed synchronization attempt of that item, if the failure was caused
+	// by an unexpected HTTP response. The status code is 0 for transport-level errors (network errors, timeouts, or
+	// errors that occurred before an HTTP request was even sent) where no HTTP response was received. This is used to
+	// decide whether a failed synchronization should be retried (see SynchronizationRetryRunnable).
+	SynchronizationErrorStatusCodes map[string]int
 	// validation issues that occurred while preparing the request
 	ValidationIssues map[string][]string
 }
@@ -351,6 +357,19 @@ type synchronizationResultPerApiConfig struct {
 	resourceToRequestsResult *ResourceToRequestsResult
 }
 
+// firstSynchronizationErrorAndStatusCode returns the first synchronization error message and its associated HTTP status
+// code across all configured API endpoints, for resource types that have at most one synchronization error per API
+// config (all resource types owned by the operator, as well as Perses dashboards). It returns ("", 0) if the
+// synchronization for the given result did not produce an error. The HTTP status code is 0 for transport-level errors
+// (network errors, timeouts) where no HTTP response was received.
+func firstSynchronizationErrorAndStatusCode(result *ResourceToRequestsResult) (string, int) {
+	if len(result.SynchronizationErrors) == 0 {
+		return "", 0
+	}
+	itemName := slices.Collect(maps.Keys(result.SynchronizationErrors))[0]
+	return result.SynchronizationErrors[itemName], result.SynchronizationErrorStatusCodes[itemName]
+}
+
 func synchronizeViaApiAndUpdateStatus(
 	ctx context.Context,
 	apiSyncReconciler ApiSyncReconciler,
@@ -437,8 +456,9 @@ func synchronizeViaApiAndUpdateStatus(
 
 		var successfullySynchronized []SuccessfulSynchronizationResult
 		var httpErrors map[string]string
+		var httpErrorStatusCodes map[string]int
 		if len(resourceToRequestsResult.ApiRequests) > 0 {
-			successfullySynchronized, httpErrors =
+			successfullySynchronized, httpErrors, httpErrorStatusCodes =
 				executeAllHttpRequests(apiSyncReconciler, resourceToRequestsResult.ApiRequests, logger)
 		}
 		if len(httpErrors) > 0 {
@@ -449,6 +469,10 @@ func synchronizeViaApiAndUpdateStatus(
 			// stage with errors occurring in executeAllHttpRequests, but items that have an error in
 			// MapResourceToHttpRequests are never converted to requests, so the two maps are disjoint.
 			maps.Copy(resourceToRequestsResult.SynchronizationErrors, httpErrors)
+			if resourceToRequestsResult.SynchronizationErrorStatusCodes == nil {
+				resourceToRequestsResult.SynchronizationErrorStatusCodes = make(map[string]int)
+			}
+			maps.Copy(resourceToRequestsResult.SynchronizationErrorStatusCodes, httpErrorStatusCodes)
 		}
 
 		totalProcessed := resourceToRequestsResult.TotalProcessed()
@@ -1015,14 +1039,17 @@ func addAuthorizationHeader(req *http.Request, token string) {
 }
 
 // executeAllHttpRequests executes all HTTP requests in the given list and returns the names of the items that were
-// successfully synchronized, as well as a map of name to error message for items that were rejected by the Dash0 API.
+// successfully synchronized, a map of name to error message for items that were rejected by the Dash0 API, and a map of
+// name to HTTP status code for the failed items (0 if the failure was a transport-level error where no HTTP response
+// was received). The keys of the two maps are identical.
 func executeAllHttpRequests(
 	apiSyncReconciler ApiSyncReconciler,
 	allRequests []WrappedApiRequest,
 	logger logd.Logger,
-) ([]SuccessfulSynchronizationResult, map[string]string) {
+) ([]SuccessfulSynchronizationResult, map[string]string, map[string]int) {
 	successfullySynchronized := make([]SuccessfulSynchronizationResult, 0)
 	httpErrors := make(map[string]string)
+	httpErrorStatusCodes := make(map[string]int)
 	for _, apiRequest := range allRequests {
 		actionLabel := fmt.Sprintf(
 			"synchronize the %s \"%s\": %s %s",
@@ -1041,6 +1068,7 @@ func executeAllHttpRequests(
 				logger,
 			); err != nil {
 			httpErrors[apiRequest.ItemName] = err.Error()
+			httpErrorStatusCodes[apiRequest.ItemName] = httpStatusCodeFromError(err)
 		} else {
 			// The Dash0ApiObjectLabels will be used to provide additional information in the resources status when
 			// we write the synchronization results, like the object's Dash0 id, origin and dataset.
@@ -1067,7 +1095,7 @@ func executeAllHttpRequests(
 	if len(successfullySynchronized) == 0 {
 		successfullySynchronized = nil
 	}
-	return successfullySynchronized, httpErrors
+	return successfullySynchronized, httpErrors, httpErrorStatusCodes
 }
 
 // executeSingleHttpRequest executes a single HTTP request and reads the response body. Retry and rate limiting are
@@ -1127,6 +1155,34 @@ func executeSingleHttpRequest(
 	return make([]byte, 0), nil
 }
 
+// apiSyncHttpError wraps an error that occurred while synchronizing a resource to the Dash0 API together with the HTTP
+// status code that caused it. A statusCode of 0 indicates a transport-level error (network error, timeout) where no
+// HTTP response was received, or an error that occurred before the HTTP request was sent. The status code is used to
+// decide whether a failed synchronization should be retried (see SynchronizationRetryRunnable).
+type apiSyncHttpError struct {
+	statusCode int
+	err        error
+}
+
+func (e *apiSyncHttpError) Error() string {
+	return e.err.Error()
+}
+
+func (e *apiSyncHttpError) Unwrap() error {
+	return e.err
+}
+
+// httpStatusCodeFromError returns the HTTP status code associated with the given error if it is (or wraps) an
+// apiSyncHttpError. It returns 0 if no HTTP status code is available, which is the case for transport-level errors
+// (network errors, timeouts) and errors that occurred before an HTTP request was sent.
+func httpStatusCodeFromError(err error) int {
+	var apiErr *apiSyncHttpError
+	if errors.As(err, &apiErr) {
+		return apiErr.statusCode
+	}
+	return 0
+}
+
 func convertNon2xxStatusCodeToError(
 	res *http.Response,
 	actionLabel string,
@@ -1142,7 +1198,7 @@ func convertNon2xxStatusCodeToError(
 			res.StatusCode,
 			actionLabel,
 		)
-		return readBodyErr
+		return &apiSyncHttpError{statusCode: res.StatusCode, err: readBodyErr}
 	}
 
 	statusCodeErr := fmt.Errorf(
@@ -1151,7 +1207,7 @@ func convertNon2xxStatusCodeToError(
 		actionLabel,
 		string(errorResponseBody),
 	)
-	return statusCodeErr
+	return &apiSyncHttpError{statusCode: res.StatusCode, err: statusCodeErr}
 }
 
 // writeSynchronizationResult writes the result of a synchronization attempt to the status of a Kubernetes

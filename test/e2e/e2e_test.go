@@ -577,7 +577,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 			})
 
-			Describe("synchronizing Dash0 API resources", func() {
+			Context("synchronizing Dash0 API resources", func() {
 				BeforeAll(func() {
 					installDash0ApiMock()
 				})
@@ -3340,6 +3340,130 @@ trace_statements:
 						)
 					}
 				}, 2*time.Minute, time.Second).Should(Succeed())
+			})
+		})
+
+		Context("iac periodic retry", Ordered, func() {
+			BeforeAll(func() {
+				installDash0ApiMock()
+
+				By("deploying the Dash0 operator with a short iac periodic retry interval")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					map[string]string{
+						"operator.iac.periodicRetry.interval": "20s",
+					},
+				)
+
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterEach(func() {
+				clearApiMockResponseOverrides()
+				cleanupStoredApiRequests()
+				removeDash0ApiSyncResources(applicationUnderTestNamespace)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				uninstallDash0ApiMock()
+				undeployOperator(operatorNamespace)
+			})
+
+			// Note on the magic numbers below: the operator's API client transport retries a failed request up to
+			// WithTransportMaxRetries(2) times, i.e. one synchronization attempt issues up to 3 HTTP requests before it
+			// is considered failed. By failing exactly apiMockFailTimesForOneSyncAttempt (= 3) requests we make the first
+			// synchronization attempt fail entirely; the next request (the first request of the periodic retry attempt)
+			// then succeeds. A failing item therefore receives 3 (failed) + at least 1 (successful retry) = at least 4
+			// PUT requests. Without the periodic retry it would receive only 3.
+
+			It("retries a Prometheus rule synchronization after a transient server error (HTTP 503)", func() {
+				By("configuring the API mock to fail one alerting rule with HTTP 503 for the first sync attempt")
+				configureApiMockResponseOverrides(apiMockResponseOverride{
+					Method:         "PUT",
+					RouteSubstring: "crash",
+					StatusCode:     503,
+					Times:          apiMockFailTimesForOneSyncAttempt,
+				})
+
+				deployPrometheusRuleResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+
+				//nolint:lll
+				crashRulePutRegex := "^/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_.*crash.*\\?dataset=default$"
+				//nolint:lll
+				checkRuleListGetRegex := "^/api/alerting/check-rules\\?dataset=default&originPrefix=dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_"
+
+				By("verifying the operator performs a second synchronization attempt and the rule is synchronized")
+				Eventually(func(g Gomega) {
+					// A second full sync attempt re-issues the GET against the check-rules list endpoint; transport-level
+					// retries do not, so >= 2 list GETs proves a periodic retry happened.
+					g.Expect(countCapturedApiRequests(g, "GET", checkRuleListGetRegex)).To(
+						BeNumerically(">=", 2),
+						"expected at least two synchronization attempts (GET check-rules list)",
+					)
+					// The previously failing rule must have been PUT again after the first attempt failed.
+					g.Expect(countCapturedApiRequests(g, "PUT", crashRulePutRegex)).To(
+						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
+						"expected the failing rule to be re-synchronized by the periodic retry",
+					)
+				}, 90*time.Second, 2*time.Second).Should(Succeed())
+			})
+
+			It("retries a Perses dashboard synchronization after rate limiting (HTTP 429)", func() {
+				verifyPersesDashboardCrdConversionWebhookConfigured(operatorNamespace)
+
+				By("configuring the API mock to fail the dashboard with HTTP 429 for the first sync attempt")
+				configureApiMockResponseOverrides(apiMockResponseOverride{
+					Method:         "PUT",
+					RouteSubstring: "perses-dashboard-e2e-test",
+					StatusCode:     429,
+					Times:          apiMockFailTimesForOneSyncAttempt,
+				})
+
+				deployPersesDashboardResource(applicationUnderTestNamespace, persesDashboardV1Alpha2, dash0ApiResourceValues{})
+
+				//nolint:lll
+				dashboardPutRegex := "^/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha2\\?dataset=default$"
+
+				By("verifying the operator performs a second synchronization attempt and the dashboard is synchronized")
+				Eventually(func(g Gomega) {
+					g.Expect(countCapturedApiRequests(g, "PUT", dashboardPutRegex)).To(
+						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
+						"expected the dashboard to be re-synchronized by the periodic retry",
+					)
+				}, 90*time.Second, 2*time.Second).Should(Succeed())
+			})
+
+			It("retries a Dash0 spam filter synchronization after a transient server error (HTTP 503)", func() {
+				By("configuring the API mock to fail the spam filter with HTTP 503 for the first sync attempt")
+				configureApiMockResponseOverrides(apiMockResponseOverride{
+					Method:         "PUT",
+					RouteSubstring: "spam-filter-e2e-test",
+					StatusCode:     503,
+					Times:          apiMockFailTimesForOneSyncAttempt,
+				})
+
+				deploySpamFilterResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+
+				//nolint:lll
+				spamFilterPutRegex := "^/api/spam-filters/dash0-operator_.*_default_e2e-test-ns_spam-filter-e2e-test\\?dataset=default$"
+
+				By("verifying the operator performs a second synchronization attempt and the spam filter is synchronized")
+				Eventually(func(g Gomega) {
+					g.Expect(countCapturedApiRequests(g, "PUT", spamFilterPutRegex)).To(
+						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
+						"expected the spam filter to be re-synchronized by the periodic retry",
+					)
+				}, 90*time.Second, 2*time.Second).Should(Succeed())
 			})
 		})
 

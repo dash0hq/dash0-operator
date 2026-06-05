@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -478,13 +477,10 @@ func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResou
 		len(syncResults.resultsPerApiConfig))
 	for _, res := range syncResults.resultsPerApiConfig {
 		synchronizationStatus := dash0common.Dash0ApiResourceSynchronizationStatusFailed
-		synchronizationError := ""
-		if len(res.resourceToRequestsResult.SynchronizationErrors) > 0 {
-			// for synthetic checks there can be only one sync error per endpoint/dataset
-			synchronizationError = slices.Collect(maps.Values(res.resourceToRequestsResult.SynchronizationErrors))[0]
-		} else {
-			// clear out errors from previous synchronization attempts
-			synchronizationError = ""
+		// for synthetic checks there can be only one sync error per endpoint/dataset
+		synchronizationError, httpStatusCode := firstSynchronizationErrorAndStatusCode(res.resourceToRequestsResult)
+		if synchronizationError == "" {
+			// no error: mark this endpoint/dataset as successful (this also clears errors from previous attempts)
 			synchronizationStatus = dash0common.Dash0ApiResourceSynchronizationStatusSuccessful
 		}
 		syncResultPerEndpointAndDataset := dash0v1alpha1.Dash0SyntheticCheckSynchronizationResultPerEndpointAndDataset{
@@ -492,6 +488,7 @@ func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResou
 			Dash0ApiEndpoint:      res.apiConfig.Endpoint,
 			Dash0Dataset:          res.apiConfig.Dataset,
 			SynchronizationError:  synchronizationError,
+			HttpStatusCode:        httpStatusCode,
 		}
 		if len(res.successfullySynchronized) > 0 {
 			// for synthetic checks we only have at most one successful result per endpoint/dataset
@@ -510,6 +507,28 @@ func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResou
 	if err := r.Status().Update(ctx, syntheticCheck); err != nil {
 		logger.Error(err, "Failed to update Dash0 synthetic check status.")
 	}
+}
+
+func (r *SyntheticCheckReconciler) CreateReconcileRequestsForRetryableSyncErrors(
+	ctx context.Context,
+) ([]reconcile.Request, error) {
+	allResources := &dash0v1alpha1.Dash0SyntheticCheckList{}
+	if err := r.List(ctx, allResources); err != nil {
+		return nil, err
+	}
+	var requests []reconcile.Request
+	for i := range allResources.Items {
+		resource := &allResources.Items[i]
+		for _, syncResult := range resource.Status.SynchronizationResults {
+			if isRetryableSynchronizationError(syncResult.SynchronizationError, syncResult.HttpStatusCode) {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: client.ObjectKey{Namespace: resource.Namespace, Name: resource.Name},
+				})
+				break
+			}
+		}
+	}
+	return requests, nil
 }
 
 // An event filter that ignores changes in the status subresource but reacts on changes to spec, label and annotations.
