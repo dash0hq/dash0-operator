@@ -18,9 +18,9 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.153.0
 	github.com/perses/perses-operator v0.4.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.91.0
-	go.opentelemetry.io/collector/component v1.59.0
-	go.opentelemetry.io/collector/pdata v1.59.0
-	go.opentelemetry.io/collector/pdata/pprofile v0.153.0
+	go.opentelemetry.io/collector/component v1.60.0
+	go.opentelemetry.io/collector/pdata v1.60.0
+	go.opentelemetry.io/collector/pdata/pprofile v0.154.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/metric v1.44.0
 	go.uber.org/multierr v1.11.0
@@ -125,7 +125,7 @@ require (
 	github.com/zitadel/schema v1.3.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector/client v1.59.0 // indirect
-	go.opentelemetry.io/collector/featuregate v1.59.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.60.0 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.19.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.20.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.20.0 // indirect
