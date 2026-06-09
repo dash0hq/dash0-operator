@@ -54,7 +54,7 @@ should install the GKE Autopilot AllowlistSynchronizer ready check if operator.g
     metadata:
       annotations:
         helm.sh/hook: pre-install,pre-upgrade
-        helm.sh/hook-delete-policy: hook-succeeded
+        helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
         helm.sh/hook-weight: "-5"
       labels:
         app.kubernetes.io/component: allowlist-synchronizer-ready-check
