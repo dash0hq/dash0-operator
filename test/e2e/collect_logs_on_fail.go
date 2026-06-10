@@ -63,6 +63,9 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 	executeCommandAndStoreOutput(
 		fmt.Sprintf("kubectl -n %s describe deployment e2e-tests-operator-hr-opentelemetry-target-allocator-deployment",
 			operatorNamespace), outputPath)
+	executeCommandAndStoreOutput(
+		fmt.Sprintf("kubectl -n %s describe daemonset ebpf-profiler",
+			operatorNamespace), outputPath)
 
 	e2eTestNamespaces := getNamespacesWithPrefix("e2e-test-ns", outputPath)
 	for _, namespace := range append([]string{
