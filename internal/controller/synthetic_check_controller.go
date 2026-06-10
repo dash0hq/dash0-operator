@@ -275,7 +275,7 @@ func (r *SyntheticCheckReconciler) synchronizeNamespacedResources(
 				Namespace: namespace,
 			},
 		); err != nil {
-			logger.Error(err, fmt.Sprintf("Failed to list Dash0 synthetic checks resources in namespace %s.", namespace))
+			logger.Error(err, fmt.Sprintf("Failed to list Dash0 synthetic check resources in namespace %s.", namespace))
 			return
 		}
 

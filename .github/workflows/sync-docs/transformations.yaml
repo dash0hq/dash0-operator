@@ -1,0 +1,65 @@
+# Transformations applied to helm-chart/dash0-operator docs before it is copied to the Dash0 documentation
+# repository (see .github/workflows/sync-docs-to-website.yaml).
+#
+# This file is the source of truth for how the operator's Helm chart docs are adapted into the docs page.
+# Edit this file whenever the required modifications change.
+#
+# The transformations are applied in order, top to bottom, by apply-transformations.py. Order matters: transformations
+# anchored to the start of the document (\A) operate on whatever is currently at the top, so the metadata stanza is
+# prepended last, after the page body has been cleaned up.
+#
+# Each entry has a human-readable `description` and a `type`. The supported types are:
+#
+# - prepend          Insert `content` at the very beginning of the document.
+# - replace-regex    Replace matches of the Python regular expression `find` with `replace`.
+#                    Optional `flags` is a list drawn from: multiline (^/$ match line boundaries),
+#                    dotall (. matches newlines), ignorecase.
+# - remove-line      Remove the whole line containing the literal marker `line`. If this leaves multiple
+#                    consecutive empty lines behind, they are normalized to a single empty line.
+#
+# By default, every `replace-regex`/`remove-line` transformation must match at least once; if it does not, the
+# workflow fails. This guards against the docs drifting away from this file and a modification silently becoming a
+# no-op. Set `required: false` on an individual transformation to allow zero matches.
+#
+# The inserted/replacement text (the `content` of prepend and the `replace` of replace-regex) may contain
+# placeholders, which are expanded when the transformations are applied. Placeholders are not expanded in the `find`
+# patterns. Currently the only supported placeholder is:
+#
+# - $timestamp   The current UTC date/time, e.g. "2026-04-20T05:00:00.000Z". A single value is computed per run, so all
+#                occurrences within one run render identically.
+
+- description: remove the Helm chart README top-level heading
+  type: replace-regex
+  find: '\A# Dash0 Operator Helm Chart\n'
+  replace: ''
+
+- description: strip the License and Artifact Hub badges
+  type: replace-regex
+  find: '^\[!\[[^\n]*\n'
+  replace: ''
+  flags:
+    - multiline
+
+- description: remove the "This repository contains ..." intro line
+  type: remove-line
+  line: 'This repository contains the [Helm](https://helm.sh/) chart for the Dash0 operator.'
+
+- description: remove the "Description" heading
+  type: remove-line
+  line: '## Description'
+
+- description: normalize empty lines
+  type: replace-regex
+  find: '\A\n*'
+  replace: "\n"
+  flags:
+    - multiline
+
+- description: prepend documentation metadata
+  type: prepend
+  content: |
+    ---
+    title: About Kubernetes Monitoring
+    description: Monitor Kubernetes clusters with automatic instrumentation via the Dash0 operator for Kubernetes.
+    lastUpdated: $timestamp
+    ---
