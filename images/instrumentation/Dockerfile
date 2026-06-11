@@ -51,7 +51,7 @@ COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
 # install Python artifacts (glibc)
-FROM python:3.14.5-trixie AS build-python-glibc
+FROM python:3.14.6-trixie AS build-python-glibc
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/requirements.txt .
@@ -63,7 +63,7 @@ RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt
 COPY python/sitecustomize.py .
 
 # install Python artifacts (musl)
-FROM python:3.14.5-alpine3.23 AS build-python-musl
+FROM python:3.14.6-alpine3.23 AS build-python-musl
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/requirements.txt .
