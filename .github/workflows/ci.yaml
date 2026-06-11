@@ -277,7 +277,7 @@ jobs:
     name: Synchronize Helm chart docs to dash0.com/docs
     needs:
       - publish_helm_chart
-    if: ${{ contains(github.ref, 'refs/tags/') && needs.publish_helm_chart.result == 'success' }}
+    if: ${{ always() && contains(github.ref, 'refs/tags/') && needs.publish_helm_chart.result == 'success' }}
     uses: ./.github/workflows/sync-docs-to-website.yaml
     secrets:
       DASH0_DOCS_REPO_GITHUB_PAT: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
