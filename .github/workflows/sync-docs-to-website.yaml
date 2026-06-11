@@ -87,7 +87,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # git diff --quiet exits with 1 if there are differences, 0 means the docs page is already up to date.
-          if git diff --quiet -- "${TARGET_FILE}"; then
+          # The lastUpdated timestamp in the page metadata changes on every run, so it is ignored (via -I) when
+          # determining whether the page is up to date; otherwise every run would create a commit and a pull request.
+          if git diff --quiet -I '^lastUpdated: ' -- "${TARGET_FILE}"; then
             echo "The documentation page is already up to date, nothing to do."
             exit 0
           fi
