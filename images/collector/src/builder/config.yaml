@@ -37,3 +37,5 @@ exporters:
   - gomod: "go.opentelemetry.io/collector/exporter/debugexporter v0.154.0"
   - gomod: "go.opentelemetry.io/collector/exporter/otlpexporter v0.154.0"
   - gomod: "go.opentelemetry.io/collector/exporter/otlphttpexporter v0.154.0"
+replaces:
+  - "github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor => github.com/basti1302/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.154.0-plus-pr-47679"
