@@ -6,14 +6,14 @@ require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/bep/debounce v1.2.1
 	github.com/cisco-open/k8s-objectmatcher v1.10.0
-	github.com/dash0hq/dash0-api-client-go v1.14.0
+	github.com/dash0hq/dash0-api-client-go v1.15.0
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/zapr v1.3.0
 	github.com/google/uuid v1.6.0
 	github.com/h2non/gock v1.2.0
-	github.com/onsi/ginkgo/v2 v2.29.0
+	github.com/onsi/ginkgo/v2 v2.30.0
 	github.com/onsi/gomega v1.41.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.154.0
 	github.com/perses/perses-operator v0.4.0
