@@ -112,6 +112,11 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.barkerImage "context" .) -}}
 {{- end }}
 
+{{/* the agent0-connector image */}}
+{{- define "dash0-operator.agent0ConnectorImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.agent0ConnectorImage "context" .) -}}
+{{- end }}
+
 {{- define "dash0-operator.imageRef" -}}
 {{- if .image.digest -}}
 {{- printf "%s@%s" .image.repository .image.digest }}

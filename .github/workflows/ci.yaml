@@ -210,6 +210,17 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/target-allocator
           context: images/target-allocator
 
+      - name: build agent0-connector image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: agent0-connector
+          imageTitle: Dash0 Agent0 Connector
+          imageDescription: the agent0-connector component for the Dash0 operator for Kubernetes
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/agent0-connector
+          context: images
+          file: images/agent0-connector/Dockerfile
+
   e2e_tests:
     name: End-to-end Tests
     needs:

@@ -12,7 +12,6 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-//nolint:goconst
 var _ = Describe(
 	"Authorization", func() {
 

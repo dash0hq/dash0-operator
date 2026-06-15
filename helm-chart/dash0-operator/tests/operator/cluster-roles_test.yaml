@@ -48,3 +48,42 @@ tests:
         apiVersion: rbac.authorization.k8s.io/v1
         name: dash0-operator-manager-iac
       documentIndex: 1
+
+  - it: should not grant agent0-connector permissions by default
+    asserts:
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector
+        not: true
+
+  - it: should grant agent0-connector permissions if Agent0 connector is enabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector
+        documentIndex: 4
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - '*'
+            resources:
+              - '*'
+            verbs:
+              - get
+              - list
+        documentIndex: 4
+      - contains:
+          path: rules
+          content:
+            nonResourceURLs:
+              - '*'
+            verbs:
+              - get
+        documentIndex: 4

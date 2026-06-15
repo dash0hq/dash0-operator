@@ -552,7 +552,7 @@ receivers:
   Deliberately not checking $hasPrometheusScrapingEnabledForAtLeastOneNamespace here,to have logs in case the
   target-allocator is running even though it shouldn't.
   */}}
-  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled)) }}
+  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled) .Agent0ConnectorEnabled) }}
   file_log/selfmonitoring:
     include:
       {{- if .PrometheusCrdSupportEnabled }}
@@ -560,6 +560,9 @@ receivers:
       {{- end }}
       {{- if and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .IntelligentEdge.BarkerName }}*/*/*.log
+      {{- end }}
+      {{- if .Agent0ConnectorEnabled }}
+      - /var/log/pods/{{ .OperatorNamespace }}_{{ .Agent0ConnectorDeploymentName }}*/*/*.log
       {{- end }}
     # the target-allocator starts faster than the collectors are created, we therefore need to read its logs from the
     # beginning or we will miss the logs it prints during startup

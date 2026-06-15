@@ -99,6 +99,8 @@ type collectorConfigurationTemplateValues struct {
 	TargetAllocatorServiceName                       string
 	TargetAllocatorMtlsEnabled                       bool
 	TargetAllocatorMtlsClientCertsDir                string
+	Agent0ConnectorEnabled                           bool
+	Agent0ConnectorDeploymentName                    string
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	IsGkeAutopilot                                   bool
@@ -261,6 +263,8 @@ func assembleCollectorConfigMap(
 			TargetAllocatorServiceName:                       targetAllocatorServiceName,
 			TargetAllocatorMtlsEnabled:                       targetAllocatorMtlsConfig.Enabled,
 			TargetAllocatorMtlsClientCertsDir:                targetAllocatorCertsVolumeDir,
+			Agent0ConnectorEnabled:                           config.Agent0ConnectorEnabled,
+			Agent0ConnectorDeploymentName:                    config.Agent0ConnectorDeploymentName,
 			KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 			UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
 			IsGkeAutopilot:                                   config.IsGkeAutopilot,
@@ -366,7 +370,18 @@ func renderOttlNamespaceFilter(
 			config.OperatorNamespace,
 		)
 	}
-	selfMonitoringExclusions := operatorManagerExclusion + taExclusion + barkerExclusion
+	// Do not drop metrics about the agent0-connector pod (kubeletstats / k8s_cluster receivers) nor OTLP-pushed metrics
+	// from agent0-connector itself when self-monitoring is enabled. agent0-connector metrics are considered
+	// self-monitoring and therefore controlled via the global SelfMonitoring config from the Dash0OperatorConfiguration.
+	agent0ConnectorExclusion := ""
+	if selfMonitoringEnabled && config.Agent0ConnectorEnabled {
+		agent0ConnectorExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
+			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
+			config.Agent0ConnectorDeploymentName,
+			config.OperatorNamespace,
+		)
+	}
+	selfMonitoringExclusions := operatorManagerExclusion + taExclusion + barkerExclusion + agent0ConnectorExclusion
 
 	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
 	// list of monitored namespaces.

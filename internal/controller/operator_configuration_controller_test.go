@@ -55,7 +55,6 @@ type SelfMonitoringTestConfig struct {
 	expectedHeaders       map[string]string
 }
 
-//nolint:goconst
 var _ = Describe(
 	"The operation configuration resource controller", Ordered, func() {
 
@@ -1326,6 +1325,7 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 		},
 		collectorManager,
 		targetallocatorManager,
+		nil,
 		nil,
 		util.NewClusterInstrumentationConfig(
 			TestImages,

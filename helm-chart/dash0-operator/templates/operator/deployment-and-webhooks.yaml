@@ -253,6 +253,36 @@ spec:
           value: {{ .Values.operator.barkerImage.pullPolicy }}
         {{- end }}
         {{- end }}
+        - name: DASH0_AGENT0_CONNECTOR_IMAGE
+          value: {{ include "dash0-operator.agent0ConnectorImage" . | quote }}
+        {{- if .Values.operator.agent0ConnectorImage.pullPolicy }}
+        - name: DASH0_AGENT0_CONNECTOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.agent0ConnectorImage.pullPolicy }}
+        {{- end }}
+        {{- if .Values.operator.agent0Connector.enabled }}
+        {{- if not .Values.operator.agent0Connector.serverAddress }}
+        {{- fail "Error: operator.agent0Connector.enabled is set to true, but you did not provide a value for operator.agent0Connector.serverAddress. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+        {{- end }}{{/* closes "not .Values.operator.agent0Connector.serverAddress" */}}
+        - name: DASH0_AGENT0_CONNECTOR_ENABLED
+          value: "true"
+        - name: DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS
+          value: {{ .Values.operator.agent0Connector.serverAddress | quote }}
+        {{- if .Values.operator.agent0Connector.token }}
+        - name: DASH0_AGENT0_CONNECTOR_TOKEN
+          value: {{ .Values.operator.agent0Connector.token | quote }}
+        {{- else if (and .Values.operator.agent0Connector.secretRef.name .Values.operator.agent0Connector.secretRef.key) }}
+        - name: DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME
+          value: {{ .Values.operator.agent0Connector.secretRef.name | quote }}
+        - name: DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY
+          value: {{ .Values.operator.agent0Connector.secretRef.key | quote }}
+        {{- else }}{{/* else for "Values.operator.agent0Connector.token" / "else if (and .Values.operator.agent0Connector.secretRef.name .Values.operator.agent0Connector.secretRef.key)" */}}
+        {{- fail "Error: operator.agent0Connector.enabled is set to true, but neither operator.agent0Connector.token nor operator.agent0Connector.secretRef.name & operator.agent0Connector.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+        {{- end }}{{/* closes "if .Values.operator.agent0Connector.token" */}}
+        {{- if .Values.operator.agent0Connector.insecure }}
+        - name: DASH0_AGENT0_CONNECTOR_INSECURE
+          value: "true"
+        {{- end }}{{/* closes "if .Values.operator.agent0Connector.insecure" */}}
+        {{- end }}{{/* closes "if .Values.operator.agent0Connector.enabled" */}}
         {{- if .Values.operator.developmentMode }}
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}

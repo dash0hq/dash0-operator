@@ -18,7 +18,6 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-//nolint:goconst
 var _ = Describe("Exporter Conversion", func() {
 
 	Describe("ConvertDash0ExporterToOtlpExporter", func() {

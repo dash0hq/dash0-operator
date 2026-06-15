@@ -485,6 +485,16 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
+  # the container image to use for the agent0-connector component (there should usually be no reason to override this)
+  agent0ConnectorImage:
+    repository: "ghcr.io/dash0hq/agent0-connector"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
   # the image pull secrets to pull the container images
   imagePullSecrets: []
 
@@ -1089,3 +1099,42 @@ operator:
                 - key: "kubernetes.io/os"
                   operator: "In"
                   values: ["linux"]
+
+  # Settings related to the Agent0 connector (experimental/beta).
+  agent0Connector:
+
+    # The agent0-connector feature is currently experimental, do not enable it (yet).
+    enabled: false
+
+    # The address (host:port) of the Dash0 backend service the agent0-connector pod connects to. This value is mandatory
+    # when operator.agent0Connector.enabled is true; the Helm installation will fail if it is left empty in that case.
+    # If operator.agent0Connector.enabled is false, this value will be ignored.
+    serverAddress: ""
+
+    # The Dash0 authorization token for the agent0-connector. Either this value or the
+    # operator.agent0Connector.secretRef configuration has to be provided if operator.agent0Connector.enabled is true.
+    # If operator.agent0Connector.enabled is false, this value will be ignored.
+    # If both token and secretRef are provided, the token will be used and secretRef will be ignored. The authorization
+    # token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
+    # "Auth Tokens".
+    token:
+
+    # A reference to a Kubernetes secret containing the Dash0 authorization token for the agent0-connector. This
+    # property is optional, and is ignored if either operator.agent0Connector.enabled is false or
+    # operator.agent0Connector.token is set. The authorization token for your Dash0 organization can be copied from
+    # https://app.dash0.com -> organization settings -> "Auth Tokens".
+    secretRef:
+      # The name of the secret containing the Dash0 authorization token. For a secret created with:
+      # kubectl create secret generic \
+      #   dash0-agent0-connector-authorization-secret \
+      #   --namespace dash0-system \
+      #   --from-literal=token=auth_...your-token-here...
+      # you would set this to "dash0-agent0-connector-authorization-secret".
+      name:
+      # The key of the value which contains the Dash0 authorization token. Assuming you have created the Kubernetes
+      # secret with the command above (see property "name"), you would set the property to "token".
+      key:
+
+    # Disables TLS for the agent0-connector workload's connection to the Dash0 backend, connecting via plaintext
+    # instead. This is only intended for local development.
+    insecure: false

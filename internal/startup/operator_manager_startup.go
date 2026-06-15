@@ -42,9 +42,12 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
+	"github.com/dash0hq/dash0-operator/internal/agent0connector"
+	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/allowlistreadycheck"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
@@ -90,6 +93,14 @@ type environmentVariables struct {
 	filelogOffsetVolumeOwnershipImagePullPolicy corev1.PullPolicy
 	barkerImage                                 string
 	barkerImagePullPolicy                       corev1.PullPolicy
+	agent0ConnectorImage                        string
+	agent0ConnectorImagePullPolicy              corev1.PullPolicy
+	agent0ConnectorEnabled                      bool
+	agent0ConnectorServerAddress                string
+	agent0ConnectorInsecure                     bool
+	agent0ConnectorToken                        string
+	agent0ConnectorSecretRefName                string
+	agent0ConnectorSecretRefKey                 string
 	nodeIp                                      string
 	nodeName                                    string
 	podIp                                       string
@@ -170,6 +181,14 @@ const (
 	filelogOffsetVolumeOwnershipImagePullPolicyEnvVarName = "DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY"
 	barkerImageEnvVarName                                 = "DASH0_BARKER_IMAGE"
 	barkerImagePullPolicyEnvVarName                       = "DASH0_BARKER_IMAGE_PULL_POLICY"
+	agent0ConnectorImageEnvVarName                        = "DASH0_AGENT0_CONNECTOR_IMAGE"
+	agent0ConnectorImagePullPolicyEnvVarName              = "DASH0_AGENT0_CONNECTOR_IMAGE_PULL_POLICY"
+	agent0ConnectorEnabledEnvVarName                      = "DASH0_AGENT0_CONNECTOR_ENABLED"
+	agent0ConnectorServerAddressEnvVarName                = "DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS"
+	agent0ConnectorInsecureEnvVarName                     = "DASH0_AGENT0_CONNECTOR_INSECURE"
+	agent0ConnectorTokenEnvVarName                        = "DASH0_AGENT0_CONNECTOR_TOKEN"
+	agent0ConnectorSecretRefNameEnvVarName                = "DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME"
+	agent0ConnectorSecretRefKeyEnvVarName                 = "DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY"
 	k8sNodeIpEnvVarName                                   = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
@@ -813,6 +832,16 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	barkerImage, _ := os.LookupEnv(barkerImageEnvVarName)
 	barkerImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(barkerImagePullPolicyEnvVarName)
 
+	agent0ConnectorImage, _ := os.LookupEnv(agent0ConnectorImageEnvVarName)
+	agent0ConnectorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(agent0ConnectorImagePullPolicyEnvVarName)
+	agent0ConnectorEnabled := readOptionalBoolFromEnvironmentVariable(agent0ConnectorEnabledEnvVarName, false)
+	agent0ConnectorServerAddress, _ := os.LookupEnv(agent0ConnectorServerAddressEnvVarName)
+	agent0ConnectorInsecureRaw, isSet := os.LookupEnv(agent0ConnectorInsecureEnvVarName)
+	agent0ConnectorInsecure := isSet && strings.ToLower(agent0ConnectorInsecureRaw) == envVarValueTrue
+	agent0ConnectorToken, _ := os.LookupEnv(agent0ConnectorTokenEnvVarName)
+	agent0ConnectorSecretRefName, _ := os.LookupEnv(agent0ConnectorSecretRefNameEnvVarName)
+	agent0ConnectorSecretRefKey, _ := os.LookupEnv(agent0ConnectorSecretRefKeyEnvVarName)
+
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeIpEnvVarName)
@@ -898,6 +927,14 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		filelogOffsetVolumeOwnershipImagePullPolicy: filelogOffsetVolumeOwnershipImagePullPolicy,
 		barkerImage:                                 barkerImage,
 		barkerImagePullPolicy:                       barkerImagePullPolicy,
+		agent0ConnectorImage:                        agent0ConnectorImage,
+		agent0ConnectorImagePullPolicy:              agent0ConnectorImagePullPolicy,
+		agent0ConnectorEnabled:                      agent0ConnectorEnabled,
+		agent0ConnectorServerAddress:                agent0ConnectorServerAddress,
+		agent0ConnectorInsecure:                     agent0ConnectorInsecure,
+		agent0ConnectorToken:                        agent0ConnectorToken,
+		agent0ConnectorSecretRefName:                agent0ConnectorSecretRefName,
+		agent0ConnectorSecretRefKey:                 agent0ConnectorSecretRefKey,
 		nodeIp:                                      nodeIp,
 		nodeName:                                    nodeName,
 		podIp:                                       podIp,
@@ -1343,6 +1380,8 @@ func startDash0Controllers(
 		FilelogOffsetVolumeOwnershipImagePullPolicy: envVars.filelogOffsetVolumeOwnershipImagePullPolicy,
 		BarkerImage:                                 envVars.barkerImage,
 		BarkerImagePullPolicy:                       envVars.barkerImagePullPolicy,
+		Agent0ConnectorImage:                        envVars.agent0ConnectorImage,
+		Agent0ConnectorImagePullPolicy:              envVars.agent0ConnectorImagePullPolicy,
 	}
 
 	httpClient := util.WithUserAgent(
@@ -1437,6 +1476,7 @@ func startDash0Controllers(
 			OperatorNamespace:                      envVars.operatorNamespace,
 			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
 			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
+			Agent0ConnectorEnabled:                 envVars.agent0ConnectorEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,
@@ -1473,21 +1513,8 @@ func startDash0Controllers(
 		// taints are applied more or less immediately. (Noticing the changed config map can take a minute or a bit more.)
 		extraConfigMapWatcher.AddClient(collectorManager)
 
-		if !envVars.disableCollectorResourceWatches {
-			collectorReconciler := collectors.NewCollectorReconciler(
-				k8sClient,
-				collectorManager,
-				envVars.operatorNamespace,
-				envVars.oTelCollectorNamePrefix,
-			)
-			if err := collectorReconciler.SetupWithManager(mgr); err != nil {
-				return fmt.Errorf("unable to set up the collector reconciler: %w", err)
-			}
-		} else {
-			setupLog.Warn(
-				"The setting operator.disableCollectorResourceWatches is true, collector resources will not be " +
-					"watched. This setting is intended for troubleshooting the OpenTelemetry collector setup.",
-			)
+		if err := setupCollectorReconciler(mgr, k8sClient, collectorManager, envVars); err != nil {
+			return err
 		}
 
 		targetAllocatorConfig := util.TargetAllocatorConfig{
@@ -1518,6 +1545,19 @@ func startDash0Controllers(
 		if err := targetAllocatorReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to set up the target-allocator reconciler: %w", err)
 		}
+	}
+
+	agent0ConnectorManager, err := setupAgent0ConnectorManager(
+		mgr,
+		k8sClient,
+		envVars,
+		images,
+		operatorDeploymentSelfReference,
+		clusterUid,
+		developmentMode,
+	)
+	if err != nil {
+		return err
 	}
 
 	var ieManager *intelligentedge.IntelligentEdgeManager
@@ -1701,6 +1741,7 @@ func startDash0Controllers(
 		apiClients,
 		collectorManager,
 		targetallocatorManager,
+		agent0ConnectorManager,
 		ieManager,
 		clusterInstrumentationConfig,
 		clusterUid,
@@ -1890,6 +1931,95 @@ func createOrUpdateAutoOperatorConfigurationResource(
 		extraConfigMapWatcher.AddClient(autoOperatorConfigurationResourceHandler)
 		return operatorConfigurationResource
 	}
+}
+
+// setupCollectorReconciler sets up the reconciler that watches the OpenTelemetry collector resources managed by the
+// operator, unless the troubleshooting setting operator.disableCollectorResourceWatches is enabled.
+func setupCollectorReconciler(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	collectorManager *collectors.CollectorManager,
+	envVars environmentVariables,
+) error {
+	if envVars.disableCollectorResourceWatches {
+		setupLog.Warn(
+			"The setting operator.disableCollectorResourceWatches is true, collector resources will not be " +
+				"watched. This setting is intended for troubleshooting the OpenTelemetry collector setup.",
+		)
+		return nil
+	}
+	collectorReconciler := collectors.NewCollectorReconciler(
+		k8sClient,
+		collectorManager,
+		envVars.operatorNamespace,
+		envVars.oTelCollectorNamePrefix,
+	)
+	if err := collectorReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the collector reconciler: %w", err)
+	}
+	return nil
+}
+
+func setupAgent0ConnectorManager(
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	envVars environmentVariables,
+	images util.Images,
+	operatorDeploymentSelfReference *appsv1.Deployment,
+	pseudoClusterUid types.UID,
+	developmentMode bool,
+) (*agent0connector.Agent0ConnectorManager, error) {
+	agent0ConnectorConfig := util.Agent0ConnectorConfig{
+		Images:            images,
+		OperatorNamespace: envVars.operatorNamespace,
+		NamePrefix:        envVars.oTelCollectorNamePrefix,
+		PseudoClusterUid:  pseudoClusterUid,
+		ServerAddress:     envVars.agent0ConnectorServerAddress,
+		Insecure:          envVars.agent0ConnectorInsecure,
+		Authorization:     agent0ConnectorAuthorization(envVars),
+		DevelopmentMode:   developmentMode,
+	}
+	agent0ConnectorResourceManager := a0cresources.NewAgent0ConnectorResourceManager(
+		k8sClient,
+		mgr.GetScheme(),
+		operatorDeploymentSelfReference,
+		agent0ConnectorConfig,
+	)
+	agent0ConnectorManager := agent0connector.NewAgent0ConnectorManager(
+		k8sClient,
+		envVars.agent0ConnectorEnabled,
+		developmentMode,
+		agent0ConnectorResourceManager,
+	)
+	agent0ConnectorReconciler := agent0connector.NewAgent0ConnectorReconciler(
+		k8sClient,
+		agent0ConnectorManager,
+		envVars.operatorNamespace,
+		envVars.oTelCollectorNamePrefix,
+	)
+	if err := agent0ConnectorReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the agent0-connector reconciler: %w", err)
+	}
+	return agent0ConnectorManager, nil
+}
+
+// agent0ConnectorAuthorization builds the Dash0 authorization configuration for the agent0-connector workload from the
+// operator's environment variables. A literal token (operator.agent0Connector.token) takes precedence over a secret
+// reference (operator.agent0Connector.secretRef); if neither is configured, an empty authorization is returned (the
+// Helm chart enforces that one is provided when Agent0 connector is enabled).
+func agent0ConnectorAuthorization(envVars environmentVariables) dash0common.Authorization {
+	if envVars.agent0ConnectorToken != "" {
+		return dash0common.Authorization{Token: &envVars.agent0ConnectorToken}
+	}
+	if envVars.agent0ConnectorSecretRefName != "" && envVars.agent0ConnectorSecretRefKey != "" {
+		return dash0common.Authorization{
+			SecretRef: &dash0common.SecretRef{
+				Name: envVars.agent0ConnectorSecretRefName,
+				Key:  envVars.agent0ConnectorSecretRefKey,
+			},
+		}
+	}
+	return dash0common.Authorization{}
 }
 
 // triggerSecretRefExchangeAndStartSelfMonitoringIfPossible starts the OTel SDK directly, instead of waiting for the

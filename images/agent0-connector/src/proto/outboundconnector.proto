@@ -1,0 +1,60 @@
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Vendored from the dash0 monorepo
+// (modules/proto/internal/outboundconnector/outboundconnector.proto).
+//
+// To re-vendor: copy the upstream file, set the go_package option below to the
+// agent0-connector module path, then run `make proto-gen-agent0-connector` from
+// the repo root.
+
+syntax = "proto3";
+
+package outboundconnector;
+
+option go_package = "github.com/dash0hq/dash0-operator/images/agent0-connector/proto";
+
+service OutboundConnectorService {
+  // SubscribeToCommandRequests is opened by clients like the Dash0 operator running inside a
+  // monitored cluster. After establishing the connection, outbound-connector (the server
+  // component in this interaction) pushes CommandRequest messages for that client down the
+  // stream. The client executes them in its context (e.g. in the target Kubernetes cluster)
+  // and sends back the result of each command execution as a CommandResponse.
+  //
+  // Clients identify themselves via the dash0-client-id gRPC metadata key (a unique
+  // identifier for the client instance) when opening the stream.
+  rpc SubscribeToCommandRequests(stream CommandResponse) returns (stream CommandRequest);
+}
+
+message CommandRequest {
+  // An ID to associate requests with their responses. Carried end-to-end
+  // (Kafka -> outbound-connector -> operator and back).
+  string request_id = 1;
+
+  // The executable name. For now only "kubectl" is allowed.
+  string command = 2;
+
+  // List of arguments.
+  repeated string arguments = 3;
+
+  // W3C traceparent header for distributed trace propagation.
+  string traceparent = 4;
+}
+
+message CommandResponse {
+  // An ID to associate requests with their responses.
+  string request_id = 1;
+
+  // The exit code of the command invocation. It should be ignored when the command execution
+  // timed out (see the timeout field).
+  int32 exit_code = 2;
+
+  // The captured stdout stream.
+  string stdout = 3;
+
+  // The captured stderr stream.
+  string stderr = 4;
+
+  // Whether the command execution timed out.
+  bool timeout = 5;
+}
