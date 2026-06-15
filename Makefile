@@ -66,6 +66,11 @@ BARKER_IMAGE_TAG ?= $(IMAGE_TAG)
 BARKER_IMAGE ?= $(BARKER_IMAGE_REPOSITORY):$(BARKER_IMAGE_TAG)
 BARKER_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
+AGENT0_CONNECTOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)agent0-connector
+AGENT0_CONNECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
+AGENT0_CONNECTOR_IMAGE ?= $(AGENT0_CONNECTOR_IMAGE_REPOSITORY):$(AGENT0_CONNECTOR_IMAGE_TAG)
+AGENT0_CONNECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
 # Variables for test application container images:
 
 TEST_IMAGE_REPOSITORY_PREFIX ?= $(IMAGE_REPOSITORY_PREFIX)
@@ -168,7 +173,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests operator-manager-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -181,6 +186,10 @@ endif
 .PHONY: common-package-unit-tests
 common-package-unit-tests: ## Run the Go unit tests for the common package (code shared between operator manager and other images, i.e. config-reloader, filelogoffsetsync).
 	go test github.com/dash0hq/dash0-operator/images/pkg/common
+
+.PHONY: agent0-connector-unit-tests
+agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
+	cd images/agent0-connector/src && go test ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -486,6 +495,22 @@ proto-gen-decision-maker-mock:
 	    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
 	    proto/decisionmaker.proto
 
+# Regenerates the gRPC bindings for the agent0-connector outbound-connector
+# client from its vendored proto file. Not part of `make build` — run manually
+# after re-vendoring the proto. Requires `protoc` on PATH; the protoc-gen-go and
+# protoc-gen-go-grpc plugins are installed (or refreshed) automatically into the
+# local Go bin dir.
+.PHONY: proto-gen-agent0-connector
+proto-gen-agent0-connector:
+	@command -v protoc > /dev/null || { echo "error: protoc is not installed"; exit 1; }
+	@cd images/agent0-connector/src && \
+	  go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10 && \
+	  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1 && \
+	  PATH="$$(go env GOPATH)/bin:$$PATH" protoc \
+	    --go_out=. --go_opt=paths=source_relative \
+	    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+	    proto/outboundconnector.proto
+
 .PHONY: push-telemetry-matcher-image
 push-telemetry-matcher-image: ## Push the telemetry-matcher container image.
 	@$(call push_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG))
@@ -504,7 +529,8 @@ images: \
   image-config-reloader \
   image-filelog-offset-sync \
   image-filelog-offset-volume-ownership \
-  image-target-allocator ## Build all container images used by the operator. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+  image-target-allocator \
+  image-agent0-connector ## Build all container images used by the operator. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -552,6 +578,10 @@ image-filelog-offset-volume-ownership: ## Build the filelog offset volume owners
 image-target-allocator: ## Build the OpenTelemetry target-allocator container image.
 	@$(call build_container_image,$(TARGET_ALLOCATOR_IMAGE_REPOSITORY),$(TARGET_ALLOCATOR_IMAGE_TAG),images/target-allocator)
 
+.PHONY: image-agent0-connector
+image-agent0-connector: ## Build the agent0-connector container image.
+	@$(call build_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG),images,images/agent0-connector/Dockerfile)
+
 .PHONY: push-images
 push-images: \
 	push-image-controller \
@@ -560,7 +590,8 @@ push-images: \
 	push-image-config-reloader \
 	push-image-filelog-offset-sync \
 	push-image-filelog-offset-volume-ownership \
-	push-image-target-allocator ## Push all container images using the full image reference.
+	push-image-target-allocator \
+	push-image-agent0-connector ## Push all container images using the full image reference.
 
 define push_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -599,6 +630,10 @@ push-image-filelog-offset-volume-ownership: ## Push the filelog offset volume ow
 push-image-target-allocator: ## Push the OpenTelemetry target-allocator container image.
 	@$(call push_container_image,$(TARGET_ALLOCATOR_IMAGE_REPOSITORY),$(TARGET_ALLOCATOR_IMAGE_TAG))
 
+.PHONY: push-image-agent0-connector
+push-image-agent0-connector: ## Push the agent0-connector container image.
+	@$(call push_container_image,$(AGENT0_CONNECTOR_IMAGE_REPOSITORY),$(AGENT0_CONNECTOR_IMAGE_TAG))
+
 .PHONY: deploy
 deploy: ## Deploy the controller via helm to the current kubectl context.
 	test-resources/bin/render-templates.sh
@@ -632,6 +667,9 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 		--set operator.barkerImage.repository=$(BARKER_IMAGE_REPOSITORY) \
 		--set operator.barkerImage.tag=$(BARKER_IMAGE_TAG) \
 		--set operator.barkerImage.pullPolicy=$(BARKER_IMAGE_PULL_POLICY) \
+		--set operator.agent0ConnectorImage.repository=$(AGENT0_CONNECTOR_IMAGE_REPOSITORY) \
+		--set operator.agent0ConnectorImage.tag=$(AGENT0_CONNECTOR_IMAGE_TAG) \
+		--set operator.agent0ConnectorImage.pullPolicy=$(AGENT0_CONNECTOR_IMAGE_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)

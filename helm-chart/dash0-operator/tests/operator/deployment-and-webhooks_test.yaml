@@ -58,36 +58,42 @@ tests:
           value: ghcr.io/dash0hq/filelog-offset-volume-ownership:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[17].name
-          value: K8S_POD_UID
+          value: DASH0_AGENT0_CONNECTOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[17].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[17].value
+          value: ghcr.io/dash0hq/agent0-connector:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[18].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[18].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[21].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[22].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[22].name
+          path: spec.template.spec.containers[0].env[23].name
 
   - it: secret should contain ca and cert
     documentSelector:
@@ -279,6 +285,10 @@ tests:
           repository: custom-filelog-offset-volume-ownership-image
           tag: "16.17.18"
           pullPolicy: Always
+        agent0ConnectorImage:
+          repository: custom-agent0-connector-image
+          tag: "19.20.21"
+          pullPolicy: Never
         managerContainerResources:
           limits:
             cpu: 123m
@@ -530,108 +540,120 @@ tests:
           value: Always
       - equal:
           path: spec.template.spec.containers[0].env[23].name
-          value: DASH0_DEVELOPMENT_MODE
+          value: DASH0_AGENT0_CONNECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[23].value
-          value: "true"
+          value: custom-agent0-connector-image:19.20.21
       - equal:
           path: spec.template.spec.containers[0].env[24].name
-          value: DASH0_PPROF_PORT
+          value: DASH0_AGENT0_CONNECTOR_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[24].value
-          value: "1234"
+          value: Never
       - equal:
           path: spec.template.spec.containers[0].env[25].name
-          value: DASH0_INSTRUMENTATION_DEBUG
+          value: DASH0_DEVELOPMENT_MODE
       - equal:
           path: spec.template.spec.containers[0].env[25].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[26].name
-          value: DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES
+          value: DASH0_PPROF_PORT
       - equal:
           path: spec.template.spec.containers[0].env[26].value
-          value: "true"
+          value: "1234"
       - equal:
           path: spec.template.spec.containers[0].env[27].name
-          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
+          value: DASH0_INSTRUMENTATION_DEBUG
       - equal:
           path: spec.template.spec.containers[0].env[27].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[28].name
-          value: OTEL_COLLECTOR_SEND_BATCH_SIZE
+          value: DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES
       - equal:
           path: spec.template.spec.containers[0].env[28].value
-          value: "16384"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[29].name
-          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
+          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
       - equal:
           path: spec.template.spec.containers[0].env[29].value
-          value: "32768"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[30].name
-          value: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
+          value: OTEL_COLLECTOR_SEND_BATCH_SIZE
       - equal:
           path: spec.template.spec.containers[0].env[30].value
-          value: "true"
+          value: "16384"
       - equal:
           path: spec.template.spec.containers[0].env[31].name
-          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
+          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
       - equal:
           path: spec.template.spec.containers[0].env[31].value
-          value: "true"
+          value: "32768"
       - equal:
           path: spec.template.spec.containers[0].env[32].name
-          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
       - equal:
           path: spec.template.spec.containers[0].env[32].value
-          value: "13s"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[33].name
-          value: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
       - equal:
           path: spec.template.spec.containers[0].env[33].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[34].name
-          value: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
       - equal:
           path: spec.template.spec.containers[0].env[34].value
-          value: "true"
+          value: "13s"
       - equal:
           path: spec.template.spec.containers[0].env[35].name
-          value: K8S_POD_UID
+          value: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
       - equal:
-          path: spec.template.spec.containers[0].env[35].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[35].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[36].name
-          value: K8S_NODE_IP
+          value: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
       - equal:
-          path: spec.template.spec.containers[0].env[36].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[36].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[37].name
-          value: K8S_NODE_NAME
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[37].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[38].name
-          value: K8S_POD_IP
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[38].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[39].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[39].valueFrom.fieldRef.fieldPath
+          value: spec.nodeName
+      - equal:
+          path: spec.template.spec.containers[0].env[40].name
+          value: K8S_POD_IP
+      - equal:
+          path: spec.template.spec.containers[0].env[40].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[41].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[41].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[40].name
+          path: spec.template.spec.containers[0].env[42].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -709,10 +731,10 @@ tests:
           disableReplicasetInformer: true
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].env[17].name
+          path: spec.template.spec.containers[0].env[18].name
           value: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
       - equal:
-          path: spec.template.spec.containers[0].env[17].value
+          path: spec.template.spec.containers[0].env[18].value
           value: "true"
 
   - it: should add args for creating an operator configuration resource with a token to the deployment
@@ -1053,7 +1075,7 @@ tests:
           value: "ghcr.io/dash0hq/collector:1.2.3"
       # no DASH0_BARKER_IMAGE when IE is disabled
       - equal:
-          path: spec.template.spec.containers[0].env[17].name
+          path: spec.template.spec.containers[0].env[18].name
           value: K8S_POD_UID
 
   - it: should use intelligent edge collector image when IE is enabled
@@ -1087,7 +1109,7 @@ tests:
           path: spec.template.spec.containers[0].env[17].value
           value: "ghcr.io/dash0hq/barker:v2.0.2051"
       - equal:
-          path: spec.template.spec.containers[0].env[18].name
+          path: spec.template.spec.containers[0].env[19].name
           value: K8S_POD_UID
 
   - it: should support custom IE collector and barker images with pull policies
@@ -1231,36 +1253,39 @@ tests:
           value: ghcr.io/dash0hq/filelog-offset-volume-ownership@sha256:6e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda06
       - equal:
           path: spec.template.spec.containers[0].env[17].name
-          value: K8S_POD_UID
-      - equal:
-          path: spec.template.spec.containers[0].env[17].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          value: DASH0_AGENT0_CONNECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[18].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[18].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[21].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[22].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[22].name
+          path: spec.template.spec.containers[0].env[23].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -1336,36 +1361,42 @@ tests:
           value: customrepo.io/repo/custom-filelog-offset-volume-ownership:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[17].name
-          value: K8S_POD_UID
+          value: DASH0_AGENT0_CONNECTOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[17].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[17].value
+          value: ghcr.io/dash0hq/agent0-connector:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[18].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[18].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[21].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[22].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[22].name
+          path: spec.template.spec.containers[0].env[23].name
 
   - it: mutating webhook should have caBundle set
     documentSelector:
@@ -1676,3 +1707,214 @@ tests:
           content: "--operator-configuration-instrumentation-delivery=invalid"
         not: true
       - notFailedTemplate: {}
+
+  - it: should set the Agent0 connector enabled flag when Agent0 connector is enabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: "ingress.eu-west-1.aws.dash0.com:4317"
+          token: "dash0-agent0-connector-token"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_ENABLED
+            value: "true"
+
+  - it: should not set the Agent0 connector enabled flag when Agent0 connector is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_ENABLED
+          any: true
+
+  - it: should set the Agent0 connector server address when Agent0 connector is enabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: "ingress.eu-west-1.aws.dash0.com:4317"
+          token: "dash0-agent0-connector-token"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS
+            value: "ingress.eu-west-1.aws.dash0.com:4317"
+
+  - it: should not set the Agent0 connector server address when Agent0 connector is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS
+          any: true
+
+  - it: should fail if Agent0 connector is enabled but no server address is provided
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.agent0Connector.enabled is set to true, but you did not provide a value for operator.agent0Connector.serverAddress. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator."
+
+  - it: should set the Agent0 connector insecure flag when TLS is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: "host.docker.internal:8022"
+          token: "dash0-agent0-connector-token"
+          insecure: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_INSECURE
+            value: "true"
+
+  - it: should not set the Agent0 connector insecure flag by default
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: "ingress.eu-west-1.aws.dash0.com:4317"
+          token: "dash0-agent0-connector-token"
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_INSECURE
+          any: true
+
+  - it: should set the Agent0 connector token when a literal token is provided
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: "ingress.eu-west-1.aws.dash0.com:4317"
+          token: "dash0-agent0-connector-token"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_TOKEN
+            value: "dash0-agent0-connector-token"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME
+          any: true
+
+  - it: should set the Agent0 connector secret ref when a secret ref is provided
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: "ingress.eu-west-1.aws.dash0.com:4317"
+          secretRef:
+            name: "dash0-agent0-connector-authorization-secret"
+            key: "token"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME
+            value: "dash0-agent0-connector-authorization-secret"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_SECRET_REF_KEY
+            value: "token"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_TOKEN
+          any: true
+
+  - it: should prefer the literal token over the secret ref when both are provided
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: "ingress.eu-west-1.aws.dash0.com:4317"
+          token: "dash0-agent0-connector-token"
+          secretRef:
+            name: "dash0-agent0-connector-authorization-secret"
+            key: "token"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_TOKEN
+            value: "dash0-agent0-connector-token"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_SECRET_REF_NAME
+          any: true
+
+  - it: should not set the Agent0 connector token or secret ref when Agent0 connector is disabled
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+          token: "dash0-agent0-connector-token"
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_AGENT0_CONNECTOR_TOKEN
+          any: true
+
+  - it: should fail if Agent0 connector is enabled but neither token nor secret ref is provided
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          serverAddress: "ingress.eu-west-1.aws.dash0.com:4317"
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.agent0Connector.enabled is set to true, but neither operator.agent0Connector.token nor operator.agent0Connector.secretRef.name & operator.agent0Connector.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator."

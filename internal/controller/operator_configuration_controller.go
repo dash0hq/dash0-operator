@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/agent0connector"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/intelligentedge"
 	"github.com/dash0hq/dash0-operator/internal/resources"
@@ -33,6 +34,7 @@ type OperatorConfigurationReconciler struct {
 	apiClients                   []ApiClient
 	collectorManager             *collectors.CollectorManager
 	targetAllocatorManager       *targetallocator.TargetAllocatorManager
+	agent0ConnectorManager       *agent0connector.Agent0ConnectorManager
 	intelligentEdgeManager       *intelligentedge.IntelligentEdgeManager
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig
 	pseudoClusterUid             types.UID
@@ -62,6 +64,7 @@ func NewOperatorConfigurationReconciler(
 	apiClients []ApiClient,
 	collectorManager *collectors.CollectorManager,
 	targetAllocatorManager *targetallocator.TargetAllocatorManager,
+	agent0ConnectorManager *agent0connector.Agent0ConnectorManager,
 	intelligentEdgeManager *intelligentedge.IntelligentEdgeManager,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	pseudoClusterUid types.UID,
@@ -79,6 +82,7 @@ func NewOperatorConfigurationReconciler(
 		apiClients:                   apiClients,
 		collectorManager:             collectorManager,
 		targetAllocatorManager:       targetAllocatorManager,
+		agent0ConnectorManager:       agent0ConnectorManager,
 		intelligentEdgeManager:       intelligentEdgeManager,
 		clusterInstrumentationConfig: clusterInstrumentationConfig,
 		pseudoClusterUid:             pseudoClusterUid,
@@ -156,6 +160,9 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
+		if err = r.reconcileAgent0Connector(ctx, logger); err != nil {
+			return ctrl.Result{}, err
+		}
 		if err = r.reconcileIntelligentEdge(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -230,6 +237,10 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	if err = r.reconcileOpenTelemetryTargetAllocator(ctx, logger); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err = r.reconcileAgent0Connector(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -427,6 +438,24 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryTargetAllocator(
 		targetallocator.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry target-allocator, requeuing reconcile request.")
+		return err
+	}
+	return nil
+}
+
+func (r *OperatorConfigurationReconciler) reconcileAgent0Connector(
+	ctx context.Context,
+	logger logd.Logger,
+) error {
+	if r.agent0ConnectorManager == nil {
+		logger.Debug("agent0-connector manager is not initialized, skipping agent0-connector reconciliation")
+		return nil
+	}
+	if _, err := r.agent0ConnectorManager.ReconcileAgent0Connector(
+		ctx,
+		agent0connector.TriggeredByDash0OperatorConfigurationResourceReconcile,
+	); err != nil {
+		logger.Error(err, "Failed to reconcile the agent0-connector resources, requeuing reconcile request.")
 		return err
 	}
 	return nil

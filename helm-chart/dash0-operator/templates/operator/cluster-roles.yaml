@@ -619,3 +619,43 @@ rules:
   - list
 
 {{ end }}
+
+---
+{{ if .Values.operator.agent0Connector.enabled }}
+{{/*
+The -manager-agent0-connector cluster role holds the permissions that the operator delegates to the agent0-connector
+deployment. The operator creates a dedicated cluster role/cluster role binding granting the agent0-connector service
+account get & list on all resources plus get on all non-resource URLs. Kubernetes' privilege-escalation prevention only
+allows the operator to grant permissions it holds itself, so it must hold these read permissions as well. This cluster
+role (and its binding) only exist when the agent0-connector feature is enabled (operator.agent0Connector.enabled).
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-manager-agent0-connector
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-agent0-connector
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+rules:
+
+# Cluster-wide, read-only access to all resources, mirroring what the operator grants to the agent0-connector service
+# account:
+- apiGroups:
+  - '*'
+  resources:
+  - '*'
+  verbs:
+  - get
+  - list
+
+# Read access to all non-resource URLs (API discovery, OpenAPI schema, health endpoints, ...), mirroring what the
+# operator grants to the agent0-connector service account:
+- nonResourceURLs:
+  - '*'
+  verbs:
+  - get
+
+{{ end }}

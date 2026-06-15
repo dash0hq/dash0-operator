@@ -11,7 +11,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-//nolint:goconst
 var _ = Describe(
 	"SynchronizedSlice", func() {
 		Context(

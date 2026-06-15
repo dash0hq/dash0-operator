@@ -2609,7 +2609,7 @@ var _ = Describe("monitoringPredicate", func() {
 	It("should return true when labels change", func() {
 		oldObj := baseMonitoring()
 		newObj := baseMonitoring()
-		newObj.Labels["new-label"] = "new-value" //nolint:goconst
+		newObj.Labels["new-label"] = "new-value"
 
 		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
 	})
@@ -2617,7 +2617,7 @@ var _ = Describe("monitoringPredicate", func() {
 	It("should return true when annotations change", func() {
 		oldObj := baseMonitoring()
 		newObj := baseMonitoring()
-		newObj.Annotations["new-ann"] = "new-value" //nolint:goconst
+		newObj.Annotations["new-ann"] = "new-value"
 
 		Expect(p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj})).To(BeTrue())
 	})

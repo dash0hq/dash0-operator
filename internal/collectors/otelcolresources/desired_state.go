@@ -91,6 +91,8 @@ type oTelColConfig struct {
 	K8sAttributesWaitForMetadataTimeout              string
 	PrometheusCrdSupportEnabled                      bool
 	TargetAllocatorNamePrefix                        string
+	Agent0ConnectorEnabled                           bool
+	Agent0ConnectorDeploymentName                    string
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	DisableHostPorts                                 bool

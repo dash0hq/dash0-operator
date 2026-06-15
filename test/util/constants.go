@@ -67,6 +67,8 @@ const (
 	ApiEndpointStandardizedTestAlternative = "https://api-alt.dash0.com/"
 	DatasetCustomTest                      = "test-dataset"
 	DatasetCustomTestAlternative           = "test-dataset-alt"
+
+	Agent0ConnectorServerAddress = "api.dash0.com:8022"
 )
 
 var (

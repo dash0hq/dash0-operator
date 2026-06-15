@@ -11,6 +11,7 @@ updates:
   - package-ecosystem: "gomod"
     directories:
       - "/"
+      - "/images/agent0-connector/src"
       - "/images/configreloader/src"
       - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
@@ -44,6 +45,7 @@ updates:
   - package-ecosystem: "docker"
     directories:
       - "/"
+      - "/images/agent0-connector"
       - "/images/collector"
       - "/images/configreloader"
       - "/images/filelogoffsetsync"

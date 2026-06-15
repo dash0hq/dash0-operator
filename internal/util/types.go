@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 )
 
@@ -56,6 +57,7 @@ type CollectorConfig struct {
 	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
 	// config of the prometheus_receiver
 	TargetAllocatorNamePrefix              string
+	Agent0ConnectorEnabled                 bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
 	K8sAttributesDisableReplicasetInformer bool
@@ -87,6 +89,31 @@ type TargetAllocatorConfig struct {
 	DevelopmentMode    bool
 }
 
+type Agent0ConnectorConfig struct {
+	Images            Images
+	OperatorNamespace string
+	// NamePrefix is used as a prefix for the agent0-connector Kubernetes resources created by the operator. It is the
+	// same prefix that is used for the collector workloads and the target-allocator, that is, the Helm release name.
+	NamePrefix string
+	// PseudoClusterUid is the UID of the default namespace (equal to the k8s.cluster.uid resource attribute). The
+	// agent0-connector workload uses it as its client ID when connecting to the Dash0 backend.
+	PseudoClusterUid types.UID
+	// ServerAddress is the address of the Dash0 backend service the agent0-connector workload connects to. It is set
+	// from the Helm value operator.agent0Connector.serverAddress and passed to the workload via the
+	// DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS environment variable.
+	ServerAddress string
+	// Insecure disables TLS for the agent0-connector workload's connection to the Dash0 backend. It is set from the Helm
+	// value operator.agent0Connector.insecure and passed to the workload via the DASH0_AGENT0_CONNECTOR_INSECURE
+	// environment variable. It is only intended for local development.
+	Insecure bool
+	// Authorization holds the Dash0 authorization token for the agent0-connector workload, either as a literal token (set
+	// from the Helm value operator.agent0Connector.token) or as a reference to a Kubernetes secret (set from the Helm
+	// value operator.agent0Connector.secretRef). It is passed to the workload via the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN
+	// environment variable.
+	Authorization   dash0common.Authorization
+	DevelopmentMode bool
+}
+
 type Images struct {
 	OperatorImage                               string
 	InitContainerImage                          string
@@ -103,6 +130,8 @@ type Images struct {
 	FilelogOffsetVolumeOwnershipImagePullPolicy corev1.PullPolicy
 	BarkerImage                                 string
 	BarkerImagePullPolicy                       corev1.PullPolicy
+	Agent0ConnectorImage                        string
+	Agent0ConnectorImagePullPolicy              corev1.PullPolicy
 }
 
 func (i Images) GetOperatorVersion() string {
