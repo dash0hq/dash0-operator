@@ -1226,6 +1226,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				},
 			},
 			CollectorDaemonSetPriorityClassName: "daemonset-prio",
+			DaemonSetSysctls: []corev1.Sysctl{
+				{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
+				{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
+			},
 			DeploymentTolerations: []corev1.Toleration{
 				{
 					Key:      "key3",
@@ -1268,6 +1272,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				},
 			},
 			CollectorDeploymentPriorityClassName: "deployment-prio",
+			DeploymentSysctls: []corev1.Sysctl{
+				{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
+			},
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -1298,6 +1305,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetAffinityReq[0].MatchExpressions[1].Values).To(HaveLen(1))
 		Expect(daemonSetAffinityReq[0].MatchExpressions[1].Values[0]).To(Equal("affinity-key2-value1"))
 		Expect(daemonSetPodSpec.PriorityClassName).To(Equal("daemonset-prio"))
+		Expect(daemonSetPodSpec.SecurityContext.Sysctls).To(Equal([]corev1.Sysctl{
+			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
+			{Name: "net.ipv4.tcp_keepalive_intvl", Value: "30"},
+		}))
 
 		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
 		Expect(deploymentPodSpec.Tolerations).To(HaveLen(2))
@@ -1329,6 +1340,24 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Values[1]).To(Equal("affinity-key2-value2"))
 
 		Expect(deploymentPodSpec.PriorityClassName).To(Equal("deployment-prio"))
+		Expect(deploymentPodSpec.SecurityContext.Sysctls).To(Equal([]corev1.Sysctl{
+			{Name: "net.ipv4.tcp_keepalive_time", Value: "200"},
+		}))
+	})
+
+	It("should not set pod sysctls on the collectors by default", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(getDaemonSet(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
+		Expect(getDeployment(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
 	})
 
 	It("should render custom probe values", func() {

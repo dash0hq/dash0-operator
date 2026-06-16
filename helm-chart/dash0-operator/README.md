@@ -1502,6 +1502,55 @@ operator:
     nodeAffinity: <custom_node_affinity>
 ```
 
+### Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)
+
+Pod-level [sysctls](https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/) can be applied to the
+collector pods via `operator.collectors.daemonSetSysctls` (for the daemonset collector) and
+`operator.collectors.deploymentSysctls` (for the cluster-metrics-collector deployment).
+Both default to being unset, so no sysctls are applied unless you configure them.
+
+The primary use case is forcing TCP keepalive on the collector's network namespace.
+On some environments the connection-tracking layer reaps idle established TCP connections after a relatively short
+timeout (for example, AWS Nitro v6 instance types such as `m8i`, `m8i-flex`, `r8i` and `c8i` reap them after 350
+seconds).
+The collector's self-monitoring connection is sparse and can idle longer than that; once the conntrack entry is reaped,
+the next config reload blocks on the export deadline and the collector pod is restarted.
+Lowering the TCP keepalive interval below the conntrack idle timeout keeps the connection alive and avoids these
+restarts:
+
+```yaml
+operator:
+  collectors:
+    daemonSetSysctls:
+      - name: net.ipv4.tcp_keepalive_time
+        value: "200"
+      - name: net.ipv4.tcp_keepalive_intvl
+        value: "30"
+      - name: net.ipv4.tcp_keepalive_probes
+        value: "5"
+    deploymentSysctls:
+      - name: net.ipv4.tcp_keepalive_time
+        value: "200"
+      - name: net.ipv4.tcp_keepalive_intvl
+        value: "30"
+      - name: net.ipv4.tcp_keepalive_probes
+        value: "5"
+```
+
+`net.ipv4.tcp_keepalive_time` is the idle time before the first keepalive probe is sent and must be lower than the
+environment's conntrack idle timeout (for example, below 350 seconds on AWS Nitro v6); `tcp_keepalive_intvl` and
+`tcp_keepalive_probes` only govern dead-peer detection.
+
+This setting is opt-in for two reasons:
+
+* The `net.ipv4.tcp_keepalive_*` sysctls are only considered _safe_ sysctls on Kubernetes 1.29 and later. On older
+  clusters, or on clusters where the kubelet's `forbiddenSysctls` / a strict Pod Security Admission policy disallows
+  them, the kubelet rejects these sysctls and the collector pods will fail to be scheduled.
+* It changes the collector pod spec, which triggers a rollout of the collector pods.
+
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
+similar to take effect.
+
 ### Disabling Auto-Instrumentation for Specific Workloads
 
 In namespaces that are Dash0-monitoring enabled, all workloads are automatically instrumented for tracing and to improve

@@ -550,6 +550,43 @@ tests:
                   trace_statements:
                   - trace statement 1
 
+  - it: should render collector pod sysctls when set
+    set:
+      operator:
+        collectors:
+          daemonSetSysctls:
+            - name: net.ipv4.tcp_keepalive_time
+              value: "200"
+            - name: net.ipv4.tcp_keepalive_intvl
+              value: "30"
+          deploymentSysctls:
+            - name: net.ipv4.tcp_keepalive_time
+              value: "200"
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            daemonSetSysctls:
+              - name: net\.ipv4\.tcp_keepalive_time
+                value: "200"
+              - name: net\.ipv4\.tcp_keepalive_intvl
+                value: "30"
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            deploymentSysctls:
+              - name: net\.ipv4\.tcp_keepalive_time
+                value: "200"
+
+  - it: should not render collector pod sysctls by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: daemonSetSysctls
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: deploymentSysctls
+
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
   - it: should render custom resource settings from legacy paths

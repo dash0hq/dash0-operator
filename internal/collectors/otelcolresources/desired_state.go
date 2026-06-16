@@ -676,6 +676,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			},
 			RunAsUser:  new(defaultUser),
 			RunAsGroup: new(defaultGroup),
+			Sysctls:    extraConfig.DaemonSetSysctls,
 		},
 		// This setting is required to enable the configuration reloader process to send Unix signals to the
 		// collector process.
@@ -1503,6 +1504,7 @@ func assembleCollectorDeployment(
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
+			Sysctls: extraConfig.DeploymentSysctls,
 		},
 		// This setting is required to enable the configuration reloader process to send Unix signals to the
 		// collector process.

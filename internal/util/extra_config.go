@@ -46,6 +46,8 @@ type ExtraConfig struct {
 	DaemonSetTolerations  []corev1.Toleration  `json:"daemonSetTolerations,omitempty"`
 	DaemonSetNodeAffinity *corev1.NodeAffinity `json:"daemonSetNodeAffinity,omitempty"`
 
+	DaemonSetSysctls []corev1.Sysctl `json:"daemonSetSysctls,omitempty"`
+
 	CollectorDaemonSetPriorityClassName string `json:"collectorDaemonSetPriorityClassName,omitempty"`
 
 	DaemonSetProbes CollectorProbes `json:"daemonSetProbes"`
@@ -55,6 +57,8 @@ type ExtraConfig struct {
 
 	DeploymentTolerations  []corev1.Toleration  `json:"deploymentTolerations,omitempty"`
 	DeploymentNodeAffinity *corev1.NodeAffinity `json:"deploymentNodeAffinity,omitempty"`
+
+	DeploymentSysctls []corev1.Sysctl `json:"deploymentSysctls,omitempty"`
 
 	CollectorDeploymentPriorityClassName string `json:"collectorDeploymentPriorityClassName,omitempty"`
 
