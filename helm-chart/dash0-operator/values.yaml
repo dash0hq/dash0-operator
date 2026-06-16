@@ -715,6 +715,22 @@ operator:
                 operator: "In"
                 values: ["linux"]
 
+    # An array of pod-level sysctls applied to the collector DaemonSet pods (spec.securityContext.sysctls). Disabled by
+    # default. The primary use case is forcing TCP keepalive below the connection-tracking idle timeout of some
+    # environments (notably AWS Nitro v6 nodes, where established TCP connections are reaped after 350s); this keeps the
+    # collector's sparse self-monitoring gRPC connection alive and avoids reload failures.
+    # net.ipv4.tcp_keepalive_* are "safe" sysctls only on Kubernetes >= 1.29 (kernel 4.5+). On older clusters or under a
+    # strict Pod Security Admission / kubelet forbiddenSysctls configuration the kubelet rejects them and the pod will
+    # not be scheduled, hence this is opt-in. tcp_keepalive_time must be lower than the environment's idle timeout.
+    # Example:
+    # daemonSetSysctls:
+    #   - name: net.ipv4.tcp_keepalive_time
+    #     value: "240"
+    #   - name: net.ipv4.tcp_keepalive_intvl
+    #     value: "60"
+    #   - name: net.ipv4.tcp_keepalive_probes
+    #     value: "3"
+
     # The priority class name for the DaemonSet collector pods. If set, these manager pods will be scheduled with
     # the specified priority class.
     # This is useful if you want to make sure that the collector pods are scheduled with a higher priority than other
@@ -778,6 +794,19 @@ operator:
         # cpu: (no cpu request by default)
         memory: 12Mi
         # ephemeral-storage: (no ephemeral-storage request by default)
+
+    # An array of pod-level sysctls applied to the collector Deployment pod (cluster-metrics-collector), see
+    # spec.securityContext.sysctls. Disabled by default. See daemonSetSysctls above for the use case
+    # (forcing TCP keepalive below the connection-tracking idle timeout, e.g. on AWS Nitro v6 nodes) and the Kubernetes
+    # >= 1.29 / Pod Security Admission caveats.
+    # Example:
+    # deploymentSysctls:
+    #   - name: net.ipv4.tcp_keepalive_time
+    #     value: "240"
+    #   - name: net.ipv4.tcp_keepalive_intvl
+    #     value: "60"
+    #   - name: net.ipv4.tcp_keepalive_probes
+    #     value: "3"
 
     # The priority class name for the Deployment collector pod. If set, this pod will be scheduled with the specified
     # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
