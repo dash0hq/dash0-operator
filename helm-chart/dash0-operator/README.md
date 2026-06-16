@@ -1523,18 +1523,18 @@ operator:
   collectors:
     daemonSetSysctls:
       - name: net.ipv4.tcp_keepalive_time
-        value: "200"
+        value: "240"
       - name: net.ipv4.tcp_keepalive_intvl
-        value: "30"
+        value: "60"
       - name: net.ipv4.tcp_keepalive_probes
-        value: "5"
+        value: "3"
     deploymentSysctls:
       - name: net.ipv4.tcp_keepalive_time
-        value: "200"
+        value: "240"
       - name: net.ipv4.tcp_keepalive_intvl
-        value: "30"
+        value: "60"
       - name: net.ipv4.tcp_keepalive_probes
-        value: "5"
+        value: "3"
 ```
 
 `net.ipv4.tcp_keepalive_time` is the idle time before the first keepalive probe is sent and must be lower than the
