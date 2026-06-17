@@ -1574,6 +1574,7 @@ func startDash0Controllers(
 			envVars.barkerImage,
 			envVars.barkerImagePullPolicy,
 			images.GetOperatorVersion(),
+			cliArgs.isGkeAutopilot,
 		)
 		ieManager = intelligentedge.NewIntelligentEdgeManager(
 			k8sClient,
