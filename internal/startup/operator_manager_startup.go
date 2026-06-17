@@ -1642,6 +1642,7 @@ func startDash0Controllers(
 			envVars.edgeProxyImage,
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
+			cliArgs.isGkeAutopilot,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,
