@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # download the opentelemetry-injector binary for the target architecture
-FROM alpine:3.24.0 AS download-injector-binary
+FROM alpine:3.24.1 AS download-injector-binary
 
 RUN apk add --no-cache curl jq wget
 
@@ -42,7 +42,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-fund=true
 
 # download .NET auto instrumentation
-FROM alpine:3.24.0 AS build-dotnet
+FROM alpine:3.24.1 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
 		unzip
@@ -75,7 +75,7 @@ RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt
 COPY python/sitecustomize.py .
 
 # build the final instrumentation image
-FROM alpine:3.24.0
+FROM alpine:3.24.1
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
