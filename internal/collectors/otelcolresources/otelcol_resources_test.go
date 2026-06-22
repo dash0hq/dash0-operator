@@ -840,10 +840,155 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SpamFilterCacheExpiration).To(BeEmpty())
 	})
+
+	It("should default sampling tunables to empty fallback ratio and debug off", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingFallbackSampleRatio).To(BeEmpty())
+		Expect(config.SamplingDebug).To(BeFalse())
+	})
+
+	It("should pass sampling fallback ratio and debug through when set", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Enabled:             boolPtr(true),
+					FallbackSampleRatio: strPtr("0.5"),
+					Debug:               boolPtr(true),
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingFallbackSampleRatio).To(Equal("0.5"))
+		Expect(config.SamplingDebug).To(BeTrue())
+	})
+
+	It("should pass a sampling fallback ratio of \"0\" through (block-all is meaningful, not unset)", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					FallbackSampleRatio: strPtr("0"),
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingFallbackSampleRatio).To(Equal("0"))
+	})
+
+	It("should default RED metrics tunables to nil max-time-series and no extra attributes", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.RedMetricsMaxTimeSeries).To(BeNil())
+		Expect(config.RedMetricsAdditionalSpanAttributes).To(BeEmpty())
+	})
+
+	It("should pass RED metrics tunables through when set", func() {
+		maxTs := int32(12_000)
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				RedMetrics: dash0v1alpha1.RedMetricsConfig{
+					MaxTimeSeries:            &maxTs,
+					AdditionalSpanAttributes: []string{"http.route", "http.request.method"},
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.RedMetricsMaxTimeSeries).ToNot(BeNil())
+		Expect(*config.RedMetricsMaxTimeSeries).To(Equal(int32(12_000)))
+		Expect(config.RedMetricsAdditionalSpanAttributes).To(Equal([]string{"http.route", "http.request.method"}))
+	})
+
+	It("should default the operation processor to no prefer-span-name and no cardinality rules", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.OperationPreferSpanName).To(BeFalse())
+		Expect(config.OperationCardinalityRules).To(BeEmpty())
+	})
+
+	It("should pass the prefer-span-name flag through when set", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				OperationProcessor: dash0v1alpha1.OperationProcessorConfig{
+					PreferSpanName: boolPtr(true),
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.OperationPreferSpanName).To(BeTrue())
+	})
+
+	It("should pass cardinality rules through, resolving the *bool literal", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				OperationProcessor: dash0v1alpha1.OperationProcessorConfig{
+					CardinalityRules: []dash0v1alpha1.CardinalityRule{
+						{
+							Id:              "warehouse-sites",
+							SourceAttribute: "url.path",
+							QuickFilter:     "/sites/",
+							OperationMatchers: []dash0v1alpha1.OperationMatcher{
+								{
+									Regex:        "/sites/([a-z0-9-]+)/",
+									Replacements: []string{"site"},
+									QuickFilter:  "/sites/",
+									Literal:      boolPtr(true),
+								},
+								{
+									Regex:        "/zones/([a-z0-9-]+)/",
+									Replacements: []string{"zone"},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.OperationCardinalityRules).To(HaveLen(1))
+		rule := config.OperationCardinalityRules[0]
+		Expect(rule.Id).To(Equal("warehouse-sites"))
+		Expect(rule.SourceAttribute).To(Equal("url.path"))
+		Expect(rule.QuickFilter).To(Equal("/sites/"))
+		Expect(rule.OperationMatchers).To(HaveLen(2))
+		Expect(rule.OperationMatchers[0].Regex).To(Equal("/sites/([a-z0-9-]+)/"))
+		Expect(rule.OperationMatchers[0].Replacements).To(Equal([]string{"site"}))
+		Expect(rule.OperationMatchers[0].QuickFilter).To(Equal("/sites/"))
+		Expect(rule.OperationMatchers[0].Literal).To(BeTrue())
+		Expect(rule.OperationMatchers[1].Literal).To(BeFalse(), "an absent *bool literal must resolve to false")
+	})
 })
 
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+func strPtr(s string) *string {
+	return &s
 }
 
 func verifyObject(ctx context.Context, testObject *corev1.ConfigMap) {

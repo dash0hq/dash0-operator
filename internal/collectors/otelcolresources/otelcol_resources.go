@@ -753,6 +753,11 @@ func intelligentEdgeConfigFromResource(
 
 	barkerEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Barker.Enabled, true)
 	samplingEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Sampling.Enabled, true)
+	var samplingFallbackSampleRatio string
+	if r := resource.Spec.Sampling.FallbackSampleRatio; r != nil {
+		samplingFallbackSampleRatio = *r
+	}
+	samplingDebug := pointers.ReadBoolPointerWithDefault(resource.Spec.Sampling.Debug, false)
 	signalToMetricsEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SignalToMetrics.Enabled, true)
 	var signalToMetricsFlushInterval string
 	if d := resource.Spec.SignalToMetrics.FlushInterval; d != nil && d.Duration > 0 {
@@ -764,6 +769,26 @@ func intelligentEdgeConfigFromResource(
 		spamFilterCacheExpiration = d.Duration.String()
 	}
 	spamFilterAllowNoSettingsExt := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.AllowNoSettingsExt, false)
+
+	operationPreferSpanName := pointers.ReadBoolPointerWithDefault(resource.Spec.OperationProcessor.PreferSpanName, false)
+	var operationCardinalityRules []IntelligentEdgeCardinalityRule
+	for _, rule := range resource.Spec.OperationProcessor.CardinalityRules {
+		matchers := make([]IntelligentEdgeOperationMatcher, 0, len(rule.OperationMatchers))
+		for _, matcher := range rule.OperationMatchers {
+			matchers = append(matchers, IntelligentEdgeOperationMatcher{
+				Regex:        matcher.Regex,
+				Replacements: matcher.Replacements,
+				QuickFilter:  matcher.QuickFilter,
+				Literal:      pointers.ReadBoolPointerWithDefault(matcher.Literal, false),
+			})
+		}
+		operationCardinalityRules = append(operationCardinalityRules, IntelligentEdgeCardinalityRule{
+			Id:                rule.Id,
+			SourceAttribute:   rule.SourceAttribute,
+			QuickFilter:       rule.QuickFilter,
+			OperationMatchers: matchers,
+		})
+	}
 
 	derivedEndpoint, derivedApiEndpoint, dataset := deriveDash0EndpointsAndDataset(operatorConfig)
 	hasDash0Export := derivedEndpoint != "" || derivedApiEndpoint != ""
@@ -795,21 +820,27 @@ func intelligentEdgeConfigFromResource(
 	}
 
 	return IntelligentEdgeConfig{
-		Enabled:                      true,
-		SamplingEnabled:              samplingEnabled,
-		SignalToMetricsEnabled:       signalToMetricsEnabled,
-		SignalToMetricsMaxTimeSeries: resource.Spec.SignalToMetrics.MaxTimeSeries,
-		SignalToMetricsFlushInterval: signalToMetricsFlushInterval,
-		SpamFilterEnabled:            spamFilterEnabled,
-		SpamFilterCacheExpiration:    spamFilterCacheExpiration,
-		SpamFilterAllowNoSettingsExt: spamFilterAllowNoSettingsExt,
-		Endpoint:                     endpoint,
-		ApiEndpoint:                  apiEndpoint,
-		AuthEnvVar:                   authEnvVarNameDefaultIndexed(0),
-		Dataset:                      dataset,
-		Insecure:                     insecure,
-		BarkerEnabled:                barkerEnabled,
-		BarkerName:                   namePrefix + "-barker",
+		Enabled:                            true,
+		SamplingEnabled:                    samplingEnabled,
+		SamplingFallbackSampleRatio:        samplingFallbackSampleRatio,
+		SamplingDebug:                      samplingDebug,
+		SignalToMetricsEnabled:             signalToMetricsEnabled,
+		SignalToMetricsMaxTimeSeries:       resource.Spec.SignalToMetrics.MaxTimeSeries,
+		SignalToMetricsFlushInterval:       signalToMetricsFlushInterval,
+		RedMetricsMaxTimeSeries:            resource.Spec.RedMetrics.MaxTimeSeries,
+		RedMetricsAdditionalSpanAttributes: resource.Spec.RedMetrics.AdditionalSpanAttributes,
+		SpamFilterEnabled:                  spamFilterEnabled,
+		SpamFilterCacheExpiration:          spamFilterCacheExpiration,
+		SpamFilterAllowNoSettingsExt:       spamFilterAllowNoSettingsExt,
+		OperationPreferSpanName:            operationPreferSpanName,
+		OperationCardinalityRules:          operationCardinalityRules,
+		Endpoint:                           endpoint,
+		ApiEndpoint:                        apiEndpoint,
+		AuthEnvVar:                         authEnvVarNameDefaultIndexed(0),
+		Dataset:                            dataset,
+		Insecure:                           insecure,
+		BarkerEnabled:                      barkerEnabled,
+		BarkerName:                         namePrefix + "-barker",
 	}
 }
 

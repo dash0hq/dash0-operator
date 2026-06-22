@@ -28,21 +28,41 @@ import (
 )
 
 type IntelligentEdgeConfig struct {
-	Enabled                      bool
-	SamplingEnabled              bool
-	SignalToMetricsEnabled       bool
-	SignalToMetricsMaxTimeSeries *int32
-	SignalToMetricsFlushInterval string
-	SpamFilterEnabled            bool
-	SpamFilterCacheExpiration    string
-	SpamFilterAllowNoSettingsExt bool
-	Endpoint                     string
-	ApiEndpoint                  string
-	AuthEnvVar                   string
-	Dataset                      string
-	Insecure                     bool
-	BarkerEnabled                bool
-	BarkerName                   string
+	Enabled                            bool
+	SamplingEnabled                    bool
+	SamplingFallbackSampleRatio        string
+	SamplingDebug                      bool
+	SignalToMetricsEnabled             bool
+	SignalToMetricsMaxTimeSeries       *int32
+	SignalToMetricsFlushInterval       string
+	RedMetricsMaxTimeSeries            *int32
+	RedMetricsAdditionalSpanAttributes []string
+	SpamFilterEnabled                  bool
+	SpamFilterCacheExpiration          string
+	SpamFilterAllowNoSettingsExt       bool
+	OperationPreferSpanName            bool
+	OperationCardinalityRules          []IntelligentEdgeCardinalityRule
+	Endpoint                           string
+	ApiEndpoint                        string
+	AuthEnvVar                         string
+	Dataset                            string
+	Insecure                           bool
+	BarkerEnabled                      bool
+	BarkerName                         string
+}
+
+type IntelligentEdgeCardinalityRule struct {
+	Id                string
+	SourceAttribute   string
+	QuickFilter       string
+	OperationMatchers []IntelligentEdgeOperationMatcher
+}
+
+type IntelligentEdgeOperationMatcher struct {
+	Regex        string
+	Replacements []string
+	QuickFilter  string
+	Literal      bool
 }
 
 type oTelColConfig struct {

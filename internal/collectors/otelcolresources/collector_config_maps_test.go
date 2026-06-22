@@ -2518,6 +2518,207 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).
 				ToNot(ContainElement("dash0filter"))
 		})
+
+		It("should render dash0operation as an empty object when no operation processor tunables are set [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).To(HaveKey("dash0operation"))
+			Expect(processors["dash0operation"].(map[string]interface{})).
+				To(BeEmpty(), "dash0operation should render as `{}` when no tunables set")
+		})
+
+		It("should render prefer_span_name when set on the IE config [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                 true,
+					OperationPreferSpanName: true,
+					Endpoint:                "decision-maker.example.com:443",
+					ApiEndpoint:             "https://control-plane-api.dash0.com",
+					Dataset:                 "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			operation := processors["dash0operation"].(map[string]interface{})
+			Expect(operation["prefer_span_name"]).To(BeTrue())
+			Expect(operation).ToNot(HaveKey("cardinality_rules"))
+		})
+
+		It("should render cardinality_rules with nested operation_matchers when set on the IE config [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled: true,
+					OperationCardinalityRules: []IntelligentEdgeCardinalityRule{
+						{
+							Id:              "warehouse-sites",
+							SourceAttribute: "url.path",
+							QuickFilter:     "/sites/",
+							OperationMatchers: []IntelligentEdgeOperationMatcher{
+								{
+									Regex:        "/sites/([a-z0-9-]+)/",
+									Replacements: []string{"site"},
+									QuickFilter:  "/sites/",
+									Literal:      true,
+								},
+								{
+									Regex:        "/zones/([a-z0-9-]+)/",
+									Replacements: []string{"zone"},
+								},
+							},
+						},
+					},
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			operation := processors["dash0operation"].(map[string]interface{})
+			Expect(operation).ToNot(HaveKey("prefer_span_name"))
+
+			rules := operation["cardinality_rules"].([]interface{})
+			Expect(rules).To(HaveLen(1))
+			rule := rules[0].(map[string]interface{})
+			Expect(rule["id"]).To(Equal("warehouse-sites"))
+			Expect(rule["source_attribute"]).To(Equal("url.path"))
+			Expect(rule["quick_filter"]).To(Equal("/sites/"))
+
+			matchers := rule["operation_matchers"].([]interface{})
+			Expect(matchers).To(HaveLen(2))
+			first := matchers[0].(map[string]interface{})
+			Expect(first["regex"]).To(Equal("/sites/([a-z0-9-]+)/"))
+			Expect(first["replacements"]).To(Equal([]interface{}{"site"}))
+			Expect(first["quick_filter"]).To(Equal("/sites/"))
+			Expect(first["literal"]).To(BeTrue())
+
+			second := matchers[1].(map[string]interface{})
+			Expect(second["regex"]).To(Equal("/zones/([a-z0-9-]+)/"))
+			Expect(second["replacements"]).To(Equal([]interface{}{"zone"}))
+			Expect(second).ToNot(HaveKey("quick_filter"), "an unset quick_filter must be omitted")
+			Expect(second).ToNot(HaveKey("literal"), "a false literal must be omitted")
+		})
+
+		It("should render sampling fallback ratio and debug when set on the IE config [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                     true,
+					SamplingEnabled:             true,
+					SamplingFallbackSampleRatio: "0.5",
+					SamplingDebug:               true,
+					Endpoint:                    "decision-maker.example.com:443",
+					ApiEndpoint:                 "https://control-plane-api.dash0.com",
+					Dataset:                     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			Expect(sampling["fallback_sample_ratio"]).To(Equal(0.5))
+			Expect(sampling["debug"]).To(BeTrue())
+		})
+
+		It("should omit sampling fallback ratio and debug when unset [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			Expect(sampling).ToNot(HaveKey("fallback_sample_ratio"))
+			Expect(sampling).ToNot(HaveKey("debug"))
+		})
+
+		It("should render dash0redmetrics as an empty object when no tunables are set [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			Expect(connectors).To(HaveKey("dash0redmetrics"))
+			Expect(connectors["dash0redmetrics"].(map[string]interface{})).
+				To(BeEmpty(), "dash0redmetrics should render as `{}` when no tunables set")
+		})
+
+		It("should render dash0redmetrics tunables when set on the IE config [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                            true,
+					RedMetricsMaxTimeSeries:            ptr.To(int32(12000)),
+					RedMetricsAdditionalSpanAttributes: []string{"http.route", "http.request.method"},
+					Endpoint:                           "decision-maker.example.com:443",
+					ApiEndpoint:                        "https://control-plane-api.dash0.com",
+					Dataset:                            "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			redMetrics := connectors["dash0redmetrics"].(map[string]interface{})
+			Expect(redMetrics["max_time_series"]).To(Equal(12000))
+			Expect(redMetrics["additional_span_attributes"]).
+				To(Equal([]interface{}{"http.route", "http.request.method"}))
+		})
 	})
 
 	DescribeTable("should render batch processor with defaults if no batch size settings are provided", func(cmTypeDef configMapTypeDefinition) {
