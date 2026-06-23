@@ -29,6 +29,8 @@ const (
 	appKubernetesIoNameValue      = agent0Connector
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
+	gkeAutopilotAllowlistKey      = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistValue    = "dash0-agent0-connector-v1.0.4"
 
 	defaultUser  int64 = 65532
 	defaultGroup int64 = 0
@@ -229,6 +231,10 @@ func assembleDeployment(c *util.Agent0ConnectorConfig, authTokenEnvVar *corev1.E
 		},
 	}
 
+	templateLabels := labels()
+	if c.IsGkeAutopilot {
+		templateLabels[gkeAutopilotAllowlistKey] = gkeAutopilotAllowlistValue
+	}
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
@@ -246,7 +252,7 @@ func assembleDeployment(c *util.Agent0ConnectorConfig, authTokenEnvVar *corev1.E
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels(),
+					Labels: templateLabels,
 				},
 				Spec: podSpec,
 			},
