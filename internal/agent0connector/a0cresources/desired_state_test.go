@@ -236,6 +236,26 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(deployment.ObjectMeta.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
 			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
 		})
+
+		It("adds GKE Autopilot allowlist match labels", func() {
+			deployment := getDeployment(assembleDesiredState(
+				&util.Agent0ConnectorConfig{
+					OperatorNamespace: testOperatorNamespace,
+					NamePrefix:        testNamePrefix,
+					PseudoClusterUid:  testPseudoClusterUid,
+					ServerAddress:     Agent0ConnectorServerAddress,
+					Images: util.Images{
+						Agent0ConnectorImage:           testImage,
+						Agent0ConnectorImagePullPolicy: corev1.PullAlways,
+					},
+					IsGkeAutopilot: true,
+				}, authTokenEnvVar, util.ExtraConfig{}))
+
+			deploymentTemplateLabels := deployment.Spec.Template.Labels
+			value, ok := deploymentTemplateLabels[gkeAutopilotAllowlistKey]
+			Expect(ok).To(BeTrue())
+			Expect(value).To(Equal(gkeAutopilotAllowlistValue))
+		})
 	})
 })
 
