@@ -43,7 +43,7 @@ jobs:
       image_tag: ${{ steps.compute-tag.outputs.image_tag }}
 
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: log in to GitHub container registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
@@ -101,7 +101,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - id: 'auth'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
