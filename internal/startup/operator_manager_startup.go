@@ -1622,6 +1622,7 @@ func startDash0Controllers(
 		images,
 		operatorDeploymentSelfReference,
 		clusterUid,
+		cliArgs,
 		developmentMode,
 	)
 	if err != nil {
@@ -2042,6 +2043,7 @@ func setupAgent0ConnectorManager(
 	images util.Images,
 	operatorDeploymentSelfReference *appsv1.Deployment,
 	pseudoClusterUid types.UID,
+	cliArgs *commandLineArguments,
 	developmentMode bool,
 ) (*agent0connector.Agent0ConnectorManager, error) {
 	if !envVars.agent0ConnectorEnabled {
@@ -2057,6 +2059,7 @@ func setupAgent0ConnectorManager(
 		ServerAddress:     envVars.agent0ConnectorServerAddress,
 		Insecure:          envVars.agent0ConnectorInsecure,
 		Authorization:     agent0ConnectorAuthorization(envVars),
+		IsGkeAutopilot:    cliArgs.isGkeAutopilot,
 		DevelopmentMode:   developmentMode,
 	}
 	agent0ConnectorResourceManager := a0cresources.NewAgent0ConnectorResourceManager(
