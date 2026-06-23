@@ -181,10 +181,12 @@ type RedMetricsConfig struct {
 	MaxTimeSeries *int32 `json:"maxTimeSeries,omitempty"`
 
 	// Additional low-cardinality span attributes to include as metric dimensions. Each attribute should
-	// have at most 3 unique values to avoid high cardinality. This setting is optional, it defaults to
-	// an empty list.
+	// have at most 3 unique values to avoid high cardinality. Attribute names must be non-empty and
+	// unique. This setting is optional, it defaults to an empty list.
 	//
 	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:items:MinLength=1
 	AdditionalSpanAttributes []string `json:"additionalSpanAttributes,omitempty"`
 }
 
@@ -241,6 +243,13 @@ type SpamFilterConfig struct {
 
 // OperationProcessorConfig configures the dash0operation processor.
 type OperationProcessorConfig struct {
+	// Controls whether the OpenTelemetry span name is used as both dash0.operation.name and
+	// dash0.span.name instead of the rule-derived pattern name. Rules are still evaluated to determine
+	// the operation type. This setting is optional, it defaults to false.
+	//
+	// +kubebuilder:validation:Optional
+	PreferSpanName *bool `json:"preferSpanName,omitempty"`
+
 	// Custom rules for normalizing high-cardinality operation names. Rules are evaluated in order, first
 	// match wins. This setting is optional, it defaults to an empty list.
 	//
