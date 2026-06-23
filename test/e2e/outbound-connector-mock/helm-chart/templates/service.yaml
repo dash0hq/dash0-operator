@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: outbound-connector-mock-service
+spec:
+  selector:
+    app: outbound-connector-mock-app
+  ports:
+    - name: grpc
+      port: {{ .Values.grpcPort }}
+      targetPort: {{ .Values.grpcPort }}
+    - name: debug
+      port: {{ .Values.debugPort }}
+      targetPort: {{ .Values.debugPort }}
+  type: ClusterIP

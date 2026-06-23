@@ -1,0 +1,186 @@
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package e2e
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os/exec"
+	"time"
+
+	. "github.com/onsi/gomega"
+)
+
+const (
+	outboundConnectorMockChartPath   = "test/e2e/outbound-connector-mock/helm-chart"
+	outboundConnectorMockReleaseName = "outbound-connector-mock"
+
+	outboundConnectorMockNamespace   = "outbound-connector-mock"
+	outboundConnectorMockServiceName = "outbound-connector-mock-service"
+	outboundConnectorMockGrpcPort    = 8022
+)
+
+// outboundConnectorMockClientInfo mirrors the JSON returned by the mock's GET /clients endpoint: one entry per client
+// currently subscribed via SubscribeToCommandRequests, including the gRPC metadata it announced itself with.
+type outboundConnectorMockClientInfo struct {
+	ClientID      string    `json:"clientId"`
+	Authorization string    `json:"authorization"`
+	ConnectedAt   time.Time `json:"connectedAt"`
+}
+
+// outboundConnectorMockCommandResponse mirrors the JSON returned by the mock's GET /command-responses endpoint: one
+// entry per CommandResponse the mock has received back from a client.
+type outboundConnectorMockCommandResponse struct {
+	RequestID string `json:"requestId"`
+	ExitCode  int32  `json:"exitCode"`
+	Stdout    string `json:"stdout"`
+	Stderr    string `json:"stderr"`
+	Timeout   bool   `json:"timeout"`
+}
+
+var (
+	// outboundConnectorMockGrpcEndpoint is the in-cluster gRPC endpoint that the agent0-connector is pointed at via the
+	// operator.agent0Connector.serverAddress Helm value.
+	outboundConnectorMockGrpcEndpoint = fmt.Sprintf(
+		"%s.%s.svc.cluster.local:%d",
+		outboundConnectorMockServiceName,
+		outboundConnectorMockNamespace,
+		outboundConnectorMockGrpcPort,
+	)
+
+	// outboundConnectorMockServerBaseUrl is the URL the test runner uses to query the HTTP control/debug endpoint via
+	// the nginx ingress on the host.
+	outboundConnectorMockServerBaseUrl    string
+	outboundConnectorMockServerHttpClient *http.Client
+
+	outboundConnectorMockImage ImageSpec
+)
+
+func init() {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DisableKeepAlives = true
+	outboundConnectorMockServerHttpClient = &http.Client{Transport: t}
+}
+
+func determineOutboundConnectorMockBaseUrl(port string) {
+	outboundConnectorMockServerBaseUrl = fmt.Sprintf("http://localhost:%s/outbound-connector-mock", port)
+}
+
+func determineOutboundConnectorMockImage() {
+	repositoryPrefix, imageTag, pullPolicy := determineTestAppImageDefaults()
+	outboundConnectorMockImage =
+		determineContainerImage(
+			"OUTBOUND_CONNECTOR_MOCK",
+			repositoryPrefix,
+			"outbound-connector-mock",
+			imageTag,
+			pullPolicy,
+		)
+}
+
+func installOutboundConnectorMock() {
+	//nolint:prealloc
+	helmArgs := []string{"install",
+		"--namespace",
+		outboundConnectorMockNamespace,
+		"--create-namespace",
+		"--wait",
+		"--timeout",
+		"60s",
+		outboundConnectorMockReleaseName,
+		outboundConnectorMockChartPath,
+	}
+	helmArgs = append(helmArgs, "--set", fmt.Sprintf("image.repository=%s", outboundConnectorMockImage.repository))
+	helmArgs = append(helmArgs, "--set", fmt.Sprintf("image.tag=%s", outboundConnectorMockImage.tag))
+	helmArgs = append(helmArgs, "--set", fmt.Sprintf("image.pullPolicy=%s", outboundConnectorMockImage.pullPolicy))
+	Expect(runAndIgnoreOutput(exec.Command("helm", helmArgs...))).To(Succeed())
+}
+
+func uninstallOutboundConnectorMock() {
+	Expect(runAndIgnoreOutput(
+		exec.Command(
+			"helm",
+			"uninstall",
+			outboundConnectorMockReleaseName,
+			"--namespace",
+			outboundConnectorMockNamespace,
+			"--ignore-not-found",
+		))).To(Succeed())
+	Expect(runAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"delete",
+			"ns",
+			outboundConnectorMockNamespace,
+			"--wait",
+			"--ignore-not-found",
+		))).To(Succeed())
+}
+
+// fetchOutboundConnectorMockClients returns the clients currently subscribed to the mock. Used to assert that the
+// agent0-connector has established its connection with the expected gRPC metadata.
+func fetchOutboundConnectorMockClients(g Gomega) []outboundConnectorMockClientInfo {
+	url := fmt.Sprintf("%s/clients", outboundConnectorMockServerBaseUrl)
+	var clients []outboundConnectorMockClientInfo
+	doOutboundConnectorMockJsonRequest(g, http.MethodGet, url, nil, &clients)
+	return clients
+}
+
+// fetchOutboundConnectorMockCommandResponses returns the command responses the mock has received back from clients.
+func fetchOutboundConnectorMockCommandResponses(g Gomega) []outboundConnectorMockCommandResponse {
+	url := fmt.Sprintf("%s/command-responses", outboundConnectorMockServerBaseUrl)
+	var responses []outboundConnectorMockCommandResponse
+	doOutboundConnectorMockJsonRequest(g, http.MethodGet, url, nil, &responses)
+	return responses
+}
+
+// triggerOutboundConnectorMockCommandRequest instructs the mock to push a command request down the stream of the client
+// with the given client ID. It returns the request ID generated by the mock, which can be used to correlate the
+// eventual command response.
+func triggerOutboundConnectorMockCommandRequest(g Gomega, clientID string, command string, arguments []string) string {
+	url := fmt.Sprintf("%s/command-requests", outboundConnectorMockServerBaseUrl)
+	payload, err := json.Marshal(map[string]any{
+		"clientId":  clientID,
+		"command":   command,
+		"arguments": arguments,
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+	var response struct {
+		RequestID string `json:"requestId"`
+	}
+	doOutboundConnectorMockJsonRequest(g, http.MethodPost, url, payload, &response)
+	g.Expect(response.RequestID).NotTo(BeEmpty())
+	return response.RequestID
+}
+
+func doOutboundConnectorMockJsonRequest(g Gomega, method string, url string, requestBody []byte, target any) {
+	var bodyReader io.Reader
+	if requestBody != nil {
+		bodyReader = bytes.NewReader(requestBody)
+	}
+	req, err := http.NewRequest(method, url, bodyReader)
+	g.Expect(err).NotTo(HaveOccurred())
+	if requestBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := outboundConnectorMockServerHttpClient.Do(req)
+	g.Expect(err).NotTo(HaveOccurred())
+	defer func() {
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+	}()
+	body, err := io.ReadAll(res.Body)
+	g.Expect(err).NotTo(HaveOccurred())
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		g.Expect(fmt.Errorf("unexpected status code %d when executing the HTTP request to %s, response body is %s",
+			res.StatusCode,
+			url,
+			string(body),
+		)).ToNot(HaveOccurred())
+	}
+	g.Expect(json.Unmarshal(body, target)).To(Succeed())
+}

@@ -25,6 +25,7 @@ type Images struct {
 	targetAllocator              ImageSpec
 	intelligentEdgeCollector     ImageSpec
 	barker                       ImageSpec
+	agent0Connector              ImageSpec
 }
 
 const (
@@ -37,6 +38,7 @@ const (
 	targetAllocatorImageName              = "target-allocator"
 	intelligentEdgeCollectorImageName     = "intelligent-edge-collector"
 	barkerImageName                       = "barker"
+	agent0ConnectorImageName              = "agent0-connector"
 
 	tagLatest = "latest"
 
@@ -127,6 +129,13 @@ func createContainerImages(repositoryPrefix string, imageTag string, pullPolicy 
 		// so the chart's pinned values flow through.
 		intelligentEdgeCollector: determineExternalContainerImage("INTELLIGENT_EDGE_COLLECTOR"),
 		barker:                   determineExternalContainerImage("BARKER"),
+		agent0Connector: determineContainerImage(
+			"AGENT0_CONNECTOR",
+			repositoryPrefix,
+			agent0ConnectorImageName,
+			imageTag,
+			pullPolicy,
+		),
 	}
 }
 

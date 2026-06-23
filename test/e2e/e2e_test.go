@@ -90,6 +90,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 		determineDash0ApiMockImage()
 		determineDecisionMakerMockImage()
 		determineControlPlaneMockImage()
+		determineOutboundConnectorMockImage()
 		determineTelemetryMatcherImage()
 		determineUrls()
 
@@ -1031,6 +1032,20 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 			})
 
+			It("should not deploy the agent0-connector since the default for agent0Connector.enabled is `false`", func() {
+				agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
+				By("verifying that the agent0-connector deployment does not exist")
+				Expect(runAndIgnoreOutput(
+					exec.Command(
+						"kubectl",
+						"get",
+						"deployment",
+						"--namespace",
+						operatorNamespace,
+						agent0ConnectorDeployment,
+					), false, false, false)).ToNot(Succeed())
+			})
+
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
 		// Dash0 monitoring resource"
 
@@ -1831,6 +1846,111 @@ trace_statements:
 			})
 		}) // end of suite "with the intelligent edge feature enabled"
 	}
+
+	Context("with the agent0-connector enabled", Ordered, func() {
+		const agent0ConnectorDummyToken = "auth_e2e-agent0-connector-dummy-token"
+
+		agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
+
+		BeforeAll(func() {
+			By("installing the outbound-connector mock")
+			installOutboundConnectorMock()
+
+			By("deploying the Dash0 operator with the agent0-connector enabled")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				false,
+				map[string]string{
+					"operator.agent0Connector.enabled":       "true",
+					"operator.agent0Connector.serverAddress": outboundConnectorMockGrpcEndpoint,
+					"operator.agent0Connector.token":         agent0ConnectorDummyToken,
+					"operator.agent0Connector.insecure":      "true",
+				},
+			)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+			uninstallOutboundConnectorMock()
+		})
+
+		It("establishes the command request stream and executes a kubectl command", func() {
+			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
+			pseudoClusterUid, err := run(exec.Command(
+				"kubectl",
+				"get", "namespace", "kube-system",
+				"-o", "jsonpath={.metadata.uid}",
+			), false)
+			Expect(err).ToNot(HaveOccurred())
+			pseudoClusterUid = strings.TrimSpace(pseudoClusterUid)
+			Expect(pseudoClusterUid).ToNot(BeEmpty())
+
+			By("waiting for the agent0-connector deployment to become available")
+			Eventually(func(g Gomega) {
+				g.Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"wait", "--for=condition=Available",
+					"deployment/"+agent0ConnectorDeployment,
+					"--timeout=30s",
+				))).To(Succeed())
+			}, 120*time.Second, 2*time.Second).Should(Succeed())
+
+			By("verifying the agent0-connector subscribes with the expected client ID and authorization token")
+			Eventually(func(g Gomega) {
+				clients := fetchOutboundConnectorMockClients(g)
+				g.Expect(clients).To(HaveLen(1), "expected exactly one connected client, got %v", clients)
+				g.Expect(clients[0].ClientID).To(
+					Equal(pseudoClusterUid),
+					"client ID should be the pseudo cluster UID (kube-system namespace UID)")
+				g.Expect(clients[0].Authorization).To(
+					Equal("Bearer "+agent0ConnectorDummyToken),
+					"authorization should be the Helm-configured token, prefixed with \"Bearer \"")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("triggering a \"kubectl get namespaces\" command request")
+			var requestId string
+			Eventually(func(g Gomega) {
+				requestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"get", "namespaces"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the expected command response is received by the outbound-connector mock")
+			Eventually(func(g Gomega) {
+				responses := fetchOutboundConnectorMockCommandResponses(g)
+				var response *outboundConnectorMockCommandResponse
+				for i := range responses {
+					if responses[i].RequestID == requestId {
+						response = &responses[i]
+						break
+					}
+				}
+				g.Expect(response).ToNot(BeNil(),
+					"expected a command response for request ID %s, got %v", requestId, responses)
+				g.Expect(response.Timeout).To(BeFalse())
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"kubectl get namespaces should succeed; stderr was: %s", response.Stderr)
+				g.Expect(response.Stdout).To(
+					ContainSubstring("kube-system"),
+					"stdout should list the kube-system namespace")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("default"),
+					"stdout should list the default namespace")
+				g.Expect(response.Stdout).To(
+					ContainSubstring(operatorNamespace),
+					"stdout should list the operator namespace")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+		})
+	})
 
 	Context("with an existing operator deployment without an operation configuration resource", func() {
 		BeforeAll(func() {
@@ -3716,4 +3836,5 @@ func determineUrls() {
 	determineDash0ApiMockBaseUrl(port)
 	determineControlPlaneMockBaseUrl(port)
 	determineDecisionMakerMockBaseUrl(port)
+	determineOutboundConnectorMockBaseUrl(port)
 }
