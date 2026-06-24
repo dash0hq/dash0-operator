@@ -453,7 +453,7 @@ func defineCommandLineArguments() *commandLineArguments {
 		&cliArgs.allowlistVersion,
 		"allowlist-version",
 		"",
-		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.3). Used with --allowlist-synchronizer-ready-check.",
+		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.4). Used with --allowlist-synchronizer-ready-check.",
 	)
 	flag.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
