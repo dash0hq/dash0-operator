@@ -2673,6 +2673,34 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(sampling).ToNot(HaveKey("debug"))
 		})
 
+		It("should render the trace reservoir max_disk_bytes and metric_level [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				IntelligentEdge: IntelligentEdgeConfig{
+					Enabled:                       true,
+					SamplingEnabled:               true,
+					SamplingReservoirMaxDiskBytes: 2 * 1024 * 1024 * 1024,
+					SamplingReservoirMetricLevel:  "detailed",
+					Endpoint:                      "decision-maker.example.com:443",
+					ApiEndpoint:                   "https://control-plane-api.dash0.com",
+					Dataset:                       "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			reservoir := sampling["reservoir"].(map[string]interface{})
+			Expect(reservoir["type"]).To(Equal("disk"))
+			Expect(reservoir["data_dir"]).To(Equal("/var/lib/dash0/trace-reservoir"))
+			Expect(reservoir["max_disk_bytes"]).To(BeNumerically("==", int64(2*1024*1024*1024)))
+			Expect(reservoir["metric_level"]).To(Equal("detailed"))
+		})
+
 		It("should render dash0redmetrics as an empty object when no tunables are set [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,

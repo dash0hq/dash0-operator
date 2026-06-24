@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -169,6 +170,42 @@ type SamplingConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	Debug *bool `json:"debug,omitempty"`
+
+	// Configuration for the trace reservoir, the on-disk buffer that holds spans awaiting a sampling
+	// decision. This setting is optional.
+	//
+	// +kubebuilder:validation:Optional
+	Reservoir *ReservoirConfig `json:"reservoir,omitempty"`
+}
+
+// ReservoirMetricLevel controls the verbosity of the trace reservoir's telemetry.
+// +kubebuilder:validation:Enum=basic;detailed
+type ReservoirMetricLevel string
+
+const (
+	ReservoirMetricLevelBasic    ReservoirMetricLevel = "basic"
+	ReservoirMetricLevelDetailed ReservoirMetricLevel = "detailed"
+)
+
+// ReservoirConfig configures the disk-backed trace reservoir of the dash0sampling processor.
+type ReservoirConfig struct {
+	// The maximum total disk usage of the trace reservoir across all shards. When the reservoir exceeds this
+	// limit, the oldest buffered spans are evicted regardless of age. The operator also derives the reservoir
+	// volume's storage size limit and the collector container's ephemeral-storage request from this value, so
+	// that the requested storage always exceeds the reservoir's own cap. This setting is optional, it defaults
+	// to "1Gi". Values below "64Mi" are raised to "64Mi".
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="1Gi"
+	MaxDiskBytes *resource.Quantity `json:"maxDiskBytes,omitempty"`
+
+	// The verbosity of the trace reservoir's telemetry. "basic" records only essential metrics and is
+	// recommended for production. "detailed" records all metrics including histograms and hot-path counters,
+	// useful for load testing or debugging. This setting is optional, it defaults to "basic".
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=basic
+	MetricLevel *ReservoirMetricLevel `json:"metricLevel,omitempty"`
 }
 
 // RedMetricsConfig configures the dash0redmetrics connector.

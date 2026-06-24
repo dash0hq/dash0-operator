@@ -1110,6 +1110,8 @@ processors:
     reservoir:
       type: disk
       data_dir: /var/lib/dash0/trace-reservoir
+      max_disk_bytes: {{ .IntelligentEdge.SamplingReservoirMaxDiskBytes }}
+      metric_level: {{ .IntelligentEdge.SamplingReservoirMetricLevel }}
 {{- end }}
 {{- end }}
 
