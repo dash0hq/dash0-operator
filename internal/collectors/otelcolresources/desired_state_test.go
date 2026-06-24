@@ -14,6 +14,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -382,6 +383,74 @@ func multipleDefaultAndMultipleNamespacedExporters() otlpExporters {
 }
 
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
+	It("should derive the trace reservoir storage size limit and ephemeral-storage request from max disk bytes", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			IntelligentEdge: IntelligentEdgeConfig{
+				Enabled:                       true,
+				SamplingEnabled:               true,
+				SamplingReservoirMaxDiskBytes: 1024 * 1024 * 1024, // 1Gi -> derived 1280Mi (x1.25)
+				SamplingReservoirMetricLevel:  "basic",
+				Endpoint:                      "decision-maker.example.com:443",
+				ApiEndpoint:                   "https://control-plane-api.dash0.com",
+				Dataset:                       "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		Expect(daemonSet).NotTo(BeNil())
+		daemonSetPodSpec := daemonSet.Spec.Template.Spec
+
+		reservoirVolume := FindVolumeByName(daemonSetPodSpec.Volumes, "trace-reservoir")
+		Expect(reservoirVolume).NotTo(BeNil())
+		Expect(reservoirVolume.VolumeSource.EmptyDir).NotTo(BeNil())
+		Expect(reservoirVolume.VolumeSource.EmptyDir.SizeLimit).NotTo(BeNil())
+		Expect(reservoirVolume.VolumeSource.EmptyDir.SizeLimit.String()).To(Equal("1280Mi"))
+
+		collectorContainer := daemonSetPodSpec.Containers[0]
+		Expect(collectorContainer.Name).To(Equal("opentelemetry-collector"))
+		Expect(collectorContainer.Resources.Requests.StorageEphemeral().String()).To(Equal("1280Mi"))
+	})
+
+	It("should not override an explicit ephemeral-storage request", func() {
+		extraConfig := util.ExtraConfigDefaults
+		extraConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{
+			Limits: util.ExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources.Limits,
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory:           resource.MustParse("500Mi"),
+				corev1.ResourceEphemeralStorage: resource.MustParse("5Gi"),
+			},
+			GoMemLimit: util.ExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources.GoMemLimit,
+		}
+
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			IntelligentEdge: IntelligentEdgeConfig{
+				Enabled:                       true,
+				SamplingEnabled:               true,
+				SamplingReservoirMaxDiskBytes: 1024 * 1024 * 1024,
+				SamplingReservoirMetricLevel:  "basic",
+				Endpoint:                      "decision-maker.example.com:443",
+				ApiEndpoint:                   "https://control-plane-api.dash0.com",
+				Dataset:                       "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, extraConfig)
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		collectorContainer := daemonSet.Spec.Template.Spec.Containers[0]
+		Expect(collectorContainer.Resources.Requests.StorageEphemeral().String()).To(Equal("5Gi"))
+	})
+
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
