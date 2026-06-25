@@ -47,4 +47,4 @@ This mode is activated by starting with `--mode=init`.
 Note that config maps are limited to 1 MB in size.
 For clusters with a lot of pods, we might run into this limit.
 Please use `operator.collectors.filelogOffsetSyncStorageVolume` for those clusters, see
-https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#providing-a-filelog-offset-volume.
+https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/ADVANCED-CONFIGURATION.md#providing-a-filelog-offset-volume.

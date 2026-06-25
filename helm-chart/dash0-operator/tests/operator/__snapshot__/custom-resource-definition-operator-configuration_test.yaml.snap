@@ -1200,6 +1200,30 @@ custom resource definition for operator configuration should match snapshot:
                                 Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
                                 for workload instrumentation.
                               properties:
+                                captureSqlQueryParameters:
+                                  description: |-
+                                    If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
+                                    this covers the OpenTelemetry Java agent's JDBC instrumentation and the OpenTelemetry .NET auto-instrumentation
+                                    for Microsoft.Data.SqlClient and Entity Framework Core, by adding the following environment variables (all set to
+                                    "true") to instrumented containers:
+                                      - OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS
+                                      - OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS
+                                      - OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS
+                                    Recorded query parameter values are added to the resulting database span attributes. Other language agents ignore
+                                    these variables.
+
+                                    If a container already has one of these environment variables set to a value other than "true", the existing value
+                                    is preserved.
+
+                                    Note: These are experimental upstream OpenTelemetry agent flags and may be renamed or removed in future agent
+                                    releases. Recorded query parameter values may include sensitive data such as personally identifiable information
+                                    (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
+
+                                    By default, the value is not set and the environment variables will not be added to workloads. If this option is
+                                    set to true at some point and then later set to false or removed, the operator will remove each environment
+                                    variable from instrumented workloads if and only if its current value still matches what the operator would have
+                                    set ("true").
+                                  type: boolean
                                 labelSelector:
                                   default: dash0.com/enable!=false
                                   description: |-
@@ -1336,7 +1360,7 @@ custom resource definition for operator configuration should match snapshot:
                               description: |-
                                 If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
                                 dashboards in Dash0 via the Dash0 API.
-                                See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+                                See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-dashboards-with-the-operator
                                 for details. This setting is optional, it defaults to `true`.
                               type: boolean
                             synchronizePrometheusRules:
@@ -1344,7 +1368,7 @@ custom resource definition for operator configuration should match snapshot:
                               description: |-
                                 If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
                                 rules in Dash0 via the Dash0 API.
-                                See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+                                See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-check-rules-with-the-operator
                                 for details. This setting is optional, it defaults to `true`.
                               type: boolean
                             transform:
@@ -2158,9 +2182,34 @@ custom resource definition for operator configuration should match snapshot:
                                 Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
                                 the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
                                 when they are updated.
+
                                 Note: There are also instrumentWorkloads in the Dash0 operator configuration resource, for cluster-wide settings
                                 for workload instrumentation.
                               properties:
+                                captureSqlQueryParameters:
+                                  description: |-
+                                    If set to true, the operator enables SQL query parameter capture in the language agents that support it. Currently
+                                    this covers the OpenTelemetry Java agent's JDBC instrumentation and the OpenTelemetry .NET auto-instrumentation
+                                    for Microsoft.Data.SqlClient and Entity Framework Core, by adding the following environment variables (all set to
+                                    "true") to instrumented containers:
+                                      - OTEL_INSTRUMENTATION_JDBC_EXPERIMENTAL_CAPTURE_QUERY_PARAMETERS
+                                      - OTEL_DOTNET_EXPERIMENTAL_SQLCLIENT_ENABLE_TRACE_DB_QUERY_PARAMETERS
+                                      - OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS
+                                    Recorded query parameter values are added to the resulting database span attributes. Other language agents ignore
+                                    these variables.
+
+                                    If a container already has one of these environment variables set to a value other than "true", the existing value
+                                    is preserved.
+
+                                    Note: These are experimental upstream OpenTelemetry agent flags and may be renamed or removed in future agent
+                                    releases. Recorded query parameter values may include sensitive data such as personally identifiable information
+                                    (PII), so enable this only for namespaces where capturing query parameter values is acceptable.
+
+                                    By default, the value is not set and the environment variables will not be added to workloads. If this option is
+                                    set to true at some point and then later set to false or removed, the operator will remove each environment
+                                    variable from instrumented workloads if and only if its current value still matches what the operator would have
+                                    set ("true").
+                                  type: boolean
                                 labelSelector:
                                   default: dash0.com/enable!=false
                                   description: |-
@@ -2297,7 +2346,7 @@ custom resource definition for operator configuration should match snapshot:
                               description: |-
                                 If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
                                 dashboards in Dash0 via the Dash0 API.
-                                See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+                                See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-dashboards-with-the-operator
                                 for details. This setting is optional, it defaults to `true`.
                               type: boolean
                             synchronizePrometheusRules:
@@ -2305,7 +2354,7 @@ custom resource definition for operator configuration should match snapshot:
                               description: |-
                                 If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
                                 rules in Dash0 via the Dash0 API.
-                                See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+                                See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-check-rules-with-the-operator
                                 for details. This setting is optional, it defaults to `true`.
                               type: boolean
                             transform:

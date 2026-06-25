@@ -196,7 +196,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       as resource attributes.
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `COLLECTOR_ENABLE_PPROF`: Set to "true" to enable the pprof extension in the collector containers.
-      See <helm-chart/dash0-operator/README.md#create-heap-profiles> for instructions for creating heap profiles.
+      See <helm-chart/dash0-operator/docs/TROUBLESHOOTING.md#create-heap-profiles> for instructions for creating heap profiles.
     * `DASH0_API_ENDPOINT`: The endpoint for API requests (for synchronizing Perses dashboards, Prometheus check rules,
       synthetic checks and views). It is recommended to set this in `test-resources/.env`.
     * `DASH0_AUTHORIZATION_TOKEN`: The authorization token for sending telemetry to the Dash0 ingress endpoint and
@@ -270,7 +270,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `OPERATOR_HELM_CHART`: The name of the Helm chart to use for deploying the operator. Defaults to the local Helm
       chart sources in `helm-chart/dash0-operator`.
     * `OPERATOR_MANAGER_PPROF_PORT`: Set this to a numeric value to enable pprof in the operator manager container.
-      See <helm-chart/dash0-operator/README.md#create-heap-profiles> for instructions for creating heap profiles.
+      See <helm-chart/dash0-operator/docs/TROUBLESHOOTING.md#create-heap-profiles> for instructions for creating heap profiles.
     * `OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED`: Add a debug exporter to the OTel collectors with `verbosity: detailed`.
     * `OTEL_COLLECTOR_SEND_BATCH_SIZE`: Set the `send_batch_size` parameter of the batch processor of the collectors
       managed by the operator. There is usually no need to configure this. The default value used by the batch processor
@@ -280,7 +280,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       equal to 8192, which is the default value for `send_batch_size`.
     * `PROFILING_ENABLED`: Set this to "true" to enable profiling data pipelines in the operator's OpenTelemetry
       collectors. When enabled, the daemonset collector will accept, process, and export OTLP profiles data.
-      See <helm-chart/dash0-operator/README.md#profiling> for more details.
+      See <helm-chart/dash0-operator/PROFILING.md#profiling> for more details.
       This defaults to "false".
     * `PROMETHEUS_SCRAPING_ENABLED`: Set this to "false" to disable Prometheus scraping in the test namespace via the
       monitoring resource.
