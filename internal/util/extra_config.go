@@ -43,6 +43,11 @@ type ExtraConfig struct {
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources"`
 	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources"`
 
+	CollectorDaemonSetLabels         map[string]string `json:"collectorDaemonSetLabels,omitempty"`
+	CollectorDaemonSetAnnotations    map[string]string `json:"collectorDaemonSetAnnotations,omitempty"`
+	CollectorDaemonSetPodLabels      map[string]string `json:"collectorDaemonSetPodLabels,omitempty"`
+	CollectorDaemonSetPodAnnotations map[string]string `json:"collectorDaemonSetPodAnnotations,omitempty"`
+
 	DaemonSetTolerations  []corev1.Toleration  `json:"daemonSetTolerations,omitempty"`
 	DaemonSetNodeAffinity *corev1.NodeAffinity `json:"daemonSetNodeAffinity,omitempty"`
 
@@ -54,6 +59,11 @@ type ExtraConfig struct {
 
 	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources"`
 	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources"`
+
+	CollectorDeploymentLabels         map[string]string `json:"collectorDeploymentLabels,omitempty"`
+	CollectorDeploymentAnnotations    map[string]string `json:"collectorDeploymentAnnotations,omitempty"`
+	CollectorDeploymentPodLabels      map[string]string `json:"collectorDeploymentPodLabels,omitempty"`
+	CollectorDeploymentPodAnnotations map[string]string `json:"collectorDeploymentPodAnnotations,omitempty"`
 
 	DeploymentTolerations  []corev1.Toleration  `json:"deploymentTolerations,omitempty"`
 	DeploymentNodeAffinity *corev1.NodeAffinity `json:"deploymentNodeAffinity,omitempty"`
@@ -68,6 +78,10 @@ type ExtraConfig struct {
 	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
 	TargetAllocatorMtlsClientCertSecretName string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
 	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
+	TargetAllocatorLabels                   map[string]string                  `json:"targetAllocatorLabels,omitempty"`
+	TargetAllocatorAnnotations              map[string]string                  `json:"targetAllocatorAnnotations,omitempty"`
+	TargetAllocatorPodLabels                map[string]string                  `json:"targetAllocatorPodLabels,omitempty"`
+	TargetAllocatorPodAnnotations           map[string]string                  `json:"targetAllocatorPodAnnotations,omitempty"`
 	TargetAllocatorTolerations              []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
 	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 

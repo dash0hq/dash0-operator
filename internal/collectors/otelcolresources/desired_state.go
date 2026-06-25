@@ -759,9 +759,10 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 	collectorDaemonSet := &appsv1.DaemonSet{
 		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      daemonSetName,
-			Namespace: config.OperatorNamespace,
-			Labels:    labels(true),
+			Name:        daemonSetName,
+			Namespace:   config.OperatorNamespace,
+			Labels:      util.MergeMaps(labels(true), extraConfig.CollectorDaemonSetLabels),
+			Annotations: util.MergeMaps(nil, extraConfig.CollectorDaemonSetAnnotations),
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
@@ -772,7 +773,8 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: templateLabels,
+					Labels:      util.MergeMaps(templateLabels, extraConfig.CollectorDaemonSetPodLabels),
+					Annotations: util.MergeMaps(nil, extraConfig.CollectorDaemonSetPodAnnotations),
 				},
 				Spec: podSpec,
 			},
@@ -1599,9 +1601,10 @@ func assembleCollectorDeployment(
 	collectorDeployment := &appsv1.Deployment{
 		TypeMeta: util.K8sTypeMetaDeployment,
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      deploymentName,
-			Namespace: config.OperatorNamespace,
-			Labels:    labels(true),
+			Name:        deploymentName,
+			Namespace:   config.OperatorNamespace,
+			Labels:      util.MergeMaps(labels(true), extraConfig.CollectorDeploymentLabels),
+			Annotations: util.MergeMaps(nil, extraConfig.CollectorDeploymentAnnotations),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &deploymentReplicas,
@@ -1613,7 +1616,8 @@ func assembleCollectorDeployment(
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: templateLabels,
+					Labels:      util.MergeMaps(templateLabels, extraConfig.CollectorDeploymentPodLabels),
+					Annotations: util.MergeMaps(nil, extraConfig.CollectorDeploymentPodAnnotations),
 				},
 				Spec: podSpec,
 			},
