@@ -293,7 +293,7 @@ operator:
 
 ### Adding Custom Labels and Annotations to the Collector Resources
 
-Additional labels and annotations can be added to the collector resources and the target-allocator resource managed by the operator, both to the workload objects (the daemonset and the deployments) and to their pods.
+Additional labels and annotations can be added to the collector resources, the target-allocator resource, and the agent0-connector resource managed by the operator, both to the workload objects (the daemonset and the deployments) and to their pods.
 These are merged with the labels and annotations the operator sets itself; the operator-managed entries always take precedence, so they cannot be overridden.
 
 ```yaml
@@ -321,6 +321,18 @@ operator:
 
   targetAllocator:
     # labels/annotations for the target-allocator deployment
+    labels:
+      my-label: my-value
+    annotations:
+      my-annotation: my-value
+    podLabels:
+      my-pod-label: my-value
+    podAnnotations:
+      my-pod-annotation: my-value
+
+  agent0Connector:
+    enabled: true
+    # [... other settings like serverAddress etc.]
     labels:
       my-label: my-value
     annotations:
