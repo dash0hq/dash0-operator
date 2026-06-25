@@ -686,6 +686,46 @@ tests:
           path: data['extra.yaml']
           pattern: targetAllocatorPodAnnotations
 
+  - it: should render agent0-connector labels and annotations when set
+    set:
+      operator:
+        agent0Connector:
+          labels:
+            a0c-label: a0c-label-value
+          annotations:
+            a0c-annotation: a0c-annotation-value
+          podLabels:
+            a0c-pod-label: a0c-pod-label-value
+          podAnnotations:
+            a0c-pod-annotation: a0c-pod-annotation-value
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorLabels:
+              a0c-label: a0c-label-value
+            agent0ConnectorAnnotations:
+              a0c-annotation: a0c-annotation-value
+            agent0ConnectorPodLabels:
+              a0c-pod-label: a0c-pod-label-value
+            agent0ConnectorPodAnnotations:
+              a0c-pod-annotation: a0c-pod-annotation-value
+
+  - it: should not render agent0-connector labels and annotations by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorLabels
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorAnnotations
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorPodLabels
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorPodAnnotations
+
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
   - it: should render custom resource settings from legacy paths

@@ -89,6 +89,11 @@ type ExtraConfig struct {
 	BarkerTolerations        []corev1.Toleration                `json:"barkerTolerations,omitempty"`
 	BarkerNodeAffinity       *corev1.NodeAffinity               `json:"barkerNodeAffinity,omitempty"`
 
+	Agent0ConnectorLabels         map[string]string `json:"agent0ConnectorLabels,omitempty"`
+	Agent0ConnectorAnnotations    map[string]string `json:"agent0ConnectorAnnotations,omitempty"`
+	Agent0ConnectorPodLabels      map[string]string `json:"agent0ConnectorPodLabels,omitempty"`
+	Agent0ConnectorPodAnnotations map[string]string `json:"agent0ConnectorPodAnnotations,omitempty"`
+
 	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
 	// dependencies. We should revisit how to untangle this.
 	MonitoringTemplateRaw *json.RawMessage `json:"monitoringTemplate,omitempty"`

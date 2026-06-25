@@ -46,12 +46,16 @@ type clientObject struct {
 	object client.Object
 }
 
-func assembleDesiredState(config *util.Agent0ConnectorConfig, authTokenEnvVar *corev1.EnvVar) []clientObject {
+func assembleDesiredState(
+	config *util.Agent0ConnectorConfig,
+	authTokenEnvVar *corev1.EnvVar,
+	extraConfig util.ExtraConfig,
+) []clientObject {
 	desiredState := make([]clientObject, 0, 4)
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccount(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBinding(config)))
-	desiredState = append(desiredState, addCommonMetadata(assembleDeployment(config, authTokenEnvVar)))
+	desiredState = append(desiredState, addCommonMetadata(assembleDeployment(config, authTokenEnvVar, extraConfig)))
 	return desiredState
 }
 
@@ -135,7 +139,11 @@ func assembleClusterRoleBinding(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRo
 	}
 }
 
-func assembleDeployment(c *util.Agent0ConnectorConfig, authTokenEnvVar *corev1.EnvVar) *appsv1.Deployment {
+func assembleDeployment(
+	c *util.Agent0ConnectorConfig,
+	authTokenEnvVar *corev1.EnvVar,
+	extraConfig util.ExtraConfig,
+) *appsv1.Deployment {
 	replicas := int32(1)
 
 	container := corev1.Container{
@@ -235,9 +243,10 @@ func assembleDeployment(c *util.Agent0ConnectorConfig, authTokenEnvVar *corev1.E
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DeploymentName(c.NamePrefix),
-			Namespace: c.OperatorNamespace,
-			Labels:    labels(),
+			Name:        DeploymentName(c.NamePrefix),
+			Namespace:   c.OperatorNamespace,
+			Labels:      util.MergeMaps(labels(), extraConfig.Agent0ConnectorLabels),
+			Annotations: util.MergeMaps(nil, extraConfig.Agent0ConnectorAnnotations),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -246,7 +255,8 @@ func assembleDeployment(c *util.Agent0ConnectorConfig, authTokenEnvVar *corev1.E
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels(),
+					Labels:      util.MergeMaps(labels(), extraConfig.Agent0ConnectorPodLabels),
+					Annotations: util.MergeMaps(nil, extraConfig.Agent0ConnectorPodAnnotations),
 				},
 				Spec: podSpec,
 			},

@@ -1145,3 +1145,15 @@ operator:
     # Disables TLS for the agent0-connector workload's connection to the Dash0 backend, connecting via plaintext
     # instead. This is only intended for local development.
     insecure: false
+
+    # Additional labels to be set on the agent0-connector deployment managed by the operator.
+    labels: {}
+
+    # Additional annotations to be set on the agent0-connector deployment managed by the operator.
+    annotations: {}
+
+    # Additional labels to be set on the agent0-connector deployment pods managed by the operator.
+    podLabels: {}
+
+    # Additional annotations to be set on the agent0-connector deployment pods managed by the operator.
+    podAnnotations: {}

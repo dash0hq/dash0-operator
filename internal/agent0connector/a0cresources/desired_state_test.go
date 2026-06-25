@@ -52,7 +52,7 @@ func testConfig() *util.Agent0ConnectorConfig {
 
 var _ = Describe("The desired state of the agent0-connector resources", func() {
 	It("renders exactly the expected set of resources with the expected names", func() {
-		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar)
+		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 
 		Expect(desiredState).To(HaveLen(4))
 		Expect(getServiceAccount(desiredState).Name).To(Equal(testNamePrefix + "-agent0-connector-sa"))
@@ -63,14 +63,14 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 	})
 
 	It("deploys the namespaced resources into the operator namespace", func() {
-		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar)
+		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 
 		Expect(getServiceAccount(desiredState).Namespace).To(Equal(testOperatorNamespace))
 		Expect(getDeployment(desiredState).Namespace).To(Equal(testOperatorNamespace))
 	})
 
 	It("adds the ArgoCD prune/compare annotations to all resources", func() {
-		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar)
+		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 
 		for _, wrapper := range desiredState {
 			annotations := wrapper.object.GetAnnotations()
@@ -81,7 +81,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 
 	Describe("the cluster role", func() {
 		It("grants cluster-wide read-only access and no write access", func() {
-			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar))
+			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
 			Expect(clusterRole.Rules).ToNot(BeEmpty())
 			for _, rule := range clusterRole.Rules {
@@ -99,7 +99,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("covers all resources in all API groups plus non-resource URLs", func() {
-			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar))
+			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
 			hasResourceWildcard := false
 			hasNonResourceURLs := false
@@ -120,7 +120,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 	})
 
 	It("binds the cluster role to the agent0-connector service account", func() {
-		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar)
+		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 		clusterRoleBinding := getClusterRoleBinding(desiredState)
 
 		Expect(clusterRoleBinding.RoleRef.Kind).To(Equal("ClusterRole"))
@@ -133,7 +133,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 
 	Describe("the deployment", func() {
 		It("uses the configured image, pull policy, and service account", func() {
-			desiredState := assembleDesiredState(testConfig(), authTokenEnvVar)
+			desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 			deployment := getDeployment(desiredState)
 
 			Expect(*deployment.Spec.Replicas).To(Equal(int32(1)))
@@ -145,18 +145,18 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("passes the pseudo cluster UID as the K8S_CLUSTER_UID environment variable", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar)).Spec.Template.Spec.Containers[0]
+			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "K8S_CLUSTER_UID", Value: testPseudoClusterUid}))
 		})
 
 		It("passes the server address as the DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS environment variable", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar)).Spec.Template.Spec.Containers[0]
+			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS", Value: Agent0ConnectorServerAddress}))
 		})
 
 		It("does not set the DASH0_AGENT0_CONNECTOR_INSECURE environment variable by default", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar)).Spec.Template.Spec.Containers[0]
+			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
 			for _, envVar := range container.Env {
 				Expect(envVar.Name).ToNot(Equal("DASH0_AGENT0_CONNECTOR_INSECURE"))
 			}
@@ -165,20 +165,20 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		It("sets DASH0_AGENT0_CONNECTOR_INSECURE when TLS is disabled", func() {
 			config := testConfig()
 			config.Insecure = true
-			container := getDeployment(assembleDesiredState(config, authTokenEnvVar)).Spec.Template.Spec.Containers[0]
+			container := getDeployment(assembleDesiredState(config, authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_INSECURE", Value: "true"}))
 		})
 
 		It("does not set the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN environment variable when no authorization is configured", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), nil)).Spec.Template.Spec.Containers[0]
+			container := getDeployment(assembleDesiredState(testConfig(), nil, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
 			for _, envVar := range container.Env {
 				Expect(envVar.Name).ToNot(Equal("DASH0_AGENT0_CONNECTOR_AUTH_TOKEN"))
 			}
 		})
 
 		It("mounts a writable tmp volume for kubectl's cache", func() {
-			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar)).Spec.Template.Spec
+			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec
 			container := podSpec.Containers[0]
 			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "DASH0_KUBECTL_TMP", Value: "/tmp"}))
 			Expect(container.VolumeMounts).To(ContainElement(corev1.VolumeMount{Name: "tmp", MountPath: "/tmp"}))
@@ -189,7 +189,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("applies a restrictive container security context", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar)).Spec.Template.Spec.Containers[0]
+			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
 			sc := container.SecurityContext
 			Expect(sc).ToNot(BeNil())
 			Expect(*sc.AllowPrivilegeEscalation).To(BeFalse())
@@ -200,13 +200,41 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("applies a restrictive pod security context", func() {
-			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar)).Spec.Template.Spec
+			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec
 			sc := podSpec.SecurityContext
 			Expect(sc).ToNot(BeNil())
 			Expect(*sc.RunAsNonRoot).To(BeTrue())
 			Expect(*sc.RunAsUser).To(Equal(int64(65532)))
 			Expect(*sc.RunAsGroup).To(Equal(int64(0)))
 			Expect(sc.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+		})
+
+		It("renders additional labels and annotations on the workload and the pods", func() {
+			deployment := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
+				Agent0ConnectorLabels:         map[string]string{"a0c-label": "a0c-label-value"},
+				Agent0ConnectorAnnotations:    map[string]string{"a0c-annotation": "a0c-annotation-value"},
+				Agent0ConnectorPodLabels:      map[string]string{"a0c-pod-label": "a0c-pod-label-value"},
+				Agent0ConnectorPodAnnotations: map[string]string{"a0c-pod-annotation": "a0c-pod-annotation-value"},
+			}))
+
+			Expect(deployment.ObjectMeta.Labels).To(HaveKeyWithValue("a0c-label", "a0c-label-value"))
+			// operator-managed labels are still present
+			Expect(deployment.ObjectMeta.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
+			Expect(deployment.ObjectMeta.Annotations).To(HaveKeyWithValue("a0c-annotation", "a0c-annotation-value"))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("a0c-pod-label", "a0c-pod-label-value"))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
+			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("a0c-pod-annotation", "a0c-pod-annotation-value"))
+		})
+
+		It("does not let additional labels override operator-managed labels", func() {
+			deployment := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
+				Agent0ConnectorLabels:    map[string]string{util.AppKubernetesIoNameLabel: "custom-value"},
+				Agent0ConnectorPodLabels: map[string]string{util.AppKubernetesIoNameLabel: "custom-value"},
+			}))
+
+			// the operator-managed value wins over the additional label
+			Expect(deployment.ObjectMeta.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
 		})
 	})
 })
