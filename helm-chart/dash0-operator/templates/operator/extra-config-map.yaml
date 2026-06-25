@@ -51,6 +51,22 @@ data:
               .Values.operator.collectors.daemonSetFileLogOffsetSyncContainerResources
               .Values.operator.collectorDaemonSetFileLogOffsetSyncContainerResources
           ) | nindent 6 }}
+{{- if .Values.operator.collectors.daemonSetLabels }}
+    collectorDaemonSetLabels:
+      {{- toYaml .Values.operator.collectors.daemonSetLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.daemonSetAnnotations }}
+    collectorDaemonSetAnnotations:
+      {{- toYaml .Values.operator.collectors.daemonSetAnnotations | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.daemonSetPodLabels }}
+    collectorDaemonSetPodLabels:
+      {{- toYaml .Values.operator.collectors.daemonSetPodLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.daemonSetPodAnnotations }}
+    collectorDaemonSetPodAnnotations:
+      {{- toYaml .Values.operator.collectors.daemonSetPodAnnotations | nindent 6 }}
+{{- end }}
     daemonSetTolerations:
       {{- toYaml .Values.operator.collectors.daemonSetTolerations | nindent 6 }}
     daemonSetNodeAffinity:
@@ -76,6 +92,22 @@ data:
               .Values.operator.collectors.deploymentConfigurationReloaderContainerResources
               .Values.operator.collectorDeploymentConfigurationReloaderContainerResources
           ) | nindent 6 }}
+{{- if .Values.operator.collectors.deploymentLabels }}
+    collectorDeploymentLabels:
+      {{- toYaml .Values.operator.collectors.deploymentLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.deploymentAnnotations }}
+    collectorDeploymentAnnotations:
+      {{- toYaml .Values.operator.collectors.deploymentAnnotations | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.deploymentPodLabels }}
+    collectorDeploymentPodLabels:
+      {{- toYaml .Values.operator.collectors.deploymentPodLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.deploymentPodAnnotations }}
+    collectorDeploymentPodAnnotations:
+      {{- toYaml .Values.operator.collectors.deploymentPodAnnotations | nindent 6 }}
+{{- end }}
     deploymentTolerations:
       {{- toYaml .Values.operator.collectors.deploymentTolerations | nindent 6 }}
     deploymentNodeAffinity:
@@ -97,6 +129,22 @@ data:
     targetAllocatorMtlsClientCertSecretName: {{ .Values.operator.targetAllocator.mTls.clientCertSecretName | quote }}
     targetAllocatorContainerResources:
       {{- toYaml .Values.operator.targetAllocator.containerResources | nindent 6 }}
+{{- if .Values.operator.targetAllocator.labels }}
+    targetAllocatorLabels:
+      {{- toYaml .Values.operator.targetAllocator.labels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.targetAllocator.annotations }}
+    targetAllocatorAnnotations:
+      {{- toYaml .Values.operator.targetAllocator.annotations | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.targetAllocator.podLabels }}
+    targetAllocatorPodLabels:
+      {{- toYaml .Values.operator.targetAllocator.podLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.targetAllocator.podAnnotations }}
+    targetAllocatorPodAnnotations:
+      {{- toYaml .Values.operator.targetAllocator.podAnnotations | nindent 6 }}
+{{- end }}
     targetAllocatorTolerations:
       {{- toYaml .Values.operator.targetAllocator.tolerations | nindent 6 }}
     targetAllocatorNodeAffinity:

@@ -587,6 +587,105 @@ tests:
           path: data['extra.yaml']
           pattern: deploymentSysctls
 
+  - it: should render collector labels and annotations when set
+    set:
+      operator:
+        collectors:
+          daemonSetLabels:
+            ds-label: ds-label-value
+          daemonSetAnnotations:
+            ds-annotation: ds-annotation-value
+          daemonSetPodLabels:
+            ds-pod-label: ds-pod-label-value
+          daemonSetPodAnnotations:
+            ds-pod-annotation: ds-pod-annotation-value
+          deploymentLabels:
+            deploy-label: deploy-label-value
+          deploymentAnnotations:
+            deploy-annotation: deploy-annotation-value
+          deploymentPodLabels:
+            deploy-pod-label: deploy-pod-label-value
+          deploymentPodAnnotations:
+            deploy-pod-annotation: deploy-pod-annotation-value
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            collectorDaemonSetLabels:
+              ds-label: ds-label-value
+            collectorDaemonSetAnnotations:
+              ds-annotation: ds-annotation-value
+            collectorDaemonSetPodLabels:
+              ds-pod-label: ds-pod-label-value
+            collectorDaemonSetPodAnnotations:
+              ds-pod-annotation: ds-pod-annotation-value
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            collectorDeploymentLabels:
+              deploy-label: deploy-label-value
+            collectorDeploymentAnnotations:
+              deploy-annotation: deploy-annotation-value
+            collectorDeploymentPodLabels:
+              deploy-pod-label: deploy-pod-label-value
+            collectorDeploymentPodAnnotations:
+              deploy-pod-annotation: deploy-pod-annotation-value
+
+  - it: should not render collector labels and annotations by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: collectorDaemonSetLabels
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: collectorDaemonSetAnnotations
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: collectorDeploymentLabels
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: collectorDeploymentAnnotations
+
+  - it: should render target-allocator labels and annotations when set
+    set:
+      operator:
+        targetAllocator:
+          labels:
+            ta-label: ta-label-value
+          annotations:
+            ta-annotation: ta-annotation-value
+          podLabels:
+            ta-pod-label: ta-pod-label-value
+          podAnnotations:
+            ta-pod-annotation: ta-pod-annotation-value
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            targetAllocatorLabels:
+              ta-label: ta-label-value
+            targetAllocatorAnnotations:
+              ta-annotation: ta-annotation-value
+            targetAllocatorPodLabels:
+              ta-pod-label: ta-pod-label-value
+            targetAllocatorPodAnnotations:
+              ta-pod-annotation: ta-pod-annotation-value
+
+  - it: should not render target-allocator labels and annotations by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: targetAllocatorLabels
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: targetAllocatorAnnotations
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: targetAllocatorPodLabels
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: targetAllocatorPodAnnotations
+
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
   - it: should render custom resource settings from legacy paths
