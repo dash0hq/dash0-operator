@@ -44,6 +44,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/allowlistreadycheck"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
@@ -1679,7 +1680,7 @@ func startDash0Controllers(
 	}
 
 	setupLog.Info("Creating the self-monitoring OTel SDK starter.")
-	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
+	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper, common.NewDefaultExporterFactory())
 
 	setupLog.Info("Creating the operator configuration resource reconciler.")
 	apiClients := []controller.ApiClient{

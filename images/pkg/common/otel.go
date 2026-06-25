@@ -183,10 +183,38 @@ func createLogExporterFromProtocolEnvVar(ctx context.Context, protocol string) s
 	return logExporter
 }
 
+// ExporterFactory creates the metric and log exporters used by InitOTelSdkWithConfig. The production code uses the
+// default OTLP-based implementation (see NewDefaultExporterFactory). Tests can inject an alternative factory (e.g. a
+// no-op exporter) to avoid network I/O and the blocking shutdown that happens when the actual OTLP gRPC exporters try
+// (and fail) to flush telemetry to an unreachable test endpoint.
+type ExporterFactory interface {
+	CreateMetricExporter(ctx context.Context, oTelSdkConfig *OTelSdkConfig) sdkmetric.Exporter
+	CreateLogExporter(ctx context.Context, oTelSdkConfig *OTelSdkConfig) sdklog.Exporter
+}
+
+type otlpExporterFactory struct{}
+
+func (otlpExporterFactory) CreateMetricExporter(ctx context.Context, oTelSdkConfig *OTelSdkConfig) sdkmetric.Exporter {
+	return createMetricExporterFromConfig(ctx, oTelSdkConfig)
+}
+
+func (otlpExporterFactory) CreateLogExporter(ctx context.Context, oTelSdkConfig *OTelSdkConfig) sdklog.Exporter {
+	return createLogExporterFromConfig(ctx, oTelSdkConfig)
+}
+
+var defaultExporterFactory ExporterFactory = otlpExporterFactory{}
+
+// NewDefaultExporterFactory returns the production ExporterFactory, which creates real OTLP gRPC/HTTP exporters from
+// the given configuration.
+func NewDefaultExporterFactory() ExporterFactory {
+	return defaultExporterFactory
+}
+
 func InitOTelSdkWithConfig(
 	ctx context.Context,
 	meterName string,
 	oTelSdkConfig *OTelSdkConfig,
+	exporterFactory ExporterFactory,
 ) (*otelzap.Core, otelmetric.Meter) {
 	// InitOTelSdkWithConfig is used in the operator manager process. Depending on changes to the operator configuration
 	// resource (in particular, spec.selfMonitoring.enabled and the export config), the OTel SDK might need to be
@@ -197,13 +225,17 @@ func InitOTelSdkWithConfig(
 		oTelSdkMutex.Unlock()
 	}()
 
+	if exporterFactory == nil {
+		exporterFactory = defaultExporterFactory
+	}
+
 	if oTelSdkConfig.Endpoint != "" {
 		// We currently ignore the log level from the config, setting a log level is cumbersome with OTel Go SDK.
 		// Would need to be a new logger with the correct level.
 		// otel.SetLogger(logger)
 
-		metricExporter := createMetricExporterFromConfig(ctx, oTelSdkConfig)
-		logExporter := createLogExporterFromConfig(ctx, oTelSdkConfig)
+		metricExporter := exporterFactory.CreateMetricExporter(ctx, oTelSdkConfig)
+		logExporter := exporterFactory.CreateLogExporter(ctx, oTelSdkConfig)
 
 		resourceAttributes := assembleResource(
 			ctx,

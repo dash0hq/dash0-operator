@@ -1315,7 +1315,7 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 		k8sClient, clientset, util.ExtraConfigDefaults, false, targetallocatorResourceManager,
 	)
 	delegatingZapCoreWrapper := zaputil.NewDelegatingZapCoreWrapper()
-	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
+	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper, NewNoopExporterFactory())
 
 	operatorConfigurationReconciler := NewOperatorConfigurationReconciler(
 		k8sClient,
