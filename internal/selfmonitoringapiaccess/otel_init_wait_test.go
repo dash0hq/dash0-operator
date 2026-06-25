@@ -41,7 +41,7 @@ var _ = Describe(
 
 		It(
 			"should start with empty values", func() {
-				oTelSdkStarter := NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper())
+				oTelSdkStarter := NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper(), NewNoopExporterFactory())
 				Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
 				Expect(*oTelSdkStarter.oTelSdkConfigInput.Load()).To(Equal(OTelSdkConfigInput{}))
 				Expect(oTelSdkStarter.activeOTelSdkConfig.Load()).To(BeNil())
@@ -55,7 +55,7 @@ var _ = Describe(
 
 				BeforeEach(
 					func() {
-						oTelSdkStarter = NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper())
+						oTelSdkStarter = NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper(), NewNoopExporterFactory())
 						mockChannel = make(chan *common.OTelSdkConfig, 100)
 						oTelSdkStarter.startOrRestartOTelSdkChannel = mockChannel
 					},
@@ -301,7 +301,7 @@ var _ = Describe(
 				BeforeEach(
 					func() {
 						delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
-						oTelSdkStarter = NewOTelSdkStarter(delegatingZapCoreWrapper)
+						oTelSdkStarter = NewOTelSdkStarter(delegatingZapCoreWrapper, NewNoopExporterFactory())
 					},
 				)
 

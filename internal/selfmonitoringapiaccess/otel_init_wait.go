@@ -40,6 +40,7 @@ type OTelSdkStarter struct {
 	oTelSdkConfigInput       atomic.Pointer[OTelSdkConfigInput]
 	activeOTelSdkConfig      atomic.Pointer[common.OTelSdkConfig]
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper
+	exporterFactory          common.ExporterFactory
 
 	startOrRestartOTelSdkChannel chan *common.OTelSdkConfig
 	shutDownChannel              chan bool
@@ -57,12 +58,17 @@ var (
 
 func NewOTelSdkStarter(
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
+	exporterFactory common.ExporterFactory,
 ) *OTelSdkStarter {
+	if exporterFactory == nil {
+		exporterFactory = common.NewDefaultExporterFactory()
+	}
 	starter := &OTelSdkStarter{
 		sdkIsActive:                  atomic.Bool{},
 		oTelSdkConfigInput:           atomic.Pointer[OTelSdkConfigInput]{},
 		activeOTelSdkConfig:          atomic.Pointer[common.OTelSdkConfig]{},
 		delegatingZapCoreWrapper:     delegatingZapCoreWrapper,
+		exporterFactory:              exporterFactory,
 		startOrRestartOTelSdkChannel: make(chan *common.OTelSdkConfig),
 		shutDownChannel:              make(chan bool),
 	}
@@ -119,7 +125,7 @@ func (s *OTelSdkStarter) waitForCompleteOTelSDKConfiguration(
 		case config := <-s.startOrRestartOTelSdkChannel:
 			s.UpdateOTelSdkState(true)
 			s.activeOTelSdkConfig.Store(config)
-			startOTelSDK(s.delegatingZapCoreWrapper, selfMonitoringMetricsClients, config)
+			startOTelSDK(s.delegatingZapCoreWrapper, selfMonitoringMetricsClients, config, s.exporterFactory)
 
 		case <-s.shutDownChannel:
 			return
@@ -255,6 +261,7 @@ func startOTelSDK(
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	selfMonitoringMetricsClients []SelfMonitoringMetricsClient,
 	oTelSdkConfig *common.OTelSdkConfig,
+	exporterFactory common.ExporterFactory,
 ) {
 	ctx := context.Background()
 	logger := logd.FromContext(ctx)
@@ -264,6 +271,7 @@ func startOTelSDK(
 			ctx,
 			meterName,
 			oTelSdkConfig,
+			exporterFactory,
 		)
 
 	// Setting the zap OTel bridge as the delegate logger core will spool all messages that have been only logged to
