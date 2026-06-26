@@ -4,6 +4,7 @@
 package util
 
 import (
+	"maps"
 	"regexp"
 	"strings"
 
@@ -222,4 +223,19 @@ func readLabel(objectMeta *metav1.ObjectMeta, key string) (string, bool) {
 		return value, true
 	}
 	return "", false
+}
+
+// MergeMaps returns a new map combining the default labels/annotations managed by the operator with user-provided
+// additional custom labels or annotations. The defaults take precedence, so that custom labels/annotations cannot
+// override defaults (for example the labels used by selectors). The result is always a freshly allocated map (or nil
+// when both inputs are empty); so follow-up mutations in downstream code (for example addCommonMetadata) do not
+// leak back into one of the input maps.
+func MergeMaps(defaults map[string]string, additional map[string]string) map[string]string {
+	if len(additional) == 0 && len(defaults) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(defaults)+len(additional))
+	maps.Copy(merged, additional)
+	maps.Copy(merged, defaults)
+	return merged
 }

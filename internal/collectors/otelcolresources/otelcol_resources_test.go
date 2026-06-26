@@ -10,6 +10,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -702,6 +703,56 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.SamplingEnabled).To(BeFalse())
+	})
+
+	It("should use default reservoir settings when reservoir is not configured", func() {
+		resource := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(1024 * 1024 * 1024)))
+		Expect(config.SamplingReservoirMetricLevel).To(Equal("basic"))
+	})
+
+	It("should use the configured reservoir max disk bytes and metric level", func() {
+		maxDiskBytes := resource.MustParse("2Gi")
+		metricLevel := dash0v1alpha1.ReservoirMetricLevelDetailed
+		edge := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Reservoir: &dash0v1alpha1.ReservoirConfig{
+						MaxDiskBytes: &maxDiskBytes,
+						MetricLevel:  &metricLevel,
+					},
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(2 * 1024 * 1024 * 1024)))
+		Expect(config.SamplingReservoirMetricLevel).To(Equal("detailed"))
+	})
+
+	It("should clamp reservoir max disk bytes below the minimum to the floor", func() {
+		maxDiskBytes := resource.MustParse("1Mi")
+		edge := &dash0v1alpha1.Dash0IntelligentEdge{
+			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+				Enabled: boolPtr(true),
+				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Reservoir: &dash0v1alpha1.ReservoirConfig{
+						MaxDiskBytes: &maxDiskBytes,
+					},
+				},
+			},
+		}
+		config := intelligentEdgeConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(64 * 1024 * 1024)))
+		Expect(config.SamplingReservoirMetricLevel).To(Equal("basic"))
 	})
 
 	It("should return disabled config when overall IE is disabled regardless of sampling setting", func() {

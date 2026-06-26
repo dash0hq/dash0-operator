@@ -758,6 +758,25 @@ func intelligentEdgeConfigFromResource(
 		samplingFallbackSampleRatio = *r
 	}
 	samplingDebug := pointers.ReadBoolPointerWithDefault(resource.Spec.Sampling.Debug, false)
+	samplingReservoirMaxDiskBytes := reservoirDefaultMaxDiskBytes
+	samplingReservoirMetricLevel := string(dash0v1alpha1.ReservoirMetricLevelBasic)
+	if r := resource.Spec.Sampling.Reservoir; r != nil {
+		if r.MaxDiskBytes != nil {
+			maxDiskBytes := r.MaxDiskBytes.Value()
+			if maxDiskBytes < reservoirMaxDiskBytesFloor {
+				if samplingEnabled {
+					logger.WarnTelemetryCollectionIssue(fmt.Sprintf("The configured trace reservoir maxDiskBytes "+
+						"(%d bytes) is below the minimum of %d bytes; the minimum is used instead.",
+						maxDiskBytes, reservoirMaxDiskBytesFloor))
+				}
+				maxDiskBytes = reservoirMaxDiskBytesFloor
+			}
+			samplingReservoirMaxDiskBytes = maxDiskBytes
+		}
+		if r.MetricLevel != nil && *r.MetricLevel != "" {
+			samplingReservoirMetricLevel = string(*r.MetricLevel)
+		}
+	}
 	signalToMetricsEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SignalToMetrics.Enabled, true)
 	var signalToMetricsFlushInterval string
 	if d := resource.Spec.SignalToMetrics.FlushInterval; d != nil && d.Duration > 0 {
@@ -824,6 +843,8 @@ func intelligentEdgeConfigFromResource(
 		SamplingEnabled:                    samplingEnabled,
 		SamplingFallbackSampleRatio:        samplingFallbackSampleRatio,
 		SamplingDebug:                      samplingDebug,
+		SamplingReservoirMaxDiskBytes:      samplingReservoirMaxDiskBytes,
+		SamplingReservoirMetricLevel:       samplingReservoirMetricLevel,
 		SignalToMetricsEnabled:             signalToMetricsEnabled,
 		SignalToMetricsMaxTimeSeries:       resource.Spec.SignalToMetrics.MaxTimeSeries,
 		SignalToMetricsFlushInterval:       signalToMetricsFlushInterval,

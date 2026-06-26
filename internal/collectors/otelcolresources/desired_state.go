@@ -6,6 +6,7 @@ package otelcolresources
 import (
 	"fmt"
 	"maps"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -32,6 +33,8 @@ type IntelligentEdgeConfig struct {
 	SamplingEnabled                    bool
 	SamplingFallbackSampleRatio        string
 	SamplingDebug                      bool
+	SamplingReservoirMaxDiskBytes      int64
+	SamplingReservoirMetricLevel       string
 	SignalToMetricsEnabled             bool
 	SignalToMetricsMaxTimeSeries       *int32
 	SignalToMetricsFlushInterval       string
@@ -756,9 +759,10 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 	collectorDaemonSet := &appsv1.DaemonSet{
 		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      daemonSetName,
-			Namespace: config.OperatorNamespace,
-			Labels:    labels(true),
+			Name:        daemonSetName,
+			Namespace:   config.OperatorNamespace,
+			Labels:      util.MergeMaps(labels(true), extraConfig.CollectorDaemonSetLabels),
+			Annotations: util.MergeMaps(nil, extraConfig.CollectorDaemonSetAnnotations),
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
@@ -769,7 +773,8 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: templateLabels,
+					Labels:      util.MergeMaps(templateLabels, extraConfig.CollectorDaemonSetPodLabels),
+					Annotations: util.MergeMaps(nil, extraConfig.CollectorDaemonSetPodAnnotations),
 				},
 				Spec: podSpec,
 			},
@@ -972,15 +977,39 @@ func assembleCollectorDaemonSetVolumes(
 	}
 
 	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled {
+		traceReservoirSizeLimit := reservoirDerivedStorage(config.IntelligentEdge.SamplingReservoirMaxDiskBytes)
 		volumes = append(volumes, corev1.Volume{
 			Name: "trace-reservoir",
 			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: &traceReservoirSizeLimit,
+				},
 			},
 		})
 	}
 
 	return volumes, filelogOffsetsVolume
+}
+
+// reservoirStorageMargin is the multiplicative headroom applied to the reservoir's max_disk_bytes when
+// deriving the Kubernetes storage size limit and ephemeral-storage request. The reservoir's actual on-disk
+// usage can exceed max_disk_bytes (per-shard division, active files that cannot be evicted, and eviction
+// running only on the rotation interval), so the requested storage must be larger than the cap itself.
+const reservoirStorageMargin = 1.25
+
+// reservoirDefaultMaxDiskBytes is the fallback used when the Dash0IntelligentEdge resource does not specify
+// a reservoir max_disk_bytes (matches the +kubebuilder:default of "1Gi").
+const reservoirDefaultMaxDiskBytes int64 = 1024 * 1024 * 1024 // 1Gi
+
+// reservoirMaxDiskBytesFloor is the minimum accepted reservoir max_disk_bytes. Smaller values are clamped to
+// this floor to keep the reservoir functional.
+const reservoirMaxDiskBytesFloor int64 = 64 * 1024 * 1024 // 64Mi
+
+// reservoirDerivedStorage returns the Kubernetes storage quantity derived from the reservoir's
+// max_disk_bytes by applying reservoirStorageMargin.
+func reservoirDerivedStorage(maxDiskBytes int64) resource.Quantity {
+	derived := int64(math.Ceil(float64(maxDiskBytes) * reservoirStorageMargin))
+	return *resource.NewQuantity(derived, resource.BinarySI)
 }
 
 func assembleCollectorDaemonSetVolumeMounts(
@@ -1129,6 +1158,22 @@ func assembleDaemonSetCollectorContainer(
 		return corev1.Container{}, err
 	}
 
+	// When the trace reservoir is active, request ephemeral storage derived from its max_disk_bytes so the
+	// scheduler reserves enough node scratch space. An explicit user-provided ephemeral-storage request is
+	// never overridden.
+	collectorResources := resourceRequirements.ToResourceRequirements()
+	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled &&
+		collectorResources.Requests.StorageEphemeral().IsZero() {
+		// Clone the requests map so the shared resourceRequirements passed by the caller is not mutated.
+		requests := maps.Clone(collectorResources.Requests)
+		if requests == nil {
+			requests = corev1.ResourceList{}
+		}
+		requests[corev1.ResourceEphemeralStorage] =
+			reservoirDerivedStorage(config.IntelligentEdge.SamplingReservoirMaxDiskBytes)
+		collectorResources.Requests = requests
+	}
+
 	otlpPort := corev1.ContainerPort{
 		Name:          "otlp",
 		Protocol:      corev1.ProtocolTCP,
@@ -1172,7 +1217,7 @@ func assembleDaemonSetCollectorContainer(
 		LivenessProbe:  WithProbeHandler(probes.Liveness),
 		StartupProbe:   WithProbeHandler(probes.Startup),
 		ReadinessProbe: WithProbeHandler(probes.Readiness),
-		Resources:      resourceRequirements.ToResourceRequirements(),
+		Resources:      collectorResources,
 		VolumeMounts:   collectorVolumeMounts,
 	}
 	if config.Images.CollectorImagePullPolicy != "" {
@@ -1556,9 +1601,10 @@ func assembleCollectorDeployment(
 	collectorDeployment := &appsv1.Deployment{
 		TypeMeta: util.K8sTypeMetaDeployment,
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      deploymentName,
-			Namespace: config.OperatorNamespace,
-			Labels:    labels(true),
+			Name:        deploymentName,
+			Namespace:   config.OperatorNamespace,
+			Labels:      util.MergeMaps(labels(true), extraConfig.CollectorDeploymentLabels),
+			Annotations: util.MergeMaps(nil, extraConfig.CollectorDeploymentAnnotations),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &deploymentReplicas,
@@ -1570,7 +1616,8 @@ func assembleCollectorDeployment(
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: templateLabels,
+					Labels:      util.MergeMaps(templateLabels, extraConfig.CollectorDeploymentPodLabels),
+					Annotations: util.MergeMaps(nil, extraConfig.CollectorDeploymentPodAnnotations),
 				},
 				Spec: podSpec,
 			},
