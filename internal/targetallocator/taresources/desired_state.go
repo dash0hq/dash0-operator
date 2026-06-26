@@ -481,8 +481,10 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DeploymentName(c.NamePrefix),
-			Namespace: c.OperatorNamespace,
+			Name:        DeploymentName(c.NamePrefix),
+			Namespace:   c.OperatorNamespace,
+			Labels:      util.MergeMaps(labels(), extraConfig.TargetAllocatorLabels),
+			Annotations: util.MergeMaps(nil, extraConfig.TargetAllocatorAnnotations),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -491,8 +493,8 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels:      templateLabels,
-					Annotations: podTemplateAnnotations,
+					Labels:      util.MergeMaps(templateLabels, extraConfig.TargetAllocatorPodLabels),
+					Annotations: util.MergeMaps(podTemplateAnnotations, extraConfig.TargetAllocatorPodAnnotations),
 				},
 				Spec: taPodSpec,
 			},

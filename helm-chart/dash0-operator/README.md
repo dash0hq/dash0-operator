@@ -1502,6 +1502,48 @@ operator:
     nodeAffinity: <custom_node_affinity>
 ```
 
+### Adding Custom Labels and Annotations to the Collector Resources
+
+Additional labels and annotations can be added to the collector resources and the target-allocator resource managed by
+the operator, both to the workload objects (the daemonset and the deployments) and to their pods.
+These are merged with the labels and annotations the operator sets itself; the operator-managed entries always take
+precedence, so they cannot be overridden.
+
+```yaml
+operator:
+  collectors:
+    # labels/annotations for the daemonset collector
+    daemonSetLabels:
+      my-label: my-value
+    daemonSetAnnotations:
+      my-annotation: my-value
+    daemonSetPodLabels:
+      my-pod-label: my-value
+    daemonSetPodAnnotations:
+      my-pod-annotation: my-value
+
+    # labels/annotations for the cluster-metrics-collector deployment
+    deploymentLabels:
+      my-label: my-value
+    deploymentAnnotations:
+      my-annotation: my-value
+    deploymentPodLabels:
+      my-pod-label: my-value
+    deploymentPodAnnotations:
+      my-pod-annotation: my-value
+
+  targetAllocator:
+    # labels/annotations for the target-allocator deployment
+    labels:
+      my-label: my-value
+    annotations:
+      my-annotation: my-value
+    podLabels:
+      my-pod-label: my-value
+    podAnnotations:
+      my-pod-annotation: my-value
+```
+
 ### Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)
 
 Pod-level [sysctls](https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/) can be applied to the

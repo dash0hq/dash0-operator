@@ -84,3 +84,61 @@ var _ = Describe("labels", func() {
 		})
 	})
 })
+
+var _ = Describe("MergeMaps", func() {
+	It("should return nil when both maps are empty", func() {
+		Expect(MergeMaps(nil, nil)).To(BeNil())
+		Expect(MergeMaps(map[string]string{}, map[string]string{})).To(BeNil())
+	})
+
+	It("should return the defaults map when there are no custom entries", func() {
+		defaults := map[string]string{"default-key": "default-value"}
+		Expect(MergeMaps(defaults, nil)).To(Equal(defaults))
+		Expect(MergeMaps(defaults, map[string]string{})).To(Equal(defaults))
+	})
+
+	It("should return the custom map when there are no default entries", func() {
+		custom := map[string]string{"custom-key": "custom-value"}
+		Expect(MergeMaps(nil, custom)).To(Equal(custom))
+		Expect(MergeMaps(map[string]string{}, custom)).To(Equal(custom))
+	})
+
+	It("should merge default and custom entries when there is no overlap", func() {
+		defaults := map[string]string{"default-key": "default-value"}
+		custom := map[string]string{"custom-key": "custom-value"}
+		Expect(MergeMaps(defaults, custom)).To(Equal(map[string]string{
+			"default-key": "default-value",
+			"custom-key":  "custom-value",
+		}))
+	})
+
+	It("should let default entries take precedence over custom entries on conflicting keys", func() {
+		defaults := map[string]string{"shared-key": "default-value", "default-key": "default-value"}
+		custom := map[string]string{"shared-key": "custom-value", "custom-key": "custom-value"}
+		Expect(MergeMaps(defaults, custom)).To(Equal(map[string]string{
+			"shared-key":  "default-value",
+			"default-key": "default-value",
+			"custom-key":  "custom-value",
+		}))
+	})
+
+	It("should not mutate the input maps", func() {
+		defaults := map[string]string{"default-key": "default-value"}
+		custom := map[string]string{"custom-key": "custom-value"}
+		MergeMaps(defaults, custom)
+		Expect(defaults).To(Equal(map[string]string{"default-key": "default-value"}))
+		Expect(custom).To(Equal(map[string]string{"custom-key": "custom-value"}))
+	})
+
+	It("should always return a copy that can be mutated without affecting the inputs", func() {
+		defaults := map[string]string{"default-key": "default-value"}
+		mergedDefaultsOnly := MergeMaps(defaults, nil)
+		mergedDefaultsOnly["injected-key"] = "injected-value"
+		Expect(defaults).To(Equal(map[string]string{"default-key": "default-value"}))
+
+		custom := map[string]string{"custom-key": "custom-value"}
+		mergedCustomOnly := MergeMaps(nil, custom)
+		mergedCustomOnly["injected-key"] = "injected-value"
+		Expect(custom).To(Equal(map[string]string{"custom-key": "custom-value"}))
+	})
+})

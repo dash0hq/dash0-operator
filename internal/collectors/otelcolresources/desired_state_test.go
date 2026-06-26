@@ -1429,6 +1429,59 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(getDeployment(desiredState).Spec.Template.Spec.SecurityContext.Sysctls).To(BeNil())
 	})
 
+	It("should render additional collector labels and annotations", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfig{
+			CollectorDaemonSetLabels:          map[string]string{"ds-label": "ds-label-value"},
+			CollectorDaemonSetAnnotations:     map[string]string{"ds-annotation": "ds-annotation-value"},
+			CollectorDaemonSetPodLabels:       map[string]string{"ds-pod-label": "ds-pod-label-value"},
+			CollectorDaemonSetPodAnnotations:  map[string]string{"ds-pod-annotation": "ds-pod-annotation-value"},
+			CollectorDeploymentLabels:         map[string]string{"deploy-label": "deploy-label-value"},
+			CollectorDeploymentAnnotations:    map[string]string{"deploy-annotation": "deploy-annotation-value"},
+			CollectorDeploymentPodLabels:      map[string]string{"deploy-pod-label": "deploy-pod-label-value"},
+			CollectorDeploymentPodAnnotations: map[string]string{"deploy-pod-annotation": "deploy-pod-annotation-value"},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		Expect(daemonSet.ObjectMeta.Labels).To(HaveKeyWithValue("ds-label", "ds-label-value"))
+		// operator-managed labels are still present
+		Expect(daemonSet.ObjectMeta.Labels).To(HaveKeyWithValue("dash0.com/enable", "false"))
+		Expect(daemonSet.ObjectMeta.Annotations).To(HaveKeyWithValue("ds-annotation", "ds-annotation-value"))
+		Expect(daemonSet.Spec.Template.Labels).To(HaveKeyWithValue("ds-pod-label", "ds-pod-label-value"))
+		Expect(daemonSet.Spec.Template.Annotations).To(HaveKeyWithValue("ds-pod-annotation", "ds-pod-annotation-value"))
+
+		deployment := getDeployment(desiredState)
+		Expect(deployment.ObjectMeta.Labels).To(HaveKeyWithValue("deploy-label", "deploy-label-value"))
+		Expect(deployment.ObjectMeta.Labels).To(HaveKeyWithValue("dash0.com/enable", "false"))
+		Expect(deployment.ObjectMeta.Annotations).To(HaveKeyWithValue("deploy-annotation", "deploy-annotation-value"))
+		Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("deploy-pod-label", "deploy-pod-label-value"))
+		Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("deploy-pod-annotation", "deploy-pod-annotation-value"))
+	})
+
+	It("should not override operator-managed collector labels with additional labels", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+		}, nil, util.ExtraConfig{
+			CollectorDaemonSetLabels: map[string]string{"dash0.com/enable": "true"},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		// the operator-managed value wins over the additional label
+		Expect(getDaemonSet(desiredState).ObjectMeta.Labels).To(HaveKeyWithValue("dash0.com/enable", "false"))
+	})
+
 	It("should render custom probe values", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
