@@ -6,12 +6,16 @@ name: Synchronize Helm chart docs to dash0.com/docs
 # Copies the docs from helm-chart/dash0-operator into the documentation on https://www.dash0.com/docs, applying the
 # modifications declared in sync-docs/transformations.yaml, and opens a pull request against the target repository.
 #
+# The documentation is a set of files: the top-level README.md (which becomes the section landing page
+# about-kubernetes.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names inside a
+# docs/ subdirectory). They are transformed and written into the target directory, mirroring that layout.
+#
 # This workflow can be run manually (workflow_dispatch) and is also invoked from ci.yaml (workflow_call) after a new
 # release has been published.
 #
-# The target repository and the target file within it are configured via the repository secrets
-# SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_FILE (the path of the documentation page within
-# that repository).
+# The target repository and the target directory within it are configured via the repository secrets
+# SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_DIRECTORY (the path of the directory holding the
+# documentation pages within that repository).
 #
 # Authentication to the (private) target repository is done via the DASH0_DOCS_REPO_GITHUB_PAT secret. This must be a
 # fine-grained personal access token scoped to the target repository with the following repository permissions:
@@ -28,8 +32,8 @@ on:
       SYNC_DOCUMENTATION_TARGET_REPOSITORY:
         description: The owner/name of the documentation repository to sync the docs into.
         required: true
-      SYNC_DOCUMENTATION_TARGET_FILE:
-        description: The path of the documentation page within the target repository.
+      SYNC_DOCUMENTATION_TARGET_DIRECTORY:
+        description: The path of the directory holding the documentation pages within the target repository.
         required: true
 
 env:
@@ -58,9 +62,9 @@ jobs:
       - name: apply doc transformations
         run: |
           python dash0-operator/.github/workflows/sync-docs/apply-transformations.py \
-            dash0-operator/helm-chart/dash0-operator/README.md \
+            dash0-operator/helm-chart/dash0-operator \
             dash0-operator/.github/workflows/sync-docs/transformations.yaml \
-            "${RUNNER_TEMP}/transformed-readme.md"
+            "${RUNNER_TEMP}/transformed-docs"
 
       - name: checkout target repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -71,32 +75,37 @@ jobs:
 
       - name: copy transformed docs
         env:
-          TARGET_FILE: ${{ secrets.SYNC_DOCUMENTATION_TARGET_FILE }}
+          TARGET_DIRECTORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
         run: |
-          target_path="target-repository/${TARGET_FILE}"
-          mkdir -p "$(dirname "$target_path")"
-          cp "${RUNNER_TEMP}/transformed-readme.md" "$target_path"
+          target_path="target-repository/${TARGET_DIRECTORY}"
+          mkdir -p "$target_path"
+          # Copy the transformed tree (about-kubernetes.md and docs/*.md) into the target directory.
+          cp -R "${RUNNER_TEMP}/transformed-docs/." "$target_path/"
 
       - name: create pull request in target repository
         working-directory: target-repository
         env:
           GH_TOKEN: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
-          TARGET_FILE: ${{ secrets.SYNC_DOCUMENTATION_TARGET_FILE }}
+          TARGET_DIRECTORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # git diff --quiet exits with 1 if there are differences, 0 means the docs page is already up to date.
-          # The lastUpdated timestamp in the page metadata changes on every run, so it is ignored (via -I) when
-          # determining whether the page is up to date; otherwise every run would create a commit and a pull request.
-          if git diff --quiet -I '^lastUpdated: ' -- "${TARGET_FILE}"; then
-            echo "The documentation page is already up to date, nothing to do."
+          # Stage all changes within the target directory (including newly created files) so they are visible to the
+          # diff check below.
+          git add --all -- "${TARGET_DIRECTORY}"
+
+          # git diff --cached --quiet exits with 1 if there are staged differences, 0 means the docs are already up to
+          # date. The lastUpdated timestamp in each page's metadata changes on every run, so it is ignored (via -I)
+          # when determining whether the docs are up to date; otherwise every run would create a commit and a pull
+          # request.
+          if git diff --cached --quiet -I '^lastUpdated: ' -- "${TARGET_DIRECTORY}"; then
+            echo "The documentation pages are already up to date, nothing to do."
             exit 0
           fi
 
-          echo "The documentation page has changed, creating/updating a pull request."
+          echo "The documentation pages have changed, creating/updating a pull request."
           git checkout -B "${PR_BRANCH}"
-          git add -- "${TARGET_FILE}"
           git commit --message "docs: synchronize Dash0 operator docs"
           git push --force origin "${PR_BRANCH}"
 

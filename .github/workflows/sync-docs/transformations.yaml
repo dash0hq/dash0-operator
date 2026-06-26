@@ -1,14 +1,35 @@
-# Transformations applied to helm-chart/dash0-operator docs before it is copied to the Dash0 documentation
+# Transformations applied to the helm-chart/dash0-operator docs before they are copied to the Dash0 documentation
 # repository (see .github/workflows/sync-docs-to-website.yaml).
 #
-# This file is the source of truth for how the operator's Helm chart docs are adapted into the docs page.
-# Edit this file whenever the required modifications change.
+# This file is the source of truth for how the operator's Helm chart docs are adapted into the docs pages.
+# Edit this file whenever the required modifications change, or whenever a documentation file is added or removed.
 #
-# The transformations are applied in order, top to bottom, by apply-transformations.py. Order matters: transformations
-# anchored to the start of the document (\A) operate on whatever is currently at the top, so the metadata stanza is
-# prepended last, after the page body has been cleaned up.
+# The documentation is a set of files: the top-level README.md (which becomes the section landing page
+# about-kubernetes.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names inside a
+# docs/ subdirectory in the target repository). The website layout mirrors the source layout, so relative links
+# between the files are preserved as-is; the only exception is links to the renamed README.md, which are rewritten
+# automatically (see below).
 #
-# Each entry has a human-readable `description` and a `type`. The supported types are:
+# Structure of this file:
+#
+# - common   A list of transformations applied to every synced file, in order, before the file-specific ones.
+# - files    A list of file entries. Each entry has:
+#              source           Path of the source file, relative to helm-chart/dash0-operator.
+#              target           Path of the output file, relative to the target directory in the docs repository.
+#              title            The `title` rendered into the page's frontmatter.
+#              description      The `description` rendered into the page's frontmatter.
+#              transformations  Optional list of transformations applied to this file only, after the common ones.
+#
+# Every *.md file in helm-chart/dash0-operator/docs (except dotfiles such as .docs-structure.md) must have a `files`
+# entry; otherwise apply-transformations.py fails. This guards against new topic files being silently dropped from the
+# sync.
+#
+# A frontmatter block is generated from each entry's `title`/`description` (plus a `lastUpdated` timestamp) and
+# prepended to the transformed file. Links pointing at the renamed README.md (e.g. ../README.md#supported-runtimes)
+# are rewritten to the README's target name (about-kubernetes.md) automatically; absolute URLs that happen to end in
+# README.md (e.g. links into the opentelemetry-collector-contrib repository) are left untouched.
+#
+# The supported transformation types are:
 #
 # - prepend          Insert `content` at the very beginning of the document.
 # - replace-regex    Replace matches of the Python regular expression `find` with `replace`.
@@ -28,38 +49,77 @@
 # - $timestamp   The current UTC date/time, e.g. "2026-04-20T05:00:00.000Z". A single value is computed per run, so all
 #                occurrences within one run render identically.
 
-- description: remove the Helm chart README top-level heading
-  type: replace-regex
-  find: '\A# Dash0 Operator Helm Chart\n'
-  replace: ''
+common:
+  - description: remove the leading top-level heading (the frontmatter title replaces it)
+    type: replace-regex
+    find: '\A#\s+[^\n]*\n'
+    replace: ''
 
-- description: strip the License and Artifact Hub badges
-  type: replace-regex
-  find: '^\[!\[[^\n]*\n'
-  replace: ''
-  flags:
-    - multiline
-
-- description: remove the "This repository contains ..." intro line
-  type: remove-line
-  line: 'This repository contains the [Helm](https://helm.sh/) chart for the Dash0 operator.'
-
-- description: remove the "Description" heading
-  type: remove-line
-  line: '## Description'
-
-- description: normalize empty lines
-  type: replace-regex
-  find: '\A\n*'
-  replace: "\n"
-  flags:
-    - multiline
-
-- description: prepend documentation metadata
-  type: prepend
-  content: |
-    ---
+files:
+  - source: README.md
+    target: about-kubernetes.md
     title: About Kubernetes Monitoring
     description: Monitor Kubernetes clusters with automatic instrumentation via the Dash0 operator for Kubernetes.
-    lastUpdated: $timestamp
-    ---
+    transformations:
+      - description: strip the License and Artifact Hub badges
+        type: replace-regex
+        find: '^\[!\[[^\n]*\n'
+        replace: ''
+        flags:
+          - multiline
+      - description: remove the "This repository contains ..." intro line
+        type: remove-line
+        line: 'This repository contains the [Helm](https://helm.sh/) chart for the Dash0 operator.'
+      - description: remove the "Description" heading
+        type: remove-line
+        line: '## Description'
+
+  - source: docs/INSTALLATION.md
+    target: docs/INSTALLATION.md
+    title: Installation
+    description: Install the Dash0 operator Helm chart, including Prometheus CRDs, authorization, and target-allocator setup.
+
+  - source: docs/CONFIGURATION.md
+    target: docs/CONFIGURATION.md
+    title: Configuration
+    description: Configure the Dash0 operator and Dash0 monitoring resources, including backend connections, namespace monitoring, secrets, and datasets.
+
+  - source: docs/AUTO-INSTRUMENTATION.md
+    target: docs/AUTO-INSTRUMENTATION.md
+    title: Automatic Workload Instrumentation
+    description: Automatically instrument Kubernetes workloads with OpenTelemetry using the Dash0 operator.
+
+  - source: docs/METRICS-AND-SCRAPING.md
+    target: docs/METRICS-AND-SCRAPING.md
+    title: Metrics Collection and Prometheus Scraping
+    description: Collect Kubernetes metrics and scrape Prometheus endpoints with the Dash0 operator.
+
+  - source: docs/MANAGING-DASH0-RESOURCES.md
+    target: docs/MANAGING-DASH0-RESOURCES.md
+    title: Managing Dash0 Resources
+    description: Manage Dash0 dashboards, check rules, synthetic checks, views, notification channels, and more via Kubernetes custom resources.
+
+  - source: docs/ADVANCED-CONFIGURATION.md
+    target: docs/ADVANCED-CONFIGURATION.md
+    title: Advanced Configuration
+    description: Advanced Dash0 operator configuration, including cert-manager, collector pod scheduling, sysctls, and filelog offset volumes.
+
+  - source: docs/PLATFORM-SPECIFIC.md
+    target: docs/PLATFORM-SPECIFIC.md
+    title: Platform-Specific Notes and Compatibility
+    description: Platform-specific guidance and compatibility notes for running the Dash0 operator on various Kubernetes distributions.
+
+  - source: docs/PROFILING.md
+    target: docs/PROFILING.md
+    title: Profiling
+    description: Support for profiling telemetry & collecting profiles with the OpenTelemetry eBPF Profiler.
+
+  - source: docs/UPGRADING.md
+    target: docs/UPGRADING.md
+    title: Upgrading and Uninstallation
+    description: Upgrade the Dash0 operator, migrate CRD versions, and uninstall the operator from your cluster.
+
+  - source: docs/TROUBLESHOOTING.md
+    target: docs/TROUBLESHOOTING.md
+    title: Troubleshooting
+    description: Troubleshoot and debug the Dash0 operator.
