@@ -23,11 +23,11 @@ get_module_version_from_go_mod() {
   module_version=${module_version:1} # cut of the leading "v" character
 }
 
-check_chart_readme() {
-  local chart_readme="$1"
+check_documentation_page() {
+  local documentation_page="$1"
   local remote_crd_url="$2"
   found_in_readme="false"
-  if grep "kubectl apply --server-side -f $remote_crd_url" "$chart_readme" > /dev/null; then
+  if grep "kubectl apply --server-side -f $remote_crd_url" "$documentation_page" > /dev/null; then
     found_in_readme="true"
   fi
 }
@@ -51,7 +51,7 @@ check_test_resources_util() {
 }
 
 check_all() {
-  check_chart_readme "$chart_readme" "$remote_crd_url"
+  check_documentation_page "$documentation_page" "$remote_crd_url"
   check_unit_test_crd "$unit_test_crd_file" "$remote_crd_url"
   check_test_resources_util "$test_resources_util_file" "$kubectl_apply"
 
@@ -63,7 +63,7 @@ check_all() {
   echo "The version of the Go module $module_name in go.mod ($module_version) is not in sync with other references to its associated CRD. Maybe the Go module has been updated (e.g. by dependabot)? If so, other references have to be updated as well:"
   echo
   if [[ "$found_in_readme" != "true" ]]; then
-    echo "* Please update the instruction in $chart_readme for installing the third party CRD to read as follows:"
+    echo "* Please update the instruction in $documentation_page for installing the third party CRD to read as follows:"
     echo "    $kubectl_apply"
     echo
   fi

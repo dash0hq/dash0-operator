@@ -14,7 +14,7 @@ cd "$project_root"
 source "$scripts_lib/third-party-crd-version-check-util"
 
 module_name=github.com/perses/perses-operator
-chart_readme=helm-chart/dash0-operator/README.md
+documentation_page=helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md
 unit_test_crd_file=test/util/crds/perses.dev_persesdashboards.yaml
 test_resources_util_file="$scripts_lib/util"
 

@@ -62,7 +62,7 @@ The alert rules specified in `PrometheusRule` custom resources are used to creat
 [check rules](https://www.dash0.com/docs/dash0/monitoring/alerting/configure-checks) in Dash0.
 
 For more information on how the Dash0 operator synchronizes check rules based on `PrometheusRule` resources, consult the
-[Managing Dash0 Check Rules](helm-chart/dash0-operator/README.md#managing-dash0-check-rules)
+[Managing Dash0 Check Rules](helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-check-rules)
 section of the Dash0 operator Helm chart documentation.
 
 ### Dashboards
@@ -73,7 +73,7 @@ The Perses dashboards specified in `PersesDashboard` custom resources are used t
 [dashboards](https://www.dash0.com/docs/dash0/dashboards/about-dashboards) in Dash0.
 
 For more information on how the Dash0 operator synchronizes dashboards based on `PersesDashboard` resources, consult the
-[Managing Dash0 Check Rules](helm-chart/dash0-operator/README.md#managing-dash0-dashboards)
+[Managing Dash0 Check Rules](helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-dashboards)
 section of the Dash0 operator Helm chart documentation.
 
 ### Synthetic Checks
@@ -83,7 +83,7 @@ Synthetic checks stored in the cluster as Dash0SyntheticCheck custom resources a
 [synthetic checks](https://www.dash0.com/docs/dash0/monitoring/synthetics/synthetic-monitoring) in Dash0.
 
 For more information on how the Dash0 operator synchronizes synthetic checks based on `Dash0SyntheticCheck` resources,
-consult the [Managing Dash0 Synthetic Checks](helm-chart/dash0-operator/README.md#managing-dash0-synthetic-checks)
+consult the [Managing Dash0 Synthetic Checks](helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-synthetic-checks)
 section of the Dash0 operator Helm chart documentation.
 
 ### Views

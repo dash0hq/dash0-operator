@@ -1217,8 +1217,8 @@ spec:
                                     Dash0 authorization token. Defaults to "dash0-authorization-secret".
                                   type: string
                               required:
-                                - key
-                                - name
+                              - key
+                              - name
                               type: object
                             token:
                               description: |-
@@ -1260,8 +1260,8 @@ spec:
                               type: string
                           type: object
                       required:
-                        - authorization
-                        - endpoint
+                      - authorization
+                      - endpoint
                       type: object
                     grpc:
                       description: The settings for an exporter to send telemetry
@@ -1290,8 +1290,8 @@ spec:
                               value:
                                 type: string
                             required:
-                              - name
-                              - value
+                            - name
+                            - value
                             type: object
                           type: array
                         insecure:
@@ -1322,7 +1322,7 @@ spec:
                               type: string
                           type: object
                       required:
-                        - endpoint
+                      - endpoint
                       type: object
                     http:
                       description: The settings for an exporter to send telemetry
@@ -1333,8 +1333,8 @@ spec:
                           description: The encoding of the OTLP data when sent via
                             HTTP. Can be either proto or json, defaults to proto.
                           enum:
-                            - proto
-                            - json
+                          - proto
+                          - json
                           type: string
                         endpoint:
                           description: The URL of the OTLP-compatible receiver to
@@ -1351,8 +1351,8 @@ spec:
                               value:
                                 type: string
                             required:
-                              - name
-                              - value
+                            - name
+                            - value
                             type: object
                           type: array
                         insecureSkipVerify:
@@ -1361,7 +1361,7 @@ spec:
                             connection.
                           type: boolean
                       required:
-                        - endpoint
+                      - endpoint
                       type: object
                   type: object
                 type: array
@@ -1590,7 +1590,7 @@ spec:
                 description: |-
                   If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
                   dashboards in Dash0 via the Dash0 API.
-                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-dashboards-with-the-operator
                   for details. This setting is optional, it defaults to `true`.
                 type: boolean
               synchronizePrometheusRules:
@@ -1598,7 +1598,7 @@ spec:
                 description: |-
                   If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
                   rules in Dash0 via the Dash0 API.
-                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-check-rules-with-the-operator
                   for details. This setting is optional, it defaults to `true`.
                 type: boolean
               transform:
@@ -1752,7 +1752,7 @@ spec:
                           synchronizationError:
                             type: string
                         required:
-                          - dash0ApiEndpoint
+                        - dash0ApiEndpoint
                         type: object
                       type: array
                     synchronizationStatus:
@@ -1760,9 +1760,9 @@ spec:
                         ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
-                        - successful
-                        - partially-successful
-                        - failed
+                      - successful
+                      - partially-successful
+                      - failed
                       type: string
                     synchronizedAt:
                       format: date-time
@@ -1779,9 +1779,9 @@ spec:
                 description: The spec.instrumentWorkloads settings that have been
                   observed in the previous reconcile cycle.
                 enum:
-                  - all
-                  - created-and-updated
-                  - none
+                - all
+                - created-and-updated
+                - none
                 type: string
               prometheusRuleSynchronizationResults:
                 additionalProperties:
@@ -1839,9 +1839,9 @@ spec:
                         ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
-                        - successful
-                        - partially-successful
-                        - failed
+                      - successful
+                      - partially-successful
+                      - failed
                       type: string
                     synchronizedAt:
                       format: date-time
@@ -2279,8 +2279,8 @@ spec:
                                     Dash0 authorization token. Defaults to "dash0-authorization-secret".
                                   type: string
                               required:
-                                - key
-                                - name
+                              - key
+                              - name
                               type: object
                             token:
                               description: |-
@@ -2322,8 +2322,8 @@ spec:
                               type: string
                           type: object
                       required:
-                        - authorization
-                        - endpoint
+                      - authorization
+                      - endpoint
                       type: object
                     grpc:
                       description: The settings for an exporter to send telemetry
@@ -2352,8 +2352,8 @@ spec:
                               value:
                                 type: string
                             required:
-                              - name
-                              - value
+                            - name
+                            - value
                             type: object
                           type: array
                         insecure:
@@ -2384,7 +2384,7 @@ spec:
                               type: string
                           type: object
                       required:
-                        - endpoint
+                      - endpoint
                       type: object
                     http:
                       description: The settings for an exporter to send telemetry
@@ -2395,8 +2395,8 @@ spec:
                           description: The encoding of the OTLP data when sent via
                             HTTP. Can be either proto or json, defaults to proto.
                           enum:
-                            - proto
-                            - json
+                          - proto
+                          - json
                           type: string
                         endpoint:
                           description: The URL of the OTLP-compatible receiver to
@@ -2413,8 +2413,8 @@ spec:
                               value:
                                 type: string
                             required:
-                              - name
-                              - value
+                            - name
+                            - value
                             type: object
                           type: array
                         insecureSkipVerify:
@@ -2423,7 +2423,7 @@ spec:
                             connection.
                           type: boolean
                       required:
-                        - endpoint
+                      - endpoint
                       type: object
                   type: object
                 type: array
@@ -2720,7 +2720,7 @@ spec:
                 description: |-
                   If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
                   dashboards in Dash0 via the Dash0 API.
-                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-dashboards-with-the-operator
                   for details. This setting is optional, it defaults to `true`.
                 type: boolean
               synchronizePrometheusRules:
@@ -2728,7 +2728,7 @@ spec:
                 description: |-
                   If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
                   rules in Dash0 via the Dash0 API.
-                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-check-rules-with-the-operator
                   for details. This setting is optional, it defaults to `true`.
                 type: boolean
               transform:
@@ -2882,7 +2882,7 @@ spec:
                           synchronizationError:
                             type: string
                         required:
-                          - dash0ApiEndpoint
+                        - dash0ApiEndpoint
                         type: object
                       type: array
                     synchronizationStatus:
@@ -2890,9 +2890,9 @@ spec:
                         ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
-                        - successful
-                        - partially-successful
-                        - failed
+                      - successful
+                      - partially-successful
+                      - failed
                       type: string
                     synchronizedAt:
                       format: date-time
@@ -3100,9 +3100,9 @@ spec:
                         ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
-                        - successful
-                        - partially-successful
-                        - failed
+                      - successful
+                      - partially-successful
+                      - failed
                       type: string
                     synchronizedAt:
                       format: date-time

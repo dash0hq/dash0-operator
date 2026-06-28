@@ -190,7 +190,7 @@ type Dash0MonitoringSpec struct {
 
 	// If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
 	// dashboards in Dash0 via the Dash0 API.
-	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-dashboards-with-the-operator
 	// for details. This setting is optional, it defaults to `true`.
 	//
 	// +kubebuilder:default=true
@@ -198,7 +198,7 @@ type Dash0MonitoringSpec struct {
 
 	// If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
 	// rules in Dash0 via the Dash0 API.
-	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md#managing-dash0-check-rules-with-the-operator
 	// for details. This setting is optional, it defaults to `true`.
 	//
 	// +kubebuilder:default=true
