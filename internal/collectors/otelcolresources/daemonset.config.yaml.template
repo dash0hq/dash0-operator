@@ -51,7 +51,20 @@ connectors:
 {{- if .IntelligentEdge.SamplingEnabled }}
   forward/traces-to-sampling: {}
 {{- end }}
+{{- if or .IntelligentEdge.RedMetricsMaxTimeSeries .IntelligentEdge.RedMetricsAdditionalSpanAttributes }}
+  dash0redmetrics:
+{{- if .IntelligentEdge.RedMetricsMaxTimeSeries }}
+    max_time_series: {{ .IntelligentEdge.RedMetricsMaxTimeSeries }}
+{{- end }}
+{{- if .IntelligentEdge.RedMetricsAdditionalSpanAttributes }}
+    additional_span_attributes:
+    {{- range $attr := .IntelligentEdge.RedMetricsAdditionalSpanAttributes }}
+    - '{{ $attr }}'
+    {{- end }}
+{{- end }}
+{{- else }}
   dash0redmetrics: {}
+{{- end }}
 {{- if .IntelligentEdge.SignalToMetricsEnabled }}
 {{- if or .IntelligentEdge.SignalToMetricsMaxTimeSeries .IntelligentEdge.SignalToMetricsFlushInterval }}
   dash0signaltometrics:
@@ -1033,7 +1046,40 @@ processors:
       value: {{ .IntelligentEdge.Dataset }}
       action: upsert
   dash0resource: {}
+{{- if or .IntelligentEdge.OperationPreferSpanName .IntelligentEdge.OperationCardinalityRules }}
+  dash0operation:
+{{- if .IntelligentEdge.OperationPreferSpanName }}
+    prefer_span_name: true
+{{- end }}
+{{- if .IntelligentEdge.OperationCardinalityRules }}
+    cardinality_rules:
+    {{- range $rule := .IntelligentEdge.OperationCardinalityRules }}
+    - id: '{{ $rule.Id }}'
+{{- if $rule.SourceAttribute }}
+      source_attribute: '{{ $rule.SourceAttribute }}'
+{{- end }}
+{{- if $rule.QuickFilter }}
+      quick_filter: '{{ $rule.QuickFilter }}'
+{{- end }}
+      operation_matchers:
+      {{- range $m := $rule.OperationMatchers }}
+      - regex: '{{ $m.Regex }}'
+        replacements:
+        {{- range $r := $m.Replacements }}
+        - '{{ $r }}'
+        {{- end }}
+{{- if $m.QuickFilter }}
+        quick_filter: '{{ $m.QuickFilter }}'
+{{- end }}
+{{- if $m.Literal }}
+        literal: true
+{{- end }}
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- else }}
   dash0operation: {}
+{{- end }}
 {{- if .IntelligentEdge.SpamFilterEnabled }}
 {{- if or .IntelligentEdge.SpamFilterCacheExpiration .IntelligentEdge.SpamFilterAllowNoSettingsExt }}
   dash0filter:
@@ -1055,9 +1101,17 @@ processors:
       Dash0-Dataset: {{ .IntelligentEdge.Dataset }}
     decision_maker_insecure: {{ .IntelligentEdge.Insecure }}
     default_dataset: {{ .IntelligentEdge.Dataset }}
+{{- if .IntelligentEdge.SamplingFallbackSampleRatio }}
+    fallback_sample_ratio: {{ .IntelligentEdge.SamplingFallbackSampleRatio }}
+{{- end }}
+{{- if .IntelligentEdge.SamplingDebug }}
+    debug: true
+{{- end }}
     reservoir:
       type: disk
       data_dir: /var/lib/dash0/trace-reservoir
+      max_disk_bytes: {{ .IntelligentEdge.SamplingReservoirMaxDiskBytes }}
+      metric_level: {{ .IntelligentEdge.SamplingReservoirMetricLevel }}
 {{- end }}
 {{- end }}
 

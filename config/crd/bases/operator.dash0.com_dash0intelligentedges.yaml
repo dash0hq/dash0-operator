@@ -183,6 +183,12 @@ spec:
                       - operationMatchers
                       type: object
                     type: array
+                  preferSpanName:
+                    description: |-
+                      Controls whether the OpenTelemetry span name is used as both dash0.operation.name and
+                      dash0.span.name instead of the rule-derived pattern name. Rules are still evaluated to determine
+                      the operation type. This setting is optional, it defaults to false.
+                    type: boolean
                 type: object
               redMetrics:
                 description: |-
@@ -192,11 +198,13 @@ spec:
                   additionalSpanAttributes:
                     description: |-
                       Additional low-cardinality span attributes to include as metric dimensions. Each attribute should
-                      have at most 3 unique values to avoid high cardinality. This setting is optional, it defaults to
-                      an empty list.
+                      have at most 3 unique values to avoid high cardinality. Attribute names must be non-empty and
+                      unique. This setting is optional, it defaults to an empty list.
                     items:
+                      minLength: 1
                       type: string
                     type: array
+                    x-kubernetes-list-type: set
                   maxTimeSeries:
                     description: |-
                       Soft limit for the number of time series held in memory. This setting is optional, it defaults
@@ -238,6 +246,35 @@ spec:
                       representation of a float between 0.0 and 1.0.
                     pattern: ^(0(\.\d+)?|1(\.0+)?)$
                     type: string
+                  reservoir:
+                    description: |-
+                      Configuration for the trace reservoir, the on-disk buffer that holds spans awaiting a sampling
+                      decision. This setting is optional.
+                    properties:
+                      maxDiskBytes:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        default: 1Gi
+                        description: |-
+                          The maximum total disk usage of the trace reservoir across all shards. When the reservoir exceeds this
+                          limit, the oldest buffered spans are evicted regardless of age. The operator also derives the reservoir
+                          volume's storage size limit and the collector container's ephemeral-storage request from this value, so
+                          that the requested storage always exceeds the reservoir's own cap. This setting is optional, it defaults
+                          to "1Gi". Values below "64Mi" are raised to "64Mi".
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      metricLevel:
+                        default: basic
+                        description: |-
+                          The verbosity of the trace reservoir's telemetry. "basic" records only essential metrics and is
+                          recommended for production. "detailed" records all metrics including histograms and hot-path counters,
+                          useful for load testing or debugging. This setting is optional, it defaults to "basic".
+                        enum:
+                        - basic
+                        - detailed
+                        type: string
+                    type: object
                 required:
                 - enabled
                 type: object

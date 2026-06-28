@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -169,6 +170,42 @@ type SamplingConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	Debug *bool `json:"debug,omitempty"`
+
+	// Configuration for the trace reservoir, the on-disk buffer that holds spans awaiting a sampling
+	// decision. This setting is optional.
+	//
+	// +kubebuilder:validation:Optional
+	Reservoir *ReservoirConfig `json:"reservoir,omitempty"`
+}
+
+// ReservoirMetricLevel controls the verbosity of the trace reservoir's telemetry.
+// +kubebuilder:validation:Enum=basic;detailed
+type ReservoirMetricLevel string
+
+const (
+	ReservoirMetricLevelBasic    ReservoirMetricLevel = "basic"
+	ReservoirMetricLevelDetailed ReservoirMetricLevel = "detailed"
+)
+
+// ReservoirConfig configures the disk-backed trace reservoir of the dash0sampling processor.
+type ReservoirConfig struct {
+	// The maximum total disk usage of the trace reservoir across all shards. When the reservoir exceeds this
+	// limit, the oldest buffered spans are evicted regardless of age. The operator also derives the reservoir
+	// volume's storage size limit and the collector container's ephemeral-storage request from this value, so
+	// that the requested storage always exceeds the reservoir's own cap. This setting is optional, it defaults
+	// to "1Gi". Values below "64Mi" are raised to "64Mi".
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="1Gi"
+	MaxDiskBytes *resource.Quantity `json:"maxDiskBytes,omitempty"`
+
+	// The verbosity of the trace reservoir's telemetry. "basic" records only essential metrics and is
+	// recommended for production. "detailed" records all metrics including histograms and hot-path counters,
+	// useful for load testing or debugging. This setting is optional, it defaults to "basic".
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=basic
+	MetricLevel *ReservoirMetricLevel `json:"metricLevel,omitempty"`
 }
 
 // RedMetricsConfig configures the dash0redmetrics connector.
@@ -181,10 +218,12 @@ type RedMetricsConfig struct {
 	MaxTimeSeries *int32 `json:"maxTimeSeries,omitempty"`
 
 	// Additional low-cardinality span attributes to include as metric dimensions. Each attribute should
-	// have at most 3 unique values to avoid high cardinality. This setting is optional, it defaults to
-	// an empty list.
+	// have at most 3 unique values to avoid high cardinality. Attribute names must be non-empty and
+	// unique. This setting is optional, it defaults to an empty list.
 	//
 	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:items:MinLength=1
 	AdditionalSpanAttributes []string `json:"additionalSpanAttributes,omitempty"`
 }
 
@@ -241,6 +280,13 @@ type SpamFilterConfig struct {
 
 // OperationProcessorConfig configures the dash0operation processor.
 type OperationProcessorConfig struct {
+	// Controls whether the OpenTelemetry span name is used as both dash0.operation.name and
+	// dash0.span.name instead of the rule-derived pattern name. Rules are still evaluated to determine
+	// the operation type. This setting is optional, it defaults to false.
+	//
+	// +kubebuilder:validation:Optional
+	PreferSpanName *bool `json:"preferSpanName,omitempty"`
+
 	// Custom rules for normalizing high-cardinality operation names. Rules are evaluated in order, first
 	// match wins. This setting is optional, it defaults to an empty list.
 	//
