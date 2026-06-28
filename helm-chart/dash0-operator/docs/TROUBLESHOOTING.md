@@ -55,9 +55,8 @@ To get a heap profile from a OpenTelemetry collector deployment container:
 ## Getting Help
 
 For additional help:
-- Check the [GitHub repository](https://github.com/dash0hq/dash0-operator) for known issues
 - Review the operator logs: `kubectl logs -n dash0-system -l app.kubernetes.io/component=controller`
-- Contact Dash0 support for assistance
+- Contact Dash0 support at support@dash0.com
 
 ## Related Documentation
 

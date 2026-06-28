@@ -80,10 +80,11 @@ This README provides a quick overview. Detailed documentation is organized by to
 
 ### Core Documentation
 
-* **[INSTALLATION.md](docs/INSTALLATION.md)** - Comprehensive installation guide including Prometheus CRDs, authorization, and target-allocator setup
+* **[INSTALLATION.md](docs/INSTALLATION.md)** - Comprehensive installation guide
 * **[CONFIGURATION.md](docs/CONFIGURATION.md)** - Backend connections, namespace monitoring, secrets, datasets, and operator configuration
 * **[AUTO-INSTRUMENTATION.md](docs/AUTO-INSTRUMENTATION.md)** - Workload instrumentation details, Python support, disabling instrumentation, and custom label selectors
-* **[METRICS-AND-SCRAPING.md](docs/METRICS-AND-SCRAPING.md)** - Metrics collection, Prometheus endpoint scraping, profiling, and exporting to other backends
+* **[METRICS-AND-SCRAPING.md](docs/METRICS-AND-SCRAPING.md)** - Metrics collection, Prometheus endpoint scraping, and Prometheus CRD support
+* **[PROFILING.md](docs/PROFILING.md)** - Profiling support and OpenTelemetry eBPF profiler setup
 
 ### Advanced Topics
 
@@ -112,7 +113,7 @@ You can consult the chart's [values.yaml](https://github.com/dash0hq/dash0-opera
 
 ## Support
 
-For issues, questions, or feature requests, please visit the [GitHub repository](https://github.com/dash0hq/dash0-operator).
+For issues, questions, or feature requests, please contact Dash0 support at support@dash0.com.
 
 ## License
 

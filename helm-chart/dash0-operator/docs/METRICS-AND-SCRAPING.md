@@ -7,11 +7,9 @@ This document covers metrics collection, Prometheus endpoint scraping, profiling
 - [Configure Metrics Collection](#configure-metrics-collection)
   - [Resource Attributes for Prometheus Scraping](#resource-attributes-for-prometheus-scraping)
 - [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints)
-- [Profiling](#profiling)
-  - [Collecting Profiles with the OpenTelemetry eBPF Profiler](#collecting-profiles-with-the-opentelemetry-ebpf-profiler)
-- [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
-  - [Note regarding TLS when using arbitrary OTLP-compatible backends](#note-regarding-tls-when-using-arbitrary-otlp-compatible-backends)
-- [Disable Self-Monitoring](#disable-self-monitoring)
+- [Support for Prometheus CRDs](#support-for-prometheus-crds)
+  - [Authorization](#authorization)
+  - [Configuring Resource Requests/Limits for the Target-Allocator](#configuring-resource-requestslimits-for-the-target-allocator)
 
 ## Configure Metrics Collection
 
@@ -114,261 +112,64 @@ monitoring resource. See [CONFIGURATION.md](CONFIGURATION.md#prometheus-scraping
 > delivered to Dash0, you can annotate the kube-state-metrics pod with `prometheus.io/scrape: "true"` and add a Dash0
 > monitoring resource to the namespace it is running in.
 
-## Profiling
+## Support for Prometheus CRDs
 
-The Dash0 operator can be configured to accept, process, and export
-[profiling data](https://opentelemetry.io/docs/specs/otel/profiles/) via OTLP.
+If you would like to enable support for Prometheus CRDs:
+1. Ensure the CRDs (`ServiceMonitor`, `PodMonitor`, `ScrapeConfig`) are installed in the cluster
+2. Include `--set operator.prometheusCrdSupportEnabled=true` when running `helm install`
 
-**Note:** The Dash0 Operator does not currently support collecting profiles, see the
-[Collecting Profiles with the OpenTelemetry eBPF Profiler](#collecting-profiles-with-the-opentelemetry-ebpf-profiler)
-section.
+Alternatively, if you are creating the operator configuration resource manually, set `spec.prometheusCrdSupport.enabled: true` in the operator configuration resource.
+Refer to [CONFIGURATION.md](CONFIGURATION.md) for details.
 
-To enable profiling support, set the `operator.profilingEnabled` Helm value to `true`:
+The operator supports the following CRDs:
+- `ServiceMonitor`
+- `PodMonitor`
+- `ScrapeConfig` with `kubernetesSDConfigs`
 
-```console
-helm install \
-  --set operator.profilingEnabled=true \
-  ... \
-  dash0-operator \
-  dash0-operator/dash0-operator
-```
+The Dash0 Operator uses the [OpenTelemetry Target Allocator](https://github.com/open-telemetry/opentelemetry-operator/tree/main/cmd/otel-allocator) to watch Prometheus CRDs and assign targets to the collector running on the same node as the monitored workload.
 
-Alternatively, you can set `spec.profiling.enabled: true` directly on the `Dash0OperatorConfiguration` custom resource:
+### Authorization
 
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration-resource
-spec:
-  profiling:
-    enabled: true
-  # ... other settings
-```
+If the scraped endpoints require authorization, it is mandatory to configure mTLS for the communication between the OpenTelemetry Target Allocator and the collectors, so the credentials can be transfered in a secure manner.
 
-When profiling is enabled, you can use the same `spec.filter` and `spec.transform` settings on your `Dash0Monitoring`
-resources to filter and transform profiling data, just like for traces, metrics, and logs.
-See [CONFIGURATION.md](CONFIGURATION.md#filtering-and-transforming-telemetry) for details.
+We recommend to use [cert-manager](https://cert-manager.io/) for the creation of the certificates/secrets, but any secrets following the [kubernetes.io/tls](https://kubernetes.io/docs/concepts/configuration/secret/#tls-secrets) secret type and providing `ca.crt`, `tls.crt`, and `tls.key` should be compatible.
+Note that the server and client certificates need to be signed by the same CA to be trusted (i.e. two random self-signed certificates won't work).
 
-### Collecting Profiles with the OpenTelemetry eBPF Profiler
+You can find an example of minimal issuers and certificates for cert-manager in [/test-resources/cert-manager/ta-issuers-and-cert.yaml.template](/test-resources/cert-manager/ta-issuers-and-cert.yaml.template).
 
-Since the standard OpenTelemetry auto-instrumentation agents do not yet emit OTLP profiles, a separate profiling agent
-is needed to generate profiling data, like the
-[OpenTelemetry eBPF profiler](https://github.com/open-telemetry/opentelemetry-ebpf-profiler).
+The secrets must be created in the Dash0 operator namespace.
 
-The eBPF profiler is distributed as a specialized OpenTelemetry Collector (`otelcol-ebpf-profiler`) that includes a
-`profiling` receiver.
-It runs as a privileged DaemonSet with host PID access, since it relies on eBPF to collect stack traces from all
-processes on the node.
-
-Below is an example of deploying the eBPF profiler to send profiles to the Dash0 operator's collector:
+Once you have created the required secrets holding the certificates, you can enable mTLS and set the secret names via the Helm chart:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ebpf-profiler-config
-  namespace: dash0-system  # same namespace as the operator
-data:
-  config.yaml: |
-    receivers:
-      profiling:
-
-    exporters:
-      otlp/collector:
-        endpoint: ${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317
-        # The operator's OTLP receiver listens on plain-text gRPC (no TLS), so the exporter must
-        # be configured accordingly. Without this, the gRPC exporter defaults to requiring TLS.
-        tls:
-          insecure: true
-
-    service:
-      telemetry:
-        logs:
-          level: info
-      pipelines:
-        profiles:
-          receivers: [profiling]
-          exporters: [otlp/collector]
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: ebpf-profiler
-  namespace: dash0-system  # same namespace as the operator
-  labels:
-    app: ebpf-profiler
-spec:
-  selector:
-    matchLabels:
-      app: ebpf-profiler
-  template:
-    metadata:
-      labels:
-        app: ebpf-profiler
-    spec:
-      hostPID: true
-      containers:
-        - name: ebpf-profiler
-          image: otel/opentelemetry-collector-ebpf-profiler:0.148.0
-          args:
-            - --config=file:/etc/otelcol/config.yaml
-            - --feature-gates=service.profilesSupport
-          securityContext:
-            privileged: true
-          volumeMounts:
-            - name: config
-              mountPath: /etc/otelcol
-            - name: proc
-              mountPath: /proc
-              readOnly: true
-            - name: sys
-              mountPath: /sys
-              readOnly: true
-      volumes:
-        - name: config
-          configMap:
-            name: ebpf-profiler-config
-        - name: proc
-          hostPath:
-            path: /proc
-        - name: sys
-          hostPath:
-            path: /sys
+operator:
+  targetAllocator:
+    mTls:
+      enabled: true
+      serverCertSecretName: "ta-mtls-server-cert-secret"
+      clientCertSecretName: "ta-mtls-client-cert-secret"
 ```
 
-Replace `${helm-release-name}` and `${namespace-of-the-dash0-operator}` with the actual Helm release name and namespace.
+### Configuring Resource Requests/Limits for the Target-Allocator
 
-The eBPF profiler requires:
-
-* Linux kernel 5.4 or later.
-* The container must run as privileged (or with `CAP_SYS_ADMIN`, `CAP_PERFMON`, and `CAP_BPF` capabilities).
-* `hostPID: true` to observe processes running on the node.
-* Access to `/proc` and `/sys` from the host.
-
-Once both profiling support in the operator and the eBPF profiler DaemonSet are deployed, profiling data will flow from
-the eBPF profiler through the operator's collector pipelines (including processors like `k8s_attributes` for Kubernetes
-metadata enrichment) and on to the configured backend.
-
-## Exporting Data to Other Observability Backends
-
-Instead of `spec.exports[].dash0` in the Dash0 operator configuration resource, you can also provide
-`spec.exports[].http` or `spec.exports[].grpc` to export telemetry data to arbitrary OTLP-compatible backends, or to
-another local OpenTelemetry collector.
-
-Here is an example for HTTP:
+Depending on individual requirements (like the number of watched resources), it might be necessary to increase the resource requests/limits of the target-allocator.
+This can be achieved by setting the respective fields via Helm:
 
 ```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - http:
-        endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
-        headers: # you can optionally provide additional headers, for example for authorization
-          - name: X-My-Header
-            value: my-value
-        encoding: json # optional, can be "json" or "proto", defaults to "proto"
+operator:
+  targetAllocator:
+    containerResources:
+      limits:
+        cpu: 200m
+        memory: 500Mi
+      gomemlimit: 400MiB
+      requests:
+        cpu: 200m
+        memory: 128Mi
 ```
 
-Here is an example for gRPC:
+## Related Documentation
 
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - grpc:
-        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
-        headers: # you can optionally provide additional headers, for example for authorization
-          - name: X-My-Header
-            value: my-value
-```
-
-Export to multiple backends is also supported. The supplied backends can be either of the same type or of different
-types. In the following example the telemetry would be sent to two different datasets in Dash0 and in addition to a
-gRPC endpoint:
-
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - dash0:
-        dataset: dataset-one
-        endpoint: ingress... # TODO needs to be replaced with the actual value
-        authorization:
-          token: auth_... # TODO needs to be replaced with the actual value
-    - dash0:
-        dataset: dataset-two
-        endpoint: ingress... # TODO needs to be replaced with the actual value
-        authorization:
-          token: auth_... # TODO needs to be replaced with the actual value
-    - grpc:
-        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
-```
-
-For more details on configuring exports, see [CONFIGURATION.md](CONFIGURATION.md#configuring-the-dash0-backend-connection).
-
-### Note regarding TLS when using arbitrary OTLP-compatible backends
-
-#### gRPC
-
-- By default, a secure connection is assumed, unless explicitly setting `insecure: true`, or when the `insecure` field
-is omitted and the endpoint URL starts with `http://`
-- When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain,
-which can be useful when using self-signed certificates.
-
-Here's an example using `insecureSkipVerify`:
-
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - grpc:
-        endpoint: ...             # provide the secure OTLP gRPC endpoint of your observability backend here
-        insecureSkipVerify: true  # disables the verification of the server's certificate chain
-```
-
-Please note that it is a validation error to set both `insecure` and `insecureSkipVerify` explicitly to true at the same
-time, since `insecureSkipVerify` is only applicable when using TLS.
-
-#### HTTP
-
-- For HTTP, the connection security is automatically detected based on whether the endpoint URL starts with `http://` or
-  `https://`
-- When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain,
-  which can be useful when using self-signed certificates.
-
-## Disable Self-Monitoring
-
-By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Dash0 operator configuration
-resource with exports.
-That means, the operator will send self-monitoring telemetry to the configured Dash0 backend.
-Disabling self-monitoring is available as a setting on the Dash0 operator configuration resource.
-Dash0 does not recommend to disable the operator's self-monitoring.
-
-Here is an example with self-monitoring disabled:
-
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration-resource
-spec:
-  selfMonitoring:
-    enabled: false
-  exports:
-    - # ... see CONFIGURATION.md for details on the exports settings
-```
-
-For more details on self-monitoring, see [CONFIGURATION.md](CONFIGURATION.md#self-monitoring).
+- [PROFILING.md](PROFILING.md) - Profiling support and OpenTelemetry eBPF profiler setup
+- [CONFIGURATION.md](CONFIGURATION.md) - Configuration options
+- [ADVANCED-CONFIGURATION.md](ADVANCED-CONFIGURATION.md) - Advanced topics including exporting to other backends

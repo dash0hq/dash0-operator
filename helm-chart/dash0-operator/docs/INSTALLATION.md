@@ -8,9 +8,6 @@ This guide covers the installation of the Dash0 operator Helm chart in detail.
 - [Basic Installation](#basic-installation)
 - [Installation with Secret Reference](#installation-with-secret-reference)
 - [Installation without Backend Configuration](#installation-without-backend-configuration)
-- [Support for Prometheus CRDs](#support-for-prometheus-crds)
-  - [Authorization](#authorization)
-  - [Configuring Resource Requests/Limits for the Target-Allocator](#configuring-resource-requestslimits-for-the-target-allocator)
 
 ## Prerequisites
 
@@ -119,74 +116,9 @@ To actually have the operator properly monitor your workloads, two more things n
 
 Both steps are described in [CONFIGURATION.md](CONFIGURATION.md).
 
-See [CONFIGURATION.md - Notes on Creating the Operator Configuration Resource Via Helm](CONFIGURATION.md#notes-on-creating-the-operator-configuration-resource-via-helm)
-for more information on providing Dash0 export settings via Helm and how it affects manual changes to the operator
-configuration resource.
+See [CONFIGURATION.md - Notes on Creating the Operator Configuration Resource Via Helm](CONFIGURATION.md#notes-on-creating-the-operator-configuration-resource-via-helm) for more information on providing Dash0 export settings via Helm and how it affects manual changes to the operator configuration resource.
 
-## Support for Prometheus CRDs
-
-If you would like to enable support for Prometheus CRDs:
-1. Ensure the CRDs (`ServiceMonitor`, `PodMonitor`, `ScrapeConfig`) are installed in the cluster
-2. Include `--set operator.prometheusCrdSupportEnabled=true` when running `helm install`
-
-Alternatively, if you are creating the operator configuration resource manually, set
-`spec.prometheusCrdSupport.enabled: true` in the operator configuration resource. Refer to
-[CONFIGURATION.md](CONFIGURATION.md) for details.
-
-The operator supports the following CRDs:
-- `ServiceMonitor`
-- `PodMonitor`
-- `ScrapeConfig` with `kubernetesSDConfigs`
-
-The Dash0 Operator uses the
-[OpenTelemetry Target Allocator](https://github.com/open-telemetry/opentelemetry-operator/tree/main/cmd/otel-allocator)
-to watch Prometheus CRDs and assign targets to the collector running on the same node as the monitored workload.
-
-### Authorization
-
-If the scraped endpoints require authorization, it is mandatory to configure mTLS for the communication between the
-OpenTelemetry Target Allocator and the collectors, so the credentials can be transfered in a secure manner.
-
-We recommend to use [cert-manager](https://cert-manager.io/) for the creation of the certificates/secrets, but any
-secrets following the [kubernetes.io/tls](https://kubernetes.io/docs/concepts/configuration/secret/#tls-secrets) secret
-type and providing `ca.crt`, `tls.crt`, and `tls.key` should be compatible.
-Note that the server and client certificates need to be signed by the same CA to be trusted (i.e. two random self-signed
-certificates won't work).
-
-You can find an example of minimal issuers and certificates for cert-manager in
-[/test-resources/cert-manager/ta-issuers-and-cert.yaml.template](/test-resources/cert-manager/ta-issuers-and-cert.yaml.template).
-
-The secrets must be created in the Dash0 operator namespace.
-
-Once you have created the required secrets holding the certificates, you can enable mTLS and set the secret names
-via the Helm chart:
-
-```yaml
-operator:
-  targetAllocator:
-    mTls:
-      enabled: true
-      serverCertSecretName: "ta-mtls-server-cert-secret"
-      clientCertSecretName: "ta-mtls-client-cert-secret"
-```
-
-### Configuring Resource Requests/Limits for the Target-Allocator
-
-Depending on individual requirements (like the number of watched resources), it might be necessary to increase the
-resource requests/limits of the target-allocator. This can be achieved by setting the respective fields via Helm:
-
-```yaml
-operator:
-  targetAllocator:
-    containerResources:
-      limits:
-        cpu: 200m
-        memory: 500Mi
-      gomemlimit: 400MiB
-      requests:
-        cpu: 200m
-        memory: 128Mi
-```
+For Prometheus CRD support (ServiceMonitor, PodMonitor, ScrapeConfig), see [METRICS-AND-SCRAPING.md - Support for Prometheus CRDs](METRICS-AND-SCRAPING.md#support-for-prometheus-crds).
 
 ## Next Steps
 

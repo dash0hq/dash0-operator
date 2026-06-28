@@ -272,6 +272,21 @@ kubectl apply -f dash0-monitoring.yaml
 > The only prerequisite for this is an [operator configuration](#configuring-the-dash0-backend-connection) with
 > exports settings.
 
+### Disable Dash0 Monitoring For a Namespace
+
+If you want to stop monitoring a namespace with Dash0, remove the Dash0 monitoring resource from that namespace.
+For example, if you want to stop monitoring workloads in the namespace `my-nodejs-applications`, use the following command:
+
+```console
+kubectl delete --namespace my-nodejs-applications Dash0Monitoring dash0-monitoring-resource
+```
+
+or, alternatively, by using the `dash0-monitoring.yaml` file created earlier:
+
+```console
+kubectl delete --namespace my-nodejs-applications -f dash0-monitoring.yaml
+```
+
 ### Additional Configuration Per Namespace
 
 The Dash0 monitoring resource supports additional configuration settings:

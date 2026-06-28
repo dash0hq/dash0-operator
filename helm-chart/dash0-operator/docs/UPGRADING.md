@@ -4,28 +4,11 @@ This guide covers upgrading the Dash0 operator, CRD version migrations, disablin
 
 ## Table of Contents
 
-- [Disable Dash0 Monitoring For a Namespace](#disable-dash0-monitoring-for-a-namespace)
 - [Upgrading the Operator](#upgrading-the-operator)
 - [CRD Version Upgrades](#crd-version-upgrades)
   - [Operator Version 0.71.0: v1alpha1 to v1beta1 Migration](#operator-version-0710-v1alpha1-to-v1beta1-migration)
 - [Uninstallation](#uninstallation)
   - [Unsupported Uninstallation Procedures](#unsupported-uninstallation-procedures)
-
-## Disable Dash0 Monitoring For a Namespace
-
-If you want to stop monitoring a namespace with Dash0, remove the Dash0 monitoring resource from that namespace.
-For example, if you want to stop monitoring workloads in the namespace `my-nodejs-applications`, use the following
-command:
-
-```console
-kubectl delete --namespace my-nodejs-applications Dash0Monitoring dash0-monitoring-resource
-```
-
-or, alternatively, by using the `dash0-monitoring.yaml` file created earlier:
-
-```console
-kubectl delete --namespace my-nodejs-applications -f dash0-monitoring.yaml
-```
 
 ## Upgrading the Operator
 
