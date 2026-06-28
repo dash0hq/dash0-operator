@@ -4,9 +4,6 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
 
 ## Table of Contents
 
-- [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
-  - [Note regarding TLS when using arbitrary OTLP-compatible backends](#note-regarding-tls-when-using-arbitrary-otlp-compatible-backends)
-- [Disable Self-Monitoring](#disable-self-monitoring)
 - [Providing a Filelog Offset Volume](#providing-a-filelog-offset-volume)
 - [Using cert-manager](#using-cert-manager)
 - [Controlling On Which Nodes the Operator's Collector Pods Are Scheduled](#controlling-on-which-nodes-the-operators-collector-pods-are-scheduled)
@@ -15,121 +12,9 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
   - [Custom Node Affinity](#custom-node-affinity)
   - [Adding Custom Labels and Annotations to the Collector Resources](#adding-custom-labels-and-annotations-to-the-collector-resources)
 - [Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)](#configuring-pod-level-sysctls-for-the-collector-pods-tcp-keepalive)
-
-## Exporting Data to Other Observability Backends
-
-Instead of `spec.exports[].dash0` in the Dash0 operator configuration resource, you can also provide `spec.exports[].http` or `spec.exports[].grpc` to export telemetry data to arbitrary OTLP-compatible backends, or to another local OpenTelemetry collector.
-
-Here is an example for HTTP:
-
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - http:
-        endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
-        headers: # you can optionally provide additional headers, for example for authorization
-          - name: X-My-Header
-            value: my-value
-        encoding: json # optional, can be "json" or "proto", defaults to "proto"
-```
-
-Here is an example for gRPC:
-
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - grpc:
-        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
-        headers: # you can optionally provide additional headers, for example for authorization
-          - name: X-My-Header
-            value: my-value
-```
-
-Export to multiple backends is also supported.
-The supplied backends can be either of the same type or of different types.
-In the following example the telemetry would be sent to two different datasets in Dash0 and in addition to a gRPC endpoint:
-
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - dash0:
-        dataset: dataset-one
-        endpoint: ingress... # TODO needs to be replaced with the actual value
-        authorization:
-          token: auth_... # TODO needs to be replaced with the actual value
-    - dash0:
-        dataset: dataset-two
-        endpoint: ingress... # TODO needs to be replaced with the actual value
-        authorization:
-          token: auth_... # TODO needs to be replaced with the actual value
-    - grpc:
-        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
-```
-
-For more details on configuring exports, see [CONFIGURATION.md](CONFIGURATION.md#configuring-the-dash0-backend-connection).
-
-### Note regarding TLS when using arbitrary OTLP-compatible backends
-
-#### gRPC
-
-- By default, a secure connection is assumed, unless explicitly setting `insecure: true`, or when the `insecure` field is omitted and the endpoint URL starts with `http://`
-- When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain, which can be useful when using self-signed certificates.
-
-Here's an example using `insecureSkipVerify`:
-
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration
-spec:
-  exports:
-    - grpc:
-        endpoint: ...             # provide the secure OTLP gRPC endpoint of your observability backend here
-        insecureSkipVerify: true  # disables the verification of the server's certificate chain
-```
-
-Please note that it is a validation error to set both `insecure` and `insecureSkipVerify` explicitly to true at the same time, since `insecureSkipVerify` is only applicable when using TLS.
-
-#### HTTP
-
-- For HTTP, the connection security is automatically detected based on whether the endpoint URL starts with `http://` or `https://`
-- When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain, which can be useful when using self-signed certificates.
-
-## Disable Self-Monitoring
-
-By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Dash0 operator configuration resource with exports.
-That means, the operator will send self-monitoring telemetry to the configured Dash0 backend.
-Disabling self-monitoring is available as a setting on the Dash0 operator configuration resource.
-Dash0 does not recommend to disable the operator's self-monitoring.
-
-Here is an example with self-monitoring disabled:
-
-```yaml
-apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0OperatorConfiguration
-metadata:
-  name: dash0-operator-configuration-resource
-spec:
-  selfMonitoring:
-    enabled: false
-  exports:
-    - # ... see CONFIGURATION.md for details on the exports settings
-```
-
-For more details on self-monitoring, see [CONFIGURATION.md](CONFIGURATION.md#self-monitoring).
+- [Disable Self-Monitoring](#disable-self-monitoring)
+- [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
+  - [Note regarding TLS when using arbitrary OTLP-compatible backends](#note-regarding-tls-when-using-arbitrary-otlp-compatible-backends)
 
 ## Providing a Filelog Offset Volume
 
@@ -491,6 +376,121 @@ This setting is opt-in for two reasons:
 * It changes the collector pod spec, which triggers a rollout of the collector pods.
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
+
+## Disable Self-Monitoring
+
+By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Dash0 operator configuration resource with exports.
+That means, the operator will send self-monitoring telemetry to the configured Dash0 backend.
+Disabling self-monitoring is available as a setting on the Dash0 operator configuration resource.
+Dash0 does not recommend to disable the operator's self-monitoring.
+
+Here is an example with self-monitoring disabled:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration-resource
+spec:
+  selfMonitoring:
+    enabled: false
+  exports:
+    - # ... see CONFIGURATION.md for details on the exports settings
+```
+
+For more details on self-monitoring, see [CONFIGURATION.md](CONFIGURATION.md#self-monitoring).
+
+## Exporting Data to Other Observability Backends
+
+Instead of `spec.exports[].dash0` in the Dash0 operator configuration resource, you can also provide `spec.exports[].http` or `spec.exports[].grpc` to export telemetry data to arbitrary OTLP-compatible backends, or to another local OpenTelemetry collector.
+
+Here is an example for HTTP:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  exports:
+    - http:
+        endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
+        headers: # you can optionally provide additional headers, for example for authorization
+          - name: X-My-Header
+            value: my-value
+        encoding: json # optional, can be "json" or "proto", defaults to "proto"
+```
+
+Here is an example for gRPC:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  exports:
+    - grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+        headers: # you can optionally provide additional headers, for example for authorization
+          - name: X-My-Header
+            value: my-value
+```
+
+Export to multiple backends is also supported.
+The supplied backends can be either of the same type or of different types.
+In the following example the telemetry would be sent to two different datasets in Dash0 and in addition to a gRPC endpoint:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  exports:
+    - dash0:
+        dataset: dataset-one
+        endpoint: ingress... # TODO needs to be replaced with the actual value
+        authorization:
+          token: auth_... # TODO needs to be replaced with the actual value
+    - dash0:
+        dataset: dataset-two
+        endpoint: ingress... # TODO needs to be replaced with the actual value
+        authorization:
+          token: auth_... # TODO needs to be replaced with the actual value
+    - grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+```
+
+For more details on configuring exports, see [CONFIGURATION.md](CONFIGURATION.md#configuring-the-dash0-backend-connection).
+
+### Note regarding TLS when using arbitrary OTLP-compatible backends
+
+#### gRPC
+
+- By default, a secure connection is assumed, unless explicitly setting `insecure: true`, or when the `insecure` field is omitted and the endpoint URL starts with `http://`
+- When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain, which can be useful when using self-signed certificates.
+
+Here's an example using `insecureSkipVerify`:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  exports:
+    - grpc:
+        endpoint: ...             # provide the secure OTLP gRPC endpoint of your observability backend here
+        insecureSkipVerify: true  # disables the verification of the server's certificate chain
+```
+
+Please note that it is a validation error to set both `insecure` and `insecureSkipVerify` explicitly to true at the same time, since `insecureSkipVerify` is only applicable when using TLS.
+
+#### HTTP
+
+- For HTTP, the connection security is automatically detected based on whether the endpoint URL starts with `http://` or `https://`
+- When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain, which can be useful when using self-signed certificates.
 
 ## Related Documentation
 
