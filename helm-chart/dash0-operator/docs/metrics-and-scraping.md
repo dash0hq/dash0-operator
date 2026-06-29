@@ -24,24 +24,24 @@ By default, the operator collects metrics as follows:
   Collecting these metrics can be disabled per cluster by setting
   `kubernetesInfrastructureMetricsCollection.enabled: false` in the Dash0 operator configuration resource (or setting
   the value `operator.kubernetesInfrastructureMetricsCollectionEnabled` to `false` when deploying the operator
-  configuration resource via the Helm chart). See [CONFIGURATION.md](CONFIGURATION.md#kubernetes-infrastructure-metrics-collection)
+  configuration resource via the Helm chart). See [configuration.md](configuration.md#kubernetes-infrastructure-metrics-collection)
   for details.
 
 * Namespace-scoped metrics (e.g. metrics related to a workload running in a specific namespace) will only be collected
   if the namespace is monitored, that is, there is a Dash0 monitoring resource in that namespace. See
-  [CONFIGURATION.md](CONFIGURATION.md#enable-dash0-monitoring-for-a-namespace) for how to enable monitoring for a
+  [configuration.md](configuration.md#enable-dash0-monitoring-for-a-namespace) for how to enable monitoring for a
   namespace.
 
 * The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations in monitored
   namespaces, as described in the section [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints).
   This can be disabled per namespace by explicitly setting `prometheusScraping.enabled: false` in the Dash0 monitoring
-  resource. See [CONFIGURATION.md](CONFIGURATION.md#prometheus-scraping) for details.
+  resource. See [configuration.md](configuration.md#prometheus-scraping) for details.
 
 * Metrics which are not namespace-scoped (for example node metrics like `k8s.node.*` or host metrics like
   `system.cpu.utilization`) will always be collected, unless metrics collection is disabled globally for the cluster
   (`kubernetesInfrastructureMetricsCollection.enabled: false`, see above).
   An operator configuration resource with exports settings has to be present in the cluster, otherwise no metrics
-  collection takes place. See [CONFIGURATION.md](CONFIGURATION.md#configuring-the-dash0-backend-connection) for details
+  collection takes place. See [configuration.md](configuration.md#configuring-the-dash0-backend-connection) for details
   on export configuration.
 
 * Disabling or enabling individual metrics via configuration is not supported.
@@ -76,7 +76,7 @@ The service name is derived as follows:
    Prometheus metrics.
 
 > **Note:** In contrast to resource attributes for workloads via labels and annotations (see
-> [AUTO-INSTRUMENTATION.md](AUTO-INSTRUMENTATION.md#specifying-additional-resource-attributes-via-labels-and-annotations)),
+> [auto-instrumentation.md](auto-instrumentation.md#specifying-additional-resource-attributes-via-labels-and-annotations)),
 > Prometheus scraping can only see pod labels, not workload level (deployment, daemonset, ...) labels.
 
 ## Scraping Prometheus Endpoints
@@ -100,12 +100,12 @@ The supported annotations are:
 
 To be scraped, a pod annotated with the `prometheus.io/scrape` or `prometheus.io/scrape-slow` annotations must belong to
 namespaces that are configured to be monitored by the Dash0 operator (see
-[CONFIGURATION.md](CONFIGURATION.md#enable-dash0-monitoring-for-a-namespace)).
+[configuration.md](configuration.md#enable-dash0-monitoring-for-a-namespace)).
 
 The scraping of a pod is executed from the same Kubernetes node the pod resides on.
 
 This feature can be disabled for a namespace by explicitly setting `prometheusScraping.enabled: false` in the Dash0
-monitoring resource. See [CONFIGURATION.md](CONFIGURATION.md#prometheus-scraping) for details.
+monitoring resource. See [configuration.md](configuration.md#prometheus-scraping) for details.
 
 > **Note:** To also have [Kube state metrics](https://github.com/kubernetes/kube-state-metrics) (which are used
 > extensively in [Awesome Prometheus alerts](https://samber.github.io/awesome-prometheus-alerts/)) scraped and
@@ -119,7 +119,7 @@ If you would like to enable support for Prometheus CRDs:
 2. Include `--set operator.prometheusCrdSupportEnabled=true` when running `helm install`
 
 Alternatively, if you are creating the operator configuration resource manually, set `spec.prometheusCrdSupport.enabled: true` in the operator configuration resource.
-Refer to [CONFIGURATION.md](CONFIGURATION.md) for details.
+Refer to [configuration.md](configuration.md) for details.
 
 The operator supports the following CRDs:
 - `ServiceMonitor`
@@ -170,6 +170,6 @@ operator:
 
 ## Related Documentation
 
-- [PROFILING.md](PROFILING.md) - Profiling support and OpenTelemetry eBPF profiler setup
-- [CONFIGURATION.md](CONFIGURATION.md) - Configuration options
-- [ADVANCED-CONFIGURATION.md](ADVANCED-CONFIGURATION.md) - Advanced topics including exporting to other backends
+- [profiling.md](profiling.md) - Profiling support and OpenTelemetry eBPF profiler setup
+- [configuration.md](configuration.md) - Configuration options
+- [advanced-configuration.md](advanced-configuration.md) - Advanced topics including exporting to other backends

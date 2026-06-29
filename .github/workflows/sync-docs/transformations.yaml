@@ -74,52 +74,52 @@ files:
         type: remove-line
         line: '## Description'
 
-  - source: docs/INSTALLATION.md
-    target: docs/INSTALLATION.md
+  - source: docs/installation.md
+    target: docs/installation.md
     title: Installation
     description: Install the Dash0 operator Helm chart, including Prometheus CRDs, authorization, and target-allocator setup.
 
-  - source: docs/CONFIGURATION.md
-    target: docs/CONFIGURATION.md
+  - source: docs/configuration.md
+    target: docs/configuration.md
     title: Configuration
     description: Configure the Dash0 operator and Dash0 monitoring resources, including backend connections, namespace monitoring, secrets, and datasets.
 
-  - source: docs/AUTO-INSTRUMENTATION.md
-    target: docs/AUTO-INSTRUMENTATION.md
+  - source: docs/auto-instrumentation.md
+    target: docs/auto-instrumentation.md
     title: Automatic Workload Instrumentation
     description: Automatically instrument Kubernetes workloads with OpenTelemetry using the Dash0 operator.
 
-  - source: docs/METRICS-AND-SCRAPING.md
-    target: docs/METRICS-AND-SCRAPING.md
+  - source: docs/metrics-and-scraping.md
+    target: docs/metrics-and-scraping.md
     title: Metrics Collection and Prometheus Scraping
     description: Collect Kubernetes metrics and scrape Prometheus endpoints with the Dash0 operator.
 
-  - source: docs/MANAGING-DASH0-RESOURCES.md
-    target: docs/MANAGING-DASH0-RESOURCES.md
+  - source: docs/managing-dash0-resources.md
+    target: docs/managing-dash0-resources.md
     title: Managing Dash0 Resources
     description: Manage Dash0 dashboards, check rules, synthetic checks, views, notification channels, and more via Kubernetes custom resources.
 
-  - source: docs/ADVANCED-CONFIGURATION.md
-    target: docs/ADVANCED-CONFIGURATION.md
+  - source: docs/advanced-configuration.md
+    target: docs/advanced-configuration.md
     title: Advanced Configuration
     description: Advanced Dash0 operator configuration, including cert-manager, collector pod scheduling, sysctls, and filelog offset volumes.
 
-  - source: docs/PLATFORM-SPECIFIC.md
-    target: docs/PLATFORM-SPECIFIC.md
+  - source: docs/platform-specific.md
+    target: docs/platform-specific.md
     title: Platform-Specific Notes and Compatibility
     description: Platform-specific guidance and compatibility notes for running the Dash0 operator on various Kubernetes distributions.
 
-  - source: docs/PROFILING.md
-    target: docs/PROFILING.md
+  - source: docs/profiling.md
+    target: docs/profiling.md
     title: Profiling
     description: Support for profiling telemetry & collecting profiles with the OpenTelemetry eBPF Profiler.
 
-  - source: docs/UPGRADING.md
-    target: docs/UPGRADING.md
+  - source: docs/upgrading.md
+    target: docs/upgrading.md
     title: Upgrading and Uninstallation
     description: Upgrade the Dash0 operator, migrate CRD versions, and uninstall the operator from your cluster.
 
-  - source: docs/TROUBLESHOOTING.md
-    target: docs/TROUBLESHOOTING.md
+  - source: docs/troubleshooting.md
+    target: docs/troubleshooting.md
     title: Troubleshooting
     description: Troubleshoot and debug the Dash0 operator.

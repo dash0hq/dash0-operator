@@ -14,7 +14,7 @@ cd "$project_root"
 source "$scripts_lib/third-party-crd-version-check-util"
 
 module_name=github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring
-documentation_page=helm-chart/dash0-operator/docs/MANAGING-DASH0-RESOURCES.md
+documentation_page=helm-chart/dash0-operator/docs/managing-dash0-resources.md
 unit_test_crd_file=test/util/crds/monitoring.coreos.com_prometheusrules.yaml
 test_resources_util_file="$scripts_lib/util"
 

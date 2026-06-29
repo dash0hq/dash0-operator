@@ -96,13 +96,13 @@ operator releases.
 
 ## Notes on Azure AKS
 
-In [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters that have the [Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy) enabled, it is highly recommended to [use a volume for filelog offsets](ADVANCED-CONFIGURATION.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map.
+In [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters that have the [Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy) enabled, it is highly recommended to [use a volume for filelog offsets](advanced-configuration.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map.
 
 Using the default config map filelog offset storage in AKS clusters with this add-on can lead to severe performance issues.
 
 ## Notes on the Open Policy Agent
 
-In clusters that have the [OPA gatekeeper](https://github.com/open-policy-agent/gatekeeper) deployed, it is highly recommended to [use a volume for filelog offsets](ADVANCED-CONFIGURATION.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map.
+In clusters that have the [OPA gatekeeper](https://github.com/open-policy-agent/gatekeeper) deployed, it is highly recommended to [use a volume for filelog offsets](advanced-configuration.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map.
 
 Using the default config map filelog offset storage in clusters with this component can lead to severe performance issues.
 
@@ -110,14 +110,14 @@ Using the default config map filelog offset storage in clusters with this compon
 
 In clusters that have the [Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls) deployed, it is highly recommended to either:
 
-1. [Use a volume for filelog offsets](ADVANCED-CONFIGURATION.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map, or
+1. [Use a volume for filelog offsets](advanced-configuration.md#providing-a-filelog-offset-volume) instead of the default filelog offset config map, or
 2. [Exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in the Dash0 operator's namespace from Kyverno's processing.
 
 Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance issues, since the default config map for filelog offsets is updated very frequently. This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno admission controller.
 
 ## Notes on GitOps
 
-When deploying workloads via GitOps tools like ArgoCD or Flux in a cluster where the Dash0 operator is installed, some care needs to be exercised to not create conflicts between the workload definition in the GitOps repository and the [workload modifications](AUTO-INSTRUMENTATION.md#how-workload-instrumentation-works) that are applied automatically by the Dash0 operator.
+When deploying workloads via GitOps tools like ArgoCD or Flux in a cluster where the Dash0 operator is installed, some care needs to be exercised to not create conflicts between the workload definition in the GitOps repository and the [workload modifications](auto-instrumentation.md#how-workload-instrumentation-works) that are applied automatically by the Dash0 operator.
 
 Otherwise, workload settings might flip-flop between what the GitOps system wants to apply and what the Dash0 operator does, or the GitOps system might overwrite the Dash0 operator's settings, thereby breaking telemetry collection for the workload.
 
@@ -140,7 +140,7 @@ Environment variable definitions in pod spec templates are the most likely sourc
 * `OTEL_INJECTOR_SERVICE_VERSION`
 * `OTEL_INJECTOR_RESOURCE_ATTRIBUTES`
 
-This recommendation does not apply to workloads that are [excluded from workload instrumentation](AUTO-INSTRUMENTATION.md#disabling-auto-instrumentation-for-specific-workloads) or workloads in namespaces without a [Dash0 monitoring resource](CONFIGURATION.md#enable-dash0-monitoring-for-a-namespace) or a monitoring resource with instrumentation disabled.
+This recommendation does not apply to workloads that are [excluded from workload instrumentation](auto-instrumentation.md#disabling-auto-instrumentation-for-specific-workloads) or workloads in namespaces without a [Dash0 monitoring resource](configuration.md#enable-dash0-monitoring-for-a-namespace) or a monitoring resource with instrumentation disabled.
 
 ## Notes on ArgoCD
 
@@ -242,7 +242,7 @@ The `hostmetrics` receiver will be disabled when using Docker as the container r
 
 ## See Also
 
-- [Advanced Configuration](ADVANCED-CONFIGURATION.md) - For filelog offset volumes, cert-manager, and other advanced topics
-- [Auto-Instrumentation](AUTO-INSTRUMENTATION.md) - For workload instrumentation details
-- [Configuration](CONFIGURATION.md) - For general operator configuration
-- [Troubleshooting](TROUBLESHOOTING.md) - For debugging issues
+- [Advanced Configuration](advanced-configuration.md) - For filelog offset volumes, cert-manager, and other advanced topics
+- [Auto-Instrumentation](auto-instrumentation.md) - For workload instrumentation details
+- [Configuration](configuration.md) - For general operator configuration
+- [Troubleshooting](troubleshooting.md) - For debugging issues

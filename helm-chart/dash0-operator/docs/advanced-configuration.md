@@ -91,7 +91,7 @@ Known examples for this are:
   This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the
   Kyverno admission controller.
 
-For more details on OPA, Kyverno, and other platform-specific considerations, see [PLATFORM-SPECIFIC.md](PLATFORM-SPECIFIC.md).
+For more details on OPA, Kyverno, and other platform-specific considerations, see [platform-specific.md](platform-specific.md).
 
 ## Using cert-manager
 
@@ -395,10 +395,10 @@ spec:
   selfMonitoring:
     enabled: false
   exports:
-    - # ... see CONFIGURATION.md for details on the exports settings
+    - # ... see configuration.md for details on the exports settings
 ```
 
-For more details on self-monitoring, see [CONFIGURATION.md](CONFIGURATION.md#self-monitoring).
+For more details on self-monitoring, see [configuration.md](configuration.md#self-monitoring).
 
 ## Exporting Data to Other Observability Backends
 
@@ -462,7 +462,7 @@ spec:
         endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
 ```
 
-For more details on configuring exports, see [CONFIGURATION.md](CONFIGURATION.md#configuring-the-dash0-backend-connection).
+For more details on configuring exports, see [configuration.md](configuration.md#configuring-the-dash0-backend-connection).
 
 ### Note regarding TLS when using arbitrary OTLP-compatible backends
 
@@ -494,6 +494,6 @@ Please note that it is a validation error to set both `insecure` and `insecureSk
 
 ## Related Documentation
 
-* [CONFIGURATION.md](CONFIGURATION.md) - Backend connections and namespace monitoring
-* [PLATFORM-SPECIFIC.md](PLATFORM-SPECIFIC.md) - Platform-specific notes including OPA and Kyverno compatibility
-* [INSTALLATION.md](INSTALLATION.md) - Installation guide
+* [configuration.md](configuration.md) - Backend connections and namespace monitoring
+* [platform-specific.md](platform-specific.md) - Platform-specific notes including OPA and Kyverno compatibility
+* [installation.md](installation.md) - Installation guide

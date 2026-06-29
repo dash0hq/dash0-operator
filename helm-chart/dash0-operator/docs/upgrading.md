@@ -76,7 +76,7 @@ Here is what you need to know about this version update for `Dash0Monitoring`:
 * We recommend to update your templates from `v1alpha1` to `v1beta1` at some point.
   However, there are currently no plans to remove support for version `v1alpha1`.
 * If you want to use the new trace context propagators option that has been added in version 0.71.0 (see
-  [AUTO-INSTRUMENTATION.md](AUTO-INSTRUMENTATION.md)), you need to use version `v1beta1` of the `Dash0Monitoring`
+  [auto-instrumentation.md](auto-instrumentation.md)), you need to use version `v1beta1` of the `Dash0Monitoring`
   resource.
   This includes updating your Yaml templates to that version, as described above.
 * After upgrading to operator version 0.71.0 or later, you can no longer easily downgrade to a version before 0.71.0.
@@ -117,9 +117,9 @@ kubectl delete secret --namespace dash0-system dash0-authorization-secret
 
 If you later decide to install the operator again, you will need to perform the initial configuration steps again:
 
-1. Set up a [Dash0 backend connection](CONFIGURATION.md#configuring-the-dash0-backend-connection), and
+1. Set up a [Dash0 backend connection](configuration.md#configuring-the-dash0-backend-connection), and
 2. Enable Dash0 monitoring in each namespace you want to monitor, see
-   [CONFIGURATION.md - Enable Dash0 Monitoring For a Namespace](CONFIGURATION.md#enable-dash0-monitoring-for-a-namespace).
+   [configuration.md - Enable Dash0 Monitoring For a Namespace](configuration.md#enable-dash0-monitoring-for-a-namespace).
 
 ### Unsupported Uninstallation Procedures
 
@@ -158,6 +158,6 @@ To rectify an improper uninstallation, follow these steps:
 
 ## Related Documentation
 
-- [INSTALLATION.md](INSTALLATION.md) - Initial installation instructions
-- [CONFIGURATION.md](CONFIGURATION.md) - Configuration options
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Troubleshooting common issues
+- [installation.md](installation.md) - Initial installation instructions
+- [configuration.md](configuration.md) - Configuration options
+- [troubleshooting.md](troubleshooting.md) - Troubleshooting common issues

@@ -35,7 +35,7 @@ To use the operator, you will need provide two configuration values:
       Use a secret reference and a Kubernetes secret if you want to avoid that.
     * **`secretRef`**: A reference to an existing Kubernetes secret in the Dash0 operator's namespace.
       The secret needs to contain the Dash0 authorization token.
-      See [CONFIGURATION.md - Using a Kubernetes Secret](CONFIGURATION.md#using-a-kubernetes-secret-for-the-dash0-authorization-token) for details on how exactly the secret should be created and configured.
+      See [configuration.md - Using a Kubernetes Secret](configuration.md#using-a-kubernetes-secret-for-the-dash0-authorization-token) for details on how exactly the secret should be created and configured.
 
 ## Basic Installation
 
@@ -85,7 +85,7 @@ helm install \
   dash0-operator/dash0-operator
 ```
 
-See [CONFIGURATION.md - Using a Kubernetes Secret](CONFIGURATION.md#using-a-kubernetes-secret-for-the-dash0-authorization-token)
+See [configuration.md - Using a Kubernetes Secret](configuration.md#using-a-kubernetes-secret-for-the-dash0-authorization-token)
 for more information on using a Kubernetes secrets with the Dash0 operator.
 
 ## Installation without Backend Configuration
@@ -109,20 +109,20 @@ That is, providing `--set operator.dash0Export.enabled=true` and the other backe
 On its own, the operator will only collect Kubernetes metrics.
 To actually have the operator properly monitor your workloads, two more things need to be set up:
 
-1. A [Dash0 backend connection](CONFIGURATION.md#configuring-the-dash0-backend-connection) has to be configured (unless you did that
+1. A [Dash0 backend connection](configuration.md#configuring-the-dash0-backend-connection) has to be configured (unless you did that
    already with the Helm values `operator.dash0Export.*`), and
 2. Monitoring namespaces and their workloads to collect logs, traces and metrics has to be
-   [enabled per namespace](CONFIGURATION.md#enable-dash0-monitoring-for-a-namespace), or configure namespace auto-monitoring.
+   [enabled per namespace](configuration.md#enable-dash0-monitoring-for-a-namespace), or configure namespace auto-monitoring.
 
-Both steps are described in [CONFIGURATION.md](CONFIGURATION.md).
+Both steps are described in [configuration.md](configuration.md).
 
-See [CONFIGURATION.md - Notes on Creating the Operator Configuration Resource Via Helm](CONFIGURATION.md#notes-on-creating-the-operator-configuration-resource-via-helm) for more information on providing Dash0 export settings via Helm and how it affects manual changes to the operator configuration resource.
+See [configuration.md - Notes on Creating the Operator Configuration Resource Via Helm](configuration.md#notes-on-creating-the-operator-configuration-resource-via-helm) for more information on providing Dash0 export settings via Helm and how it affects manual changes to the operator configuration resource.
 
-For Prometheus CRD support (ServiceMonitor, PodMonitor, ScrapeConfig), see [METRICS-AND-SCRAPING.md - Support for Prometheus CRDs](METRICS-AND-SCRAPING.md#support-for-prometheus-crds).
+For Prometheus CRD support (ServiceMonitor, PodMonitor, ScrapeConfig), see [metrics-and-scraping.md - Support for Prometheus CRDs](metrics-and-scraping.md#support-for-prometheus-crds).
 
 ## Next Steps
 
 After installation, proceed to:
-- [CONFIGURATION.md](CONFIGURATION.md) - Configure the Dash0 backend connection and enable namespace monitoring
-- [AUTO-INSTRUMENTATION.md](AUTO-INSTRUMENTATION.md) - Learn about automatic workload instrumentation
-- [METRICS-AND-SCRAPING.md](METRICS-AND-SCRAPING.md) - Configure metrics collection and Prometheus scraping
+- [configuration.md](configuration.md) - Configure the Dash0 backend connection and enable namespace monitoring
+- [auto-instrumentation.md](auto-instrumentation.md) - Learn about automatic workload instrumentation
+- [metrics-and-scraping.md](metrics-and-scraping.md) - Configure metrics collection and Prometheus scraping
