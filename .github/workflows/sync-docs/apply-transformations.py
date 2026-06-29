@@ -10,8 +10,9 @@ themselves live in transformations.yaml, which is the first-class source of trut
 script only knows how to apply them.
 
 For each file declared in transformations.yaml the script applies the common transformations, then the file-specific
-transformations, then rewrites relative links pointing at renamed files, then prepends a generated frontmatter block,
-and finally writes the result to its target path inside the output directory.
+transformations, then rewrites relative links pointing at renamed files or into renamed directories (dropping the
+`.md` suffix, as the target website serves pages under extensionless URLs), then prepends a generated frontmatter
+block, and finally writes the result to its target path inside the output directory.
 
 Usage:
     apply-transformations.py <source-root> <transformations.yaml> <output-dir>
@@ -60,10 +61,9 @@ def main(argv):
     _check_all_docs_covered(source_root, files)
 
     placeholders = _build_placeholders()
-    rename_map = _build_rename_map(files)
 
     for file_entry in files:
-        _process_file(file_entry, common, source_root, output_dir, placeholders, rename_map)
+        _process_file(file_entry, common, source_root, output_dir, placeholders)
 
 
 def _check_all_docs_covered(source_root, files):
@@ -90,21 +90,7 @@ def _check_all_docs_covered(source_root, files):
         raise SystemExit(f"error: these docs files are not declared in transformations.yaml: {joined}")
 
 
-def _build_rename_map(files):
-    """Map source file basename -> target file basename for entries whose name changes.
-
-    Used to rewrite relative links that point at a renamed file (e.g. ../README.md -> ../about-kubernetes.md).
-    """
-    rename_map = {}
-    for entry in files:
-        source_name = os.path.basename(entry["source"])
-        target_name = os.path.basename(entry["target"])
-        if source_name != target_name:
-            rename_map[source_name] = target_name
-    return rename_map
-
-
-def _process_file(file_entry, common, source_root, output_dir, placeholders, rename_map):
+def _process_file(file_entry, common, source_root, output_dir, placeholders):
     source = file_entry["source"]
     target = file_entry["target"]
     source_path = os.path.join(source_root, source)
@@ -120,7 +106,9 @@ def _process_file(file_entry, common, source_root, output_dir, placeholders, ren
         content = _apply(content, transformation, index, placeholders)
         print(f"[{source}] applied: {_describe(transformation, index)}")
 
-    content = _rewrite_renamed_links(content, rename_map)
+    content = _rewrite_readme_links(content)
+    content = _rewrite_docs_dir_links(content)
+    content = _rewrite_intra_docs_links(content)
     content = _prepend_frontmatter(content, file_entry, placeholders)
 
     output_path = os.path.join(output_dir, target)
@@ -130,17 +118,61 @@ def _process_file(file_entry, common, source_root, output_dir, placeholders, ren
     print(f"[{source}] wrote transformed document to {output_path}")
 
 
-def _rewrite_renamed_links(content, rename_map):
-    """Rewrite relative markdown links that point at a renamed file.
+# The top-level README.md becomes the section landing page about-kubernetes.md in the target repository (see
+# transformations.yaml).
+_README_LINK_PATTERN = re.compile(r"\]\(((?:\.{1,2}/)*)README\.md((?:#|\?)[^)]*)?\)")
 
-    Only local relative links are rewritten: the link target must be the (optionally `./` or `../` prefixed) file
-    name. Absolute URLs that happen to end in the same file name (e.g. https://github.com/.../README.md) are left
+
+def _rewrite_readme_links(content):
+    """Rewrite relative markdown links that point at the renamed README.md to use about-kubernetes instead.
+
+    Only local relative links are rewritten: the link target must be the (optionally `./` or `../` prefixed)
+    `README.md` (e.g. `](../README.md#supported-runtimes)` -> `](../about-kubernetes#supported-runtimes)`). The `.md`
+    suffix is dropped because the target website serves documentation pages under extensionless URLs. Any anchor or
+    query is preserved. Absolute URLs that happen to end in README.md (e.g. https://github.com/.../README.md) are left
     untouched because they do not match the relative-prefix pattern.
     """
-    for source_name, target_name in rename_map.items():
-        pattern = re.compile(r"\]\(((?:\.{1,2}/)*)" + re.escape(source_name) + r"((?:#|\?)[^)]*)?\)")
-        content = pattern.sub(lambda m: f"]({m.group(1)}{target_name}{m.group(2) or ''})", content)
-    return content
+    return _README_LINK_PATTERN.sub(lambda m: f"]({m.group(1)}about-kubernetes{m.group(2) or ''})", content)
+
+
+# The source `docs/` directory is renamed to `dash0-operator/` in the target repository (see transformations.yaml).
+# Group 1 captures the optional `./`/`../` prefix, group 2 the path after `docs/` (without any `.md` suffix), and
+# group 3 the optional anchor/query.
+_DOCS_DIR_LINK_PATTERN = re.compile(r"\]\(((?:\.{1,2}/)*)docs/([^)#?]*?)(?:\.md)?((?:#|\?)[^)]*)?\)")
+
+
+def _rewrite_docs_dir_links(content):
+    """Rewrite relative markdown links that point into the `docs/` directory to use `dash0-operator/` instead.
+
+    Only local relative links are rewritten: the link path must start with the (optionally `./` or `../` prefixed)
+    `docs/` segment (e.g. `](docs/configuration.md#anchor)` -> `](dash0-operator/configuration#anchor)`). The trailing
+    `.md` suffix is dropped because the target website serves documentation pages under extensionless URLs; the path
+    after `docs/` and any anchor or query are otherwise preserved (links into `docs/` that do not end in `.md` are
+    still re-prefixed, just without a suffix to drop). Absolute URLs that happen to contain a `docs/` path segment
+    (e.g. https://kubernetes.io/docs/...) are left untouched because they do not match the relative-prefix pattern.
+    """
+    return _DOCS_DIR_LINK_PATTERN.sub(
+        lambda m: f"]({m.group(1)}dash0-operator/{m.group(2)}{m.group(3) or ''})", content
+    )
+
+
+# Sibling links between the topic files keep their target file name but must drop the `.md` suffix. The topic files
+# move together (docs/ -> dash0-operator/), so these same-directory links keep pointing at the right page; only the
+# extension changes. Group 1 captures the optional `./` prefix, group 2 the bare file name, group 3 the optional
+# anchor/query.
+_INTRA_DOCS_LINK_PATTERN = re.compile(r"\]\((\./)?([^)/:?#]+)\.md((?:#|\?)[^)]*)?\)")
+
+
+def _rewrite_intra_docs_links(content):
+    """Drop the `.md` suffix from relative same-directory markdown links between topic files.
+
+    Only bare same-directory links are rewritten: the target must be a plain file name, optionally prefixed with `./`
+    (e.g. `](configuration.md#enable-dash0-monitoring-for-a-namespace)` -> `](configuration#…)`). The `.md` suffix is
+    dropped because the target website serves documentation pages under extensionless URLs. Links that cross a rename
+    boundary (`../README.md`, `docs/…`) are handled separately and are not matched here, and absolute URLs are left
+    untouched because they contain a `:` (and a `/`) before the `.md`.
+    """
+    return _INTRA_DOCS_LINK_PATTERN.sub(lambda m: f"]({m.group(1) or ''}{m.group(2)}{m.group(3) or ''})", content)
 
 
 def _prepend_frontmatter(content, file_entry, placeholders):

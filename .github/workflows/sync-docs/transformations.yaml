@@ -5,10 +5,12 @@
 # Edit this file whenever the required modifications change, or whenever a documentation file is added or removed.
 #
 # The documentation is a set of files: the top-level README.md (which becomes the section landing page
-# about-kubernetes.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names inside a
-# docs/ subdirectory in the target repository). The website layout mirrors the source layout, so relative links
-# between the files are preserved as-is; the only exception is links to the renamed README.md, which are rewritten
-# automatically (see below).
+# about-kubernetes.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but move into
+# a dash0-operator/ subdirectory in the target repository, i.e. the docs/ directory is renamed to dash0-operator/).
+# Relative links between the topic files are sibling links and are preserved as-is, because the topic files move
+# together. Two kinds of links are rewritten automatically (see below): links to the renamed README.md
+# (../README.md -> ../about-kubernetes.md), and links from about-kubernetes.md into the renamed directory
+# (docs/configuration.md -> dash0-operator/configuration.md).
 #
 # Structure of this file:
 #
@@ -25,9 +27,12 @@
 # sync.
 #
 # A frontmatter block is generated from each entry's `title`/`description` (plus a `lastUpdated` timestamp) and
-# prepended to the transformed file. Links pointing at the renamed README.md (e.g. ../README.md#supported-runtimes)
-# are rewritten to the README's target name (about-kubernetes.md) automatically; absolute URLs that happen to end in
-# README.md (e.g. links into the opentelemetry-collector-contrib repository) are left untouched.
+# prepended to the transformed file. Two kinds of relative links are rewritten automatically by
+# apply-transformations.py: links pointing at the renamed README.md (e.g. ../README.md#supported-runtimes) are
+# rewritten to the README's target name (about-kubernetes.md), and links pointing into the renamed docs/ directory
+# (e.g. docs/configuration.md#enable-dash0-monitoring-for-a-namespace) are rewritten to the target directory name
+# (dash0-operator/configuration.md#...). Absolute URLs that happen to contain README.md or a docs/ path segment (e.g.
+# links into another GitHub repository) are left untouched.
 #
 # The supported transformation types are:
 #
@@ -79,51 +84,51 @@ files:
         replace: '[values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml)'
 
   - source: docs/installation.md
-    target: docs/installation.md
+    target: dash0-operator/installation.md
     title: Installation
     description: Install the Dash0 operator Helm chart, including Prometheus CRDs, authorization, and target-allocator setup.
 
   - source: docs/configuration.md
-    target: docs/configuration.md
+    target: dash0-operator/configuration.md
     title: Configuration
     description: Configure the Dash0 operator and Dash0 monitoring resources, including backend connections, namespace monitoring, secrets, and datasets.
 
   - source: docs/auto-instrumentation.md
-    target: docs/auto-instrumentation.md
+    target: dash0-operator/auto-instrumentation.md
     title: Automatic Workload Instrumentation
     description: Automatically instrument Kubernetes workloads with OpenTelemetry using the Dash0 operator.
 
   - source: docs/metrics-and-scraping.md
-    target: docs/metrics-and-scraping.md
+    target: dash0-operator/metrics-and-scraping.md
     title: Metrics Collection and Prometheus Scraping
     description: Collect Kubernetes metrics and scrape Prometheus endpoints with the Dash0 operator.
 
   - source: docs/managing-dash0-resources.md
-    target: docs/managing-dash0-resources.md
+    target: dash0-operator/managing-dash0-resources.md
     title: Managing Dash0 Resources
     description: Manage Dash0 dashboards, check rules, synthetic checks, views, notification channels, and more via Kubernetes custom resources.
 
   - source: docs/advanced-configuration.md
-    target: docs/advanced-configuration.md
+    target: dash0-operator/advanced-configuration.md
     title: Advanced Configuration
     description: Advanced Dash0 operator configuration, including cert-manager, collector pod scheduling, sysctls, and filelog offset volumes.
 
   - source: docs/platform-specific.md
-    target: docs/platform-specific.md
+    target: dash0-operator/platform-specific.md
     title: Platform-Specific Notes and Compatibility
     description: Platform-specific guidance and compatibility notes for running the Dash0 operator on various Kubernetes distributions.
 
   - source: docs/profiling.md
-    target: docs/profiling.md
+    target: dash0-operator/profiling.md
     title: Profiling
     description: Support for profiling telemetry & collecting profiles with the OpenTelemetry eBPF Profiler.
 
   - source: docs/upgrading.md
-    target: docs/upgrading.md
+    target: dash0-operator/upgrading.md
     title: Upgrading and Uninstallation
     description: Upgrade the Dash0 operator, migrate CRD versions, and uninstall the operator from your cluster.
 
   - source: docs/troubleshooting.md
-    target: docs/troubleshooting.md
+    target: dash0-operator/troubleshooting.md
     title: Troubleshooting
     description: Troubleshoot and debug the Dash0 operator.
