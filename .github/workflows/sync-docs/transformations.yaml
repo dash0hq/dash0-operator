@@ -73,6 +73,10 @@ files:
       - description: remove the "Description" heading
         type: remove-line
         line: '## Description'
+      - description: replace repo-local link to values.yaml
+        type: replace-regex
+        find: '\[values\.yaml\]\(values\.yaml\)'
+        replace: '[values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml)'
 
   - source: docs/installation.md
     target: docs/installation.md

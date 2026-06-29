@@ -117,7 +117,7 @@ Leaving Kyverno processing in place and using the config map filelog offset stor
 
 ## Notes on GitOps
 
-When deploying workloads via GitOps tools like ArgoCD or Flux in a cluster where the Dash0 operator is installed, some care needs to be exercised to not create conflicts between the workload definition in the GitOps repository and the [workload modifications](auto-instrumentation.md#how-workload-instrumentation-works) that are applied automatically by the Dash0 operator.
+When deploying workloads via GitOps tools like ArgoCD or Flux in a cluster where the Dash0 operator is installed, some care needs to be exercised to not create conflicts between the workload definition in the GitOps repository and the [workload modifications](auto-instrumentation.md#how-automatic-workload-instrumentation-works) that are applied automatically by the Dash0 operator.
 
 Otherwise, workload settings might flip-flop between what the GitOps system wants to apply and what the Dash0 operator does, or the GitOps system might overwrite the Dash0 operator's settings, thereby breaking telemetry collection for the workload.
 

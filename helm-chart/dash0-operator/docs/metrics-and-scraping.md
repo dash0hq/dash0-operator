@@ -22,10 +22,9 @@ By default, the operator collects metrics as follows:
   and system metrics from the underlying nodes via the
   [Host Metrics Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md).
   Collecting these metrics can be disabled per cluster by setting
-  `kubernetesInfrastructureMetricsCollection.enabled: false` in the Dash0 operator configuration resource (or setting
+  [`kubernetesInfrastructureMetricsCollection.enabled: false`](configuration.md#operatorconfigurationresource.spec.kubernetesInfrastructureMetricsCollection.enabled) in the Dash0 operator configuration resource (or setting
   the value `operator.kubernetesInfrastructureMetricsCollectionEnabled` to `false` when deploying the operator
-  configuration resource via the Helm chart). See [Kubernetes Infrastructure Metrics Collection](configuration.md#kubernetes-infrastructure-metrics-collection)
-  for details.
+  configuration resource via the Helm chart).
 
 * Namespace-scoped metrics (e.g. metrics related to a workload running in a specific namespace) will only be collected
   if the namespace is monitored, that is, there is a Dash0 monitoring resource in that namespace. See
@@ -34,8 +33,9 @@ By default, the operator collects metrics as follows:
 
 * The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations in monitored
   namespaces, as described in the section [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints).
-  This can be disabled per namespace by explicitly setting `prometheusScraping.enabled: false` in the Dash0 monitoring
-  resource. See [Prometheus Scraping](configuration.md#prometheus-scraping) for details.
+  This can be disabled per namespace by explicitly setting
+  [`prometheusScraping.enabled: false`](configuration.md#monitoringresource.spec.prometheusScraping.enabled) in the Dash0 monitoring
+  resource.
 
 * Metrics which are not namespace-scoped (for example node metrics like `k8s.node.*` or host metrics like
   `system.cpu.utilization`) will always be collected, unless metrics collection is disabled globally for the cluster
@@ -104,8 +104,9 @@ namespaces that are configured to be monitored by the Dash0 operator (see
 
 The scraping of a pod is executed from the same Kubernetes node the pod resides on.
 
-This feature can be disabled for a namespace by explicitly setting `prometheusScraping.enabled: false` in the Dash0
-monitoring resource. See [Prometheus Scraping](configuration.md#prometheus-scraping) for details.
+This feature can be disabled for a namespace by explicitly setting
+[`prometheusScraping.enabled: false`](configuration.md#monitoringresource.spec.prometheusScraping.enabled) in the Dash0 monitoring
+resource.
 
 > **Note:** To also have [Kube state metrics](https://github.com/kubernetes/kube-state-metrics) (which are used
 > extensively in [Awesome Prometheus alerts](https://samber.github.io/awesome-prometheus-alerts/)) scraped and
@@ -135,7 +136,7 @@ If the scraped endpoints require authorization, it is mandatory to configure mTL
 We recommend to use [cert-manager](https://cert-manager.io/) for the creation of the certificates/secrets, but any secrets following the [kubernetes.io/tls](https://kubernetes.io/docs/concepts/configuration/secret/#tls-secrets) secret type and providing `ca.crt`, `tls.crt`, and `tls.key` should be compatible.
 Note that the server and client certificates need to be signed by the same CA to be trusted (i.e. two random self-signed certificates won't work).
 
-You can find an example of minimal issuers and certificates for cert-manager in [/test-resources/cert-manager/ta-issuers-and-cert.yaml.template](/test-resources/cert-manager/ta-issuers-and-cert.yaml.template).
+You can find an example of minimal issuers and certificates for cert-manager in [this template](https://github.com/dash0hq/dash0-operator/blob/main/test-resources/cert-manager/ta-issuers-and-cert.yaml.template).
 
 The secrets must be created in the Dash0 operator namespace.
 

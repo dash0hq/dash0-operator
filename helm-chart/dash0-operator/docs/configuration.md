@@ -192,7 +192,7 @@ The Dash0 operator configuration resource is cluster-scoped, so a specific names
 applying it.
 
 > **Note:** All configuration options available in the operator configuration resource can also be configured when
-> letting the Helm chart auto-create this resource, as explained in the section [Installation](#installation).
+> letting the Helm chart auto-create this resource, as explained in the section [Installation](installation.md).
 > You can consult the chart's
 > [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file for a
 > complete list of available configuration settings.
@@ -330,7 +330,7 @@ The Dash0 monitoring resource supports additional configuration settings:
 
   More fine-grained per-workload control over instrumentation is available by setting the label
   `dash0.com/enable=false` on individual workloads, see
-  [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads).
+  [Disabling Auto-Instrumentation for Specific Workloads](auto-instrumentation.md#disabling-auto-instrumentation-for-specific-workloads).
 
   The behavior when changing this setting for an existing Dash0 monitoring resource is as follows:
     * When this setting is updated to `spec.instrumentWorkloads=all` (and it had a different value before):
@@ -347,12 +347,12 @@ The Dash0 monitoring resource supports additional configuration settings:
 
   Automatic workload instrumentation will automatically add tracing to your workloads.
   You can read more about what exactly this feature entails in the section
-  [Automatic Workload Instrumentation](#automatic-workload-instrumentation).
+  [Automatic Workload Instrumentation](auto-instrumentation.md).
 
 * <a href="#monitoringresource.spec.instrumentWorkloads.labelSelector"><span id="monitoringresource.spec.instrumentWorkloads.labelSelector">**`spec.instrumentWorkloads.labelSelector`**</span></a>:
   A custom Kubernetes [label selector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors)
   for controlling the workload instrumentation on the level of individual workloads, see
-  [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation).
+  [Using a Custom Label Selector to Control Auto-Instrumentation](auto-instrumentation.md#using-a-custom-label-selector-to-control-auto-instrumentation).
 
 * <a href="#monitoringresource.spec.instrumentWorkloads.traceContext.propagators"><span id="monitoringresource.spec.instrumentWorkloads.traceContext.propagators">**`spec.instrumentWorkloads.traceContext.propagators`**</span></a>:
   When set, the operator will add the environment variable `OTEL_PROPAGATORS` to all instrumented workloads in the
@@ -469,9 +469,9 @@ The Dash0 monitoring resource supports additional configuration settings:
   The configuration structure is identical to the configuration of the OpenTelemetry collector's
   [transform processor](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
   Both the
-  [basic configuration style](#https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config),
+  [basic configuration style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config),
   and the
-  [advanced configuration style](#https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
+  [advanced configuration style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
   of the transform processor are supported.
   One difference to the transform processor is that the transform rules configured in a Dash0 monitoring resource will
   only be applied to the telemetry collected in the namespace the monitoring resource is installed in.
@@ -502,7 +502,7 @@ The Dash0 monitoring resource supports additional configuration settings:
   in Dash0 via the Dash0 API.
   More fine-grained per-resource control over synchronization is available by setting the label
   `dash0.com/enable=false` on individual Perses dashboard resources.
-  See [Managing Dash0 Dashboards](#managing-dash0-dashboards) for details.
+  See [Managing Dash0 Dashboards](managing-dash0-resources.md#managing-dash0-dashboards) for details.
   This setting is optional, it defaults to `true`.
 
 * <a href="#monitoringresource.spec.synchronizePrometheusRules"><span id="monitoringresource.spec.synchronizePrometheusRules">**`spec.synchronizePrometheusRules`**</span></a>:
@@ -511,7 +511,7 @@ The Dash0 monitoring resource supports additional configuration settings:
   in Dash0 via the Dash0 API.
   More fine-grained per-resource control over synchronization is available by setting the label
   `dash0.com/enable=false` on individual Prometheus rule resources.
-  See [Managing Dash0 Check Rules](#managing-dash0-check-rules) for details.
+  See [Managing Dash0 Check Rules](managing-dash0-resources.md#managing-dash0-check-rules) for details.
   This setting is optional, it defaults to `true`.
 
 #### Example
