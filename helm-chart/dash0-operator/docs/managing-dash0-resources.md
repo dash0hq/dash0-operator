@@ -20,7 +20,7 @@ You can manage your Dash0 dashboards via the Dash0 operator.
 * The operator will only pick up Perses dashboard resources in namespaces that have a Dash0 monitoring resource
   deployed.
 * The operator will not synchronize Perses dashboard resources in namespaces where the Dash0 monitoring resource has the
-  setting [`synchronizePersesDashboards`](#monitoringresource.spec.synchronizePersesDashboards) set to `false`.
+  setting [`synchronizePersesDashboards`](configuration.md#monitoringresource.spec.synchronizePersesDashboards) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
   namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
@@ -136,7 +136,7 @@ You can manage your Dash0 check rules via the Dash0 operator.
   or `secret-ref`).
 * The operator will only pick up Prometheus rule resources in namespaces that have a Dash0 monitoring resource deployed.
 * The operator will not synchronize Prometheus rule resources in namespaces where the Dash0 monitoring resource has the
-  setting [`synchronizePrometheusRules`](#monitoringresource.spec.synchronizePrometheusRules) set to `false`.
+  setting [`synchronizePrometheusRules`](configuration.md#monitoringresource.spec.synchronizePrometheusRules) set to `false`.
   (This setting is optional and defaults to `true` when omitted.)
 * Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
   namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
@@ -482,7 +482,7 @@ spec:
 
 Sends notifications using the Dash0 Slack Bot, which is installed into a Slack workspace via OAuth.
 The Slack Bot integration supports richer formatting and centralized channel management compared to the simpler
-Slack Webhook integration. See the [comparison table](#slack-webhook-vs-slack-bot) at the end of this section.
+Slack Webhook integration.
 
 **Prerequisites:**
 * You must have **admin permissions** on the target Slack workspace.
@@ -774,7 +774,7 @@ Spam filters allow you to drop unwanted telemetry data (logs, spans, or metrics)
 is stored in Dash0.
 
 **Note:** For filtering telemetry before it leaves your cluster, use
-[filter](#monitoringresource.spec.filter) rules in your the monitoring resources.
+[filter](configuration.md#monitoringresource.spec.filter) rules in your the monitoring resources.
 
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
@@ -924,8 +924,8 @@ If set to false, these RBAC permissions will not be granted, and the operator wi
 permissions.
 
 If `operator.telemetryCollectionEnabled=false` is set, it will not be possible to set
-[`spec.telemetryCollection.enabled`](#operatorconfigurationresource.spec.telemetryCollection.enabled)
-to `true` in the [Dash0OperatorConfiguration](#configuring-the-dash0-backend-connection), since the required RBAC
+[`spec.telemetryCollection.enabled`](configuration.md#operatorconfigurationresource.spec.telemetryCollection.enabled)
+to `true` in the [Dash0OperatorConfiguration](configuration.md#configuring-the-dash0-backend-connection), since the required RBAC
 permissions have not been granted.
 To enable telemetry collection later on, it is required to change this Helm value to `true` and perform a
 `helm upgrade --install` with the updated setting.
