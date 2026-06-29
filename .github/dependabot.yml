@@ -50,6 +50,7 @@ updates:
       - "/images/configreloader"
       - "/images/filelogoffsetsync"
       - "/images/filelogoffsetvolumeownership"
+      - "/images/volumeownership"
       - "/images/instrumentation"
       - "/images/target-allocator"
     schedule:
