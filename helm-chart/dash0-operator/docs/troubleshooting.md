@@ -60,5 +60,5 @@ For additional help:
 
 ## Related Documentation
 
-- [platform-specific.md](platform-specific.md) - Platform-specific notes that may help troubleshoot issues
-- [configuration.md](configuration.md) - Verify your configuration settings
+- [Platform Specific](platform-specific.md) - Platform-specific notes that may help troubleshoot issues
+- [Configuration](configuration.md) - Verify your configuration settings

@@ -91,7 +91,7 @@ Known examples for this are:
   This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the
   Kyverno admission controller.
 
-For more details on OPA, Kyverno, and other platform-specific considerations, see [platform-specific.md](platform-specific.md).
+For more details on OPA, Kyverno, and other platform-specific considerations, see [Platform Specific](platform-specific.md).
 
 ## Using cert-manager
 
@@ -398,7 +398,7 @@ spec:
     - # ... see configuration.md for details on the exports settings
 ```
 
-For more details on self-monitoring, see [configuration.md](configuration.md#self-monitoring).
+For more details on self-monitoring, see [Self-Monitoring](configuration.md#self-monitoring).
 
 ## Exporting Data to Other Observability Backends
 
@@ -462,7 +462,7 @@ spec:
         endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
 ```
 
-For more details on configuring exports, see [configuration.md](configuration.md#configuring-the-dash0-backend-connection).
+For more details on configuring exports, see [Configuring the Dash0 Backend Connection](configuration.md#configuring-the-dash0-backend-connection).
 
 ### Note regarding TLS when using arbitrary OTLP-compatible backends
 
@@ -494,6 +494,6 @@ Please note that it is a validation error to set both `insecure` and `insecureSk
 
 ## Related Documentation
 
-* [configuration.md](configuration.md) - Backend connections and namespace monitoring
-* [platform-specific.md](platform-specific.md) - Platform-specific notes including OPA and Kyverno compatibility
-* [installation.md](installation.md) - Installation guide
+* [Configuration](configuration.md) - Backend connections and namespace monitoring
+* [Platform Specific](platform-specific.md) - Platform-specific notes including OPA and Kyverno compatibility
+* [Installation](installation.md) - Installation guide
