@@ -623,16 +623,17 @@ rules:
 ---
 {{ if .Values.operator.agent0Connector.enabled }}
 {{/*
-The -manager-agent0-connector cluster role holds the permissions that the operator delegates to the agent0-connector
-deployment. The operator creates a dedicated cluster role/cluster role binding granting the agent0-connector service
-account get & list on all resources plus get on all non-resource URLs. Kubernetes' privilege-escalation prevention only
-allows the operator to grant permissions it holds itself, so it must hold these read permissions as well. This cluster
-role (and its binding) only exist when the agent0-connector feature is enabled (operator.agent0Connector.enabled).
+The -manager-agent0-connector-ro cluster role holds the read-only permissions that the operator delegates to the
+agent0-connector deployment. The operator creates a dedicated cluster role/cluster role binding granting the
+agent0-connector service account "get" & "list" on all resources plus get on all non-resource URLs. Kubernetes'
+privilege-escalation prevention only allows the operator to grant permissions it holds itself, so it must hold these
+read permissions as well. This cluster role (and its binding) only exist when the agent0-connector feature is enabled
+(operator.agent0Connector.enabled).
 */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ template "dash0-operator.chartName" . }}-manager-agent0-connector
+  name: {{ template "dash0-operator.chartName" . }}-manager-agent0-connector-ro
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
@@ -657,5 +658,67 @@ rules:
   - '*'
   verbs:
   - get
+
+---
+{{/*
+The -manager-agent0-connector cluster role holds the permissions the operator needs to manage the agent0-connector
+resources (service account, cluster role, cluster role binding and deployment). These permissions will *not* be granted
+to the agent0-connector deployment itself. This cluster role (and its binding) only exist when the agent0-connector
+feature is enabled.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-manager-agent0-connector
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-agent0-connector
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+rules:
+
+# Permissions required to manage the agent0-connector service account:
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+# Permissions required to manage the agent0-connector cluster role and cluster role binding:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  - clusterrolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+# Permissions required to manage the agent0-connector deployment:
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 
 {{ end }}

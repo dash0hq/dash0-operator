@@ -1969,6 +1969,11 @@ func setupAgent0ConnectorManager(
 	pseudoClusterUid types.UID,
 	developmentMode bool,
 ) (*agent0connector.Agent0ConnectorManager, error) {
+	if !envVars.agent0ConnectorEnabled {
+		// We might not have the permissions to manage the agent0 connector resources (in particular when telemetry
+		// collection is also disabled), e.g. no permission to manage cluster roles, config maps etc.
+		return nil, nil
+	}
 	agent0ConnectorConfig := util.Agent0ConnectorConfig{
 		Images:            images,
 		OperatorNamespace: envVars.operatorNamespace,

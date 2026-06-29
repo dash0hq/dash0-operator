@@ -54,6 +54,11 @@ tests:
       - containsDocument:
           kind: ClusterRole
           apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector-ro
+        not: true
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
           name: dash0-operator-manager-agent0-connector
         not: true
 
@@ -66,7 +71,7 @@ tests:
       - containsDocument:
           kind: ClusterRole
           apiVersion: rbac.authorization.k8s.io/v1
-          name: dash0-operator-manager-agent0-connector
+          name: dash0-operator-manager-agent0-connector-ro
         documentIndex: 4
       - contains:
           path: rules
@@ -87,3 +92,82 @@ tests:
             verbs:
               - get
         documentIndex: 4
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector
+        documentIndex: 5
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - serviceaccounts
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+        documentIndex: 5
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - rbac.authorization.k8s.io
+            resources:
+              - clusterroles
+              - clusterrolebindings
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+        documentIndex: 5
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - deployments
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+        documentIndex: 5
+
+  - it: should grant agent0-connector management permissions independently of telemetry collection
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        agent0Connector:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 4
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-collector
+        not: true
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector-ro
+        documentIndex: 2
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector
+        documentIndex: 3
