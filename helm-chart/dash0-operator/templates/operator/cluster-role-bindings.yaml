@@ -82,6 +82,25 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  name: {{ template "dash0-operator.chartName" . }}-manager-agent0-connector-ro
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-binding-agent0-connector
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ template "dash0-operator.chartName" . }}-manager-agent0-connector-ro
+subjects:
+- kind: ServiceAccount
+  name: {{ template "dash0-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
   name: {{ template "dash0-operator.chartName" . }}-manager-agent0-connector
   labels:
     app.kubernetes.io/name: dash0-operator

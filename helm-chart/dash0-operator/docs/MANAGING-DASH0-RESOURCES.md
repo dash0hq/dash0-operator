@@ -930,3 +930,10 @@ permissions have not been granted.
 To enable telemetry collection later on, it is required to change this Helm value to `true` and perform a
 `helm upgrade --install` with the updated setting.
 
+If the operator is installed with `telemetryCollectionEnabled=true`, and the flag is later flipped to false via
+`helm upgrade`, the operator will not remove its managed OpenTelemetry collectors, nor the associated resources
+(config maps, cluster roles, roles & bindings, services etc.) from the cluster.
+It cannot, because `telemetryCollectionEnabled=false` implies that the necessary RBAC permissions for managing these
+resources (including the permission to delete these resources) are not granted to the operator manger.
+The recommended resolution is to uninstall the operator from the cluster entirely, then re-install with
+`telemetryCollectionEnabled=false`.

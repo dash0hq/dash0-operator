@@ -54,6 +54,11 @@ tests:
       - containsDocument:
           kind: ClusterRoleBinding
           apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector-ro
+        not: true
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
           name: dash0-operator-manager-agent0-connector
         not: true
 
@@ -66,5 +71,35 @@ tests:
       - containsDocument:
           kind: ClusterRoleBinding
           apiVersion: rbac.authorization.k8s.io/v1
-          name: dash0-operator-manager-agent0-connector
+          name: dash0-operator-manager-agent0-connector-ro
         documentIndex: 4
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector
+        documentIndex: 5
+
+  - it: should bind agent0-connector management permissions independently of telemetry collection
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        agent0Connector:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 4
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-collector
+        not: true
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector-ro
+        documentIndex: 2
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-agent0-connector
+        documentIndex: 3
