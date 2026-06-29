@@ -16,7 +16,7 @@ opening a pull request against the documentation repository.
    - transformation declarations: `transformations.yaml`
    - output directory: `${RUNNER_TEMP}/transformed-docs`
 4. **Checks out the target repository** (the docs repo) using a fine-grained PAT.
-5. **Copies** the transformed tree (`about-kubernetes.md` plus `docs/*.md`) into the configured target directory.
+5. **Copies** the transformed tree (`about-kubernetes.md` plus `dash0-operator/*.md`) into the configured target directory.
 6. **Creates or updates a pull request** in the target repository: it stages the target directory, and if there
    is a meaningful diff, commits to the branch `sync-dash0-operator-helm-chart-docs`, force-pushes it, and opens
    a PR against `main` (or relies on the force-push to update an already-open PR).
@@ -48,8 +48,11 @@ opening a pull request against the documentation repository.
   - `transformations` — optional list of transformations applied to this file only, after the common ones.
 
 The documentation is the top-level `README.md` (renamed to the section landing page `about-kubernetes.md`) plus
-the topic files in `docs/*.md` (which keep their names inside a `docs/` subdirectory). The website layout mirrors
-the source layout, so relative links between files are preserved as-is.
+the topic files in `docs/*.md` (which keep their names but move into a `dash0-operator/` subdirectory in the target
+repo — i.e. the source `docs/` directory is renamed to `dash0-operator/`). The topic files move together, so the
+sibling links between them keep pointing at the right page; all relative markdown links — both the sibling links and
+the ones that cross a rename boundary — have their `.md` suffix dropped, because the target website serves pages under
+extensionless URLs (see below).
 
 ### Supported transformation types
 
@@ -68,8 +71,10 @@ no-op. Set `required: false` on an individual transformation to allow zero match
 For each `files` entry the script:
 
 1. Applies the `common` transformations, then the file-specific `transformations`.
-2. Rewrites relative markdown links pointing at renamed files (e.g. `../README.md#…` → `../about-kubernetes.md#…`).
-   Absolute URLs ending in the same basename (e.g. links to `README.md` in another GitHub repo) are left untouched.
+2. Rewrites relative markdown links, dropping the `.md` suffix (the target website serves pages extensionless):
+   links that cross a rename boundary (e.g. `../README.md#…` → `../about-kubernetes#…`), links pointing into the
+   renamed `docs/` directory (e.g. `docs/configuration.md#…` → `dash0-operator/configuration#…`), and same-directory
+   sibling links between topic files (e.g. `configuration.md#…` → `configuration#…`).
 3. Prepends a generated frontmatter block (`title`, `description`, `lastUpdated`).
 4. Writes the result to `target` inside the output directory.
 

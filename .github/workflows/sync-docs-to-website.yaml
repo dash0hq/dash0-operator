@@ -7,8 +7,9 @@ name: Synchronize Helm chart docs to dash0.com/docs
 # modifications declared in sync-docs/transformations.yaml, and opens a pull request against the target repository.
 #
 # The documentation is a set of files: the top-level README.md (which becomes the section landing page
-# about-kubernetes.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names inside a
-# docs/ subdirectory). They are transformed and written into the target directory, mirroring that layout.
+# about-kubernetes.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but move
+# into a dash0-operator/ subdirectory, i.e. the docs/ directory is renamed to dash0-operator/). They are transformed
+# and written into the target directory.
 #
 # This workflow can be run manually (workflow_dispatch) and is also invoked from ci.yaml (workflow_call) after a new
 # release has been published.
@@ -79,7 +80,7 @@ jobs:
         run: |
           target_path="target-repository/${TARGET_DIRECTORY}"
           mkdir -p "$target_path"
-          # Copy the transformed tree (about-kubernetes.md and docs/*.md) into the target directory.
+          # Copy the transformed tree (about-kubernetes.md and dash0-operator/*.md) into the target directory.
           cp -R "${RUNNER_TEMP}/transformed-docs/." "$target_path/"
 
       - name: create pull request in target repository
