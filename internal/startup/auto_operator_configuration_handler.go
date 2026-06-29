@@ -413,7 +413,7 @@ func convertValuesToResource(
 					"managed by the operator Helm chart (Helm values operator.dash0Export.*), manual modifications " +
 					"to this resource (i.e. via kubectl or k9s) will be overwritten when the operator manager is " +
 					"restarted or the operator is updated to a new version. See " +
-					"https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/CONFIGURATION.md#" +
+					"https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/configuration.md#" +
 					"notes-on-creating-the-operator-configuration-resource-via-helm.",
 			},
 		},

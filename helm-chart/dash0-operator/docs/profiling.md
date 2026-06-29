@@ -37,7 +37,7 @@ spec:
 ```
 
 When profiling is enabled, you can use the same `spec.filter` and `spec.transform` settings on your `Dash0Monitoring` resources to filter and transform profiling data, just like for traces, metrics, and logs.
-See [CONFIGURATION.md](CONFIGURATION.md#filtering-and-transforming-telemetry) for details.
+See [configuration.md](configuration.md#filtering-and-transforming-telemetry) for details.
 
 ## Collecting Profiles with the OpenTelemetry eBPF Profiler
 
@@ -135,5 +135,5 @@ Once both profiling support in the operator and the eBPF profiler DaemonSet are 
 
 ## Related Documentation
 
-- [CONFIGURATION.md](CONFIGURATION.md) - Configuration options including filtering and transforming telemetry
-- [INSTALLATION.md](INSTALLATION.md) - Installation guide
+- [configuration.md](configuration.md) - Configuration options including filtering and transforming telemetry
+- [installation.md](installation.md) - Installation guide

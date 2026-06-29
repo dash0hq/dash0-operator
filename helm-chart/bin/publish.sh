@@ -38,7 +38,7 @@ if [[ -z $version ]]; then
   exit 1
 fi
 
-# Replace relative links in the main chart README (e.g. "docs/INSTALLATION.md" or "values.yaml") with absolute links to
+# Replace relative links in the main chart README (e.g. "docs/installation.md" or "values.yaml") with absolute links to
 # the GitHub repository, pinned to the version tag being released. Relative links do not resolve on
 # https://artifacthub.io/packages/helm/dash0-operator/dash0-operator, which renders this README. The README is restored
 # to its original state after packaging (see below), so this change is never committed back to the source branch.

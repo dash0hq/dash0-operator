@@ -204,7 +204,7 @@ operator:
       # your GKE Autopilot cluster.
       # The default is true, there should usually be no reason to override this.
       # See
-      # https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/PLATFORM-SPECIFIC.md#managing-the-allowlistsynchronizer-manually
+      # https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/platform-specific.md#managing-the-allowlistsynchronizer-manually
       # for more information.
       deployAllowlistSynchronizer: true
 
@@ -238,7 +238,7 @@ operator:
 
   # Settings for using cert-manager instead of auto-generating TLS certificates.
   #
-  # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/ADVANCED-CONFIGURATION.md#using-cert-manager
+  # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#using-cert-manager
   # for details on how to use cert-manager with the Dash0 operator.
   certManager:
 

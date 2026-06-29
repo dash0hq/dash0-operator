@@ -15,7 +15,7 @@ This guide covers automatic workload instrumentation, including Python support, 
 
 ## Overview
 
-In namespaces that are [enabled for Dash0 monitoring](CONFIGURATION.md#enable-dash0-monitoring-for-a-namespace), all supported workload types are automatically instrumented by the Dash0 operator, to achieve two goals:
+In namespaces that are [enabled for Dash0 monitoring](configuration.md#enable-dash0-monitoring-for-a-namespace), all supported workload types are automatically instrumented by the Dash0 operator, to achieve two goals:
 
 1. Enable tracing for [supported runtimes](../README.md#supported-runtimes) out of the box, and
 2. Improve auto-detection of OpenTelemetry resource attributes.

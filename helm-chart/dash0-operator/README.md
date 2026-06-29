@@ -63,16 +63,16 @@ helm install \
   dash0-operator/dash0-operator
 ```
 
-For detailed installation instructions including secret references, Prometheus CRD support, and target-allocator configuration, see **[INSTALLATION.md](docs/INSTALLATION.md)**.
+For detailed installation instructions including secret references, Prometheus CRD support, and target-allocator configuration, see **[installation.md](docs/installation.md)**.
 
 ### Next Steps
 
 After installation:
 
-1. **Configure the Dash0 backend connection** (if not done via Helm) - see [CONFIGURATION.md](docs/CONFIGURATION.md)
-2. **Enable monitoring for namespaces** - see [CONFIGURATION.md#enable-dash0-monitoring-for-a-namespace](docs/CONFIGURATION.md#enable-dash0-monitoring-for-a-namespace)
+1. **Configure the Dash0 backend connection** (if not done via Helm) - see [configuration.md](docs/configuration.md)
+2. **Enable monitoring for namespaces** - see [configuration.md#enable-dash0-monitoring-for-a-namespace](docs/configuration.md#enable-dash0-monitoring-for-a-namespace)
 
-The operator will automatically instrument workloads in monitored namespaces. Learn more in **[AUTO-INSTRUMENTATION.md](docs/AUTO-INSTRUMENTATION.md)**.
+The operator will automatically instrument workloads in monitored namespaces. Learn more in **[auto-instrumentation.md](docs/auto-instrumentation.md)**.
 
 ## Documentation
 
@@ -80,22 +80,22 @@ This README provides a quick overview. Detailed documentation is organized by to
 
 ### Core Documentation
 
-* **[INSTALLATION.md](docs/INSTALLATION.md)** - Comprehensive installation guide
-* **[CONFIGURATION.md](docs/CONFIGURATION.md)** - Backend connections, namespace monitoring, secrets, datasets, and operator configuration
-* **[AUTO-INSTRUMENTATION.md](docs/AUTO-INSTRUMENTATION.md)** - Workload instrumentation details, Python support, disabling instrumentation, and custom label selectors
-* **[METRICS-AND-SCRAPING.md](docs/METRICS-AND-SCRAPING.md)** - Metrics collection, Prometheus endpoint scraping, and Prometheus CRD support
-* **[PROFILING.md](docs/PROFILING.md)** - Profiling support and OpenTelemetry eBPF profiler setup
+* **[installation.md](docs/installation.md)** - Comprehensive installation guide
+* **[configuration.md](docs/configuration.md)** - Backend connections, namespace monitoring, secrets, datasets, and operator configuration
+* **[auto-instrumentation.md](docs/auto-instrumentation.md)** - Workload instrumentation details, Python support, disabling instrumentation, and custom label selectors
+* **[metrics-and-scraping.md](docs/metrics-and-scraping.md)** - Metrics collection, Prometheus endpoint scraping, and Prometheus CRD support
+* **[profiling.md](docs/profiling.md)** - Profiling support and OpenTelemetry eBPF profiler setup
 
 ### Advanced Topics
 
-* **[MANAGING-DASH0-RESOURCES.md](docs/MANAGING-DASH0-RESOURCES.md)** - Managing dashboards, check rules, synthetic checks, views, notification channels, spam filters, and signal-to-metrics via infrastructure-as-code
-* **[ADVANCED-CONFIGURATION.md](docs/ADVANCED-CONFIGURATION.md)** - cert-manager, node affinity, tolerations, sysctls, and filelog offset volumes
-* **[PLATFORM-SPECIFIC.md](docs/PLATFORM-SPECIFIC.md)** - Notes for AWS EKS, GKE Autopilot, Azure AKS, Docker Desktop, Minikube, Apple Silicon, and compatibility with OPA and Kyverno
+* **[managing-dash0-resources.md](docs/managing-dash0-resources.md)** - Managing dashboards, check rules, synthetic checks, views, notification channels, spam filters, and signal-to-metrics via infrastructure-as-code
+* **[advanced-configuration.md](docs/advanced-configuration.md)** - cert-manager, node affinity, tolerations, sysctls, and filelog offset volumes
+* **[platform-specific.md](docs/platform-specific.md)** - Notes for AWS EKS, GKE Autopilot, Azure AKS, Docker Desktop, Minikube, Apple Silicon, and compatibility with OPA and Kyverno
 
 ### Operations
 
-* **[UPGRADING.md](docs/UPGRADING.md)** - Upgrade procedures, CRD version migrations, and uninstallation
-* **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Common issues and debugging techniques
+* **[upgrading.md](docs/upgrading.md)** - Upgrade procedures, CRD version migrations, and uninstallation
+* **[troubleshooting.md](docs/troubleshooting.md)** - Common issues and debugging techniques
 
 ## Key Features
 
