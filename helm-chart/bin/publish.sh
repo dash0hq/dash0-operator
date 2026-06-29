@@ -38,6 +38,15 @@ if [[ -z $version ]]; then
   exit 1
 fi
 
+# Replace relative links in the main chart README (e.g. "docs/INSTALLATION.md" or "values.yaml") with absolute links to
+# the GitHub repository, pinned to the version tag being released. Relative links do not resolve on
+# https://artifacthub.io/packages/helm/dash0-operator/dash0-operator, which renders this README. The README is restored
+# to its original state after packaging (see below), so this change is never committed back to the source branch.
+readme="dash0-operator/README.md"
+link_base="https://github.com/dash0hq/dash0-operator/blob/$version/helm-chart/dash0-operator/"
+echo "rewriting relative links in $readme to absolute links pinned to version $version"
+perl -i -pe "s{\]\((?!https?://|#|mailto:)([^)]+)\)}{](${link_base}\$1)}g" "$readme"
+
 echo "packaging Helm chart as version $version"
 helm package \
   dash0-operator \
@@ -46,6 +55,11 @@ helm package \
   --dependency-update \
   --destination ..
 echo "packaging Helm version $version has been packaged"
+
+# Restore the README to its original (relative-link) state now that the chart has been packaged, so the modification
+# does not interfere with the upcoming switch to the gh-pages branch.
+echo "restoring $readme"
+git checkout -- "$readme"
 
 cd ..
 

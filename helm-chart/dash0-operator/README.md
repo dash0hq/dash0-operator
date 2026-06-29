@@ -109,7 +109,7 @@ This README provides a quick overview. Detailed documentation is organized by to
 
 ## Configuration Values
 
-You can consult the chart's [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file for a complete list of available configuration settings.
+You can consult the chart's [values.yaml](values.yaml) file for a complete list of available configuration settings.
 
 ## Support
 
