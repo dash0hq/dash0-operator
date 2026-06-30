@@ -157,6 +157,22 @@ data:
     barkerNodeAffinity:
       {{- toYaml .Values.operator.intelligentEdge.barker.nodeAffinity | nindent 6 }}
 {{- end }}
+{{- if .Values.operator.agent0Connector.labels }}
+    agent0ConnectorLabels:
+      {{- toYaml .Values.operator.agent0Connector.labels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.agent0Connector.annotations }}
+    agent0ConnectorAnnotations:
+      {{- toYaml .Values.operator.agent0Connector.annotations | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.agent0Connector.podLabels }}
+    agent0ConnectorPodLabels:
+      {{- toYaml .Values.operator.agent0Connector.podLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.agent0Connector.podAnnotations }}
+    agent0ConnectorPodAnnotations:
+      {{- toYaml .Values.operator.agent0Connector.podAnnotations | nindent 6 }}
+{{- end }}
 
     {{- if .Values.operator.autoMonitorNamespaces.monitoringTemplate }}
     {{- fail "Error: operator.autoMonitorNamespaces.monitoringTemplate is not a valid setting. The monitoring template is a top-level operator setting; please use operator.monitoringTemplate instead." -}}

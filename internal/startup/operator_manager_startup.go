@@ -2009,6 +2009,7 @@ func setupAgent0ConnectorManager(
 		mgr.GetScheme(),
 		operatorDeploymentSelfReference,
 		agent0ConnectorConfig,
+		extraConfig,
 	)
 	agent0ConnectorManager := agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
