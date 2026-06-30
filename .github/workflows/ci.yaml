@@ -200,6 +200,17 @@ jobs:
           context: images
           file: images/filelogoffsetvolumeownership/Dockerfile
 
+      - name: build volume ownership image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: volume-ownership
+          imageTitle: Dash0 Kubernetes Volume Ownership
+          imageDescription: the volume ownership init container for the Dash0 operator for Kubernetes
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
+          context: images
+          file: images/volumeownership/Dockerfile
+
       - name: build target-allocator image
         uses: ./.github/actions/build-image
         with:
