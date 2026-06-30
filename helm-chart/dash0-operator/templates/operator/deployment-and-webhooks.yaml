@@ -206,19 +206,18 @@ spec:
         - name: DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY
           value: {{ .Values.operator.instrumentationImage.pullPolicy }}
         {{- end }}
-        {{- if .Values.operator.intelligentEdge.enabled }}
-        - name: DASH0_COLLECTOR_IMAGE
-          value: {{ include "dash0-operator.intelligentEdgeCollectorImage" . | quote }}
-        {{- if .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
-        - name: DASH0_COLLECTOR_IMAGE_PULL_POLICY
-          value: {{ .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
-        {{- end }}
-        {{- else }}
         - name: DASH0_COLLECTOR_IMAGE
           value: {{ include "dash0-operator.collectorImage" . | quote }}
         {{- if .Values.operator.collectorImage.pullPolicy }}
         - name: DASH0_COLLECTOR_IMAGE_PULL_POLICY
           value: {{ .Values.operator.collectorImage.pullPolicy }}
+        {{- end }}
+        {{- if .Values.operator.intelligentEdge.enabled }}
+        - name: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE
+          value: {{ include "dash0-operator.intelligentEdgeCollectorImage" . | quote }}
+        {{- if .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
+        - name: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
         {{- end }}
         {{- end }}
         - name: DASH0_TARGET_ALLOCATOR_IMAGE
