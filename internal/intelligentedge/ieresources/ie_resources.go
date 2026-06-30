@@ -29,6 +29,7 @@ type IntelligentEdgeResourceManager struct {
 	barkerImage               string
 	barkerImagePullPolicy     corev1.PullPolicy
 	operatorVersion           string
+	isGkeAutopilot            bool
 }
 
 func NewIntelligentEdgeResourceManager(
@@ -40,6 +41,7 @@ func NewIntelligentEdgeResourceManager(
 	barkerImage string,
 	barkerImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	isGkeAutopilot bool,
 ) *IntelligentEdgeResourceManager {
 	return &IntelligentEdgeResourceManager{
 		Client:                    k8sClient,
@@ -50,6 +52,7 @@ func NewIntelligentEdgeResourceManager(
 		barkerImage:               barkerImage,
 		barkerImagePullPolicy:     barkerImagePullPolicy,
 		operatorVersion:           operatorVersion,
+		isGkeAutopilot:            isGkeAutopilot,
 	}
 }
 
@@ -60,7 +63,7 @@ func (m *IntelligentEdgeResourceManager) CreateOrUpdateResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, intelligentEdgeResource, operatorConfig, m.barkerImage, m.barkerImagePullPolicy, m.operatorVersion, extraConfig, false, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, intelligentEdgeResource, operatorConfig, m.barkerImage, m.barkerImagePullPolicy, m.operatorVersion, extraConfig, m.isGkeAutopilot, false, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false

@@ -208,6 +208,26 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(*sc.RunAsGroup).To(Equal(int64(0)))
 			Expect(sc.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
 		})
+
+		It("adds GKE Autopilot allowlist match labels", func() {
+			deployment := getDeployment(assembleDesiredState(
+				&util.Agent0ConnectorConfig{
+					OperatorNamespace: testOperatorNamespace,
+					NamePrefix:        testNamePrefix,
+					PseudoClusterUid:  testPseudoClusterUid,
+					ServerAddress:     Agent0ConnectorServerAddress,
+					Images: util.Images{
+						Agent0ConnectorImage:           testImage,
+						Agent0ConnectorImagePullPolicy: corev1.PullAlways,
+					},
+					IsGkeAutopilot: true,
+				}, authTokenEnvVar))
+
+			deploymentTemplateLabels := deployment.Spec.Template.Labels
+			value, ok := deploymentTemplateLabels[gkeAutopilotAllowlistKey]
+			Expect(ok).To(BeTrue())
+			Expect(value).To(Equal(gkeAutopilotAllowlistValue))
+		})
 	})
 })
 

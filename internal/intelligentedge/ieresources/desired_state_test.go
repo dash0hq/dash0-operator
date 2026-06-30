@@ -48,7 +48,7 @@ var _ = Describe("Barker deployment self-monitoring env vars", func() {
 
 		dep := assembleBarkerDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -61,7 +61,7 @@ var _ = Describe("Barker deployment self-monitoring env vars", func() {
 
 		dep := assembleBarkerDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -74,7 +74,7 @@ var _ = Describe("Barker deployment self-monitoring env vars", func() {
 
 		dep := assembleBarkerDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -84,7 +84,7 @@ var _ = Describe("Barker deployment self-monitoring env vars", func() {
 	It("does not inject OTel exporter env vars when operator config is nil", func() {
 		dep := assembleBarkerDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, nil,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -155,7 +155,7 @@ var _ = Describe("Barker deployment scheduling and resources", func() {
 
 		dep := assembleBarkerDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, operatorConfigWithDash0Export,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, extraConfig, logd.Discard(),
+			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, extraConfig, false, logd.Discard(),
 		)
 
 		podSpec := dep.Spec.Template.Spec
@@ -180,11 +180,34 @@ var _ = Describe("Barker deployment scheduling and resources", func() {
 	It("leaves Affinity unset when BarkerNodeAffinity is nil", func() {
 		dep := assembleBarkerDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, operatorConfigWithDash0Export,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		Expect(dep.Spec.Template.Spec.Affinity).To(BeNil())
 		Expect(dep.Spec.Template.Spec.Tolerations).To(BeEmpty())
+	})
+})
+
+var _ = Describe("Barker deployment GKE Autopilot allowlist label", func() {
+	It("adds the matching-allowlist label to the pod template on GKE Autopilot", func() {
+		dep := assembleBarkerDeployment(
+			OperatorNamespace, "test-prefix", minimalIntelligentEdge, operatorConfigWithDash0Export,
+			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, true, logd.Discard(),
+		)
+
+		value, ok := dep.Spec.Template.Labels[gkeAutopilotAllowlistLabelKey]
+		Expect(ok).To(BeTrue())
+		Expect(value).To(Equal(gkeAutopilotAllowlistLabelBarkerValue))
+	})
+
+	It("does not add the matching-allowlist label when not on GKE Autopilot", func() {
+		dep := assembleBarkerDeployment(
+			OperatorNamespace, "test-prefix", minimalIntelligentEdge, operatorConfigWithDash0Export,
+			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
+		)
+
+		_, ok := dep.Spec.Template.Labels[gkeAutopilotAllowlistLabelKey]
+		Expect(ok).To(BeFalse())
 	})
 })
 

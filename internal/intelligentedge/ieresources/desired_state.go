@@ -32,6 +32,9 @@ const (
 	barkerUserID int64 = 10001
 
 	defaultDataset = "default"
+
+	gkeAutopilotAllowlistLabelKey         = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistLabelBarkerValue = "dash0-barker-v1.0.4"
 )
 
 var (
@@ -55,6 +58,7 @@ func assembleDesiredState(
 	barkerImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	extraConfig util.ExtraConfig,
+	isGkeAutopilot bool,
 	forDeletion bool,
 	logger logd.Logger,
 ) []clientObject {
@@ -71,7 +75,7 @@ func assembleDesiredState(
 	if forDeletion || barkerEnabled {
 		if barkerEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleBarkerDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, barkerImage, barkerImagePullPolicy, operatorVersion, extraConfig, logger)),
+				addCommonMetadata(assembleBarkerDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, barkerImage, barkerImagePullPolicy, operatorVersion, extraConfig, isGkeAutopilot, logger)),
 				addCommonMetadata(assembleBarkerService(operatorNamespace, namePrefix)),
 			)
 		} else {
@@ -89,7 +93,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, false, true, logger)
 }
 
 func assembleBarkerDeployment(
@@ -101,6 +105,7 @@ func assembleBarkerDeployment(
 	barkerImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	extraConfig util.ExtraConfig,
+	isGkeAutopilot bool,
 	logger logd.Logger,
 ) *appsv1.Deployment {
 	replicas := int32(1)
@@ -233,6 +238,11 @@ func assembleBarkerDeployment(
 		}
 	}
 
+	templateLabels := barkerLabels()
+	if isGkeAutopilot {
+		templateLabels[gkeAutopilotAllowlistLabelKey] = gkeAutopilotAllowlistLabelBarkerValue
+	}
+
 	deployment := assembleBarkerDeploymentForDeletion(operatorNamespace, namePrefix)
 	deployment.Spec = appsv1.DeploymentSpec{
 		Replicas: &replicas,
@@ -241,7 +251,7 @@ func assembleBarkerDeployment(
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: barkerLabels(),
+				Labels: templateLabels,
 			},
 			Spec: podSpec,
 		},
