@@ -1093,23 +1093,31 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[4]
           value: --dash0-feature-intelligent-edge-enabled=true
+      # The regular collector image is always passed; the operator only swaps to the intelligent edge
+      # collector image at runtime when intelligent edge is also enabled via the Dash0IntelligentEdge resource.
       - equal:
           path: spec.template.spec.containers[0].env[12].name
           value: DASH0_COLLECTOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[12].value
+          value: "ghcr.io/dash0hq/collector:1.2.3"
       # Expected tag matches the pinned tag in helm-chart/dash0-operator/values.yaml
       # (operator.intelligentEdgeCollectorImage.tag and operator.barkerImage.tag). IE
       # images are sourced as external dependencies; bump these alongside values.yaml.
       - equal:
-          path: spec.template.spec.containers[0].env[12].value
+          path: spec.template.spec.containers[0].env[13].name
+          value: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[13].value
           value: "ghcr.io/dash0hq/intelligent-edge-collector:v2.0.2051"
       - equal:
-          path: spec.template.spec.containers[0].env[17].name
+          path: spec.template.spec.containers[0].env[18].name
           value: DASH0_BARKER_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[17].value
+          path: spec.template.spec.containers[0].env[18].value
           value: "ghcr.io/dash0hq/barker:v2.0.2051"
       - equal:
-          path: spec.template.spec.containers[0].env[19].name
+          path: spec.template.spec.containers[0].env[20].name
           value: K8S_POD_UID
 
   - it: should support custom IE collector and barker images with pull policies
@@ -1137,24 +1145,30 @@ tests:
           value: DASH0_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[12].value
-          value: "custom-ie-collector:9.9.9"
+          value: "ghcr.io/dash0hq/collector:1.2.3"
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: DASH0_COLLECTOR_IMAGE_PULL_POLICY
+          value: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
+          value: "custom-ie-collector:9.9.9"
+      - equal:
+          path: spec.template.spec.containers[0].env[14].name
+          value: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY
+      - equal:
+          path: spec.template.spec.containers[0].env[14].value
           value: Always
       - equal:
-          path: spec.template.spec.containers[0].env[18].name
+          path: spec.template.spec.containers[0].env[19].name
           value: DASH0_BARKER_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[18].value
+          path: spec.template.spec.containers[0].env[19].value
           value: "custom-barker:8.8.8"
       - equal:
-          path: spec.template.spec.containers[0].env[19].name
+          path: spec.template.spec.containers[0].env[20].name
           value: DASH0_BARKER_IMAGE_PULL_POLICY
       - equal:
-          path: spec.template.spec.containers[0].env[19].value
+          path: spec.template.spec.containers[0].env[20].value
           value: Never
 
   - it: should render the "dash0.com/cert-digest" label

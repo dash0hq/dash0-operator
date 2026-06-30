@@ -205,6 +205,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
+	if config.usesIntelligentEdgeCollectorImage() {
+		logger.Debug(fmt.Sprintf("Using the intelligent edge collector image %s for the collector workloads, since "+
+			"intelligent edge is enabled via the Dash0IntelligentEdge resource.", config.collectorImage()))
+	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
 		allMonitoringResources,

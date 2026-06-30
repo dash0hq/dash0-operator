@@ -115,6 +115,31 @@ func (c *oTelColConfig) usesOffsetStorageVolume() bool {
 	return c.OffsetStorageVolume != nil
 }
 
+// usesIntelligentEdgeCollectorImage reports whether the collector workloads should use the intelligent edge collector
+// image instead of the regular collector image. This is the case when intelligent edge is enabled via the
+// Dash0IntelligentEdge resource and the intelligent edge collector image has been provided by the Helm chart (which only
+// happens when the intelligent edge feature is enabled at install/upgrade time).
+func (c *oTelColConfig) usesIntelligentEdgeCollectorImage() bool {
+	return c.IntelligentEdge.Enabled && c.Images.IntelligentEdgeCollectorImage != ""
+}
+
+// collectorImage returns the collector image to use for the collector workloads, deferring the choice between the
+// regular and the intelligent edge collector image to reconcile time, see usesIntelligentEdgeCollectorImage.
+func (c *oTelColConfig) collectorImage() string {
+	if c.usesIntelligentEdgeCollectorImage() {
+		return c.Images.IntelligentEdgeCollectorImage
+	}
+	return c.Images.CollectorImage
+}
+
+// collectorImagePullPolicy returns the image pull policy matching the image returned by collectorImage.
+func (c *oTelColConfig) collectorImagePullPolicy() corev1.PullPolicy {
+	if c.usesIntelligentEdgeCollectorImage() {
+		return c.Images.IntelligentEdgeCollectorImagePullPolicy
+	}
+	return c.Images.CollectorImagePullPolicy
+}
+
 // This type just exists to ensure all created objects go through addCommonMetadata.
 type clientObject struct {
 	object client.Object
@@ -1213,7 +1238,7 @@ func assembleDaemonSetCollectorContainer(
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Image:          config.Images.CollectorImage,
+		Image:          config.collectorImage(),
 		Ports:          []corev1.ContainerPort{otlpPort, httpPort},
 		Env:            collectorEnv,
 		LivenessProbe:  WithProbeHandler(probes.Liveness),
@@ -1222,8 +1247,8 @@ func assembleDaemonSetCollectorContainer(
 		Resources:      collectorResources,
 		VolumeMounts:   collectorVolumeMounts,
 	}
-	if config.Images.CollectorImagePullPolicy != "" {
-		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
+	if pullPolicy := config.collectorImagePullPolicy(); pullPolicy != "" {
+		collectorContainer.ImagePullPolicy = pullPolicy
 	}
 	return collectorContainer, nil
 }
@@ -1736,7 +1761,7 @@ func assembleDeploymentCollectorContainer(
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Image:          config.Images.CollectorImage,
+		Image:          config.collectorImage(),
 		Env:            collectorEnv,
 		LivenessProbe:  WithProbeHandler(probes.Liveness),
 		StartupProbe:   WithProbeHandler(probes.Startup),
@@ -1744,8 +1769,8 @@ func assembleDeploymentCollectorContainer(
 		Resources:      resourceRequirements.ToResourceRequirements(),
 		VolumeMounts:   collectorVolumeMounts,
 	}
-	if config.Images.CollectorImagePullPolicy != "" {
-		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
+	if pullPolicy := config.collectorImagePullPolicy(); pullPolicy != "" {
+		collectorContainer.ImagePullPolicy = pullPolicy
 	}
 	return collectorContainer, nil
 }

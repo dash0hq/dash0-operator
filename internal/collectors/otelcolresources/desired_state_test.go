@@ -608,6 +608,53 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(findObjectByName(desiredState, ExpectedDeploymentCollectorConfigMapName)).ToNot(BeNil())
 	})
 
+	It("should use the intelligent edge collector image when intelligent edge is enabled via the resource", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			IntelligentEdge: IntelligentEdgeConfig{
+				Enabled:     true,
+				Endpoint:    "decision-maker.example.com:443",
+				ApiEndpoint: "https://control-plane-api.dash0.com",
+				Dataset:     "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(daemonSetCollectorContainer.Image).To(Equal(IntelligentEdgeCollectorImageTest))
+		Expect(daemonSetCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+
+		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(deploymentCollectorContainer.Image).To(Equal(IntelligentEdgeCollectorImageTest))
+		Expect(deploymentCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+	})
+
+	It("should fall back to the regular collector image when intelligent edge is enabled but no intelligent edge collector image is provided", func() {
+		images := TestImages
+		images.IntelligentEdgeCollectorImage = ""
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            images,
+			IntelligentEdge: IntelligentEdgeConfig{
+				Enabled:     true,
+				Endpoint:    "decision-maker.example.com:443",
+				ApiEndpoint: "https://control-plane-api.dash0.com",
+				Dataset:     "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(daemonSetCollectorContainer.Image).To(Equal(CollectorImageTest))
+	})
+
 	It("should add the profilesSupport feature gate to the daemonset collector args when profiling is enabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,

@@ -83,6 +83,8 @@ type environmentVariables struct {
 	instrumentationImagePullPolicy              corev1.PullPolicy
 	collectorImage                              string
 	collectorImagePullPolicy                    corev1.PullPolicy
+	intelligentEdgeCollectorImage               string
+	intelligentEdgeCollectorImagePullPolicy     corev1.PullPolicy
 	targetAllocatorImage                        string
 	targetAllocatorImagePullPolicy              corev1.PullPolicy
 	configurationReloaderImage                  string
@@ -171,6 +173,8 @@ const (
 	instrumentationImagePullPolicyEnvVarName              = "DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY"
 	collectorImageEnvVarName                              = "DASH0_COLLECTOR_IMAGE"
 	collectorImageImagePullPolicyEnvVarName               = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
+	intelligentEdgeCollectorImageEnvVarName               = "DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE"
+	intelligentEdgeCollectorImagePullPolicyEnvVarName     = "DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY"
 	targetAllocatorImageEnvVarName                        = "DASH0_TARGET_ALLOCATOR_IMAGE"
 	targetAllocatorImageImagePullPolicyEnvVarName         = "DASH0_TARGET_ALLOCATOR_IMAGE_PULL_POLICY"
 	configurationReloaderImageEnvVarName                  = "DASH0_CONFIGURATION_RELOADER_IMAGE"
@@ -802,6 +806,13 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	}
 	collectorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(collectorImageImagePullPolicyEnvVarName)
 
+	// The intelligent edge collector image is only passed by the Helm chart when the intelligent edge feature is
+	// enabled, hence it is optional here. The operator picks it over the regular collector image at reconcile time, but
+	// only when intelligent edge is also enabled via the Dash0IntelligentEdge resource.
+	intelligentEdgeCollectorImage, _ := os.LookupEnv(intelligentEdgeCollectorImageEnvVarName)
+	intelligentEdgeCollectorImagePullPolicy :=
+		readOptionalPullPolicyFromEnvironmentVariable(intelligentEdgeCollectorImagePullPolicyEnvVarName)
+
 	targetAllocatorImage, isSet := os.LookupEnv(targetAllocatorImageEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, targetAllocatorImageEnvVarName)
@@ -917,6 +928,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		instrumentationImagePullPolicy:              instrumentationImagePullPolicy,
 		collectorImage:                              collectorImage,
 		collectorImagePullPolicy:                    collectorImagePullPolicy,
+		intelligentEdgeCollectorImage:               intelligentEdgeCollectorImage,
+		intelligentEdgeCollectorImagePullPolicy:     intelligentEdgeCollectorImagePullPolicy,
 		targetAllocatorImage:                        targetAllocatorImage,
 		targetAllocatorImagePullPolicy:              targetAllocatorImagePullPolicy,
 		configurationReloaderImage:                  configurationReloaderImage,
@@ -1207,6 +1220,11 @@ func startOperatorManager(
 		"collector image pull policy override",
 		envVars.collectorImagePullPolicy,
 
+		"intelligent edge collector image",
+		envVars.intelligentEdgeCollectorImage,
+		"intelligent edge collector image pull policy override",
+		envVars.intelligentEdgeCollectorImagePullPolicy,
+
 		"target-allocator image",
 		envVars.targetAllocatorImage,
 		"target-allocator image pull policy override",
@@ -1370,6 +1388,8 @@ func startDash0Controllers(
 		InitContainerImagePullPolicy:                envVars.instrumentationImagePullPolicy,
 		CollectorImage:                              envVars.collectorImage,
 		CollectorImagePullPolicy:                    envVars.collectorImagePullPolicy,
+		IntelligentEdgeCollectorImage:               envVars.intelligentEdgeCollectorImage,
+		IntelligentEdgeCollectorImagePullPolicy:     envVars.intelligentEdgeCollectorImagePullPolicy,
 		TargetAllocatorImage:                        envVars.targetAllocatorImage,
 		TargetAllocatorPullPolicy:                   envVars.targetAllocatorImagePullPolicy,
 		ConfigurationReloaderImage:                  envVars.configurationReloaderImage,
