@@ -9,6 +9,10 @@ if ! command -v curl &> /dev/null; then
   echo "Error: the curl executable is not available." >&2
   exit 1
 fi
+if ! command -v gh &> /dev/null; then
+  echo "Error: the gh executable is not available." >&2
+  exit 1
+fi
 if ! command -v git &> /dev/null; then
   echo "Error: the git executable is not available." >&2
   exit 1
@@ -32,6 +36,24 @@ component_types=( \
   processors \
   providers \
 )
+
+# versions.yaml on the main branch of the collector repositories is sometimes bumped several hours before the
+# corresponding GitHub release (and thus the Go module tags) is actually published. This function verifies that the
+# release matching the target version has actually been published before we proceed.
+function require_published_release {
+  local repo="$1"
+  local expected_version="$2"
+  local latest_release_tag
+  latest_release_tag=$(gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+  if [[ -z "$latest_release_tag" ]]; then
+    echo "Could not determine the latest release for $repo, skipping update for now."
+    exit 0
+  fi
+  if [[ "$latest_release_tag" != "v$expected_version" ]]; then
+    echo "Latest published release of $repo is $latest_release_tag, but versions.yaml points to v$expected_version. The release has likely not been published yet, skipping update for now."
+    exit 0
+  fi
+}
 
 function update_components {
   echo "Updating components to new version:"
@@ -142,6 +164,8 @@ if [[ "$new_beta_major" != "$new_contrib_major" || "$new_beta_minor" != "$new_co
 fi
 
 if [[ "$current_stable_version" != "$new_stable_version" || "$current_beta_version" != "$new_beta_version" ]]; then
+  require_published_release "open-telemetry/opentelemetry-collector" "$new_beta_version"
+  require_published_release "open-telemetry/opentelemetry-collector-contrib" "$new_contrib_version"
   update_components
   echo
   echo git diff:
