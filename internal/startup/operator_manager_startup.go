@@ -2122,6 +2122,7 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		ctx,
 		selfMonitoringConfiguration.Export,
 		selfMonitoringConfiguration.Token,
+		selfMonitoringConfiguration.ResolvedSecretHeaderValues,
 		pseudoClusterUid,
 		operatorConfigurationResource.Spec.ClusterName,
 		operatorDeploymentSelfReference.Namespace,

@@ -176,11 +176,53 @@ const (
 	Json  OtlpEncoding = "json"
 )
 
+// Header describes a single header to be sent with each request. The header value can either be provided directly via
+// the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+// has to be provided.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.value) != has(self.valueFrom)",message="exactly one of value or valueFrom has to be provided for a header"
 type Header struct {
+	// The name of the header.
+	//
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
+
+	// The value of the header, provided directly as a literal string. This property is optional, but either this
+	// property or the valueFrom property has to be provided. It is a validation error to provide both.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	Value string `json:"value,omitempty"`
+
+	// A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+	// header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+	// either this property or the value property has to be provided. It is a validation error to provide both.
+	//
+	// +kubebuilder:validation:Optional
+	ValueFrom *HeaderValueFrom `json:"valueFrom,omitempty"`
+}
+
+// HeaderValueFrom describes a source for the value of a header.
+type HeaderValueFrom struct {
+	// A reference to a key in a Kubernetes secret containing the header value.
+	//
 	// +kubebuilder:validation:Required
-	Value string `json:"value"`
+	SecretKeyRef *SecretKeySelector `json:"secretKeyRef"`
+}
+
+// SecretKeySelector selects a key of a Kubernetes secret.
+type SecretKeySelector struct {
+	// The name of the secret containing the value.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// The key within the secret which contains the value.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Key string `json:"key"`
 }
 
 // KeepaliveClientConfig exposes the keepalive.ClientParameters for gRPC clients.
@@ -253,14 +295,19 @@ func (e *Export) Redact() {
 		e.Dash0.Authorization.Token = new(redactedValue)
 	}
 	if e.Http != nil {
-		// Any header value can potentially be a secret, so we redact all values.
+		// Any header value can potentially be a secret, so we redact all values. Headers whose values are sourced from a
+		// secret (valueFrom) carry are left untouched.
 		for i := range e.Http.Headers {
-			e.Http.Headers[i].Value = redactedValue
+			if e.Http.Headers[i].Value != "" {
+				e.Http.Headers[i].Value = redactedValue
+			}
 		}
 	}
 	if e.Grpc != nil {
 		for i := range e.Grpc.Headers {
-			e.Grpc.Headers[i].Value = redactedValue
+			if e.Grpc.Headers[i].Value != "" {
+				e.Grpc.Headers[i].Value = redactedValue
+			}
 		}
 	}
 }
