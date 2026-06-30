@@ -155,6 +155,22 @@ var _ = Describe("The synchronization retry runnable", func() {
 			EnsureOperatorNamespaceExists(ctx, k8sClient)
 			ensurePrometheusRuleCrdExists(ctx)
 			ensurePersesDashboardCrdExists(ctx)
+			// The CRDs are (re-)created just above. Both the API server establishing the CRD and the k8sClient's REST
+			// mapper discovering the new kind happen asynchronously. Until that has settled, creating, getting or
+			// deleting instances of these kinds fails with a NoKindMatchError. This is the only test in the package
+			// that persists real PrometheusRule/PersesDashboard instances via the client (the other tests feed events
+			// to the reconcilers directly), so we explicitly wait here until both kinds are served before any spec
+			// touches an instance, to avoid flaky NoKindMatchError failures.
+			waitUntilThirdPartyResourceKindIsServed(ctx, schema.GroupVersionKind{
+				Group:   "monitoring.coreos.com",
+				Version: "v1",
+				Kind:    "PrometheusRuleList",
+			})
+			waitUntilThirdPartyResourceKindIsServed(ctx, schema.GroupVersionKind{
+				Group:   "perses.dev",
+				Version: persesDashboardV1Alpha1,
+				Kind:    "PersesDashboardList",
+			})
 		})
 
 		AfterAll(func() {
@@ -444,6 +460,20 @@ func createViewWithSynchronizationError(ctx context.Context, name string, httpSt
 func deleteViewIfItExists(ctx context.Context, name string) {
 	view := &dash0v1alpha1.Dash0View{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: TestNamespaceName}}
 	Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, view))).To(Succeed())
+}
+
+// waitUntilThirdPartyResourceKindIsServed waits until the API server has established the CRD for the given list kind
+// and the k8sClient's REST mapper has discovered it, so that subsequent create/get/delete calls for instances of that
+// kind do not fail with a NoKindMatchError. The given GVK must be a list kind (e.g. "PrometheusRuleList"). Listing
+// has no side effects but exercises the same REST mapping lookup that creating/getting an instance requires, and it
+// nudges the lazy dynamic REST mapper to reload its discovery information.
+func waitUntilThirdPartyResourceKindIsServed(ctx context.Context, listGvk schema.GroupVersionKind) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		list := &unstructured.UnstructuredList{}
+		list.SetGroupVersionKind(listGvk)
+		g.Expect(k8sClient.List(ctx, list, client.InNamespace(TestNamespaceName))).To(Succeed())
+	}, 10*time.Second, 100*time.Millisecond).Should(Succeed())
 }
 
 func startWatching(ctx context.Context, resourceReconciler ThirdPartyResourceReconciler) {
