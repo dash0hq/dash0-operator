@@ -292,15 +292,53 @@ spec:
                           request, for example for authorization. This property is
                           optional.
                         items:
+                          description: |-
+                            Header describes a single header to be sent with each request. The header value can either be provided directly via
+                            the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                            has to be provided.
                           properties:
                             name:
+                              description: The name of the header.
                               type: string
                             value:
+                              description: |-
+                                The value of the header, provided directly as a literal string. This property is optional, but either this
+                                property or the valueFrom property has to be provided. It is a validation error to provide both.
                               type: string
+                            valueFrom:
+                              description: |-
+                                A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                either this property or the value property has to be provided. It is a validation error to provide both.
+                              properties:
+                                secretKeyRef:
+                                  description: A reference to a key in a Kubernetes
+                                    secret containing the header value.
+                                  properties:
+                                    key:
+                                      description: The key within the secret which
+                                        contains the value.
+                                      minLength: 1
+                                      type: string
+                                    name:
+                                      description: The name of the secret containing
+                                        the value.
+                                      minLength: 1
+                                      type: string
+                                  required:
+                                  - key
+                                  - name
+                                  type: object
+                              required:
+                              - secretKeyRef
+                              type: object
                           required:
                           - name
-                          - value
                           type: object
+                          x-kubernetes-validations:
+                          - message: exactly one of value or valueFrom has to be provided
+                              for a header
+                            rule: has(self.value) != has(self.valueFrom)
                         type: array
                       insecure:
                         description: Explicitly defines whether TLS is used. Per default,
@@ -353,15 +391,53 @@ spec:
                           request, for example for authorization. This property is
                           optional.
                         items:
+                          description: |-
+                            Header describes a single header to be sent with each request. The header value can either be provided directly via
+                            the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                            has to be provided.
                           properties:
                             name:
+                              description: The name of the header.
                               type: string
                             value:
+                              description: |-
+                                The value of the header, provided directly as a literal string. This property is optional, but either this
+                                property or the valueFrom property has to be provided. It is a validation error to provide both.
                               type: string
+                            valueFrom:
+                              description: |-
+                                A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                either this property or the value property has to be provided. It is a validation error to provide both.
+                              properties:
+                                secretKeyRef:
+                                  description: A reference to a key in a Kubernetes
+                                    secret containing the header value.
+                                  properties:
+                                    key:
+                                      description: The key within the secret which
+                                        contains the value.
+                                      minLength: 1
+                                      type: string
+                                    name:
+                                      description: The name of the secret containing
+                                        the value.
+                                      minLength: 1
+                                      type: string
+                                  required:
+                                  - key
+                                  - name
+                                  type: object
+                              required:
+                              - secretKeyRef
+                              type: object
                           required:
                           - name
-                          - value
                           type: object
+                          x-kubernetes-validations:
+                          - message: exactly one of value or valueFrom has to be provided
+                              for a header
+                            rule: has(self.value) != has(self.valueFrom)
                         type: array
                       insecureSkipVerify:
                         description: Whether verification of TLS certificates should
@@ -493,15 +569,53 @@ spec:
                             request, for example for authorization. This property
                             is optional.
                           items:
+                            description: |-
+                              Header describes a single header to be sent with each request. The header value can either be provided directly via
+                              the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                              has to be provided.
                             properties:
                               name:
+                                description: The name of the header.
                                 type: string
                               value:
+                                description: |-
+                                  The value of the header, provided directly as a literal string. This property is optional, but either this
+                                  property or the valueFrom property has to be provided. It is a validation error to provide both.
                                 type: string
+                              valueFrom:
+                                description: |-
+                                  A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                  header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                  either this property or the value property has to be provided. It is a validation error to provide both.
+                                properties:
+                                  secretKeyRef:
+                                    description: A reference to a key in a Kubernetes
+                                      secret containing the header value.
+                                    properties:
+                                      key:
+                                        description: The key within the secret which
+                                          contains the value.
+                                        minLength: 1
+                                        type: string
+                                      name:
+                                        description: The name of the secret containing
+                                          the value.
+                                        minLength: 1
+                                        type: string
+                                    required:
+                                    - key
+                                    - name
+                                    type: object
+                                required:
+                                - secretKeyRef
+                                type: object
                             required:
                             - name
-                            - value
                             type: object
+                            x-kubernetes-validations:
+                            - message: exactly one of value or valueFrom has to be
+                                provided for a header
+                              rule: has(self.value) != has(self.valueFrom)
                           type: array
                         insecure:
                           description: Explicitly defines whether TLS is used. Per
@@ -554,15 +668,53 @@ spec:
                             request, for example for authorization. This property
                             is optional.
                           items:
+                            description: |-
+                              Header describes a single header to be sent with each request. The header value can either be provided directly via
+                              the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                              has to be provided.
                             properties:
                               name:
+                                description: The name of the header.
                                 type: string
                               value:
+                                description: |-
+                                  The value of the header, provided directly as a literal string. This property is optional, but either this
+                                  property or the valueFrom property has to be provided. It is a validation error to provide both.
                                 type: string
+                              valueFrom:
+                                description: |-
+                                  A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                  header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                  either this property or the value property has to be provided. It is a validation error to provide both.
+                                properties:
+                                  secretKeyRef:
+                                    description: A reference to a key in a Kubernetes
+                                      secret containing the header value.
+                                    properties:
+                                      key:
+                                        description: The key within the secret which
+                                          contains the value.
+                                        minLength: 1
+                                        type: string
+                                      name:
+                                        description: The name of the secret containing
+                                          the value.
+                                        minLength: 1
+                                        type: string
+                                    required:
+                                    - key
+                                    - name
+                                    type: object
+                                required:
+                                - secretKeyRef
+                                type: object
                             required:
                             - name
-                            - value
                             type: object
+                            x-kubernetes-validations:
+                            - message: exactly one of value or valueFrom has to be
+                                provided for a header
+                              rule: has(self.value) != has(self.valueFrom)
                           type: array
                         insecureSkipVerify:
                           description: Whether verification of TLS certificates should
@@ -901,15 +1053,53 @@ spec:
                                   gRPC request, for example for authorization. This
                                   property is optional.
                                 items:
+                                  description: |-
+                                    Header describes a single header to be sent with each request. The header value can either be provided directly via
+                                    the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                                    has to be provided.
                                   properties:
                                     name:
+                                      description: The name of the header.
                                       type: string
                                     value:
+                                      description: |-
+                                        The value of the header, provided directly as a literal string. This property is optional, but either this
+                                        property or the valueFrom property has to be provided. It is a validation error to provide both.
                                       type: string
+                                    valueFrom:
+                                      description: |-
+                                        A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                        header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                        either this property or the value property has to be provided. It is a validation error to provide both.
+                                      properties:
+                                        secretKeyRef:
+                                          description: A reference to a key in a Kubernetes
+                                            secret containing the header value.
+                                          properties:
+                                            key:
+                                              description: The key within the secret
+                                                which contains the value.
+                                              minLength: 1
+                                              type: string
+                                            name:
+                                              description: The name of the secret
+                                                containing the value.
+                                              minLength: 1
+                                              type: string
+                                          required:
+                                          - key
+                                          - name
+                                          type: object
+                                      required:
+                                      - secretKeyRef
+                                      type: object
                                   required:
                                   - name
-                                  - value
                                   type: object
+                                  x-kubernetes-validations:
+                                  - message: exactly one of value or valueFrom has
+                                      to be provided for a header
+                                    rule: has(self.value) != has(self.valueFrom)
                                 type: array
                               insecure:
                                 description: Explicitly defines whether TLS is used.
@@ -965,15 +1155,53 @@ spec:
                                   HTTP request, for example for authorization. This
                                   property is optional.
                                 items:
+                                  description: |-
+                                    Header describes a single header to be sent with each request. The header value can either be provided directly via
+                                    the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                                    has to be provided.
                                   properties:
                                     name:
+                                      description: The name of the header.
                                       type: string
                                     value:
+                                      description: |-
+                                        The value of the header, provided directly as a literal string. This property is optional, but either this
+                                        property or the valueFrom property has to be provided. It is a validation error to provide both.
                                       type: string
+                                    valueFrom:
+                                      description: |-
+                                        A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                        header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                        either this property or the value property has to be provided. It is a validation error to provide both.
+                                      properties:
+                                        secretKeyRef:
+                                          description: A reference to a key in a Kubernetes
+                                            secret containing the header value.
+                                          properties:
+                                            key:
+                                              description: The key within the secret
+                                                which contains the value.
+                                              minLength: 1
+                                              type: string
+                                            name:
+                                              description: The name of the secret
+                                                containing the value.
+                                              minLength: 1
+                                              type: string
+                                          required:
+                                          - key
+                                          - name
+                                          type: object
+                                      required:
+                                      - secretKeyRef
+                                      type: object
                                   required:
                                   - name
-                                  - value
                                   type: object
+                                  x-kubernetes-validations:
+                                  - message: exactly one of value or valueFrom has
+                                      to be provided for a header
+                                    rule: has(self.value) != has(self.valueFrom)
                                 type: array
                               insecureSkipVerify:
                                 description: Whether verification of TLS certificates
@@ -1108,15 +1336,54 @@ spec:
                                     each gRPC request, for example for authorization.
                                     This property is optional.
                                   items:
+                                    description: |-
+                                      Header describes a single header to be sent with each request. The header value can either be provided directly via
+                                      the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                                      has to be provided.
                                     properties:
                                       name:
+                                        description: The name of the header.
                                         type: string
                                       value:
+                                        description: |-
+                                          The value of the header, provided directly as a literal string. This property is optional, but either this
+                                          property or the valueFrom property has to be provided. It is a validation error to provide both.
                                         type: string
+                                      valueFrom:
+                                        description: |-
+                                          A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                          header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                          either this property or the value property has to be provided. It is a validation error to provide both.
+                                        properties:
+                                          secretKeyRef:
+                                            description: A reference to a key in a
+                                              Kubernetes secret containing the header
+                                              value.
+                                            properties:
+                                              key:
+                                                description: The key within the secret
+                                                  which contains the value.
+                                                minLength: 1
+                                                type: string
+                                              name:
+                                                description: The name of the secret
+                                                  containing the value.
+                                                minLength: 1
+                                                type: string
+                                            required:
+                                            - key
+                                            - name
+                                            type: object
+                                        required:
+                                        - secretKeyRef
+                                        type: object
                                     required:
                                     - name
-                                    - value
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: exactly one of value or valueFrom has
+                                        to be provided for a header
+                                      rule: has(self.value) != has(self.valueFrom)
                                   type: array
                                 insecure:
                                   description: Explicitly defines whether TLS is used.
@@ -1172,15 +1439,54 @@ spec:
                                     each HTTP request, for example for authorization.
                                     This property is optional.
                                   items:
+                                    description: |-
+                                      Header describes a single header to be sent with each request. The header value can either be provided directly via
+                                      the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                                      has to be provided.
                                     properties:
                                       name:
+                                        description: The name of the header.
                                         type: string
                                       value:
+                                        description: |-
+                                          The value of the header, provided directly as a literal string. This property is optional, but either this
+                                          property or the valueFrom property has to be provided. It is a validation error to provide both.
                                         type: string
+                                      valueFrom:
+                                        description: |-
+                                          A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                          header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                          either this property or the value property has to be provided. It is a validation error to provide both.
+                                        properties:
+                                          secretKeyRef:
+                                            description: A reference to a key in a
+                                              Kubernetes secret containing the header
+                                              value.
+                                            properties:
+                                              key:
+                                                description: The key within the secret
+                                                  which contains the value.
+                                                minLength: 1
+                                                type: string
+                                              name:
+                                                description: The name of the secret
+                                                  containing the value.
+                                                minLength: 1
+                                                type: string
+                                            required:
+                                            - key
+                                            - name
+                                            type: object
+                                        required:
+                                        - secretKeyRef
+                                        type: object
                                     required:
                                     - name
-                                    - value
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: exactly one of value or valueFrom has
+                                        to be provided for a header
+                                      rule: has(self.value) != has(self.valueFrom)
                                   type: array
                                 insecureSkipVerify:
                                   description: Whether verification of TLS certificates
@@ -1952,15 +2258,53 @@ spec:
                                   gRPC request, for example for authorization. This
                                   property is optional.
                                 items:
+                                  description: |-
+                                    Header describes a single header to be sent with each request. The header value can either be provided directly via
+                                    the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                                    has to be provided.
                                   properties:
                                     name:
+                                      description: The name of the header.
                                       type: string
                                     value:
+                                      description: |-
+                                        The value of the header, provided directly as a literal string. This property is optional, but either this
+                                        property or the valueFrom property has to be provided. It is a validation error to provide both.
                                       type: string
+                                    valueFrom:
+                                      description: |-
+                                        A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                        header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                        either this property or the value property has to be provided. It is a validation error to provide both.
+                                      properties:
+                                        secretKeyRef:
+                                          description: A reference to a key in a Kubernetes
+                                            secret containing the header value.
+                                          properties:
+                                            key:
+                                              description: The key within the secret
+                                                which contains the value.
+                                              minLength: 1
+                                              type: string
+                                            name:
+                                              description: The name of the secret
+                                                containing the value.
+                                              minLength: 1
+                                              type: string
+                                          required:
+                                          - key
+                                          - name
+                                          type: object
+                                      required:
+                                      - secretKeyRef
+                                      type: object
                                   required:
                                   - name
-                                  - value
                                   type: object
+                                  x-kubernetes-validations:
+                                  - message: exactly one of value or valueFrom has
+                                      to be provided for a header
+                                    rule: has(self.value) != has(self.valueFrom)
                                 type: array
                               insecure:
                                 description: Explicitly defines whether TLS is used.
@@ -2016,15 +2360,53 @@ spec:
                                   HTTP request, for example for authorization. This
                                   property is optional.
                                 items:
+                                  description: |-
+                                    Header describes a single header to be sent with each request. The header value can either be provided directly via
+                                    the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                                    has to be provided.
                                   properties:
                                     name:
+                                      description: The name of the header.
                                       type: string
                                     value:
+                                      description: |-
+                                        The value of the header, provided directly as a literal string. This property is optional, but either this
+                                        property or the valueFrom property has to be provided. It is a validation error to provide both.
                                       type: string
+                                    valueFrom:
+                                      description: |-
+                                        A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                        header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                        either this property or the value property has to be provided. It is a validation error to provide both.
+                                      properties:
+                                        secretKeyRef:
+                                          description: A reference to a key in a Kubernetes
+                                            secret containing the header value.
+                                          properties:
+                                            key:
+                                              description: The key within the secret
+                                                which contains the value.
+                                              minLength: 1
+                                              type: string
+                                            name:
+                                              description: The name of the secret
+                                                containing the value.
+                                              minLength: 1
+                                              type: string
+                                          required:
+                                          - key
+                                          - name
+                                          type: object
+                                      required:
+                                      - secretKeyRef
+                                      type: object
                                   required:
                                   - name
-                                  - value
                                   type: object
+                                  x-kubernetes-validations:
+                                  - message: exactly one of value or valueFrom has
+                                      to be provided for a header
+                                    rule: has(self.value) != has(self.valueFrom)
                                 type: array
                               insecureSkipVerify:
                                 description: Whether verification of TLS certificates
@@ -2159,15 +2541,54 @@ spec:
                                     each gRPC request, for example for authorization.
                                     This property is optional.
                                   items:
+                                    description: |-
+                                      Header describes a single header to be sent with each request. The header value can either be provided directly via
+                                      the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                                      has to be provided.
                                     properties:
                                       name:
+                                        description: The name of the header.
                                         type: string
                                       value:
+                                        description: |-
+                                          The value of the header, provided directly as a literal string. This property is optional, but either this
+                                          property or the valueFrom property has to be provided. It is a validation error to provide both.
                                         type: string
+                                      valueFrom:
+                                        description: |-
+                                          A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                          header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                          either this property or the value property has to be provided. It is a validation error to provide both.
+                                        properties:
+                                          secretKeyRef:
+                                            description: A reference to a key in a
+                                              Kubernetes secret containing the header
+                                              value.
+                                            properties:
+                                              key:
+                                                description: The key within the secret
+                                                  which contains the value.
+                                                minLength: 1
+                                                type: string
+                                              name:
+                                                description: The name of the secret
+                                                  containing the value.
+                                                minLength: 1
+                                                type: string
+                                            required:
+                                            - key
+                                            - name
+                                            type: object
+                                        required:
+                                        - secretKeyRef
+                                        type: object
                                     required:
                                     - name
-                                    - value
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: exactly one of value or valueFrom has
+                                        to be provided for a header
+                                      rule: has(self.value) != has(self.valueFrom)
                                   type: array
                                 insecure:
                                   description: Explicitly defines whether TLS is used.
@@ -2223,15 +2644,54 @@ spec:
                                     each HTTP request, for example for authorization.
                                     This property is optional.
                                   items:
+                                    description: |-
+                                      Header describes a single header to be sent with each request. The header value can either be provided directly via
+                                      the Value property, or sourced from a Kubernetes secret via the ValueFrom property. Exactly one of Value or ValueFrom
+                                      has to be provided.
                                     properties:
                                       name:
+                                        description: The name of the header.
                                         type: string
                                       value:
+                                        description: |-
+                                          The value of the header, provided directly as a literal string. This property is optional, but either this
+                                          property or the valueFrom property has to be provided. It is a validation error to provide both.
                                         type: string
+                                      valueFrom:
+                                        description: |-
+                                          A reference to a value sourced from a Kubernetes secret, to be used as the value of the header. This is useful for
+                                          header values that contain sensitive data, like authorization tokens or API keys. This property is optional, but
+                                          either this property or the value property has to be provided. It is a validation error to provide both.
+                                        properties:
+                                          secretKeyRef:
+                                            description: A reference to a key in a
+                                              Kubernetes secret containing the header
+                                              value.
+                                            properties:
+                                              key:
+                                                description: The key within the secret
+                                                  which contains the value.
+                                                minLength: 1
+                                                type: string
+                                              name:
+                                                description: The name of the secret
+                                                  containing the value.
+                                                minLength: 1
+                                                type: string
+                                            required:
+                                            - key
+                                            - name
+                                            type: object
+                                        required:
+                                        - secretKeyRef
+                                        type: object
                                     required:
                                     - name
-                                    - value
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: exactly one of value or valueFrom has
+                                        to be provided for a header
+                                      rule: has(self.value) != has(self.valueFrom)
                                   type: array
                                 insecureSkipVerify:
                                   description: Whether verification of TLS certificates
