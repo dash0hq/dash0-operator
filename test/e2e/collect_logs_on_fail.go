@@ -72,6 +72,7 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 		operatorNamespace,
 		otlpSinkNamespace,
 		dash0ApiMockNamespace,
+		outboundConnectorMockNamespace,
 	}, e2eTestNamespaces...) {
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get pods", namespace), outputPath)
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s describe pods", namespace), outputPath)

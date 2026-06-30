@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: outbound-connector-mock
+description: A Helm chart for the Dash0 outbound-connector mock service used in e2e tests
+type: application
+version: 1.0.0

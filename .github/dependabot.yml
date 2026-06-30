@@ -81,6 +81,7 @@ updates:
       - "/test/e2e/dash0-api-mock"
       - "/test/e2e/control-plane-mock"
       - "/test/e2e/decision-maker-mock"
+      - "/test/e2e/outbound-connector-mock"
     schedule:
       interval: "daily"
       time: "07:18"
@@ -109,6 +110,7 @@ updates:
       - "test/e2e/dash0-api-mock"
       - "test/e2e/control-plane-mock"
       - "test/e2e/decision-maker-mock"
+      - "test/e2e/outbound-connector-mock"
       - "test/e2e/otlp-sink/telemetrymatcher"
       - "test/e2e/pkg/shared"
     schedule:

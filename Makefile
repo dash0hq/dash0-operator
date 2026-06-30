@@ -100,6 +100,9 @@ DECISION_MAKER_MOCK_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 CONTROL_PLANE_MOCK_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)control-plane-mock
 CONTROL_PLANE_MOCK_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
+OUTBOUND_CONNECTOR_MOCK_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)outbound-connector-mock
+OUTBOUND_CONNECTOR_MOCK_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
 TELEMETRY_MATCHER_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)telemetry-matcher
 TELEMETRY_MATCHER_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
@@ -283,6 +286,7 @@ helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@$(call lint_helm_chart,test/e2e/dash0-api-mock/helm-chart)
 	@$(call lint_helm_chart,test/e2e/control-plane-mock/helm-chart)
 	@$(call lint_helm_chart,test/e2e/decision-maker-mock/helm-chart)
+	@$(call lint_helm_chart,test/e2e/outbound-connector-mock/helm-chart)
 	@$(call lint_helm_chart,test/e2e/otlp-sink/helm-chart)
 
 .PHONY: shellcheck-check-installed
@@ -322,6 +326,7 @@ GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \
   dockerfile:test/e2e/dash0-api-mock/go.mod:test/e2e/dash0-api-mock/Dockerfile \
   dockerfile:test/e2e/decision-maker-mock/go.mod:test/e2e/decision-maker-mock/Dockerfile \
+  dockerfile:test/e2e/outbound-connector-mock/go.mod:test/e2e/outbound-connector-mock/Dockerfile \
   dockerfile:test/e2e/otlp-sink/telemetrymatcher/go.mod:test/e2e/otlp-sink/telemetrymatcher/Dockerfile
 
 # Pairs of go.mod files whose Go versions must be in sync, encoded as "gomod:<go.mod>:<go.mod>".
@@ -367,6 +372,7 @@ all-auxiliary-images: \
   dash0-api-mock-image \
   decision-maker-mock-image \
   control-plane-mock-image \
+  outbound-connector-mock-image \
   telemetry-matcher-image ## Build all auxiliary images that are used in test scripts and/or e2e tests, that is, test applications, dash0-api-mock, telemetry-matcher etc. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 # This target is a helper for testing. The production images will be built in the source repo of the IE images.
@@ -418,6 +424,10 @@ decision-maker-mock-image: ## Build the Decision Maker mock container image, whi
 control-plane-mock-image: ## Build the Control Plane mock container image, which is used in end-to-end tests for IE.
 	@$(call build_container_image,$(CONTROL_PLANE_MOCK_IMAGE_REPOSITORY),$(CONTROL_PLANE_MOCK_IMAGE_TAG),test/e2e/control-plane-mock)
 
+.PHONY: outbound-connector-mock-image
+outbound-connector-mock-image: ## Build the outbound-connector mock container image, which is used in end-to-end tests for the agent0-connector.
+	@$(call build_container_image,$(OUTBOUND_CONNECTOR_MOCK_IMAGE_REPOSITORY),$(OUTBOUND_CONNECTOR_MOCK_IMAGE_TAG),test/e2e/outbound-connector-mock)
+
 .PHONY: telemetry-matcher-image
 telemetry-matcher-image: ## Build the telemetry-matcher container image, which is used in end-to-end tests.
 	@$(call build_container_image,$(TELEMETRY_MATCHER_IMAGE_REPOSITORY),$(TELEMETRY_MATCHER_IMAGE_TAG),test/e2e,test/e2e/otlp-sink/telemetrymatcher/Dockerfile)
@@ -433,6 +443,7 @@ push-all-auxiliary-images: \
   push-dash0-api-mock-image \
   push-decision-maker-mock-image \
   push-control-plane-mock-image \
+  push-outbound-connector-mock-image \
   push-telemetry-matcher-image ## Push all auxiliary images that are used in test scripts and/or e2e tests, that is, test applications, dash0-api-mock, telemetry-matcher etc.
 
 # This target is a helper for testing. The production images will be pushed in the source repo of the IE images.
@@ -480,6 +491,10 @@ push-decision-maker-mock-image: ## Push the Decision Maker mock container image.
 push-control-plane-mock-image: ## Push the Control Plane mock container image.
 	@$(call push_container_image,$(CONTROL_PLANE_MOCK_IMAGE_REPOSITORY),$(CONTROL_PLANE_MOCK_IMAGE_TAG))
 
+.PHONY: push-outbound-connector-mock-image
+push-outbound-connector-mock-image: ## Push the outbound-connector mock container image.
+	@$(call push_container_image,$(OUTBOUND_CONNECTOR_MOCK_IMAGE_REPOSITORY),$(OUTBOUND_CONNECTOR_MOCK_IMAGE_TAG))
+
 # Regenerates the gRPC bindings for the Decision Maker mock from its vendored
 # proto file. Not part of `make build` — run manually after re-vendoring the
 # proto. Requires `protoc` on PATH; the protoc-gen-go and protoc-gen-go-grpc
@@ -504,6 +519,13 @@ proto-gen-decision-maker-mock:
 proto-gen-agent0-connector:
 	@command -v protoc > /dev/null || { echo "error: protoc is not installed"; exit 1; }
 	@cd images/agent0-connector/src && \
+	  go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10 && \
+	  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1 && \
+	  PATH="$$(go env GOPATH)/bin:$$PATH" protoc \
+	    --go_out=. --go_opt=paths=source_relative \
+	    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+	    proto/outboundconnector.proto
+	@cd test/e2e/outbound-connector-mock && \
 	  go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10 && \
 	  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1 && \
 	  PATH="$$(go env GOPATH)/bin:$$PATH" protoc \
