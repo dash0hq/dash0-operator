@@ -132,5 +132,30 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].Value).To(Equal("<redacted>"))
 			Expect(original.Spec.Exports[0].Grpc.Headers[0].Value).To(Equal("Bearer secret-token"))
 		})
+
+		It("should leave secret-backed header references intact", func() {
+			original := Dash0OperatorConfiguration{
+				Spec: Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{{
+						Grpc: &dash0common.GrpcConfiguration{
+							Endpoint: EndpointHttpTest,
+							Headers: []dash0common.Header{
+								{Name: "X-Api-Key", ValueFrom: &dash0common.HeaderValueFrom{
+									SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: "api-key"},
+								}},
+							},
+						},
+					}},
+				},
+			}
+
+			redacted := original.cloneAndRedact()
+
+			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].Name).To(Equal("X-Api-Key"))
+			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].Value).To(BeEmpty())
+			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom).ToNot(BeNil())
+			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom.SecretKeyRef.Name).To(Equal("my-secret"))
+			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom.SecretKeyRef.Key).To(Equal("api-key"))
+		})
 	})
 })

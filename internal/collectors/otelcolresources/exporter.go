@@ -11,6 +11,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/exporters"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
@@ -20,6 +21,7 @@ type otlpExporter struct {
 	Endpoint           string
 	Authorization      *dash0ExporterAuthorization
 	Headers            []dash0common.Header
+	HeaderEnvVars      []headerSecretEnvVar
 	Encoding           string
 	Insecure           bool
 	InsecureSkipVerify bool
@@ -34,6 +36,14 @@ type namespacedOtlpExporters = map[string][]otlpExporter
 type otlpExporters struct {
 	Default    defaultOtlpExporters
 	Namespaced namespacedOtlpExporters
+}
+
+// headerSecretEnvVar links a generated collector environment variable name to the Kubernetes secret key from which its
+// value is sourced. The environment variable is added to the collector pod and referenced from the rendered header
+// value via ${env:EnvVarName}.
+type headerSecretEnvVar struct {
+	EnvVarName   string
+	SecretKeyRef *dash0common.SecretKeySelector
 }
 
 func (e *otlpExporters) AllNamespaceKeys() []string {
@@ -128,12 +138,12 @@ func convertExportSettingsToExporterList(
 
 	var nameSuffix string
 	if isDefault {
-		nameSuffix = nameSuffixDefault(index)
+		nameSuffix = exporters.NameSuffixDefault(index)
 	} else {
-		nameSuffix = nameSuffixNs(index, *namespace)
+		nameSuffix = exporters.NameSuffixNs(index, *namespace)
 	}
 
-	var exporters []otlpExporter
+	var exporterList []otlpExporter
 
 	if export.Dash0 == nil && export.Grpc == nil && export.Http == nil {
 		return nil, fmt.Errorf("%s no exporter configuration found", commonExportErrorPrefix)
@@ -155,7 +165,7 @@ func convertExportSettingsToExporterList(
 		if err != nil {
 			return nil, err
 		}
-		exporters = append(exporters, *dash0Exporter)
+		exporterList = append(exporterList, *dash0Exporter)
 	}
 
 	if export.Grpc != nil {
@@ -163,7 +173,7 @@ func convertExportSettingsToExporterList(
 		if err != nil {
 			return nil, err
 		}
-		exporters = append(exporters, *grpcExporter)
+		exporterList = append(exporterList, *grpcExporter)
 	}
 
 	if export.Http != nil {
@@ -171,10 +181,10 @@ func convertExportSettingsToExporterList(
 		if err != nil {
 			return nil, err
 		}
-		exporters = append(exporters, *httpExporter)
+		exporterList = append(exporterList, *httpExporter)
 	}
 
-	return exporters, nil
+	return exporterList, nil
 }
 
 func convertDash0ExporterToOtlpExporter(
@@ -219,12 +229,17 @@ func convertGrpcExporterToOtlpExporter(grpc *dash0common.GrpcConfiguration, name
 	if grpc.Endpoint == "" {
 		return nil, fmt.Errorf("no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")
 	}
+	headers, headerEnvVars, err := resolveExporterHeaders(grpc.Headers, "GRPC", nameSuffix)
+	if err != nil {
+		return nil, err
+	}
 	grpcExporter := otlpExporter{
-		Name:         fmt.Sprintf("%s/%s", grpcExporterNamePrefix, nameSuffix),
-		Endpoint:     grpc.Endpoint,
-		Headers:      grpc.Headers,
-		Keepalive:    grpc.Keepalive,
-		BalancerName: string(grpc.BalancerName),
+		Name:          fmt.Sprintf("%s/%s", grpcExporterNamePrefix, nameSuffix),
+		Endpoint:      grpc.Endpoint,
+		Headers:       headers,
+		HeaderEnvVars: headerEnvVars,
+		Keepalive:     grpc.Keepalive,
+		BalancerName:  string(grpc.BalancerName),
 	}
 	if grpc.Insecure != nil {
 		grpcExporter.Insecure = *grpc.Insecure
@@ -232,9 +247,6 @@ func convertGrpcExporterToOtlpExporter(grpc *dash0common.GrpcConfiguration, name
 		setGrpcTlsFromPrefix(grpc.Endpoint, &grpcExporter)
 	}
 	setInsecureSkipVerify(grpc.Endpoint, grpc.InsecureSkipVerify, &grpcExporter)
-	if len(grpc.Headers) > 0 {
-		grpcExporter.Headers = grpc.Headers
-	}
 	return &grpcExporter, nil
 }
 
@@ -245,16 +257,19 @@ func convertHttpExporterToOtlpExporter(http *dash0common.HttpConfiguration, name
 	if http.Encoding == "" {
 		return nil, fmt.Errorf("no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")
 	}
+	headers, headerEnvVars, err := resolveExporterHeaders(http.Headers, "HTTP", nameSuffix)
+	if err != nil {
+		return nil, err
+	}
 	encoding := string(http.Encoding)
 	httpExporter := otlpExporter{
-		Name:     fmt.Sprintf("%s/%s/%s", httpExporterNamePrefix, nameSuffix, encoding),
-		Endpoint: http.Endpoint,
-		Encoding: encoding,
+		Name:          fmt.Sprintf("%s/%s/%s", httpExporterNamePrefix, nameSuffix, encoding),
+		Endpoint:      http.Endpoint,
+		Headers:       headers,
+		HeaderEnvVars: headerEnvVars,
+		Encoding:      encoding,
 	}
 	setInsecureSkipVerify(http.Endpoint, http.InsecureSkipVerify, &httpExporter)
-	if len(http.Headers) > 0 {
-		httpExporter.Headers = http.Headers
-	}
 	return &httpExporter, nil
 }
 
@@ -268,10 +283,48 @@ func authHeaderValue(envVarName string) string {
 	return fmt.Sprintf("Bearer ${env:%s}", envVarName)
 }
 
-func nameSuffixDefault(index int) string {
-	return fmt.Sprintf("default_%d", index)
-}
-
-func nameSuffixNs(index int, namespace string) string {
-	return fmt.Sprintf("ns/%s_%d", namespace, index)
+// resolveExporterHeaders translates the configured headers of a gRPC or HTTP exporter into the headers rendered into
+// the collector configuration plus the list of environment variables that need to be added to the collector pod.
+// Headers with a literal value are passed through unchanged. Headers whose value is sourced from a Kubernetes secret
+// (valueFrom.secretKeyRef) are rendered as a ${env:...} reference, and a corresponding environment variable (backed by
+// the secret) is returned so the collector can resolve the value at runtime. The protocol ("GRPC" or "HTTP") and the
+// exporter's nameSuffix are used to derive a collector-pod-wide unique environment variable name per header.
+func resolveExporterHeaders(
+	headers []dash0common.Header,
+	protocol string,
+	nameSuffix string,
+) ([]dash0common.Header, []headerSecretEnvVar, error) {
+	if len(headers) == 0 {
+		return nil, nil, nil
+	}
+	resolvedHeaders := make([]dash0common.Header, 0, len(headers))
+	var headerEnvVars []headerSecretEnvVar
+	for i, header := range headers {
+		hasValue := header.Value != ""
+		hasValueFrom := header.ValueFrom != nil
+		if hasValue == hasValueFrom {
+			return nil, nil, fmt.Errorf(
+				"%s header %q must have exactly one of value or valueFrom set", commonExportErrorPrefix, header.Name)
+		}
+		if !hasValueFrom {
+			resolvedHeaders = append(resolvedHeaders, header)
+			continue
+		}
+		if header.ValueFrom.SecretKeyRef == nil ||
+			header.ValueFrom.SecretKeyRef.Name == "" ||
+			header.ValueFrom.SecretKeyRef.Key == "" {
+			return nil, nil, fmt.Errorf(
+				"%s header %q valueFrom must reference a secret name and key", commonExportErrorPrefix, header.Name)
+		}
+		envVarName := exporters.HeaderSecretEnvVarName(protocol, nameSuffix, i)
+		resolvedHeaders = append(resolvedHeaders, dash0common.Header{
+			Name:  header.Name,
+			Value: fmt.Sprintf("${env:%s}", envVarName),
+		})
+		headerEnvVars = append(headerEnvVars, headerSecretEnvVar{
+			EnvVarName:   envVarName,
+			SecretKeyRef: header.ValueFrom.SecretKeyRef,
+		})
+	}
+	return resolvedHeaders, headerEnvVars, nil
 }
