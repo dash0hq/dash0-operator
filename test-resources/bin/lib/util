@@ -603,6 +603,7 @@ run_helm() {
     helm_install_command+=" --values test-resources/filelog-offset-storage/volume-values-hostpath.yaml"
   fi
   helm_install_command+=" --set operator.collectNamespaceLabelsAndAnnotationsEnabled=true"
+  helm_install_command+=" --set operator.collectNodeLabelsAndAnnotationsEnabled=true"
 
   if [[ -n "$controller_image_repository" ]]; then
     helm_install_command+=" --set operator.image.repository=$controller_image_repository"

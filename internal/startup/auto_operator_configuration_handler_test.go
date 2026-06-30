@@ -550,6 +550,7 @@ var _ = Describe(
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
 						CollectPodLabelsAndAnnotationsEnabled:            true,
 						CollectNamespaceLabelsAndAnnotationsEnabled:      true,
+						CollectNodeLabelsAndAnnotationsEnabled:           true,
 						PrometheusCrdSupportEnabled:                      true,
 						ProfilingEnabled:                                 true,
 						AutoMonitorNamespacesEnabled:                     true,
@@ -580,6 +581,8 @@ var _ = Describe(
 						g.Expect(*spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
 						g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).ToNot(BeNil())
 						g.Expect(*spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(BeFalse())
+						g.Expect(spec.CollectNodeLabelsAndAnnotations.Enabled).ToNot(BeNil())
+						g.Expect(*spec.CollectNodeLabelsAndAnnotations.Enabled).To(BeFalse())
 						g.Expect(spec.PrometheusCrdSupport.Enabled).ToNot(BeNil())
 						g.Expect(*spec.PrometheusCrdSupport.Enabled).To(BeFalse())
 						g.Expect(spec.Profiling).ToNot(BeNil())

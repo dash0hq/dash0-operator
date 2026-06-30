@@ -164,6 +164,11 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		spec.CollectNamespaceLabelsAndAnnotations.Enabled = ptr.To(false)
 		patchRequired = true
 	}
+	if spec.CollectNodeLabelsAndAnnotations.Enabled == nil {
+		// collecting node labels and annotations is opt-in, so it defaults to false if unset
+		spec.CollectNodeLabelsAndAnnotations.Enabled = ptr.To(false)
+		patchRequired = true
+	}
 	if spec.PrometheusCrdSupport.Enabled == nil {
 		spec.PrometheusCrdSupport.Enabled = ptr.To(false)
 		patchRequired = true

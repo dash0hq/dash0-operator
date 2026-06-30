@@ -29,6 +29,7 @@ import (
 // +kubebuilder:printcolumn:name="Collect Metrics",type="boolean",JSONPath=".spec.kubernetesInfrastructureMetricsCollection.enabled"
 // +kubebuilder:printcolumn:name="Collect Pod Meta",type="boolean",JSONPath=".spec.collectPodLabelsAndAnnotations.enabled"
 // +kubebuilder:printcolumn:name="Collect Namespace Meta",type="boolean",JSONPath=".spec.collectNamespaceLabelsAndAnnotations.enabled"
+// +kubebuilder:printcolumn:name="Collect Node Meta",type="boolean",JSONPath=".spec.collectNodeLabelsAndAnnotations.enabled"
 // +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Dash0OperatorConfiguration struct {
@@ -109,6 +110,13 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	CollectNamespaceLabelsAndAnnotations CollectNamespaceLabelsAndAnnotations `json:"collectNamespaceLabelsAndAnnotations,omitempty"`
+
+	// Settings for collecting node labels and annotations. This setting is optional, by default the operator will
+	// not collect node labels and annotations as resource attributes. It is a validation error to set
+	// `telemetryCollection.enabled=false` and `collectNodeLabelsAndAnnotations.enabled=true` at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	CollectNodeLabelsAndAnnotations CollectNodeLabelsAndAnnotations `json:"collectNodeLabelsAndAnnotations,omitempty"`
 
 	// Settings for discovering scrape targets via Prometheus CRDs (PodMonitor, ServiceMonitor, ScrapeConfig).
 	// This setting is optional and opt-in, by default the operator will not consider Prometheus CRDs when configuring
@@ -252,6 +260,19 @@ type CollectNamespaceLabelsAndAnnotations struct {
 	// assumed and the operator will not collect namespace labels and annotations as resource attributes. It is a
 	// validation error to set `telemetryCollection.enabled=false` and
 	// `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type CollectNodeLabelsAndAnnotations struct {
+	// Opt-in for collecting all node labels and annotations as resource attributes. If set to `true`, the operator
+	// will collect Kubernetes node labels and annotations as resource attributes.
+	//
+	// This setting is optional, it defaults to `false`, that is, if this setting is omitted, the value `false` is
+	// assumed and the operator will not collect node labels and annotations as resource attributes. It is a
+	// validation error to set `telemetryCollection.enabled=false` and
+	// `collectNodeLabelsAndAnnotations.enabled=true` at the same time.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`

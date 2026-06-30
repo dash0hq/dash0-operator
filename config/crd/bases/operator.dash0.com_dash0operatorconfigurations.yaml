@@ -27,6 +27,9 @@ spec:
     - jsonPath: .spec.collectNamespaceLabelsAndAnnotations.enabled
       name: Collect Namespace Meta
       type: boolean
+    - jsonPath: .spec.collectNodeLabelsAndAnnotations.enabled
+      name: Collect Node Meta
+      type: boolean
     - jsonPath: .status.conditions[?(@.type == "Available")].status
       name: Available
       type: string
@@ -128,6 +131,23 @@ spec:
                       assumed and the operator will not collect namespace labels and annotations as resource attributes. It is a
                       validation error to set `telemetryCollection.enabled=false` and
                       `collectNamespaceLabelsAndAnnotations.enabled=true` at the same time.
+                    type: boolean
+                type: object
+              collectNodeLabelsAndAnnotations:
+                description: |-
+                  Settings for collecting node labels and annotations. This setting is optional, by default the operator will
+                  not collect node labels and annotations as resource attributes. It is a validation error to set
+                  `telemetryCollection.enabled=false` and `collectNodeLabelsAndAnnotations.enabled=true` at the same time.
+                properties:
+                  enabled:
+                    description: |-
+                      Opt-in for collecting all node labels and annotations as resource attributes. If set to `true`, the operator
+                      will collect Kubernetes node labels and annotations as resource attributes.
+
+                      This setting is optional, it defaults to `false`, that is, if this setting is omitted, the value `false` is
+                      assumed and the operator will not collect node labels and annotations as resource attributes. It is a
+                      validation error to set `telemetryCollection.enabled=false` and
+                      `collectNodeLabelsAndAnnotations.enabled=true` at the same time.
                     type: boolean
                 type: object
               collectPodLabelsAndAnnotations:
