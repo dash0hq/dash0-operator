@@ -18,6 +18,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	exporters "github.com/dash0hq/dash0-operator/internal/util/exporters"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
@@ -569,7 +570,7 @@ func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(
 			prependProtocol(grpcExport.Endpoint, "dns://"),
 		)
 	pipeline = addInsecureFlagIfNecessary(pipeline, grpcExport.Endpoint)
-	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, grpcExport.Headers)
+	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, grpcExport.Headers, "GRPC")
 	pipeline += "\n"
 	return pipeline
 }
@@ -590,26 +591,52 @@ func convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(
 			encoding,
 			httpExport.Endpoint,
 		)
-	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, httpExport.Headers)
+	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, httpExport.Headers, "HTTP")
 	pipeline += "\n"
 	return pipeline
 }
 
-func appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline string, headers []dash0common.Header) string {
+// selfMonitoringExportNameSuffix is the exporter name suffix used when deriving secret-backed header environment
+// variable names for self-monitoring. Self-monitoring always sends telemetry via the operator configuration's first
+// (default) export, which the exporters section renders with the "default_0" name suffix (see
+// otelcolresources.nameSuffixDefault, called with index 0). Both must stay in sync so the ${env:...} references
+// rendered here resolve to the environment variables actually injected into the collector pod.
+const selfMonitoringExportNameSuffix = "default_0"
+
+// appendHeadersToCollectorLogSelfMonitoringPipelineString renders the given headers into the self-monitoring pipeline.
+// Headers with a literal value are rendered as-is. Headers whose value is sourced from a Kubernetes secret
+// (valueFrom.secretKeyRef) are rendered as a ${env:...} reference; the referenced environment variable is injected into
+// the collector pod by the exporters section (see otelcolresources.resolveExporterHeaders), so the name must be derived
+// identically via util.HeaderSecretEnvVarName. The protocol ("GRPC" or "HTTP") is part of that name. The header index
+// must match the exporters section, which iterates the same headers slice, so we iterate the full slice by index here
+// as well even though headers without a name are skipped.
+func appendHeadersToCollectorLogSelfMonitoringPipelineString(
+	pipeline string,
+	headers []dash0common.Header,
+	protocol string,
+) string {
 	if len(headers) > 0 {
 		pipeline += `
                 headers:`
 	}
-	for _, header := range headers {
-		if header.Name != "" {
-			pipeline += fmt.Sprintf(
-				`
-                  - name: %s
-                    value: "%s"`,
-				header.Name,
-				header.Value,
+	for i, header := range headers {
+		if header.Name == "" {
+			continue
+		}
+		value := header.Value
+		if header.ValueFrom != nil && header.ValueFrom.SecretKeyRef != nil {
+			value = fmt.Sprintf(
+				"${env:%s}",
+				exporters.HeaderSecretEnvVarName(protocol, selfMonitoringExportNameSuffix, i),
 			)
 		}
+		pipeline += fmt.Sprintf(
+			`
+                  - name: %s
+                    value: "%s"`,
+			header.Name,
+			value,
+		)
 	}
 	return pipeline
 }

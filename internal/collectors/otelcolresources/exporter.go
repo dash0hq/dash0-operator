@@ -6,12 +6,12 @@ package otelcolresources
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/exporters"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
@@ -75,8 +75,6 @@ const (
 	dash0ExporterNamePrefix = "otlp_grpc/dash0"
 	grpcExporterNamePrefix  = "otlp_grpc"
 	httpExporterNamePrefix  = "otlp_http"
-
-	headerSecretEnvVarPrefix = "DASH0_HEADER"
 )
 
 func getDefaultOtlpExporters(dash0Config *dash0v1alpha1.Dash0OperatorConfiguration) ([]otlpExporter, error) {
@@ -326,7 +324,7 @@ func resolveExporterHeaders(
 			return nil, nil, fmt.Errorf(
 				"%s header %q valueFrom must reference a secret name and key", commonExportErrorPrefix, header.Name)
 		}
-		envVarName := headerSecretEnvVarName(protocol, nameSuffix, i)
+		envVarName := exporters.HeaderSecretEnvVarName(protocol, nameSuffix, i)
 		resolved = append(resolved, dash0common.Header{
 			Name:  header.Name,
 			Value: fmt.Sprintf("${env:%s}", envVarName),
@@ -337,25 +335,4 @@ func resolveExporterHeaders(
 		})
 	}
 	return resolved, headerEnvVars, nil
-}
-
-// headerSecretEnvVarName derives a unique, valid environment variable name for a secret-backed header value. The
-// protocol and nameSuffix (e.g. "default_0" or "ns/some-namespace_0") together with the header index guarantee
-// uniqueness across all exporters of a single collector pod.
-func headerSecretEnvVarName(protocol string, nameSuffix string, headerIndex int) string {
-	return fmt.Sprintf("%s_%s_%s_%d", headerSecretEnvVarPrefix, protocol, sanitizeForEnvVarName(nameSuffix), headerIndex)
-}
-
-// sanitizeForEnvVarName converts an arbitrary string into an uppercase identifier consisting only of the characters
-// [A-Z0-9_], which is required for environment variable names.
-func sanitizeForEnvVarName(s string) string {
-	var b strings.Builder
-	for _, r := range strings.ToUpper(s) {
-		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('_')
-		}
-	}
-	return b.String()
 }

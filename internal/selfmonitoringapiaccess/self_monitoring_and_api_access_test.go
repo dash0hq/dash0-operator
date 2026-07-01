@@ -732,6 +732,42 @@ var _ = Describe(
 						},
 					),
 					Entry(
+						"should render a secret-backed gRPC header as an env var reference",
+						exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+							selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+								&dash0common.Export{
+									Grpc: &dash0common.GrpcConfiguration{
+										Endpoint: EndpointGrpcTest,
+										Headers: []dash0common.Header{
+											{
+												Name:  "X-Plain",
+												Value: "plain-value",
+											},
+											{
+												Name: "Authorization",
+												ValueFrom: &dash0common.HeaderValueFrom{
+													SecretKeyRef: &dash0common.SecretKeySelector{
+														Name: "my-secret",
+														Key:  "api-key",
+													},
+												},
+											},
+										},
+									},
+								},
+							),
+							expectedMetricsPipelineString: expectedMetricsPipeline(`
+                protocol: grpc
+                endpoint: dns://endpoint.backend.com:4317
+                headers:
+                  - name: X-Plain
+                    value: "plain-value"
+                  - name: Authorization
+                    value: "${env:DASH0_HEADER_GRPC_DEFAULT_0_1}"
+`),
+						},
+					),
+					Entry(
 						"should convert HTTP/protobuf export",
 						exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
 							selfMonitoringConfiguration: createSelfMonitoringConfiguration(
@@ -808,6 +844,37 @@ var _ = Describe(
                     value: "Value2"
                   - name: KeyWithoutValue
                     value: ""
+`),
+						},
+					),
+					Entry(
+						"should render a secret-backed HTTP header as an env var reference",
+						exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+							selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+								&dash0common.Export{
+									Http: &dash0common.HttpConfiguration{
+										Endpoint: EndpointHttpTest,
+										Headers: []dash0common.Header{
+											{
+												Name: "X-Api-Key",
+												ValueFrom: &dash0common.HeaderValueFrom{
+													SecretKeyRef: &dash0common.SecretKeySelector{
+														Name: "my-secret",
+														Key:  "api-key",
+													},
+												},
+											},
+										},
+										Encoding: dash0common.Proto,
+									},
+								},
+							),
+							expectedMetricsPipelineString: expectedMetricsPipeline(`
+                protocol: http/protobuf
+                endpoint: https://endpoint.backend.com:4318
+                headers:
+                  - name: X-Api-Key
+                    value: "${env:DASH0_HEADER_HTTP_DEFAULT_0_0}"
 `),
 						},
 					),
@@ -1033,6 +1100,47 @@ var _ = Describe(
 						},
 					),
 					Entry(
+						"should render a secret-backed gRPC header as an env var reference",
+						exportToCollectorLogsSelfMonitoringPipelineTestConfig{
+							selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+								&dash0common.Export{
+									Grpc: &dash0common.GrpcConfiguration{
+										Endpoint: EndpointGrpcTest,
+										Headers: []dash0common.Header{
+											{
+												Name:  "X-Plain",
+												Value: "plain-value",
+											},
+											{
+												Name: "Authorization",
+												ValueFrom: &dash0common.HeaderValueFrom{
+													SecretKeyRef: &dash0common.SecretKeySelector{
+														Name: "my-secret",
+														Key:  "api-key",
+													},
+												},
+											},
+										},
+									},
+								},
+							),
+							expectedLogsPipelineString: `
+    logs:
+      processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: dns://endpoint.backend.com:4317
+                headers:
+                  - name: X-Plain
+                    value: "plain-value"
+                  - name: Authorization
+                    value: "${env:DASH0_HEADER_GRPC_DEFAULT_0_1}"
+`,
+						},
+					),
+					Entry(
 						"should convert HTTP/protobuf export",
 						exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 							selfMonitoringConfiguration: createSelfMonitoringConfiguration(
@@ -1119,6 +1227,42 @@ var _ = Describe(
                     value: "Value2"
                   - name: KeyWithoutValue
                     value: ""
+`,
+						},
+					),
+					Entry(
+						"should render a secret-backed HTTP header as an env var reference",
+						exportToCollectorLogsSelfMonitoringPipelineTestConfig{
+							selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+								&dash0common.Export{
+									Http: &dash0common.HttpConfiguration{
+										Endpoint: EndpointHttpTest,
+										Headers: []dash0common.Header{
+											{
+												Name: "X-Api-Key",
+												ValueFrom: &dash0common.HeaderValueFrom{
+													SecretKeyRef: &dash0common.SecretKeySelector{
+														Name: "my-secret",
+														Key:  "api-key",
+													},
+												},
+											},
+										},
+										Encoding: dash0common.Proto,
+									},
+								},
+							),
+							expectedLogsPipelineString: `
+    logs:
+      processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: https://endpoint.backend.com:4318
+                headers:
+                  - name: X-Api-Key
+                    value: "${env:DASH0_HEADER_HTTP_DEFAULT_0_0}"
 `,
 						},
 					),
