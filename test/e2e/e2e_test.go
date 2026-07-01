@@ -1680,40 +1680,41 @@ trace_statements:
 					removeIntelligentEdgeResource()
 				})
 
-				It("deploys the Barker proxy wired to the configured Decision Maker endpoint", func() {
-					barkerDeployment := operatorHelmReleaseName + "-barker"
+				It("deploys the Edge Proxy wired to the configured Decision Maker endpoint", func() {
+					edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
 
-					By("waiting for the Barker deployment to become available")
+					By("waiting for the Edge Proxy deployment to become available")
 					Eventually(func(g Gomega) {
 						g.Expect(runAndIgnoreOutput(exec.Command(
 							"kubectl",
 							"-n", operatorNamespace,
 							"wait", "--for=condition=Available",
-							"deployment/"+barkerDeployment,
+							"deployment/"+edgeProxyDeployment,
 							"--timeout=30s",
 						))).To(Succeed())
 					}, 120*time.Second, 2*time.Second).Should(Succeed())
 
-					By("verifying the Barker service exists")
+					By("verifying the Edge Proxy service exists")
 					Expect(runAndIgnoreOutput(exec.Command(
-						"kubectl", "-n", operatorNamespace, "get", "service", barkerDeployment,
+						"kubectl", "-n", operatorNamespace, "get", "service", edgeProxyDeployment,
 					))).To(Succeed())
 
-					By("verifying the Barker container is configured with the Decision Maker mock endpoint")
+					By("verifying the Edge Proxy container is configured with the Decision Maker mock endpoint")
 					upstream, err := run(exec.Command(
 						"kubectl",
 						"-n", operatorNamespace,
-						"get", "deployment", barkerDeployment,
-						"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="barker")].env[?(@.name=="UPSTREAM_ADDRESS")].value}`,
+						"get", "deployment", edgeProxyDeployment,
+						"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="edge-proxy")].env`+
+							`[?(@.name=="UPSTREAM_ADDRESS")].value}`,
 					), false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(strings.TrimSpace(upstream)).To(Equal(decisionMakerMockGrpcEndpoint))
 
-					By("verifying that Barker actually connects upstream to the Decision Maker mock")
+					By("verifying that the Edge Proxy actually connects upstream to the Decision Maker mock")
 					Eventually(func(g Gomega) {
 						counts := fetchDecisionMakerGrpcCallCounts(g)
 						g.Expect(counts).NotTo(BeEmpty())
-						// Barker opens both subscription streams (server-info + sampling-rules)
+						// The Edge Proxy opens both subscription streams (server-info + sampling-rules)
 						// on connect; either is sufficient signal that the upstream wiring
 						// works end-to-end.
 						g.Expect(counts["SubscribeServerInfo"]+counts["SubscribeSamplingRules"]).To(
@@ -1815,24 +1816,24 @@ trace_statements:
 					})
 				})
 
-				It("tears down Barker and reverts the collector when the resource is deleted", func() {
-					barkerDeployment := operatorHelmReleaseName + "-barker"
+				It("tears down the Edge Proxy and reverts the collector when the resource is deleted", func() {
+					edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
 
 					removeIntelligentEdgeResource()
 
-					By("verifying the Barker deployment is removed")
+					By("verifying the Edge Proxy deployment is removed")
 					Expect(runAndIgnoreOutput(exec.Command(
 						"kubectl",
 						"-n", operatorNamespace,
 						"wait", "--for=delete",
-						"deployment/"+barkerDeployment,
+						"deployment/"+edgeProxyDeployment,
 						"--timeout=60s",
 					))).To(Succeed())
 
-					By("verifying the Barker service is removed")
+					By("verifying the Edge Proxy service is removed")
 					Eventually(func(g Gomega) {
 						_, err := run(exec.Command(
-							"kubectl", "-n", operatorNamespace, "get", "service", barkerDeployment,
+							"kubectl", "-n", operatorNamespace, "get", "service", edgeProxyDeployment,
 						), false)
 						g.Expect(err).To(HaveOccurred())
 					}, 30*time.Second, pollingInterval).Should(Succeed())

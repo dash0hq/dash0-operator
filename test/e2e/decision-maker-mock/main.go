@@ -3,8 +3,8 @@
 
 // decision-maker-mock is a minimal gRPC server that implements
 // decisionmaker.DecisionMakerService. It is used by the operator's e2e tests
-// to keep the Barker proxy connected to a fake upstream Decision Maker so
-// that Barker pod readiness and connection wiring can be asserted. It does
+// to keep the Edge Proxy connected to a fake upstream Decision Maker so
+// that Edge Proxy pod readiness and connection wiring can be asserted. It does
 // not implement any decision-making logic; it only accepts streams and
 // counts observed RPCs, exposing those counts on a separate HTTP debug port.
 
@@ -20,7 +20,7 @@ import (
 
 	"google.golang.org/grpc"
 	// Register the gzip encoding so the server can decompress streams from
-	// clients that enable gzip (Barker's decision-maker-client does, see
+	// clients that enable gzip (the Edge Proxy's decision-maker-client does, see
 	// `gRPC compression enabled` in its startup log). Without this, every
 	// RPC fails with Unimplemented "Decompressor is not installed".
 	_ "google.golang.org/grpc/encoding/gzip"
@@ -53,7 +53,7 @@ type decisionMakerServer struct {
 }
 
 // DecisionStream reads incoming TraceReports from the client and never sends
-// TraceDecisions back. Barker keeps the stream open and forwards reports;
+// TraceDecisions back. The Edge Proxy keeps the stream open and forwards reports;
 // not returning decisions is fine for wiring tests.
 func (s *decisionMakerServer) DecisionStream(stream pb.DecisionMakerService_DecisionStreamServer) error {
 	s.counters.decisionStream.Add(1)

@@ -196,7 +196,7 @@ tests:
                         - value-09
         intelligentEdge:
           enabled: true
-          barker:
+          edgeProxy:
             containerResources:
               limits:
                 memory: 256Mi
@@ -466,7 +466,7 @@ tests:
                     values:
                     - value-07
                     - value-08
-            barkerContainerResources:
+            edgeProxyContainerResources:
               gomemlimit: 200MiB
               limits:
                 cpu: 250m
@@ -476,12 +476,12 @@ tests:
                 cpu: 100m
                 ephemeral-storage: 128Mi
                 memory: 128Mi
-            barkerTolerations:
+            edgeProxyTolerations:
               - effect: NoSchedule
                 key: key5
                 operator: Equal
                 value: value5
-            barkerNodeAffinity:
+            edgeProxyNodeAffinity:
               preferredDuringSchedulingIgnoredDuringExecution:
               - preference:
                   matchExpressions:

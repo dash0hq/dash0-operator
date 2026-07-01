@@ -107,9 +107,9 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.intelligentEdgeCollectorImage "context" .) -}}
 {{- end }}
 
-{{/* the barker image */}}
-{{- define "dash0-operator.barkerImage" -}}
-{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.barkerImage "context" .) -}}
+{{/* the Edge Proxy image */}}
+{{- define "dash0-operator.edgeProxyImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.edgeProxyImage "context" .) -}}
 {{- end }}
 
 {{/* the agent0-connector image */}}

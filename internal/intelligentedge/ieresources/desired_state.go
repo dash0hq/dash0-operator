@@ -21,22 +21,22 @@ import (
 )
 
 const (
-	barkerComponentName = "barker"
+	edgeProxyComponentName = "edge-proxy"
 
-	barkerGrpcPort     = 8011
-	barkerInternalPort = 8012
+	edgeProxyGrpcPort     = 8011
+	edgeProxyInternalPort = 8012
 
-	barkerAuthTokenEnvVarName = "BARKER_AUTH_TOKEN"
+	edgeProxyAuthTokenEnvVarName = "EDGE_PROXY_AUTH_TOKEN"
 
-	// barkerUserID is the numeric UID baked into the barker image via `adduser -u 10001` in its Dockerfile.
-	barkerUserID int64 = 10001
+	// edgeProxyUserID is the numeric UID baked into the Edge Proxy image via `adduser -u 10001` in its Dockerfile.
+	edgeProxyUserID int64 = 10001
 
 	defaultDataset = "default"
 )
 
 var (
-	barkerMatchLabels = map[string]string{
-		util.AppKubernetesIoNameLabel:      barkerComponentName,
+	edgeProxyMatchLabels = map[string]string{
+		util.AppKubernetesIoNameLabel:      edgeProxyComponentName,
 		util.AppKubernetesIoInstanceLabel:  "dash0-operator",
 		util.AppKubernetesIoManagedByLabel: "dash0-operator",
 	}
@@ -51,33 +51,33 @@ func assembleDesiredState(
 	namePrefix string,
 	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
-	barkerImage string,
-	barkerImagePullPolicy corev1.PullPolicy,
+	edgeProxyImage string,
+	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	extraConfig util.ExtraConfig,
 	forDeletion bool,
 	logger logd.Logger,
 ) []clientObject {
-	barkerEnabled := !forDeletion &&
+	edgeProxyEnabled := !forDeletion &&
 		intelligentEdgeResource != nil &&
-		pointers.ReadBoolPointerWithDefault(intelligentEdgeResource.Spec.Barker.Enabled, true)
+		pointers.ReadBoolPointerWithDefault(intelligentEdgeResource.Spec.EdgeProxy.Enabled, true)
 
-	if barkerEnabled && barkerImage == "" {
-		logger.Warn("Barker is enabled but no barker image is configured. The barker proxy will not be deployed.")
-		barkerEnabled = false
+	if edgeProxyEnabled && edgeProxyImage == "" {
+		logger.Warn("The Edge Proxy is enabled but no Edge Proxy image is configured. The Edge Proxy will not be deployed.")
+		edgeProxyEnabled = false
 	}
 
 	var desiredState []clientObject
-	if forDeletion || barkerEnabled {
-		if barkerEnabled {
+	if forDeletion || edgeProxyEnabled {
+		if edgeProxyEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleBarkerDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, barkerImage, barkerImagePullPolicy, operatorVersion, extraConfig, logger)),
-				addCommonMetadata(assembleBarkerService(operatorNamespace, namePrefix)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, extraConfig, logger)),
+				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
 			)
 		} else {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleBarkerDeploymentForDeletion(operatorNamespace, namePrefix)),
-				addCommonMetadata(assembleBarkerServiceForDeletion(operatorNamespace, namePrefix)),
+				addCommonMetadata(assembleEdgeProxyDeploymentForDeletion(operatorNamespace, namePrefix)),
+				addCommonMetadata(assembleEdgeProxyServiceForDeletion(operatorNamespace, namePrefix)),
 			)
 		}
 	}
@@ -92,13 +92,13 @@ func assembleDesiredStateForDelete(
 	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, true, logger)
 }
 
-func assembleBarkerDeployment(
+func assembleEdgeProxyDeployment(
 	operatorNamespace string,
 	namePrefix string,
 	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
-	barkerImage string,
-	barkerImagePullPolicy corev1.PullPolicy,
+	edgeProxyImage string,
+	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
@@ -110,14 +110,14 @@ func assembleBarkerDeployment(
 		dmEndpoint = intelligentEdgeResource.Spec.Sampling.DecisionMakerEndpoint
 	}
 	if dmEndpoint == "" {
-		logger.Warn("No Decision Maker endpoint could be derived for the barker proxy. The barker " +
+		logger.Warn("No Decision Maker endpoint could be derived for the Edge Proxy. The Edge Proxy " +
 			"will not be able to forward sampling decisions to the Decision Maker.")
 	}
 	authTokenEnvVar := assembleAuthTokenEnvVar(authorization, logger)
 
-	barkerContainer := corev1.Container{
-		Name:  barkerComponentName,
-		Image: barkerImage,
+	edgeProxyContainer := corev1.Container{
+		Name:  edgeProxyComponentName,
+		Image: edgeProxyImage,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
 			ReadOnlyRootFilesystem:   new(true),
@@ -132,19 +132,19 @@ func assembleBarkerDeployment(
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "grpc",
-				ContainerPort: barkerGrpcPort,
+				ContainerPort: edgeProxyGrpcPort,
 				Protocol:      corev1.ProtocolTCP,
 			},
 			{
 				Name:          "internal",
-				ContainerPort: barkerInternalPort,
+				ContainerPort: edgeProxyInternalPort,
 				Protocol:      corev1.ProtocolTCP,
 			},
 		},
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: extraConfig.BarkerContainerResources.GoMemLimit,
+				Value: extraConfig.EdgeProxyContainerResources.GoMemLimit,
 			},
 			authTokenEnvVar,
 			{
@@ -153,22 +153,22 @@ func assembleBarkerDeployment(
 			},
 			{
 				Name:  "UPSTREAM_HEADERS",
-				Value: fmt.Sprintf("authorization=Bearer $(%s),Dash0-Dataset=%s", barkerAuthTokenEnvVarName, dataset),
+				Value: fmt.Sprintf("authorization=Bearer $(%s),Dash0-Dataset=%s", edgeProxyAuthTokenEnvVarName, dataset),
 			},
 			{
 				Name:  "LISTENADDRESS",
-				Value: fmt.Sprintf(":%d", barkerGrpcPort),
+				Value: fmt.Sprintf(":%d", edgeProxyGrpcPort),
 			},
 			{
 				Name:  "LISTENADDRESSINTERNAL",
-				Value: fmt.Sprintf(":%d", barkerInternalPort),
+				Value: fmt.Sprintf(":%d", edgeProxyInternalPort),
 			},
 		},
-		Resources: extraConfig.BarkerContainerResources.ToResourceRequirements(),
+		Resources: extraConfig.EdgeProxyContainerResources.ToResourceRequirements(),
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				GRPC: &corev1.GRPCAction{
-					Port:    barkerGrpcPort,
+					Port:    edgeProxyGrpcPort,
 					Service: new("liveness"),
 				},
 			},
@@ -178,7 +178,7 @@ func assembleBarkerDeployment(
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				GRPC: &corev1.GRPCAction{
-					Port:    barkerGrpcPort,
+					Port:    edgeProxyGrpcPort,
 					Service: new("readiness"),
 				},
 			},
@@ -187,61 +187,61 @@ func assembleBarkerDeployment(
 		},
 	}
 
-	if barkerImagePullPolicy != "" {
-		barkerContainer.ImagePullPolicy = barkerImagePullPolicy
+	if edgeProxyImagePullPolicy != "" {
+		edgeProxyContainer.ImagePullPolicy = edgeProxyImagePullPolicy
 	}
 
 	spec := intelligentEdgeResource.Spec
-	if spec.Barker.LogLevel != "" {
-		barkerContainer.Env = append(barkerContainer.Env, corev1.EnvVar{
+	if spec.EdgeProxy.LogLevel != "" {
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
 			Name:  "LOGLEVEL",
-			Value: string(spec.Barker.LogLevel),
+			Value: string(spec.EdgeProxy.LogLevel),
 		})
 	}
-	if spec.Barker.Debug != nil && *spec.Barker.Debug {
-		barkerContainer.Env = append(barkerContainer.Env, corev1.EnvVar{
+	if spec.EdgeProxy.Debug != nil && *spec.EdgeProxy.Debug {
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
 			Name:  "DEBUG",
 			Value: "true",
 		})
 	}
-	if spec.Barker.Insecure != nil && *spec.Barker.Insecure {
-		barkerContainer.Env = append(barkerContainer.Env, corev1.EnvVar{
+	if spec.EdgeProxy.Insecure != nil && *spec.EdgeProxy.Insecure {
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
 			Name:  "UPSTREAM_INSECURE",
 			Value: "true",
 		})
 	}
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
-		barkerContainer.Env = append(barkerContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
 	}
 	podSpec := corev1.PodSpec{
 		AutomountServiceAccountToken: new(false),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: new(true),
-			RunAsUser:    new(barkerUserID),
+			RunAsUser:    new(edgeProxyUserID),
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Tolerations: extraConfig.BarkerTolerations,
+		Tolerations: extraConfig.EdgeProxyTolerations,
 		Containers: []corev1.Container{
-			barkerContainer,
+			edgeProxyContainer,
 		},
 	}
-	if extraConfig.BarkerNodeAffinity != nil {
+	if extraConfig.EdgeProxyNodeAffinity != nil {
 		podSpec.Affinity = &corev1.Affinity{
-			NodeAffinity: extraConfig.BarkerNodeAffinity,
+			NodeAffinity: extraConfig.EdgeProxyNodeAffinity,
 		}
 	}
 
-	deployment := assembleBarkerDeploymentForDeletion(operatorNamespace, namePrefix)
+	deployment := assembleEdgeProxyDeploymentForDeletion(operatorNamespace, namePrefix)
 	deployment.Spec = appsv1.DeploymentSpec{
 		Replicas: &replicas,
 		Selector: &metav1.LabelSelector{
-			MatchLabels: barkerMatchLabels,
+			MatchLabels: edgeProxyMatchLabels,
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: barkerLabels(),
+				Labels: edgeProxyLabels(),
 			},
 			Spec: podSpec,
 		},
@@ -249,7 +249,7 @@ func assembleBarkerDeployment(
 	return deployment
 }
 
-// assembleSelfMonitoringEnvVars returns env vars that point barker's OTel SDK exporter at the node-local daemonset
+// assembleSelfMonitoringEnvVars returns env vars that point the Edge Proxy's OTel SDK exporter at the node-local daemonset
 // collector's OTLP gRPC host-port. DASH0_NODE_IP is resolved via the downward API (status.hostIP) and must be defined
 // before OTEL_EXPORTER_OTLP_ENDPOINT, which references it.
 func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
@@ -276,7 +276,7 @@ func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
 			Name: "OTEL_RESOURCE_ATTRIBUTES",
 			Value: fmt.Sprintf(
 				"service.namespace=dash0-operator,service.name=%s,service.version=%s",
-				barkerComponentName,
+				edgeProxyComponentName,
 				operatorVersion,
 			),
 		},
@@ -285,26 +285,26 @@ func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
 
 func assembleAuthTokenEnvVar(authorization *dash0common.Authorization, logger logd.Logger) corev1.EnvVar {
 	if authorization == nil {
-		logger.Warn("No Dash0 authorization configured. The barker proxy will not be able to " +
+		logger.Warn("No Dash0 authorization configured. The Edge Proxy will not be able to " +
 			"authenticate with the Decision Maker.")
 		return corev1.EnvVar{
-			Name:  barkerAuthTokenEnvVarName,
+			Name:  edgeProxyAuthTokenEnvVarName,
 			Value: "",
 		}
 	}
-	envVar, err := util.CreateEnvVarForAuthorization(*authorization, barkerAuthTokenEnvVarName)
+	envVar, err := util.CreateEnvVarForAuthorization(*authorization, edgeProxyAuthTokenEnvVarName)
 	if err != nil {
-		logger.Error(err, "Failed to create barker auth token env var, the barker proxy will not be able to "+
+		logger.Error(err, "Failed to create Edge Proxy auth token env var, the Edge Proxy will not be able to "+
 			"authenticate with the Decision Maker.")
 		return corev1.EnvVar{
-			Name:  barkerAuthTokenEnvVarName,
+			Name:  edgeProxyAuthTokenEnvVarName,
 			Value: "",
 		}
 	}
 	return envVar
 }
 
-func assembleBarkerDeploymentForDeletion(operatorNamespace string, namePrefix string) *appsv1.Deployment {
+func assembleEdgeProxyDeploymentForDeletion(operatorNamespace string, namePrefix string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: util.K8sApiVersionAppsV1,
@@ -317,15 +317,15 @@ func assembleBarkerDeploymentForDeletion(operatorNamespace string, namePrefix st
 	}
 }
 
-func assembleBarkerService(operatorNamespace string, namePrefix string) *corev1.Service {
-	service := assembleBarkerServiceForDeletion(operatorNamespace, namePrefix)
+func assembleEdgeProxyService(operatorNamespace string, namePrefix string) *corev1.Service {
+	service := assembleEdgeProxyServiceForDeletion(operatorNamespace, namePrefix)
 	service.Spec = corev1.ServiceSpec{
-		Selector: barkerMatchLabels,
+		Selector: edgeProxyMatchLabels,
 		Ports: []corev1.ServicePort{
 			{
 				Name:       "grpc",
-				Port:       barkerGrpcPort,
-				TargetPort: intstr.FromInt32(barkerGrpcPort),
+				Port:       edgeProxyGrpcPort,
+				TargetPort: intstr.FromInt32(edgeProxyGrpcPort),
 				Protocol:   corev1.ProtocolTCP,
 			},
 		},
@@ -333,7 +333,7 @@ func assembleBarkerService(operatorNamespace string, namePrefix string) *corev1.
 	return service
 }
 
-func assembleBarkerServiceForDeletion(operatorNamespace string, namePrefix string) *corev1.Service {
+func assembleEdgeProxyServiceForDeletion(operatorNamespace string, namePrefix string) *corev1.Service {
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -366,19 +366,19 @@ func deriveUpstreamConfig(
 }
 
 func DeploymentName(namePrefix string) string {
-	return namePrefix + "-barker"
+	return namePrefix + "-edge-proxy"
 }
 
 func ServiceName(namePrefix string) string {
-	return namePrefix + "-barker"
+	return namePrefix + "-edge-proxy"
 }
 
-func barkerLabels() map[string]string {
+func edgeProxyLabels() map[string]string {
 	return map[string]string{
-		util.AppKubernetesIoNameLabel:      barkerComponentName,
+		util.AppKubernetesIoNameLabel:      edgeProxyComponentName,
 		util.AppKubernetesIoInstanceLabel:  "dash0-operator",
 		util.AppKubernetesIoManagedByLabel: "dash0-operator",
-		util.AppKubernetesIoComponentLabel: barkerComponentName,
+		util.AppKubernetesIoComponentLabel: edgeProxyComponentName,
 	}
 }
 

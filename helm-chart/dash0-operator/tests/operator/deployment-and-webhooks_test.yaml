@@ -1094,7 +1094,7 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[12].value
           value: "ghcr.io/dash0hq/collector:1.2.3"
-      # no DASH0_BARKER_IMAGE when IE is disabled
+      # no DASH0_EDGE_PROXY_IMAGE when IE is disabled
       - equal:
           path: spec.template.spec.containers[0].env[18].name
           value: K8S_POD_UID
@@ -1123,7 +1123,7 @@ tests:
           path: spec.template.spec.containers[0].env[12].value
           value: "ghcr.io/dash0hq/collector:1.2.3"
       # Expected tag matches the pinned tag in helm-chart/dash0-operator/values.yaml
-      # (operator.intelligentEdgeCollectorImage.tag and operator.barkerImage.tag). IE
+      # (operator.intelligentEdgeCollectorImage.tag and operator.edgeProxyImage.tag). IE
       # images are sourced as external dependencies; bump these alongside values.yaml.
       - equal:
           path: spec.template.spec.containers[0].env[13].name
@@ -1133,15 +1133,15 @@ tests:
           value: "ghcr.io/dash0hq/intelligent-edge-collector:v2.0.2051"
       - equal:
           path: spec.template.spec.containers[0].env[18].name
-          value: DASH0_BARKER_IMAGE
+          value: DASH0_EDGE_PROXY_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[18].value
-          value: "ghcr.io/dash0hq/barker:v2.0.2051"
+          value: "ghcr.io/dash0hq/edge-proxy:v2.0.2051"
       - equal:
           path: spec.template.spec.containers[0].env[20].name
           value: K8S_POD_UID
 
-  - it: should support custom IE collector and barker images with pull policies
+  - it: should support custom IE collector and Edge Proxy images with pull policies
     chart:
       version: 1.2.3
       appVersion: 1.2.3
@@ -1156,8 +1156,8 @@ tests:
           repository: custom-ie-collector
           tag: "9.9.9"
           pullPolicy: Always
-        barkerImage:
-          repository: custom-barker
+        edgeProxyImage:
+          repository: custom-edge-proxy
           tag: "8.8.8"
           pullPolicy: Never
     asserts:
@@ -1181,13 +1181,13 @@ tests:
           value: Always
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: DASH0_BARKER_IMAGE
+          value: DASH0_EDGE_PROXY_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[19].value
-          value: "custom-barker:8.8.8"
+          value: "custom-edge-proxy:8.8.8"
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: DASH0_BARKER_IMAGE_PULL_POLICY
+          value: DASH0_EDGE_PROXY_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[20].value
           value: Never
