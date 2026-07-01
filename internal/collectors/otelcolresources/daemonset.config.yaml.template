@@ -357,6 +357,11 @@ receivers:
         honor_labels: true
         fallback_scrape_protocol: "PrometheusText0.0.4"
 
+        # scrape_interval and scrape_timeout are the Prometheus defaults (stated here to make the configuration explicit
+        # and transparent)
+        scrape_interval: 1m
+        scrape_timeout: 10s
+
         kubernetes_sd_configs:
           - role: pod
             # only scrape data from pods running on the same node as collector
@@ -794,6 +799,14 @@ processors:
   transform/metrics/prometheus_service_attributes:
     error_mode: ignore
     metric_statements:
+    # Note: This group needs to run before the datapoint group below, which rewrites or removes service.name (which
+    # at this point still carries the scrape job name). The attribute values need to match the scrape_interval of the
+    # respective scrape job. It improves the resolution of $__rate_interval for rate/irate queries Prometheus
+    # annotation-based scraped metrics for shorter time frames.
+    - context: scope
+      statements:
+      - set(scope.attributes["dash0.metric.datapoint.interval"], "1m") where resource.attributes["service.name"] == "dash0-kubernetes-pods-scrape-config"
+      - set(scope.attributes["dash0.metric.datapoint.interval"], "5m")  where resource.attributes["service.name"] == "dash0-kubernetes-pods-scrape-config-slow"
     - context: datapoint
       statements:
 
