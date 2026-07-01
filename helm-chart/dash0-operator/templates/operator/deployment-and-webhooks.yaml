@@ -132,6 +132,7 @@ spec:
         - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
         - --operator-configuration-collect-pod-labels-and-annotations-enabled={{ .Values.operator.collectPodLabelsAndAnnotationsEnabled }}
         - --operator-configuration-collect-namespace-labels-and-annotations-enabled={{ .Values.operator.collectNamespaceLabelsAndAnnotationsEnabled }}
+        - --operator-configuration-collect-node-labels-and-annotations-enabled={{ .Values.operator.collectNodeLabelsAndAnnotationsEnabled }}
         - --operator-configuration-prometheus-crd-support-enabled={{ .Values.operator.prometheusCrdSupportEnabled }}
         - --operator-configuration-profiling-enabled={{ .Values.operator.profilingEnabled }}
 {{- if .Values.operator.clusterName }}

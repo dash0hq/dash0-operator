@@ -110,12 +110,17 @@ processors:
       # The following two work only if k8s.pod.uid and k8s.container.name are set
       - container.image.name
       - container.image.tag
-      {{- if or .CollectNamespaceLabelsAndAnnotationsEnabled .CollectPodLabelsAndAnnotationsEnabled }}
+      {{- if or .CollectNamespaceLabelsAndAnnotationsEnabled .CollectPodLabelsAndAnnotationsEnabled .CollectNodeLabelsAndAnnotationsEnabled }}
       labels:
         {{- if .CollectNamespaceLabelsAndAnnotationsEnabled }}
         - tag_name: k8s.namespace.label.$$1
           key_regex: (.*)
           from: namespace
+        {{- end }}
+        {{- if .CollectNodeLabelsAndAnnotationsEnabled }}
+        - tag_name: k8s.node.label.$$1
+          key_regex: (.*)
+          from: node
         {{- end }}
         {{- if .CollectPodLabelsAndAnnotationsEnabled }}
         - tag_name: k8s.pod.label.$$1
@@ -127,6 +132,11 @@ processors:
         - tag_name: k8s.namespace.annotation.$$1
           key_regex: (.*)
           from: namespace
+        {{- end }}
+        {{- if .CollectNodeLabelsAndAnnotationsEnabled }}
+        - tag_name: k8s.node.annotation.$$1
+          key_regex: (.*)
+          from: node
         {{- end }}
         {{- if .CollectPodLabelsAndAnnotationsEnabled }}
         - tag_name: k8s.pod.annotation.$$1

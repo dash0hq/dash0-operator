@@ -90,6 +90,7 @@ type collectorConfigurationTemplateValues struct {
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
+	CollectNodeLabelsAndAnnotationsEnabled           bool
 	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
@@ -254,6 +255,7 @@ func assembleCollectorConfigMap(
 			KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 			CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
+			CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
 			K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
 			K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,

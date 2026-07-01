@@ -3178,6 +3178,60 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			namespaceAnnotationTag := ReadFromMap(annotationsSnippet, []string{"0", "tag_name"})
 			Expect(namespaceAnnotationTag).To(Equal("k8s.pod.annotation.$$1"))
 		}, daemonSetAndDeployment)
+
+		DescribeTable("should collect only node labels/annotations when only node collection is enabled", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				CollectNodeLabelsAndAnnotationsEnabled:           true,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
+			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
+			Expect(labelsSnippet).ToNot(BeNil())
+			Expect(labelsSnippet).To(HaveLen(1))
+			annotationsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "annotations"})
+			Expect(annotationsSnippet).ToNot(BeNil())
+			Expect(annotationsSnippet).To(HaveLen(1))
+			nodeLabelTag := ReadFromMap(labelsSnippet, []string{"0", "tag_name"})
+			Expect(nodeLabelTag).To(Equal("k8s.node.label.$$1"))
+			nodeAnnotationTag := ReadFromMap(annotationsSnippet, []string{"0", "tag_name"})
+			Expect(nodeAnnotationTag).To(Equal("k8s.node.annotation.$$1"))
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should collect labels and annotations from namespaces, nodes and pods if all are enabled", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				CollectPodLabelsAndAnnotationsEnabled:            true,
+				CollectNamespaceLabelsAndAnnotationsEnabled:      true,
+				CollectNodeLabelsAndAnnotationsEnabled:           true,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
+			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
+			labelsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "labels"})
+			Expect(labelsSnippet).ToNot(BeNil())
+			Expect(labelsSnippet).To(HaveLen(3))
+			annotationsSnippet := ReadFromMap(k8sAttributesProcessor, []string{"extract", "annotations"})
+			Expect(annotationsSnippet).ToNot(BeNil())
+			Expect(annotationsSnippet).To(HaveLen(3))
+			Expect(ReadFromMap(labelsSnippet, []string{"0", "tag_name"})).To(Equal("k8s.namespace.label.$$1"))
+			Expect(ReadFromMap(labelsSnippet, []string{"1", "tag_name"})).To(Equal("k8s.node.label.$$1"))
+			Expect(ReadFromMap(labelsSnippet, []string{"2", "tag_name"})).To(Equal("k8s.pod.label.$$1"))
+			Expect(ReadFromMap(annotationsSnippet, []string{"0", "tag_name"})).To(Equal("k8s.namespace.annotation.$$1"))
+			Expect(ReadFromMap(annotationsSnippet, []string{"1", "tag_name"})).To(Equal("k8s.node.annotation.$$1"))
+			Expect(ReadFromMap(annotationsSnippet, []string{"2", "tag_name"})).To(Equal("k8s.pod.annotation.$$1"))
+		}, daemonSetAndDeployment)
 	})
 
 	Describe("discard metrics from unmonitored namespaces", func() {

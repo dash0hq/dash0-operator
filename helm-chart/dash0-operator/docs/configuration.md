@@ -107,6 +107,14 @@ Here is a list of configuration options for this resource:
   It is a validation error to set `telemetryCollection.enabled=false` and `collectPodLabelsAndAnnotations.enabled=true`
   at the same time.
 
+* <a href="#operatorconfigurationresource.spec.collectNodeLabelsAndAnnotations.enabled"><span id="operatorconfigurationresource.spec.collectNodeLabelsAndAnnotations.enabled">**`spec.collectNodeLabelsAndAnnotations.enabled`**</span></a>:
+  If enabled, the operator will collect all Kubernetes node labels and annotations and convert them to resource
+  attributes for all spans, log records and metrics.
+  The resulting resource attributes are prefixed with `k8s.node.label.` or `k8s.node.annotation.` respectively.
+  This setting is optional, it defaults to `false`.
+  It is a validation error to set `telemetryCollection.enabled=false` and `collectNodeLabelsAndAnnotations.enabled=true`
+  at the same time.
+
 * <a href="#operatorconfigurationresource.spec.clusterName"><span id="operatorconfigurationresource.spec.clusterName">**`spec.clusterName`**</span></a>:
   If set, the value will be added as the resource attribute `k8s.cluster.name` to all telemetry.
   This setting is optional.

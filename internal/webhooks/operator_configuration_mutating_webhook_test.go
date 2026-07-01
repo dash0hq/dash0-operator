@@ -71,6 +71,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				g.Expect(spec.KubernetesInfrastructureMetricsCollectionEnabled).To(Equal(new(true)))
 				g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).To(Equal(new(true)))
 				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(new(false)))
+				g.Expect(spec.CollectNodeLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(new(true)))
 			})
 		})
@@ -101,6 +102,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				g.Expect(spec.KubernetesInfrastructureMetricsCollectionEnabled).To(Equal(new(false)))
 				g.Expect(spec.CollectPodLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(new(false)))
+				g.Expect(spec.CollectNodeLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(new(false)))
 			})
 		})
@@ -131,6 +133,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: new(false),
+					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -164,6 +169,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: new(false),
 					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+						Enabled: new(false),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: new(false),
 					},
@@ -192,6 +200,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: new(false),
+					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -224,6 +235,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: new(false),
+					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -266,6 +280,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(false),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: new(false),
+					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -313,6 +330,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: new(false),
 					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+						Enabled: new(false),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: new(false),
 					},
@@ -354,6 +374,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: new(true),
+					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: new(true),
@@ -397,6 +420,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: new(false),
 					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+						Enabled: new(false),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: new(false),
 					},
@@ -425,6 +451,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: new(false),
+					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
@@ -456,6 +485,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 						Enabled: new(false),
 					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+						Enabled: new(false),
+					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 						Enabled: new(false),
 					},
@@ -485,6 +517,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 						Enabled: new(true),
 					},
 					CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+						Enabled: new(false),
+					},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 						Enabled: new(false),
 					},
 					PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{

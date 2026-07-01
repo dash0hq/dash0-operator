@@ -40,6 +40,7 @@ type OperatorConfigurationValues struct {
 	InstrumentationDelivery                          string
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
+	CollectNodeLabelsAndAnnotationsEnabled           bool
 	PrometheusCrdSupportEnabled                      bool
 	ProfilingEnabled                                 bool
 	TelemetryCollectionEnabled                       bool
@@ -352,6 +353,7 @@ func convertValuesToResource(
 		operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled = false
 		operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled = false
+		operatorConfigurationValues.CollectNodeLabelsAndAnnotationsEnabled = false
 		operatorConfigurationValues.PrometheusCrdSupportEnabled = false
 		operatorConfigurationValues.ProfilingEnabled = false
 		operatorConfigurationValues.AutoMonitorNamespacesEnabled = false
@@ -370,6 +372,9 @@ func convertValuesToResource(
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 			Enabled: new(operatorConfigurationValues.CollectNamespaceLabelsAndAnnotationsEnabled),
+		},
+		CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+			Enabled: new(operatorConfigurationValues.CollectNodeLabelsAndAnnotationsEnabled),
 		},
 		PrometheusCrdSupport: dash0v1alpha1.PrometheusCrdSupport{
 			Enabled: new(operatorConfigurationValues.PrometheusCrdSupportEnabled),

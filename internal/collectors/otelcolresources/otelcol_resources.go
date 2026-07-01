@@ -131,6 +131,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			operatorConfigurationResource.Spec.CollectNamespaceLabelsAndAnnotations.Enabled,
 			false,
 		)
+	collectNodeLabelsAndAnnotationsEnabled :=
+		pointers.ReadBoolPointerWithDefault(
+			operatorConfigurationResource.Spec.CollectNodeLabelsAndAnnotations.Enabled,
+			false,
+		)
 	prometheusCrdSupportEnabled =
 		pointers.ReadBoolPointerWithDefault(
 			operatorConfigurationResource.Spec.PrometheusCrdSupport.Enabled,
@@ -172,6 +177,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
 		CollectNamespaceLabelsAndAnnotationsEnabled:      collectNamespaceLabelsAndAnnotationsEnabled,
+		CollectNodeLabelsAndAnnotationsEnabled:           collectNodeLabelsAndAnnotationsEnabled,
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,

@@ -138,6 +138,7 @@ type commandLineArguments struct {
 	operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
 	operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled      bool
+	operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled           bool
 	operatorConfigurationPrometheusCrdSupportEnabled                      bool
 	operatorConfigurationProfilingEnabled                                 bool
 	operatorConfigurationClusterName                                      string
@@ -392,6 +393,7 @@ func Start() {
 			InstrumentationDelivery:                          cliArgs.operatorConfigurationInstrumentationDelivery,
 			CollectPodLabelsAndAnnotationsEnabled:            cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
+			CollectNodeLabelsAndAnnotationsEnabled:           cliArgs.operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled,
 			PrometheusCrdSupportEnabled:                      cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 			ProfilingEnabled:                                 cliArgs.operatorConfigurationProfilingEnabled,
 			TelemetryCollectionEnabled:                       cliArgs.telemetryCollectionEnabled,
@@ -551,6 +553,13 @@ func defineCommandLineArguments() *commandLineArguments {
 		"operator-configuration-collect-namespace-labels-and-annotations-enabled",
 		true,
 		"The value for collectNamespaceLabelsAndAnnotations.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.",
+	)
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled,
+		"operator-configuration-collect-node-labels-and-annotations-enabled",
+		true,
+		"The value for collectNodeLabelsAndAnnotations.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
 	flag.BoolVar(
@@ -1267,6 +1276,8 @@ func startOperatorManager(
 		cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 		"operator configuration collect namespace labels and annotations enabled",
 		cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
+		"operator configuration collect node labels and annotations enabled",
+		cliArgs.operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled,
 		"operator configuration prometheus crd support enabled",
 		cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 		"operator configuration profiling enabled",

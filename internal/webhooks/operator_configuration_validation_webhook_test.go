@@ -220,6 +220,30 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"collectNamespaceLabelsAndAnnotations.enabled=false.")))
 	})
 
+	It("should reject a new operator configuration resource with telemetry collection disabled but node label collection explicitly enabled", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+						Enabled: new(true),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+				"Dash0 operator configuration resource has node label and annotation collection explicitly " +
+				"enabled, although telemetry collection is disabled. This is an invalid combination. Please either " +
+				"set telemetryCollection.enabled=true or " +
+				"collectNodeLabelsAndAnnotations.enabled=false.")))
+	})
+
 	It("should reject a new operator configuration resource with telemetry collection disabled but Prometheus CRD support explicitly enabled", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,

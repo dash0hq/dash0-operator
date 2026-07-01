@@ -152,6 +152,14 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			logger.Warn(msg)
 			return admission.Denied(msg)
 		}
+		if pointers.ReadBoolPointerWithDefault(spec.CollectNodeLabelsAndAnnotations.Enabled, true) {
+			msg := "The provided Dash0 operator configuration resource has node label and annotation collection " +
+				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+				"Please either set telemetryCollection.enabled=true or " +
+				"collectNodeLabelsAndAnnotations.enabled=false."
+			logger.Warn(msg)
+			return admission.Denied(msg)
+		}
 		if pointers.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
 			logger.Warn(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
 			return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)

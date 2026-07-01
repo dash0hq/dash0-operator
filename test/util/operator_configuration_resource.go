@@ -54,6 +54,9 @@ var (
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 			Enabled: new(true),
 		},
+		CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+			Enabled: new(true),
+		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -77,6 +80,9 @@ var (
 			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+			Enabled: new(true),
+		},
+		CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 			Enabled: new(true),
 		},
 	}
@@ -105,6 +111,9 @@ var (
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 			Enabled: new(true),
 		},
+		CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+			Enabled: new(true),
+		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -129,6 +138,9 @@ var (
 			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+			Enabled: new(true),
+		},
+		CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 			Enabled: new(true),
 		},
 	}
@@ -157,6 +169,9 @@ var (
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
 			Enabled: new(true),
 		},
+		CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
+			Enabled: new(true),
+		},
 	}
 
 	OperatorConfigurationResourceWithSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -180,6 +195,9 @@ var (
 			Enabled: new(true),
 		},
 		CollectNamespaceLabelsAndAnnotations: dash0v1alpha1.CollectNamespaceLabelsAndAnnotations{
+			Enabled: new(true),
+		},
+		CollectNodeLabelsAndAnnotations: dash0v1alpha1.CollectNodeLabelsAndAnnotations{
 			Enabled: new(true),
 		},
 	}
