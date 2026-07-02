@@ -3,12 +3,12 @@ kind: Dash0OperatorConfiguration
 metadata:
   name: dash0-operator-configuration-resource
 spec:
-  export:
-    dash0:
-      endpoint: "$DASH0_INGRESS_ENDPOINT"
-      authorization:
-        token: "$DASH0_AUTHORIZATION_TOKEN"
-      apiEndpoint: "$DASH0_API_ENDPOINT"
+  exports:
+    - dash0:
+        endpoint: "$DASH0_INGRESS_ENDPOINT"
+        authorization:
+          token: "$DASH0_AUTHORIZATION_TOKEN"
+        apiEndpoint: "$DASH0_API_ENDPOINT"
   selfMonitoring:
     enabled: $SELF_MONITORING_ENABLED
   kubernetesInfrastructureMetricsCollection:
