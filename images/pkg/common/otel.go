@@ -52,6 +52,7 @@ const (
 	ProtocolHttpProtobuf = "http/protobuf"
 	ProtocolHttpJson     = "http/json"
 
+	// nolint:lll
 	// default OTLP signal paths, see
 	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#endpoint-urls-for-otlphttp
 	otlpLogsDefaultSignalPath    = "/v1/logs"
@@ -489,6 +490,7 @@ func assembleResource(
 }
 
 func appendSignalSpecificPath(baseUrl string, signalSpecificPath string) (string, error) {
+	// nolint:lll
 	// The OTLP ingress endpoint configured via the Dash0OperatorConfiguration resource is assumed to be the *base*
 	// ingress URL. The HTTP ingress endpoints per signal are almost always base plus /v1/$signal (e.g. plus /v1/logs,
 	// /v1/metrics, /v1/traces), by convention. WithEndpointURL does not append th per-signal URL path by default, and
@@ -496,7 +498,8 @@ func appendSignalSpecificPath(baseUrl string, signalSpecificPath string) (string
 	// Hence, we need to append it here explicitly when using WithEndpointURL.
 	// We also use the configured URL to set OTEL_EXPORTER_OTLP_ENDPOINT for various containers, which is subject to the
 	// same behavior of appending /v1/$signal, so this is consistent with how other components are treating the
-	// configured URL, see https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#endpoint-urls-for-otlphttp.
+	// configured URL, see
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#endpoint-urls-for-otlphttp.
 	//
 	// We currently do not support HTTP backends that use ingress endpoints without the /v1/$signal paths, this would
 	// require an additional explicit configuration option in api/operator/common/common_shared_types.go#HttpConfiguration

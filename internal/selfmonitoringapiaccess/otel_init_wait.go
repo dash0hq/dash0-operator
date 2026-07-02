@@ -24,8 +24,12 @@ type SelfMonitoringMetricsClient interface {
 }
 
 type OTelSdkConfigInput struct {
-	export                        dash0common.Export
-	token                         *string // the resolved token (in case of a Dash0 export)
+	export dash0common.Export
+	// token holds the resolved Dash0 auth token (in case of a Dash0 export)
+	token *string
+	// resolvedSecretHeaderValues holds resolved secret values for HTTP/gRPC headers (in case of a plain HTTP or gRPC
+	// export)
+	resolvedSecretHeaderValues    map[string]string
 	pseudoClusterUid              types.UID
 	clusterName                   string
 	operatorNamespace             string
@@ -87,6 +91,7 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	ctx context.Context,
 	export dash0common.Export,
 	token *string,
+	resolvedSecretHeaderValues map[string]string,
 	pseudoClusterUid types.UID,
 	clusterName string,
 	operatorNamespace string,
@@ -100,6 +105,7 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 		&OTelSdkConfigInput{
 			export:                        export,
 			token:                         token,
+			resolvedSecretHeaderValues:    resolvedSecretHeaderValues,
 			clusterName:                   clusterName,
 			pseudoClusterUid:              pseudoClusterUid,
 			operatorNamespace:             operatorNamespace,
@@ -179,6 +185,8 @@ func convertExportConfigurationToOTelSDKConfig(
 		return nil, false
 	}
 	selfMonitoringExport := oTelSdkConfigInput.export
+	resolvedSecretHeaderValues := oTelSdkConfigInput.resolvedSecretHeaderValues
+
 	var endpointAndHeaders *EndpointAndHeaders
 	if selfMonitoringExport.Dash0 != nil {
 		dash0Export := selfMonitoringExport.Dash0
@@ -210,25 +218,26 @@ func convertExportConfigurationToOTelSDKConfig(
 			Headers:  headers,
 		}
 	} else if selfMonitoringExport.Grpc != nil {
-		// Header values sourced from a secret (valueFrom.secretKeyRef) have already been resolved to their literal
-		// value by ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration, since the in-process OTel SDK
-		// configured here cannot resolve ${env:...} references (unlike the collector).
+		headers := copyResolvedHeaders(selfMonitoringExport.Grpc.Headers, resolvedSecretHeaderValues)
 		endpointAndHeaders = &EndpointAndHeaders{
 			Endpoint: selfMonitoringExport.Grpc.Endpoint,
 			Protocol: common.ProtocolGrpc,
-			Headers:  selfMonitoringExport.Grpc.Headers,
+			Headers:  headers,
 		}
 	} else if selfMonitoringExport.Http != nil {
+		headers := copyResolvedHeaders(selfMonitoringExport.Http.Headers, resolvedSecretHeaderValues)
+
 		protocol := common.ProtocolHttpProtobuf
 		// The Go SDK does not support http/json, so we ignore this setting for now.
 		// if selfMonitoringExport.Http.Encoding == dash0common.Json {
 		// 	 protocol = common.ProtocolHttpJson
 		// }
 		// See the note on the gRPC branch above regarding secret-backed header values.
+
 		endpointAndHeaders = &EndpointAndHeaders{
 			Endpoint: selfMonitoringExport.Http.Endpoint,
 			Protocol: protocol,
-			Headers:  selfMonitoringExport.Http.Headers,
+			Headers:  headers,
 		}
 	}
 
@@ -264,6 +273,27 @@ func convertExportConfigurationToOTelSDKConfig(
 	}
 
 	return oTelSdkConfig, true
+}
+
+func copyResolvedHeaders(
+	unresolvedHeaders []dash0common.Header,
+	resolvedSecretHeaderValues map[string]string,
+) []dash0common.Header {
+	// Header values sourced from a secret (valueFrom.secretKeyRef) have already been resolved to their literal
+	// value by ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration/resolveSelfMonitoringHeaderSecrets,
+	// copy them over into the headers we pass into the in-process OTel SDK config.
+	resolvedHeaders := []dash0common.Header{}
+	for _, header := range unresolvedHeaders {
+		if value, ok := resolvedSecretHeaderValues[header.Name]; ok && header.ValueFrom != nil && header.ValueFrom.SecretKeyRef != nil {
+			resolvedHeaders = append(resolvedHeaders, dash0common.Header{
+				Name:  header.Name,
+				Value: value,
+			})
+		} else {
+			resolvedHeaders = append(resolvedHeaders, header)
+		}
+	}
+	return resolvedHeaders
 }
 
 func startOTelSDK(

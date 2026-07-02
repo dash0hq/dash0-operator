@@ -243,8 +243,7 @@ var _ = Describe(
 										Endpoint: EndpointGrpcTest,
 										Headers: []dash0common.Header{
 											{
-												Name:  "Authorization",
-												Value: AuthorizationTokenTestFromSecret,
+												Name: "Authorization",
 												ValueFrom: &dash0common.HeaderValueFrom{
 													SecretKeyRef: &dash0common.SecretKeySelector{
 														Name: SecretRefTest.Name,
@@ -254,6 +253,9 @@ var _ = Describe(
 											},
 										},
 									},
+								},
+								ResolvedSecretHeaderValues: map[string]string{
+									"Authorization": AuthorizationTokenTestFromSecret,
 								},
 							},
 						},
@@ -292,8 +294,7 @@ var _ = Describe(
 										Encoding: dash0common.Proto,
 										Headers: []dash0common.Header{
 											{
-												Name:  "X-Api-Key",
-												Value: AuthorizationTokenTestFromSecret,
+												Name: "X-Api-Key",
 												ValueFrom: &dash0common.HeaderValueFrom{
 													SecretKeyRef: &dash0common.SecretKeySelector{
 														Name: SecretRefTest.Name,
@@ -303,6 +304,9 @@ var _ = Describe(
 											},
 										},
 									},
+								},
+								ResolvedSecretHeaderValues: map[string]string{
+									"X-Api-Key": AuthorizationTokenTestFromSecret,
 								},
 							},
 						},

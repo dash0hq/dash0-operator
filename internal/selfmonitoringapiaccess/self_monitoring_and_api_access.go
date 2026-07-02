@@ -28,7 +28,11 @@ type OtlpProtocol string
 type SelfMonitoringConfiguration struct {
 	SelfMonitoringEnabled bool
 	Export                dash0common.Export
-	Token                 *string // the resolved token (in case of a Dash0 export)
+	// Token holds the resolved Dash0 auth token (in case of a Dash0 export)
+	Token *string
+	// ResolvedSecretHeaderValues holds resolved secret values for HTTP/gRPC headers (in case of a plain HTTP or gRPC
+	// export)
+	ResolvedSecretHeaderValues map[string]string
 }
 
 type EndpointAndHeaders struct {
@@ -103,6 +107,11 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	resource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) (SelfMonitoringConfiguration, error) {
+	// Maintenance note: ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration is called from
+	// operator_configuration_controller.go#Reconcile to create the in-process OTel SDK config for the operator manager,
+	// and also from otelcol_resources.go#CreateOrUpdateOpenTelemetryCollectorResources to create the OTel SDK config for
+	// managed pods/containers. Secrets (the Dash0 Auth token and arbitrary secret-backed header values for plain
+	// HTTP/gRPC exports) need to be handled differently, depending on the code path.
 	if resource == nil {
 		return SelfMonitoringConfiguration{}, nil
 	}
@@ -218,7 +227,7 @@ func convertResourceToGrpcExportConfiguration(
 	}
 
 	grpcExport := export.Grpc
-	resolvedHeaders, err := resolveSelfMonitoringHeaderSecrets(
+	resolvedSecretHeaderValues, err := resolveSelfMonitoringHeaderSecrets(
 		ctx,
 		k8sClient,
 		operatorNamespace,
@@ -237,9 +246,10 @@ func convertResourceToGrpcExportConfiguration(
 		Export: dash0common.Export{
 			Grpc: &dash0common.GrpcConfiguration{
 				Endpoint: grpcExport.Endpoint,
-				Headers:  resolvedHeaders,
+				Headers:  grpcExport.Headers,
 			},
 		},
+		ResolvedSecretHeaderValues: resolvedSecretHeaderValues,
 	}, nil
 }
 
@@ -257,7 +267,7 @@ func convertResourceToHttpExportConfiguration(
 			SelfMonitoringEnabled: false,
 		}, fmt.Errorf("using an HTTP exporter with JSON encoding self-monitoring is not supported")
 	}
-	resolvedHeaders, err := resolveSelfMonitoringHeaderSecrets(ctx, k8sClient, operatorNamespace, httpExport.Headers, logger)
+	resolvedSecretHeaderValues, err := resolveSelfMonitoringHeaderSecrets(ctx, k8sClient, operatorNamespace, httpExport.Headers, logger)
 	if err != nil {
 		logger.Warn(
 			"Self-monitoring is enabled but a header value sourced from a secret could not be resolved. " +
@@ -270,34 +280,28 @@ func convertResourceToHttpExportConfiguration(
 		Export: dash0common.Export{
 			Http: &dash0common.HttpConfiguration{
 				Endpoint: httpExport.Endpoint,
-				Headers:  resolvedHeaders,
+				Headers:  httpExport.Headers,
 				Encoding: httpExport.Encoding,
 			},
 		},
+		ResolvedSecretHeaderValues: resolvedSecretHeaderValues,
 	}, nil
 }
 
-// resolveSelfMonitoringHeaderSecrets returns a copy of headers with every secret-backed header value
-// (valueFrom.secretKeyRef) resolved to its literal value, fetched from the referenced secret in the operator namespace.
-// The resolved value is stored in Value while ValueFrom is retained, because the resulting configuration is consumed by
-// two different code paths: the operator manager's in-process OTel SDK reads the literal Value (it cannot resolve
-// ${env:...} references), while the collector's self-monitoring pipeline keys off ValueFrom to render a ${env:...}
-// reference (the secret is injected into the collector pod as an environment variable). Headers with a literal value
-// are passed through unchanged. This mirrors how the Dash0 auth token is resolved once (see GetAuthTokenForDash0Export)
-// and then consumed differently by both paths.
+// resolveSelfMonitoringHeaderSecrets returns a map with every secret-backed header value (valueFrom.secretKeyRef)
+// resolved to its literal value, fetched from the referenced secret in the operator namespace.
 func resolveSelfMonitoringHeaderSecrets(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
 	headers []dash0common.Header,
 	logger logd.Logger,
-) ([]dash0common.Header, error) {
+) (map[string]string, error) {
 	if len(headers) == 0 {
-		return headers, nil
+		return nil, nil
 	}
-	resolved := make([]dash0common.Header, len(headers))
-	for i, header := range headers {
-		resolved[i] = header
+	resolved := make(map[string]string, len(headers))
+	for _, header := range headers {
 		if header.ValueFrom == nil || header.ValueFrom.SecretKeyRef == nil {
 			continue
 		}
@@ -312,7 +316,10 @@ func resolveSelfMonitoringHeaderSecrets(
 		if err != nil {
 			return nil, err
 		}
-		resolved[i].Value = value
+		resolved[header.Name] = value
+	}
+	if len(resolved) == 0 {
+		return nil, nil
 	}
 	return resolved, nil
 }

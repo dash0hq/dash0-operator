@@ -67,6 +67,7 @@ var _ = Describe(
 							ctx,
 							*Dash0ExportWithEndpointAndToken(),
 							&AuthorizationTokenTest,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
@@ -98,11 +99,7 @@ var _ = Describe(
 										Value: "plain-value",
 									},
 									{
-										// A secret-backed header: the literal value has been resolved upstream by
-										// ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration. ValueFrom
-										// is still present but ignored by the in-process SDK path.
-										Name:  "Authorization",
-										Value: AuthorizationTokenTestFromSecret,
+										Name: "Authorization",
 										ValueFrom: &dash0common.HeaderValueFrom{
 											SecretKeyRef: &dash0common.SecretKeySelector{
 												Name: SecretRefTest.Name,
@@ -114,6 +111,9 @@ var _ = Describe(
 							},
 						},
 						nil,
+						map[string]string{
+							"Authorization": "Bearer " + AuthorizationTokenTestFromSecret,
+						},
 						ClusterUidTest,
 						ClusterNameTest,
 						OperatorNamespace,
@@ -129,7 +129,7 @@ var _ = Describe(
 					Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
 					Expect(config.Headers).To(HaveLen(2))
 					Expect(config.Headers["Plain"]).To(Equal("plain-value"))
-					Expect(config.Headers["Authorization"]).To(Equal(AuthorizationTokenTestFromSecret))
+					Expect(config.Headers["Authorization"]).To(Equal("Bearer " + AuthorizationTokenTestFromSecret))
 				})
 
 				It("should include resolved HTTP export headers in the OTel SDK config", func() {
@@ -144,11 +144,7 @@ var _ = Describe(
 										Value: "plain-value",
 									},
 									{
-										// A secret-backed header: the literal value has been resolved upstream by
-										// ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration. ValueFrom
-										// is still present but ignored by the in-process SDK path.
-										Name:  "Authorization",
-										Value: AuthorizationTokenTestFromSecret,
+										Name: "Authorization",
 										ValueFrom: &dash0common.HeaderValueFrom{
 											SecretKeyRef: &dash0common.SecretKeySelector{
 												Name: SecretRefTest.Name,
@@ -160,6 +156,9 @@ var _ = Describe(
 							},
 						},
 						nil,
+						map[string]string{
+							"Authorization": "Bearer " + AuthorizationTokenTestFromSecret,
+						},
 						ClusterUidTest,
 						ClusterNameTest,
 						OperatorNamespace,
@@ -171,11 +170,11 @@ var _ = Describe(
 					)
 					config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
 					Expect(config).NotTo(BeNil())
-					Expect(config.Endpoint).To(Equal(EndpointGrpcTest))
-					Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
+					Expect(config.Endpoint).To(Equal(EndpointHttpTest))
+					Expect(config.Protocol).To(Equal(common.ProtocolHttpProtobuf))
 					Expect(config.Headers).To(HaveLen(2))
 					Expect(config.Headers["Plain"]).To(Equal("plain-value"))
-					Expect(config.Headers["Authorization"]).To(Equal(AuthorizationTokenTestFromSecret))
+					Expect(config.Headers["Authorization"]).To(Equal("Bearer " + AuthorizationTokenTestFromSecret))
 				})
 
 				It(
@@ -183,6 +182,7 @@ var _ = Describe(
 						oTelSdkStarter.SetOTelSdkParameters(
 							ctx,
 							*Dash0ExportWithEndpointAndSecretRef(),
+							nil,
 							nil,
 							ClusterUidTest,
 							ClusterNameTest,
@@ -204,6 +204,7 @@ var _ = Describe(
 							ctx,
 							*Dash0ExportWithEndpointAndSecretRef(),
 							&AuthorizationTokenTest,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
@@ -229,6 +230,7 @@ var _ = Describe(
 							ctx,
 							*Dash0ExportWithEndpointAndToken(),
 							&AuthorizationTokenTest,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
@@ -252,6 +254,7 @@ var _ = Describe(
 							ctx,
 							*Dash0ExportWithEndpointAndSecretRef(),
 							&AuthorizationTokenTest,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
@@ -268,6 +271,7 @@ var _ = Describe(
 						oTelSdkStarter.SetOTelSdkParameters(
 							ctx,
 							*Dash0ExportWithEndpointAndSecretRef(),
+							nil,
 							nil,
 							ClusterUidTest,
 							ClusterNameTest,
@@ -288,6 +292,7 @@ var _ = Describe(
 							ctx,
 							*Dash0ExportWithEndpointAndToken(),
 							&AuthorizationTokenTest,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
@@ -312,6 +317,7 @@ var _ = Describe(
 								},
 							},
 							&AuthorizationTokenTest,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
@@ -338,6 +344,7 @@ var _ = Describe(
 							ctx,
 							*Dash0ExportWithEndpointAndToken(),
 							&AuthorizationTokenTest,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
@@ -362,6 +369,7 @@ var _ = Describe(
 								},
 							},
 							&AuthorizationTokenTestAlternative,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
@@ -413,6 +421,7 @@ var _ = Describe(
 							ctx,
 							*Dash0ExportWithEndpointAndToken(),
 							&AuthorizationTokenTest,
+							nil,
 							ClusterUidTest,
 							ClusterNameTest,
 							OperatorNamespace,
