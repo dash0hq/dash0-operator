@@ -12,14 +12,9 @@ import (
 	"text/template"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/wait"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/dash0hq/dash0-operator/internal/util/logd"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -70,13 +65,13 @@ func renderDash0OperatorConfigurationResourceTemplate(
 	)
 }
 
-func deployDash0OperatorConfigurationResourceWithRetry(
+func deployDash0OperatorConfigurationResource(
 	dash0OperatorConfigurationValues dash0OperatorConfigurationValues,
 	operatorNamespace string,
 	operatorHelmChart string,
 ) {
 	renderedResourceFileName := renderDash0OperatorConfigurationResourceTemplate(dash0OperatorConfigurationValues)
-	deployRenderedOperatorConfigurationResourceWithRetry(
+	deployRenderedOperatorConfigurationResource(
 		dash0OperatorConfigurationValues,
 		operatorNamespace,
 		operatorHelmChart,
@@ -84,7 +79,7 @@ func deployDash0OperatorConfigurationResourceWithRetry(
 	)
 }
 
-func deployRenderedOperatorConfigurationResourceWithRetry(
+func deployRenderedOperatorConfigurationResource(
 	dash0OperatorConfigurationValues dash0OperatorConfigurationValues,
 	operatorNamespace string,
 	operatorHelmChart string,
@@ -95,24 +90,13 @@ func deployRenderedOperatorConfigurationResourceWithRetry(
 	}()
 	By(fmt.Sprintf(
 		"deploying the Dash0 operator configuration resource with values %v", dash0OperatorConfigurationValues))
-	retryLogger := logd.NewLogger(zap.New())
-	err := util.RetryWithCustomBackoff("deploying the Dash0 operator configuration resource", func() error {
-		return runAndIgnoreOutput(exec.Command(
+	Expect(
+		runAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"apply",
 			"-f",
 			renderedResourceFileName,
-		))
-	},
-		wait.Backoff{
-			Duration: 10 * time.Second,
-			Steps:    3,
-		},
-		true,
-		true,
-		retryLogger,
-	)
-	Expect(err).ToNot(HaveOccurred())
+		))).To(Succeed())
 
 	waitForOperatorConfigurationResourceToBecomeAvailable()
 

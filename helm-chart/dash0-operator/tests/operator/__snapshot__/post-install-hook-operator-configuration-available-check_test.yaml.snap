@@ -4,8 +4,8 @@ post-install hook job should match snapshot:
     kind: Job
     metadata:
       annotations:
-        helm.sh/hook: post-install
-        helm.sh/hook-delete-policy: hook-succeeded
+        helm.sh/hook: post-install,post-upgrade
+        helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
       labels:
         app.kubernetes.io/component: installation-process
         app.kubernetes.io/managed-by: Helm
@@ -50,6 +50,12 @@ post-install hook job should match snapshot:
               env:
                 - name: GOMEMLIMIT
                   value: 205MiB
+                - name: DASH0_OPERATOR_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: DASH0_WEBHOOK_SERVICE_NAME
+                  value: dash0-operator-webhook-service
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               imagePullPolicy: null
               name: post-install-job
