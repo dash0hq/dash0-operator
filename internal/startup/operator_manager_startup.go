@@ -53,12 +53,12 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
-	"github.com/dash0hq/dash0-operator/internal/intelligentedge"
-	"github.com/dash0hq/dash0-operator/internal/intelligentedge/ieresources"
 	"github.com/dash0hq/dash0-operator/internal/postdelete"
 	"github.com/dash0hq/dash0-operator/internal/postinstall"
 	"github.com/dash0hq/dash0-operator/internal/predelete"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
+	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -83,8 +83,8 @@ type environmentVariables struct {
 	instrumentationImagePullPolicy              corev1.PullPolicy
 	collectorImage                              string
 	collectorImagePullPolicy                    corev1.PullPolicy
-	intelligentEdgeCollectorImage               string
-	intelligentEdgeCollectorImagePullPolicy     corev1.PullPolicy
+	signalControlCollectorImage                 string
+	signalControlCollectorImagePullPolicy       corev1.PullPolicy
 	targetAllocatorImage                        string
 	targetAllocatorImagePullPolicy              corev1.PullPolicy
 	configurationReloaderImage                  string
@@ -146,7 +146,7 @@ type commandLineArguments struct {
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
 	operatorConfigurationInstrumentationDelivery                          string
 	telemetryCollectionEnabled                                            bool
-	featureIntelligentEdgeEnabled                                         bool
+	featureSignalControlEnabled                                           bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
 	disableOpenTelemetryCollectorHostPorts                                bool
@@ -174,8 +174,8 @@ const (
 	instrumentationImagePullPolicyEnvVarName              = "DASH0_INSTRUMENTATION_IMAGE_PULL_POLICY"
 	collectorImageEnvVarName                              = "DASH0_COLLECTOR_IMAGE"
 	collectorImageImagePullPolicyEnvVarName               = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
-	intelligentEdgeCollectorImageEnvVarName               = "DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE"
-	intelligentEdgeCollectorImagePullPolicyEnvVarName     = "DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY"
+	signalControlCollectorImageEnvVarName                 = "DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE"
+	signalControlCollectorImagePullPolicyEnvVarName       = "DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY"
 	targetAllocatorImageEnvVarName                        = "DASH0_TARGET_ALLOCATOR_IMAGE"
 	targetAllocatorImageImagePullPolicyEnvVarName         = "DASH0_TARGET_ALLOCATOR_IMAGE_PULL_POLICY"
 	configurationReloaderImageEnvVarName                  = "DASH0_CONFIGURATION_RELOADER_IMAGE"
@@ -589,10 +589,10 @@ func defineCommandLineArguments() *commandLineArguments {
 		"The log level for the operator manager (debug, info, warn, error). Ignored when development mode is active.",
 	)
 	flag.BoolVar(
-		&cliArgs.featureIntelligentEdgeEnabled,
-		"dash0-feature-intelligent-edge-enabled",
+		&cliArgs.featureSignalControlEnabled,
+		"dash0-feature-signal-control-enabled",
 		false,
-		"Enable Intelligent Edge features (sampling, RED metrics, Edge Proxy).",
+		"Enable Signal Control features (sampling, RED metrics, Edge Proxy).",
 	)
 	flag.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
@@ -815,12 +815,12 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	}
 	collectorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(collectorImageImagePullPolicyEnvVarName)
 
-	// The intelligent edge collector image is only passed by the Helm chart when the intelligent edge feature is
+	// The Signal Control collector image is only passed by the Helm chart when the Signal Control feature is
 	// enabled, hence it is optional here. The operator picks it over the regular collector image at reconcile time, but
-	// only when intelligent edge is also enabled via the Dash0IntelligentEdge resource.
-	intelligentEdgeCollectorImage, _ := os.LookupEnv(intelligentEdgeCollectorImageEnvVarName)
-	intelligentEdgeCollectorImagePullPolicy :=
-		readOptionalPullPolicyFromEnvironmentVariable(intelligentEdgeCollectorImagePullPolicyEnvVarName)
+	// only when Signal Control is also enabled via the Dash0SignalControl resource.
+	signalControlCollectorImage, _ := os.LookupEnv(signalControlCollectorImageEnvVarName)
+	signalControlCollectorImagePullPolicy :=
+		readOptionalPullPolicyFromEnvironmentVariable(signalControlCollectorImagePullPolicyEnvVarName)
 
 	targetAllocatorImage, isSet := os.LookupEnv(targetAllocatorImageEnvVarName)
 	if !isSet {
@@ -937,8 +937,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		instrumentationImagePullPolicy:              instrumentationImagePullPolicy,
 		collectorImage:                              collectorImage,
 		collectorImagePullPolicy:                    collectorImagePullPolicy,
-		intelligentEdgeCollectorImage:               intelligentEdgeCollectorImage,
-		intelligentEdgeCollectorImagePullPolicy:     intelligentEdgeCollectorImagePullPolicy,
+		signalControlCollectorImage:                 signalControlCollectorImage,
+		signalControlCollectorImagePullPolicy:       signalControlCollectorImagePullPolicy,
 		targetAllocatorImage:                        targetAllocatorImage,
 		targetAllocatorImagePullPolicy:              targetAllocatorImagePullPolicy,
 		configurationReloaderImage:                  configurationReloaderImage,
@@ -1229,10 +1229,10 @@ func startOperatorManager(
 		"collector image pull policy override",
 		envVars.collectorImagePullPolicy,
 
-		"intelligent edge collector image",
-		envVars.intelligentEdgeCollectorImage,
-		"intelligent edge collector image pull policy override",
-		envVars.intelligentEdgeCollectorImagePullPolicy,
+		"Signal Control collector image",
+		envVars.signalControlCollectorImage,
+		"Signal Control collector image pull policy override",
+		envVars.signalControlCollectorImagePullPolicy,
 
 		"target-allocator image",
 		envVars.targetAllocatorImage,
@@ -1291,8 +1291,8 @@ func startOperatorManager(
 
 		"telemetry collection enabled",
 		cliArgs.telemetryCollectionEnabled,
-		"feature intelligent edge enabled",
-		cliArgs.featureIntelligentEdgeEnabled,
+		"feature Signal Control enabled",
+		cliArgs.featureSignalControlEnabled,
 		"force-use OpenTelemetry collector service URL",
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"disable OpenTelemetry collector host ports",
@@ -1399,8 +1399,8 @@ func startDash0Controllers(
 		InitContainerImagePullPolicy:                envVars.instrumentationImagePullPolicy,
 		CollectorImage:                              envVars.collectorImage,
 		CollectorImagePullPolicy:                    envVars.collectorImagePullPolicy,
-		IntelligentEdgeCollectorImage:               envVars.intelligentEdgeCollectorImage,
-		IntelligentEdgeCollectorImagePullPolicy:     envVars.intelligentEdgeCollectorImagePullPolicy,
+		SignalControlCollectorImage:                 envVars.signalControlCollectorImage,
+		SignalControlCollectorImagePullPolicy:       envVars.signalControlCollectorImagePullPolicy,
 		TargetAllocatorImage:                        envVars.targetAllocatorImage,
 		TargetAllocatorPullPolicy:                   envVars.targetAllocatorImagePullPolicy,
 		ConfigurationReloaderImage:                  envVars.configurationReloaderImage,
@@ -1536,7 +1536,7 @@ func startDash0Controllers(
 			clientset,
 			extraConfig,
 			developmentMode,
-			cliArgs.featureIntelligentEdgeEnabled,
+			cliArgs.featureSignalControlEnabled,
 			oTelColResourceManager,
 		)
 		// We update the extra config map in the collectorManager when the extra config map changes, and also trigger a
@@ -1591,12 +1591,12 @@ func startDash0Controllers(
 		return err
 	}
 
-	var ieManager *intelligentedge.IntelligentEdgeManager
-	if !cliArgs.featureIntelligentEdgeEnabled {
-		setupLog.Info("Intelligent Edge features are disabled.")
+	var scManager *signalcontrol.SignalControlManager
+	if !cliArgs.featureSignalControlEnabled {
+		setupLog.Info("Signal Control features are disabled.")
 	} else {
-		setupLog.Info("Intelligent Edge features are enabled.")
-		ieResourceManager := ieresources.NewIntelligentEdgeResourceManager(
+		setupLog.Info("Signal Control features are enabled.")
+		scResourceManager := scresources.NewSignalControlResourceManager(
 			k8sClient,
 			mgr.GetScheme(),
 			operatorDeploymentSelfReference,
@@ -1606,24 +1606,24 @@ func startDash0Controllers(
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
 		)
-		ieManager = intelligentedge.NewIntelligentEdgeManager(
+		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,
-			ieResourceManager,
+			scResourceManager,
 			extraConfig,
 		)
-		// Update the extra config in the intelligent edge manager when the extra config map changes, and also trigger a
-		// reconciliation of the intelligent edge resources.
-		extraConfigMapWatcher.AddClient(ieManager)
-		ieReconciler := intelligentedge.NewIntelligentEdgeReconciler(
+		// Update the extra config in the Signal Control manager when the extra config map changes, and also trigger a
+		// reconciliation of the Signal Control resources.
+		extraConfigMapWatcher.AddClient(scManager)
+		scReconciler := signalcontrol.NewSignalControlReconciler(
 			k8sClient,
-			ieManager,
+			scManager,
 			collectorManager,
 		)
-		if err := ieReconciler.SetupWithManager(mgr); err != nil {
-			return fmt.Errorf("unable to set up the intelligent edge reconciler: %w", err)
+		if err := scReconciler.SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to set up the Signal Control reconciler: %w", err)
 		}
-		setupLog.Info("The intelligent edge reconciler has been started.")
-	} // closes else (IE enabled)
+		setupLog.Info("The Signal Control reconciler has been started.")
+	} // closes else (Signal Control enabled)
 
 	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
 		k8sClient,
@@ -1670,7 +1670,7 @@ func startDash0Controllers(
 	leaderElectionAwareRunnable.AddLeaderElectionClient(spamFilterReconciler)
 
 	var samplingRuleReconciler *controller.SamplingRuleReconciler
-	if cliArgs.featureIntelligentEdgeEnabled {
+	if cliArgs.featureSignalControlEnabled {
 		samplingRuleReconciler = controller.NewSamplingRuleReconciler(
 			k8sClient,
 			clusterUid,
@@ -1773,7 +1773,7 @@ func startDash0Controllers(
 		collectorManager,
 		targetallocatorManager,
 		agent0ConnectorManager,
-		ieManager,
+		scManager,
 		clusterInstrumentationConfig,
 		clusterUid,
 		operatorDeploymentSelfReference.Namespace,
@@ -1849,7 +1849,7 @@ func startDash0Controllers(
 		k8sClient,
 		envVars.operatorNamespace,
 		cliArgs.telemetryCollectionEnabled,
-		cliArgs.featureIntelligentEdgeEnabled,
+		cliArgs.featureSignalControlEnabled,
 	); err != nil {
 		return err
 	}
@@ -2169,16 +2169,16 @@ func deleteDash0AllowlistSynchronizer(ctx context.Context, logger logd.Logger) e
 	return nil
 }
 
-func setupResourceWebhooks(mgr ctrl.Manager, k8sClient client.Client, operatorNamespace string, telemetryCollectionEnabled bool, intelligentEdgeEnabled bool) error {
+func setupResourceWebhooks(mgr ctrl.Manager, k8sClient client.Client, operatorNamespace string, telemetryCollectionEnabled bool, signalControlEnabled bool) error {
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
 	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient, telemetryCollectionEnabled).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
-	if intelligentEdgeEnabled {
-		if err := webhooks.NewIntelligentEdgeValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
-			return fmt.Errorf("unable to create the intelligent edge validation webhook: %w", err)
+	if signalControlEnabled {
+		if err := webhooks.NewSignalControlValidationWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to create the Signal Control validation webhook: %w", err)
 		}
 	}
 	if err := webhooks.NewMonitoringMutatingWebhookHandler(k8sClient, operatorNamespace).SetupWebhookWithManager(mgr); err != nil {

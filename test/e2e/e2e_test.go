@@ -1588,15 +1588,15 @@ trace_statements:
 
 	}) // end of suite "with an existing operator deployment and operation configuration resource"
 
-	// Intelligent Edge (IE) tests need their own operator install since IE swaps out the
+	// Signal Control (Signal Control) tests need their own operator install since Signal Control swaps out the
 	// collector image.
 	//
-	// Gated behind E2E_ENABLE_INTELLIGENT_EDGE_TESTS=true so the e2e runs can be run without
+	// Gated behind E2E_ENABLE_SIGNAL_CONTROL_TESTS=true so the e2e runs can be run without
 	// requring access to the currently private images by default.
-	if shouldRunIntelligentEdgeTests() {
-		Context("with the intelligent edge feature enabled", Ordered, func() {
+	if shouldRunSignalControlTests() {
+		Context("with the Signal Control feature enabled", Ordered, func() {
 			BeforeAll(func() {
-				By("deploying the Dash0 operator with the intelligent-edge feature flag")
+				By("deploying the Dash0 operator with the signal-control feature flag")
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -1605,7 +1605,7 @@ trace_statements:
 					&images,
 					false,
 					map[string]string{
-						"operator.intelligentEdge.enabled": "true",
+						"operator.signalControl.enabled": "true",
 					},
 				)
 
@@ -1668,16 +1668,16 @@ trace_statements:
 				Expect(req.Url).To(MatchRegexp(routeRegex))
 			})
 
-			Describe("with a deployed Dash0IntelligentEdge resource", Ordered, func() {
+			Describe("with a deployed Dash0SignalControl resource", Ordered, func() {
 				BeforeAll(func() {
-					deployIntelligentEdgeResource(intelligentEdgeValues{
+					deploySignalControlResource(signalControlValues{
 						DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
 						ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
 					})
 				})
 
 				AfterAll(func() {
-					removeIntelligentEdgeResource()
+					removeSignalControlResource()
 				})
 
 				It("deploys the Edge Proxy wired to the configured Decision Maker endpoint", func() {
@@ -1723,7 +1723,7 @@ trace_statements:
 					}, 60*time.Second, pollingInterval).Should(Succeed())
 				})
 
-				It("reconfigures the collector daemonset to include the IE pipeline", func() {
+				It("reconfigures the collector daemonset to include the Signal Control pipeline", func() {
 					expectedSnippets := []string{
 						"dash0settingsonedgeextension",
 						"dash0sampling:",
@@ -1736,12 +1736,12 @@ trace_statements:
 						"forward/traces-to-sampling",
 					}
 
-					By("verifying the daemonset collector configmap contains the IE components")
+					By("verifying the daemonset collector configmap contains the Signal Control components")
 					for _, snippet := range expectedSnippets {
 						verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, snippet)
 					}
 
-					By("verifying the collector daemonset rolls out cleanly after the IE config change")
+					By("verifying the collector daemonset rolls out cleanly after the Signal Control config change")
 					Expect(runAndIgnoreOutput(exec.Command(
 						"kubectl",
 						"-n", operatorNamespace,
@@ -1819,7 +1819,7 @@ trace_statements:
 				It("tears down the Edge Proxy and reverts the collector when the resource is deleted", func() {
 					edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
 
-					removeIntelligentEdgeResource()
+					removeSignalControlResource()
 
 					By("verifying the Edge Proxy deployment is removed")
 					Expect(runAndIgnoreOutput(exec.Command(
@@ -1838,14 +1838,14 @@ trace_statements:
 						g.Expect(err).To(HaveOccurred())
 					}, 30*time.Second, pollingInterval).Should(Succeed())
 
-					By("verifying the daemonset collector configmap no longer references the IE pipeline")
+					By("verifying the daemonset collector configmap no longer references the Signal Control pipeline")
 					Eventually(func(g Gomega) {
 						verifyConfigMapDoesNotContainStrings(operatorNamespace,
 							collectorDaemonSetConfigMapNameQualified, "dash0settingsonedgeextension")
 					}, 60*time.Second, pollingInterval).Should(Succeed())
 				})
 			})
-		}) // end of suite "with the intelligent edge feature enabled"
+		}) // end of suite "with the Signal Control feature enabled"
 	}
 
 	Context("with the agent0-connector enabled", Ordered, func() {

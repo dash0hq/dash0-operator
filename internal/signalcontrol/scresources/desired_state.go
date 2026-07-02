@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package ieresources
+package scresources
 
 import (
 	"fmt"
@@ -49,7 +49,7 @@ type clientObject struct {
 func assembleDesiredState(
 	operatorNamespace string,
 	namePrefix string,
-	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
+	signalControlResource *dash0v1alpha1.Dash0SignalControl,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
@@ -59,8 +59,8 @@ func assembleDesiredState(
 	logger logd.Logger,
 ) []clientObject {
 	edgeProxyEnabled := !forDeletion &&
-		intelligentEdgeResource != nil &&
-		pointers.ReadBoolPointerWithDefault(intelligentEdgeResource.Spec.EdgeProxy.Enabled, true)
+		signalControlResource != nil &&
+		pointers.ReadBoolPointerWithDefault(signalControlResource.Spec.EdgeProxy.Enabled, true)
 
 	if edgeProxyEnabled && edgeProxyImage == "" {
 		logger.Warn("The Edge Proxy is enabled but no Edge Proxy image is configured. The Edge Proxy will not be deployed.")
@@ -71,7 +71,7 @@ func assembleDesiredState(
 	if forDeletion || edgeProxyEnabled {
 		if edgeProxyEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, intelligentEdgeResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, extraConfig, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, extraConfig, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
 			)
 		} else {
@@ -95,7 +95,7 @@ func assembleDesiredStateForDelete(
 func assembleEdgeProxyDeployment(
 	operatorNamespace string,
 	namePrefix string,
-	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
+	signalControlResource *dash0v1alpha1.Dash0SignalControl,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
@@ -106,8 +106,8 @@ func assembleEdgeProxyDeployment(
 	replicas := int32(1)
 
 	dmEndpoint, authorization, dataset := deriveUpstreamConfig(operatorConfig)
-	if intelligentEdgeResource.Spec.Sampling.DecisionMakerEndpoint != "" {
-		dmEndpoint = intelligentEdgeResource.Spec.Sampling.DecisionMakerEndpoint
+	if signalControlResource.Spec.Sampling.DecisionMakerEndpoint != "" {
+		dmEndpoint = signalControlResource.Spec.Sampling.DecisionMakerEndpoint
 	}
 	if dmEndpoint == "" {
 		logger.Warn("No Decision Maker endpoint could be derived for the Edge Proxy. The Edge Proxy " +
@@ -191,7 +191,7 @@ func assembleEdgeProxyDeployment(
 		edgeProxyContainer.ImagePullPolicy = edgeProxyImagePullPolicy
 	}
 
-	spec := intelligentEdgeResource.Spec
+	spec := signalControlResource.Spec
 	if spec.EdgeProxy.LogLevel != "" {
 		edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
 			Name:  "LOGLEVEL",

@@ -27,7 +27,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(GroupVersion,
 		&Dash0OperatorConfiguration{}, &Dash0OperatorConfigurationList{},
 		&Dash0Monitoring{}, &Dash0MonitoringList{},
-		&Dash0IntelligentEdge{}, &Dash0IntelligentEdgeList{},
+		&Dash0SignalControl{}, &Dash0SignalControlList{},
 		&Dash0SamplingRule{}, &Dash0SamplingRuleList{},
 		&Dash0SignalToMetrics{}, &Dash0SignalToMetricsList{},
 		&Dash0SyntheticCheck{}, &Dash0SyntheticCheckList{},

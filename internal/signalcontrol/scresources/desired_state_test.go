@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package ieresources
+package scresources
 
 import (
 	corev1 "k8s.io/api/core/v1"
@@ -23,8 +23,8 @@ const (
 )
 
 var (
-	minimalIntelligentEdge = &dash0v1alpha1.Dash0IntelligentEdge{
-		Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{},
+	minimalSignalControl = &dash0v1alpha1.Dash0SignalControl{
+		Spec: dash0v1alpha1.Dash0SignalControlSpec{},
 	}
 
 	operatorConfigWithDash0Export = &dash0v1alpha1.Dash0OperatorConfiguration{
@@ -47,7 +47,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 		opConfig.Spec.SelfMonitoring.Enabled = nil
 
 		dep := assembleEdgeProxyDeployment(
-			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
+			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
@@ -60,7 +60,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 		opConfig.Spec.SelfMonitoring.Enabled = ptr(true)
 
 		dep := assembleEdgeProxyDeployment(
-			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
+			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
@@ -73,7 +73,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 		opConfig.Spec.SelfMonitoring.Enabled = ptr(false)
 
 		dep := assembleEdgeProxyDeployment(
-			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
+			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
@@ -83,7 +83,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 
 	It("does not inject OTel exporter env vars when operator config is nil", func() {
 		dep := assembleEdgeProxyDeployment(
-			OperatorNamespace, "test-prefix", minimalIntelligentEdge, nil,
+			OperatorNamespace, "test-prefix", minimalSignalControl, nil,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
@@ -154,7 +154,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 		}
 
 		dep := assembleEdgeProxyDeployment(
-			OperatorNamespace, "test-prefix", minimalIntelligentEdge, operatorConfigWithDash0Export,
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, extraConfig, logd.Discard(),
 		)
 
@@ -179,7 +179,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 
 	It("leaves Affinity unset when EdgeProxyNodeAffinity is nil", func() {
 		dep := assembleEdgeProxyDeployment(
-			OperatorNamespace, "test-prefix", minimalIntelligentEdge, operatorConfigWithDash0Export,
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 

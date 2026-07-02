@@ -1077,7 +1077,7 @@ tests:
           path: spec.template.spec.containers[0].args[3]
           value: --dash0-telemetry-collection-enabled=false
 
-  - it: should have intelligent edge disabled by default
+  - it: should have Signal Control disabled by default
     chart:
       version: 1.2.3
       appVersion: 1.2.3
@@ -1087,19 +1087,19 @@ tests:
     asserts:
       - notContains:
           path: spec.template.spec.containers[0].args
-          content: --dash0-feature-intelligent-edge-enabled=true
+          content: --dash0-feature-signal-control-enabled=true
       - equal:
           path: spec.template.spec.containers[0].env[12].name
           value: DASH0_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[12].value
           value: "ghcr.io/dash0hq/collector:1.2.3"
-      # no DASH0_EDGE_PROXY_IMAGE when IE is disabled
+      # no DASH0_EDGE_PROXY_IMAGE when Signal Control is disabled
       - equal:
           path: spec.template.spec.containers[0].env[18].name
           value: K8S_POD_UID
 
-  - it: should use intelligent edge collector image when IE is enabled
+  - it: should use Signal Control collector image when Signal Control is enabled
     chart:
       version: 1.2.3
       appVersion: 1.2.3
@@ -1108,14 +1108,14 @@ tests:
       value: dash0-operator-controller
     set:
       operator:
-        intelligentEdge:
+        signalControl:
           enabled: true
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --dash0-feature-intelligent-edge-enabled=true
-      # The regular collector image is always passed; the operator only swaps to the intelligent edge
-      # collector image at runtime when intelligent edge is also enabled via the Dash0IntelligentEdge resource.
+          value: --dash0-feature-signal-control-enabled=true
+      # The regular collector image is always passed; the operator only swaps to the Signal Control
+      # collector image at runtime when Signal Control is also enabled via the Dash0SignalControl resource.
       - equal:
           path: spec.template.spec.containers[0].env[12].name
           value: DASH0_COLLECTOR_IMAGE
@@ -1123,14 +1123,14 @@ tests:
           path: spec.template.spec.containers[0].env[12].value
           value: "ghcr.io/dash0hq/collector:1.2.3"
       # Expected tag matches the pinned tag in helm-chart/dash0-operator/values.yaml
-      # (operator.intelligentEdgeCollectorImage.tag and operator.edgeProxyImage.tag). IE
+      # (operator.signalControlCollectorImage.tag and operator.edgeProxyImage.tag). Signal Control
       # images are sourced as external dependencies; bump these alongside values.yaml.
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE
+          value: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "ghcr.io/dash0hq/intelligent-edge-collector:v2.0.2051"
+          value: "ghcr.io/dash0hq/signal-control-collector:v2.0.2051"
       - equal:
           path: spec.template.spec.containers[0].env[18].name
           value: DASH0_EDGE_PROXY_IMAGE
@@ -1141,7 +1141,7 @@ tests:
           path: spec.template.spec.containers[0].env[20].name
           value: K8S_POD_UID
 
-  - it: should support custom IE collector and Edge Proxy images with pull policies
+  - it: should support custom Signal Control collector and Edge Proxy images with pull policies
     chart:
       version: 1.2.3
       appVersion: 1.2.3
@@ -1150,10 +1150,10 @@ tests:
       value: dash0-operator-controller
     set:
       operator:
-        intelligentEdge:
+        signalControl:
           enabled: true
-        intelligentEdgeCollectorImage:
-          repository: custom-ie-collector
+        signalControlCollectorImage:
+          repository: custom-sc-collector
           tag: "9.9.9"
           pullPolicy: Always
         edgeProxyImage:
@@ -1169,13 +1169,13 @@ tests:
           value: "ghcr.io/dash0hq/collector:1.2.3"
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE
+          value: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "custom-ie-collector:9.9.9"
+          value: "custom-sc-collector:9.9.9"
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY
+          value: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[14].value
           value: Always

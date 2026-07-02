@@ -15,7 +15,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
-// Dash0IntelligentEdge is the schema for the Dash0IntelligentEdge API. It configures the intelligent edge
+// Dash0SignalControl is the schema for the Dash0SignalControl API. It configures the Signal Control
 // feature cluster-wide. This is a singleton resource — only one instance may exist per cluster.
 //
 // +kubebuilder:object:root=true
@@ -26,21 +26,21 @@ import (
 // +kubebuilder:printcolumn:name="EdgeProxy",type="boolean",JSONPath=".spec.edgeProxy.enabled"
 // +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-type Dash0IntelligentEdge struct {
+type Dash0SignalControl struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   Dash0IntelligentEdgeSpec   `json:"spec,omitempty"`
-	Status Dash0IntelligentEdgeStatus `json:"status,omitempty"`
+	Spec   Dash0SignalControlSpec   `json:"spec,omitempty"`
+	Status Dash0SignalControlStatus `json:"status,omitempty"`
 }
 
-// Dash0IntelligentEdgeSpec describes the cluster-wide configuration for the intelligent edge tail-sampling feature.
+// Dash0SignalControlSpec describes the cluster-wide configuration for the Signal Control tail-sampling feature.
 // When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
 // dash0operation, dash0filter, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors)
 // and optionally deploys the Edge Proxy.
-type Dash0IntelligentEdgeSpec struct {
-	// Whether intelligent edge is enabled. When disabled, no IE components are added to the collector pipeline
-	// and no IE resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
+type Dash0SignalControlSpec struct {
+	// Whether Signal Control is enabled. When disabled, no Signal Control components are added to the collector pipeline
+	// and no Signal Control resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
 	// setting is optional, it defaults to true.
 	//
 	// +kubebuilder:default=true
@@ -141,7 +141,7 @@ const (
 type SamplingConfig struct {
 	// Whether tail-sampling is enabled. When disabled, the sampling processor and its Decision Maker
 	// connection are not added to the collector pipeline. RED metrics, dash0resource, and dash0operation
-	// processors remain active if the overall IE flag (spec.enabled) is true. This setting is optional,
+	// processors remain active if the overall Signal Control flag (spec.enabled) is true. This setting is optional,
 	// it defaults to true.
 	//
 	// +kubebuilder:default=true
@@ -346,31 +346,31 @@ type OperationMatcher struct {
 	Literal *bool `json:"literal,omitempty"`
 }
 
-// Dash0IntelligentEdgeStatus defines the observed state of the Dash0IntelligentEdge resource.
-type Dash0IntelligentEdgeStatus struct {
+// Dash0SignalControlStatus defines the observed state of the Dash0SignalControl resource.
+type Dash0SignalControlStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
-func (d *Dash0IntelligentEdge) IsMarkedForDeletion() bool {
+func (d *Dash0SignalControl) IsMarkedForDeletion() bool {
 	deletionTimestamp := d.GetDeletionTimestamp()
 	return deletionTimestamp != nil && !deletionTimestamp.IsZero()
 }
 
-func (d *Dash0IntelligentEdge) IsAvailable() bool {
+func (d *Dash0SignalControl) IsAvailable() bool {
 	if condition := d.getCondition(dash0common.ConditionTypeAvailable); condition != nil {
 		return condition.Status == metav1.ConditionTrue
 	}
 	return false
 }
 
-func (d *Dash0IntelligentEdge) IsDegraded() bool {
+func (d *Dash0SignalControl) IsDegraded() bool {
 	if condition := d.getCondition(dash0common.ConditionTypeDegraded); condition != nil {
 		return condition.Status == metav1.ConditionTrue
 	}
 	return false
 }
 
-func (d *Dash0IntelligentEdge) getCondition(conditionType dash0common.ConditionType) *metav1.Condition {
+func (d *Dash0SignalControl) getCondition(conditionType dash0common.ConditionType) *metav1.Condition {
 	for _, c := range d.Status.Conditions {
 		if c.Type == string(conditionType) {
 			return &c
@@ -379,14 +379,14 @@ func (d *Dash0IntelligentEdge) getCondition(conditionType dash0common.ConditionT
 	return nil
 }
 
-func (d *Dash0IntelligentEdge) SetAvailableConditionToUnknown() {
+func (d *Dash0SignalControl) SetAvailableConditionToUnknown() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
 			Type:    string(dash0common.ConditionTypeAvailable),
 			Status:  metav1.ConditionUnknown,
 			Reason:  "ReconcileStarted",
-			Message: "Dash0 has started intelligent edge resource reconciliation.",
+			Message: "Dash0 has started Signal Control resource reconciliation.",
 		},
 	)
 	meta.SetStatusCondition(
@@ -395,32 +395,32 @@ func (d *Dash0IntelligentEdge) SetAvailableConditionToUnknown() {
 			Type:    string(dash0common.ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileStarted",
-			Message: "Dash0 intelligent edge resource reconciliation is in progress.",
+			Message: "Dash0 Signal Control resource reconciliation is in progress.",
 		},
 	)
 }
 
-func (d *Dash0IntelligentEdge) EnsureResourceIsMarkedAsAvailable() {
+func (d *Dash0SignalControl) EnsureResourceIsMarkedAsAvailable() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
 			Type:    string(dash0common.ConditionTypeAvailable),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileFinished",
-			Message: "Dash0 intelligent edge is available in this cluster now.",
+			Message: "Dash0 Signal Control is available in this cluster now.",
 		},
 	)
 	meta.RemoveStatusCondition(&d.Status.Conditions, string(dash0common.ConditionTypeDegraded))
 }
 
-func (d *Dash0IntelligentEdge) EnsureResourceIsMarkedAsAboutToBeDeleted() {
+func (d *Dash0SignalControl) EnsureResourceIsMarkedAsAboutToBeDeleted() {
 	d.EnsureResourceIsMarkedAsDegraded(
-		"Dash0IntelligentEdgeResourceHasBeenRemoved",
-		"Dash0 intelligent edge is inactive in this cluster now.",
+		"Dash0SignalControlResourceHasBeenRemoved",
+		"Dash0 Signal Control is inactive in this cluster now.",
 	)
 }
 
-func (d *Dash0IntelligentEdge) EnsureResourceIsMarkedAsDegraded(
+func (d *Dash0SignalControl) EnsureResourceIsMarkedAsDegraded(
 	reason string,
 	message string,
 ) {
@@ -444,44 +444,44 @@ func (d *Dash0IntelligentEdge) EnsureResourceIsMarkedAsDegraded(
 	)
 }
 
-func (d *Dash0IntelligentEdge) GetNaturalLanguageResourceTypeName() string {
-	return "Dash0 intelligent edge resource"
+func (d *Dash0SignalControl) GetNaturalLanguageResourceTypeName() string {
+	return "Dash0 Signal Control resource"
 }
 
-func (d *Dash0IntelligentEdge) Get() client.Object {
+func (d *Dash0SignalControl) Get() client.Object {
 	return d
 }
 
-func (d *Dash0IntelligentEdge) GetName() string {
+func (d *Dash0SignalControl) GetName() string {
 	return d.Name
 }
 
-func (d *Dash0IntelligentEdge) GetUID() types.UID {
+func (d *Dash0SignalControl) GetUID() types.UID {
 	return d.UID
 }
 
-func (d *Dash0IntelligentEdge) GetCreationTimestamp() metav1.Time {
+func (d *Dash0SignalControl) GetCreationTimestamp() metav1.Time {
 	return d.CreationTimestamp
 }
 
-func (d *Dash0IntelligentEdge) GetReceiver() client.Object {
-	return &Dash0IntelligentEdge{}
+func (d *Dash0SignalControl) GetReceiver() client.Object {
+	return &Dash0SignalControl{}
 }
 
-func (d *Dash0IntelligentEdge) GetListReceiver() client.ObjectList {
-	return &Dash0IntelligentEdgeList{}
+func (d *Dash0SignalControl) GetListReceiver() client.ObjectList {
+	return &Dash0SignalControlList{}
 }
 
-func (d *Dash0IntelligentEdge) IsClusterResource() bool {
+func (d *Dash0SignalControl) IsClusterResource() bool {
 	return true
 }
 
-func (d *Dash0IntelligentEdge) RequestToName(_ ctrl.Request) string {
+func (d *Dash0SignalControl) RequestToName(_ ctrl.Request) string {
 	return d.Name
 }
 
-func (d *Dash0IntelligentEdge) All(list client.ObjectList) []dash0operator.Dash0Resource {
-	items := list.(*Dash0IntelligentEdgeList).Items
+func (d *Dash0SignalControl) All(list client.ObjectList) []dash0operator.Dash0Resource {
+	items := list.(*Dash0SignalControlList).Items
 	result := make([]dash0operator.Dash0Resource, len(items))
 	for i := range items {
 		result[i] = &items[i]
@@ -489,8 +489,8 @@ func (d *Dash0IntelligentEdge) All(list client.ObjectList) []dash0operator.Dash0
 	return result
 }
 
-func (d *Dash0IntelligentEdge) Items(list client.ObjectList) []client.Object {
-	items := list.(*Dash0IntelligentEdgeList).Items
+func (d *Dash0SignalControl) Items(list client.ObjectList) []client.Object {
+	items := list.(*Dash0SignalControlList).Items
 	result := make([]client.Object, len(items))
 	for i := range items {
 		result[i] = &items[i]
@@ -498,15 +498,15 @@ func (d *Dash0IntelligentEdge) Items(list client.ObjectList) []client.Object {
 	return result
 }
 
-func (d *Dash0IntelligentEdge) At(list client.ObjectList, index int) dash0operator.Dash0Resource {
-	return &list.(*Dash0IntelligentEdgeList).Items[index]
+func (d *Dash0SignalControl) At(list client.ObjectList, index int) dash0operator.Dash0Resource {
+	return &list.(*Dash0SignalControlList).Items[index]
 }
 
 //+kubebuilder:object:root=true
 
-// Dash0IntelligentEdgeList contains a list of Dash0IntelligentEdge resources.
-type Dash0IntelligentEdgeList struct {
+// Dash0SignalControlList contains a list of Dash0SignalControl resources.
+type Dash0SignalControlList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Dash0IntelligentEdge `json:"items"`
+	Items           []Dash0SignalControl `json:"items"`
 }

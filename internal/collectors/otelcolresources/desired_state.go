@@ -28,7 +28,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
-type IntelligentEdgeConfig struct {
+type SignalControlConfig struct {
 	Enabled                            bool
 	SamplingEnabled                    bool
 	SamplingFallbackSampleRatio        string
@@ -44,7 +44,7 @@ type IntelligentEdgeConfig struct {
 	SpamFilterCacheExpiration          string
 	SpamFilterAllowNoSettingsExt       bool
 	OperationPreferSpanName            bool
-	OperationCardinalityRules          []IntelligentEdgeCardinalityRule
+	OperationCardinalityRules          []SignalControlCardinalityRule
 	Endpoint                           string
 	ApiEndpoint                        string
 	AuthEnvVar                         string
@@ -54,14 +54,14 @@ type IntelligentEdgeConfig struct {
 	EdgeProxyName                      string
 }
 
-type IntelligentEdgeCardinalityRule struct {
+type SignalControlCardinalityRule struct {
 	Id                string
 	SourceAttribute   string
 	QuickFilter       string
-	OperationMatchers []IntelligentEdgeOperationMatcher
+	OperationMatchers []SignalControlOperationMatcher
 }
 
-type IntelligentEdgeOperationMatcher struct {
+type SignalControlOperationMatcher struct {
 	Regex        string
 	Replacements []string
 	QuickFilter  string
@@ -103,7 +103,7 @@ type oTelColConfig struct {
 	IsIPv6Cluster                                    bool
 	IsGkeAutopilot                                   bool
 	OffsetStorageVolume                              *corev1.Volume
-	IntelligentEdge                                  IntelligentEdgeConfig
+	SignalControl                                    SignalControlConfig
 	AutoNamespaceMonitoringEnabled                   bool
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
@@ -116,27 +116,27 @@ func (c *oTelColConfig) usesOffsetStorageVolume() bool {
 	return c.OffsetStorageVolume != nil
 }
 
-// usesIntelligentEdgeCollectorImage reports whether the collector workloads should use the intelligent edge collector
-// image instead of the regular collector image. This is the case when intelligent edge is enabled via the
-// Dash0IntelligentEdge resource and the intelligent edge collector image has been provided by the Helm chart (which only
-// happens when the intelligent edge feature is enabled at install/upgrade time).
-func (c *oTelColConfig) usesIntelligentEdgeCollectorImage() bool {
-	return c.IntelligentEdge.Enabled && c.Images.IntelligentEdgeCollectorImage != ""
+// usesSignalControlCollectorImage reports whether the collector workloads should use the Signal Control collector
+// image instead of the regular collector image. This is the case when Signal Control is enabled via the
+// Dash0SignalControl resource and the Signal Control collector image has been provided by the Helm chart (which only
+// happens when the Signal Control feature is enabled at install/upgrade time).
+func (c *oTelColConfig) usesSignalControlCollectorImage() bool {
+	return c.SignalControl.Enabled && c.Images.SignalControlCollectorImage != ""
 }
 
 // collectorImage returns the collector image to use for the collector workloads, deferring the choice between the
-// regular and the intelligent edge collector image to reconcile time, see usesIntelligentEdgeCollectorImage.
+// regular and the Signal Control collector image to reconcile time, see usesSignalControlCollectorImage.
 func (c *oTelColConfig) collectorImage() string {
-	if c.usesIntelligentEdgeCollectorImage() {
-		return c.Images.IntelligentEdgeCollectorImage
+	if c.usesSignalControlCollectorImage() {
+		return c.Images.SignalControlCollectorImage
 	}
 	return c.Images.CollectorImage
 }
 
 // collectorImagePullPolicy returns the image pull policy matching the image returned by collectorImage.
 func (c *oTelColConfig) collectorImagePullPolicy() corev1.PullPolicy {
-	if c.usesIntelligentEdgeCollectorImage() {
-		return c.Images.IntelligentEdgeCollectorImagePullPolicy
+	if c.usesSignalControlCollectorImage() {
+		return c.Images.SignalControlCollectorImagePullPolicy
 	}
 	return c.Images.CollectorImagePullPolicy
 }
@@ -1004,8 +1004,8 @@ func assembleCollectorDaemonSetVolumes(
 		})
 	}
 
-	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled {
-		traceReservoirSizeLimit := reservoirDerivedStorage(config.IntelligentEdge.SamplingReservoirMaxDiskBytes)
+	if config.SignalControl.Enabled && config.SignalControl.SamplingEnabled {
+		traceReservoirSizeLimit := reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
 		volumes = append(volumes, corev1.Volume{
 			Name: "trace-reservoir",
 			VolumeSource: corev1.VolumeSource{
@@ -1025,7 +1025,7 @@ func assembleCollectorDaemonSetVolumes(
 // running only on the rotation interval), so the requested storage must be larger than the cap itself.
 const reservoirStorageMargin = 1.25
 
-// reservoirDefaultMaxDiskBytes is the fallback used when the Dash0IntelligentEdge resource does not specify
+// reservoirDefaultMaxDiskBytes is the fallback used when the Dash0SignalControl resource does not specify
 // a reservoir max_disk_bytes (matches the +kubebuilder:default of "1Gi").
 const reservoirDefaultMaxDiskBytes int64 = 1024 * 1024 * 1024 // 1Gi
 
@@ -1095,7 +1095,7 @@ func assembleCollectorDaemonSetVolumeMounts(
 		})
 	}
 
-	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled {
+	if config.SignalControl.Enabled && config.SignalControl.SamplingEnabled {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "trace-reservoir",
 			MountPath: "/var/lib/dash0/trace-reservoir",
@@ -1157,14 +1157,14 @@ func assembleCollectorEnvVars(
 		}
 	}
 
-	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled {
+	if config.SignalControl.Enabled && config.SignalControl.SamplingEnabled {
 		// Uses Kubernetes dependent variable expansion: $(VAR_NAME) references the exporter auth token env var
 		// defined earlier in this container's env list. The referenced env var (e.g., DASH0_AUTHORIZATION_DEFAULT_0)
 		// must appear before this one.
 		collectorEnv = append(collectorEnv,
 			corev1.EnvVar{
 				Name:  "DASH0_SAMPLING_AUTH_TOKEN",
-				Value: fmt.Sprintf("$(%s)", config.IntelligentEdge.AuthEnvVar),
+				Value: fmt.Sprintf("$(%s)", config.SignalControl.AuthEnvVar),
 			},
 		)
 	}
@@ -1190,7 +1190,7 @@ func assembleDaemonSetCollectorContainer(
 	// scheduler reserves enough node scratch space. An explicit user-provided ephemeral-storage request is
 	// never overridden.
 	collectorResources := resourceRequirements.ToResourceRequirements()
-	if config.IntelligentEdge.Enabled && config.IntelligentEdge.SamplingEnabled &&
+	if config.SignalControl.Enabled && config.SignalControl.SamplingEnabled &&
 		collectorResources.Requests.StorageEphemeral().IsZero() {
 		// Clone the requests map so the shared resourceRequirements passed by the caller is not mutated.
 		requests := maps.Clone(collectorResources.Requests)
@@ -1198,7 +1198,7 @@ func assembleDaemonSetCollectorContainer(
 			requests = corev1.ResourceList{}
 		}
 		requests[corev1.ResourceEphemeralStorage] =
-			reservoirDerivedStorage(config.IntelligentEdge.SamplingReservoirMaxDiskBytes)
+			reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
 		collectorResources.Requests = requests
 	}
 

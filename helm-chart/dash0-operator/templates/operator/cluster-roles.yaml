@@ -273,11 +273,11 @@ rules:
   - patch
   - update
 
-# Permissions required to manage the Dash0 intelligent edge resource, its finalizers and status:
+# Permissions required to manage the Dash0 Signal Control resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com
   resources:
-  - dash0intelligentedges
+  - dash0signalcontrols
   verbs:
   - create
   - delete
@@ -291,14 +291,14 @@ rules:
 - apiGroups:
   - operator.dash0.com
   resources:
-  - dash0intelligentedges/finalizers
+  - dash0signalcontrols/finalizers
   verbs:
   - update
 
 - apiGroups:
   - operator.dash0.com
   resources:
-  - dash0intelligentedges/status
+  - dash0signalcontrols/status
   verbs:
   - get
   - patch

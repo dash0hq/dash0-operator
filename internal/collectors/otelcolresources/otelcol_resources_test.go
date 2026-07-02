@@ -558,7 +558,7 @@ func probeKubeletStatsEndpointMock(util.CollectorConfig, logd.Logger) (KubeletSt
 	}, true
 }
 
-var _ = Describe("intelligentEdgeConfigFromResource", func() {
+var _ = Describe("signalControlConfigFromResource", func() {
 	logger := logd.FromContext(context.Background())
 	operatorConfig := &dash0v1alpha1.Dash0OperatorConfiguration{
 		Spec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
@@ -566,36 +566,36 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	operatorNamespace := OperatorNamespace
 
 	It("should return disabled config when resource is nil", func() {
-		config := intelligentEdgeConfigFromResource(nil, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(nil, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeFalse())
 	})
 
 	It("should return disabled config when spec.enabled is false", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled: boolPtr(false),
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeFalse())
 	})
 
 	It("should derive endpoints from operator config when no overrides are set", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.Endpoint).To(Equal(util.DeriveDecisionMakerEndpoint(EndpointDash0Test)))
 		Expect(config.ApiEndpoint).To(Equal(deriveCpaEndpoint(ApiEndpointTest)))
 	})
 
 	It("should use explicit decision maker endpoint when set", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
@@ -603,7 +603,7 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.Endpoint).To(Equal("custom-dm.example.com:443"))
 		// CPA endpoint should still be derived
@@ -611,14 +611,14 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	})
 
 	It("should use explicit control plane API endpoint when set", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:                 boolPtr(true),
 				EdgeProxy:               dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.ApiEndpoint).To(Equal("https://custom-cpa.example.com"))
 		// DM endpoint should still be derived
@@ -626,8 +626,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	})
 
 	It("should use both explicit endpoints when both are set", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:                 boolPtr(true),
 				EdgeProxy:               dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
@@ -636,15 +636,15 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.Endpoint).To(Equal("custom-dm.example.com:443"))
 		Expect(config.ApiEndpoint).To(Equal("https://custom-cpa.example.com"))
 	})
 
 	It("should override explicit DM endpoint with Edge Proxy service when the Edge Proxy is enabled", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled: boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{
 					Enabled: boolPtr(true),
@@ -654,15 +654,15 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.Endpoint).To(Equal(fmt.Sprintf("%s-edge-proxy.%s.svc.cluster.local:8011", namePrefix, operatorNamespace)))
 		Expect(config.Insecure).To(BeTrue())
 	})
 
 	It("should handle nil operator config with explicit endpoints", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:                 boolPtr(true),
 				EdgeProxy:               dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
@@ -671,7 +671,7 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, nil, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, nil, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.Endpoint).To(Equal("custom-dm.example.com:443"))
 		Expect(config.ApiEndpoint).To(Equal("https://custom-cpa.example.com"))
@@ -679,20 +679,20 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	})
 
 	It("should have sampling enabled by default", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.SamplingEnabled).To(BeTrue())
 	})
 
-	It("should allow disabling sampling while keeping IE enabled", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+	It("should allow disabling sampling while keeping Signal Control enabled", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
@@ -700,19 +700,19 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.SamplingEnabled).To(BeFalse())
 	})
 
 	It("should use default reservoir settings when reservoir is not configured", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(1024 * 1024 * 1024)))
 		Expect(config.SamplingReservoirMetricLevel).To(Equal("basic"))
 	})
@@ -720,8 +720,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should use the configured reservoir max disk bytes and metric level", func() {
 		maxDiskBytes := resource.MustParse("2Gi")
 		metricLevel := dash0v1alpha1.ReservoirMetricLevelDetailed
-		edge := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		edge := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
@@ -732,15 +732,15 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(2 * 1024 * 1024 * 1024)))
 		Expect(config.SamplingReservoirMetricLevel).To(Equal("detailed"))
 	})
 
 	It("should clamp reservoir max disk bytes below the minimum to the floor", func() {
 		maxDiskBytes := resource.MustParse("1Mi")
-		edge := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		edge := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
@@ -750,41 +750,41 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(64 * 1024 * 1024)))
 		Expect(config.SamplingReservoirMetricLevel).To(Equal("basic"))
 	})
 
-	It("should return disabled config when overall IE is disabled regardless of sampling setting", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+	It("should return disabled config when overall Signal Control is disabled regardless of sampling setting", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled: boolPtr(false),
 				Sampling: dash0v1alpha1.SamplingConfig{
 					Enabled: boolPtr(true),
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeFalse())
 	})
 
 	It("should have signal-to-metrics enabled by default", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.SignalToMetricsEnabled).To(BeTrue())
 		Expect(config.SignalToMetricsMaxTimeSeries).To(BeNil())
 		Expect(config.SignalToMetricsFlushInterval).To(BeEmpty())
 	})
 
-	It("should allow disabling signal-to-metrics while keeping IE enabled", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+	It("should allow disabling signal-to-metrics while keeping Signal Control enabled", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
@@ -792,15 +792,15 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.SignalToMetricsEnabled).To(BeFalse())
 	})
 
 	It("should pass signal-to-metrics tunables through when set", func() {
 		maxTs := int32(42_000)
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
@@ -810,7 +810,7 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SignalToMetricsEnabled).To(BeTrue())
 		Expect(config.SignalToMetricsMaxTimeSeries).ToNot(BeNil())
 		Expect(*config.SignalToMetricsMaxTimeSeries).To(Equal(int32(42_000)))
@@ -818,8 +818,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	})
 
 	It("should drop a non-positive flush interval rather than forward it", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
@@ -827,27 +827,27 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SignalToMetricsFlushInterval).To(BeEmpty())
 	})
 
 	It("should have spam filter enabled by default", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.SpamFilterEnabled).To(BeTrue())
 		Expect(config.SpamFilterCacheExpiration).To(BeEmpty())
 		Expect(config.SpamFilterAllowNoSettingsExt).To(BeFalse())
 	})
 
-	It("should allow disabling spam filter while keeping IE enabled", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+	It("should allow disabling spam filter while keeping Signal Control enabled", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SpamFilter: dash0v1alpha1.SpamFilterConfig{
@@ -855,14 +855,14 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.SpamFilterEnabled).To(BeFalse())
 	})
 
 	It("should pass spam filter tunables through when set", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SpamFilter: dash0v1alpha1.SpamFilterConfig{
@@ -872,15 +872,15 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SpamFilterEnabled).To(BeTrue())
 		Expect(config.SpamFilterCacheExpiration).To(Equal("45s"))
 		Expect(config.SpamFilterAllowNoSettingsExt).To(BeTrue())
 	})
 
 	It("should drop a non-positive spam filter cache expiration rather than forward it", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SpamFilter: dash0v1alpha1.SpamFilterConfig{
@@ -888,25 +888,25 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SpamFilterCacheExpiration).To(BeEmpty())
 	})
 
 	It("should default sampling tunables to empty fallback ratio and debug off", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SamplingFallbackSampleRatio).To(BeEmpty())
 		Expect(config.SamplingDebug).To(BeFalse())
 	})
 
 	It("should pass sampling fallback ratio and debug through when set", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
@@ -916,14 +916,14 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SamplingFallbackSampleRatio).To(Equal("0.5"))
 		Expect(config.SamplingDebug).To(BeTrue())
 	})
 
 	It("should pass a sampling fallback ratio of \"0\" through (block-all is meaningful, not unset)", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
@@ -931,26 +931,26 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SamplingFallbackSampleRatio).To(Equal("0"))
 	})
 
 	It("should default RED metrics tunables to nil max-time-series and no extra attributes", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.RedMetricsMaxTimeSeries).To(BeNil())
 		Expect(config.RedMetricsAdditionalSpanAttributes).To(BeEmpty())
 	})
 
 	It("should pass RED metrics tunables through when set", func() {
 		maxTs := int32(12_000)
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				RedMetrics: dash0v1alpha1.RedMetricsConfig{
@@ -959,27 +959,27 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.RedMetricsMaxTimeSeries).ToNot(BeNil())
 		Expect(*config.RedMetricsMaxTimeSeries).To(Equal(int32(12_000)))
 		Expect(config.RedMetricsAdditionalSpanAttributes).To(Equal([]string{"http.route", "http.request.method"}))
 	})
 
 	It("should default the operation processor to no prefer-span-name and no cardinality rules", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.OperationPreferSpanName).To(BeFalse())
 		Expect(config.OperationCardinalityRules).To(BeEmpty())
 	})
 
 	It("should pass the prefer-span-name flag through when set", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				OperationProcessor: dash0v1alpha1.OperationProcessorConfig{
@@ -987,13 +987,13 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.OperationPreferSpanName).To(BeTrue())
 	})
 
 	It("should pass cardinality rules through, resolving the *bool literal", func() {
-		resource := &dash0v1alpha1.Dash0IntelligentEdge{
-			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				OperationProcessor: dash0v1alpha1.OperationProcessorConfig{
@@ -1019,7 +1019,7 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 				},
 			},
 		}
-		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.OperationCardinalityRules).To(HaveLen(1))
 		rule := config.OperationCardinalityRules[0]
 		Expect(rule.Id).To(Equal("warehouse-sites"))

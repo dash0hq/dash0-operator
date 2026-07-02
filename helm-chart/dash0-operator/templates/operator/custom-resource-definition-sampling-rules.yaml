@@ -1,4 +1,4 @@
-{{- if .Values.operator.intelligentEdge.enabled }}
+{{- if .Values.operator.signalControl.enabled }}
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition

@@ -158,8 +158,8 @@ spec:
         - --operator-configuration-instrumentation-delivery={{ .Values.operator.instrumentation.delivery }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
         - --dash0-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
-{{- if .Values.operator.intelligentEdge.enabled }}
-        - --dash0-feature-intelligent-edge-enabled=true
+{{- if .Values.operator.signalControl.enabled }}
+        - --dash0-feature-signal-control-enabled=true
 {{- end }}
         - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --dash0-gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
@@ -213,12 +213,12 @@ spec:
         - name: DASH0_COLLECTOR_IMAGE_PULL_POLICY
           value: {{ .Values.operator.collectorImage.pullPolicy }}
         {{- end }}
-        {{- if .Values.operator.intelligentEdge.enabled }}
-        - name: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE
-          value: {{ include "dash0-operator.intelligentEdgeCollectorImage" . | quote }}
-        {{- if .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
-        - name: DASH0_INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY
-          value: {{ .Values.operator.intelligentEdgeCollectorImage.pullPolicy }}
+        {{- if .Values.operator.signalControl.enabled }}
+        - name: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE
+          value: {{ include "dash0-operator.signalControlCollectorImage" . | quote }}
+        {{- if .Values.operator.signalControlCollectorImage.pullPolicy }}
+        - name: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.signalControlCollectorImage.pullPolicy }}
         {{- end }}
         {{- end }}
         - name: DASH0_TARGET_ALLOCATOR_IMAGE
@@ -245,7 +245,7 @@ spec:
         - name: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY
           value: {{ .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
         {{- end }}
-        {{- if .Values.operator.intelligentEdge.enabled }}
+        {{- if .Values.operator.signalControl.enabled }}
         - name: DASH0_EDGE_PROXY_IMAGE
           value: {{ include "dash0-operator.edgeProxyImage" . | quote }}
         {{- if .Values.operator.edgeProxyImage.pullPolicy }}
@@ -654,16 +654,16 @@ webhooks:
         scope: Cluster
     sideEffects: None
     timeoutSeconds: 5
-{{- if .Values.operator.intelligentEdge.enabled }}
+{{- if .Values.operator.signalControl.enabled }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: {{ template "dash0-operator.chartName" . }}-intelligent-edge-validator
+  name: {{ template "dash0-operator.chartName" . }}-signal-control-validator
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: validator
-    app.kubernetes.io/instance: intelligent-edge-validator-webhook
+    app.kubernetes.io/instance: signal-control-validator-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
   {{- if .Values.operator.certManager.useCertManager }}
   {{- with .Values.operator.certManager.certManagerAnnotations }}
@@ -672,7 +672,7 @@ metadata:
   {{- end }}
   {{- end }}
 webhooks:
-  - name: validate-intelligent-edge.dash0.com
+  - name: validate-signal-control.dash0.com
     clientConfig:
       {{- if not .Values.operator.certManager.useCertManager }}
       caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
@@ -681,7 +681,7 @@ webhooks:
         name: {{ template "dash0-operator.webhookServiceName" . }}
         namespace: {{ .Release.Namespace }}
         port: {{ template "dash0-operator.webhookServicePort" . }}
-        path: /intelligent-edge/validate
+        path: /signal-control/validate
     admissionReviewVersions:
       - v1
     rules:
@@ -693,7 +693,7 @@ webhooks:
           - CREATE
           - UPDATE
         resources:
-          - dash0intelligentedges
+          - dash0signalcontrols
         scope: Cluster
     sideEffects: None
     timeoutSeconds: 5

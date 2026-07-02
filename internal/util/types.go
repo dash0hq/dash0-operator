@@ -120,8 +120,8 @@ type Images struct {
 	InitContainerImagePullPolicy                corev1.PullPolicy
 	CollectorImage                              string
 	CollectorImagePullPolicy                    corev1.PullPolicy
-	IntelligentEdgeCollectorImage               string
-	IntelligentEdgeCollectorImagePullPolicy     corev1.PullPolicy
+	SignalControlCollectorImage                 string
+	SignalControlCollectorImagePullPolicy       corev1.PullPolicy
 	TargetAllocatorImage                        string
 	TargetAllocatorPullPolicy                   corev1.PullPolicy
 	ConfigurationReloaderImage                  string

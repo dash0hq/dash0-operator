@@ -1,7 +1,7 @@
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0IntelligentEdge
+kind: Dash0SignalControl
 metadata:
-  name: dash0-intelligent-edge
+  name: dash0-signal-control
 spec:
   enabled: true
   edgeProxy:

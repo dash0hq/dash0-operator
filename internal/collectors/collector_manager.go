@@ -28,12 +28,12 @@ import (
 
 type CollectorManager struct {
 	client.Client
-	clientset                     *kubernetes.Clientset
-	oTelColResourceManager        *otelcolresources.OTelColResourceManager
-	extraConfig                   atomic.Pointer[util.ExtraConfig]
-	developmentMode               bool
-	intelligentEdgeFeatureEnabled bool
-	updateInProgress              atomic.Bool
+	clientset                   *kubernetes.Clientset
+	oTelColResourceManager      *otelcolresources.OTelColResourceManager
+	extraConfig                 atomic.Pointer[util.ExtraConfig]
+	developmentMode             bool
+	signalControlFeatureEnabled bool
+	updateInProgress            atomic.Bool
 }
 
 type CollectorReconcileTrigger string
@@ -54,15 +54,15 @@ func NewCollectorManager(
 	clientset *kubernetes.Clientset,
 	extraConfig util.ExtraConfig,
 	developmentMode bool,
-	intelligentEdgeFeatureEnabled bool,
+	signalControlFeatureEnabled bool,
 	oTelColResourceManager *otelcolresources.OTelColResourceManager,
 ) *CollectorManager {
 	m := &CollectorManager{
-		Client:                        k8sClient,
-		clientset:                     clientset,
-		developmentMode:               developmentMode,
-		intelligentEdgeFeatureEnabled: intelligentEdgeFeatureEnabled,
-		oTelColResourceManager:        oTelColResourceManager,
+		Client:                      k8sClient,
+		clientset:                   clientset,
+		developmentMode:             developmentMode,
+		signalControlFeatureEnabled: signalControlFeatureEnabled,
+		oTelColResourceManager:      oTelColResourceManager,
 	}
 	m.extraConfig.Store(&extraConfig)
 	return m
@@ -123,16 +123,16 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		return false, err
 	}
 	logger.Debug("found available monitoring resources for collector reconciliation", "count", len(allMonitoringResources))
-	var intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge
-	if m.intelligentEdgeFeatureEnabled {
-		intelligentEdgeResource, err = m.findIntelligentEdgeResource(ctx, logger)
+	var signalControlResource *dash0v1alpha1.Dash0SignalControl
+	if m.signalControlFeatureEnabled {
+		signalControlResource, err = m.findSignalControlResource(ctx, logger)
 		if err != nil {
 			return false, err
 		}
-		if intelligentEdgeResource != nil {
-			logger.Debug("found intelligent edge resource for collector reconciliation", "name", intelligentEdgeResource.Name)
+		if signalControlResource != nil {
+			logger.Debug("found Signal Control resource for collector reconciliation", "name", signalControlResource.Name)
 		} else {
-			logger.Debug("no intelligent edge resource found for collector reconciliation")
+			logger.Debug("no Signal Control resource found for collector reconciliation")
 		}
 	}
 
@@ -158,7 +158,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 			ctx,
 			operatorConfigurationResource,
 			allMonitoringResources,
-			intelligentEdgeResource,
+			signalControlResource,
 			*extraConfig,
 			logger,
 		)
@@ -170,7 +170,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
-	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
+	signalControlResource *dash0v1alpha1.Dash0SignalControl,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) error {
@@ -186,7 +186,7 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 			extraConfig,
 			operatorConfigurationResource,
 			allMonitoringResources,
-			intelligentEdgeResource,
+			signalControlResource,
 			logger,
 		)
 	if err != nil {
@@ -254,24 +254,24 @@ func (m *CollectorManager) findOperatorConfigurationResource(
 	return operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration), nil
 }
 
-func (m *CollectorManager) findIntelligentEdgeResource(
+func (m *CollectorManager) findSignalControlResource(
 	ctx context.Context,
 	logger logd.Logger,
-) (*dash0v1alpha1.Dash0IntelligentEdge, error) {
-	intelligentEdgeResource, err := resources.FindUniqueOrMostRecentResourceInScope(
+) (*dash0v1alpha1.Dash0SignalControl, error) {
+	signalControlResource, err := resources.FindUniqueOrMostRecentResourceInScope(
 		ctx,
 		m.Client,
 		"",
-		&dash0v1alpha1.Dash0IntelligentEdge{},
+		&dash0v1alpha1.Dash0SignalControl{},
 		logger,
 	)
 	if err != nil {
 		return nil, err
 	}
-	if intelligentEdgeResource == nil {
+	if signalControlResource == nil {
 		return nil, nil
 	}
-	return intelligentEdgeResource.(*dash0v1alpha1.Dash0IntelligentEdge), nil
+	return signalControlResource.(*dash0v1alpha1.Dash0SignalControl), nil
 }
 
 func (m *CollectorManager) findAllMonitoringResources(

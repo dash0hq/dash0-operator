@@ -18,19 +18,19 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
-type IntelligentEdgeValidationWebhookHandler struct {
+type SignalControlValidationWebhookHandler struct {
 	Client client.Client
 }
 
-func NewIntelligentEdgeValidationWebhookHandler(
+func NewSignalControlValidationWebhookHandler(
 	k8sClient client.Client,
-) *IntelligentEdgeValidationWebhookHandler {
-	return &IntelligentEdgeValidationWebhookHandler{
+) *SignalControlValidationWebhookHandler {
+	return &SignalControlValidationWebhookHandler{
 		Client: k8sClient,
 	}
 }
 
-func (h *IntelligentEdgeValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (h *SignalControlValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	webhook := &admission.Webhook{
 		Handler: h,
 	}
@@ -39,48 +39,48 @@ func (h *IntelligentEdgeValidationWebhookHandler) SetupWebhookWithManager(mgr ct
 	if err != nil {
 		return err
 	}
-	mgr.GetWebhookServer().Register("/intelligent-edge/validate", handler)
+	mgr.GetWebhookServer().Register("/signal-control/validate", handler)
 
 	return nil
 }
 
-func (h *IntelligentEdgeValidationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
+func (h *SignalControlValidationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
 	logger := logd.FromContext(ctx)
-	intelligentEdgeResource := &dash0v1alpha1.Dash0IntelligentEdge{}
-	if _, _, err := decoder.Decode(request.Object.Raw, nil, intelligentEdgeResource); err != nil {
-		logger.Warn("Rejecting invalid intelligent edge resource.", "error", err)
+	signalControlResource := &dash0v1alpha1.Dash0SignalControl{}
+	if _, _, err := decoder.Decode(request.Object.Raw, nil, signalControlResource); err != nil {
+		logger.Warn("Rejecting invalid Signal Control resource.", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
 	if request.Operation == admissionv1.Create {
-		allIntelligentEdgeResources := &dash0v1alpha1.Dash0IntelligentEdgeList{}
-		if err := h.Client.List(ctx, allIntelligentEdgeResources); err != nil {
-			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("failed to list all Dash0 intelligent edge resources: %w", err))
+		allSignalControlResources := &dash0v1alpha1.Dash0SignalControlList{}
+		if err := h.Client.List(ctx, allSignalControlResources); err != nil {
+			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("failed to list all Dash0 Signal Control resources: %w", err))
 		}
-		if len(allIntelligentEdgeResources.Items) > 0 {
-			logger.Warn("Rejecting intelligent edge resource, another one already exists.",
-				"existing", allIntelligentEdgeResources.Items[0].Name)
+		if len(allSignalControlResources.Items) > 0 {
+			logger.Warn("Rejecting Signal Control resource, another one already exists.",
+				"existing", allSignalControlResources.Items[0].Name)
 			return admission.Denied(
-				fmt.Sprintf("At least one Dash0 intelligent edge resource (%s) already exists in this cluster. "+
-					"Only one intelligent edge resource is allowed per cluster.",
-					allIntelligentEdgeResources.Items[0].Name,
+				fmt.Sprintf("At least one Dash0 Signal Control resource (%s) already exists in this cluster. "+
+					"Only one Signal Control resource is allowed per cluster.",
+					allSignalControlResources.Items[0].Name,
 				))
 		}
 	}
 
 	if request.Operation == admissionv1.Create || request.Operation == admissionv1.Update {
 		if !h.hasDash0ExportConfigured(ctx) {
-			logger.Warn("Rejecting intelligent edge resource, no Dash0 export configured.")
+			logger.Warn("Rejecting Signal Control resource, no Dash0 export configured.")
 			return admission.Denied(
-				"No Dash0 operator configuration with a Dash0 export was found. Intelligent edge " +
+				"No Dash0 operator configuration with a Dash0 export was found. Signal Control " +
 					"requires a Dash0 export with an auth token for the Decision Maker connection. " +
 					"Configure a Dash0 export in the operator configuration resource before enabling " +
-					"intelligent edge.")
+					"Signal Control.")
 		}
 
 		if err := validateOperationProcessorCardinalityRules(
-			intelligentEdgeResource.Spec.OperationProcessor.CardinalityRules); err != nil {
-			logger.Warn("Rejecting intelligent edge resource, invalid operation processor cardinality rules.",
+			signalControlResource.Spec.OperationProcessor.CardinalityRules); err != nil {
+			logger.Warn("Rejecting Signal Control resource, invalid operation processor cardinality rules.",
 				"error", err)
 			return admission.Denied(err.Error())
 		}
@@ -114,7 +114,7 @@ func validateOperationProcessorCardinalityRules(rules []dash0v1alpha1.Cardinalit
 	return nil
 }
 
-func (h *IntelligentEdgeValidationWebhookHandler) hasDash0ExportConfigured(ctx context.Context) bool {
+func (h *SignalControlValidationWebhookHandler) hasDash0ExportConfigured(ctx context.Context) bool {
 	allOperatorConfigs := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 	if err := h.Client.List(ctx, allOperatorConfigs); err != nil {
 		return false

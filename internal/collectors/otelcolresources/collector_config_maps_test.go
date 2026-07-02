@@ -1950,12 +1950,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsExportDefaultReceivers).ToNot(ContainElement("routing/logs"))
 		})
 
-		It("should route namespaced traces before sampling when intelligent edge is enabled [DaemonSet]", func() {
+		It("should route namespaced traces before sampling when Signal Control is enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:         true,
 					SamplingEnabled: true,
 					Endpoint:        "decision-maker.example.com:443",
@@ -1971,10 +1971,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			connectors := collectorConfig["connectors"].(map[string]interface{})
 			pipelines := readPipelines(collectorConfig)
 
-			// routing/traces default_pipelines should point to ie-pre-sampling
+			// routing/traces default_pipelines should point to signal-control-pre-sampling
 			routingTraces := connectors["routing/traces"].(map[string]interface{})
 			defaultPipelines := routingTraces["default_pipelines"].([]interface{})
-			Expect(defaultPipelines).To(ContainElement("traces/ie-pre-sampling"))
+			Expect(defaultPipelines).To(ContainElement("traces/signal-control-pre-sampling"))
 			Expect(defaultPipelines).ToNot(ContainElement("traces/export/default"))
 
 			// traces/common-processors should export to routing/traces (not directly to sampling)
@@ -1983,12 +1983,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(tracesCommonExporters).ToNot(ContainElement("forward/traces-to-sampling"))
 			Expect(tracesCommonExporters).ToNot(ContainElement("dash0redmetrics"))
 
-			// traces/ie-pre-sampling should exist and forward to sampling + RED metrics
-			iePreSamplingReceivers := readPipelineReceivers(pipelines, "traces/ie-pre-sampling")
-			Expect(iePreSamplingReceivers).To(ContainElement("routing/traces"))
-			iePreSamplingExporters := readPipelineExporters(pipelines, "traces/ie-pre-sampling")
-			Expect(iePreSamplingExporters).To(ContainElement("forward/traces-to-sampling"))
-			Expect(iePreSamplingExporters).To(ContainElement("dash0redmetrics"))
+			// traces/signal-control-pre-sampling should exist and forward to sampling + RED metrics
+			scPreSamplingReceivers := readPipelineReceivers(pipelines, "traces/signal-control-pre-sampling")
+			Expect(scPreSamplingReceivers).To(ContainElement("routing/traces"))
+			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/signal-control-pre-sampling")
+			Expect(scPreSamplingExporters).To(ContainElement("forward/traces-to-sampling"))
+			Expect(scPreSamplingExporters).To(ContainElement("dash0redmetrics"))
 
 			// traces/sampled should export to forward/traces-default-exporter (not routing)
 			sampledExporters := readPipelineExporters(pipelines, "traces/sampled")
@@ -2017,12 +2017,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 		})
 
-		It("should collect Edge Proxy logs via file_log/selfmonitoring when IE + Edge Proxy + self-monitoring enabled [DaemonSet]", func() {
+		It("should collect Edge Proxy logs via file_log/selfmonitoring when Signal Control + Edge Proxy + self-monitoring enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:          true,
 					SamplingEnabled:  true,
 					Endpoint:         "decision-maker.example.com:443",
@@ -2065,7 +2065,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:          true,
 					SamplingEnabled:  true,
 					Endpoint:         "decision-maker.example.com:443",
@@ -2089,7 +2089,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:          true,
 					SamplingEnabled:  true,
 					Endpoint:         "decision-maker.example.com:443",
@@ -2107,12 +2107,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(configContent).ToNot(ContainSubstring("file_log/selfmonitoring"))
 		})
 
-		It("should drop Edge-Proxy-originated OTLP logs when IE + Edge Proxy + self-monitoring are enabled [DaemonSet]", func() {
+		It("should drop Edge-Proxy-originated OTLP logs when Signal Control + Edge Proxy + self-monitoring are enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:          true,
 					SamplingEnabled:  true,
 					Endpoint:         "decision-maker.example.com:443",
@@ -2152,7 +2152,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:          true,
 					SamplingEnabled:  true,
 					Endpoint:         "decision-maker.example.com:443",
@@ -2179,7 +2179,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:          true,
 					SamplingEnabled:  true,
 					Endpoint:         "decision-maker.example.com:443",
@@ -2199,12 +2199,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).ToNot(HaveKey("filter/logs/drop_edge_proxy_otlp_selfmonitoring"))
 		})
 
-		It("should wire the dash0signaltometrics connector when IE + signalToMetrics are enabled [DaemonSet]", func() {
+		It("should wire the dash0signaltometrics connector when Signal Control + signalToMetrics are enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                true,
 					SamplingEnabled:        true,
 					SignalToMetricsEnabled: true,
@@ -2241,12 +2241,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(metricsForwarderReceivers).To(ContainElement("dash0signaltometrics"))
 		})
 
-		It("should also wire the dash0signaltometrics connector in traces/ie-pre-sampling when namespaced exporters are configured [DaemonSet]", func() {
+		It("should also wire the dash0signaltometrics connector in traces/signal-control-pre-sampling when namespaced exporters are configured [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                true,
 					SamplingEnabled:        true,
 					SignalToMetricsEnabled: true,
@@ -2261,17 +2261,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
 
-			iePreSamplingExporters := readPipelineExporters(pipelines, "traces/ie-pre-sampling")
-			Expect(iePreSamplingExporters).To(ContainElement("dash0redmetrics"))
-			Expect(iePreSamplingExporters).To(ContainElement("dash0signaltometrics"))
+			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/signal-control-pre-sampling")
+			Expect(scPreSamplingExporters).To(ContainElement("dash0redmetrics"))
+			Expect(scPreSamplingExporters).To(ContainElement("dash0signaltometrics"))
 		})
 
-		It("should render dash0signaltometrics tunables when set on the IE config [DaemonSet]", func() {
+		It("should render dash0signaltometrics tunables when set on the Signal Control config [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                      true,
 					SamplingEnabled:              true,
 					SignalToMetricsEnabled:       true,
@@ -2298,7 +2298,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                true,
 					SamplingEnabled:        true,
 					SignalToMetricsEnabled: true,
@@ -2323,7 +2323,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                true,
 					SamplingEnabled:        false,
 					SignalToMetricsEnabled: true,
@@ -2354,7 +2354,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                true,
 					SamplingEnabled:        true,
 					SignalToMetricsEnabled: false,
@@ -2379,12 +2379,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				ToNot(ContainElement("dash0signaltometrics"))
 		})
 
-		It("should wire the dash0filter processor when IE + spamFilter are enabled [DaemonSet]", func() {
+		It("should wire the dash0filter processor when Signal Control + spamFilter are enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:           true,
 					SamplingEnabled:   true,
 					SpamFilterEnabled: true,
@@ -2407,19 +2407,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			tracesCommonProcessors := readPipelineProcessors(pipelines, "traces/common-processors")
 			Expect(tracesCommonProcessors).To(ContainElement("dash0filter"))
 			Expect(tracesCommonProcessors).To(ContainElements("dash0resource", "dash0operation", "dash0filter"),
-				"dash0filter must run after dash0resource and dash0operation set IE attributes")
+				"dash0filter must run after dash0resource and dash0operation set Signal Control attributes")
 			logsCommonProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
 			Expect(logsCommonProcessors).To(ContainElement("dash0filter"))
-			Expect(logsCommonProcessors).To(ContainElements("resource/ie_attributes", "dash0resource", "dash0filter"),
-				"dash0filter must run after resource/ie_attributes, and dash0resource must run so dash0signaltometrics gets the resource hash")
+			Expect(logsCommonProcessors).To(ContainElements("resource/signal_control_attributes", "dash0resource", "dash0filter"),
+				"dash0filter must run after resource/signal_control_attributes, and dash0resource must run so dash0signaltometrics gets the resource hash")
 		})
 
-		It("should render dash0filter tunables when set on the IE config [DaemonSet]", func() {
+		It("should render dash0filter tunables when set on the Signal Control config [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                      true,
 					SamplingEnabled:              true,
 					SpamFilterEnabled:            true,
@@ -2446,7 +2446,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:           true,
 					SamplingEnabled:   true,
 					SpamFilterEnabled: true,
@@ -2470,7 +2470,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:           true,
 					SamplingEnabled:   false,
 					SpamFilterEnabled: true,
@@ -2496,7 +2496,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:           true,
 					SamplingEnabled:   true,
 					SpamFilterEnabled: false,
@@ -2524,7 +2524,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:     true,
 					Endpoint:    "decision-maker.example.com:443",
 					ApiEndpoint: "https://control-plane-api.dash0.com",
@@ -2541,12 +2541,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				To(BeEmpty(), "dash0operation should render as `{}` when no tunables set")
 		})
 
-		It("should render prefer_span_name when set on the IE config [DaemonSet]", func() {
+		It("should render prefer_span_name when set on the Signal Control config [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                 true,
 					OperationPreferSpanName: true,
 					Endpoint:                "decision-maker.example.com:443",
@@ -2564,19 +2564,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(operation).ToNot(HaveKey("cardinality_rules"))
 		})
 
-		It("should render cardinality_rules with nested operation_matchers when set on the IE config [DaemonSet]", func() {
+		It("should render cardinality_rules with nested operation_matchers when set on the Signal Control config [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled: true,
-					OperationCardinalityRules: []IntelligentEdgeCardinalityRule{
+					OperationCardinalityRules: []SignalControlCardinalityRule{
 						{
 							Id:              "warehouse-sites",
 							SourceAttribute: "url.path",
 							QuickFilter:     "/sites/",
-							OperationMatchers: []IntelligentEdgeOperationMatcher{
+							OperationMatchers: []SignalControlOperationMatcher{
 								{
 									Regex:        "/sites/([a-z0-9-]+)/",
 									Replacements: []string{"site"},
@@ -2625,12 +2625,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(second).ToNot(HaveKey("literal"), "a false literal must be omitted")
 		})
 
-		It("should render sampling fallback ratio and debug when set on the IE config [DaemonSet]", func() {
+		It("should render sampling fallback ratio and debug when set on the Signal Control config [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                     true,
 					SamplingEnabled:             true,
 					SamplingFallbackSampleRatio: "0.5",
@@ -2655,7 +2655,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:         true,
 					SamplingEnabled: true,
 					Endpoint:        "decision-maker.example.com:443",
@@ -2678,7 +2678,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                       true,
 					SamplingEnabled:               true,
 					SamplingReservoirMaxDiskBytes: 2 * 1024 * 1024 * 1024,
@@ -2706,7 +2706,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:     true,
 					Endpoint:    "decision-maker.example.com:443",
 					ApiEndpoint: "https://control-plane-api.dash0.com",
@@ -2723,12 +2723,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				To(BeEmpty(), "dash0redmetrics should render as `{}` when no tunables set")
 		})
 
-		It("should render dash0redmetrics tunables when set on the IE config [DaemonSet]", func() {
+		It("should render dash0redmetrics tunables when set on the Signal Control config [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
-				IntelligentEdge: IntelligentEdgeConfig{
+				SignalControl: SignalControlConfig{
 					Enabled:                            true,
 					RedMetricsMaxTimeSeries:            ptr.To(int32(12000)),
 					RedMetricsAdditionalSpanAttributes: []string{"http.route", "http.request.method"},
@@ -3241,7 +3241,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			selfMonitoringEnabled         bool
 			prometheusCrdSupportEnabled   bool
 			operatorManagerDeploymentName string
-			intelligentEdge               IntelligentEdgeConfig
+			signalControl                 SignalControlConfig
 			expectedExpression            string
 		}
 
@@ -3255,7 +3255,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
-				IntelligentEdge:             testConfig.intelligentEdge,
+				SignalControl:               testConfig.signalControl,
 			}
 			expression := renderOttlNamespaceFilter(
 				testConfig.monitoredNamespaces,
@@ -3379,12 +3379,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n",
 			}),
-			Entry("with no namespaces, self-monitoring enabled, intelligent edge with Edge Proxy enabled", ottlFilterExpressionTestConfig{
+			Entry("with no namespaces, self-monitoring enabled, Signal Control with Edge Proxy enabled", ottlFilterExpressionTestConfig{
 				monitoredNamespaces:           nil,
 				selfMonitoringEnabled:         true,
 				prometheusCrdSupportEnabled:   false,
 				operatorManagerDeploymentName: OperatorManagerDeploymentName,
-				intelligentEdge: IntelligentEdgeConfig{
+				signalControl: SignalControlConfig{
 					Enabled:          true,
 					EdgeProxyEnabled: true,
 					EdgeProxyName:    namePrefix + "-edge-proxy",
@@ -3399,12 +3399,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
 					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
 			}),
-			Entry("intelligent edge enabled but Edge Proxy disabled - no Edge Proxy exclusion", ottlFilterExpressionTestConfig{
+			Entry("Signal Control enabled but Edge Proxy disabled - no Edge Proxy exclusion", ottlFilterExpressionTestConfig{
 				monitoredNamespaces:           nil,
 				selfMonitoringEnabled:         true,
 				prometheusCrdSupportEnabled:   false,
 				operatorManagerDeploymentName: OperatorManagerDeploymentName,
-				intelligentEdge: IntelligentEdgeConfig{
+				signalControl: SignalControlConfig{
 					Enabled:          true,
 					EdgeProxyEnabled: false,
 					EdgeProxyName:    namePrefix + "-edge-proxy",
@@ -3422,7 +3422,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				selfMonitoringEnabled:         false,
 				prometheusCrdSupportEnabled:   false,
 				operatorManagerDeploymentName: OperatorManagerDeploymentName,
-				intelligentEdge: IntelligentEdgeConfig{
+				signalControl: SignalControlConfig{
 					Enabled:          true,
 					EdgeProxyEnabled: true,
 					EdgeProxyName:    namePrefix + "-edge-proxy",
@@ -3436,7 +3436,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			selfMonitoringEnabled         bool
 			prometheusCrdSupportEnabled   bool
 			operatorManagerDeploymentName string
-			intelligentEdge               IntelligentEdgeConfig
+			signalControl                 SignalControlConfig
 			resourceAttributes            map[string]string
 			expectedToBeDropped           bool
 		}
@@ -3451,7 +3451,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				PrometheusCrdSupportEnabled: testConfig.prometheusCrdSupportEnabled,
 				TargetAllocatorNamePrefix:   TargetAllocatorPrefixTest,
-				IntelligentEdge:             testConfig.intelligentEdge,
+				SignalControl:               testConfig.signalControl,
 			}
 			expression := renderOttlNamespaceFilter(testConfig.monitoredNamespaces, colConfig)
 
@@ -3654,13 +3654,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					},
 					expectedToBeDropped: true,
 				}),
-			Entry("Edge Proxy metrics are not dropped when self-monitoring and intelligent edge are enabled",
+			Entry("Edge Proxy metrics are not dropped when self-monitoring and Signal Control are enabled",
 				ottlFilterEvaluationTestConfig{
 					monitoredNamespaces:           []string{namespace1, namespace2},
 					selfMonitoringEnabled:         true,
 					prometheusCrdSupportEnabled:   false,
 					operatorManagerDeploymentName: OperatorManagerDeploymentName,
-					intelligentEdge: IntelligentEdgeConfig{
+					signalControl: SignalControlConfig{
 						Enabled:          true,
 						EdgeProxyEnabled: true,
 						EdgeProxyName:    namePrefix + "-edge-proxy",
@@ -3677,7 +3677,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					selfMonitoringEnabled:         true,
 					prometheusCrdSupportEnabled:   false,
 					operatorManagerDeploymentName: OperatorManagerDeploymentName,
-					intelligentEdge: IntelligentEdgeConfig{
+					signalControl: SignalControlConfig{
 						Enabled:          true,
 						EdgeProxyEnabled: true,
 						EdgeProxyName:    namePrefix + "-edge-proxy",
@@ -3688,13 +3688,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					},
 					expectedToBeDropped: true,
 				}),
-			Entry("Edge Proxy metrics are dropped when Edge Proxy is disabled in intelligent edge config",
+			Entry("Edge Proxy metrics are dropped when Edge Proxy is disabled in Signal Control config",
 				ottlFilterEvaluationTestConfig{
 					monitoredNamespaces:           []string{namespace1, namespace2},
 					selfMonitoringEnabled:         true,
 					prometheusCrdSupportEnabled:   false,
 					operatorManagerDeploymentName: OperatorManagerDeploymentName,
-					intelligentEdge: IntelligentEdgeConfig{
+					signalControl: SignalControlConfig{
 						Enabled:          true,
 						EdgeProxyEnabled: false,
 						EdgeProxyName:    namePrefix + "-edge-proxy",

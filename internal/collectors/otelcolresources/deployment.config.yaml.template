@@ -601,10 +601,10 @@ service:
 {{- if .InternalTelemetryEnabled }}
   telemetry:
     resource:
-    {{- if .IntelligentEdge.Enabled }}
-      # IE collector image (v2.0.1940 at time of writing) ships OTel core v0.150.0, which only
+    {{- if .SignalControl.Enabled }}
+      # Signal Control collector image (v2.0.1940 at time of writing) ships OTel core v0.150.0, which only
       # accepts the legacy flat-map schema for `service.telemetry.resource`. The declarative
-      # attributes block (below, in the else branch) was added in OTel core v0.151.0. Once the IE
+      # attributes block (below, in the else branch) was added in OTel core v0.151.0. Once the Signal Control
       # collector image bumps to v0.151.0+, drop this branch and keep only the declarative block.
       "k8s.cluster.uid": "{{- .PseudoClusterUid }}"
       {{- if .ClusterName }}

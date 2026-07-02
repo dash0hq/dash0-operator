@@ -56,10 +56,10 @@ TARGET_ALLOCATOR_IMAGE_TAG ?= $(IMAGE_TAG)
 TARGET_ALLOCATOR_IMAGE ?= $(TARGET_ALLOCATOR_IMAGE_REPOSITORY):$(TARGET_ALLOCATOR_IMAGE_TAG)
 TARGET_ALLOCATOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
-INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)intelligent-edge-collector
-INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
-INTELLIGENT_EDGE_COLLECTOR_IMAGE ?= $(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY):$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG)
-INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)signal-control-collector
+SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
+SIGNAL_CONTROL_COLLECTOR_IMAGE ?= $(SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY):$(SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG)
+SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
 EDGE_PROXY_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)edge-proxy
 EDGE_PROXY_IMAGE_TAG ?= $(IMAGE_TAG)
@@ -403,11 +403,11 @@ dash0-api-mock-image: ## Build the Dash0 API mock container image, which is used
 	@$(call build_container_image,$(DASH0_API_MOCK_IMAGE_REPOSITORY),$(DASH0_API_MOCK_IMAGE_TAG),test/e2e/dash0-api-mock)
 
 .PHONY: decision-maker-mock-image
-decision-maker-mock-image: ## Build the Decision Maker mock container image, which is used in end-to-end tests for IE.
+decision-maker-mock-image: ## Build the Decision Maker mock container image, which is used in end-to-end tests for Signal Control.
 	@$(call build_container_image,$(DECISION_MAKER_MOCK_IMAGE_REPOSITORY),$(DECISION_MAKER_MOCK_IMAGE_TAG),test/e2e/decision-maker-mock)
 
 .PHONY: control-plane-mock-image
-control-plane-mock-image: ## Build the Control Plane mock container image, which is used in end-to-end tests for IE.
+control-plane-mock-image: ## Build the Control Plane mock container image, which is used in end-to-end tests for Signal Control.
 	@$(call build_container_image,$(CONTROL_PLANE_MOCK_IMAGE_REPOSITORY),$(CONTROL_PLANE_MOCK_IMAGE_TAG),test/e2e/control-plane-mock)
 
 .PHONY: outbound-connector-mock-image
@@ -659,9 +659,9 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 		--set operator.targetAllocatorImage.repository=$(TARGET_ALLOCATOR_IMAGE_REPOSITORY) \
 		--set operator.targetAllocatorImage.tag=$(TARGET_ALLOCATOR_IMAGE_TAG) \
 		--set operator.targetAllocatorImage.pullPolicy=$(TARGET_ALLOCATOR_IMAGE_PULL_POLICY) \
-		--set operator.intelligentEdgeCollectorImage.repository=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_REPOSITORY) \
-		--set operator.intelligentEdgeCollectorImage.tag=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_TAG) \
-		--set operator.intelligentEdgeCollectorImage.pullPolicy=$(INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY) \
+		--set operator.signalControlCollectorImage.repository=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_REPOSITORY) \
+		--set operator.signalControlCollectorImage.tag=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_TAG) \
+		--set operator.signalControlCollectorImage.pullPolicy=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_PULL_POLICY) \
 		--set operator.edgeProxyImage.repository=$(EDGE_PROXY_IMAGE_REPOSITORY) \
 		--set operator.edgeProxyImage.tag=$(EDGE_PROXY_IMAGE_TAG) \
 		--set operator.edgeProxyImage.pullPolicy=$(EDGE_PROXY_IMAGE_PULL_POLICY) \

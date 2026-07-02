@@ -123,7 +123,7 @@ type collectorConfigurationTemplateValues struct {
 	DebugVerbosityDetailed                           bool
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
-	IntelligentEdge                                  IntelligentEdgeConfig
+	SignalControl                                    SignalControlConfig
 }
 
 type KubeletStatsReceiverConfig struct {
@@ -288,7 +288,7 @@ func assembleCollectorConfigMap(
 			DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
 			EnableProfExtension:                              config.EnableProfExtension,
 			ProfilingEnabled:                                 config.ProfilingEnabled,
-			IntelligentEdge:                                  config.IntelligentEdge,
+			SignalControl:                                    config.SignalControl,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
@@ -365,10 +365,10 @@ func renderOttlNamespaceFilter(
 	// Do not drop metrics about the Edge Proxy pod (kubeletstats / k8s_cluster receivers) nor OTLP-pushed metrics from
 	// the Edge Proxy itself when self-monitoring is enabled.
 	edgeProxyExclusion := ""
-	if selfMonitoringEnabled && config.IntelligentEdge.Enabled && config.IntelligentEdge.EdgeProxyEnabled {
+	if selfMonitoringEnabled && config.SignalControl.Enabled && config.SignalControl.EdgeProxyEnabled {
 		edgeProxyExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
 			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
-			config.IntelligentEdge.EdgeProxyName,
+			config.SignalControl.EdgeProxyName,
 			config.OperatorNamespace,
 		)
 	}

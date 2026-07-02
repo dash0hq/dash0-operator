@@ -35,7 +35,7 @@ func main() {
 	})
 
 	// URL templates consumed by the dash0settingsonedgeextension in the
-	// IE-enabled collector. See:
+	// Signal Control-enabled collector. See:
 	//   /components/collector/extension/dash0settingsonedgeextension/settings_provider.go
 	//   /components/collector/extension/dash0settingsonedgeextension/pattern_provider.go
 	// in the dash0 repo. Returning empty payloads is enough to keep the
