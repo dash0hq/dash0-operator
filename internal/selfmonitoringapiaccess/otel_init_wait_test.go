@@ -86,6 +86,98 @@ var _ = Describe(
 					},
 				)
 
+				It("should include resolved gRPC export headers in the OTel SDK config", func() {
+					oTelSdkStarter.SetOTelSdkParameters(
+						ctx,
+						dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: EndpointGrpcTest,
+								Headers: []dash0common.Header{
+									{
+										Name:  "Plain",
+										Value: "plain-value",
+									},
+									{
+										// A secret-backed header: the literal value has been resolved upstream by
+										// ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration. ValueFrom
+										// is still present but ignored by the in-process SDK path.
+										Name:  "Authorization",
+										Value: AuthorizationTokenTestFromSecret,
+										ValueFrom: &dash0common.HeaderValueFrom{
+											SecretKeyRef: &dash0common.SecretKeySelector{
+												Name: SecretRefTest.Name,
+												Key:  SecretRefTest.Key,
+											},
+										},
+									},
+								},
+							},
+						},
+						nil,
+						ClusterUidTest,
+						ClusterNameTest,
+						OperatorNamespace,
+						OperatorManagerDeploymentUID,
+						OperatorManagerDeploymentName,
+						OperatorVersionTest,
+						false,
+						logger,
+					)
+					config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+					Expect(config).NotTo(BeNil())
+					Expect(config.Endpoint).To(Equal(EndpointGrpcTest))
+					Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
+					Expect(config.Headers).To(HaveLen(2))
+					Expect(config.Headers["Plain"]).To(Equal("plain-value"))
+					Expect(config.Headers["Authorization"]).To(Equal(AuthorizationTokenTestFromSecret))
+				})
+
+				It("should include resolved HTTP export headers in the OTel SDK config", func() {
+					oTelSdkStarter.SetOTelSdkParameters(
+						ctx,
+						dash0common.Export{
+							Http: &dash0common.HttpConfiguration{
+								Endpoint: EndpointHttpTest,
+								Headers: []dash0common.Header{
+									{
+										Name:  "Plain",
+										Value: "plain-value",
+									},
+									{
+										// A secret-backed header: the literal value has been resolved upstream by
+										// ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration. ValueFrom
+										// is still present but ignored by the in-process SDK path.
+										Name:  "Authorization",
+										Value: AuthorizationTokenTestFromSecret,
+										ValueFrom: &dash0common.HeaderValueFrom{
+											SecretKeyRef: &dash0common.SecretKeySelector{
+												Name: SecretRefTest.Name,
+												Key:  SecretRefTest.Key,
+											},
+										},
+									},
+								},
+							},
+						},
+						nil,
+						ClusterUidTest,
+						ClusterNameTest,
+						OperatorNamespace,
+						OperatorManagerDeploymentUID,
+						OperatorManagerDeploymentName,
+						OperatorVersionTest,
+						false,
+						logger,
+					)
+					config := readFromChannelWithTimeout(oTelSdkStarter, mockChannel)
+					Expect(config).NotTo(BeNil())
+					Expect(config.Endpoint).To(Equal(EndpointGrpcTest))
+					Expect(config.Protocol).To(Equal(common.ProtocolGrpc))
+					Expect(config.Headers).To(HaveLen(2))
+					Expect(config.Headers["Plain"]).To(Equal("plain-value"))
+					Expect(config.Headers["Authorization"]).To(Equal(AuthorizationTokenTestFromSecret))
+				})
+
 				It(
 					"should not start when there is an export but no token", func() {
 						oTelSdkStarter.SetOTelSdkParameters(

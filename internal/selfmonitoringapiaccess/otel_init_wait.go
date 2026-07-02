@@ -210,6 +210,9 @@ func convertExportConfigurationToOTelSDKConfig(
 			Headers:  headers,
 		}
 	} else if selfMonitoringExport.Grpc != nil {
+		// Header values sourced from a secret (valueFrom.secretKeyRef) have already been resolved to their literal
+		// value by ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration, since the in-process OTel SDK
+		// configured here cannot resolve ${env:...} references (unlike the collector).
 		endpointAndHeaders = &EndpointAndHeaders{
 			Endpoint: selfMonitoringExport.Grpc.Endpoint,
 			Protocol: common.ProtocolGrpc,
@@ -221,6 +224,7 @@ func convertExportConfigurationToOTelSDKConfig(
 		// if selfMonitoringExport.Http.Encoding == dash0common.Json {
 		// 	 protocol = common.ProtocolHttpJson
 		// }
+		// See the note on the gRPC branch above regarding secret-backed header values.
 		endpointAndHeaders = &EndpointAndHeaders{
 			Endpoint: selfMonitoringExport.Http.Endpoint,
 			Protocol: protocol,
@@ -246,9 +250,14 @@ func convertExportConfigurationToOTelSDKConfig(
 	if len(endpointAndHeaders.Headers) > 0 {
 		headers := make(map[string]string)
 		for _, header := range endpointAndHeaders.Headers {
+			if header.Name == "" {
+				continue
+			}
 			headers[header.Name] = header.Value
 		}
-		oTelSdkConfig.Headers = headers
+		if len(headers) > 0 {
+			oTelSdkConfig.Headers = headers
+		}
 	}
 	if oTelSdkConfigInput.developmentMode {
 		oTelSdkConfig.LogLevel = "debug"

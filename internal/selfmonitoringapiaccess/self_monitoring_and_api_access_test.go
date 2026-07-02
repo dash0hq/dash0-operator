@@ -212,6 +212,132 @@ var _ = Describe(
 						},
 					),
 					Entry(
+						"should resolve a secret-backed gRPC header value to its literal value",
+						resourceToSelfMonitoringTestConfig{
+							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
+								Exports: []dash0common.Export{
+									{
+										Grpc: &dash0common.GrpcConfiguration{
+											Endpoint: EndpointGrpcTest,
+											Headers: []dash0common.Header{
+												{
+													Name: "Authorization",
+													ValueFrom: &dash0common.HeaderValueFrom{
+														SecretKeyRef: &dash0common.SecretKeySelector{
+															Name: SecretRefTest.Name,
+															Key:  SecretRefTest.Key,
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+							secret: DefaultSecret(),
+							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
+								SelfMonitoringEnabled: true,
+								Export: dash0common.Export{
+									Grpc: &dash0common.GrpcConfiguration{
+										Endpoint: EndpointGrpcTest,
+										Headers: []dash0common.Header{
+											{
+												Name:  "Authorization",
+												Value: AuthorizationTokenTestFromSecret,
+												ValueFrom: &dash0common.HeaderValueFrom{
+													SecretKeyRef: &dash0common.SecretKeySelector{
+														Name: SecretRefTest.Name,
+														Key:  SecretRefTest.Key,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					),
+					Entry(
+						"should resolve a secret-backed HTTP header value to its literal value",
+						resourceToSelfMonitoringTestConfig{
+							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
+								Exports: []dash0common.Export{
+									{
+										Http: &dash0common.HttpConfiguration{
+											Endpoint: EndpointHttpTest,
+											Encoding: dash0common.Proto,
+											Headers: []dash0common.Header{
+												{
+													Name: "X-Api-Key",
+													ValueFrom: &dash0common.HeaderValueFrom{
+														SecretKeyRef: &dash0common.SecretKeySelector{
+															Name: SecretRefTest.Name,
+															Key:  SecretRefTest.Key,
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+							secret: DefaultSecret(),
+							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
+								SelfMonitoringEnabled: true,
+								Export: dash0common.Export{
+									Http: &dash0common.HttpConfiguration{
+										Endpoint: EndpointHttpTest,
+										Encoding: dash0common.Proto,
+										Headers: []dash0common.Header{
+											{
+												Name:  "X-Api-Key",
+												Value: AuthorizationTokenTestFromSecret,
+												ValueFrom: &dash0common.HeaderValueFrom{
+													SecretKeyRef: &dash0common.SecretKeySelector{
+														Name: SecretRefTest.Name,
+														Key:  SecretRefTest.Key,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					),
+					Entry(
+						"should disable self-monitoring if a secret-backed header value cannot be resolved",
+						resourceToSelfMonitoringTestConfig{
+							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(true)},
+								Exports: []dash0common.Export{
+									{
+										Grpc: &dash0common.GrpcConfiguration{
+											Endpoint: EndpointGrpcTest,
+											Headers: []dash0common.Header{
+												{
+													Name: "Authorization",
+													ValueFrom: &dash0common.HeaderValueFrom{
+														SecretKeyRef: &dash0common.SecretKeySelector{
+															Name: "does-not-exist",
+															Key:  "key",
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+							// no secret is created, so the secret ref cannot be resolved
+							expectedSelfMonitoringConfiguration: SelfMonitoringConfiguration{
+								SelfMonitoringEnabled: false,
+							},
+						},
+					),
+					Entry(
 						"multiple exports: should use the first Dash0 export for self-monitoring",
 						resourceToSelfMonitoringTestConfig{
 							operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{

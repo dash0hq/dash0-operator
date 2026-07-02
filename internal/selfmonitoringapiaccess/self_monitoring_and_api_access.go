@@ -140,6 +140,9 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	}
 	if export.Grpc != nil {
 		return convertResourceToGrpcExportConfiguration(
+			ctx,
+			k8sClient,
+			operatorNamespace,
 			&export,
 			selfMonitoringIsEnabled,
 			logger,
@@ -147,8 +150,12 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	}
 	if export.Http != nil {
 		return convertResourceToHttpExportConfiguration(
+			ctx,
+			k8sClient,
+			operatorNamespace,
 			&export,
 			selfMonitoringIsEnabled,
+			logger,
 		)
 	}
 	return SelfMonitoringConfiguration{},
@@ -194,6 +201,9 @@ func convertResourceToDash0ExportConfiguration(
 }
 
 func convertResourceToGrpcExportConfiguration(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
 	export *dash0common.Export,
 	selfMonitoringEnabled bool,
 	logger logd.Logger,
@@ -208,20 +218,38 @@ func convertResourceToGrpcExportConfiguration(
 	}
 
 	grpcExport := export.Grpc
+	resolvedHeaders, err := resolveSelfMonitoringHeaderSecrets(
+		ctx,
+		k8sClient,
+		operatorNamespace,
+		grpcExport.Headers,
+		logger,
+	)
+	if err != nil {
+		logger.Warn(
+			"Self-monitoring is enabled but a header value sourced from a secret could not be resolved. " +
+				"Self-monitoring telemetry will not be sent.",
+		)
+		return SelfMonitoringConfiguration{}, nil
+	}
 	return SelfMonitoringConfiguration{
 		SelfMonitoringEnabled: selfMonitoringEnabled,
 		Export: dash0common.Export{
 			Grpc: &dash0common.GrpcConfiguration{
 				Endpoint: grpcExport.Endpoint,
-				Headers:  grpcExport.Headers,
+				Headers:  resolvedHeaders,
 			},
 		},
 	}, nil
 }
 
 func convertResourceToHttpExportConfiguration(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
 	export *dash0common.Export,
 	selfMonitoringEnabled bool,
+	logger logd.Logger,
 ) (SelfMonitoringConfiguration, error) {
 	httpExport := export.Http
 	if httpExport.Encoding == dash0common.Json {
@@ -229,16 +257,64 @@ func convertResourceToHttpExportConfiguration(
 			SelfMonitoringEnabled: false,
 		}, fmt.Errorf("using an HTTP exporter with JSON encoding self-monitoring is not supported")
 	}
+	resolvedHeaders, err := resolveSelfMonitoringHeaderSecrets(ctx, k8sClient, operatorNamespace, httpExport.Headers, logger)
+	if err != nil {
+		logger.Warn(
+			"Self-monitoring is enabled but a header value sourced from a secret could not be resolved. " +
+				"Self-monitoring telemetry will not be sent.",
+		)
+		return SelfMonitoringConfiguration{}, nil
+	}
 	return SelfMonitoringConfiguration{
 		SelfMonitoringEnabled: selfMonitoringEnabled,
 		Export: dash0common.Export{
 			Http: &dash0common.HttpConfiguration{
 				Endpoint: httpExport.Endpoint,
-				Headers:  httpExport.Headers,
+				Headers:  resolvedHeaders,
 				Encoding: httpExport.Encoding,
 			},
 		},
 	}, nil
+}
+
+// resolveSelfMonitoringHeaderSecrets returns a copy of headers with every secret-backed header value
+// (valueFrom.secretKeyRef) resolved to its literal value, fetched from the referenced secret in the operator namespace.
+// The resolved value is stored in Value while ValueFrom is retained, because the resulting configuration is consumed by
+// two different code paths: the operator manager's in-process OTel SDK reads the literal Value (it cannot resolve
+// ${env:...} references), while the collector's self-monitoring pipeline keys off ValueFrom to render a ${env:...}
+// reference (the secret is injected into the collector pod as an environment variable). Headers with a literal value
+// are passed through unchanged. This mirrors how the Dash0 auth token is resolved once (see GetAuthTokenForDash0Export)
+// and then consumed differently by both paths.
+func resolveSelfMonitoringHeaderSecrets(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+	headers []dash0common.Header,
+	logger logd.Logger,
+) ([]dash0common.Header, error) {
+	if len(headers) == 0 {
+		return headers, nil
+	}
+	resolved := make([]dash0common.Header, len(headers))
+	for i, header := range headers {
+		resolved[i] = header
+		if header.ValueFrom == nil || header.ValueFrom.SecretKeyRef == nil {
+			continue
+		}
+		value, err := getSecretValue(
+			ctx,
+			k8sClient,
+			operatorNamespace,
+			header.ValueFrom.SecretKeyRef,
+			fmt.Sprintf("to resolve the value for header \"%s\"", header.Name),
+			logger,
+		)
+		if err != nil {
+			return nil, err
+		}
+		resolved[i].Value = value
+	}
+	return resolved, nil
 }
 
 func EnableSelfMonitoringInCollectorDaemonSet(
@@ -673,9 +749,8 @@ func GetAuthTokenForDash0Export(
 		if err != nil {
 			logger.Error(err, "cannot exchange secret ref for token")
 			return nil, err
-		} else {
-			return token, nil
 		}
+		return token, nil
 	} else if dash0Export.Authorization.Token != nil &&
 		*dash0Export.Authorization.Token != "" {
 		// The operator configuration resource uses a token literal to provide the Dash0 auth token
@@ -697,35 +772,59 @@ func ExchangeSecretRefForToken(
 		return nil, fmt.Errorf("dash0Config has no secret ref")
 	}
 	secretRef := dash0Config.Authorization.SecretRef
-	var dash0AuthTokenSecret corev1.Secret
+	token, err := getSecretValue(
+		ctx,
+		k8sClient,
+		operatorNamespace,
+		&dash0common.SecretKeySelector{
+			Name: secretRef.Name,
+			Key:  secretRef.Key,
+		},
+		"for Dash0 self-monitoring/API access",
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+// getSecretValue fetches the value stored under secretKeyRef.Key in the secret secretKeyRef.Name in the operator
+// namespace. It is used to resolve header values that are sourced from a Kubernetes secret for the operator manager's
+// in-process self-monitoring OTel SDK, which (unlike the collector) cannot use ${env:...} references.
+func getSecretValue(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+	secretRef *dash0common.SecretKeySelector,
+	purpose string,
+	logger logd.Logger,
+) (string, error) {
+	var secret corev1.Secret
 	if err := k8sClient.Get(
 		ctx,
-		client.ObjectKey{
-			Name:      secretRef.Name,
-			Namespace: operatorNamespace,
-		},
-		&dash0AuthTokenSecret,
+		client.ObjectKey{Name: secretRef.Name, Namespace: operatorNamespace},
+		&secret,
 	); err != nil {
 		msg := fmt.Sprintf(
-			"failed to fetch secret with name %s in namespace %s for Dash0 self-monitoring/API access",
+			"failed to fetch secret with name %s in namespace %s %s",
 			secretRef.Name,
 			operatorNamespace,
+			purpose,
 		)
 		logger.Error(err, msg)
-		return nil, fmt.Errorf(msg+": %w", err)
-	} else {
-		rawToken, hasToken := dash0AuthTokenSecret.Data[secretRef.Key]
-		if !hasToken || rawToken == nil || len(rawToken) == 0 {
-			err = fmt.Errorf(
-				"secret \"%s/%s\" does not contain key \"%s\"",
-				operatorNamespace,
-				secretRef.Name,
-				secretRef.Key,
-			)
-			logger.Error(err, "secret does not contain the expected key")
-			return nil, err
-		}
-		decodedToken := string(rawToken)
-		return &decodedToken, nil
+		return "", fmt.Errorf(msg+": %w", err)
 	}
+	rawValue, hasKey := secret.Data[secretRef.Key]
+	if !hasKey || len(rawValue) == 0 {
+		err := fmt.Errorf(
+			"secret \"%s/%s\" does not contain key \"%s\"",
+			operatorNamespace,
+			secretRef.Name,
+			secretRef.Key,
+		)
+		logger.Error(err, "secret does not contain the expected key")
+		return "", err
+	}
+	return string(rawValue), nil
 }
