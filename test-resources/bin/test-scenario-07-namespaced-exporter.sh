@@ -31,6 +31,14 @@ additional_namespaces="false"
 source "$scripts_lib/util"
 
 load_env_file
+if [[ -z "${DASH0_NAMESPACED_AUTHORIZATION_TOKEN:-}" ]]; then
+  echo DASH0_NAMESPACED_AUTHORIZATION_TOKEN is required
+  exit 1
+fi
+if [[ -z "${DASH0_NAMESPACED_DATASET:-}" ]]; then
+  echo DASH0_NAMESPACED_DATASET is required
+  exit 1
+fi
 verify_kubectx
 setup_test_environment "$target_namespace"
 
