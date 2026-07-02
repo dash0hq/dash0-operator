@@ -6,6 +6,7 @@ package common // import "github.com/dash0hq/dash0-operator/images/pkg/common"
 import (
 	"context"
 	"log"
+	"net/url"
 	"os"
 	"regexp"
 	"sync"
@@ -50,6 +51,12 @@ const (
 	ProtocolGrpc         = "grpc"
 	ProtocolHttpProtobuf = "http/protobuf"
 	ProtocolHttpJson     = "http/json"
+
+	// nolint:lll
+	// default OTLP signal paths, see
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#endpoint-urls-for-otlphttp
+	otlpLogsDefaultSignalPath    = "/v1/logs"
+	otlpMetricsDefaultSignalPath = "/v1/metrics"
 )
 
 var (
@@ -317,11 +324,17 @@ func createMetricExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkC
 	case ProtocolHttpProtobuf:
 		var options []otlpmetrichttp.Option
 		if EndpointHasScheme(oTelSdkConfig.Endpoint) {
+			fullUrl, err := appendSignalSpecificPath(oTelSdkConfig.Endpoint, otlpMetricsDefaultSignalPath)
+			if err != nil {
+				return nil
+			}
 			log.Printf(
 				"Using an HTTP export for self-monitoring metrics (via WithEndpointURL): %s \n",
-				oTelSdkConfig.Endpoint,
+				fullUrl,
 			)
-			options = []otlpmetrichttp.Option{otlpmetrichttp.WithEndpointURL(oTelSdkConfig.Endpoint)}
+			// If there is an explicit scheme, we need to use WithEndpointURL (instead of WithEndpoint), otherwise the scheme
+			// will be ignored.
+			options = []otlpmetrichttp.Option{otlpmetrichttp.WithEndpointURL(fullUrl)}
 		} else {
 			log.Printf("Using an HTTP export for self-monitoring metrics (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
 			options = []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(oTelSdkConfig.Endpoint)}
@@ -371,8 +384,15 @@ func createLogExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConf
 	case ProtocolHttpProtobuf:
 		var options []otlploghttp.Option
 		if EndpointHasScheme(oTelSdkConfig.Endpoint) {
-			log.Printf("Using an HTTP export for logs self-monitoring (via WithEndpointURL): %s \n", oTelSdkConfig.Endpoint)
-			options = []otlploghttp.Option{otlploghttp.WithEndpointURL(oTelSdkConfig.Endpoint)}
+			// If there is an explicit scheme, we need to use WithEndpointURL (instead of WithEndpoint), otherwise the scheme
+			// will be ignored.
+			fullUrl, err := appendSignalSpecificPath(oTelSdkConfig.Endpoint, otlpLogsDefaultSignalPath)
+			if err != nil {
+				return nil
+			}
+			log.Printf("Using an HTTP export for logs self-monitoring (via WithEndpointURL): %s \n", fullUrl)
+			options = []otlploghttp.Option{otlploghttp.WithEndpointURL(fullUrl)}
+
 		} else {
 			log.Printf("Using an HTTP export for logs self-monitoring (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
 			options = []otlploghttp.Option{otlploghttp.WithEndpoint(oTelSdkConfig.Endpoint)}
@@ -467,6 +487,29 @@ func assembleResource(
 		log.Printf("Cannot initialize the OpenTelemetry resource: %v\n", err)
 	}
 	return resource
+}
+
+func appendSignalSpecificPath(baseUrl string, signalSpecificPath string) (string, error) {
+	// nolint:lll
+	// The OTLP ingress endpoint configured via the Dash0OperatorConfiguration resource is assumed to be the *base*
+	// ingress URL. The HTTP ingress endpoints per signal are almost always base plus /v1/$signal (e.g. plus /v1/logs,
+	// /v1/metrics, /v1/traces), by convention. WithEndpointURL does not append th per-signal URL path by default, and
+	// this is by design. (See https://github.com/open-telemetry/opentelemetry-go/issues/8537 for details.)
+	// Hence, we need to append it here explicitly when using WithEndpointURL.
+	// We also use the configured URL to set OTEL_EXPORTER_OTLP_ENDPOINT for various containers, which is subject to the
+	// same behavior of appending /v1/$signal, so this is consistent with how other components are treating the
+	// configured URL, see
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#endpoint-urls-for-otlphttp.
+	//
+	// We currently do not support HTTP backends that use ingress endpoints without the /v1/$signal paths, this would
+	// require an additional explicit configuration option in api/operator/common/common_shared_types.go#HttpConfiguration
+	// (and changes to how we configure the HTTP endpoint via environment variables.)
+	fullUrl, err := url.JoinPath(baseUrl, signalSpecificPath)
+	if err != nil {
+		log.Printf("Cannot parse URL for the OTLP HTTP exporter: %v\n", err)
+		return "", err
+	}
+	return fullUrl, nil
 }
 
 // ShutDownOTelSdk calls the Shutdown function on the sdkMeterProvider, and removes the references to the

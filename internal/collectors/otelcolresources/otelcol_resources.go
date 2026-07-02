@@ -111,6 +111,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			SelfMonitoringEnabled: false,
 		}
 	}
+	// ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration might have resolved Kubernetes secrets to literal
+	// values, which is relevant for the self-monitoring setup within the operator manager process. The OTel collector
+	// resources should not have access to resolved secrets, they attach the secret ref as an env var to the container
+	selfMonitoringConfiguration.ResolvedSecretHeaderValues = nil
 
 	prometheusCrdSupportEnabled := false
 	clusterName := ""

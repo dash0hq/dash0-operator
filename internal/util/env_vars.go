@@ -47,6 +47,29 @@ func CreateEnvVarForAuthorization(
 	}
 }
 
+// CreateEnvVarForSecretKeySelector creates an environment variable that sources its value from the given Kubernetes
+// secret. This is used to inject header values that are sourced from a secret into the collector pod, which are then
+// referenced from the collector configuration via ${env:envVarName}.
+func CreateEnvVarForSecretKeySelector(
+	secretKeyRef *dash0common.SecretKeySelector,
+	envVarName string,
+) (corev1.EnvVar, error) {
+	if secretKeyRef == nil || secretKeyRef.Name == "" || secretKeyRef.Key == "" {
+		return corev1.EnvVar{}, fmt.Errorf("no valid secretKeyRef (name and key) provided for env var %s", envVarName)
+	}
+	return corev1.EnvVar{
+		Name: envVarName,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: secretKeyRef.Name,
+				},
+				Key: secretKeyRef.Key,
+			},
+		},
+	}, nil
+}
+
 func GetEnvVar(container *corev1.Container, name string) *corev1.EnvVar {
 	if container == nil {
 		return nil

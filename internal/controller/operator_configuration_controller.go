@@ -279,6 +279,7 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 			ctx,
 			selfMonitoringAndApiAccessConfiguration.Export,
 			selfMonitoringAndApiAccessConfiguration.Token,
+			selfMonitoringAndApiAccessConfiguration.ResolvedSecretHeaderValues,
 			r.pseudoClusterUid,
 			clusterName,
 			r.operatorDeploymentNamespace,
