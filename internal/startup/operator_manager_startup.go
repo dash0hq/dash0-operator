@@ -122,6 +122,7 @@ type environmentVariables struct {
 type commandLineArguments struct {
 	isUninstrumentAll                                                     bool
 	autoOperatorConfigurationResourceAvailableCheck                       bool
+	webhookEndpointReadyCheck                                             bool
 	allowlistSynchronizerReadyCheck                                       bool
 	allowlistVersion                                                      string
 	deleteAllowlistSynchronizer                                           bool
@@ -301,6 +302,13 @@ func Start() {
 		}
 		os.Exit(0)
 	}
+	if cliArgs.webhookEndpointReadyCheck {
+		if err := waitForWebhookEndpointReadiness(ctx, setupLog); err != nil {
+			setupLog.Error(err, "waiting for the Dash0 operator webhook service endpoint to become ready has failed")
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	if cliArgs.allowlistSynchronizerReadyCheck {
 		if cliArgs.allowlistVersion == "" {
 			setupLog.Error(
@@ -448,6 +456,13 @@ func defineCommandLineArguments() *commandLineArguments {
 		false,
 		"If set, the process will only wait until the Dash0 operator configuration resource has been created and "+
 			"becomes available, then exit.",
+	)
+	flag.BoolVar(
+		&cliArgs.webhookEndpointReadyCheck,
+		"dash0-webhook-endpoint-ready-check",
+		false,
+		"If set, the process will only wait until the Dash0 operator's webhook service endpoint has a port assigned "+
+			"and is marked as ready (that is, until the API server is actually able to reach the webhook), then exit.",
 	)
 	flag.BoolVar(
 		&cliArgs.allowlistSynchronizerReadyCheck,
@@ -2140,6 +2155,47 @@ func waitForOperatorConfigurationResourceAvailability(logger logd.Logger) error 
 	if err = handler.WaitForOperatorConfigurationResourceToBecomeAvailable(); err != nil {
 		logger.Error(err, "Failed to wait for the operator monitoring resource.")
 		return err
+	}
+	return nil
+}
+
+// waitForWebhookEndpointReadiness runs as a standalone process (invoked via the --dash0-webhook-endpoint-ready-check
+// flag from a Helm post-install/post-upgrade hook). It waits until the operator's webhook service endpoint has a port
+// assigned and is marked as ready, so that helm install/upgrade --wait only terminates once the API server is actually
+// able to reach the webhook. This closes the race in which an operator configuration resource is created (e.g. via
+// kubectl apply) immediately after helm returns, but before the webhook service is routable.
+func waitForWebhookEndpointReadiness(ctx context.Context, logger logd.Logger) error {
+	// Note: waiting on the EndpointSlice Ready condition reduces the probability of returning from
+	// helm install --wait before the webhook endpoint can be reached, but there is still a very small chance of being too
+	// early. kube-proxy manages service DNAT rules per-node. If the check here observes the endpoint slice as ready,
+	// it is not strictly guaranteed that kube-proxy on the API server's node has also reprogrammed iptables.
+	//
+	// If this turns out to be a problem in practice, we could make the "--wait" guarantee stronger by actually waiting
+	// until a TLS dial to the webhook Service ClusterIP connects successful, e.g. call
+	// https://dash0-operator-webhook-service.operator-namespace.svc:443/operator-configuration/mutate.
+	operatorNamespace := os.Getenv(operatorNamespaceEnvVarName)
+	if operatorNamespace == "" {
+		return fmt.Errorf("the environment variable %s is not set", operatorNamespaceEnvVarName)
+	}
+	webhookServiceName := os.Getenv(webhookServiceNameEnvVarName)
+	if webhookServiceName == "" {
+		return fmt.Errorf("the environment variable %s is not set", webhookServiceNameEnvVarName)
+	}
+
+	cfg := ctrl.GetConfigOrDie()
+	k8sClient, err := client.New(cfg, client.Options{Scheme: runtimeScheme})
+	if err != nil {
+		logger.Error(err, "failed to create Kubernetes API client for the webhook endpoint ready check")
+		return err
+	}
+
+	readyCheckExecuter := NewReadyCheckExecuter(k8sClient, operatorNamespace, webhookServiceName)
+	webhookServiceIsAvailable, err := readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, logger)
+	if err != nil {
+		return err
+	}
+	if !webhookServiceIsAvailable {
+		return fmt.Errorf("the Dash0 operator webhook service endpoint did not become ready")
 	}
 	return nil
 }

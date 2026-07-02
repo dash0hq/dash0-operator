@@ -2035,7 +2035,7 @@ trace_statements:
 					nil,
 				)
 				By("create an operator configuration resource with telemetryCollection.enabled=false")
-				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
+				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:      false,
 					Endpoint:                   defaultEndpoint,
 					Token:                      defaultToken,
@@ -2657,7 +2657,7 @@ trace_statements:
 
 			//nolint:lll
 			It("should update and reload the collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
-				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
+				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:      false,
 					Endpoint:                   defaultEndpoint,
 					Token:                      defaultToken,
@@ -2763,7 +2763,7 @@ trace_statements:
 
 			//nolint:lll
 			It("should remove the OpenTelemetry collector", func() {
-				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
+				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:      false,
 					Endpoint:                   defaultEndpoint,
 					Token:                      defaultToken,
@@ -3038,7 +3038,7 @@ trace_statements:
 						"dash0.com/custom-auto-opt-in": "\"true\"",
 					})
 
-				deployDash0OperatorConfigurationResourceWithRetry(dash0OperatorConfigurationValues{
+				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:          false,
 					Endpoint:                       defaultEndpoint,
 					Token:                          defaultToken,
