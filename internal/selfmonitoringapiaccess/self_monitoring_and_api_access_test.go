@@ -5,6 +5,8 @@ package selfmonitoringapiaccess
 
 import (
 	"context"
+	"fmt"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +16,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	exporters "github.com/dash0hq/dash0-operator/internal/util/exporters"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -671,6 +674,121 @@ var _ = Describe(
 						},
 					),
 				)
+			},
+		)
+
+		Describe(
+			"enable self-monitoring in collector containers with secret-backed headers", func() {
+
+				const (
+					secretName = "dash0-authorization-secret"
+					secretKey  = "token"
+				)
+
+				// verifySecretBackedHeaderWiring asserts that a secret-backed self-monitoring header ("Authorization")
+				// is injected as a dedicated environment variable (backed by the secret) and referenced from
+				// OTEL_EXPORTER_OTLP_HEADERS via $(...), while a literal header ("Dash0-Dataset") is rendered inline. The
+				// referenced env var must precede OTEL_EXPORTER_OTLP_HEADERS so Kubernetes can expand the reference.
+				verifySecretBackedHeaderWiring := func(container corev1.Container, protocol string) {
+					headersIdx := slices.IndexFunc(container.Env, matchOtelExporterOtlpHeadersEnvVar)
+					Expect(headersIdx).To(
+						BeNumerically(">=", 0),
+						fmt.Sprintf("container %s should have an OTEL_EXPORTER_OTLP_HEADERS env var", container.Name),
+					)
+
+					// The secret-backed header is the second header (index 1), after the literal Dash0-Dataset header.
+					expectedSecretEnvVarName := exporters.HeaderSecretEnvVarName(protocol, "self_monitoring", 1)
+					Expect(container.Env[headersIdx].Value).To(Equal(
+						fmt.Sprintf(
+							"Dash0-Dataset=default,%s=$(%s)",
+							util.AuthorizationHeaderName,
+							expectedSecretEnvVarName,
+						),
+					))
+
+					secretIdx := slices.IndexFunc(container.Env, matchEnvVar(expectedSecretEnvVarName))
+					Expect(secretIdx).To(
+						BeNumerically(">=", 0),
+						fmt.Sprintf("container %s should have the secret-backed header env var", container.Name),
+					)
+					Expect(secretIdx).To(
+						BeNumerically("<", headersIdx),
+						"the secret-backed header env var must be defined before OTEL_EXPORTER_OTLP_HEADERS",
+					)
+
+					secretEnvVar := container.Env[secretIdx]
+					Expect(secretEnvVar.Value).To(BeEmpty())
+					Expect(secretEnvVar.ValueFrom).NotTo(BeNil())
+					Expect(secretEnvVar.ValueFrom.SecretKeyRef).NotTo(BeNil())
+					Expect(secretEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(secretName))
+					Expect(secretEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(secretKey))
+				}
+
+				secretHeaders := func() []dash0common.Header {
+					return []dash0common.Header{
+						{Name: util.Dash0DatasetHeaderName, Value: "default"},
+						{
+							Name: util.AuthorizationHeaderName,
+							ValueFrom: &dash0common.HeaderValueFrom{
+								SecretKeyRef: &dash0common.SecretKeySelector{Name: secretName, Key: secretKey},
+							},
+						},
+					}
+				}
+
+				// Mimics the collector containers, including the configuration-reloader which does not carry the
+				// data-pipeline header env vars, so the self-monitoring path must inject its own.
+				collectorContainers := func() []corev1.Container {
+					return []corev1.Container{
+						{Name: "opentelemetry-collector"},
+						{Name: "configuration-reloader"},
+					}
+				}
+
+				It("should wire secret-backed headers for an HTTP export in every collector container", func() {
+					containers := collectorContainers()
+					err := enableSelfMonitoringInCollector(
+						containers,
+						SelfMonitoringConfiguration{
+							SelfMonitoringEnabled: true,
+							Export: dash0common.Export{
+								Http: &dash0common.HttpConfiguration{
+									Endpoint: EndpointHttpTest,
+									Encoding: dash0common.Proto,
+									Headers:  secretHeaders(),
+								},
+							},
+						},
+						"1.2.3",
+						false,
+					)
+					Expect(err).NotTo(HaveOccurred())
+					for _, container := range containers {
+						verifySecretBackedHeaderWiring(container, "HTTP")
+					}
+				})
+
+				It("should wire secret-backed headers for a gRPC export in every collector container", func() {
+					containers := collectorContainers()
+					err := enableSelfMonitoringInCollector(
+						containers,
+						SelfMonitoringConfiguration{
+							SelfMonitoringEnabled: true,
+							Export: dash0common.Export{
+								Grpc: &dash0common.GrpcConfiguration{
+									Endpoint: EndpointGrpcTest,
+									Headers:  secretHeaders(),
+								},
+							},
+						},
+						"1.2.3",
+						false,
+					)
+					Expect(err).NotTo(HaveOccurred())
+					for _, container := range containers {
+						verifySecretBackedHeaderWiring(container, "GRPC")
+					}
+				})
 			},
 		)
 

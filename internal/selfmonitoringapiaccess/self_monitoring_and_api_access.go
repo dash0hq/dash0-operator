@@ -48,6 +48,12 @@ const (
 	otelExporterOtlpHeadersEnvVarName  = "OTEL_EXPORTER_OTLP_HEADERS"
 	otelExporterOtlpProtocolEnvVarName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	otelLogLevelEnvVarName             = "OTEL_LOG_LEVEL"
+
+	// selfMonitoringHeaderSecretNameSuffix is the nameSuffix passed to exporters.HeaderSecretEnvVarName when deriving
+	// the names of the environment variables that back secret-sourced self-monitoring header values in the collector
+	// pods. It is distinct from the suffixes used for the data-pipeline exporters ("default_N", "ns/..._N"), so the
+	// generated names never collide with those.
+	selfMonitoringHeaderSecretNameSuffix = "self_monitoring"
 )
 
 var (
@@ -434,19 +440,34 @@ func enableSelfMonitoringInCollectorContainer(
 			container.Env =
 				slices.Delete(container.Env, headersEnvVarIdx, headersEnvVarIdx+1)
 		}
+		return
+	}
+
+	headersValue, secretHeaderEnvVars := convertHeadersToEnvVarValue(headers, headerSecretEnvVarProtocol(selfMonitoringExport))
+
+	// Header values sourced from a Kubernetes secret are injected as dedicated environment variables (backed by the
+	// secret) and referenced from OTEL_EXPORTER_OTLP_HEADERS via $(...). The collector resources do not use
+	// resolved plaintext secrets (see otelcol_resources.go), we rely on Kubernetes dependent environment variable
+	// expansion to resolve them at container startup. The referenced env vars have to be defined before
+	// OTEL_EXPORTER_OTLP_HEADERS, hence we prepend them to the container's env list. See
+	// https://kubernetes.io/docs/tasks/inject-data-application/define-interdependent-environment-variables/.
+	for _, secretHeaderEnvVar := range secretHeaderEnvVars {
+		prependOrUpdateEnvVar(container, secretHeaderEnvVar)
+	}
+	// Prepending secret env vars may have shifted the index of an existing OTEL_EXPORTER_OTLP_HEADERS env var.
+	headersEnvVarIdx = slices.IndexFunc(container.Env, matchOtelExporterOtlpHeadersEnvVar)
+
+	newOtelExporterOtlpHeadersEnvVar := corev1.EnvVar{
+		Name:  otelExporterOtlpHeadersEnvVarName,
+		Value: headersValue,
+	}
+	if headersEnvVarIdx >= 0 {
+		// update the existing environment variable
+		container.Env[headersEnvVarIdx] = newOtelExporterOtlpHeadersEnvVar
 	} else {
-		newOtelExporterOtlpHeadersEnvVar := corev1.EnvVar{
-			Name:  otelExporterOtlpHeadersEnvVarName,
-			Value: convertHeadersToEnvVarValue(headers),
-		}
-		if headersEnvVarIdx >= 0 {
-			// update the existing environment variable
-			container.Env[headersEnvVarIdx] = newOtelExporterOtlpHeadersEnvVar
-		} else {
-			// append a new environment variable
-			headersEnvVarIdx = slices.IndexFunc(container.Env, matchOtelExporterOtlpEndpointEnvVar)
-			container.Env = slices.Insert(container.Env, headersEnvVarIdx+1, newOtelExporterOtlpHeadersEnvVar)
-		}
+		// insert a new environment variable right after OTEL_EXPORTER_OTLP_ENDPOINT
+		endpointEnvVarIdx := slices.IndexFunc(container.Env, matchOtelExporterOtlpEndpointEnvVar)
+		container.Env = slices.Insert(container.Env, endpointEnvVarIdx+1, newOtelExporterOtlpHeadersEnvVar)
 	}
 }
 
@@ -468,12 +489,55 @@ func addAuthTokenToContainer(container *corev1.Container, authTokenEnvVar *corev
 	}
 }
 
-func convertHeadersToEnvVarValue(headers []dash0common.Header) string {
+// convertHeadersToEnvVarValue renders the value for the OTEL_EXPORTER_OTLP_HEADERS environment variable from the given
+// headers. Headers with a literal value are rendered as "name=value". Headers whose value is sourced from a Kubernetes
+// secret (valueFrom.secretKeyRef) are rendered as "name=$(ENV_VAR_NAME)", referencing a dedicated environment variable
+// backed by the secret; those environment variables are returned so the caller can inject them into the container.
+// Kubernetes expands the $(ENV_VAR_NAME) references at container startup (the referenced env vars must be defined
+// earlier in the container's env list), so the collector's OTel SDK receives the resolved header values without the
+// operator ever placing the plaintext secret into the collector resources.
+func convertHeadersToEnvVarValue(headers []dash0common.Header, protocol string) (string, []corev1.EnvVar) {
 	keyValuePairs := make([]string, 0, len(headers))
-	for _, header := range headers {
+	var secretHeaderEnvVars []corev1.EnvVar
+	for i, header := range headers {
+		if header.ValueFrom != nil && header.ValueFrom.SecretKeyRef != nil {
+			envVarName := exporters.HeaderSecretEnvVarName(protocol, selfMonitoringHeaderSecretNameSuffix, i)
+			secretHeaderEnvVar, err := util.CreateEnvVarForSecretKeySelector(header.ValueFrom.SecretKeyRef, envVarName)
+			if err != nil {
+				// Upstream validation guarantees a secret name and key are present; skip a malformed header defensively
+				// rather than emitting a broken reference.
+				continue
+			}
+			secretHeaderEnvVars = append(secretHeaderEnvVars, secretHeaderEnvVar)
+			keyValuePairs = append(keyValuePairs, fmt.Sprintf("%s=$(%s)", header.Name, envVarName))
+			continue
+		}
 		keyValuePairs = append(keyValuePairs, fmt.Sprintf("%v=%v", header.Name, header.Value))
 	}
-	return strings.Join(keyValuePairs, ",")
+	return strings.Join(keyValuePairs, ","), secretHeaderEnvVars
+}
+
+// headerSecretEnvVarProtocol returns the protocol identifier ("GRPC" or "HTTP") used when deriving the names of the
+// environment variables that back secret-sourced header values. A Dash0 export never carries secret-backed headers (its
+// authorization token is handled separately via CollectorSelfMonitoringAuthTokenEnvVarName), so the returned value is
+// irrelevant in that case.
+func headerSecretEnvVarProtocol(selfMonitoringExport dash0common.Export) string {
+	if selfMonitoringExport.Http != nil {
+		return "HTTP"
+	}
+	return "GRPC"
+}
+
+// prependOrUpdateEnvVar updates the environment variable in place if it already exists, otherwise it inserts it at the
+// front of the container's env list. Prepending ensures the env var is defined before OTEL_EXPORTER_OTLP_HEADERS, which
+// is required for the $(...) references in that variable to be expanded by Kubernetes.
+func prependOrUpdateEnvVar(container *corev1.Container, envVar corev1.EnvVar) {
+	idx := slices.IndexFunc(container.Env, matchEnvVar(envVar.Name))
+	if idx >= 0 {
+		container.Env[idx] = envVar
+	} else {
+		container.Env = slices.Insert(container.Env, 0, envVar)
+	}
 }
 
 func updateOrAppendEnvVar(container *corev1.Container, name string, value string) {
