@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-# enable Intelligent Edge features (IE collector image, barker image)
+# enable Intelligent Edge features (IE collector image, Edge Proxy image)
 export FEATURE_INTELLIGENT_EDGE_ENABLED=true
 
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..

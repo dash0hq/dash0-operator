@@ -26,8 +26,8 @@ type IntelligentEdgeResourceManager struct {
 	operatorManagerDeployment *appsv1.Deployment
 	operatorNamespace         string
 	namePrefix                string
-	barkerImage               string
-	barkerImagePullPolicy     corev1.PullPolicy
+	edgeProxyImage            string
+	edgeProxyImagePullPolicy  corev1.PullPolicy
 	operatorVersion           string
 }
 
@@ -37,8 +37,8 @@ func NewIntelligentEdgeResourceManager(
 	operatorManagerDeployment *appsv1.Deployment,
 	operatorNamespace string,
 	namePrefix string,
-	barkerImage string,
-	barkerImagePullPolicy corev1.PullPolicy,
+	edgeProxyImage string,
+	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 ) *IntelligentEdgeResourceManager {
 	return &IntelligentEdgeResourceManager{
@@ -47,8 +47,8 @@ func NewIntelligentEdgeResourceManager(
 		operatorManagerDeployment: operatorManagerDeployment,
 		operatorNamespace:         operatorNamespace,
 		namePrefix:                namePrefix,
-		barkerImage:               barkerImage,
-		barkerImagePullPolicy:     barkerImagePullPolicy,
+		edgeProxyImage:            edgeProxyImage,
+		edgeProxyImagePullPolicy:  edgeProxyImagePullPolicy,
 		operatorVersion:           operatorVersion,
 	}
 }
@@ -60,7 +60,7 @@ func (m *IntelligentEdgeResourceManager) CreateOrUpdateResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, intelligentEdgeResource, operatorConfig, m.barkerImage, m.barkerImagePullPolicy, m.operatorVersion, extraConfig, false, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, intelligentEdgeResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, extraConfig, false, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false

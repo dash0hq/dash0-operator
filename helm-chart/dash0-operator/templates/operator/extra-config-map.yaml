@@ -150,12 +150,12 @@ data:
     targetAllocatorNodeAffinity:
       {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}
 {{- if .Values.operator.intelligentEdge.enabled }}
-    barkerContainerResources:
-      {{- toYaml .Values.operator.intelligentEdge.barker.containerResources | nindent 6 }}
-    barkerTolerations:
-      {{- toYaml .Values.operator.intelligentEdge.barker.tolerations | nindent 6 }}
-    barkerNodeAffinity:
-      {{- toYaml .Values.operator.intelligentEdge.barker.nodeAffinity | nindent 6 }}
+    edgeProxyContainerResources:
+      {{- toYaml .Values.operator.intelligentEdge.edgeProxy.containerResources | nindent 6 }}
+    edgeProxyTolerations:
+      {{- toYaml .Values.operator.intelligentEdge.edgeProxy.tolerations | nindent 6 }}
+    edgeProxyNodeAffinity:
+      {{- toYaml .Values.operator.intelligentEdge.edgeProxy.nodeAffinity | nindent 6 }}
 {{- end }}
 {{- if .Values.operator.agent0Connector.labels }}
     agent0ConnectorLabels:

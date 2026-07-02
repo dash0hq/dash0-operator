@@ -1,13 +1,13 @@
 # decision-maker-mock
 
 Minimal gRPC server that implements `decisionmaker.DecisionMakerService` from
-the dash0 monorepo. Used by the operator's e2e tests to keep the Barker
+the dash0 monorepo. Used by the operator's e2e tests to keep the edge
 proxy connected to a fake upstream Decision Maker.
 
 The mock does not implement decision-making logic. It accepts streams,
 responds enough to keep clients connected, and counts observed RPCs. The
 counts are exposed on a separate HTTP debug port so e2e tests can assert
-that Barker actually connected.
+that the Edge Proxy actually connected.
 
 ## Ports
 

@@ -78,7 +78,7 @@ jobs:
           cat > /tmp/kind-config.yaml << 'EOF'
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
-          # ghcr.io auth so kind nodes can pull the private IE collector and barker images
+          # ghcr.io auth so kind nodes can pull the private IE collector and Edge Proxy images
           # directly using the workflow-issued GITHUB_TOKEN (requires packages: read on the job).
           # See https://kind.sigs.k8s.io/docs/user/private-registries/.
           containerdConfigPatches:

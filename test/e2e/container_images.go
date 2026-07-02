@@ -24,7 +24,7 @@ type Images struct {
 	fileLogOffsetVolumeOwnership ImageSpec
 	targetAllocator              ImageSpec
 	intelligentEdgeCollector     ImageSpec
-	barker                       ImageSpec
+	edgeProxy                    ImageSpec
 	agent0Connector              ImageSpec
 }
 
@@ -37,7 +37,7 @@ const (
 	filelogOffsetVolumeOwnershipImageName = "filelog-offset-volume-ownership"
 	targetAllocatorImageName              = "target-allocator"
 	intelligentEdgeCollectorImageName     = "intelligent-edge-collector"
-	barkerImageName                       = "barker"
+	edgeProxyImageName                    = "edge-proxy"
 	agent0ConnectorImageName              = "agent0-connector"
 
 	tagLatest = "latest"
@@ -122,13 +122,13 @@ func createContainerImages(repositoryPrefix string, imageTag string, pullPolicy 
 			imageTag,
 			pullPolicy,
 		),
-		// Intelligent edge collector and barker are owned by a different team in a different
+		// Intelligent edge collector and the Edge Proxy are owned by a different team in a different
 		// repository and not built from this repo. Their images are pinned in the Helm chart's
 		// values.yaml. Leave repository/tag/digest/pullPolicy empty unless the caller explicitly
 		// overrides them via env vars; the empty fields are skipped by setIfNotEmpty in operator.go,
 		// so the chart's pinned values flow through.
 		intelligentEdgeCollector: determineExternalContainerImage("INTELLIGENT_EDGE_COLLECTOR"),
-		barker:                   determineExternalContainerImage("BARKER"),
+		edgeProxy:                determineExternalContainerImage("EDGE_PROXY"),
 		agent0Connector: determineContainerImage(
 			"AGENT0_CONNECTOR",
 			repositoryPrefix,

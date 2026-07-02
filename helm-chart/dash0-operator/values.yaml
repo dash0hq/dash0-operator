@@ -491,9 +491,9 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
-  # the container image to use for the barker component (there should usually be no reason to override this)
-  barkerImage:
-    repository: "ghcr.io/dash0hq/barker"
+  # the container image to use for the Edge Proxy component (there should usually be no reason to override this)
+  edgeProxyImage:
+    repository: "ghcr.io/dash0hq/edge-proxy"
     # overrides the image tag, which defaults to the chart appVersion.
     tag: "v2.0.2051"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
@@ -1075,21 +1075,21 @@ operator:
     # Whether to enable Intelligent Edge features for this operator install.
     enabled: false
 
-    # Settings for the barker proxy deployed when intelligentEdge.enabled=true.
-    barker:
-      # Resource settings for the barker container of the barker deployment managed by the operator.
+    # Settings for the Edge Proxy deployed when intelligentEdge.enabled=true.
+    edgeProxy:
+      # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.
       containerResources:
         limits:
           memory: 128Mi
-        # The GOMEMLIMIT environment variable value for the barker container, the recommended value is 80% of
+        # The GOMEMLIMIT environment variable value for the Edge Proxy container, the recommended value is 80% of
         # containerResources.limits.memory. Note that valid units are different from Kubernetes resource settings, use
         # MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
         gomemlimit: 100MiB
         requests:
           memory: 64Mi
 
-      # An array of tolerations for the barker deployment managed by the operator. This can be used to make sure that
-      # the barker pod can be scheduled on nodes where it would not be scheduled otherwise due to Kubernetes taints.
+      # An array of tolerations for the Edge Proxy deployment managed by the operator. This can be used to make sure that
+      # the Edge Proxy pod can be scheduled on nodes where it would not be scheduled otherwise due to Kubernetes taints.
       # Example:
       # tolerations:
       #   - key: "key1"
@@ -1101,8 +1101,8 @@ operator:
       #     effect: "NoSchedule"
       tolerations: []
 
-      # The nodeAffinity for the barker deployment managed by the operator. This can be used to constrain which nodes
-      # the barker pod will be scheduled on.
+      # The nodeAffinity for the Edge Proxy deployment managed by the operator. This can be used to constrain which nodes
+      # the Edge Proxy pod will be scheduled on.
       #
       # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
       nodeAffinity:

@@ -362,13 +362,13 @@ func renderOttlNamespaceFilter(
 			config.OperatorNamespace,
 		)
 	}
-	// Do not drop metrics about the barker pod (kubeletstats / k8s_cluster receivers) nor OTLP-pushed metrics from
-	// barker itself when self-monitoring is enabled.
-	barkerExclusion := ""
-	if selfMonitoringEnabled && config.IntelligentEdge.Enabled && config.IntelligentEdge.BarkerEnabled {
-		barkerExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
+	// Do not drop metrics about the Edge Proxy pod (kubeletstats / k8s_cluster receivers) nor OTLP-pushed metrics from
+	// the Edge Proxy itself when self-monitoring is enabled.
+	edgeProxyExclusion := ""
+	if selfMonitoringEnabled && config.IntelligentEdge.Enabled && config.IntelligentEdge.EdgeProxyEnabled {
+		edgeProxyExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
 			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
-			config.IntelligentEdge.BarkerName,
+			config.IntelligentEdge.EdgeProxyName,
 			config.OperatorNamespace,
 		)
 	}
@@ -383,7 +383,7 @@ func renderOttlNamespaceFilter(
 			config.OperatorNamespace,
 		)
 	}
-	selfMonitoringExclusions := operatorManagerExclusion + taExclusion + barkerExclusion + agent0ConnectorExclusion
+	selfMonitoringExclusions := operatorManagerExclusion + taExclusion + edgeProxyExclusion + agent0ConnectorExclusion
 
 	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
 	// list of monitored namespaces.

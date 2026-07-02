@@ -23,7 +23,7 @@ import (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Enabled",type="boolean",JSONPath=".spec.enabled"
-// +kubebuilder:printcolumn:name="Barker",type="boolean",JSONPath=".spec.barker.enabled"
+// +kubebuilder:printcolumn:name="EdgeProxy",type="boolean",JSONPath=".spec.edgeProxy.enabled"
 // +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Dash0IntelligentEdge struct {
@@ -37,21 +37,21 @@ type Dash0IntelligentEdge struct {
 // Dash0IntelligentEdgeSpec describes the cluster-wide configuration for the intelligent edge tail-sampling feature.
 // When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
 // dash0operation, dash0filter, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors)
-// and optionally deploys the Barker proxy.
+// and optionally deploys the Edge Proxy.
 type Dash0IntelligentEdgeSpec struct {
 	// Whether intelligent edge is enabled. When disabled, no IE components are added to the collector pipeline
-	// and no IE resources (e.g. barker) are deployed, regardless of other settings in this resource. This
+	// and no IE resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
 	// setting is optional, it defaults to true.
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`
 
-	// Configuration for the Barker proxy. When enabled, the operator deploys Barker as a Deployment and Service
-	// in the operator namespace. Barker consolidates collector-to-Decision-Maker connections, reducing egress
-	// and improving reliability. Recommended for clusters with multiple collector instances.
+	// Configuration for the Edge Proxy. When enabled, the operator deploys the Edge Proxy as a Deployment and
+	// Service in the operator namespace. The Edge Proxy consolidates collector-to-Decision-Maker connections,
+	// reducing egress and improving reliability. Recommended for clusters with multiple collector instances.
 	//
 	// +kubebuilder:validation:Optional
-	Barker BarkerConfig `json:"barker,omitempty"`
+	EdgeProxy EdgeProxyConfig `json:"edgeProxy,omitempty"`
 
 	// Configuration for the dash0sampling processor in the collector pipeline.
 	//
@@ -93,48 +93,48 @@ type Dash0IntelligentEdgeSpec struct {
 	ControlPlaneApiEndpoint string `json:"controlPlaneApiEndpoint,omitempty"`
 }
 
-// BarkerConfig configures the Barker Decision Maker proxy.
-type BarkerConfig struct {
-	// Whether to deploy the Barker proxy. When enabled, collectors connect to Barker instead of directly
+// EdgeProxyConfig configures the Edge Proxy (Decision Maker proxy).
+type EdgeProxyConfig struct {
+	// Whether to deploy the Edge Proxy. When enabled, collectors connect to the Edge Proxy instead of directly
 	// to the cloud Decision Maker. This consolidates N collector connections into 1-2 upstream connections.
 	// This setting is optional, it defaults to true.
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`
 
-	// The log level for the Barker proxy. This setting is optional, it defaults to "info".
+	// The log level for the Edge Proxy. This setting is optional, it defaults to "info".
 	//
 	// +kubebuilder:default=info
 	// +kubebuilder:validation:Enum=trace;debug;info;warn;error
-	LogLevel BarkerLogLevel `json:"logLevel,omitempty"`
+	LogLevel EdgeProxyLogLevel `json:"logLevel,omitempty"`
 
-	// Enable verbose network logging in Barker. This is separate from the log level and produces
+	// Enable verbose network logging in the Edge Proxy. This is separate from the log level and produces
 	// detailed output about gRPC connections and message flow. Warning: high log volume. This setting
 	// is optional, it defaults to false.
 	//
 	// +kubebuilder:validation:Optional
 	Debug *bool `json:"debug,omitempty"`
 
-	// Disables TLS for Barker's upstream gRPC connection to the Decision Maker. Intended for local
+	// Disables TLS for the Edge Proxy's upstream gRPC connection to the Decision Maker. Intended for local
 	// development and end-to-end testing against in-cluster mock services. Production deployments
-	// should leave this unset so that Barker requires TLS upstream. This setting is optional, it
+	// should leave this unset so that the Edge Proxy requires TLS upstream. This setting is optional, it
 	// defaults to false.
 	//
 	// +kubebuilder:validation:Optional
 	Insecure *bool `json:"insecure,omitempty"`
 }
 
-// BarkerLogLevel describes the log level for the Barker proxy.
+// EdgeProxyLogLevel describes the log level for the Edge Proxy.
 //
 // +kubebuilder:validation:Enum=trace;debug;info;warn;error
-type BarkerLogLevel string
+type EdgeProxyLogLevel string
 
 const (
-	BarkerLogLevelTrace BarkerLogLevel = "trace"
-	BarkerLogLevelDebug BarkerLogLevel = "debug"
-	BarkerLogLevelInfo  BarkerLogLevel = "info"
-	BarkerLogLevelWarn  BarkerLogLevel = "warn"
-	BarkerLogLevelError BarkerLogLevel = "error"
+	EdgeProxyLogLevelTrace EdgeProxyLogLevel = "trace"
+	EdgeProxyLogLevelDebug EdgeProxyLogLevel = "debug"
+	EdgeProxyLogLevelInfo  EdgeProxyLogLevel = "info"
+	EdgeProxyLogLevelWarn  EdgeProxyLogLevel = "warn"
+	EdgeProxyLogLevelError EdgeProxyLogLevel = "error"
 )
 
 // SamplingConfig configures the dash0sampling processor.
@@ -149,8 +149,8 @@ type SamplingConfig struct {
 
 	// The Decision Maker endpoint used by the sampling processor. This setting is optional. When not set,
 	// the endpoint is derived from the Dash0 ingress endpoint configured in the operator configuration
-	// resource by replacing "ingress." with "decision-maker." and ":4317" with ":443". When Barker is
-	// enabled, this field is ignored and the sampling processor connects to the in-cluster Barker service
+	// resource by replacing "ingress." with "decision-maker." and ":4317" with ":443". When the Edge Proxy is
+	// enabled, this field is ignored and the sampling processor connects to the in-cluster Edge Proxy service
 	// instead.
 	//
 	// +kubebuilder:validation:Optional

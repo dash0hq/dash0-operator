@@ -4,6 +4,6 @@ metadata:
   name: dash0-intelligent-edge
 spec:
   enabled: true
-  barker:
+  edgeProxy:
     logLevel: debug
     debug: true

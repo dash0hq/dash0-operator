@@ -764,7 +764,7 @@ func intelligentEdgeConfigFromResource(
 		return IntelligentEdgeConfig{Enabled: false}
 	}
 
-	barkerEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Barker.Enabled, true)
+	edgeProxyEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.EdgeProxy.Enabled, true)
 	samplingEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.Sampling.Enabled, true)
 	var samplingFallbackSampleRatio string
 	if r := resource.Spec.Sampling.FallbackSampleRatio; r != nil {
@@ -834,12 +834,12 @@ func intelligentEdgeConfigFromResource(
 	}
 	if !hasDash0Export {
 		logger.WarnTelemetryCollectionIssue("No Dash0 export is configured in the operator configuration resource. The " +
-			"sampling processor and barker will not have an authorization token for the Decision Maker. " +
+			"sampling processor and Edge Proxy will not have an authorization token for the Decision Maker. " +
 			"Configure a Dash0 export with an auth token in the operator configuration resource.")
 	}
 	insecure := false
-	if barkerEnabled {
-		endpoint = fmt.Sprintf("%s-barker.%s.svc.cluster.local:8011", namePrefix, operatorNamespace)
+	if edgeProxyEnabled {
+		endpoint = fmt.Sprintf("%s-edge-proxy.%s.svc.cluster.local:8011", namePrefix, operatorNamespace)
 		insecure = true
 	}
 
@@ -873,8 +873,8 @@ func intelligentEdgeConfigFromResource(
 		AuthEnvVar:                         authEnvVarNameDefaultIndexed(0),
 		Dataset:                            dataset,
 		Insecure:                           insecure,
-		BarkerEnabled:                      barkerEnabled,
-		BarkerName:                         namePrefix + "-barker",
+		EdgeProxyEnabled:                   edgeProxyEnabled,
+		EdgeProxyName:                      namePrefix + "-edge-proxy",
 	}
 }
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Ingress only exposes the HTTP debug port. The gRPC port is consumed in-cluster
-# by Barker and does not need external access.
+# by the Edge Proxy and does not need external access.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

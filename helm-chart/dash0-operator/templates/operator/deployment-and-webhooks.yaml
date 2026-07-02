@@ -246,11 +246,11 @@ spec:
           value: {{ .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
         {{- end }}
         {{- if .Values.operator.intelligentEdge.enabled }}
-        - name: DASH0_BARKER_IMAGE
-          value: {{ include "dash0-operator.barkerImage" . | quote }}
-        {{- if .Values.operator.barkerImage.pullPolicy }}
-        - name: DASH0_BARKER_IMAGE_PULL_POLICY
-          value: {{ .Values.operator.barkerImage.pullPolicy }}
+        - name: DASH0_EDGE_PROXY_IMAGE
+          value: {{ include "dash0-operator.edgeProxyImage" . | quote }}
+        {{- if .Values.operator.edgeProxyImage.pullPolicy }}
+        - name: DASH0_EDGE_PROXY_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.edgeProxyImage.pullPolicy }}
         {{- end }}
         {{- end }}
         - name: DASH0_AGENT0_CONNECTOR_IMAGE

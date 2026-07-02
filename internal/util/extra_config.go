@@ -85,9 +85,9 @@ type ExtraConfig struct {
 	TargetAllocatorTolerations              []corev1.Toleration                `json:"targetAllocatorTolerations,omitempty"`
 	TargetAllocatorNodeAffinity             *corev1.NodeAffinity               `json:"targetAllocatorNodeAffinity,omitempty"`
 
-	BarkerContainerResources ResourceRequirementsWithGoMemLimit `json:"barkerContainerResources"`
-	BarkerTolerations        []corev1.Toleration                `json:"barkerTolerations,omitempty"`
-	BarkerNodeAffinity       *corev1.NodeAffinity               `json:"barkerNodeAffinity,omitempty"`
+	EdgeProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"edgeProxyContainerResources"`
+	EdgeProxyTolerations        []corev1.Toleration                `json:"edgeProxyTolerations,omitempty"`
+	EdgeProxyNodeAffinity       *corev1.NodeAffinity               `json:"edgeProxyNodeAffinity,omitempty"`
 
 	Agent0ConnectorLabels         map[string]string `json:"agent0ConnectorLabels,omitempty"`
 	Agent0ConnectorAnnotations    map[string]string `json:"agent0ConnectorAnnotations,omitempty"`

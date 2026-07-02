@@ -130,8 +130,8 @@ type Images struct {
 	FilelogOffsetSyncImagePullPolicy            corev1.PullPolicy
 	FilelogOffsetVolumeOwnershipImage           string
 	FilelogOffsetVolumeOwnershipImagePullPolicy corev1.PullPolicy
-	BarkerImage                                 string
-	BarkerImagePullPolicy                       corev1.PullPolicy
+	EdgeProxyImage                              string
+	EdgeProxyImagePullPolicy                    corev1.PullPolicy
 	Agent0ConnectorImage                        string
 	Agent0ConnectorImagePullPolicy              corev1.PullPolicy
 }

@@ -50,8 +50,8 @@ type IntelligentEdgeConfig struct {
 	AuthEnvVar                         string
 	Dataset                            string
 	Insecure                           bool
-	BarkerEnabled                      bool
-	BarkerName                         string
+	EdgeProxyEnabled                   bool
+	EdgeProxyName                      string
 }
 
 type IntelligentEdgeCardinalityRule struct {

@@ -355,10 +355,10 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.pullPolicy",
 		images.intelligentEdgeCollector.pullPolicy)
 
-	arguments = setIfNotEmpty(arguments, "operator.barkerImage.repository", images.barker.repository)
-	arguments = setIfNotEmpty(arguments, "operator.barkerImage.tag", images.barker.tag)
-	arguments = setIfNotEmpty(arguments, "operator.barkerImage.digest", images.barker.digest)
-	arguments = setIfNotEmpty(arguments, "operator.barkerImage.pullPolicy", images.barker.pullPolicy)
+	arguments = setIfNotEmpty(arguments, "operator.edgeProxyImage.repository", images.edgeProxy.repository)
+	arguments = setIfNotEmpty(arguments, "operator.edgeProxyImage.tag", images.edgeProxy.tag)
+	arguments = setIfNotEmpty(arguments, "operator.edgeProxyImage.digest", images.edgeProxy.digest)
+	arguments = setIfNotEmpty(arguments, "operator.edgeProxyImage.pullPolicy", images.edgeProxy.pullPolicy)
 
 	arguments = setIfNotEmpty(arguments, "operator.agent0ConnectorImage.repository", images.agent0Connector.repository)
 	arguments = setIfNotEmpty(arguments, "operator.agent0ConnectorImage.tag", images.agent0Connector.tag)

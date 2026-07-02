@@ -93,8 +93,8 @@ type environmentVariables struct {
 	filelogOffsetSyncImagePullPolicy            corev1.PullPolicy
 	filelogOffsetVolumeOwnershipImage           string
 	filelogOffsetVolumeOwnershipImagePullPolicy corev1.PullPolicy
-	barkerImage                                 string
-	barkerImagePullPolicy                       corev1.PullPolicy
+	edgeProxyImage                              string
+	edgeProxyImagePullPolicy                    corev1.PullPolicy
 	agent0ConnectorImage                        string
 	agent0ConnectorImagePullPolicy              corev1.PullPolicy
 	agent0ConnectorEnabled                      bool
@@ -184,8 +184,8 @@ const (
 	filelogOffsetSyncImagePullPolicyEnvVarName            = "DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY"
 	filelogOffsetVolumeOwnershipImageEnvVarName           = "DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE"
 	filelogOffsetVolumeOwnershipImagePullPolicyEnvVarName = "DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY"
-	barkerImageEnvVarName                                 = "DASH0_BARKER_IMAGE"
-	barkerImagePullPolicyEnvVarName                       = "DASH0_BARKER_IMAGE_PULL_POLICY"
+	edgeProxyImageEnvVarName                              = "DASH0_EDGE_PROXY_IMAGE"
+	edgeProxyImagePullPolicyEnvVarName                    = "DASH0_EDGE_PROXY_IMAGE_PULL_POLICY"
 	agent0ConnectorImageEnvVarName                        = "DASH0_AGENT0_CONNECTOR_IMAGE"
 	agent0ConnectorImagePullPolicyEnvVarName              = "DASH0_AGENT0_CONNECTOR_IMAGE_PULL_POLICY"
 	agent0ConnectorEnabledEnvVarName                      = "DASH0_AGENT0_CONNECTOR_ENABLED"
@@ -592,7 +592,7 @@ func defineCommandLineArguments() *commandLineArguments {
 		&cliArgs.featureIntelligentEdgeEnabled,
 		"dash0-feature-intelligent-edge-enabled",
 		false,
-		"Enable Intelligent Edge features (sampling, RED metrics, barker proxy).",
+		"Enable Intelligent Edge features (sampling, RED metrics, Edge Proxy).",
 	)
 	flag.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
@@ -849,8 +849,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	filelogOffsetVolumeOwnershipImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetVolumeOwnershipImagePullPolicyEnvVarName)
 
-	barkerImage, _ := os.LookupEnv(barkerImageEnvVarName)
-	barkerImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(barkerImagePullPolicyEnvVarName)
+	edgeProxyImage, _ := os.LookupEnv(edgeProxyImageEnvVarName)
+	edgeProxyImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(edgeProxyImagePullPolicyEnvVarName)
 
 	agent0ConnectorImage, _ := os.LookupEnv(agent0ConnectorImageEnvVarName)
 	agent0ConnectorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(agent0ConnectorImagePullPolicyEnvVarName)
@@ -947,8 +947,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		filelogOffsetSyncImagePullPolicy:            filelogOffsetSyncImagePullPolicy,
 		filelogOffsetVolumeOwnershipImage:           filelogOffsetVolumeOwnershipImage,
 		filelogOffsetVolumeOwnershipImagePullPolicy: filelogOffsetVolumeOwnershipImagePullPolicy,
-		barkerImage:                                 barkerImage,
-		barkerImagePullPolicy:                       barkerImagePullPolicy,
+		edgeProxyImage:                              edgeProxyImage,
+		edgeProxyImagePullPolicy:                    edgeProxyImagePullPolicy,
 		agent0ConnectorImage:                        agent0ConnectorImage,
 		agent0ConnectorImagePullPolicy:              agent0ConnectorImagePullPolicy,
 		agent0ConnectorEnabled:                      agent0ConnectorEnabled,
@@ -1244,10 +1244,10 @@ func startOperatorManager(
 		"configuration reloader image pull policy override",
 		envVars.configurationReloaderImagePullPolicy,
 
-		"barker image",
-		envVars.barkerImage,
-		"barker image pull policy override",
-		envVars.barkerImagePullPolicy,
+		"edge proxy image",
+		envVars.edgeProxyImage,
+		"edge proxy image pull policy override",
+		envVars.edgeProxyImagePullPolicy,
 
 		"operator namespace",
 		envVars.operatorNamespace,
@@ -1409,8 +1409,8 @@ func startDash0Controllers(
 		FilelogOffsetSyncImagePullPolicy:            envVars.filelogOffsetSyncImagePullPolicy,
 		FilelogOffsetVolumeOwnershipImage:           envVars.filelogOffsetVolumeOwnershipImage,
 		FilelogOffsetVolumeOwnershipImagePullPolicy: envVars.filelogOffsetVolumeOwnershipImagePullPolicy,
-		BarkerImage:                                 envVars.barkerImage,
-		BarkerImagePullPolicy:                       envVars.barkerImagePullPolicy,
+		EdgeProxyImage:                              envVars.edgeProxyImage,
+		EdgeProxyImagePullPolicy:                    envVars.edgeProxyImagePullPolicy,
 		Agent0ConnectorImage:                        envVars.agent0ConnectorImage,
 		Agent0ConnectorImagePullPolicy:              envVars.agent0ConnectorImagePullPolicy,
 	}
@@ -1602,8 +1602,8 @@ func startDash0Controllers(
 			operatorDeploymentSelfReference,
 			envVars.operatorNamespace,
 			envVars.oTelCollectorNamePrefix,
-			envVars.barkerImage,
-			envVars.barkerImagePullPolicy,
+			envVars.edgeProxyImage,
+			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
 		)
 		ieManager = intelligentedge.NewIntelligentEdgeManager(

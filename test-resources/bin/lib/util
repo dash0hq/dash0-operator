@@ -185,18 +185,18 @@ determine_container_images() {
   agent0_connector_image_tag="$image_tag"
   agent0_connector_image_digest=""
   agent0_connector_image_pull_policy="$pull_policy"
-  # The intelligent edge collector and barker images are not built in this repo. By default we let the values.yaml
+  # The intelligent edge collector and Edge Proxy images are not built in this repo. By default we let the values.yaml
   # pinned tag win (the published ghcr image), and only override when an explicit env var is set. Set
-  # INTELLIGENT_EDGE_COLLECTOR_IMAGE_{REPOSITORY,TAG,DIGEST,PULL_POLICY} or BARKER_IMAGE_* to use a locally built
-  # image (see "make all-images-with-ie").
+  # INTELLIGENT_EDGE_COLLECTOR_IMAGE_{REPOSITORY,TAG,DIGEST,PULL_POLICY} or EDGE_PROXY_IMAGE_* to override the pinned
+  # image.
   intelligent_edge_collector_image_repository=""
   intelligent_edge_collector_image_tag=""
   intelligent_edge_collector_image_digest=""
   intelligent_edge_collector_image_pull_policy=""
-  barker_image_repository=""
-  barker_image_tag=""
-  barker_image_digest=""
-  barker_image_pull_policy=""
+  edge_proxy_image_repository=""
+  edge_proxy_image_tag=""
+  edge_proxy_image_digest=""
+  edge_proxy_image_pull_policy=""
 
   operator_helm_chart=${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}
 
@@ -349,17 +349,17 @@ determine_container_images() {
     intelligent_edge_collector_image_pull_policy="$INTELLIGENT_EDGE_COLLECTOR_IMAGE_PULL_POLICY"
   fi
 
-  if [[ -n "${BARKER_IMAGE_REPOSITORY:-}" ]]; then
-    barker_image_repository="$BARKER_IMAGE_REPOSITORY"
+  if [[ -n "${EDGE_PROXY_IMAGE_REPOSITORY:-}" ]]; then
+    edge_proxy_image_repository="$EDGE_PROXY_IMAGE_REPOSITORY"
   fi
-  if [[ -n "${BARKER_IMAGE_TAG:-}" ]]; then
-    barker_image_tag="$BARKER_IMAGE_TAG"
+  if [[ -n "${EDGE_PROXY_IMAGE_TAG:-}" ]]; then
+    edge_proxy_image_tag="$EDGE_PROXY_IMAGE_TAG"
   fi
-  if [[ -n "${BARKER_IMAGE_DIGEST:-}" ]]; then
-    barker_image_digest="$BARKER_IMAGE_DIGEST"
+  if [[ -n "${EDGE_PROXY_IMAGE_DIGEST:-}" ]]; then
+    edge_proxy_image_digest="$EDGE_PROXY_IMAGE_DIGEST"
   fi
-  if [[ -n "${BARKER_IMAGE_PULL_POLICY:-}" ]]; then
-    barker_image_pull_policy="$BARKER_IMAGE_PULL_POLICY"
+  if [[ -n "${EDGE_PROXY_IMAGE_PULL_POLICY:-}" ]]; then
+    edge_proxy_image_pull_policy="$EDGE_PROXY_IMAGE_PULL_POLICY"
   fi
 
   if [[ "$is_local_helm_chart" = "true" ]]; then
@@ -373,7 +373,7 @@ determine_container_images() {
     target_allocator_image_pull_policy=$(determine_pull_policy "$target_allocator_image_repository" "$target_allocator_image_pull_policy")
     agent0_connector_image_pull_policy=$(determine_pull_policy "$agent0_connector_image_repository" "$agent0_connector_image_pull_policy")
     intelligent_edge_collector_image_pull_policy=$(determine_pull_policy "$intelligent_edge_collector_image_repository" "$intelligent_edge_collector_image_pull_policy")
-    barker_image_pull_policy=$(determine_pull_policy "$barker_image_repository" "$barker_image_pull_policy")
+    edge_proxy_image_pull_policy=$(determine_pull_policy "$edge_proxy_image_repository" "$edge_proxy_image_pull_policy")
   fi
 }
 
@@ -722,17 +722,17 @@ run_helm() {
     helm_install_command+=" --set operator.intelligentEdgeCollectorImage.pullPolicy=$intelligent_edge_collector_image_pull_policy"
   fi
 
-  if [[ -n "$barker_image_repository" ]]; then
-    helm_install_command+=" --set operator.barkerImage.repository=$barker_image_repository"
+  if [[ -n "$edge_proxy_image_repository" ]]; then
+    helm_install_command+=" --set operator.edgeProxyImage.repository=$edge_proxy_image_repository"
   fi
-  if [[ -n "$barker_image_tag" ]]; then
-    helm_install_command+=" --set operator.barkerImage.tag=$barker_image_tag"
+  if [[ -n "$edge_proxy_image_tag" ]]; then
+    helm_install_command+=" --set operator.edgeProxyImage.tag=$edge_proxy_image_tag"
   fi
-  if [[ -n "$barker_image_digest" ]]; then
-    helm_install_command+=" --set operator.barkerImage.digest=$barker_image_digest"
+  if [[ -n "$edge_proxy_image_digest" ]]; then
+    helm_install_command+=" --set operator.edgeProxyImage.digest=$edge_proxy_image_digest"
   fi
-  if [[ -n "$barker_image_pull_policy" ]]; then
-    helm_install_command+=" --set operator.barkerImage.pullPolicy=$barker_image_pull_policy"
+  if [[ -n "$edge_proxy_image_pull_policy" ]]; then
+    helm_install_command+=" --set operator.edgeProxyImage.pullPolicy=$edge_proxy_image_pull_policy"
   fi
 
   # Deploy an operator configuration right away.

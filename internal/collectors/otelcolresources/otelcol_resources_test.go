@@ -583,8 +583,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should derive endpoints from operator config when no overrides are set", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
@@ -596,8 +596,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should use explicit decision maker endpoint when set", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
 					DecisionMakerEndpoint: "custom-dm.example.com:443",
 				},
@@ -614,7 +614,7 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
 				Enabled:                 boolPtr(true),
-				Barker:                  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				EdgeProxy:               dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
 			},
 		}
@@ -629,7 +629,7 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
 				Enabled:                 boolPtr(true),
-				Barker:                  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				EdgeProxy:               dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
 				Sampling: dash0v1alpha1.SamplingConfig{
 					DecisionMakerEndpoint: "custom-dm.example.com:443",
@@ -642,11 +642,11 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		Expect(config.ApiEndpoint).To(Equal("https://custom-cpa.example.com"))
 	})
 
-	It("should override explicit DM endpoint with barker service when barker is enabled", func() {
+	It("should override explicit DM endpoint with Edge Proxy service when the Edge Proxy is enabled", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
 				Enabled: boolPtr(true),
-				Barker: dash0v1alpha1.BarkerConfig{
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{
 					Enabled: boolPtr(true),
 				},
 				Sampling: dash0v1alpha1.SamplingConfig{
@@ -656,7 +656,7 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
-		Expect(config.Endpoint).To(Equal(fmt.Sprintf("%s-barker.%s.svc.cluster.local:8011", namePrefix, operatorNamespace)))
+		Expect(config.Endpoint).To(Equal(fmt.Sprintf("%s-edge-proxy.%s.svc.cluster.local:8011", namePrefix, operatorNamespace)))
 		Expect(config.Insecure).To(BeTrue())
 	})
 
@@ -664,7 +664,7 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
 				Enabled:                 boolPtr(true),
-				Barker:                  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				EdgeProxy:               dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				ControlPlaneApiEndpoint: "https://custom-cpa.example.com",
 				Sampling: dash0v1alpha1.SamplingConfig{
 					DecisionMakerEndpoint: "custom-dm.example.com:443",
@@ -681,8 +681,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should have sampling enabled by default", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
@@ -693,8 +693,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should allow disabling sampling while keeping IE enabled", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
 					Enabled: boolPtr(false),
 				},
@@ -708,8 +708,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should use default reservoir settings when reservoir is not configured", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
@@ -722,8 +722,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		metricLevel := dash0v1alpha1.ReservoirMetricLevelDetailed
 		edge := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
 					Reservoir: &dash0v1alpha1.ReservoirConfig{
 						MaxDiskBytes: &maxDiskBytes,
@@ -741,8 +741,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		maxDiskBytes := resource.MustParse("1Mi")
 		edge := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
 					Reservoir: &dash0v1alpha1.ReservoirConfig{
 						MaxDiskBytes: &maxDiskBytes,
@@ -771,8 +771,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should have signal-to-metrics enabled by default", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
@@ -785,8 +785,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should allow disabling signal-to-metrics while keeping IE enabled", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
 					Enabled: boolPtr(false),
 				},
@@ -801,8 +801,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		maxTs := int32(42_000)
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
 					Enabled:       boolPtr(true),
 					MaxTimeSeries: &maxTs,
@@ -820,8 +820,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should drop a non-positive flush interval rather than forward it", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
 					FlushInterval: &metav1.Duration{Duration: 0},
 				},
@@ -834,8 +834,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should have spam filter enabled by default", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
@@ -848,8 +848,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should allow disabling spam filter while keeping IE enabled", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SpamFilter: dash0v1alpha1.SpamFilterConfig{
 					Enabled: boolPtr(false),
 				},
@@ -863,8 +863,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should pass spam filter tunables through when set", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SpamFilter: dash0v1alpha1.SpamFilterConfig{
 					Enabled:            boolPtr(true),
 					CacheExpiration:    &metav1.Duration{Duration: 45 * time.Second},
@@ -881,8 +881,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should drop a non-positive spam filter cache expiration rather than forward it", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SpamFilter: dash0v1alpha1.SpamFilterConfig{
 					CacheExpiration: &metav1.Duration{Duration: 0},
 				},
@@ -895,8 +895,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should default sampling tunables to empty fallback ratio and debug off", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
@@ -907,8 +907,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should pass sampling fallback ratio and debug through when set", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
 					Enabled:             boolPtr(true),
 					FallbackSampleRatio: strPtr("0.5"),
@@ -924,8 +924,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should pass a sampling fallback ratio of \"0\" through (block-all is meaningful, not unset)", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				Sampling: dash0v1alpha1.SamplingConfig{
 					FallbackSampleRatio: strPtr("0"),
 				},
@@ -938,8 +938,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should default RED metrics tunables to nil max-time-series and no extra attributes", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
@@ -951,8 +951,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 		maxTs := int32(12_000)
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				RedMetrics: dash0v1alpha1.RedMetricsConfig{
 					MaxTimeSeries:            &maxTs,
 					AdditionalSpanAttributes: []string{"http.route", "http.request.method"},
@@ -968,8 +968,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should default the operation processor to no prefer-span-name and no cardinality rules", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 			},
 		}
 		config := intelligentEdgeConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
@@ -980,8 +980,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should pass the prefer-span-name flag through when set", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				OperationProcessor: dash0v1alpha1.OperationProcessorConfig{
 					PreferSpanName: boolPtr(true),
 				},
@@ -994,8 +994,8 @@ var _ = Describe("intelligentEdgeConfigFromResource", func() {
 	It("should pass cardinality rules through, resolving the *bool literal", func() {
 		resource := &dash0v1alpha1.Dash0IntelligentEdge{
 			Spec: dash0v1alpha1.Dash0IntelligentEdgeSpec{
-				Enabled: boolPtr(true),
-				Barker:  dash0v1alpha1.BarkerConfig{Enabled: boolPtr(false)},
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				OperationProcessor: dash0v1alpha1.OperationProcessorConfig{
 					CardinalityRules: []dash0v1alpha1.CardinalityRule{
 						{

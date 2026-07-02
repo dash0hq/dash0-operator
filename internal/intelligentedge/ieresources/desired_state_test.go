@@ -41,14 +41,14 @@ var (
 	}
 )
 
-var _ = Describe("Barker deployment self-monitoring env vars", func() {
+var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 	It("injects OTel exporter env vars when self-monitoring is enabled (default, nil)", func() {
 		opConfig := operatorConfigWithDash0Export.DeepCopy()
 		opConfig.Spec.SelfMonitoring.Enabled = nil
 
-		dep := assembleBarkerDeployment(
+		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -59,9 +59,9 @@ var _ = Describe("Barker deployment self-monitoring env vars", func() {
 		opConfig := operatorConfigWithDash0Export.DeepCopy()
 		opConfig.Spec.SelfMonitoring.Enabled = ptr(true)
 
-		dep := assembleBarkerDeployment(
+		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -72,9 +72,9 @@ var _ = Describe("Barker deployment self-monitoring env vars", func() {
 		opConfig := operatorConfigWithDash0Export.DeepCopy()
 		opConfig.Spec.SelfMonitoring.Enabled = ptr(false)
 
-		dep := assembleBarkerDeployment(
+		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, opConfig,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -82,9 +82,9 @@ var _ = Describe("Barker deployment self-monitoring env vars", func() {
 	})
 
 	It("does not inject OTel exporter env vars when operator config is nil", func() {
-		dep := assembleBarkerDeployment(
+		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, nil,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -110,14 +110,14 @@ func expectSelfMonitoringEnvVarsPresent(container corev1.Container, operatorVers
 
 	Expect(envByName).To(HaveKey("OTEL_RESOURCE_ATTRIBUTES"))
 	Expect(envByName["OTEL_RESOURCE_ATTRIBUTES"].Value).To(Equal(
-		"service.namespace=dash0-operator,service.name=barker,service.version=" + operatorVersion,
+		"service.namespace=dash0-operator,service.name=edge-proxy,service.version=" + operatorVersion,
 	))
 }
 
-var _ = Describe("Barker deployment scheduling and resources", func() {
+var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 	It("renders container resources, GOMEMLIMIT, tolerations, and node affinity from extraConfig", func() {
 		extraConfig := util.ExtraConfig{
-			BarkerContainerResources: util.ResourceRequirementsWithGoMemLimit{
+			EdgeProxyContainerResources: util.ResourceRequirementsWithGoMemLimit{
 				Limits: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("250m"),
 					corev1.ResourceMemory: resource.MustParse("256Mi"),
@@ -128,15 +128,15 @@ var _ = Describe("Barker deployment scheduling and resources", func() {
 					corev1.ResourceMemory: resource.MustParse("128Mi"),
 				},
 			},
-			BarkerTolerations: []corev1.Toleration{
+			EdgeProxyTolerations: []corev1.Toleration{
 				{
-					Key:      "barker-key",
+					Key:      "edge-proxy-key",
 					Operator: corev1.TolerationOpEqual,
-					Value:    "barker-value",
+					Value:    "edge-proxy-value",
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
-			BarkerNodeAffinity: &corev1.NodeAffinity{
+			EdgeProxyNodeAffinity: &corev1.NodeAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
 					NodeSelectorTerms: []corev1.NodeSelectorTerm{
 						{
@@ -153,9 +153,9 @@ var _ = Describe("Barker deployment scheduling and resources", func() {
 			},
 		}
 
-		dep := assembleBarkerDeployment(
+		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, operatorConfigWithDash0Export,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, extraConfig, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, extraConfig, logd.Discard(),
 		)
 
 		podSpec := dep.Spec.Template.Spec
@@ -168,19 +168,19 @@ var _ = Describe("Barker deployment scheduling and resources", func() {
 		Expect(container.Env).To(ContainElement(MatchEnvVar(util.EnvVarGoMemLimit, "200MiB")))
 
 		Expect(podSpec.Tolerations).To(HaveLen(1))
-		Expect(podSpec.Tolerations[0].Key).To(Equal("barker-key"))
+		Expect(podSpec.Tolerations[0].Key).To(Equal("edge-proxy-key"))
 		Expect(podSpec.Tolerations[0].Operator).To(Equal(corev1.TolerationOpEqual))
-		Expect(podSpec.Tolerations[0].Value).To(Equal("barker-value"))
+		Expect(podSpec.Tolerations[0].Value).To(Equal("edge-proxy-value"))
 		Expect(podSpec.Tolerations[0].Effect).To(Equal(corev1.TaintEffectNoSchedule))
 
 		Expect(podSpec.Affinity).ToNot(BeNil())
-		Expect(podSpec.Affinity.NodeAffinity).To(Equal(extraConfig.BarkerNodeAffinity))
+		Expect(podSpec.Affinity.NodeAffinity).To(Equal(extraConfig.EdgeProxyNodeAffinity))
 	})
 
-	It("leaves Affinity unset when BarkerNodeAffinity is nil", func() {
-		dep := assembleBarkerDeployment(
+	It("leaves Affinity unset when EdgeProxyNodeAffinity is nil", func() {
+		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalIntelligentEdge, operatorConfigWithDash0Export,
-			"barker:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
 		)
 
 		Expect(dep.Spec.Template.Spec.Affinity).To(BeNil())

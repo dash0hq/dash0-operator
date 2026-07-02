@@ -66,7 +66,7 @@ func (r *IntelligentEdgeReconciler) Reconcile(
 		// temporary error, requeue
 		return ctrl.Result{}, err
 	} else if checkResourceResult.ResourceDoesNotExist {
-		// IE resource has been deleted: remove barker & reconcile the collector.
+		// IE resource has been deleted: remove the Edge Proxy & reconcile the collector.
 		hasBeenReconciled, reconcileErr := r.intelligentEdgeManager.ReconcileIntelligentEdge(ctx, nil)
 		if reconcileErr != nil {
 			logger.Error(reconcileErr, "failed to reconcile intelligent edge deletion")

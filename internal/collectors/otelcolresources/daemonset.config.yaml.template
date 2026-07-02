@@ -552,14 +552,14 @@ receivers:
   Deliberately not checking $hasPrometheusScrapingEnabledForAtLeastOneNamespace here,to have logs in case the
   target-allocator is running even though it shouldn't.
   */}}
-  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled) .Agent0ConnectorEnabled) }}
+  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled) .Agent0ConnectorEnabled) }}
   file_log/selfmonitoring:
     include:
       {{- if .PrometheusCrdSupportEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .OperatorResourcesNamePrefix }}-opentelemetry-target-allocator*/*/*.log
       {{- end }}
-      {{- if and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled }}
-      - /var/log/pods/{{ .OperatorNamespace }}_{{ .IntelligentEdge.BarkerName }}*/*/*.log
+      {{- if and .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled }}
+      - /var/log/pods/{{ .OperatorNamespace }}_{{ .IntelligentEdge.EdgeProxyName }}*/*/*.log
       {{- end }}
       {{- if .Agent0ConnectorEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .Agent0ConnectorDeploymentName }}*/*/*.log
@@ -898,15 +898,15 @@ processors:
       profile:
         - {{ .NamespaceOttlFilter }}
   {{- end }}
-  {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled }}
-  # Barker's stdout logs are already collected by file_log/selfmonitoring, but the shared OpenTelemetry init helper also
-  # installs an OTLP log exporter whenever OTEL_EXPORTER_OTLP_ENDPOINT is set (no per-signal toggle), so barker also
-  # pushes its logs via OTLP. Drop those SDK-originated records to avoid duplicates. telemetry.sdk.language is set by
-  # the OTel SDK and absent on file_log-scraped records.
-  filter/logs/drop_barker_otlp_selfmonitoring:
+  {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled }}
+  # The Edge Proxy's stdout logs are already collected by file_log/selfmonitoring, but the shared OpenTelemetry init
+  # helper also installs an OTLP log exporter whenever OTEL_EXPORTER_OTLP_ENDPOINT is set (no per-signal toggle), so the
+  # Edge Proxy also pushes its logs via OTLP. Drop those SDK-originated records to avoid duplicates.
+  # telemetry.sdk.language is set by the OTel SDK and absent on file_log-scraped records.
+  filter/logs/drop_edge_proxy_otlp_selfmonitoring:
     logs:
       log_record:
-        - 'resource.attributes["service.name"] == "barker" and resource.attributes["service.namespace"] == "dash0-operator" and resource.attributes["telemetry.sdk.language"] != nil'
+        - 'resource.attributes["service.name"] == "edge-proxy" and resource.attributes["service.namespace"] == "dash0-operator" and resource.attributes["telemetry.sdk.language"] != nil'
   {{- end }}
 
   {{- if .CustomFilters.HasTraceFilters }}
@@ -1443,8 +1443,8 @@ service:
         - otlp
       processors:
         - memory_limiter
-        {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled }}
-        - filter/logs/drop_barker_otlp_selfmonitoring
+        {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled }}
+        - filter/logs/drop_edge_proxy_otlp_selfmonitoring
         {{- end }}
       exporters:
         - forward/logs-processors
@@ -1459,7 +1459,7 @@ service:
         - forward/logs-processors
     {{- end }}
 
-    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.BarkerEnabled)) }}
+    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled)) }}
     logs/selfmonitoring-filelog-to-forwarder:
       receivers:
         - file_log/selfmonitoring

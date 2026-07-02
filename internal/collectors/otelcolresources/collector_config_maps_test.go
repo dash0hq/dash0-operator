@@ -2017,19 +2017,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 		})
 
-		It("should collect barker logs via file_log/selfmonitoring when IE + barker + self-monitoring enabled [DaemonSet]", func() {
+		It("should collect Edge Proxy logs via file_log/selfmonitoring when IE + Edge Proxy + self-monitoring enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				IntelligentEdge: IntelligentEdgeConfig{
-					Enabled:         true,
-					SamplingEnabled: true,
-					Endpoint:        "decision-maker.example.com:443",
-					ApiEndpoint:     "https://control-plane-api.dash0.com",
-					Dataset:         "default",
-					BarkerEnabled:   true,
-					BarkerName:      namePrefix + "-barker",
+					Enabled:          true,
+					SamplingEnabled:  true,
+					Endpoint:         "decision-maker.example.com:443",
+					ApiEndpoint:      "https://control-plane-api.dash0.com",
+					Dataset:          "default",
+					EdgeProxyEnabled: true,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
 				},
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
@@ -2040,38 +2040,38 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			// file_log/selfmonitoring should include barker pod log path
+			// file_log/selfmonitoring should include Edge Proxy pod log path
 			receivers := collectorConfig["receivers"].(map[string]interface{})
 			Expect(receivers).To(HaveKey("file_log/selfmonitoring"))
 			filelogConfig := receivers["file_log/selfmonitoring"].(map[string]interface{})
 			includePaths := filelogConfig["include"].([]interface{})
-			barkerPathFound := false
+			edgeProxyPathFound := false
 			for _, p := range includePaths {
 				if path, ok := p.(string); ok {
-					if strings.Contains(path, namePrefix+"-barker") {
-						barkerPathFound = true
+					if strings.Contains(path, namePrefix+"-edge-proxy") {
+						edgeProxyPathFound = true
 					}
 				}
 			}
-			Expect(barkerPathFound).To(BeTrue(), "barker pod log path not found in file_log/selfmonitoring include list")
+			Expect(edgeProxyPathFound).To(BeTrue(), "Edge Proxy pod log path not found in file_log/selfmonitoring include list")
 
 			// logs/selfmonitoring-filelog-to-forwarder pipeline should exist
 			pipelines := readPipelines(collectorConfig)
 			Expect(pipelines).To(HaveKey("logs/selfmonitoring-filelog-to-forwarder"))
 		})
 
-		It("should not include barker logs in file_log/selfmonitoring when barker is disabled [DaemonSet]", func() {
+		It("should not include Edge Proxy logs in file_log/selfmonitoring when Edge Proxy is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				IntelligentEdge: IntelligentEdgeConfig{
-					Enabled:         true,
-					SamplingEnabled: true,
-					Endpoint:        "decision-maker.example.com:443",
-					ApiEndpoint:     "https://control-plane-api.dash0.com",
-					Dataset:         "default",
-					BarkerEnabled:   false,
+					Enabled:          true,
+					SamplingEnabled:  true,
+					Endpoint:         "decision-maker.example.com:443",
+					ApiEndpoint:      "https://control-plane-api.dash0.com",
+					Dataset:          "default",
+					EdgeProxyEnabled: false,
 				},
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
@@ -2081,45 +2081,45 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 			configContent := configMap.Data["config.yaml"]
-			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-barker"))
+			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-edge-proxy"))
 		})
 
-		It("should not collect barker logs when self-monitoring is disabled [DaemonSet]", func() {
+		It("should not collect Edge Proxy logs when self-monitoring is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				IntelligentEdge: IntelligentEdgeConfig{
-					Enabled:         true,
-					SamplingEnabled: true,
-					Endpoint:        "decision-maker.example.com:443",
-					ApiEndpoint:     "https://control-plane-api.dash0.com",
-					Dataset:         "default",
-					BarkerEnabled:   true,
-					BarkerName:      namePrefix + "-barker",
+					Enabled:          true,
+					SamplingEnabled:  true,
+					Endpoint:         "decision-maker.example.com:443",
+					ApiEndpoint:      "https://control-plane-api.dash0.com",
+					Dataset:          "default",
+					EdgeProxyEnabled: true,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			configContent := configMap.Data["config.yaml"]
-			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-barker"))
+			Expect(configContent).ToNot(ContainSubstring(namePrefix + "-edge-proxy"))
 			Expect(configContent).ToNot(ContainSubstring("file_log/selfmonitoring"))
 		})
 
-		It("should drop barker-originated OTLP logs when IE + barker + self-monitoring are enabled [DaemonSet]", func() {
+		It("should drop Edge-Proxy-originated OTLP logs when IE + Edge Proxy + self-monitoring are enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				IntelligentEdge: IntelligentEdgeConfig{
-					Enabled:         true,
-					SamplingEnabled: true,
-					Endpoint:        "decision-maker.example.com:443",
-					ApiEndpoint:     "https://control-plane-api.dash0.com",
-					Dataset:         "default",
-					BarkerEnabled:   true,
-					BarkerName:      namePrefix + "-barker",
+					Enabled:          true,
+					SamplingEnabled:  true,
+					Endpoint:         "decision-maker.example.com:443",
+					ApiEndpoint:      "https://control-plane-api.dash0.com",
+					Dataset:          "default",
+					EdgeProxyEnabled: true,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
 				},
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
@@ -2130,36 +2130,36 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			processors := collectorConfig["processors"].(map[string]interface{})
-			Expect(processors).To(HaveKey("filter/logs/drop_barker_otlp_selfmonitoring"))
+			Expect(processors).To(HaveKey("filter/logs/drop_edge_proxy_otlp_selfmonitoring"))
 
 			logRecordConditions := ReadFromMap(processors, []string{
-				"filter/logs/drop_barker_otlp_selfmonitoring", "logs", "log_record",
+				"filter/logs/drop_edge_proxy_otlp_selfmonitoring", "logs", "log_record",
 			}).([]interface{})
 			Expect(logRecordConditions).To(HaveLen(1))
 			Expect(logRecordConditions[0]).To(Equal(
-				`resource.attributes["service.name"] == "barker" and ` +
+				`resource.attributes["service.name"] == "edge-proxy" and ` +
 					`resource.attributes["service.namespace"] == "dash0-operator" and ` +
 					`resource.attributes["telemetry.sdk.language"] != nil`,
 			))
 
 			pipelines := readPipelines(collectorConfig)
 			Expect(readPipelineProcessors(pipelines, "logs/otlp-to-forwarder")).
-				To(ContainElement("filter/logs/drop_barker_otlp_selfmonitoring"))
+				To(ContainElement("filter/logs/drop_edge_proxy_otlp_selfmonitoring"))
 		})
 
-		It("should not drop barker OTLP logs when self-monitoring is disabled [DaemonSet]", func() {
+		It("should not drop Edge Proxy OTLP logs when self-monitoring is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				IntelligentEdge: IntelligentEdgeConfig{
-					Enabled:         true,
-					SamplingEnabled: true,
-					Endpoint:        "decision-maker.example.com:443",
-					ApiEndpoint:     "https://control-plane-api.dash0.com",
-					Dataset:         "default",
-					BarkerEnabled:   true,
-					BarkerName:      namePrefix + "-barker",
+					Enabled:          true,
+					SamplingEnabled:  true,
+					Endpoint:         "decision-maker.example.com:443",
+					ApiEndpoint:      "https://control-plane-api.dash0.com",
+					Dataset:          "default",
+					EdgeProxyEnabled: true,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
@@ -2167,25 +2167,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			processors := collectorConfig["processors"].(map[string]interface{})
-			Expect(processors).ToNot(HaveKey("filter/logs/drop_barker_otlp_selfmonitoring"))
+			Expect(processors).ToNot(HaveKey("filter/logs/drop_edge_proxy_otlp_selfmonitoring"))
 
 			pipelines := readPipelines(collectorConfig)
 			Expect(readPipelineProcessors(pipelines, "logs/otlp-to-forwarder")).
-				ToNot(ContainElement("filter/logs/drop_barker_otlp_selfmonitoring"))
+				ToNot(ContainElement("filter/logs/drop_edge_proxy_otlp_selfmonitoring"))
 		})
 
-		It("should not add barker OTLP drop filter when barker is disabled [DaemonSet]", func() {
+		It("should not add Edge Proxy OTLP drop filter when Edge Proxy is disabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				IntelligentEdge: IntelligentEdgeConfig{
-					Enabled:         true,
-					SamplingEnabled: true,
-					Endpoint:        "decision-maker.example.com:443",
-					ApiEndpoint:     "https://control-plane-api.dash0.com",
-					Dataset:         "default",
-					BarkerEnabled:   false,
+					Enabled:          true,
+					SamplingEnabled:  true,
+					Endpoint:         "decision-maker.example.com:443",
+					ApiEndpoint:      "https://control-plane-api.dash0.com",
+					Dataset:          "default",
+					EdgeProxyEnabled: false,
 				},
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
@@ -2196,7 +2196,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			processors := collectorConfig["processors"].(map[string]interface{})
-			Expect(processors).ToNot(HaveKey("filter/logs/drop_barker_otlp_selfmonitoring"))
+			Expect(processors).ToNot(HaveKey("filter/logs/drop_edge_proxy_otlp_selfmonitoring"))
 		})
 
 		It("should wire the dash0signaltometrics connector when IE + signalToMetrics are enabled [DaemonSet]", func() {
@@ -3379,15 +3379,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n",
 			}),
-			Entry("with no namespaces, self-monitoring enabled, intelligent edge with barker enabled", ottlFilterExpressionTestConfig{
+			Entry("with no namespaces, self-monitoring enabled, intelligent edge with Edge Proxy enabled", ottlFilterExpressionTestConfig{
 				monitoredNamespaces:           nil,
 				selfMonitoringEnabled:         true,
 				prometheusCrdSupportEnabled:   false,
 				operatorManagerDeploymentName: OperatorManagerDeploymentName,
 				intelligentEdge: IntelligentEdgeConfig{
-					Enabled:       true,
-					BarkerEnabled: true,
-					BarkerName:    namePrefix + "-barker",
+					Enabled:          true,
+					EdgeProxyEnabled: true,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
 				},
 				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
 					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
@@ -3395,19 +3395,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
 					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + ExpectedDeploymentName + "\" or " +
 					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
-					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + namePrefix + "-barker\" or " +
+					"          (resource.attributes[\"k8s.deployment.name\"] != \"" + namePrefix + "-edge-proxy\" or " +
 					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
 					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
 			}),
-			Entry("intelligent edge enabled but barker disabled - no barker exclusion", ottlFilterExpressionTestConfig{
+			Entry("intelligent edge enabled but Edge Proxy disabled - no Edge Proxy exclusion", ottlFilterExpressionTestConfig{
 				monitoredNamespaces:           nil,
 				selfMonitoringEnabled:         true,
 				prometheusCrdSupportEnabled:   false,
 				operatorManagerDeploymentName: OperatorManagerDeploymentName,
 				intelligentEdge: IntelligentEdgeConfig{
-					Enabled:       true,
-					BarkerEnabled: false,
-					BarkerName:    namePrefix + "-barker",
+					Enabled:          true,
+					EdgeProxyEnabled: false,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
 				},
 				expectedExpression: "(resource.attributes[\"k8s.deployment.name\"] != \"" + OperatorManagerDeploymentName + "\" or " +
 					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
@@ -3417,15 +3417,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"resource.attributes[\"k8s.namespace.name\"] != \"" + OperatorNamespace + "\") and\n" +
 					"          resource.attributes[\"k8s.namespace.name\"] != nil\n",
 			}),
-			Entry("self-monitoring disabled - barker exclusion not added even if barker enabled", ottlFilterExpressionTestConfig{
+			Entry("self-monitoring disabled - Edge Proxy exclusion not added even if Edge Proxy enabled", ottlFilterExpressionTestConfig{
 				monitoredNamespaces:           nil,
 				selfMonitoringEnabled:         false,
 				prometheusCrdSupportEnabled:   false,
 				operatorManagerDeploymentName: OperatorManagerDeploymentName,
 				intelligentEdge: IntelligentEdgeConfig{
-					Enabled:       true,
-					BarkerEnabled: true,
-					BarkerName:    namePrefix + "-barker",
+					Enabled:          true,
+					EdgeProxyEnabled: true,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
 				},
 				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n",
 			}),
@@ -3654,53 +3654,53 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					},
 					expectedToBeDropped: true,
 				}),
-			Entry("barker metrics are not dropped when self-monitoring and intelligent edge are enabled",
+			Entry("Edge Proxy metrics are not dropped when self-monitoring and intelligent edge are enabled",
 				ottlFilterEvaluationTestConfig{
 					monitoredNamespaces:           []string{namespace1, namespace2},
 					selfMonitoringEnabled:         true,
 					prometheusCrdSupportEnabled:   false,
 					operatorManagerDeploymentName: OperatorManagerDeploymentName,
 					intelligentEdge: IntelligentEdgeConfig{
-						Enabled:       true,
-						BarkerEnabled: true,
-						BarkerName:    namePrefix + "-barker",
+						Enabled:          true,
+						EdgeProxyEnabled: true,
+						EdgeProxyName:    namePrefix + "-edge-proxy",
 					},
 					resourceAttributes: map[string]string{
-						"k8s.deployment.name": namePrefix + "-barker",
+						"k8s.deployment.name": namePrefix + "-edge-proxy",
 						"k8s.namespace.name":  OperatorNamespace,
 					},
 					expectedToBeDropped: false,
 				}),
-			Entry("barker metrics in a different namespace are still dropped",
+			Entry("Edge Proxy metrics in a different namespace are still dropped",
 				ottlFilterEvaluationTestConfig{
 					monitoredNamespaces:           []string{namespace1, namespace2},
 					selfMonitoringEnabled:         true,
 					prometheusCrdSupportEnabled:   false,
 					operatorManagerDeploymentName: OperatorManagerDeploymentName,
 					intelligentEdge: IntelligentEdgeConfig{
-						Enabled:       true,
-						BarkerEnabled: true,
-						BarkerName:    namePrefix + "-barker",
+						Enabled:          true,
+						EdgeProxyEnabled: true,
+						EdgeProxyName:    namePrefix + "-edge-proxy",
 					},
 					resourceAttributes: map[string]string{
-						"k8s.deployment.name": namePrefix + "-barker",
+						"k8s.deployment.name": namePrefix + "-edge-proxy",
 						"k8s.namespace.name":  "some-namespace",
 					},
 					expectedToBeDropped: true,
 				}),
-			Entry("barker metrics are dropped when barker is disabled in intelligent edge config",
+			Entry("Edge Proxy metrics are dropped when Edge Proxy is disabled in intelligent edge config",
 				ottlFilterEvaluationTestConfig{
 					monitoredNamespaces:           []string{namespace1, namespace2},
 					selfMonitoringEnabled:         true,
 					prometheusCrdSupportEnabled:   false,
 					operatorManagerDeploymentName: OperatorManagerDeploymentName,
 					intelligentEdge: IntelligentEdgeConfig{
-						Enabled:       true,
-						BarkerEnabled: false,
-						BarkerName:    namePrefix + "-barker",
+						Enabled:          true,
+						EdgeProxyEnabled: false,
+						EdgeProxyName:    namePrefix + "-edge-proxy",
 					},
 					resourceAttributes: map[string]string{
-						"k8s.deployment.name": namePrefix + "-barker",
+						"k8s.deployment.name": namePrefix + "-edge-proxy",
 						"k8s.namespace.name":  OperatorNamespace,
 					},
 					expectedToBeDropped: true,
