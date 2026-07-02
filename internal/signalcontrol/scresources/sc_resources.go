@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package ieresources
+package scresources
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
-type IntelligentEdgeResourceManager struct {
+type SignalControlResourceManager struct {
 	client.Client
 	scheme                    *runtime.Scheme
 	operatorManagerDeployment *appsv1.Deployment
@@ -31,7 +31,7 @@ type IntelligentEdgeResourceManager struct {
 	operatorVersion           string
 }
 
-func NewIntelligentEdgeResourceManager(
+func NewSignalControlResourceManager(
 	k8sClient client.Client,
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
@@ -40,8 +40,8 @@ func NewIntelligentEdgeResourceManager(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
-) *IntelligentEdgeResourceManager {
-	return &IntelligentEdgeResourceManager{
+) *SignalControlResourceManager {
+	return &SignalControlResourceManager{
 		Client:                    k8sClient,
 		scheme:                    scheme,
 		operatorManagerDeployment: operatorManagerDeployment,
@@ -53,14 +53,14 @@ func NewIntelligentEdgeResourceManager(
 	}
 }
 
-func (m *IntelligentEdgeResourceManager) CreateOrUpdateResources(
+func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	ctx context.Context,
-	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
+	signalControlResource *dash0v1alpha1.Dash0SignalControl,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, intelligentEdgeResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, extraConfig, false, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, extraConfig, false, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
@@ -83,7 +83,7 @@ func (m *IntelligentEdgeResourceManager) CreateOrUpdateResources(
 	return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, nil
 }
 
-func (m *IntelligentEdgeResourceManager) createOrUpdateResource(
+func (m *SignalControlResourceManager) createOrUpdateResource(
 	ctx context.Context,
 	desiredResource client.Object,
 	logger logd.Logger,
@@ -109,7 +109,7 @@ func (m *IntelligentEdgeResourceManager) createOrUpdateResource(
 	return false, hasChanged, nil
 }
 
-func (m *IntelligentEdgeResourceManager) createResource(
+func (m *SignalControlResourceManager) createResource(
 	ctx context.Context,
 	desiredResource client.Object,
 	logger logd.Logger,
@@ -127,7 +127,7 @@ func (m *IntelligentEdgeResourceManager) createResource(
 	return nil
 }
 
-func (m *IntelligentEdgeResourceManager) updateResource(
+func (m *SignalControlResourceManager) updateResource(
 	ctx context.Context,
 	existingResource client.Object,
 	desiredResource client.Object,
@@ -158,7 +158,7 @@ func (m *IntelligentEdgeResourceManager) updateResource(
 	return true, nil
 }
 
-func (m *IntelligentEdgeResourceManager) deleteResourcesThatAreNoLongerDesired(
+func (m *SignalControlResourceManager) deleteResourcesThatAreNoLongerDesired(
 	ctx context.Context,
 	desiredState []clientObject,
 	logger logd.Logger,
@@ -189,11 +189,11 @@ func (m *IntelligentEdgeResourceManager) deleteResourcesThatAreNoLongerDesired(
 	return nil
 }
 
-func (m *IntelligentEdgeResourceManager) DeleteResources(
+func (m *SignalControlResourceManager) DeleteResources(
 	ctx context.Context,
 	logger logd.Logger,
 ) (bool, error) {
-	logger.Info("Deleting intelligent edge resources (if existing).", "namespace", m.operatorNamespace)
+	logger.Info("Deleting Signal Control resources (if existing).", "namespace", m.operatorNamespace)
 	desiredResources := assembleDesiredStateForDelete(m.operatorNamespace, m.namePrefix, logger)
 	var allErrors []error
 	resourcesHaveBeenDeleted := false

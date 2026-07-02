@@ -19,9 +19,9 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
-	"github.com/dash0hq/dash0-operator/internal/intelligentedge"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
@@ -35,7 +35,7 @@ type OperatorConfigurationReconciler struct {
 	collectorManager             *collectors.CollectorManager
 	targetAllocatorManager       *targetallocator.TargetAllocatorManager
 	agent0ConnectorManager       *agent0connector.Agent0ConnectorManager
-	intelligentEdgeManager       *intelligentedge.IntelligentEdgeManager
+	signalControlManager         *signalcontrol.SignalControlManager
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig
 	pseudoClusterUid             types.UID
 	operatorDeploymentNamespace  string
@@ -65,7 +65,7 @@ func NewOperatorConfigurationReconciler(
 	collectorManager *collectors.CollectorManager,
 	targetAllocatorManager *targetallocator.TargetAllocatorManager,
 	agent0ConnectorManager *agent0connector.Agent0ConnectorManager,
-	intelligentEdgeManager *intelligentedge.IntelligentEdgeManager,
+	signalControlManager *signalcontrol.SignalControlManager,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	pseudoClusterUid types.UID,
 	operatorDeploymentNamespace string,
@@ -83,7 +83,7 @@ func NewOperatorConfigurationReconciler(
 		collectorManager:             collectorManager,
 		targetAllocatorManager:       targetAllocatorManager,
 		agent0ConnectorManager:       agent0ConnectorManager,
-		intelligentEdgeManager:       intelligentEdgeManager,
+		signalControlManager:         signalControlManager,
 		clusterInstrumentationConfig: clusterInstrumentationConfig,
 		pseudoClusterUid:             pseudoClusterUid,
 		operatorDeploymentNamespace:  operatorDeploymentNamespace,
@@ -163,7 +163,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		if err = r.reconcileAgent0Connector(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
-		if err = r.reconcileIntelligentEdge(ctx, logger); err != nil {
+		if err = r.reconcileSignalControl(ctx, logger); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -244,7 +244,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	if err = r.reconcileIntelligentEdge(ctx, logger); err != nil {
+	if err = r.reconcileSignalControl(ctx, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -461,16 +461,16 @@ func (r *OperatorConfigurationReconciler) reconcileAgent0Connector(
 	return nil
 }
 
-func (r *OperatorConfigurationReconciler) reconcileIntelligentEdge(
+func (r *OperatorConfigurationReconciler) reconcileSignalControl(
 	ctx context.Context,
 	logger logd.Logger,
 ) error {
-	if r.intelligentEdgeManager == nil {
-		// Intelligent edge feature is disabled via Helm, skip.
+	if r.signalControlManager == nil {
+		// Signal Control feature is disabled via Helm, skip.
 		return nil
 	}
-	if _, err := r.intelligentEdgeManager.Reconcile(ctx); err != nil {
-		logger.Error(err, "Failed to reconcile intelligent edge, requeuing reconcile request.")
+	if _, err := r.signalControlManager.Reconcile(ctx); err != nil {
+		logger.Error(err, "Failed to reconcile Signal Control, requeuing reconcile request.")
 		return err
 	}
 	return nil

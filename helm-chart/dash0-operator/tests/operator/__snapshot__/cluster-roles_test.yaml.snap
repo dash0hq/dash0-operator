@@ -227,7 +227,7 @@ cluster roles should match snapshot:
       - apiGroups:
           - operator.dash0.com
         resources:
-          - dash0intelligentedges
+          - dash0signalcontrols
         verbs:
           - create
           - delete
@@ -240,13 +240,13 @@ cluster roles should match snapshot:
       - apiGroups:
           - operator.dash0.com
         resources:
-          - dash0intelligentedges/finalizers
+          - dash0signalcontrols/finalizers
         verbs:
           - update
       - apiGroups:
           - operator.dash0.com
         resources:
-          - dash0intelligentedges/status
+          - dash0signalcontrols/status
         verbs:
           - get
           - patch

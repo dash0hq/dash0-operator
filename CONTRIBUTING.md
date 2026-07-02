@@ -542,19 +542,19 @@ be accompanied by corresponding tests (for example new test cases in `workload_m
 `"when updating instrumentation from 0.5.1 to 0.6.0"` in commit 300a765a64a42d98dcc6d9a66dccc534b610ab65 for an
 example).
 
-## Intelligent Edge Development
+## Signal Control Development
 
 ### Prerequisites
 
-- IE images are currently not publicly available, for this reason, access to a private container registry that
+- Signal Control images are currently not publicly available, for this reason, access to a private container registry that
 serves these images is required.
 
 ### Testing
 
 - Set `IMAGE_REPOSITORY_PREFIX` to a repo containing the images or set the individual images explicitly via helm values.
-- Install the operator helm chart with `operator.intelligentEdge.enabled=true`
-  - This will instruct helm to set the right collector image and also install the IE CRDs.
-- You can now create a `Dash0IntelligentEdge` CR and add `Dash0SamplingRule`s.
+- Install the operator helm chart with `operator.signalControl.enabled=true`
+  - This will instruct helm to set the right collector image and also install the Signal Control CRDs.
+- You can now create a `Dash0SignalControl` CR and add `Dash0SamplingRule`s.
 
-A test scenario is available in [test-resources/bin/test-scenario-10-intelligent-edge.sh](test-resources/bin/test-scenario-10-intelligent-edge.sh)
+A test scenario is available in [test-resources/bin/test-scenario-10-signal-control.sh](test-resources/bin/test-scenario-10-signal-control.sh)
 and example sampling rules can be found in [test-resources/customresources/dash0samplingrule](test-resources/customresources/dash0samplingrule).

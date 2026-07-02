@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: dash0intelligentedges.operator.dash0.com
+  name: dash0signalcontrols.operator.dash0.com
 spec:
   group: operator.dash0.com
   names:
-    kind: Dash0IntelligentEdge
-    listKind: Dash0IntelligentEdgeList
-    plural: dash0intelligentedges
-    singular: dash0intelligentedge
+    kind: Dash0SignalControl
+    listKind: Dash0SignalControlList
+    plural: dash0signalcontrols
+    singular: dash0signalcontrol
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -31,7 +31,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Dash0IntelligentEdge is the schema for the Dash0IntelligentEdge API. It configures the intelligent edge
+          Dash0SignalControl is the schema for the Dash0SignalControl API. It configures the Signal Control
           feature cluster-wide. This is a singleton resource — only one instance may exist per cluster.
         properties:
           apiVersion:
@@ -53,7 +53,7 @@ spec:
             type: object
           spec:
             description: |-
-              Dash0IntelligentEdgeSpec describes the cluster-wide configuration for the intelligent edge tail-sampling feature.
+              Dash0SignalControlSpec describes the cluster-wide configuration for the Signal Control tail-sampling feature.
               When enabled, the operator modifies the collector pipeline to include tail-sampling components (dash0resource,
               dash0operation, dash0filter, dash0sampling processors, dash0redmetrics and dash0signaltometrics connectors)
               and optionally deploys the Edge Proxy.
@@ -115,8 +115,8 @@ spec:
               enabled:
                 default: true
                 description: |-
-                  Whether intelligent edge is enabled. When disabled, no IE components are added to the collector pipeline
-                  and no IE resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
+                  Whether Signal Control is enabled. When disabled, no Signal Control components are added to the collector pipeline
+                  and no Signal Control resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
                   setting is optional, it defaults to true.
                 type: boolean
               operationProcessor:
@@ -235,7 +235,7 @@ spec:
                     description: |-
                       Whether tail-sampling is enabled. When disabled, the sampling processor and its Decision Maker
                       connection are not added to the collector pipeline. RED metrics, dash0resource, and dash0operation
-                      processors remain active if the overall IE flag (spec.enabled) is true. This setting is optional,
+                      processors remain active if the overall Signal Control flag (spec.enabled) is true. This setting is optional,
                       it defaults to true.
                     type: boolean
                   fallbackSampleRatio:
@@ -339,8 +339,8 @@ spec:
             - enabled
             type: object
           status:
-            description: Dash0IntelligentEdgeStatus defines the observed state of
-              the Dash0IntelligentEdge resource.
+            description: Dash0SignalControlStatus defines the observed state of the
+              Dash0SignalControl resource.
             properties:
               conditions:
                 items:

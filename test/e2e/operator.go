@@ -346,14 +346,14 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.targetAllocatorImage.digest", images.targetAllocator.digest)
 	arguments = setIfNotEmpty(arguments, "operator.targetAllocatorImage.pullPolicy", images.targetAllocator.pullPolicy)
 
-	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.repository",
-		images.intelligentEdgeCollector.repository)
-	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.tag",
-		images.intelligentEdgeCollector.tag)
-	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.digest",
-		images.intelligentEdgeCollector.digest)
-	arguments = setIfNotEmpty(arguments, "operator.intelligentEdgeCollectorImage.pullPolicy",
-		images.intelligentEdgeCollector.pullPolicy)
+	arguments = setIfNotEmpty(arguments, "operator.signalControlCollectorImage.repository",
+		images.signalControlCollector.repository)
+	arguments = setIfNotEmpty(arguments, "operator.signalControlCollectorImage.tag",
+		images.signalControlCollector.tag)
+	arguments = setIfNotEmpty(arguments, "operator.signalControlCollectorImage.digest",
+		images.signalControlCollector.digest)
+	arguments = setIfNotEmpty(arguments, "operator.signalControlCollectorImage.pullPolicy",
+		images.signalControlCollector.pullPolicy)
 
 	arguments = setIfNotEmpty(arguments, "operator.edgeProxyImage.repository", images.edgeProxy.repository)
 	arguments = setIfNotEmpty(arguments, "operator.edgeProxyImage.tag", images.edgeProxy.tag)

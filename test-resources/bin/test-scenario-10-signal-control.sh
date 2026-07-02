@@ -5,8 +5,8 @@
 
 set -euo pipefail
 
-# enable Intelligent Edge features (IE collector image, Edge Proxy image)
-export FEATURE_INTELLIGENT_EDGE_ENABLED=true
+# enable Signal Control features (Signal Control collector image, Edge Proxy image)
+export FEATURE_SIGNAL_CONTROL_ENABLED=true
 
 project_root="$(dirname "${BASH_SOURCE[0]}")"/../..
 scripts_lib="test-resources/bin/lib"
@@ -97,6 +97,6 @@ fi
 
 deploy_dash0_api_sync_resources
 
-deploy_intelligent_edge_resource
+deploy_signal_control_resource
 
 finish_scenario

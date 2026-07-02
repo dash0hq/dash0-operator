@@ -194,7 +194,7 @@ tests:
                       operator: In
                       values:
                         - value-09
-        intelligentEdge:
+        signalControl:
           enabled: true
           edgeProxy:
             containerResources:

@@ -481,9 +481,9 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
-  # the container image to use for the intelligent edge collector (there should usually be no reason to override this)
-  intelligentEdgeCollectorImage:
-    repository: "ghcr.io/dash0hq/intelligent-edge-collector"
+  # the container image to use for the Signal Control collector (there should usually be no reason to override this)
+  signalControlCollectorImage:
+    repository: "ghcr.io/dash0hq/signal-control-collector"
     # overrides the image tag, which defaults to the chart appVersion.
     tag: "v2.0.2051"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
@@ -1069,13 +1069,13 @@ operator:
   #    synchronizePersesDashboards: true
   #    synchronizePrometheusRules: true
 
-  # Settings related to Intelligent Edge. This feature is currently under development and should
+  # Settings related to Signal Control. This feature is currently under development and should
   # not be enabled.
-  intelligentEdge:
-    # Whether to enable Intelligent Edge features for this operator install.
+  signalControl:
+    # Whether to enable Signal Control features for this operator install.
     enabled: false
 
-    # Settings for the Edge Proxy deployed when intelligentEdge.enabled=true.
+    # Settings for the Edge Proxy deployed when signalControl.enabled=true.
     edgeProxy:
       # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.
       containerResources:

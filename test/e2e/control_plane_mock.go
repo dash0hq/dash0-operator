@@ -24,7 +24,7 @@ const (
 
 var (
 	// controlPlaneMockServiceBaseUrl is the in-cluster URL the operator points
-	// the IE collector at via Dash0IntelligentEdge.spec.controlPlaneApiEndpoint.
+	// the Signal Control collector at via Dash0SignalControl.spec.controlPlaneApiEndpoint.
 	controlPlaneMockServiceBaseUrl = fmt.Sprintf(
 		"http://%s.%s.svc.cluster.local:%d",
 		controlPlaneMockServiceName,

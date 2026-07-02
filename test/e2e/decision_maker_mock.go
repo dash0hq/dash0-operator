@@ -24,7 +24,7 @@ const (
 
 var (
 	// decisionMakerMockGrpcEndpoint is the in-cluster gRPC endpoint that the
-	// IE Edge Proxy is pointed at via Dash0IntelligentEdge.spec.sampling.decisionMakerEndpoint.
+	// Signal Control Edge Proxy is pointed at via Dash0SignalControl.spec.sampling.decisionMakerEndpoint.
 	decisionMakerMockGrpcEndpoint = fmt.Sprintf(
 		"%s.%s.svc.cluster.local:%d",
 		decisionMakerMockServiceName,
@@ -102,7 +102,7 @@ func uninstallDecisionMakerMock() {
 }
 
 // fetchDecisionMakerGrpcCallCounts returns the per-RPC invocation counters
-// observed by the mock. Used by IE wiring tests to assert that the Edge Proxy has
+// observed by the mock. Used by Signal Control wiring tests to assert that the Edge Proxy has
 // established an upstream connection.
 func fetchDecisionMakerGrpcCallCounts(g Gomega) map[string]int64 {
 	url := fmt.Sprintf("%s/grpc-calls", decisionMakerMockServerBaseUrl)

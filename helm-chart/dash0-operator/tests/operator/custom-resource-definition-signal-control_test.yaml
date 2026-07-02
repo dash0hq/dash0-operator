@@ -1,13 +1,13 @@
-suite: test sampling rules CRD
+suite: test Signal Control CRD
 templates:
-  - operator/custom-resource-definition-sampling-rules.yaml
+  - operator/custom-resource-definition-signal-control.yaml
 tests:
-  - it: should not render the sampling rules CRD by default
+  - it: should not render the Signal Control CRD by default
     asserts:
       - hasDocuments:
           count: 0
 
-  - it: should render the sampling rules CRD when Signal Control is enabled
+  - it: should render the Signal Control CRD when Signal Control is enabled
     set:
       operator:
         signalControl:
@@ -19,4 +19,4 @@ tests:
           of: CustomResourceDefinition
       - equal:
           path: metadata.name
-          value: dash0samplingrules.operator.dash0.com
+          value: dash0signalcontrols.operator.dash0.com

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package ieresources
+package scresources
 
 import (
 	"testing"
@@ -13,9 +13,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-func TestIntelligentEdgeResources(t *testing.T) {
+func TestSignalControlResources(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Intelligent Edge Resources Suite")
+	RunSpecs(t, "Signal Control Resources Suite")
 }
 
 var _ = BeforeSuite(func() {

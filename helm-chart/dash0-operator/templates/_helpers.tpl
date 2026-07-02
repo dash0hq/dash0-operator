@@ -102,9 +102,9 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.filelogOffsetVolumeOwnershipImage "context" .) -}}
 {{- end }}
 
-{{/* the intelligent edge collector image */}}
-{{- define "dash0-operator.intelligentEdgeCollectorImage" -}}
-{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.intelligentEdgeCollectorImage "context" .) -}}
+{{/* the Signal Control collector image */}}
+{{- define "dash0-operator.signalControlCollectorImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.signalControlCollectorImage "context" .) -}}
 {{- end }}
 
 {{/* the Edge Proxy image */}}

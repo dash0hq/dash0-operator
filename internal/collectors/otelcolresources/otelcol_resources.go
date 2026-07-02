@@ -95,7 +95,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	extraConfig util.ExtraConfig,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
-	intelligentEdgeResource *dash0v1alpha1.Dash0IntelligentEdge,
+	signalControlResource *dash0v1alpha1.Dash0SignalControl,
 	logger logd.Logger,
 ) (bool, bool, error) {
 	selfMonitoringConfiguration, err :=
@@ -201,7 +201,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Images:                 m.collectorConfig.Images,
 		IsIPv6Cluster:          m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:         m.collectorConfig.IsGkeAutopilot,
-		IntelligentEdge:        intelligentEdgeConfigFromResource(intelligentEdgeResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
+		SignalControl:          signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
 		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
 		EnableProfExtension:    m.collectorConfig.EnableProfExtension,
@@ -211,9 +211,9 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
-	if config.usesIntelligentEdgeCollectorImage() {
-		logger.Debug(fmt.Sprintf("Using the intelligent edge collector image %s for the collector workloads, since "+
-			"intelligent edge is enabled via the Dash0IntelligentEdge resource.", config.collectorImage()))
+	if config.usesSignalControlCollectorImage() {
+		logger.Debug(fmt.Sprintf("Using the Signal Control collector image %s for the collector workloads, since "+
+			"Signal Control is enabled via the Dash0SignalControl resource.", config.collectorImage()))
 	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
@@ -749,19 +749,19 @@ func isTlsError(err error) bool {
 	return strings.Contains(err.Error(), "tls: failed to verify certificate:")
 }
 
-func intelligentEdgeConfigFromResource(
-	resource *dash0v1alpha1.Dash0IntelligentEdge,
+func signalControlConfigFromResource(
+	resource *dash0v1alpha1.Dash0SignalControl,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
 	operatorNamespace string,
 	namePrefix string,
 	logger logd.Logger,
-) IntelligentEdgeConfig {
+) SignalControlConfig {
 	if resource == nil {
-		return IntelligentEdgeConfig{Enabled: false}
+		return SignalControlConfig{Enabled: false}
 	}
 	if !pointers.ReadBoolPointerWithDefault(resource.Spec.Enabled, true) {
-		logger.Info("Intelligent edge is explicitly disabled via the Dash0IntelligentEdge resource.")
-		return IntelligentEdgeConfig{Enabled: false}
+		logger.Info("Signal Control is explicitly disabled via the Dash0SignalControl resource.")
+		return SignalControlConfig{Enabled: false}
 	}
 
 	edgeProxyEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.EdgeProxy.Enabled, true)
@@ -803,18 +803,18 @@ func intelligentEdgeConfigFromResource(
 	spamFilterAllowNoSettingsExt := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.AllowNoSettingsExt, false)
 
 	operationPreferSpanName := pointers.ReadBoolPointerWithDefault(resource.Spec.OperationProcessor.PreferSpanName, false)
-	var operationCardinalityRules []IntelligentEdgeCardinalityRule
+	var operationCardinalityRules []SignalControlCardinalityRule
 	for _, rule := range resource.Spec.OperationProcessor.CardinalityRules {
-		matchers := make([]IntelligentEdgeOperationMatcher, 0, len(rule.OperationMatchers))
+		matchers := make([]SignalControlOperationMatcher, 0, len(rule.OperationMatchers))
 		for _, matcher := range rule.OperationMatchers {
-			matchers = append(matchers, IntelligentEdgeOperationMatcher{
+			matchers = append(matchers, SignalControlOperationMatcher{
 				Regex:        matcher.Regex,
 				Replacements: matcher.Replacements,
 				QuickFilter:  matcher.QuickFilter,
 				Literal:      pointers.ReadBoolPointerWithDefault(matcher.Literal, false),
 			})
 		}
-		operationCardinalityRules = append(operationCardinalityRules, IntelligentEdgeCardinalityRule{
+		operationCardinalityRules = append(operationCardinalityRules, SignalControlCardinalityRule{
 			Id:                rule.Id,
 			SourceAttribute:   rule.SourceAttribute,
 			QuickFilter:       rule.QuickFilter,
@@ -844,14 +844,14 @@ func intelligentEdgeConfigFromResource(
 	}
 
 	if endpoint == "" && apiEndpoint == "" {
-		logger.Info("Intelligent edge is enabled but no Decision Maker or control plane API endpoints could be " +
-			"derived from the operator configuration resource (and no explicit overrides are set). Intelligent " +
-			"edge will remain disabled in the collector config until a valid operator configuration with a " +
+		logger.Info("Signal Control is enabled but no Decision Maker or control plane API endpoints could be " +
+			"derived from the operator configuration resource (and no explicit overrides are set). Signal " +
+			"Control will remain disabled in the collector config until a valid operator configuration with a " +
 			"Dash0 export is available.")
-		return IntelligentEdgeConfig{Enabled: false}
+		return SignalControlConfig{Enabled: false}
 	}
 
-	return IntelligentEdgeConfig{
+	return SignalControlConfig{
 		Enabled:                            true,
 		SamplingEnabled:                    samplingEnabled,
 		SamplingFallbackSampleRatio:        samplingFallbackSampleRatio,

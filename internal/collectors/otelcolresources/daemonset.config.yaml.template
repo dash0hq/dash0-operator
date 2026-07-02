@@ -31,9 +31,9 @@ extensions:
   {{- if .EnableProfExtension }}
   pprof: {}
   {{- end }}
-{{- if .IntelligentEdge.Enabled }}
+{{- if .SignalControl.Enabled }}
   dash0settingsonedgeextension:
-    endpoint: {{ .IntelligentEdge.ApiEndpoint }}
+    endpoint: {{ .SignalControl.ApiEndpoint }}
     auth_token: ${env:DASH0_SAMPLING_AUTH_TOKEN}
 {{- end }}
 
@@ -47,32 +47,32 @@ connectors:
   forward/traces-default-exporter: {}
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
-{{- if .IntelligentEdge.Enabled }}
-{{- if .IntelligentEdge.SamplingEnabled }}
+{{- if .SignalControl.Enabled }}
+{{- if .SignalControl.SamplingEnabled }}
   forward/traces-to-sampling: {}
 {{- end }}
-{{- if or .IntelligentEdge.RedMetricsMaxTimeSeries .IntelligentEdge.RedMetricsAdditionalSpanAttributes }}
+{{- if or .SignalControl.RedMetricsMaxTimeSeries .SignalControl.RedMetricsAdditionalSpanAttributes }}
   dash0redmetrics:
-{{- if .IntelligentEdge.RedMetricsMaxTimeSeries }}
-    max_time_series: {{ .IntelligentEdge.RedMetricsMaxTimeSeries }}
+{{- if .SignalControl.RedMetricsMaxTimeSeries }}
+    max_time_series: {{ .SignalControl.RedMetricsMaxTimeSeries }}
 {{- end }}
-{{- if .IntelligentEdge.RedMetricsAdditionalSpanAttributes }}
+{{- if .SignalControl.RedMetricsAdditionalSpanAttributes }}
     additional_span_attributes:
-    {{- range $attr := .IntelligentEdge.RedMetricsAdditionalSpanAttributes }}
+    {{- range $attr := .SignalControl.RedMetricsAdditionalSpanAttributes }}
     - '{{ $attr }}'
     {{- end }}
 {{- end }}
 {{- else }}
   dash0redmetrics: {}
 {{- end }}
-{{- if .IntelligentEdge.SignalToMetricsEnabled }}
-{{- if or .IntelligentEdge.SignalToMetricsMaxTimeSeries .IntelligentEdge.SignalToMetricsFlushInterval }}
+{{- if .SignalControl.SignalToMetricsEnabled }}
+{{- if or .SignalControl.SignalToMetricsMaxTimeSeries .SignalControl.SignalToMetricsFlushInterval }}
   dash0signaltometrics:
-{{- if .IntelligentEdge.SignalToMetricsMaxTimeSeries }}
-    max_time_series: {{ .IntelligentEdge.SignalToMetricsMaxTimeSeries }}
+{{- if .SignalControl.SignalToMetricsMaxTimeSeries }}
+    max_time_series: {{ .SignalControl.SignalToMetricsMaxTimeSeries }}
 {{- end }}
-{{- if .IntelligentEdge.SignalToMetricsFlushInterval }}
-    metrics_flush_interval: {{ .IntelligentEdge.SignalToMetricsFlushInterval }}
+{{- if .SignalControl.SignalToMetricsFlushInterval }}
+    metrics_flush_interval: {{ .SignalControl.SignalToMetricsFlushInterval }}
 {{- end }}
 {{- else }}
   dash0signaltometrics: {}
@@ -85,8 +85,8 @@ connectors:
 
   {{- if $hasNamespacedExporters }}
   routing/traces:
-{{- if .IntelligentEdge.Enabled }}
-    default_pipelines: [traces/ie-pre-sampling]
+{{- if .SignalControl.Enabled }}
+    default_pipelines: [traces/signal-control-pre-sampling]
 {{- else }}
     default_pipelines: [traces/export/default]
 {{- end }}
@@ -552,14 +552,14 @@ receivers:
   Deliberately not checking $hasPrometheusScrapingEnabledForAtLeastOneNamespace here,to have logs in case the
   target-allocator is running even though it shouldn't.
   */}}
-  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled) .Agent0ConnectorEnabled) }}
+  {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled) .Agent0ConnectorEnabled) }}
   file_log/selfmonitoring:
     include:
       {{- if .PrometheusCrdSupportEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .OperatorResourcesNamePrefix }}-opentelemetry-target-allocator*/*/*.log
       {{- end }}
-      {{- if and .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled }}
-      - /var/log/pods/{{ .OperatorNamespace }}_{{ .IntelligentEdge.EdgeProxyName }}*/*/*.log
+      {{- if and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled }}
+      - /var/log/pods/{{ .OperatorNamespace }}_{{ .SignalControl.EdgeProxyName }}*/*/*.log
       {{- end }}
       {{- if .Agent0ConnectorEnabled }}
       - /var/log/pods/{{ .OperatorNamespace }}_{{ .Agent0ConnectorDeploymentName }}*/*/*.log
@@ -898,7 +898,7 @@ processors:
       profile:
         - {{ .NamespaceOttlFilter }}
   {{- end }}
-  {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled }}
+  {{- if and .SelfMonitoringEnabled .SignalControl.Enabled .SignalControl.EdgeProxyEnabled }}
   # The Edge Proxy's stdout logs are already collected by file_log/selfmonitoring, but the shared OpenTelemetry init
   # helper also installs an OTLP log exporter whenever OTEL_EXPORTER_OTLP_ENDPOINT is set (no per-signal toggle), so the
   # Edge Proxy also pushes its logs via OTLP. Drop those SDK-originated records to avoid duplicates.
@@ -1059,24 +1059,24 @@ processors:
       {{- end }}
   {{- end }}
 
-{{- if .IntelligentEdge.Enabled }}
-  resource/ie_attributes:
+{{- if .SignalControl.Enabled }}
+  resource/signal_control_attributes:
     attributes:
     - key: dash0.org.technical.id
       value: edge
       action: upsert
     - key: dash0.dataset
-      value: {{ .IntelligentEdge.Dataset }}
+      value: {{ .SignalControl.Dataset }}
       action: upsert
   dash0resource: {}
-{{- if or .IntelligentEdge.OperationPreferSpanName .IntelligentEdge.OperationCardinalityRules }}
+{{- if or .SignalControl.OperationPreferSpanName .SignalControl.OperationCardinalityRules }}
   dash0operation:
-{{- if .IntelligentEdge.OperationPreferSpanName }}
+{{- if .SignalControl.OperationPreferSpanName }}
     prefer_span_name: true
 {{- end }}
-{{- if .IntelligentEdge.OperationCardinalityRules }}
+{{- if .SignalControl.OperationCardinalityRules }}
     cardinality_rules:
-    {{- range $rule := .IntelligentEdge.OperationCardinalityRules }}
+    {{- range $rule := .SignalControl.OperationCardinalityRules }}
     - id: '{{ $rule.Id }}'
 {{- if $rule.SourceAttribute }}
       source_attribute: '{{ $rule.SourceAttribute }}'
@@ -1103,38 +1103,38 @@ processors:
 {{- else }}
   dash0operation: {}
 {{- end }}
-{{- if .IntelligentEdge.SpamFilterEnabled }}
-{{- if or .IntelligentEdge.SpamFilterCacheExpiration .IntelligentEdge.SpamFilterAllowNoSettingsExt }}
+{{- if .SignalControl.SpamFilterEnabled }}
+{{- if or .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
   dash0filter:
-{{- if .IntelligentEdge.SpamFilterCacheExpiration }}
-    cache_expiration: {{ .IntelligentEdge.SpamFilterCacheExpiration }}
+{{- if .SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
 {{- end }}
-{{- if .IntelligentEdge.SpamFilterAllowNoSettingsExt }}
-    allow_no_settings_ext: {{ .IntelligentEdge.SpamFilterAllowNoSettingsExt }}
+{{- if .SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ .SignalControl.SpamFilterAllowNoSettingsExt }}
 {{- end }}
 {{- else }}
   dash0filter: {}
 {{- end }}
 {{- end }}
-{{- if .IntelligentEdge.SamplingEnabled }}
+{{- if .SignalControl.SamplingEnabled }}
   dash0sampling:
-    decision_maker_endpoint: {{ .IntelligentEdge.Endpoint }}
+    decision_maker_endpoint: {{ .SignalControl.Endpoint }}
     decision_maker_headers:
       Authorization: Bearer ${env:DASH0_SAMPLING_AUTH_TOKEN}
-      Dash0-Dataset: {{ .IntelligentEdge.Dataset }}
-    decision_maker_insecure: {{ .IntelligentEdge.Insecure }}
-    default_dataset: {{ .IntelligentEdge.Dataset }}
-{{- if .IntelligentEdge.SamplingFallbackSampleRatio }}
-    fallback_sample_ratio: {{ .IntelligentEdge.SamplingFallbackSampleRatio }}
+      Dash0-Dataset: {{ .SignalControl.Dataset }}
+    decision_maker_insecure: {{ .SignalControl.Insecure }}
+    default_dataset: {{ .SignalControl.Dataset }}
+{{- if .SignalControl.SamplingFallbackSampleRatio }}
+    fallback_sample_ratio: {{ .SignalControl.SamplingFallbackSampleRatio }}
 {{- end }}
-{{- if .IntelligentEdge.SamplingDebug }}
+{{- if .SignalControl.SamplingDebug }}
     debug: true
 {{- end }}
     reservoir:
       type: disk
       data_dir: /var/lib/dash0/trace-reservoir
-      max_disk_bytes: {{ .IntelligentEdge.SamplingReservoirMaxDiskBytes }}
-      metric_level: {{ .IntelligentEdge.SamplingReservoirMetricLevel }}
+      max_disk_bytes: {{ .SignalControl.SamplingReservoirMaxDiskBytes }}
+      metric_level: {{ .SignalControl.SamplingReservoirMetricLevel }}
 {{- end }}
 {{- end }}
 
@@ -1233,7 +1233,7 @@ service:
   {{- if .EnableProfExtension }}
   - pprof
   {{- end }}
-  {{- if .IntelligentEdge.Enabled }}
+  {{- if .SignalControl.Enabled }}
   - dash0settingsonedgeextension
   {{- end }}
 
@@ -1263,51 +1263,51 @@ service:
         - transform/traces/custom_telemetry_transform
         {{- end }}
         - transform/resources
-        {{- if .IntelligentEdge.Enabled }}
-        - resource/ie_attributes
+        {{- if .SignalControl.Enabled }}
+        - resource/signal_control_attributes
         - dash0resource
         - dash0operation
-        {{- if .IntelligentEdge.SpamFilterEnabled }}
+        {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
         {{- end }}
         {{- end }}
       exporters:
         {{- if $hasNamespacedExporters }}
         - routing/traces
-        {{- else if .IntelligentEdge.Enabled }}
-        {{- if .IntelligentEdge.SamplingEnabled }}
+        {{- else if .SignalControl.Enabled }}
+        {{- if .SignalControl.SamplingEnabled }}
         - forward/traces-to-sampling
         {{- end }}
         - dash0redmetrics
-        {{- if .IntelligentEdge.SignalToMetricsEnabled }}
+        {{- if .SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics
         {{- end }}
-        {{- if not .IntelligentEdge.SamplingEnabled }}
+        {{- if not .SignalControl.SamplingEnabled }}
         - forward/traces-default-exporter
         {{- end }}
         {{- else }}
         - forward/traces-default-exporter
         {{- end }}
-{{- if .IntelligentEdge.Enabled }}
+{{- if .SignalControl.Enabled }}
 {{- if $hasNamespacedExporters }}
 
-    traces/ie-pre-sampling:
+    traces/signal-control-pre-sampling:
       receivers:
         - routing/traces
       exporters:
-        {{- if .IntelligentEdge.SamplingEnabled }}
+        {{- if .SignalControl.SamplingEnabled }}
         - forward/traces-to-sampling
         {{- end }}
         - dash0redmetrics
-        {{- if .IntelligentEdge.SignalToMetricsEnabled }}
+        {{- if .SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics
         {{- end }}
-        {{- if not .IntelligentEdge.SamplingEnabled }}
+        {{- if not .SignalControl.SamplingEnabled }}
         - forward/traces-default-exporter
         {{- end }}
 {{- end }}
 
-{{- if .IntelligentEdge.SamplingEnabled }}
+{{- if .SignalControl.SamplingEnabled }}
     traces/sampled:
       receivers:
         - forward/traces-to-sampling
@@ -1320,7 +1320,7 @@ service:
 
     traces/export/default:
       receivers:
-        {{- if and $hasNamespacedExporters (not .IntelligentEdge.Enabled) }}
+        {{- if and $hasNamespacedExporters (not .SignalControl.Enabled) }}
         - routing/traces
         {{- else }}
         - forward/traces-default-exporter
@@ -1356,9 +1356,9 @@ service:
         {{- if .UseHostMetricsReceiver }}
         - hostmetrics
         {{- end }}
-        {{- if .IntelligentEdge.Enabled }}
+        {{- if .SignalControl.Enabled }}
         - dash0redmetrics
-        {{- if .IntelligentEdge.SignalToMetricsEnabled }}
+        {{- if .SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics
         {{- end }}
         {{- end }}
@@ -1399,8 +1399,8 @@ service:
         - transform/metrics/custom_telemetry_transform
         {{- end }}
         - transform/resources
-        {{- if .IntelligentEdge.Enabled }}
-        - resource/ie_attributes
+        {{- if .SignalControl.Enabled }}
+        - resource/signal_control_attributes
         {{- end }}
       exporters:
         {{- if $hasNamespacedExporters }}
@@ -1443,7 +1443,7 @@ service:
         - otlp
       processors:
         - memory_limiter
-        {{- if and .SelfMonitoringEnabled .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled }}
+        {{- if and .SelfMonitoringEnabled .SignalControl.Enabled .SignalControl.EdgeProxyEnabled }}
         - filter/logs/drop_edge_proxy_otlp_selfmonitoring
         {{- end }}
       exporters:
@@ -1459,7 +1459,7 @@ service:
         - forward/logs-processors
     {{- end }}
 
-    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .IntelligentEdge.Enabled .IntelligentEdge.EdgeProxyEnabled)) }}
+    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled)) }}
     logs/selfmonitoring-filelog-to-forwarder:
       receivers:
         - file_log/selfmonitoring
@@ -1490,10 +1490,10 @@ service:
         - transform/logs/custom_telemetry_transform
         {{- end }}
         - transform/resources
-        {{- if .IntelligentEdge.Enabled }}
-        - resource/ie_attributes
+        {{- if .SignalControl.Enabled }}
+        - resource/signal_control_attributes
         - dash0resource
-        {{- if .IntelligentEdge.SpamFilterEnabled }}
+        {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
         {{- end }}
         {{- end }}
@@ -1503,7 +1503,7 @@ service:
         {{- else }}
         - forward/logs-default-exporter
         {{- end }}
-        {{- if and .IntelligentEdge.Enabled .IntelligentEdge.SignalToMetricsEnabled }}
+        {{- if and .SignalControl.Enabled .SignalControl.SignalToMetricsEnabled }}
         - dash0signaltometrics
         {{- end }}
 
@@ -1605,10 +1605,10 @@ service:
   {{- if .InternalTelemetryEnabled }}
   telemetry:
     resource:
-    {{- if .IntelligentEdge.Enabled }}
-      # IE collector image (v2.0.1940 at time of writing) ships OTel core v0.150.0, which only
+    {{- if .SignalControl.Enabled }}
+      # Signal Control collector image (v2.0.1940 at time of writing) ships OTel core v0.150.0, which only
       # accepts the legacy flat-map schema for `service.telemetry.resource`. The declarative
-      # attributes block (below, in the else branch) was added in OTel core v0.151.0. Once the IE
+      # attributes block (below, in the else branch) was added in OTel core v0.151.0. Once the Signal Control
       # collector image bumps to v0.151.0+, drop this branch and keep only the declarative block.
       "k8s.cluster.uid": "{{- .PseudoClusterUid }}"
       {{- if .ClusterName }}
