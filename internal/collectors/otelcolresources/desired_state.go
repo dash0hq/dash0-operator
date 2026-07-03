@@ -1157,13 +1157,15 @@ func assembleCollectorEnvVars(
 		}
 	}
 
-	if config.SignalControl.Enabled && config.SignalControl.SamplingEnabled {
+	if config.SignalControl.Enabled {
+		// The Signal Control settings extension authenticates against the control plane API and is used by both the
+		// sampling processor and the spam filter, so the token is emitted whenever Signal Control is enabled.
 		// Uses Kubernetes dependent variable expansion: $(VAR_NAME) references the exporter auth token env var
 		// defined earlier in this container's env list. The referenced env var (e.g., DASH0_AUTHORIZATION_DEFAULT_0)
 		// must appear before this one.
 		collectorEnv = append(collectorEnv,
 			corev1.EnvVar{
-				Name:  "DASH0_SAMPLING_AUTH_TOKEN",
+				Name:  "DASH0_SIGNAL_CONTROL_AUTH_TOKEN",
 				Value: fmt.Sprintf("$(%s)", config.SignalControl.AuthEnvVar),
 			},
 		)
