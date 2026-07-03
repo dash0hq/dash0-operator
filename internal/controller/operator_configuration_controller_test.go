@@ -42,6 +42,10 @@ type ApiClientSetRemoveTestConfig struct {
 	expectSetApiEndpointAndDataset    bool
 	expectedApiConfigs                []ApiConfig
 	expectRemoveApiEndpointAndDataset bool
+	// expectReconcileErrorContaining is set for specs with exports referencing non-existing secrets: reconciling the
+	// collector resources deliberately fails for dangling secret refs in default exports, but the API access settings
+	// are applied before the collector reconciliation, so the API client expectations can still be verified.
+	expectReconcileErrorContaining string
 }
 
 type SelfMonitoringTestConfig struct {
@@ -136,8 +140,17 @@ var _ = Describe(
 							expectedDataset = config.dataset
 						}
 
-						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
-						verifyOperatorConfigurationResourceIsAvailable(ctx)
+						if config.expectReconcileErrorContaining != "" {
+							triggerOperatorConfigurationReconcileRequestAndExpectError(
+								ctx,
+								reconciler,
+								OperatorConfigurationResourceName,
+								config.expectReconcileErrorContaining,
+							)
+						} else {
+							triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+							verifyOperatorConfigurationResourceIsAvailable(ctx)
+						}
 
 						for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
 							if config.expectSetApiEndpointAndDataset {
@@ -405,6 +418,7 @@ var _ = Describe(
 							expectedApiConfigs: []ApiConfig{
 								{Endpoint: ApiEndpointTestAlternative, Token: AuthorizationTokenTestAlternative},
 							},
+							expectReconcileErrorContaining: "does not exist in the namespace of the Dash0 operator",
 						},
 					),
 
@@ -438,6 +452,7 @@ var _ = Describe(
 							},
 							expectSetApiEndpointAndDataset:    false,
 							expectRemoveApiEndpointAndDataset: true,
+							expectReconcileErrorContaining:    "does not exist in the namespace of the Dash0 operator",
 						},
 					),
 				)
@@ -1369,6 +1384,22 @@ func triggerOperatorReconcileRequestForName(
 		},
 	)
 	Expect(err).NotTo(HaveOccurred())
+}
+
+func triggerOperatorConfigurationReconcileRequestAndExpectError(
+	ctx context.Context,
+	reconciler *OperatorConfigurationReconciler,
+	dash0OperatorResourceName string,
+	expectedErrorSubstring string,
+) {
+	By("Triggering an operator configuration resource reconcile request, expecting it to fail")
+	_, err := reconciler.Reconcile(
+		ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: dash0OperatorResourceName},
+		},
+	)
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring(expectedErrorSubstring))
 }
 
 func verifyOperatorConfigurationResourceIsAvailable(ctx context.Context) {

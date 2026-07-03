@@ -483,6 +483,14 @@ The secret has to exist in the namespace of the Dash0 operator (that is, the nam
 to). The `valueFrom.secretKeyRef` mechanism is supported for both `grpc` and `http` exports, and works the same way for
 header values provided via a Dash0 monitoring resource.
 
+The operator validates that the referenced secret exists in its namespace and contains the referenced key: deploying an
+operator configuration or monitoring resource that references a non-existing secret (or secret key) is rejected by the
+operator's admission webhooks. Should a referenced secret be missing later on (for example because it has been deleted
+in the meantime), the operator will not roll out the affected OpenTelemetry collector configuration: for exports of the
+operator configuration resource, the previously deployed collectors keep running unchanged and the operator retries
+until the secret exists; for exports of a Dash0 monitoring resource, the operator falls back to the default exports for
+that namespace and logs an error.
+
 ### Exporting to Multiple Backends
 
 Export to multiple backends is also supported.

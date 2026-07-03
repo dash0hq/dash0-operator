@@ -304,6 +304,111 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		Expect(err).To(MatchError(ContainSubstring(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)))
 	})
 
+	It("should reject a new operator configuration resource with a Dash0 export referencing a non-existing "+
+		"secret", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec:       OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided Dash0 " +
+				"operator configuration resource has an invalid export configuration: the Kubernetes secret " +
+				"\"secret-ref\", referenced for the Dash0 authorization token, does not exist in the namespace of " +
+				"the Dash0 operator")))
+	})
+
+	It("should reject a new operator configuration resource with a gRPC export header referencing a non-existing "+
+		"secret", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{
+						{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: EndpointGrpcTest,
+								Headers: []dash0common.Header{
+									{
+										Name: "X-Api-Key",
+										ValueFrom: &dash0common.HeaderValueFrom{
+											SecretKeyRef: &dash0common.SecretKeySelector{
+												Name: "does-not-exist",
+												Key:  "api-key",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided Dash0 " +
+				"operator configuration resource has an invalid export configuration: the Kubernetes secret " +
+				"\"does-not-exist\", referenced for the value of the header \"X-Api-Key\" of the gRPC export, does " +
+				"not exist in the namespace of the Dash0 operator")))
+	})
+
+	It("should reject a new operator configuration resource with an export referencing a non-existing key of an "+
+		"existing secret", func() {
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
+		secret := DefaultSecret()
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+		})
+
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: new(false),
+					},
+					Exports: []dash0common.Export{
+						{
+							Dash0: &dash0common.Dash0Configuration{
+								Endpoint: EndpointDash0Test,
+								Authorization: dash0common.Authorization{
+									SecretRef: &dash0common.SecretRef{
+										Name: SecretRefTest.Name,
+										Key:  "wrong-key",
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring("does not contain the key \"wrong-key\"")))
+	})
+
+	It("should allow a new operator configuration resource with an export referencing an existing secret", func() {
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
+		secret := DefaultSecret()
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+		})
+
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec:       OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
+			})
+		Expect(err).ToNot(HaveOccurred())
+	})
+
 	It("should allow updating an existing operator configuration resource", func() {
 		operatorConfiguration, err := CreateOperatorConfigurationResource(
 			ctx,

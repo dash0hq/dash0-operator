@@ -146,7 +146,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
 	}
-	admissionResponse, done = h.validateExport(availableOperatorConfigurations, monitoringResource)
+	admissionResponse, done = h.validateExport(ctx, availableOperatorConfigurations, monitoringResource)
 	if done {
 		logger.Info(admissionResponse.Result.Message)
 		return admissionResponse
@@ -241,6 +241,7 @@ func (h *MonitoringValidationWebhookHandler) rejectCustomMonitoringResourceInAut
 }
 
 func (h *MonitoringValidationWebhookHandler) validateExport(
+	ctx context.Context,
 	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) (admission.Response, bool) {
@@ -275,6 +276,17 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 	for _, export := range monitoringResource.Spec.Exports {
 		if !validateGrpcExportInsecureFlags(&export) {
 			return admission.Denied(ErrorMessageMonitoringGrpcExportInvalidInsecure), true
+		}
+	}
+
+	// Reject exports referencing Kubernetes secrets (or secret keys) that do not exist in the operator namespace, they
+	// would be rolled out as secretKeyRef environment variables that the kubelet cannot resolve, failing the collector
+	// pods cluster-wide with CreateContainerConfigError. Using EffectiveExports covers the deprecated `export` field as
+	// well.
+	for _, export := range monitoringResource.EffectiveExports() {
+		if err := validateExportSecretRefsExist(ctx, h.Client, h.operatorNamespace, &export); err != nil {
+			return admission.Denied(fmt.Sprintf(
+				"The provided Dash0 monitoring resource has an invalid export configuration: %s.", err.Error())), true
 		}
 	}
 

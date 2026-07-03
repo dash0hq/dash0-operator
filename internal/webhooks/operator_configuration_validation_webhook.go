@@ -45,15 +45,18 @@ const ErrorMessageOperatorConfigurationMonitoringTemplateWithExport = "The provi
 
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
+	operatorNamespace                 string
 	telemetryCollectionEnabledViaHelm bool
 }
 
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
+	operatorNamespace string,
 	telemetryCollectionEnabledViaHelm bool,
 ) *OperatorConfigurationValidationWebhookHandler {
 	return &OperatorConfigurationValidationWebhookHandler{
 		Client:                            k8sClient,
+		operatorNamespace:                 operatorNamespace,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
 	}
 }
@@ -174,11 +177,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	for _, export := range spec.Exports {
-		if !validateGrpcExportInsecureFlags(&export) {
-			logger.Warn(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
-			return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
-		}
+	if response, done := h.validateExports(ctx, operatorConfigurationResource, logger); done {
+		return response
 	}
 
 	if spec.MonitoringTemplate != nil {
@@ -215,4 +215,33 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	return admission.Allowed("")
+}
+
+func (h *OperatorConfigurationValidationWebhookHandler) validateExports(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	for _, export := range operatorConfigurationResource.Spec.Exports {
+		if !validateGrpcExportInsecureFlags(&export) {
+			logger.Warn(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
+			return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure), true
+		}
+	}
+
+	// Reject exports referencing Kubernetes secrets (or secret keys) that do not exist in the operator namespace, they
+	// would be rolled out as secretKeyRef environment variables that the kubelet cannot resolve, failing the collector
+	// pods cluster-wide with CreateContainerConfigError. Using EffectiveExports covers the deprecated `export` field as
+	// well.
+	for _, export := range operatorConfigurationResource.EffectiveExports() {
+		if err := validateExportSecretRefsExist(ctx, h.Client, h.operatorNamespace, &export); err != nil {
+			msg := fmt.Sprintf(
+				"The provided Dash0 operator configuration resource has an invalid export configuration: %s.",
+				err.Error())
+			logger.Warn(msg)
+			return admission.Denied(msg), true
+		}
+	}
+
+	return admission.Response{}, false
 }

@@ -141,7 +141,7 @@ var _ = BeforeSuite(func() {
 	operatorConfigurationMutatingWebhookHandler = NewOperatorConfigurationMutatingWebhookHandler(k8sClient)
 	Expect(operatorConfigurationMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
-	operatorConfigurationValidationWebhookHandler = NewOperatorConfigurationValidationWebhookHandler(k8sClient, true)
+	operatorConfigurationValidationWebhookHandler = NewOperatorConfigurationValidationWebhookHandler(k8sClient, OperatorNamespace, true)
 	Expect(operatorConfigurationValidationWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
 	Expect(SetupDash0MonitoringConversionWebhookWithManager(manager)).To(Succeed())

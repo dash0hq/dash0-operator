@@ -4,8 +4,13 @@
 package otelcolresources
 
 import (
+	"context"
 	"fmt"
 	"sort"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -327,4 +332,100 @@ func resolveExporterHeaders(
 		})
 	}
 	return resolvedHeaders, headerEnvVars, nil
+}
+
+// validateExporterSecretRefs verifies that every Kubernetes secret referenced by the given exporters (the Dash0
+// authorization secretRef as well as header values sourced from secrets) exists in the operator namespace and contains
+// the referenced key. Without this check, a dangling secret reference would be rolled out as a required secretKeyRef
+// environment variable on the collector pods, which the kubelet answers with CreateContainerConfigError, blocking
+// telemetry collection for the whole cluster.
+func validateExporterSecretRefs(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+	exporterList []otlpExporter,
+) error {
+	for _, exporter := range exporterList {
+		if auth := exporter.Authorization; auth != nil {
+			token := auth.Authorization.Token
+			secretRef := auth.Authorization.SecretRef
+			// A token literal takes precedence over the secret ref (see util.CreateEnvVarForAuthorization), only refs
+			// that will actually be rendered as secretKeyRef env vars need to exist.
+			if (token == nil || *token == "") && secretRef != nil && secretRef.Name != "" && secretRef.Key != "" {
+				if err := validateSecretKeyRef(
+					ctx, k8sClient, operatorNamespace, exporter.Name, "the authorization token",
+					secretRef.Name, secretRef.Key,
+				); err != nil {
+					return err
+				}
+			}
+		}
+		for _, headerEnvVar := range exporter.HeaderEnvVars {
+			if err := validateSecretKeyRef(
+				ctx, k8sClient, operatorNamespace, exporter.Name,
+				fmt.Sprintf("the value of the header environment variable %s", headerEnvVar.EnvVarName),
+				headerEnvVar.SecretKeyRef.Name, headerEnvVar.SecretKeyRef.Key,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateSecretKeyRef checks that the referenced Kubernetes secret exists in the operator namespace and has the
+// referenced key. This mirrors exactly what the kubelet checks when starting a container with a secretKeyRef
+// environment variable; in particular, an empty value for the key is accepted. Reads are served from the operator
+// manager's informer cache.
+func validateSecretKeyRef(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+	exporterName string,
+	refPurpose string,
+	secretName string,
+	secretKey string,
+) error {
+	secret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: operatorNamespace, Name: secretName}, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf(
+				"the exporter %s references the Kubernetes secret \"%s\" for %s, but this secret does not exist in "+
+					"the namespace of the Dash0 operator (%s); note that referenced secrets need to be created in the "+
+					"operator's namespace",
+				exporterName, secretName, refPurpose, operatorNamespace)
+		}
+		return fmt.Errorf(
+			"cannot read the Kubernetes secret \"%s/%s\", referenced by the exporter %s for %s: %w",
+			operatorNamespace, secretName, exporterName, refPurpose, err)
+	}
+	if _, hasKey := secret.Data[secretKey]; !hasKey {
+		return fmt.Errorf(
+			"the exporter %s references the key \"%s\" of the Kubernetes secret \"%s/%s\" for %s, but the secret "+
+				"does not contain this key",
+			exporterName, secretKey, operatorNamespace, secretName, refPurpose)
+	}
+	return nil
+}
+
+// dropNamespacedExportersWithInvalidSecretRefs removes the custom exporters of every namespace that references a
+// Kubernetes secret (or secret key) that does not exist in the operator namespace, so that the default exporters are
+// used for that namespace instead. This prevents a dangling secret reference in one namespace's Dash0 monitoring
+// resource from breaking telemetry collection for the whole cluster (see validateExporterSecretRefs).
+func dropNamespacedExportersWithInvalidSecretRefs(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+	nsExporters namespacedOtlpExporters,
+	logger logd.Logger,
+) {
+	for ns, exporterList := range nsExporters {
+		if err := validateExporterSecretRefs(ctx, k8sClient, operatorNamespace, exporterList); err != nil {
+			logger.ErrorTelemetryCollectionIssue(err, fmt.Sprintf("Custom exporters for namespace %s could not be "+
+				"applied. Default exporters will be used for this namespace. Create the missing secret (or secret "+
+				"key) in the operator namespace, then re-apply the Dash0 monitoring resource in namespace %s to "+
+				"trigger a new reconciliation.", ns, ns))
+			delete(nsExporters, ns)
+		}
+	}
 }

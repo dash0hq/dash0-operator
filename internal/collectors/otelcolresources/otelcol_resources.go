@@ -168,7 +168,17 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if err != nil {
 		return false, false, err
 	}
+	// A dangling secret reference in the default exporters would make the kubelet fail all collector pods cluster-wide
+	// (CreateContainerConfigError). Instead, fail this reconcile request, so that the previously deployed collectors
+	// keep running unchanged. Reconciliation is retried with backoff, so this heals automatically once the missing
+	// secret (or secret key) is created.
+	if err = validateExporterSecretRefs(
+		ctx, m.Client, m.collectorConfig.OperatorNamespace, defaultExporters); err != nil {
+		return false, false, err
+	}
 	namespacedExporters := getNamespacedOtlpExporters(allMonitoringResources, logger)
+	dropNamespacedExportersWithInvalidSecretRefs(
+		ctx, m.Client, m.collectorConfig.OperatorNamespace, namespacedExporters, logger)
 	otlpExporters := otlpExporters{
 		Default:    defaultExporters,
 		Namespaced: namespacedExporters,

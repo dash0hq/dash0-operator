@@ -4,6 +4,9 @@
 package otelcolresources
 
 import (
+	"context"
+
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -1297,6 +1300,151 @@ var _ = Describe("Exporter Conversion", func() {
 			for range 5 {
 				Expect(exporters.allExporters()).To(Equal(reference))
 			}
+		})
+	})
+})
+
+var _ = Describe("Exporter secret ref validation", func() {
+	ctx := context.Background()
+	var createdSecrets []*corev1.Secret
+
+	createSecret := func(name string, keys map[string][]byte) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: OperatorNamespace,
+				Name:      name,
+			},
+			Data: keys,
+		}
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+		createdSecrets = append(createdSecrets, secret)
+	}
+
+	exporterWithAuthSecretRef := func(secretName string, secretKey string) otlpExporter {
+		return otlpExporter{
+			Name: "otlp_grpc/dash0/default_0",
+			Authorization: &dash0ExporterAuthorization{
+				EnvVarName: authEnvVarNameDefault,
+				Authorization: dash0common.Authorization{
+					SecretRef: &dash0common.SecretRef{Name: secretName, Key: secretKey},
+				},
+			},
+		}
+	}
+
+	exporterWithHeaderSecretRef := func(secretName string, secretKey string) otlpExporter {
+		return otlpExporter{
+			Name: "otlp_grpc/default_0",
+			HeaderEnvVars: []headerSecretEnvVar{
+				{
+					EnvVarName:   "OTELCOL_EXPORT_HEADER_GRPC_DEFAULT_0_0",
+					SecretKeyRef: &dash0common.SecretKeySelector{Name: secretName, Key: secretKey},
+				},
+			},
+		}
+	}
+
+	BeforeEach(func() {
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
+	})
+
+	AfterEach(func() {
+		for _, secret := range createdSecrets {
+			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+		}
+		createdSecrets = nil
+	})
+
+	Describe("validateExporterSecretRefs", func() {
+		It("should accept exporters without secret refs", func() {
+			exporters := []otlpExporter{
+				{
+					Name: "otlp_grpc/dash0/default_0",
+					Authorization: &dash0ExporterAuthorization{
+						EnvVarName: authEnvVarNameDefault,
+						Authorization: dash0common.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+				},
+				{
+					Name:    "otlp_grpc/default_1",
+					Headers: []dash0common.Header{{Name: "Key", Value: "literal-value"}},
+				},
+			}
+
+			Expect(validateExporterSecretRefs(ctx, k8sClient, OperatorNamespace, exporters)).To(Succeed())
+		})
+
+		It("should accept secret refs when the referenced secrets and keys exist", func() {
+			createSecret("auth-secret", map[string][]byte{"token": []byte("value")})
+			createSecret("header-secret", map[string][]byte{"api-key": []byte("value")})
+			exporters := []otlpExporter{
+				exporterWithAuthSecretRef("auth-secret", "token"),
+				exporterWithHeaderSecretRef("header-secret", "api-key"),
+			}
+
+			Expect(validateExporterSecretRefs(ctx, k8sClient, OperatorNamespace, exporters)).To(Succeed())
+		})
+
+		It("should reject an authorization secret ref to a non-existing secret", func() {
+			exporters := []otlpExporter{exporterWithAuthSecretRef("does-not-exist", "token")}
+
+			err := validateExporterSecretRefs(ctx, k8sClient, OperatorNamespace, exporters)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("otlp_grpc/dash0/default_0"))
+			Expect(err.Error()).To(ContainSubstring("\"does-not-exist\""))
+			Expect(err.Error()).To(ContainSubstring(OperatorNamespace))
+			Expect(err.Error()).To(ContainSubstring("does not exist in the namespace of the Dash0 operator"))
+		})
+
+		It("should reject a header secret ref to a non-existing secret", func() {
+			exporters := []otlpExporter{exporterWithHeaderSecretRef("does-not-exist", "api-key")}
+
+			err := validateExporterSecretRefs(ctx, k8sClient, OperatorNamespace, exporters)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("otlp_grpc/default_0"))
+			Expect(err.Error()).To(ContainSubstring("OTELCOL_EXPORT_HEADER_GRPC_DEFAULT_0_0"))
+			Expect(err.Error()).To(ContainSubstring("\"does-not-exist\""))
+		})
+
+		It("should reject a secret ref to a non-existing key of an existing secret", func() {
+			createSecret("header-secret", map[string][]byte{"other-key": []byte("value")})
+			exporters := []otlpExporter{exporterWithHeaderSecretRef("header-secret", "api-key")}
+
+			err := validateExporterSecretRefs(ctx, k8sClient, OperatorNamespace, exporters)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("does not contain this key"))
+			Expect(err.Error()).To(ContainSubstring("\"api-key\""))
+		})
+
+		It("should ignore a dangling authorization secret ref when a token literal is set as well", func() {
+			exporter := exporterWithAuthSecretRef("does-not-exist", "token")
+			exporter.Authorization.Authorization.Token = &AuthorizationTokenTest
+
+			Expect(validateExporterSecretRefs(ctx, k8sClient, OperatorNamespace, []otlpExporter{exporter})).
+				To(Succeed())
+		})
+	})
+
+	Describe("dropNamespacedExportersWithInvalidSecretRefs", func() {
+		It("should only drop the exporters of namespaces with dangling secret refs", func() {
+			createSecret("header-secret", map[string][]byte{"api-key": []byte("value")})
+			nsExporters := namespacedOtlpExporters{
+				"namespace-1": {exporterWithHeaderSecretRef("header-secret", "api-key")},
+				"namespace-2": {exporterWithHeaderSecretRef("does-not-exist", "api-key")},
+				"namespace-3": {{Name: "otlp_grpc/ns/namespace-3_0"}},
+			}
+
+			dropNamespacedExportersWithInvalidSecretRefs(ctx, k8sClient, OperatorNamespace, nsExporters, logd.Discard())
+
+			Expect(nsExporters).To(HaveLen(2))
+			Expect(nsExporters).To(HaveKey("namespace-1"))
+			Expect(nsExporters).NotTo(HaveKey("namespace-2"))
+			Expect(nsExporters).To(HaveKey("namespace-3"))
 		})
 	})
 })

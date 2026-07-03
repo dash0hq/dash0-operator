@@ -14,7 +14,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -329,6 +331,144 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				nameOfOutdatedResources,
 				&appsv1.DaemonSet{},
 			)
+		})
+	})
+
+	Context("when exports reference Kubernetes secrets", func() {
+		monitoringResourcesWithHeaderSecretRef := []dash0v1beta1.Dash0Monitoring{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: TestNamespaceName,
+				},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Exports: []dash0common.Export{
+						{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: EndpointGrpcTest,
+								Headers: []dash0common.Header{
+									{
+										Name: "X-Api-Key",
+										ValueFrom: &dash0common.HeaderValueFrom{
+											SecretKeyRef: &dash0common.SecretKeySelector{
+												Name: "secret-ref",
+												Key:  "key",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		AfterEach(func() {
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		It("should refuse to create the collectors if a default export references a non-existing secret", func() {
+			operatorConfiguration := &dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec:       OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
+			}
+
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				nil,
+				nil,
+				logger,
+			)
+
+			Expect(err).To(MatchError(ContainSubstring("does not exist in the namespace of the Dash0 operator")))
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, OperatorNamespace)
+		})
+
+		It("should create the collectors on the next reconcile attempt after the secret has been created", func() {
+			operatorConfiguration := &dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec:       OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
+			}
+
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).To(HaveOccurred())
+
+			secret := DefaultSecret()
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			}()
+
+			resourcesHaveBeenCreated, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				nil,
+				nil,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resourcesHaveBeenCreated).To(BeTrue())
+			daemonSet := GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace)
+			Expect(daemonSet.Spec.Template.Spec.Containers[0].Env).To(
+				ContainElement(&MatchEnvVarValueFromSecretMatcher{
+					Name:       AuthorizationDefaultEnvVar,
+					SecretName: "secret-ref",
+					SecretKey:  "key",
+				}))
+		})
+
+		It("should fall back to the default exporters for a namespace whose export references a non-existing "+
+			"secret", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+
+			resourcesHaveBeenCreated, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				monitoringResourcesWithHeaderSecretRef,
+				nil,
+				logger,
+			)
+
+			// A dangling secret ref in a namespaced export must not fail the collector reconciliation, the namespace
+			// falls back to the default exporters instead.
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resourcesHaveBeenCreated).To(BeTrue())
+			daemonSetConfigMap := GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace)
+			Expect(daemonSetConfigMap.Data["config.yaml"]).ToNot(ContainSubstring("otlp_grpc/ns/test-namespace"))
+		})
+
+		It("should render the custom exporters for a namespace whose export references an existing secret", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+			secret := DefaultSecret()
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			}()
+
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				operatorConfiguration,
+				monitoringResourcesWithHeaderSecretRef,
+				nil,
+				logger,
+			)
+
+			Expect(err).ToNot(HaveOccurred())
+			daemonSetConfigMap := GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace)
+			Expect(daemonSetConfigMap.Data["config.yaml"]).To(ContainSubstring("otlp_grpc/ns/test-namespace"))
 		})
 	})
 

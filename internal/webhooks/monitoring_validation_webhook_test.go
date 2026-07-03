@@ -258,6 +258,99 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 			Expect(err).To(MatchError(ContainSubstring(ErrorMessageMonitoringGrpcExportInvalidInsecure)))
 		})
 
+		It("should reject monitoring resources with an export header referencing a non-existing secret", func() {
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
+					},
+					Export: &dash0common.Export{
+						Grpc: &dash0common.GrpcConfiguration{
+							Endpoint: "https://example.com:1234",
+							Headers: []dash0common.Header{
+								{
+									Name: "X-Api-Key",
+									ValueFrom: &dash0common.HeaderValueFrom{
+										SecretKeyRef: &dash0common.SecretKeySelector{
+											Name: "does-not-exist",
+											Key:  "api-key",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-monitoring.dash0.com\" denied the request: The provided Dash0 " +
+					"monitoring resource has an invalid export configuration: the Kubernetes secret " +
+					"\"does-not-exist\", referenced for the value of the header \"X-Api-Key\" of the gRPC export, " +
+					"does not exist in the namespace of the Dash0 operator")))
+		})
+
+		It("should reject monitoring resources with a Dash0 export referencing a non-existing secret", func() {
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
+					},
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
+							Endpoint: EndpointDash0Test,
+							Authorization: dash0common.Authorization{
+								SecretRef: &SecretRefTest,
+							},
+						},
+					},
+				},
+			})
+
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-monitoring.dash0.com\" denied the request: The provided Dash0 " +
+					"monitoring resource has an invalid export configuration: the Kubernetes secret \"secret-ref\", " +
+					"referenced for the Dash0 authorization token, does not exist in the namespace of the Dash0 " +
+					"operator")))
+		})
+
+		It("should allow monitoring resources with an export header referencing an existing secret", func() {
+			secret := DefaultSecret()
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			})
+
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
+					},
+					Export: &dash0common.Export{
+						Grpc: &dash0common.GrpcConfiguration{
+							Endpoint: "https://example.com:1234",
+							Headers: []dash0common.Header{
+								{
+									Name: "X-Api-Key",
+									ValueFrom: &dash0common.HeaderValueFrom{
+										SecretKeyRef: &dash0common.SecretKeySelector{
+											Name: SecretRefTest.Name,
+											Key:  SecretRefTest.Key,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		DescribeTable("should reject monitoring resource creation with telemetry settings if the operator configuration resource has telemetry collection disabled", func(testConfig validationTestConfig) {
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 				ctx,
