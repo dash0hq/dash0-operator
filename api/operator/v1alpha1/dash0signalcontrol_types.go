@@ -257,7 +257,7 @@ type SignalToMetricsConfig struct {
 // SpamFilterConfig configures the dash0filter processor. The processor drops spans, metric data points,
 // and log records that match Dash0SpamFilter rules synced to the Dash0 control plane.
 type SpamFilterConfig struct {
-	// Whether to wire the dash0filter processor into the daemonset collector pipeline. When disabled,
+	// Whether to wire the dash0filter processor into the collector pipelines. When disabled,
 	// Dash0SpamFilter rules synced to the Dash0 control plane are not evaluated at the edge and no
 	// telemetry is dropped by the spam filter. This setting is optional, it defaults to true.
 	//

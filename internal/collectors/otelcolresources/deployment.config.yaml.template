@@ -7,6 +7,11 @@ extensions:
   {{- if .EnableProfExtension }}
   pprof: {}
   {{- end }}
+  {{- if .SignalControl.Enabled }}
+  dash0settingsonedgeextension:
+    endpoint: {{ .SignalControl.ApiEndpoint }}
+    auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
+  {{- end }}
 
 connectors:
   forward/metrics-default-exporter: {}
@@ -394,6 +399,30 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 25
 
+{{- if .SignalControl.Enabled }}
+  resource/signal_control_attributes:
+    attributes:
+    - key: dash0.org.technical.id
+      value: edge
+      action: upsert
+    - key: dash0.dataset
+      value: {{ .SignalControl.Dataset }}
+      action: upsert
+{{- if .SignalControl.SpamFilterEnabled }}
+{{- if or .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
+  dash0filter:
+{{- if .SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if .SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ .SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+{{- else }}
+  dash0filter: {}
+{{- end }}
+{{- end }}
+{{- end }}
+
 exporters:
   {{- if .DebugVerbosityDetailed }}
   debug:
@@ -484,6 +513,9 @@ service:
   {{- if .EnableProfExtension }}
   - pprof
   {{- end }}
+  {{- if .SignalControl.Enabled }}
+  - dash0settingsonedgeextension
+  {{- end }}
 
   pipelines:
 
@@ -510,6 +542,12 @@ service:
         - transform/metrics/custom_telemetry_transform
         {{- end }}
         - transform/resources
+        {{- if .SignalControl.Enabled }}
+        - resource/signal_control_attributes
+        {{- if .SignalControl.SpamFilterEnabled }}
+        - dash0filter
+        {{- end }}
+        {{- end }}
       exporters:
         {{- if $hasNamespacedExporters }}
         - routing/metrics
