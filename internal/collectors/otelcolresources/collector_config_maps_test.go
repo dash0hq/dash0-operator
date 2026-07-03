@@ -2412,6 +2412,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsCommonProcessors).To(ContainElement("dash0filter"))
 			Expect(logsCommonProcessors).To(ContainElements("resource/signal_control_attributes", "dash0resource", "dash0filter"),
 				"dash0filter must run after resource/signal_control_attributes, and dash0resource must run so dash0signaltometrics gets the resource hash")
+			metricsCommonProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
+			Expect(metricsCommonProcessors).To(ContainElement("dash0filter"))
+			Expect(metricsCommonProcessors).To(ContainElements("resource/signal_control_attributes", "dash0filter"),
+				"dash0filter must run after resource/signal_control_attributes sets Signal Control attributes")
 		})
 
 		It("should render dash0filter tunables when set on the Signal Control config [DaemonSet]", func() {
@@ -2463,6 +2467,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).To(ContainElement("dash0filter"))
 			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).To(ContainElement("dash0filter"))
 		})
 
 		It("should still wire dash0filter when sampling is disabled [DaemonSet]", func() {
@@ -2489,6 +2494,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			pipelines := readPipelines(collectorConfig)
 			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).To(ContainElement("dash0filter"))
 			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).To(ContainElement("dash0filter"))
 		})
 
 		It("should not wire the dash0filter processor when spamFilter is disabled [DaemonSet]", func() {
@@ -2516,6 +2522,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).
 				ToNot(ContainElement("dash0filter"))
 			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).
+				ToNot(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).
 				ToNot(ContainElement("dash0filter"))
 		})
 

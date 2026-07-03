@@ -1401,6 +1401,9 @@ service:
         - transform/resources
         {{- if .SignalControl.Enabled }}
         - resource/signal_control_attributes
+        {{- if .SignalControl.SpamFilterEnabled }}
+        - dash0filter
+        {{- end }}
         {{- end }}
       exporters:
         {{- if $hasNamespacedExporters }}

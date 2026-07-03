@@ -71,9 +71,10 @@ type Dash0SignalControlSpec struct {
 	// +kubebuilder:validation:Optional
 	SignalToMetrics SignalToMetricsConfig `json:"signalToMetrics,omitempty"`
 
-	// Configuration for the dash0filter processor in the collector pipeline. The processor drops spans and
-	// log records that match Dash0SpamFilter rules synced to the Dash0 control plane, allowing high-volume
-	// or low-value telemetry to be filtered out at the edge before it leaves the cluster.
+	// Configuration for the dash0filter processor in the collector pipeline. The processor drops spans,
+	// metric data points, and log records that match Dash0SpamFilter rules synced to the Dash0 control
+	// plane, allowing high-volume or low-value telemetry to be filtered out at the edge before it leaves
+	// the cluster.
 	//
 	// +kubebuilder:validation:Optional
 	SpamFilter SpamFilterConfig `json:"spamFilter,omitempty"`
@@ -253,8 +254,8 @@ type SignalToMetricsConfig struct {
 	FlushInterval *metav1.Duration `json:"flushInterval,omitempty"`
 }
 
-// SpamFilterConfig configures the dash0filter processor. The processor drops spans and log records
-// that match Dash0SpamFilter rules synced to the Dash0 control plane.
+// SpamFilterConfig configures the dash0filter processor. The processor drops spans, metric data points,
+// and log records that match Dash0SpamFilter rules synced to the Dash0 control plane.
 type SpamFilterConfig struct {
 	// Whether to wire the dash0filter processor into the daemonset collector pipeline. When disabled,
 	// Dash0SpamFilter rules synced to the Dash0 control plane are not evaluated at the edge and no

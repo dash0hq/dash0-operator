@@ -315,9 +315,10 @@ spec:
                 type: object
               spamFilter:
                 description: |-
-                  Configuration for the dash0filter processor in the collector pipeline. The processor drops spans and
-                  log records that match Dash0SpamFilter rules synced to the Dash0 control plane, allowing high-volume
-                  or low-value telemetry to be filtered out at the edge before it leaves the cluster.
+                  Configuration for the dash0filter processor in the collector pipeline. The processor drops spans,
+                  metric data points, and log records that match Dash0SpamFilter rules synced to the Dash0 control
+                  plane, allowing high-volume or low-value telemetry to be filtered out at the edge before it leaves
+                  the cluster.
                 properties:
                   allowNoSettingsExt:
                     description: |-
