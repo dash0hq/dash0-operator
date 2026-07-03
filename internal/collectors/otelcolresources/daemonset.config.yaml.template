@@ -34,7 +34,7 @@ extensions:
 {{- if .SignalControl.Enabled }}
   dash0settingsonedgeextension:
     endpoint: {{ .SignalControl.ApiEndpoint }}
-    auth_token: ${env:DASH0_SAMPLING_AUTH_TOKEN}
+    auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
 {{- end }}
 
 connectors:
@@ -1120,7 +1120,7 @@ processors:
   dash0sampling:
     decision_maker_endpoint: {{ .SignalControl.Endpoint }}
     decision_maker_headers:
-      Authorization: Bearer ${env:DASH0_SAMPLING_AUTH_TOKEN}
+      Authorization: Bearer ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
       Dash0-Dataset: {{ .SignalControl.Dataset }}
     decision_maker_insecure: {{ .SignalControl.Insecure }}
     default_dataset: {{ .SignalControl.Dataset }}
