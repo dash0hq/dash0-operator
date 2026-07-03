@@ -13,6 +13,26 @@ tests:
     asserts:
       - matchSnapshot: {}
 
+  - it: hook should wait for the operator configuration resource if an auto resource is requested
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - "--auto-operator-configuration-resource-available-check"
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation,hook-succeeded
+
   - it: image tag should default to appVersion
     chart:
       version: 4.5.6
@@ -29,14 +49,26 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/dash0hq/operator-controller:99.100.101
 
-  - it: post-install hook job should not be deployed if no operator configuration auto resource is requested
+  - it: the post-install hook should wait for the webhook endpoint to become ready if no operator configuration auto resource is requested
     set:
       operator:
         dash0Export:
           enabled: false
     asserts:
       - hasDocuments:
-          count: 0
+          count: 1
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - "--dash0-webhook-endpoint-ready-check"
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DASH0_WEBHOOK_SERVICE_NAME
+            value: dash0-operator-webhook-service
 
   - it: should render tolerations and priority class
     set:

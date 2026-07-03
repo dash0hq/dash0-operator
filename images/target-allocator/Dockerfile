@@ -10,4 +10,4 @@
 
 # Retagging the image this way also enables automatic dependency updates via dependabot.
 
-FROM ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:v0.153.0
+FROM ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:v0.154.0

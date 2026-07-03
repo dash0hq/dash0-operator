@@ -1,7 +1,13 @@
-{{- if .Values.operator.dash0Export.enabled }}
-# If the Helm chart values have requested the automatic installation of a Dash0 operator configuration resource,
-# we run a post-install hook to check whether that resource has been successfully created
-# Thereby, helm install --wait ... will only terminate once that condition is reached.
+{{- /*
+We run a post-install/post-upgrade hook so that "helm install --wait" and "helm upgrade --wait" only terminate once the
+operator's admission webhooks are actually reachable.
+* If the Helm chart values have requested the automatic installation of a Dash0 operator configuration resource
+  (operator.dash0Export.enabled=true), the hook waits until that resource has been successfully created and has become
+  available (the operator itself only creates it after the webhook endpoint is ready).
+* Otherwise, the hook waits until the operator's webhook service endpoint is ready, so that a Dash0 operator
+  configuration resource created right after helm returns (for example via "kubectl apply") does not fail with a
+  "connection refused" error because the webhook service is not routable yet.
+*/}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -13,8 +19,8 @@ metadata:
     {{- include "dash0-operator.labels" . | nindent 4 }}
     dash0.com/enable: "false"
   annotations:
-    helm.sh/hook: post-install
-    helm.sh/hook-delete-policy: hook-succeeded
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   template:
     metadata:
@@ -55,7 +61,11 @@ spec:
           command:
             - /manager
           args:
+            {{- if .Values.operator.dash0Export.enabled }}
             - "--auto-operator-configuration-resource-available-check"
+            {{- else }}
+            - "--dash0-webhook-endpoint-ready-check"
+            {{- end }}
           {{- /*
           Maintenance note: When adding new args or env entries, make sure they are covered by the Google GKE workload
           allowlist. In particular, adding args with the prefix "--dash0-" is always covered, as well as environment
@@ -65,6 +75,12 @@ spec:
           env:
             - name: GOMEMLIMIT
               value: {{ .Values.operator.managerContainerResources.gomemlimit }}
+            - name: DASH0_OPERATOR_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DASH0_WEBHOOK_SERVICE_NAME
+              value: {{ include "dash0-operator.webhookServiceName" . }}
           resources:
             {{- unset (.Values.operator.managerContainerResources | mustDeepCopy) "gomemlimit" | toYaml | nindent 12 }}
       {{- with .Values.operator.imagePullSecrets }}
@@ -76,4 +92,3 @@ spec:
       serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}
       automountServiceAccountToken: true
   backoffLimit: 2
-  {{- end }}
