@@ -2527,6 +2527,150 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				ToNot(ContainElement("dash0filter"))
 		})
 
+		It("should wire the dash0filter processor into the metrics pipeline when Signal Control + spamFilter "+
+			"are enabled [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).To(HaveKey("resource/signal_control_attributes"))
+			Expect(processors).To(HaveKey("dash0filter"))
+			webFilter := processors["dash0filter"].(map[string]interface{})
+			Expect(webFilter).To(BeEmpty(), "dash0filter should render as `{}` when no tunables set")
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			Expect(extensions).To(HaveKey("dash0settingsonedgeextension"))
+			serviceExtensions := (collectorConfig["service"].(map[string]interface{}))["extensions"].([]interface{})
+			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
+
+			pipelines := readPipelines(collectorConfig)
+			metricsCommonProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
+			Expect(metricsCommonProcessors).To(ContainElement("dash0filter"))
+			Expect(metricsCommonProcessors).To(ContainElements("resource/signal_control_attributes", "dash0filter"),
+				"dash0filter must run after resource/signal_control_attributes sets Signal Control attributes")
+		})
+
+		It("should render dash0filter tunables when set on the Signal Control config [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:                      true,
+					SamplingEnabled:              true,
+					SpamFilterEnabled:            true,
+					SpamFilterCacheExpiration:    "30s",
+					SpamFilterAllowNoSettingsExt: true,
+					Endpoint:                     "decision-maker.example.com:443",
+					ApiEndpoint:                  "https://control-plane-api.dash0.com",
+					Dataset:                      "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).To(HaveKey("dash0filter"))
+			webFilter := processors["dash0filter"].(map[string]interface{})
+			Expect(webFilter["cache_expiration"]).To(Equal("30s"))
+			Expect(webFilter["allow_no_settings_ext"]).To(BeTrue())
+		})
+
+		It("should wire dash0filter into the metrics pipeline even with namespaced exporters [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedOtlpExporters(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).To(ContainElement("dash0filter"))
+		})
+
+		It("should still wire dash0filter into the metrics pipeline when sampling is disabled [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   false,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).To(HaveKey("dash0filter"))
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			Expect(extensions).To(HaveKey("dash0settingsonedgeextension"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).To(ContainElement("dash0filter"))
+		})
+
+		It("should not wire the dash0filter processor when spamFilter is disabled [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: false,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).ToNot(HaveKey("dash0filter"))
+			// resource/signal_control_attributes and the settings extension are still wired whenever Signal
+			// Control is enabled, regardless of the spam filter.
+			Expect(processors).To(HaveKey("resource/signal_control_attributes"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).
+				ToNot(ContainElement("dash0filter"))
+		})
+
 		It("should render dash0operation as an empty object when no operation processor tunables are set [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
