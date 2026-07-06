@@ -66,10 +66,13 @@ connectors:
   dash0redmetrics: {}
 {{- end }}
 {{- if .SignalControl.SignalToMetricsEnabled }}
-{{- if or .SignalControl.SignalToMetricsMaxTimeSeries .SignalControl.SignalToMetricsFlushInterval }}
+{{- if or .SignalControl.SignalToMetricsMaxTimeSeries .SignalControl.SignalToMetricsFlushInterval .SignalControl.SignalToMetricsCacheExpiration }}
   dash0signaltometrics:
 {{- if .SignalControl.SignalToMetricsMaxTimeSeries }}
     max_time_series: {{ .SignalControl.SignalToMetricsMaxTimeSeries }}
+{{- end }}
+{{- if .SignalControl.SignalToMetricsCacheExpiration }}
+    cache_expiration: {{ .SignalControl.SignalToMetricsCacheExpiration }}
 {{- end }}
 {{- if .SignalControl.SignalToMetricsFlushInterval }}
     metrics_flush_interval: {{ .SignalControl.SignalToMetricsFlushInterval }}
@@ -1130,11 +1133,18 @@ processors:
 {{- if .SignalControl.SamplingDebug }}
     debug: true
 {{- end }}
+{{- if .SignalControl.SamplingEnableBatching }}
+    enable_batching: true
+{{- end }}
     reservoir:
-      type: disk
+      type: {{ .SignalControl.SamplingReservoirType }}
+      metric_level: {{ .SignalControl.SamplingReservoirMetricLevel }}
+{{- if eq .SignalControl.SamplingReservoirType "disk" }}
       data_dir: /var/lib/dash0/trace-reservoir
       max_disk_bytes: {{ .SignalControl.SamplingReservoirMaxDiskBytes }}
-      metric_level: {{ .SignalControl.SamplingReservoirMetricLevel }}
+{{- else if .SignalControl.SamplingReservoirMaxMemoryBytes }}
+      max_memory_bytes: {{ .SignalControl.SamplingReservoirMaxMemoryBytes }}
+{{- end }}
 {{- end }}
 {{- end }}
 

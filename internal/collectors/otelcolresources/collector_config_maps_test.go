@@ -2272,14 +2272,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				SignalControl: SignalControlConfig{
-					Enabled:                      true,
-					SamplingEnabled:              true,
-					SignalToMetricsEnabled:       true,
-					SignalToMetricsMaxTimeSeries: ptr.To(int32(50000)),
-					SignalToMetricsFlushInterval: "30s",
-					Endpoint:                     "decision-maker.example.com:443",
-					ApiEndpoint:                  "https://control-plane-api.dash0.com",
-					Dataset:                      "default",
+					Enabled:                        true,
+					SamplingEnabled:                true,
+					SignalToMetricsEnabled:         true,
+					SignalToMetricsMaxTimeSeries:   ptr.To(int32(50000)),
+					SignalToMetricsFlushInterval:   "30s",
+					SignalToMetricsCacheExpiration: "45s",
+					Endpoint:                       "decision-maker.example.com:443",
+					ApiEndpoint:                    "https://control-plane-api.dash0.com",
+					Dataset:                        "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
@@ -2291,6 +2292,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			s2m := connectors["dash0signaltometrics"].(map[string]interface{})
 			Expect(s2m["max_time_series"]).To(Equal(50000))
 			Expect(s2m["metrics_flush_interval"]).To(Equal("30s"))
+			Expect(s2m["cache_expiration"]).To(Equal("45s"))
 		})
 
 		It("should wire dash0signaltometrics into logs/common-processors even with namespaced exporters [DaemonSet]", func() {
@@ -2825,7 +2827,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(sampling).ToNot(HaveKey("debug"))
 		})
 
-		It("should render the trace reservoir max_disk_bytes and metric_level [DaemonSet]", func() {
+		It("should render the disk trace reservoir max_disk_bytes and metric_level [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -2833,6 +2835,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				SignalControl: SignalControlConfig{
 					Enabled:                       true,
 					SamplingEnabled:               true,
+					SamplingReservoirType:         "disk",
 					SamplingReservoirMaxDiskBytes: 2 * 1024 * 1024 * 1024,
 					SamplingReservoirMetricLevel:  "detailed",
 					Endpoint:                      "decision-maker.example.com:443",
@@ -2851,6 +2854,111 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(reservoir["data_dir"]).To(Equal("/var/lib/dash0/trace-reservoir"))
 			Expect(reservoir["max_disk_bytes"]).To(BeNumerically("==", int64(2*1024*1024*1024)))
 			Expect(reservoir["metric_level"]).To(Equal("detailed"))
+			Expect(reservoir).ToNot(HaveKey("max_memory_bytes"))
+		})
+
+		It("should render the serialized_memory trace reservoir without disk fields or max_memory_bytes when "+
+			"unset [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:                      true,
+					SamplingEnabled:              true,
+					SamplingReservoirType:        "serialized_memory",
+					SamplingReservoirMetricLevel: "basic",
+					Endpoint:                     "decision-maker.example.com:443",
+					ApiEndpoint:                  "https://control-plane-api.dash0.com",
+					Dataset:                      "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			reservoir := sampling["reservoir"].(map[string]interface{})
+			Expect(reservoir["type"]).To(Equal("serialized_memory"))
+			Expect(reservoir["metric_level"]).To(Equal("basic"))
+			Expect(reservoir).ToNot(HaveKey("data_dir"))
+			Expect(reservoir).ToNot(HaveKey("max_disk_bytes"))
+			Expect(reservoir).ToNot(HaveKey("max_memory_bytes"))
+		})
+
+		It("should render the serialized_memory trace reservoir max_memory_bytes when set [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:                         true,
+					SamplingEnabled:                 true,
+					SamplingReservoirType:           "serialized_memory",
+					SamplingReservoirMaxMemoryBytes: 512 * 1024 * 1024,
+					SamplingReservoirMetricLevel:    "basic",
+					Endpoint:                        "decision-maker.example.com:443",
+					ApiEndpoint:                     "https://control-plane-api.dash0.com",
+					Dataset:                         "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			reservoir := sampling["reservoir"].(map[string]interface{})
+			Expect(reservoir["type"]).To(Equal("serialized_memory"))
+			Expect(reservoir["max_memory_bytes"]).To(BeNumerically("==", int64(512*1024*1024)))
+			Expect(reservoir).ToNot(HaveKey("data_dir"))
+			Expect(reservoir).ToNot(HaveKey("max_disk_bytes"))
+		})
+
+		It("should render sampling enable_batching when set [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:                true,
+					SamplingEnabled:        true,
+					SamplingEnableBatching: true,
+					Endpoint:               "decision-maker.example.com:443",
+					ApiEndpoint:            "https://control-plane-api.dash0.com",
+					Dataset:                "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			Expect(sampling["enable_batching"]).To(BeTrue())
+		})
+
+		It("should omit sampling enable_batching when unset [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:         true,
+					SamplingEnabled: true,
+					Endpoint:        "decision-maker.example.com:443",
+					ApiEndpoint:     "https://control-plane-api.dash0.com",
+					Dataset:         "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			Expect(sampling).ToNot(HaveKey("enable_batching"))
 		})
 
 		It("should render dash0redmetrics as an empty object when no tunables are set [DaemonSet]", func() {

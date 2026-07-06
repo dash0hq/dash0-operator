@@ -392,6 +392,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			SignalControl: SignalControlConfig{
 				Enabled:                       true,
 				SamplingEnabled:               true,
+				SamplingReservoirType:         "disk",
 				SamplingReservoirMaxDiskBytes: 1024 * 1024 * 1024, // 1Gi -> derived 1280Mi (x1.25)
 				SamplingReservoirMetricLevel:  "basic",
 				Endpoint:                      "decision-maker.example.com:443",
@@ -436,6 +437,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			SignalControl: SignalControlConfig{
 				Enabled:                       true,
 				SamplingEnabled:               true,
+				SamplingReservoirType:         "disk",
 				SamplingReservoirMaxDiskBytes: 1024 * 1024 * 1024,
 				SamplingReservoirMetricLevel:  "basic",
 				Endpoint:                      "decision-maker.example.com:443",
@@ -449,6 +451,36 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSet := getDaemonSet(desiredState)
 		collectorContainer := daemonSet.Spec.Template.Spec.Containers[0]
 		Expect(collectorContainer.Resources.Requests.StorageEphemeral().String()).To(Equal("5Gi"))
+	})
+
+	It("should not provision the disk reservoir volume, mount, or ephemeral-storage request for an "+
+		"in-memory reservoir", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			SignalControl: SignalControlConfig{
+				Enabled:                      true,
+				SamplingEnabled:              true,
+				SamplingReservoirType:        "serialized_memory",
+				SamplingReservoirMetricLevel: "basic",
+				Endpoint:                     "decision-maker.example.com:443",
+				ApiEndpoint:                  "https://control-plane-api.dash0.com",
+				Dataset:                      "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(FindVolumeByName(daemonSetPodSpec.Volumes, "trace-reservoir")).To(BeNil())
+
+		collectorContainer := daemonSetPodSpec.Containers[0]
+		for _, vm := range collectorContainer.VolumeMounts {
+			Expect(vm.Name).ToNot(Equal("trace-reservoir"))
+		}
+		Expect(collectorContainer.Resources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 	})
 
 	It("should describe the desired state as a set of Kubernetes client objects", func() {

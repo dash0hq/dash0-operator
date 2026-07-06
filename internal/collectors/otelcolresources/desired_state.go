@@ -33,11 +33,15 @@ type SignalControlConfig struct {
 	SamplingEnabled                    bool
 	SamplingFallbackSampleRatio        string
 	SamplingDebug                      bool
+	SamplingEnableBatching             bool
+	SamplingReservoirType              string
 	SamplingReservoirMaxDiskBytes      int64
+	SamplingReservoirMaxMemoryBytes    int64
 	SamplingReservoirMetricLevel       string
 	SignalToMetricsEnabled             bool
 	SignalToMetricsMaxTimeSeries       *int32
 	SignalToMetricsFlushInterval       string
+	SignalToMetricsCacheExpiration     string
 	RedMetricsMaxTimeSeries            *int32
 	RedMetricsAdditionalSpanAttributes []string
 	SpamFilterEnabled                  bool
@@ -52,6 +56,13 @@ type SignalControlConfig struct {
 	Insecure                           bool
 	EdgeProxyEnabled                   bool
 	EdgeProxyName                      string
+}
+
+// UsesDiskReservoir reports whether the collector should provision the disk-backed trace reservoir (the
+// ephemeral volume, its mount, and the derived ephemeral-storage request). This is only the case when
+// Signal Control and tail-sampling are enabled and the reservoir type is "disk".
+func (c SignalControlConfig) UsesDiskReservoir() bool {
+	return c.Enabled && c.SamplingEnabled && c.SamplingReservoirType == "disk"
 }
 
 type SignalControlCardinalityRule struct {
@@ -1004,7 +1015,7 @@ func assembleCollectorDaemonSetVolumes(
 		})
 	}
 
-	if config.SignalControl.Enabled && config.SignalControl.SamplingEnabled {
+	if config.SignalControl.UsesDiskReservoir() {
 		traceReservoirSizeLimit := reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
 		volumes = append(volumes, corev1.Volume{
 			Name: "trace-reservoir",
@@ -1095,7 +1106,7 @@ func assembleCollectorDaemonSetVolumeMounts(
 		})
 	}
 
-	if config.SignalControl.Enabled && config.SignalControl.SamplingEnabled {
+	if config.SignalControl.UsesDiskReservoir() {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "trace-reservoir",
 			MountPath: "/var/lib/dash0/trace-reservoir",
@@ -1192,7 +1203,7 @@ func assembleDaemonSetCollectorContainer(
 	// scheduler reserves enough node scratch space. An explicit user-provided ephemeral-storage request is
 	// never overridden.
 	collectorResources := resourceRequirements.ToResourceRequirements()
-	if config.SignalControl.Enabled && config.SignalControl.SamplingEnabled &&
+	if config.SignalControl.UsesDiskReservoir() &&
 		collectorResources.Requests.StorageEphemeral().IsZero() {
 		// Clone the requests map so the shared resourceRequirements passed by the caller is not mutated.
 		requests := maps.Clone(collectorResources.Requests)

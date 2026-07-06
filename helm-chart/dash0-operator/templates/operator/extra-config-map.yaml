@@ -150,6 +150,7 @@ data:
     targetAllocatorNodeAffinity:
       {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}
 {{- if .Values.operator.signalControl.enabled }}
+    edgeProxyReplicas: {{ .Values.operator.signalControl.edgeProxy.replicas }}
     edgeProxyContainerResources:
       {{- toYaml .Values.operator.signalControl.edgeProxy.containerResources | nindent 6 }}
     edgeProxyTolerations:

@@ -771,9 +771,17 @@ func signalControlConfigFromResource(
 		samplingFallbackSampleRatio = *r
 	}
 	samplingDebug := pointers.ReadBoolPointerWithDefault(resource.Spec.Sampling.Debug, false)
+	samplingEnableBatching := pointers.ReadBoolPointerWithDefault(resource.Spec.Sampling.EnableBatching, false)
+	samplingReservoirType := string(dash0v1alpha1.ReservoirTypeSerializedMemory)
 	samplingReservoirMaxDiskBytes := reservoirDefaultMaxDiskBytes
+	// Left at 0 when unset so that no max_memory_bytes is rendered and the processor's own default (100Mi)
+	// applies for the memory/serialized_memory reservoir types.
+	var samplingReservoirMaxMemoryBytes int64
 	samplingReservoirMetricLevel := string(dash0v1alpha1.ReservoirMetricLevelBasic)
 	if r := resource.Spec.Sampling.Reservoir; r != nil {
+		if r.Type != nil && *r.Type != "" {
+			samplingReservoirType = string(*r.Type)
+		}
 		if r.MaxDiskBytes != nil {
 			maxDiskBytes := r.MaxDiskBytes.Value()
 			if maxDiskBytes < reservoirMaxDiskBytesFloor {
@@ -786,6 +794,9 @@ func signalControlConfigFromResource(
 			}
 			samplingReservoirMaxDiskBytes = maxDiskBytes
 		}
+		if r.MaxMemoryBytes != nil {
+			samplingReservoirMaxMemoryBytes = r.MaxMemoryBytes.Value()
+		}
 		if r.MetricLevel != nil && *r.MetricLevel != "" {
 			samplingReservoirMetricLevel = string(*r.MetricLevel)
 		}
@@ -794,6 +805,10 @@ func signalControlConfigFromResource(
 	var signalToMetricsFlushInterval string
 	if d := resource.Spec.SignalToMetrics.FlushInterval; d != nil && d.Duration > 0 {
 		signalToMetricsFlushInterval = d.Duration.String()
+	}
+	var signalToMetricsCacheExpiration string
+	if d := resource.Spec.SignalToMetrics.CacheExpiration; d != nil && d.Duration > 0 {
+		signalToMetricsCacheExpiration = d.Duration.String()
 	}
 	spamFilterEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.Enabled, true)
 	var spamFilterCacheExpiration string
@@ -856,11 +871,15 @@ func signalControlConfigFromResource(
 		SamplingEnabled:                    samplingEnabled,
 		SamplingFallbackSampleRatio:        samplingFallbackSampleRatio,
 		SamplingDebug:                      samplingDebug,
+		SamplingEnableBatching:             samplingEnableBatching,
+		SamplingReservoirType:              samplingReservoirType,
 		SamplingReservoirMaxDiskBytes:      samplingReservoirMaxDiskBytes,
+		SamplingReservoirMaxMemoryBytes:    samplingReservoirMaxMemoryBytes,
 		SamplingReservoirMetricLevel:       samplingReservoirMetricLevel,
 		SignalToMetricsEnabled:             signalToMetricsEnabled,
 		SignalToMetricsMaxTimeSeries:       resource.Spec.SignalToMetrics.MaxTimeSeries,
 		SignalToMetricsFlushInterval:       signalToMetricsFlushInterval,
+		SignalToMetricsCacheExpiration:     signalToMetricsCacheExpiration,
 		RedMetricsMaxTimeSeries:            resource.Spec.RedMetrics.MaxTimeSeries,
 		RedMetricsAdditionalSpanAttributes: resource.Spec.RedMetrics.AdditionalSpanAttributes,
 		SpamFilterEnabled:                  spamFilterEnabled,

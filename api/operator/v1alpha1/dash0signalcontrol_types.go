@@ -172,8 +172,15 @@ type SamplingConfig struct {
 	// +kubebuilder:validation:Optional
 	Debug *bool `json:"debug,omitempty"`
 
-	// Configuration for the trace reservoir, the on-disk buffer that holds spans awaiting a sampling
-	// decision. This setting is optional.
+	// Whether satisfaction reports to the Decision Maker are batched instead of sent immediately. Batching
+	// groups multiple reports into fewer RPC calls, reducing overhead in high-throughput scenarios at the
+	// cost of slightly higher sampling-decision latency. This setting is optional, it defaults to false.
+	//
+	// +kubebuilder:validation:Optional
+	EnableBatching *bool `json:"enableBatching,omitempty"`
+
+	// Configuration for the trace reservoir, the buffer that holds spans awaiting a sampling decision.
+	// This setting is optional.
 	//
 	// +kubebuilder:validation:Optional
 	Reservoir *ReservoirConfig `json:"reservoir,omitempty"`
@@ -188,17 +195,49 @@ const (
 	ReservoirMetricLevelDetailed ReservoirMetricLevel = "detailed"
 )
 
-// ReservoirConfig configures the disk-backed trace reservoir of the dash0sampling processor.
+// ReservoirType selects the storage backend of the trace reservoir.
+// +kubebuilder:validation:Enum=disk;memory;serialized_memory
+type ReservoirType string
+
+const (
+	// ReservoirTypeDisk buffers spans in sharded files backed by an ephemeral volume; uses maxDiskBytes.
+	ReservoirTypeDisk ReservoirType = "disk"
+	// ReservoirTypeMemory buffers spans as in-memory traces; uses maxMemoryBytes.
+	ReservoirTypeMemory ReservoirType = "memory"
+	// ReservoirTypeSerializedMemory buffers spans as in-memory serialized bytes (lower GC pressure); uses
+	// maxMemoryBytes. Recommended for high-throughput scenarios.
+	ReservoirTypeSerializedMemory ReservoirType = "serialized_memory"
+)
+
+// ReservoirConfig configures the trace reservoir of the dash0sampling processor, the buffer that holds
+// spans awaiting a sampling decision.
 type ReservoirConfig struct {
-	// The maximum total disk usage of the trace reservoir across all shards. When the reservoir exceeds this
-	// limit, the oldest buffered spans are evicted regardless of age. The operator also derives the reservoir
-	// volume's storage size limit and the collector container's ephemeral-storage request from this value, so
-	// that the requested storage always exceeds the reservoir's own cap. This setting is optional, it defaults
-	// to "1Gi". Values below "64Mi" are raised to "64Mi".
+	// The storage backend of the trace reservoir. "serialized_memory" and "memory" buffer spans in the
+	// collector pod's memory (sized via maxMemoryBytes); "disk" buffers them on an ephemeral volume (sized
+	// via maxDiskBytes). "serialized_memory" is recommended for high-throughput scenarios. This setting is
+	// optional, it defaults to "serialized_memory".
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=serialized_memory
+	Type *ReservoirType `json:"type,omitempty"`
+
+	// The maximum total disk usage of the trace reservoir across all shards. Only used when type is "disk".
+	// When the reservoir exceeds this limit, the oldest buffered spans are evicted regardless of age. The
+	// operator also derives the reservoir volume's storage size limit and the collector container's
+	// ephemeral-storage request from this value, so that the requested storage always exceeds the
+	// reservoir's own cap. This setting is optional, it defaults to "1Gi". Values below "64Mi" are raised to
+	// "64Mi".
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default="1Gi"
 	MaxDiskBytes *resource.Quantity `json:"maxDiskBytes,omitempty"`
+
+	// The maximum memory used by the trace reservoir. Only used when type is "memory" or
+	// "serialized_memory". When the reservoir exceeds this limit, the oldest buffered spans are evicted
+	// regardless of age. This setting is optional; when unset the processor default (100Mi) applies.
+	//
+	// +kubebuilder:validation:Optional
+	MaxMemoryBytes *resource.Quantity `json:"maxMemoryBytes,omitempty"`
 
 	// The verbosity of the trace reservoir's telemetry. "basic" records only essential metrics and is
 	// recommended for production. "detailed" records all metrics including histograms and hot-path counters,
@@ -252,6 +291,13 @@ type SignalToMetricsConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	FlushInterval *metav1.Duration `json:"flushInterval,omitempty"`
+
+	// How long compiled rulesets are cached before the connector re-fetches them from the
+	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h.
+	// This setting is optional; the connector default applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	CacheExpiration *metav1.Duration `json:"cacheExpiration,omitempty"`
 }
 
 // SpamFilterConfig configures the dash0filter processor. The processor drops spans, metric data points,

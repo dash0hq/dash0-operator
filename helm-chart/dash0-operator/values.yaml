@@ -1077,6 +1077,11 @@ operator:
 
     # Settings for the Edge Proxy deployed when signalControl.enabled=true.
     edgeProxy:
+      # The number of Edge Proxy pods to run. The Edge Proxy is stateless, so it can be scaled horizontally to
+      # handle higher collector-to-Decision-Maker traffic. Collectors connect via the Edge Proxy service,
+      # which distributes gRPC connections across the available pods. Defaults to 1.
+      replicas: 1
+
       # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.
       containerResources:
         limits:
