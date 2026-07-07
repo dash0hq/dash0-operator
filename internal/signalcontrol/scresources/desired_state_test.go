@@ -186,6 +186,27 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 		Expect(dep.Spec.Template.Spec.Affinity).To(BeNil())
 		Expect(dep.Spec.Template.Spec.Tolerations).To(BeEmpty())
 	})
+
+	It("defaults to a single replica when EdgeProxyReplicas is unset", func() {
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+		)
+
+		Expect(dep.Spec.Replicas).ToNot(BeNil())
+		Expect(*dep.Spec.Replicas).To(Equal(int32(1)))
+	})
+
+	It("renders the configured replica count from extraConfig", func() {
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion,
+			util.ExtraConfig{EdgeProxyReplicas: 3}, logd.Discard(),
+		)
+
+		Expect(dep.Spec.Replicas).ToNot(BeNil())
+		Expect(*dep.Spec.Replicas).To(Equal(int32(3)))
+	})
 })
 
 func expectSelfMonitoringEnvVarsAbsent(container corev1.Container) {

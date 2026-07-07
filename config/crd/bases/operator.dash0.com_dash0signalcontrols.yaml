@@ -230,6 +230,12 @@ spec:
                       enabled, this field is ignored and the sampling processor connects to the in-cluster Edge Proxy service
                       instead.
                     type: string
+                  enableBatching:
+                    description: |-
+                      Whether satisfaction reports to the Decision Maker are batched instead of sent immediately. Batching
+                      groups multiple reports into fewer RPC calls, reducing overhead in high-throughput scenarios at the
+                      cost of slightly higher sampling-decision latency. This setting is optional, it defaults to false.
+                    type: boolean
                   enabled:
                     default: true
                     description: |-
@@ -248,8 +254,8 @@ spec:
                     type: string
                   reservoir:
                     description: |-
-                      Configuration for the trace reservoir, the on-disk buffer that holds spans awaiting a sampling
-                      decision. This setting is optional.
+                      Configuration for the trace reservoir, the buffer that holds spans awaiting a sampling decision.
+                      This setting is optional.
                     properties:
                       maxDiskBytes:
                         anyOf:
@@ -257,11 +263,22 @@ spec:
                         - type: string
                         default: 1Gi
                         description: |-
-                          The maximum total disk usage of the trace reservoir across all shards. When the reservoir exceeds this
-                          limit, the oldest buffered spans are evicted regardless of age. The operator also derives the reservoir
-                          volume's storage size limit and the collector container's ephemeral-storage request from this value, so
-                          that the requested storage always exceeds the reservoir's own cap. This setting is optional, it defaults
-                          to "1Gi". Values below "64Mi" are raised to "64Mi".
+                          The maximum total disk usage of the trace reservoir across all shards. Only used when type is "disk".
+                          When the reservoir exceeds this limit, the oldest buffered spans are evicted regardless of age. The
+                          operator also derives the reservoir volume's storage size limit and the collector container's
+                          ephemeral-storage request from this value, so that the requested storage always exceeds the
+                          reservoir's own cap. This setting is optional, it defaults to "1Gi". Values below "64Mi" are raised to
+                          "64Mi".
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      maxMemoryBytes:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: |-
+                          The maximum memory used by the trace reservoir. Only used when type is "memory" or
+                          "serialized_memory". When the reservoir exceeds this limit, the oldest buffered spans are evicted
+                          regardless of age. This setting is optional; when unset the processor default (100Mi) applies.
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
                       metricLevel:
@@ -274,6 +291,18 @@ spec:
                         - basic
                         - detailed
                         type: string
+                      type:
+                        default: serialized_memory
+                        description: |-
+                          The storage backend of the trace reservoir. "serialized_memory" and "memory" buffer spans in the
+                          collector pod's memory (sized via maxMemoryBytes); "disk" buffers them on an ephemeral volume (sized
+                          via maxDiskBytes). "serialized_memory" is recommended for high-throughput scenarios. This setting is
+                          optional, it defaults to "serialized_memory".
+                        enum:
+                        - disk
+                        - memory
+                        - serialized_memory
+                        type: string
                     type: object
                 required:
                 - enabled
@@ -284,6 +313,12 @@ spec:
                   custom metrics from spans and log records at the edge based on Dash0SignalToMetrics rules synced to
                   the Dash0 control plane.
                 properties:
+                  cacheExpiration:
+                    description: |-
+                      How long compiled rulesets are cached before the connector re-fetches them from the
+                      dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h.
+                      This setting is optional; the connector default applies when unset.
+                    type: string
                   enabled:
                     default: true
                     description: |-

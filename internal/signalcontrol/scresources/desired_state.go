@@ -103,7 +103,11 @@ func assembleEdgeProxyDeployment(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) *appsv1.Deployment {
-	replicas := int32(1)
+	replicas := extraConfig.EdgeProxyReplicas
+	if replicas < 1 {
+		// Default to a single replica when the extra config does not specify a value (e.g. older config maps).
+		replicas = 1
+	}
 
 	dmEndpoint, authorization, dataset := deriveUpstreamConfig(operatorConfig)
 	if signalControlResource.Spec.Sampling.DecisionMakerEndpoint != "" {

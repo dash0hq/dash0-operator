@@ -713,8 +713,30 @@ var _ = Describe("signalControlConfigFromResource", func() {
 			},
 		}
 		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingReservoirType).To(Equal("serialized_memory"))
 		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(1024 * 1024 * 1024)))
+		Expect(config.SamplingReservoirMaxMemoryBytes).To(Equal(int64(0)))
 		Expect(config.SamplingReservoirMetricLevel).To(Equal("basic"))
+	})
+
+	It("should use the configured reservoir type and max memory bytes", func() {
+		reservoirType := dash0v1alpha1.ReservoirTypeSerializedMemory
+		maxMemoryBytes := resource.MustParse("512Mi")
+		edge := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Reservoir: &dash0v1alpha1.ReservoirConfig{
+						Type:           &reservoirType,
+						MaxMemoryBytes: &maxMemoryBytes,
+					},
+				},
+			},
+		}
+		config := signalControlConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingReservoirType).To(Equal("serialized_memory"))
+		Expect(config.SamplingReservoirMaxMemoryBytes).To(Equal(int64(512 * 1024 * 1024)))
 	})
 
 	It("should use the configured reservoir max disk bytes and metric level", func() {
@@ -780,6 +802,7 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.SignalToMetricsEnabled).To(BeTrue())
 		Expect(config.SignalToMetricsMaxTimeSeries).To(BeNil())
 		Expect(config.SignalToMetricsFlushInterval).To(BeEmpty())
+		Expect(config.SignalToMetricsCacheExpiration).To(BeEmpty())
 	})
 
 	It("should allow disabling signal-to-metrics while keeping Signal Control enabled", func() {
@@ -804,9 +827,10 @@ var _ = Describe("signalControlConfigFromResource", func() {
 				Enabled:   boolPtr(true),
 				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
 				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
-					Enabled:       boolPtr(true),
-					MaxTimeSeries: &maxTs,
-					FlushInterval: &metav1.Duration{Duration: 30 * time.Second},
+					Enabled:         boolPtr(true),
+					MaxTimeSeries:   &maxTs,
+					FlushInterval:   &metav1.Duration{Duration: 30 * time.Second},
+					CacheExpiration: &metav1.Duration{Duration: 45 * time.Second},
 				},
 			},
 		}
@@ -815,6 +839,7 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.SignalToMetricsMaxTimeSeries).ToNot(BeNil())
 		Expect(*config.SignalToMetricsMaxTimeSeries).To(Equal(int32(42_000)))
 		Expect(config.SignalToMetricsFlushInterval).To(Equal("30s"))
+		Expect(config.SignalToMetricsCacheExpiration).To(Equal("45s"))
 	})
 
 	It("should drop a non-positive flush interval rather than forward it", func() {
@@ -829,6 +854,45 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		}
 		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SignalToMetricsFlushInterval).To(BeEmpty())
+	})
+
+	It("should drop a non-positive signal-to-metrics cache expiration rather than forward it", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
+					CacheExpiration: &metav1.Duration{Duration: 0},
+				},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SignalToMetricsCacheExpiration).To(BeEmpty())
+	})
+
+	It("should default sampling enable_batching to false and pass it through when set", func() {
+		resourceDefault := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+			},
+		}
+		configDefault := signalControlConfigFromResource(
+			resourceDefault, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(configDefault.SamplingEnableBatching).To(BeFalse())
+
+		resourceEnabled := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					EnableBatching: boolPtr(true),
+				},
+			},
+		}
+		configEnabled := signalControlConfigFromResource(
+			resourceEnabled, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(configEnabled.SamplingEnableBatching).To(BeTrue())
 	})
 
 	It("should have spam filter enabled by default", func() {
