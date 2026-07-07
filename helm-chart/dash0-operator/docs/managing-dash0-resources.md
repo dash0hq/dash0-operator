@@ -124,6 +124,22 @@ If you leave `operator.iac.persesDashboard.autoPatchConversionWebhook` enabled a
 `spec.conversion` on every sync, the operator will re-apply the patch on each CRD update event and log a warning, so the
 back-and-forth patching between the Dash0 operator and the GitOps system is observable.
 
+#### Preserving Dash0 Panel Extensions in the PersesDashboard CRD
+
+The upstream `persesdashboards.perses.dev` CRD models the per-panel `spec` as a closed schema (only `display`, `links`,
+`plugin` and `queries`) without `x-kubernetes-preserve-unknown-fields`. Dash0-specific panel extensions - most notably the
+per-panel `annotations` block (a sibling of `plugin`/`queries`, for example a `LogsAnnotation` placing log-based markers on a
+GeoMap) - are therefore pruned by the Kubernetes API server at admission, before the Dash0 operator ever reads the resource.
+The dashboard is stored without the extension and, for example, the map shows no markers.
+
+To prevent this, the Dash0 operator patches the PersesDashboard CRD schema to set `x-kubernetes-preserve-unknown-fields: true`
+at the panel `spec` level (for every CRD version), so these extensions survive admission.
+This can be disabled by setting the Helm value `operator.iac.persesDashboard.autoPreservePanelSpecFields` to `false` (the
+default is `true`).
+As with the conversion webhook patch, the operator leaves the CRD untouched when it detects a foreign conversion webhook (i.e.
+when the Perses operator manages the CRD).
+In that case the durable fix is an upstream Perses schema change, or managing the affected dashboard via the Dash0 API/UI.
+
 ### Managing Dash0 Check Rules
 
 You can manage your Dash0 check rules via the Dash0 operator.

@@ -54,13 +54,18 @@ type PersesDashboardCrdReconciler struct {
 	conversionWebhookSettings PersesDashboardConversionWebhookSettings
 }
 
-// PersesDashboardConversionWebhookSettings are the settings for auto-patching the PersesDashboard CRD's conversion webhook stanza
-// when the Perses operator (which would normally own the conversion webhook) is not installed.
+// PersesDashboardConversionWebhookSettings are the settings for auto-patching the PersesDashboard CRD when the Perses operator
+// (which would normally own the CRD) is not installed. Two independent behaviors are gated here: patching the CRD's conversion
+// webhook stanza (AutoPatchConversionWebhook) and preserving unknown fields at the panel-spec level (AutoPreservePanelSpecFields).
 type PersesDashboardConversionWebhookSettings struct {
 	AutoPatchConversionWebhook bool
-	OperatorNamespace          string
-	WebhookServiceName         string
-	WebhookServicePort         int32
+	// AutoPreservePanelSpecFields, when true, makes the operator patch the PersesDashboard CRD schema so panel-spec-level
+	// Dash0 extensions (e.g. the `annotations` block, a sibling of plugin/queries) are not pruned by the API server at
+	// admission. See ensurePanelSpecPreservesUnknownFields.
+	AutoPreservePanelSpecFields bool
+	OperatorNamespace           string
+	WebhookServiceName          string
+	WebhookServicePort          int32
 	// CaBundlePath is optional; defaults to the standard controller-runtime serving-certs mount.
 	CaBundlePath string
 }
@@ -936,12 +941,20 @@ func (r *PersesDashboardReconciler) synchronizeNamespacedResources(
 	}()
 }
 
-// ensurePersesConversionWebhookConfigured patches the perses.dev PersesDashboard CRD to point its conversion stanza at the
-// operator manager's webhook endpoint, but only if no conversion webhook is already configured. The CRD has two versions
-// (v1alpha1, v1alpha2) with v1alpha2 as the storage version, and without a working conversion webhook the API server falls back
-// to strategy "None", which prunes v1alpha1 fields at write time (since v1alpha2 wraps them under spec.config). Some users
-// install only a stand-alone Perses CRD without the Perses operator (which would normally ship the conversion webhook), so this
-// patch is the only thing keeping v1alpha1 dashboards from silently losing data.
+// ensurePersesConversionWebhookConfigured patches the perses.dev PersesDashboard CRD so Dash0 does not silently lose dashboard
+// data on the GitOps path. It performs up to two independent patches in a single API call:
+//
+//  1. Conversion webhook stanza (gated by AutoPatchConversionWebhook): points the CRD's conversion stanza at the operator
+//     manager's webhook endpoint, but only if no conversion webhook is already configured. The CRD has two versions
+//     (v1alpha1, v1alpha2) with v1alpha2 as the storage version, and without a working conversion webhook the API server falls
+//     back to strategy "None", which prunes v1alpha1 fields at write time (since v1alpha2 wraps them under spec.config).
+//  2. Panel-spec unknown-field preservation (gated by AutoPreservePanelSpecFields): adds
+//     x-kubernetes-preserve-unknown-fields at the panel spec so Dash0 extensions such as `annotations` are not pruned at
+//     admission (see ensurePanelSpecPreservesUnknownFields).
+//
+// Both patches back off when a foreign conversion webhook is present, because that indicates the Perses operator owns the CRD
+// and we must not fight it. Some users install only a stand-alone Perses CRD without the Perses operator, and for them these
+// patches are the only thing keeping dashboards from silently losing data.
 //
 // onUpdate distinguishes "first observation" (CRD created event) from "subsequent update" (CRD reconciled by GitOps or kubectl
 // apply). Re-patching during an update is logged as a warning so a patch-war between us and an external reconciler is observable.
@@ -951,14 +964,12 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 	onUpdate bool,
 	logger logd.Logger,
 ) {
-	if !r.conversionWebhookSettings.AutoPatchConversionWebhook {
+	if !r.conversionWebhookSettings.AutoPatchConversionWebhook && !r.conversionWebhookSettings.AutoPreservePanelSpecFields {
 		return
 	}
 
-	if r.conversionStanzaMatchesOurs(crd) {
-		return
-	}
-
+	// A foreign conversion webhook means another controller (typically the Perses operator) owns this CRD. We do not fight it,
+	// neither for the conversion stanza nor for the schema.
 	if hasForeignConversionWebhook(crd) {
 		if !onUpdate {
 			logger.Info(
@@ -969,15 +980,78 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 		return
 	}
 
+	patched := crd.DeepCopy()
+	conversionPatched := false
+	schemaPatched := false
+
+	if r.conversionWebhookSettings.AutoPatchConversionWebhook && !r.conversionStanzaMatchesOurs(crd) {
+		if caBundle, ok := r.readConversionWebhookCaBundle(logger); ok {
+			patched.Spec.Conversion = r.buildConversionStanza(caBundle)
+			conversionPatched = true
+		}
+	}
+
+	if r.conversionWebhookSettings.AutoPreservePanelSpecFields {
+		schemaPatched = ensurePanelSpecPreservesUnknownFields(patched)
+	}
+
+	if !conversionPatched && !schemaPatched {
+		return
+	}
+
+	if err := r.Patch(ctx, patched, client.MergeFrom(crd)); err != nil {
+		logger.Error(
+			err,
+			"Failed to patch the perses.dev PersesDashboard CRD (conversion webhook and/or panel-spec preservation). "+
+				"PersesDashboard resources may lose fields when stored.",
+		)
+		return
+	}
+
+	if conversionPatched {
+		if onUpdate {
+			logger.Warn(
+				"The conversion stanza on the perses.dev PersesDashboard CRD was missing or pointing elsewhere on a CRD update; " +
+					"re-applied the Dash0-operator conversion webhook configuration. If this happens repeatedly, a GitOps reconciler " +
+					"(Argo CD, Flux, etc.) is likely overwriting the CRD. Configure your GitOps tooling to leave spec.conversion " +
+					"alone (preferred), install the Perses operator to let it handle the conversion, or set the Helm value " +
+					"operator.persesDashboard.autoPatchConversionWebhook=false.",
+			)
+		} else {
+			logger.Info(
+				"Patched the perses.dev PersesDashboard CRD to route conversions through the Dash0 operator's conversion webhook.",
+			)
+		}
+	}
+	if schemaPatched {
+		if onUpdate {
+			logger.Warn(
+				"Re-applied x-kubernetes-preserve-unknown-fields at the panel spec of the perses.dev PersesDashboard CRD on a " +
+					"CRD update (a GitOps reconciler or the Perses operator likely overwrote it). If this happens repeatedly, " +
+					"configure your tooling to leave the CRD schema alone, or set the Helm value " +
+					"operator.persesDashboard.autoPreservePanelSpecFields=false.",
+			)
+		} else {
+			logger.Info(
+				"Patched the perses.dev PersesDashboard CRD to preserve unknown fields at the panel spec so Dash0 panel " +
+					"extensions (e.g. annotations) are not pruned at admission.",
+			)
+		}
+	}
+}
+
+// readConversionWebhookCaBundle reads the CA bundle used for the conversion webhook stanza. It returns ok=false (and logs) when
+// the bundle cannot be read or is empty, in which case the conversion patch must be skipped.
+func (r *PersesDashboardCrdReconciler) readConversionWebhookCaBundle(logger logd.Logger) ([]byte, bool) {
 	caBundle, err := os.ReadFile(r.conversionWebhookSettings.CaBundlePath)
 	if err != nil {
 		logger.Error(
 			err,
 			"Cannot read CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook; "+
-				"skipping the patch. v1alpha1 PersesDashboard resources may lose fields when stored.",
+				"skipping the conversion patch. v1alpha1 PersesDashboard resources may lose fields when stored.",
 			"caBundlePath", r.conversionWebhookSettings.CaBundlePath,
 		)
-		return
+		return nil, false
 	}
 	// Skip the patch on an empty bundle: this happens transiently while cert-manager (or whatever provisions the serving cert)
 	// has not yet materialized the file. Patching with an empty caBundle would make the API server reject every conversion
@@ -985,39 +1059,79 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 	if len(bytes.TrimSpace(caBundle)) == 0 {
 		logger.Error(
 			fmt.Errorf("CA bundle file is empty"),
-			"CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook is empty; skipping the patch. "+
-				"This is expected briefly while the serving cert is being provisioned; the next CRD reconciliation will "+
+			"CA bundle for patching the perses.dev PersesDashboard CRD conversion webhook is empty; skipping the conversion "+
+				"patch. This is expected briefly while the serving cert is being provisioned; the next CRD reconciliation will "+
 				"retry. If it persists, v1alpha1 PersesDashboard resources may lose fields when stored.",
 			"caBundlePath", r.conversionWebhookSettings.CaBundlePath,
 		)
-		return
+		return nil, false
 	}
+	return caBundle, true
+}
 
-	patched := crd.DeepCopy()
-	patched.Spec.Conversion = r.buildConversionStanza(caBundle)
-
-	if err := r.Patch(ctx, patched, client.MergeFrom(crd)); err != nil {
-		logger.Error(
-			err,
-			"Failed to patch the perses.dev PersesDashboard CRD with the Dash0-operator conversion webhook configuration. "+
-				"v1alpha1 PersesDashboard resources will lose fields when stored.",
-		)
-		return
+// ensurePanelSpecPreservesUnknownFields sets x-kubernetes-preserve-unknown-fields: true on the panel spec object of every
+// version of the PersesDashboard CRD, so Dash0-specific extensions that live at panel-spec level (e.g. `annotations`, a sibling
+// of plugin/queries) are not pruned by the API server at admission. The upstream Perses CRD models the panel spec as a closed
+// schema (only display/links/plugin/queries), which is why these fields are silently dropped on the GitOps path.
+// v1alpha2 nests the dashboard body under spec.config, while v1alpha1 keeps it directly under spec; both are handled. Returns
+// true if it changed anything (so the caller only issues a patch when needed and does not churn on every reconcile).
+//
+// Caveat: if the Perses operator is installed, it owns this CRD and may re-assert its own schema, undoing this patch. The caller
+// already backs off entirely when a foreign conversion webhook is present; where the Perses operator manages the CRD without
+// such a webhook, the durable fix is an upstream Perses schema change (or managing the dashboard via the Dash0 API/UI).
+func ensurePanelSpecPreservesUnknownFields(crd *apiextensionsv1.CustomResourceDefinition) bool {
+	changed := false
+	for i := range crd.Spec.Versions {
+		version := &crd.Spec.Versions[i]
+		if version.Schema == nil || version.Schema.OpenAPIV3Schema == nil {
+			continue
+		}
+		specSchema, ok := version.Schema.OpenAPIV3Schema.Properties["spec"]
+		if !ok {
+			continue
+		}
+		panelsHolder := specSchema.Properties
+		if config, ok := specSchema.Properties["config"]; ok {
+			// v1alpha2: the dashboard body (incl. panels) is nested under spec.config.
+			panelsHolder = config.Properties
+		}
+		if setPanelSpecPreservesUnknownFields(panelsHolder) {
+			changed = true
+		}
 	}
+	return changed
+}
 
-	if onUpdate {
-		logger.Warn(
-			"The conversion stanza on the perses.dev PersesDashboard CRD was missing or pointing elsewhere on a CRD update; " +
-				"re-applied the Dash0-operator conversion webhook configuration. If this happens repeatedly, a GitOps reconciler " +
-				"(Argo CD, Flux, etc.) is likely overwriting the CRD. Configure your GitOps tooling to leave spec.conversion " +
-				"alone (preferred), install the Perses operator to let it handle the conversion, or set the Helm value " +
-				"operator.persesDashboard.autoPatchConversionWebhook=false.",
-		)
-	} else {
-		logger.Info(
-			"Patched the perses.dev PersesDashboard CRD to route conversions through the Dash0 operator's conversion webhook.",
-		)
+// setPanelSpecPreservesUnknownFields flips x-kubernetes-preserve-unknown-fields to true on panels.<any>.spec, reached via the
+// panels object's additionalProperties schema. panelsHolder is the map that directly contains the "panels" key (spec.properties
+// for v1alpha1, spec.config.properties for v1alpha2). Returns true if a change was made.
+//
+// Go note: apiextensionsv1.JSONSchemaProps is stored by value in map[string]JSONSchemaProps, so we read the panel spec struct,
+// mutate it, and write it back into panelSchema.Properties. That map lives under panels.AdditionalProperties.Schema, which is a
+// pointer shared with the CRD we hand to Patch, so the write-back persists.
+func setPanelSpecPreservesUnknownFields(panelsHolder map[string]apiextensionsv1.JSONSchemaProps) bool {
+	if panelsHolder == nil {
+		return false
 	}
+	panels, ok := panelsHolder["panels"]
+	if !ok || panels.AdditionalProperties == nil || panels.AdditionalProperties.Schema == nil {
+		return false
+	}
+	panelSchema := panels.AdditionalProperties.Schema
+	if panelSchema.Properties == nil {
+		return false
+	}
+	panelSpec, ok := panelSchema.Properties["spec"]
+	if !ok {
+		return false
+	}
+	if panelSpec.XPreserveUnknownFields != nil && *panelSpec.XPreserveUnknownFields {
+		return false
+	}
+	preserve := true
+	panelSpec.XPreserveUnknownFields = &preserve
+	panelSchema.Properties["spec"] = panelSpec
+	return true
 }
 
 // conversionStanzaMatchesOurs reports whether the CRD's conversion stanza is already pointing

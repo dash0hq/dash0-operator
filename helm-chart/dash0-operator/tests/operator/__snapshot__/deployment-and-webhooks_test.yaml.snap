@@ -114,6 +114,8 @@ deployment should match snapshot (default values):
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
+                - name: DASH0_PERSES_DASHBOARD_AUTO_PRESERVE_PANEL_SPEC_FIELDS
+                  value: "true"
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:
@@ -286,6 +288,8 @@ deployment should match snapshot when using cert-manager:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
+                - name: DASH0_PERSES_DASHBOARD_AUTO_PRESERVE_PANEL_SPEC_FIELDS
+                  value: "true"
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:

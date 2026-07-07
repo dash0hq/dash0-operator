@@ -316,6 +316,19 @@ operator:
       # resources will lose fields when stored.
       autoPatchConversionWebhook: true
 
+      # The upstream Perses PersesDashboard CRD models the per-panel spec as a closed schema (only display/links/plugin/
+      # queries) with no x-kubernetes-preserve-unknown-fields. As a result, Dash0-specific panel extensions - most notably
+      # the per-panel `annotations` block (a sibling of plugin/queries, e.g. a LogsAnnotation on a GeoMap) - are pruned by
+      # the Kubernetes API server at admission, before the Dash0 operator ever reads the resource. When this setting is true
+      # (the default) and the Dash0 operator detects the PersesDashboard CRD with no foreign conversion webhook, it patches
+      # the CRD schema to set x-kubernetes-preserve-unknown-fields: true at the panel spec, so these extensions survive.
+      #
+      # If the Perses operator is installed and manages the CRD (detected via a foreign conversion webhook), the Dash0
+      # operator leaves the CRD untouched; in that case the durable fix is an upstream Perses schema change or managing the
+      # affected dashboard via the Dash0 API/UI. If you manage the PersesDashboard CRD via GitOps and do not want the Dash0
+      # operator to patch its schema, set this to false.
+      autoPreservePanelSpecFields: true
+
   # settings for the service account to be used
   serviceAccount:
     # whether to create a dedicated service account, set this to false if you want to provide a separately

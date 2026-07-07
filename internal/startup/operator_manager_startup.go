@@ -76,6 +76,7 @@ type environmentVariables struct {
 	iacPeriodicRetryEnabled                     bool
 	iacPeriodicRetryInterval                    time.Duration
 	autoPatchPersesDashboardConversionWebhook   bool
+	autoPreservePersesDashboardPanelSpecFields  bool
 	oTelCollectorNamePrefix                     string
 	targetAllocatorNamePrefix                   string
 	operatorImage                               string
@@ -166,6 +167,7 @@ const (
 	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
 	webhookServicePortEnvVarName                          = "DASH0_WEBHOOK_SERVICE_PORT"
 	persesDashboardAutoPatchConversionWebhookEnvVarName   = "DASH0_PERSES_DASHBOARD_AUTO_PATCH_CONVERSION_WEBHOOK"
+	persesDashboardAutoPreservePanelSpecFieldsEnvVarName  = "DASH0_PERSES_DASHBOARD_AUTO_PRESERVE_PANEL_SPEC_FIELDS"
 	periodicRetryEnabledEnvVarName                        = "DASH0_IAC_PERIODIC_RETRY_ENABLED"
 	periodicRetryIntervalEnvVarName                       = "DASH0_IAC_PERIODIC_RETRY_INTERVAL"
 	oTelCollectorNamePrefixEnvVarName                     = "OTEL_COLLECTOR_NAME_PREFIX"
@@ -797,6 +799,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 
 	autoPatchPersesDashboardConversionWebhook :=
 		readOptionalBoolFromEnvironmentVariable(persesDashboardAutoPatchConversionWebhookEnvVarName, true)
+	autoPreservePersesDashboardPanelSpecFields :=
+		readOptionalBoolFromEnvironmentVariable(persesDashboardAutoPreservePanelSpecFieldsEnvVarName, true)
 
 	iacPeriodicRetryEnabled := readOptionalBoolFromEnvironmentVariable(periodicRetryEnabledEnvVarName, true)
 	iacPeriodicRetryInterval :=
@@ -945,6 +949,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		iacPeriodicRetryEnabled:                     iacPeriodicRetryEnabled,
 		iacPeriodicRetryInterval:                    iacPeriodicRetryInterval,
 		autoPatchPersesDashboardConversionWebhook:   autoPatchPersesDashboardConversionWebhook,
+		autoPreservePersesDashboardPanelSpecFields:  autoPreservePersesDashboardPanelSpecFields,
 		oTelCollectorNamePrefix:                     oTelCollectorNamePrefix,
 		targetAllocatorNamePrefix:                   targetAllocatorNamePrefix,
 		operatorImage:                               operatorImage,
@@ -1722,10 +1727,11 @@ func startDash0Controllers(
 		leaderElectionAwareRunnable,
 		httpClient,
 		controller.PersesDashboardConversionWebhookSettings{
-			AutoPatchConversionWebhook: envVars.autoPatchPersesDashboardConversionWebhook,
-			OperatorNamespace:          envVars.operatorNamespace,
-			WebhookServiceName:         envVars.webhookServiceName,
-			WebhookServicePort:         envVars.webhookServicePort,
+			AutoPatchConversionWebhook:  envVars.autoPatchPersesDashboardConversionWebhook,
+			AutoPreservePanelSpecFields: envVars.autoPreservePersesDashboardPanelSpecFields,
+			OperatorNamespace:           envVars.operatorNamespace,
+			WebhookServiceName:          envVars.webhookServiceName,
+			WebhookServicePort:          envVars.webhookServicePort,
 		},
 	)
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, setupLog); err != nil {

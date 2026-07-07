@@ -367,6 +367,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        - name: DASH0_PERSES_DASHBOARD_AUTO_PRESERVE_PANEL_SPEC_FIELDS
+          value: {{ .Values.operator.iac.persesDashboard.autoPreservePanelSpecFields | toString | quote }}
         ports:
         - containerPort: 9443
           name: webhook-server
