@@ -118,7 +118,12 @@ jobs:
               --base main \
               --head "${PR_BRANCH}" \
               --title "docs: synchronize Dash0 operator documentation" \
-              --body "This PR synchronizes the content of the Dash0 operator documentation from [dash0hq/dash0-operator](https://github.com/dash0hq/dash0-operator) into the documentation on https://www.dash0.com/docs."
+              --body "This PR synchronizes the content of the Dash0 operator documentation from [dash0hq/dash0-operator](https://github.com/dash0hq/dash0-operator) into the documentation on https://www.dash0.com/docs." \
+              --reviewer dash0hq/operator \
+              --reviewer dash0hq/engineering-docs \
+              --assignee basti1302 \
+              --assignee p-d0 \
+              --assignee geertjanw
           else
             echo "An open pull request for branch ${PR_BRANCH} already exists, it was updated by the force-push above."
           fi
