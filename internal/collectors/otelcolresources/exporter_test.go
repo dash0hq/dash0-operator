@@ -372,6 +372,128 @@ var _ = Describe("Exporter Conversion", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exporter.BalancerName).To(BeEmpty())
 		})
+
+		It("should render a secret-backed header value as an env var reference", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "X-Plain", Value: "plain-value"},
+					{Name: "Authorization", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: "api-key"},
+					}},
+				},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default_0")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.Headers).To(HaveLen(2))
+			Expect(exporter.Headers[0].Name).To(Equal("X-Plain"))
+			Expect(exporter.Headers[0].Value).To(Equal("plain-value"))
+			Expect(exporter.Headers[1].Name).To(Equal("Authorization"))
+			Expect(exporter.Headers[1].Value).To(Equal("${env:DASH0_HEADER_GRPC_DEFAULT_0_1}"))
+			Expect(exporter.HeaderEnvVars).To(HaveLen(1))
+			Expect(exporter.HeaderEnvVars[0].EnvVarName).To(Equal("DASH0_HEADER_GRPC_DEFAULT_0_1"))
+			Expect(exporter.HeaderEnvVars[0].SecretKeyRef.Name).To(Equal("my-secret"))
+			Expect(exporter.HeaderEnvVars[0].SecretKeyRef.Key).To(Equal("api-key"))
+		})
+
+		It("should derive a valid env var name from a namespaced exporter suffix", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "X-Api-Key", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: "api-key"},
+					}},
+				},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "ns/my-namespace_0")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.HeaderEnvVars).To(HaveLen(1))
+			Expect(exporter.HeaderEnvVars[0].EnvVarName).To(Equal("DASH0_HEADER_GRPC_NS_MY_NAMESPACE_0_0"))
+			Expect(exporter.Headers[0].Value).To(Equal("${env:DASH0_HEADER_GRPC_NS_MY_NAMESPACE_0_0}"))
+		})
+
+		It("should return an error when a header has neither value nor valueFrom", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Headers:  []dash0common.Header{{Name: "X-Broken"}},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of value or valueFrom"))
+			Expect(exporter).To(BeNil())
+		})
+
+		It("should return an error when a header has both value and valueFrom", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "X-Broken", Value: "v", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: "api-key"},
+					}},
+				},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of value or valueFrom"))
+			Expect(exporter).To(BeNil())
+		})
+
+		It("should return an error when a header's valueFrom has no secretKeyRef", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "X-Broken", ValueFrom: &dash0common.HeaderValueFrom{}},
+				},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("valueFrom must reference a secret name and key"))
+			Expect(exporter).To(BeNil())
+		})
+
+		It("should return an error when a header's secretKeyRef has an empty name", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "X-Broken", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "", Key: "api-key"},
+					}},
+				},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("valueFrom must reference a secret name and key"))
+			Expect(exporter).To(BeNil())
+		})
+
+		It("should return an error when a header's secretKeyRef has an empty key", func() {
+			grpcConfig := &dash0common.GrpcConfiguration{
+				Endpoint: EndpointGrpcTest,
+				Headers: []dash0common.Header{
+					{Name: "X-Broken", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: ""},
+					}},
+				},
+			}
+
+			exporter, err := convertGrpcExporterToOtlpExporter(grpcConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("valueFrom must reference a secret name and key"))
+			Expect(exporter).To(BeNil())
+		})
 	})
 
 	Describe("ConvertHttpExporterToOtlpExporter", func() {
@@ -457,6 +579,99 @@ var _ = Describe("Exporter Conversion", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(exporter.Name).To(Equal("otlp_http/ns/test-namespace/proto"))
+		})
+
+		It("should render a secret-backed header value as an env var reference and collect the env var", func() {
+			httpConfig := &dash0common.HttpConfiguration{
+				Endpoint: EndpointHttpTest,
+				Encoding: dash0common.Proto,
+				Headers: []dash0common.Header{
+					{Name: "X-Api-Key", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: "api-key"},
+					}},
+				},
+			}
+
+			exporter, err := convertHttpExporterToOtlpExporter(httpConfig, "default_0")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(exporter.Headers).To(HaveLen(1))
+			Expect(exporter.Headers[0].Name).To(Equal("X-Api-Key"))
+			Expect(exporter.Headers[0].Value).To(Equal("${env:DASH0_HEADER_HTTP_DEFAULT_0_0}"))
+			Expect(exporter.HeaderEnvVars).To(HaveLen(1))
+			Expect(exporter.HeaderEnvVars[0].EnvVarName).To(Equal("DASH0_HEADER_HTTP_DEFAULT_0_0"))
+			Expect(exporter.HeaderEnvVars[0].SecretKeyRef.Name).To(Equal("my-secret"))
+			Expect(exporter.HeaderEnvVars[0].SecretKeyRef.Key).To(Equal("api-key"))
+		})
+
+		It("should return an error when a header has both value and valueFrom", func() {
+			httpConfig := &dash0common.HttpConfiguration{
+				Endpoint: EndpointHttpTest,
+				Encoding: dash0common.Proto,
+				Headers: []dash0common.Header{
+					{Name: "X-Broken", Value: "v", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: "api-key"},
+					}},
+				},
+			}
+
+			exporter, err := convertHttpExporterToOtlpExporter(httpConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("exactly one of value or valueFrom"))
+			Expect(exporter).To(BeNil())
+		})
+
+		It("should return an error when a header's valueFrom has no secretKeyRef", func() {
+			httpConfig := &dash0common.HttpConfiguration{
+				Endpoint: EndpointHttpTest,
+				Encoding: dash0common.Proto,
+				Headers: []dash0common.Header{
+					{Name: "X-Broken", ValueFrom: &dash0common.HeaderValueFrom{}},
+				},
+			}
+
+			exporter, err := convertHttpExporterToOtlpExporter(httpConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("valueFrom must reference a secret name and key"))
+			Expect(exporter).To(BeNil())
+		})
+
+		It("should return an error when a header's secretKeyRef has an empty name", func() {
+			httpConfig := &dash0common.HttpConfiguration{
+				Endpoint: EndpointHttpTest,
+				Encoding: dash0common.Proto,
+				Headers: []dash0common.Header{
+					{Name: "X-Broken", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "", Key: "api-key"},
+					}},
+				},
+			}
+
+			exporter, err := convertHttpExporterToOtlpExporter(httpConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("valueFrom must reference a secret name and key"))
+			Expect(exporter).To(BeNil())
+		})
+
+		It("should return an error when a header's secretKeyRef has an empty key", func() {
+			httpConfig := &dash0common.HttpConfiguration{
+				Endpoint: EndpointHttpTest,
+				Encoding: dash0common.Proto,
+				Headers: []dash0common.Header{
+					{Name: "X-Broken", ValueFrom: &dash0common.HeaderValueFrom{
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: ""},
+					}},
+				},
+			}
+
+			exporter, err := convertHttpExporterToOtlpExporter(httpConfig, "default_0")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("valueFrom must reference a secret name and key"))
+			Expect(exporter).To(BeNil())
 		})
 	})
 
