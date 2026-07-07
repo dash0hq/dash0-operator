@@ -449,6 +449,42 @@ spec:
             value: my-value
 ```
 
+### Providing Header Values via a Kubernetes Secret
+
+Header values often contain sensitive data, such as authorization tokens or API keys. Instead of providing such a value
+directly via the `value` property, you can source it from a
+[Kubernetes secret](https://kubernetes.io/docs/concepts/configuration/secret/) by using the `valueFrom` property. This
+way, the sensitive value does not have to be stored in plain text in the operator configuration (or monitoring) resource.
+
+For each header, you have to provide exactly one of `value` or `valueFrom` (providing both, or neither, is a validation
+error).
+
+The following example sources the value of the `Authorization` header from the key `api-key` of the secret
+`my-export-secret`:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  exports:
+    - grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+        headers:
+          - name: Authorization
+            valueFrom:
+              secretKeyRef:
+                name: my-export-secret # the name of the Kubernetes secret
+                key: api-key           # the key within the secret holding the header value
+```
+
+The secret has to exist in the namespace of the Dash0 operator (that is, the namespace the operator has been deployed
+to). The `valueFrom.secretKeyRef` mechanism is supported for both `grpc` and `http` exports, and works the same way for
+header values provided via a Dash0 monitoring resource.
+
+### Exporting to Multiple Backends
+
 Export to multiple backends is also supported.
 The supplied backends can be either of the same type or of different types.
 In the following example the telemetry would be sent to two different datasets in Dash0 and in addition to a gRPC endpoint:

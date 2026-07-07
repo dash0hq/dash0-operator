@@ -1166,6 +1166,16 @@ func assembleCollectorEnvVars(
 			}
 			collectorEnv = append(collectorEnv, authTokenEnvVar)
 		}
+		for _, headerEnvVar := range export.HeaderEnvVars {
+			secretEnvVar, err := util.CreateEnvVarForSecretKeySelector(
+				headerEnvVar.SecretKeyRef,
+				headerEnvVar.EnvVarName,
+			)
+			if err != nil {
+				return nil, err
+			}
+			collectorEnv = append(collectorEnv, secretEnvVar)
+		}
 	}
 
 	if config.SignalControl.Enabled {
