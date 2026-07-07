@@ -4,13 +4,14 @@
 # This file is the source of truth for how the operator's Helm chart docs are adapted into the docs pages.
 # Edit this file whenever the required modifications change, or whenever a documentation file is added or removed.
 #
-# The documentation is a set of files: the top-level README.md (which becomes the section landing page
-# about-kubernetes.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but move into
-# a dash0-operator/ subdirectory in the target repository, i.e. the docs/ directory is renamed to dash0-operator/).
-# Relative links between the topic files are sibling links and are preserved as-is, because the topic files move
-# together. Two kinds of links are rewritten automatically (see below): links to the renamed README.md
-# (../README.md -> ../about-kubernetes.md), and links from about-kubernetes.md into the renamed directory
-# (docs/configuration.md -> dash0-operator/configuration.md).
+# The documentation is a set of files: the top-level README.md (which becomes the operator overview page
+# dash0-operator/overview.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but
+# move into the same dash0-operator/ directory in the target repository, i.e. the docs/ directory is renamed to
+# dash0-operator/). All synced pages therefore end up as siblings in the dash0-operator/ directory.
+# Relative links between the topic files are sibling links and are preserved as-is (only the .md suffix is dropped).
+# Two kinds of links are rewritten automatically (see below): links from the topic files back to the renamed README.md
+# (../README.md -> overview), and links from README.md into the renamed directory (docs/configuration.md ->
+# configuration) -- both now resolve to same-directory siblings.
 #
 # Structure of this file:
 #
@@ -29,10 +30,11 @@
 # A frontmatter block is generated from each entry's `title`/`description` (plus a `lastUpdated` timestamp) and
 # prepended to the transformed file. Two kinds of relative links are rewritten automatically by
 # apply-transformations.py: links pointing at the renamed README.md (e.g. ../README.md#supported-runtimes) are
-# rewritten to the README's target name (about-kubernetes.md), and links pointing into the renamed docs/ directory
-# (e.g. docs/configuration.md#enable-dash0-monitoring-for-a-namespace) are rewritten to the target directory name
-# (dash0-operator/configuration.md#...). Absolute URLs that happen to contain README.md or a docs/ path segment (e.g.
-# links into another GitHub repository) are left untouched.
+# rewritten to the README's target name (overview#supported-runtimes), and links pointing into the renamed docs/
+# directory (e.g. docs/configuration.md#enable-dash0-monitoring-for-a-namespace) are rewritten to the same-directory
+# sibling (configuration#enable-dash0-monitoring-for-a-namespace); the .md suffix is dropped in both cases because the
+# target website serves pages under extensionless URLs. Absolute URLs that happen to contain README.md or a docs/ path
+# segment (e.g. links into another GitHub repository) are left untouched.
 #
 # The supported transformation types are:
 #
@@ -62,9 +64,9 @@ common:
 
 files:
   - source: README.md
-    target: about-kubernetes.md
-    title: About Kubernetes Monitoring
-    description: Monitor Kubernetes clusters with automatic instrumentation via the Dash0 operator for Kubernetes.
+    target: dash0-operator/overview.md
+    title: Overview
+    description: Learn about the Dash0 Operator for Kubernetes and how it provides automatic instrumentation for your workloads.
     transformations:
       - description: strip the License and Artifact Hub badges
         type: replace-regex

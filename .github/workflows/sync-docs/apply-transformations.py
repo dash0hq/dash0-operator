@@ -9,6 +9,9 @@ The documentation is a set of files (the top-level README.md plus the topic file
 themselves live in transformations.yaml, which is the first-class source of truth for how the docs are modified. This
 script only knows how to apply them.
 
+The README.md becomes dash0-operator/overview.md and the topic files move from docs/ into the same dash0-operator/
+directory, so all synced pages end up as siblings; the relative links between them are rewritten accordingly.
+
 For each file declared in transformations.yaml the script applies the common transformations, then the file-specific
 transformations, then rewrites relative links pointing at renamed files or into renamed directories (dropping the
 `.md` suffix, as the target website serves pages under extensionless URLs), then prepends a generated frontmatter
@@ -118,42 +121,46 @@ def _process_file(file_entry, common, source_root, output_dir, placeholders):
     print(f"[{source}] wrote transformed document to {output_path}")
 
 
-# The top-level README.md becomes the section landing page about-kubernetes.md in the target repository (see
-# transformations.yaml).
+# The top-level README.md becomes the operator overview page dash0-operator/overview.md in the target repository (see
+# transformations.yaml). The topic files move into that same dash0-operator/ directory, so a link from a topic file
+# back to the README (`../README.md`) now points at a same-directory sibling. Group 1 captures the (now redundant)
+# `./`/`../` prefix so it can be dropped, group 2 the optional anchor/query.
 _README_LINK_PATTERN = re.compile(r"\]\(((?:\.{1,2}/)*)README\.md((?:#|\?)[^)]*)?\)")
 
 
 def _rewrite_readme_links(content):
-    """Rewrite relative markdown links that point at the renamed README.md to use about-kubernetes instead.
+    """Rewrite relative markdown links that point at the renamed README.md to use overview instead.
 
     Only local relative links are rewritten: the link target must be the (optionally `./` or `../` prefixed)
-    `README.md` (e.g. `](../README.md#supported-runtimes)` -> `](../about-kubernetes#supported-runtimes)`). The `.md`
-    suffix is dropped because the target website serves documentation pages under extensionless URLs. Any anchor or
-    query is preserved. Absolute URLs that happen to end in README.md (e.g. https://github.com/.../README.md) are left
-    untouched because they do not match the relative-prefix pattern.
+    `README.md` (e.g. `](../README.md#supported-runtimes)` -> `](overview#supported-runtimes)`). The README becomes
+    a same-directory sibling (dash0-operator/overview) of the topic files, so any `./`/`../` prefix is dropped. The
+    `.md` suffix is dropped because the target website serves documentation pages under extensionless URLs. Any anchor
+    or query is preserved. Absolute URLs that happen to end in README.md (e.g. https://github.com/.../README.md) are
+    left untouched because they do not match the relative-prefix pattern.
     """
-    return _README_LINK_PATTERN.sub(lambda m: f"]({m.group(1)}about-kubernetes{m.group(2) or ''})", content)
+    return _README_LINK_PATTERN.sub(lambda m: f"](overview{m.group(2) or ''})", content)
 
 
-# The source `docs/` directory is renamed to `dash0-operator/` in the target repository (see transformations.yaml).
-# Group 1 captures the optional `./`/`../` prefix, group 2 the path after `docs/` (without any `.md` suffix), and
-# group 3 the optional anchor/query.
+# The source `docs/` directory is renamed to `dash0-operator/` in the target repository, the same directory the
+# renamed README lands in (see transformations.yaml). A link from the README into `docs/` therefore becomes a
+# same-directory sibling link. Group 1 captures the (now redundant) `./`/`../` prefix so it can be dropped, group 2
+# the path after `docs/` (without any `.md` suffix), and group 3 the optional anchor/query.
 _DOCS_DIR_LINK_PATTERN = re.compile(r"\]\(((?:\.{1,2}/)*)docs/([^)#?]*?)(?:\.md)?((?:#|\?)[^)]*)?\)")
 
 
 def _rewrite_docs_dir_links(content):
-    """Rewrite relative markdown links that point into the `docs/` directory to use `dash0-operator/` instead.
+    """Rewrite relative markdown links that point into the `docs/` directory to same-directory sibling links.
 
     Only local relative links are rewritten: the link path must start with the (optionally `./` or `../` prefixed)
-    `docs/` segment (e.g. `](docs/configuration.md#anchor)` -> `](dash0-operator/configuration#anchor)`). The trailing
-    `.md` suffix is dropped because the target website serves documentation pages under extensionless URLs; the path
-    after `docs/` and any anchor or query are otherwise preserved (links into `docs/` that do not end in `.md` are
-    still re-prefixed, just without a suffix to drop). Absolute URLs that happen to contain a `docs/` path segment
-    (e.g. https://kubernetes.io/docs/...) are left untouched because they do not match the relative-prefix pattern.
+    `docs/` segment (e.g. `](docs/configuration.md#anchor)` -> `](configuration#anchor)`). Because the renamed README
+    (overview) and the topic files share the dash0-operator/ directory, the `docs/` segment and any `./`/`../` prefix
+    are dropped, leaving a same-directory sibling link. The trailing `.md` suffix is dropped because the target website
+    serves documentation pages under extensionless URLs; the path after `docs/` and any anchor or query are otherwise
+    preserved (links into `docs/` that do not end in `.md` are still rewritten, just without a suffix to drop).
+    Absolute URLs that happen to contain a `docs/` path segment (e.g. https://kubernetes.io/docs/...) are left
+    untouched because they do not match the relative-prefix pattern.
     """
-    return _DOCS_DIR_LINK_PATTERN.sub(
-        lambda m: f"]({m.group(1)}dash0-operator/{m.group(2)}{m.group(3) or ''})", content
-    )
+    return _DOCS_DIR_LINK_PATTERN.sub(lambda m: f"]({m.group(2)}{m.group(3) or ''})", content)
 
 
 # Sibling links between the topic files keep their target file name but must drop the `.md` suffix. The topic files
