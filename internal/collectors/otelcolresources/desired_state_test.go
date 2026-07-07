@@ -757,6 +757,43 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(SecretRefTest.Key))
 	})
 
+	It("should add a secret-backed env var for a gRPC/HTTP header sourced from a secret", func() {
+		headerEnvVarName := "DASH0_HEADER_HTTP_DEFAULT_0_0"
+		exporters := otlpExporters{
+			Default: []otlpExporter{{
+				Name:     "otlp_http/default_0/proto",
+				Endpoint: EndpointHttpTest,
+				Encoding: "proto",
+				Headers: []dash0common.Header{
+					{Name: "X-Api-Key", Value: fmt.Sprintf("${env:%s}", headerEnvVarName)},
+				},
+				HeaderEnvVars: []headerSecretEnvVar{
+					{
+						EnvVarName:   headerEnvVarName,
+						SecretKeyRef: &dash0common.SecretKeySelector{Name: "my-secret", Key: "api-key"},
+					},
+				},
+			}},
+		}
+
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         exporters,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		configMapContent := getDaemonSetCollectorConfigMapContent(desiredState)
+		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("\"X-Api-Key\": \"${env:%s}\"", headerEnvVarName)))
+
+		daemonSet := getDaemonSet(desiredState)
+		container := daemonSet.Spec.Template.Spec.Containers[0]
+		headerEnvVar := FindEnvVarByName(container.Env, headerEnvVarName)
+		Expect(headerEnvVar).NotTo(BeNil())
+		Expect(headerEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal("my-secret"))
+		Expect(headerEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal("api-key"))
+	})
+
 	It("should not add the auth token env var if no Dash0 exporter is used", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
