@@ -324,7 +324,7 @@ spec:
                       How long compiled rulesets are cached before the connector re-fetches them from the
                       dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h; a
                       non-zero value outside this range is rejected at admission. This setting is optional; the connector
-                      default applies when unset.
+                      default (60s) applies when unset.
                     type: string
                   enabled:
                     default: true
@@ -336,13 +336,13 @@ spec:
                   flushInterval:
                     description: |-
                       How often accumulated metrics are flushed to the metrics pipeline. Go duration syntax (e.g.
-                      "60s", "5m"). This setting is optional; the connector default applies when unset.
+                      "60s", "5m"). This setting is optional; the connector default (60s) applies when unset.
                     type: string
                   maxTimeSeries:
                     description: |-
                       Soft cap on the number of time series held in memory by the connector. When exceeded, the
                       connector starts expiring idle time series progressively until the count is within the limit.
-                      This setting is optional; the connector default applies when unset.
+                      This setting is optional; the connector default (30000) applies when unset.
                     format: int32
                     minimum: 1
                     type: integer
@@ -367,7 +367,7 @@ spec:
                       How long compiled filter rules are cached before the processor re-fetches them from the
                       dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h; a
                       non-zero value outside this range is rejected at admission. This setting is optional; the processor
-                      default applies when unset.
+                      default (60s) applies when unset.
                     type: string
                   enabled:
                     default: true
