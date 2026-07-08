@@ -65,8 +65,8 @@ updates:
     # The rules need to be manually disabled when a new stable minor version is available.
     ignore:
       # enable the following `ignore` to prevent upgrades to golang pre-releases
-      # - dependency-name: "golang"
-      #   update-types: ["version-update:semver-minor"]
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
       # enable the following `ignore` to prevent upgrades to python pre-releases
       - dependency-name: "python"
         update-types: ["version-update:semver-minor"]
@@ -125,9 +125,9 @@ updates:
     commit-message:
       prefix: "test"
     # enable the following `ignore` to prevent upgrades to RCs
-    # ignore:
-    #   - dependency-name: "golang"
-    #     update-types: ["version-update:semver-minor"]
+    ignore:
+      - dependency-name: "golang"
+        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "maven"
     directory: "test-resources/jvm/spring-boot"
