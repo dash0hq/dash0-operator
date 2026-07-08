@@ -280,21 +280,22 @@ type SignalToMetricsConfig struct {
 
 	// Soft cap on the number of time series held in memory by the connector. When exceeded, the
 	// connector starts expiring idle time series progressively until the count is within the limit.
-	// This setting is optional; the connector default applies when unset.
+	// This setting is optional; the connector default (30000) applies when unset.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum=1
 	MaxTimeSeries *int32 `json:"maxTimeSeries,omitempty"`
 
 	// How often accumulated metrics are flushed to the metrics pipeline. Go duration syntax (e.g.
-	// "60s", "5m"). This setting is optional; the connector default applies when unset.
+	// "60s", "5m"). This setting is optional; the connector default (60s) applies when unset.
 	//
 	// +kubebuilder:validation:Optional
 	FlushInterval *metav1.Duration `json:"flushInterval,omitempty"`
 
 	// How long compiled rulesets are cached before the connector re-fetches them from the
-	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h.
-	// This setting is optional; the connector default applies when unset.
+	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h; a
+	// non-zero value outside this range is rejected at admission. This setting is optional; the connector
+	// default (60s) applies when unset.
 	//
 	// +kubebuilder:validation:Optional
 	CacheExpiration *metav1.Duration `json:"cacheExpiration,omitempty"`
@@ -311,8 +312,9 @@ type SpamFilterConfig struct {
 	Enabled *bool `json:"enabled"`
 
 	// How long compiled filter rules are cached before the processor re-fetches them from the
-	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h.
-	// This setting is optional; the processor default applies when unset.
+	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h; a
+	// non-zero value outside this range is rejected at admission. This setting is optional; the processor
+	// default (60s) applies when unset.
 	//
 	// +kubebuilder:validation:Optional
 	CacheExpiration *metav1.Duration `json:"cacheExpiration,omitempty"`

@@ -8,14 +8,21 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+)
+
+const (
+	cacheExpirationMin = 10 * time.Second
+	cacheExpirationMax = 1 * time.Hour
 )
 
 type SignalControlValidationWebhookHandler struct {
@@ -84,6 +91,18 @@ func (h *SignalControlValidationWebhookHandler) Handle(ctx context.Context, requ
 				"error", err)
 			return admission.Denied(err.Error())
 		}
+
+		if err := validateCacheExpiration(
+			"signalToMetrics.cacheExpiration", signalControlResource.Spec.SignalToMetrics.CacheExpiration); err != nil {
+			logger.Warn("Rejecting Signal Control resource, invalid signalToMetrics.cacheExpiration.", "error", err)
+			return admission.Denied(err.Error())
+		}
+
+		if err := validateCacheExpiration(
+			"spamFilter.cacheExpiration", signalControlResource.Spec.SpamFilter.CacheExpiration); err != nil {
+			logger.Warn("Rejecting Signal Control resource, invalid spamFilter.cacheExpiration.", "error", err)
+			return admission.Denied(err.Error())
+		}
 	}
 
 	return admission.Allowed("")
@@ -110,6 +129,20 @@ func validateOperationProcessorCardinalityRules(rules []dash0v1alpha1.Cardinalit
 					i, rule.Id, j, numGroups, numReplacements)
 			}
 		}
+	}
+	return nil
+}
+
+// validateCacheExpiration rejects a non-zero cacheExpiration outside the 10s–1h range. A nil or zero value is
+// accepted here because signalControlConfigFromResource omits a zero cacheExpiration from the rendered collector
+// config, so the component keeps its factory default (60s for the dash0signaltometrics connector, 60s for the
+// dash0filter processor) instead of validating a literal 0.
+func validateCacheExpiration(fieldPath string, d *metav1.Duration) error {
+	if d == nil || d.Duration == 0 {
+		return nil
+	}
+	if d.Duration < cacheExpirationMin || d.Duration > cacheExpirationMax {
+		return fmt.Errorf("%s must be between 10s and 1h, got %s", fieldPath, d.Duration)
 	}
 	return nil
 }
