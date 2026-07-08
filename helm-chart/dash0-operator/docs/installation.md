@@ -6,6 +6,7 @@ This guide covers the installation of the Dash0 operator Helm chart in detail.
 
 - [Prerequisites](#prerequisites)
 - [Basic Installation](#basic-installation)
+- [Recommended Settings for Production Use](#recommended-settings-for-production-use)
 - [Installation with Secret Reference](#installation-with-secret-reference)
 - [Installation without Backend Configuration](#installation-without-backend-configuration)
 
@@ -65,6 +66,25 @@ helm install \
 You can consult the chart's
 [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file for a
 complete list of available configuration settings.
+
+See [Recommended Settings for Production Use](#recommended-settings-for-production-use) for settings you might want to
+double-check after the initial installation.
+
+## Recommended Settings for Production Use
+
+The basic installation shown in the previous section provides a quick start to get the Dash0 operator up and running.
+
+For **production use**, we strongly recommend tweaking a couple of settings:
+* Use a Kubernetes secret for the Dash0 auth token, see
+  [Installation with Secret Reference](#installation-with-secret-reference).
+* Provide a [filelog offset volume](advanced-configuration.md#providing-a-filelog-offset-volume).
+  By default, file offsets for log collection are stored in a config map in the operator's namespace.
+  For production use, it is highly recommended to provide a persistent volume instead.
+* Use `cert-manager` to manage certificates instead of the Helm chart's auto-generated certificates, see
+  [Using cert-manager](advanced-configuration.md#using-cert-manager).
+* Review the resource requests and limits for the operator's workloads and adjust them to your cluster, see
+  [Tuning Resource Requests and Limits](advanced-configuration.md#tuning-resource-requests-and-limits).
+  The defaults are a reasonable baseline, but may not be optimal for every cluster.
 
 ## Installation with Secret Reference
 

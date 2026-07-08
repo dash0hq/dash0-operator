@@ -6,6 +6,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
 
 - [Providing a Filelog Offset Volume](#providing-a-filelog-offset-volume)
 - [Using cert-manager](#using-cert-manager)
+- [Tuning Resource Requests and Limits](#tuning-resource-requests-and-limits)
 - [Controlling On Which Nodes the Operator's Collector Pods Are Scheduled](#controlling-on-which-nodes-the-operators-collector-pods-are-scheduled)
   - [Allow Scheduling on Tainted Nodes](#allow-scheduling-on-tainted-nodes)
   - [Preventing Operator Scheduling on Specific Nodes](#preventing-operator-scheduling-on-specific-nodes)
@@ -19,14 +20,16 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
 ## Providing a Filelog Offset Volume
 
 The operator's collector uses the filelog receiver to read pod log files for monitored workloads.
-When the collector is restarted (which can happen for various reasons, for example to apply configuration changes), it is important that the filelog receiver can continue reading the log files from where it left off.
-If the filelog receiver started to read all log files from the beginning again after a restart, log records would be duplicated, that is, they would appear multiple times in Dash0.
+When the collector is restarted (which can happen for various reasons, for example to apply configuration changes), it
+is important that the filelog receiver can continue reading the log files from where it left off.
+If the filelog receiver started to read all log files from the beginning again after a restart, log records would be
+duplicated, that is, they would appear multiple times in Dash0.
 
 For that purpose, the filelog receiver stores the log file offsets in persistent storage.
 By default, the offsets are stored in a config map in the operator's namespace.
-For small- to medium-sized clusters, this is usually sufficient, and it requires no additional configuration by users.
-For larger clusters or clusters with many short-lived pods, we recommend providing a persistent volume for storing
-offsets.
+For small clusters, this is usually sufficient, and it requires no additional configuration by users.
+For production clusters, larger staging clusters, or clusters with many short-lived pods, we recommend providing a
+persistent volume for storing offsets.
 
 Any persistent volume that is accessible from the collector pods can be used for this purpose.
 
@@ -65,7 +68,8 @@ operator:
 
 ### When to Use a Volume for Filelog Offsets
 
-Using a volume instead of the default config map approach is also helpful if you have webhooks in your cluster which process every config map update.
+Using a volume instead of the default config map approach is also helpful if you have webhooks in your cluster which
+process every config map update.
 
 Known examples for this are:
 
@@ -212,6 +216,81 @@ spec:
   # issuer. Make sure to configure the issuer according to your requirements.
   selfSigned: {}
 ```
+
+## Tuning Resource Requests and Limits
+
+The operator sets [resource requests and limits](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
+on the workloads it deploys, including the operator manager, the DaemonSet collector pods (one per node), the
+cluster-metrics-collector Deployment.
+Each of these ships with default requests and limits that are a reasonable starting point for many clusters.
+
+However, these defaults are not guaranteed to be optimal for every use case.
+The amount of CPU and memory a component actually needs depends heavily on the specifics of your cluster, for example
+the number of nodes, the number and size of monitored workloads, the volume of telemetry (logs, metrics, traces) being
+processed, and how frequently Kubernetes resources (workloads, pods etc.) are created and destroyed.
+You should therefore treat the defaults as a baseline and tune them according to what is required in your particular
+Kubernetes cluster.
+
+A good strategy is to start with relatively low limits and increase them if they turn out to be insufficient.
+Signs that a limit is too low include the container being `OOMKilled` (memory limit too low) or being CPU-throttled and
+lagging behind (CPU limit too low).
+Conversely, if a component consistently uses far less than its requests reserve, you can lower the requests to avoid
+needlessly reserving capacity on your nodes.
+Dash0's self-monitoring can help you observe the actual resource usage of the operator's components over time, which
+makes it easier to find appropriate values.
+
+The following Helm values control the resource settings, all nested under the top-level `operator` key:
+
+| Helm value | Workload / container | Default requests | Default limits |
+| --- | --- | --- | --- |
+| `managerContainerResources` | operator manager | `cpu: 50m`, `memory: 128Mi`, `ephemeral-storage: 500Mi` | `cpu: 500m`, `memory: 256Mi`, `ephemeral-storage: 500Mi` |
+| `initContainerResources` | auto-instrumentation init container | none | none |
+| `collectors.daemonSetCollectorContainerResources` | DaemonSet collector container | `memory: 500Mi` | `memory: 500Mi` |
+| `collectors.daemonSetConfigurationReloaderContainerResources` | DaemonSet configuration reloader | `memory: 12Mi` | `memory: 24Mi` |
+| `collectors.daemonSetFileLogOffsetSyncContainerResources` | DaemonSet filelog offset sync | `memory: 32Mi` | `memory: 32Mi` |
+| `collectors.deploymentCollectorContainerResources` | cluster-metrics-collector container | `memory: 500Mi` | `memory: 500Mi` |
+| `collectors.deploymentConfigurationReloaderContainerResources` | cluster-metrics-collector configuration reloader | `memory: 12Mi` | `memory: 24Mi` |
+| `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
+
+The settings for `managerContainerResources`, `collectors.daemonSetCollectorContainerResources` and
+`collectors.deploymentCollectorContainerResources` are the ones that are most likely to require tuning.
+
+Here is an example that overrides the resource settings for the operator manager and the DaemonSet collector:
+
+```yaml
+operator:
+  managerContainerResources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+      ephemeral-storage: 500Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+      ephemeral-storage: 1Gi
+    # approximately 80% of managerContainerResources.limits.memory; use MiB or GiB here (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+    gomemlimit: 410MiB
+
+  collectors:
+    daemonSetCollectorContainerResources:
+      requests:
+        memory: 768Mi
+      limits:
+        memory: 768Mi
+      # approximately 80% of daemonSetCollectorContainerResources.limits.memory; use MiB or GiB here (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: 614MiB
+```
+
+> **Note:** Most of the operator's containers (the operator manager, the collectors, the configuration reloaders, the
+> filelog offset sync container, and the target-allocator) are Go processes, and their container resource settings have
+> a companion `gomemlimit` value (the
+> [`GOMEMLIMIT`](https://pkg.go.dev/runtime#hdr-Environment_Variables) environment variable, a soft memory limit for the
+> Go runtime's garbage collector). Whenever you raise or lower a memory limit, adjust the corresponding `gomemlimit` as
+> well; the recommended value is 80% of that container's memory limit. Note that `gomemlimit` uses different units than
+> Kubernetes resource settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
+
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
+similar to take effect.
 
 ## Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
