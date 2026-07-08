@@ -13,6 +13,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -20,19 +21,22 @@ import (
 
 type SignalControlManager struct {
 	client.Client
-	resourceManager  *scresources.SignalControlResourceManager
-	extraConfig      atomic.Pointer[util.ExtraConfig]
-	updateInProgress atomic.Bool
+	resourceManager   *scresources.SignalControlResourceManager
+	enablementChecker enablement.Checker
+	extraConfig       atomic.Pointer[util.ExtraConfig]
+	updateInProgress  atomic.Bool
 }
 
 func NewSignalControlManager(
 	k8sClient client.Client,
 	resourceManager *scresources.SignalControlResourceManager,
+	enablementChecker enablement.Checker,
 	extraConfig util.ExtraConfig,
 ) *SignalControlManager {
 	m := &SignalControlManager{
-		Client:          k8sClient,
-		resourceManager: resourceManager,
+		Client:            k8sClient,
+		resourceManager:   resourceManager,
+		enablementChecker: enablementChecker,
 	}
 	m.extraConfig.Store(&extraConfig)
 	return m
@@ -97,6 +101,16 @@ func (m *SignalControlManager) ReconcileSignalControl(
 
 	if signalControlResource.Spec.Enabled != nil && !*signalControlResource.Spec.Enabled {
 		logger.Info("Signal Control is disabled, removing Signal Control components.")
+		return m.removeSignalControl(ctx)
+	}
+
+	// Gate the Signal Control components (in particular the Edge Proxy) on the organization's entitlement. The result
+	// is populated by the Signal Control controller's entitlement check; this reads the cached value (no HTTP call), so
+	// callers that react to unrelated changes (e.g. the extra config map watcher via Reconcile) do not deploy the Edge
+	// Proxy for an organization that is not entitled or whose entitlement has not been confirmed yet.
+	if m.enablementChecker != nil && m.enablementChecker.Result() != enablement.ResultAllowed {
+		logger.Info("The organization is not entitled to use Signal Control (or the entitlement has not been " +
+			"confirmed yet), removing Signal Control components.")
 		return m.removeSignalControl(ctx)
 	}
 

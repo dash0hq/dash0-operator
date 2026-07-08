@@ -19,6 +19,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -64,6 +65,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			util.ExtraConfigDefaults,
 			false,
 			false,
+			nil,
 			oTelColResourceManager,
 		)
 	})
@@ -443,6 +445,44 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 
+	Describe("when Signal Control is gated on the organization's entitlement", func() {
+		BeforeEach(func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+			scResource := &dash0v1alpha1.Dash0SignalControl{
+				ObjectMeta: metav1.ObjectMeta{Name: "dash0-signal-control-test"},
+				Spec:       dash0v1alpha1.Dash0SignalControlSpec{Enabled: ptr.To(true)},
+			}
+			Expect(k8sClient.Create(ctx, scResource)).To(Succeed())
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, scResource)
+		})
+
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(ctx, util.ExtraConfigDefaults, logger)
+			Expect(err).ToNot(HaveOccurred())
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		It("applies Signal Control to the collector when the organization is entitled", func() {
+			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: true})
+
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			cm := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace)
+			Expect(cm.Data["config.yaml"]).To(ContainSubstring("dash0settingsonedgeextension"))
+		})
+
+		It("renders a plain collector when the organization is not entitled", func() {
+			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: false})
+
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			cm := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace)
+			Expect(cm.Data["config.yaml"]).ToNot(ContainSubstring("dash0settingsonedgeextension"))
+		})
+	})
+
 	Describe("when updating the extra config map", func() {
 		BeforeEach(func() {
 			// Create operator configuration resource - required for collector creation
@@ -559,3 +599,45 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 })
+
+type stubEnablementChecker struct {
+	allowed bool
+}
+
+func (s stubEnablementChecker) EnsureAllowed(
+	context.Context,
+	*dash0v1alpha1.Dash0OperatorConfiguration,
+	logd.Logger,
+) bool {
+	return s.allowed
+}
+
+func (s stubEnablementChecker) Result() enablement.Result {
+	if s.allowed {
+		return enablement.ResultAllowed
+	}
+	return enablement.ResultNotAllowed
+}
+
+func newCollectorManagerWithEnablementChecker(checker enablement.Checker) *CollectorManager {
+	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
+		k8sClient,
+		k8sClient.Scheme(),
+		OperatorManagerDeployment,
+		util.CollectorConfig{
+			Images:                    TestImages,
+			OperatorNamespace:         operatorNamespace,
+			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
+			TargetAllocatorNamePrefix: TargetAllocatorPrefixTest,
+		},
+	)
+	return NewCollectorManager(
+		k8sClient,
+		clientset,
+		util.ExtraConfigDefaults,
+		false,
+		true,
+		checker,
+		oTelColResourceManager,
+	)
+}

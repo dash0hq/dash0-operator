@@ -1845,6 +1845,85 @@ trace_statements:
 					}, 60*time.Second, pollingInterval).Should(Succeed())
 				})
 			})
+
+			Describe("with a Dash0SignalControl resource for an organization that is not entitled", Ordered, func() {
+				BeforeAll(func() {
+					setSignalControlEntitlementInApiMock(false)
+					deploySignalControlResource(signalControlValues{
+						DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
+						ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
+					})
+				})
+
+				AfterAll(func() {
+					removeSignalControlResource()
+					// Restore the default entitlement so subsequent tests (and re-runs) see an entitled organization.
+					setSignalControlEntitlementInApiMock(true)
+				})
+
+				It("does not apply Signal Control and marks the resource as degraded", func() {
+					edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
+
+					By("verifying the operator queried the Signal Control entitlement on the Dash0 API")
+					Eventually(func(g Gomega) {
+						g.Expect(countCapturedApiRequests(g, http.MethodGet, "/api/signal-control/edge/settings")).To(
+							BeNumerically(">", 0),
+							"expected at least one GET /api/signal-control/edge/settings on the Dash0 API mock",
+						)
+					}, 60*time.Second, pollingInterval).Should(Succeed())
+
+					By("verifying the Dash0SignalControl resource is marked as degraded")
+					Eventually(func(g Gomega) {
+						status, err := run(exec.Command(
+							"kubectl",
+							"get", "Dash0SignalControl", signalControlName,
+							"-o", `jsonpath={.status.conditions[?(@.type=="Degraded")].status}`,
+						), false)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(strings.TrimSpace(status)).To(Equal("True"))
+					}, 60*time.Second, pollingInterval).Should(Succeed())
+
+					By("verifying the Edge Proxy deployment is not created")
+					Consistently(func(g Gomega) {
+						_, err := run(exec.Command(
+							"kubectl", "-n", operatorNamespace, "get", "deployment", edgeProxyDeployment,
+						), false)
+						g.Expect(err).To(HaveOccurred())
+					}, 15*time.Second, pollingInterval).Should(Succeed())
+
+					By("verifying the daemonset collector configmap contains none of the Signal Control components")
+					for _, snippet := range []string{
+						"dash0settingsonedgeextension",
+						"dash0sampling:",
+						"dash0redmetrics:",
+						"dash0signaltometrics:",
+						"dash0filter:",
+						"dash0resource:",
+						"dash0operation:",
+						"traces/sampled:",
+						"forward/traces-to-sampling",
+					} {
+						verifyConfigMapDoesNotContainStrings(
+							operatorNamespace, collectorDaemonSetConfigMapNameQualified, snippet)
+					}
+
+					By("verifying the collector daemonset was not swapped to the Signal Control image")
+					Eventually(func(g Gomega) {
+						image, err := run(exec.Command(
+							"kubectl",
+							"-n", operatorNamespace,
+							"get", collectorDaemonSetNameQualified,
+							"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="opentelemetry-collector")].image}`,
+						), false)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(strings.TrimSpace(image)).ToNot(BeEmpty())
+						g.Expect(image).ToNot(
+							ContainSubstring(signalControlCollectorImageName),
+							"the collector daemonset must use the regular collector image, not the Signal Control image",
+						)
+					}, 60*time.Second, pollingInterval).Should(Succeed())
+				})
+			})
 		}) // end of suite "with the Signal Control feature enabled"
 	}
 
