@@ -84,6 +84,72 @@ processors:
   batch: {}
 {{- end }}
 
+  {{- if or .KubernetesInfrastructureMetricsCollectionEnabled $hasEventCollectionEnabledForAtLeastOneNamespace }}
+  # Enrich cluster-scoped telemetry cloud/account resource attributes (cloud.provider, cloud.platform, cloud.account.id,
+  # cloud.region). Deliberately not adding node- or host-related attributes (k8s.node.*, host.*,
+  # cloud.availability_zone, GCE/Azure instance identifiers) here, since that would incorrectly include node attribtues
+  # from the collector deployment's node to the telemetry.
+  resourcedetection:
+    detectors:
+    # Note: Later detectors do *not* overwrite attributes provided by earlier detectors, hence more specific detectors
+    # must come first (e.g. eks before ec2 - both write to cloud.platform).
+    - eks
+    - ec2
+    - gcp
+    - azure
+    - aks
+    # Never overwrite resource attributes already set by the receivers (e.g. per-object k8s.* attributes from the
+    # k8s_cluster receiver); the detected node identity must not clobber cluster-scoped attributes.
+    override: false
+    timeout: 2s
+    eks:
+      node_from_env_var: K8S_NODE_NAME
+    ec2:
+      resource_attributes:
+        # Do not add the collector's availability zone, some of the actual telemetry might be from a different
+        # availability zone. cloud.account.id, cloud.region, cloud.platform and cloud.provider remain enabled.
+        cloud.availability_zone:
+          enabled: false
+        host.id:
+          enabled: false
+        host.image.id:
+          enabled: false
+        host.name:
+          enabled: false
+        host.type:
+          enabled: false
+    gcp:
+      resource_attributes:
+        cloud.availability_zone:
+          enabled: false
+        host.id:
+          enabled: false
+        host.name:
+          enabled: false
+        host.type:
+          enabled: false
+        gcp.gce.instance_group_manager.name:
+          enabled: false
+        gcp.gce.instance_group_manager.region:
+          enabled: false
+        gcp.gce.instance_group_manager.zone:
+          enabled: false
+    azure:
+      resource_attributes:
+        azure.resourcegroup.name:
+          enabled: false
+        azure.vm.name:
+          enabled: false
+        azure.vm.scaleset.name:
+          enabled: false
+        azure.vm.size:
+          enabled: false
+        host.id:
+          enabled: false
+        host.name:
+          enabled: false
+  {{- end }}
+
   k8s_attributes:
     extract:
       {{- if .K8sAttributesDisableReplicasetInformer }}
@@ -525,6 +591,7 @@ service:
         - k8s_cluster
       processors:
         - memory_limiter
+        - resourcedetection
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
@@ -591,6 +658,7 @@ service:
         - k8s_events
       processors:
         - memory_limiter
+        - resourcedetection
         - transform/k8s_events
         - k8s_attributes
         {{- if .ClusterName }}
