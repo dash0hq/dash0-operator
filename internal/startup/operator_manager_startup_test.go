@@ -4,10 +4,13 @@
 package startup
 
 import (
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	crzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -66,5 +69,22 @@ var _ = Describe("operator manager startup", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(agent0ConnectorManager).NotTo(BeNil())
 		})
+	})
+
+	Context("logging", func() {
+		DescribeTable("mirrors the resolved stdout log level onto the OTel bridge to Dash0",
+			func(level zapcore.Level) {
+				wrapper := setUpLogging(crzap.Level(zap.NewAtomicLevelAt(level)))
+				bridge := wrapper.RootDelegatingZapCore
+
+				// No delegate is set yet, so Enabled(lvl) reflects the buffering level: lvl >= dc.level.
+				Expect(bridge.Enabled(level)).To(BeTrue())
+				Expect(bridge.Enabled(level - 1)).To(BeFalse())
+			},
+			Entry("debug", zapcore.DebugLevel),
+			Entry("info", zapcore.InfoLevel),
+			Entry("warn", zapcore.WarnLevel),
+			Entry("error", zapcore.ErrorLevel),
+		)
 	})
 })
