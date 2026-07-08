@@ -4376,6 +4376,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(pipelines["metrics/common-processors"]).To(BeNil())
 		})
 
+		It("should not render the resourcedetection processor if neither cluster metrics nor event collection is enabled", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(
+				&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: false,
+				},
+				[]string{"namespace"},
+				[]string{},
+				nil,
+				nil,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).To(BeNil())
+		})
+
 		DescribeTable("should render the k8s_cluster receiver and the associated pipeline if Kubernetes infrastructure metrics collection is enabled",
 			func(k8sEventCollectionEnabledForAtLeastOneNamespace bool) {
 				var namespacesWithEventCollection []string
@@ -4406,8 +4425,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"processors",
 					"filter/drop-replicaset-metrics-zero-value",
 				})).ToNot(BeNil())
+				Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).ToNot(BeNil())
 				pipelines := readPipelines(collectorConfig)
 				Expect(pipelines["metrics/common-processors"]).NotTo(BeNil())
+				Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).
+					To(ContainElement("resourcedetection"))
 			},
 			Entry("without K8s event collection", false),
 			Entry("together with K8s event collection", true),
@@ -4464,9 +4486,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(namespaces).To(ContainElement("namespace-2"))
 
 				Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_events"})).ToNot(BeNil())
+				Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).ToNot(BeNil())
 
 				pipelines := readPipelines(collectorConfig)
 				Expect(pipelines["logs/k8sevents"]).NotTo(BeNil())
+				Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).
+					To(ContainElement("resourcedetection"))
 			},
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
