@@ -1773,7 +1773,10 @@ func assembleDeploymentCollectorContainer(
 
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,
-		Args: []string{"--config=file:" + collectorConfigurationFilePath},
+		Args: []string{
+			"--config=file:" + collectorConfigurationFilePath,
+			"--feature-gates=-processor.resourcedetection.propagateerrors",
+		},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
 			ReadOnlyRootFilesystem:   new(false),
