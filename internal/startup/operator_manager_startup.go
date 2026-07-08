@@ -265,7 +265,7 @@ func Start() {
 	crZapOpts := crzap.UseFlagOptions(&opts)
 
 	// Maintenance note: setupLog is not yet initialized before the call to setUpLogging.
-	delegatingZapCoreWrapper := setUpLogging(crZapOpts, developmentMode)
+	delegatingZapCoreWrapper := setUpLogging(crZapOpts)
 	// setupLog is initialized after this point and can be used
 
 	setupLog.Debug("development/debug mode enabled")
@@ -741,7 +741,7 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 	return opts
 }
 
-func setUpLogging(crZapOpts crzap.Opts, developmentMode bool) *zaputil.DelegatingZapCoreWrapper {
+func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 	o := zaputil.ConvertOptions([]crzap.Opts{crZapOpts})
 
 	// this basically mimics New<type>Config, but with a custom sink
@@ -751,8 +751,10 @@ func setUpLogging(crZapOpts crzap.Opts, developmentMode bool) *zaputil.Delegatin
 	defaultZapCore := zapcore.NewCore(&crzap.KubeAwareEncoder{Encoder: o.Encoder, Verbose: o.Development}, sink, o.Level)
 
 	delegatingZapCoreWrapper := zaputil.NewDelegatingZapCoreWrapper()
-	if developmentMode {
-		delegatingZapCoreWrapper.RootDelegatingZapCore.SetBufferingLevel(zapcore.DebugLevel)
+	// Mirror the resolved stdout log level (o.Level) onto the OTel bridge so that Dash0 self-monitoring receives
+	// exactly the same log records as stdout.
+	if leveler, ok := o.Level.(interface{ Level() zapcore.Level }); ok {
+		delegatingZapCoreWrapper.RootDelegatingZapCore.SetBufferingLevel(leveler.Level())
 	}
 
 	// Send log records to stdout (defaultZapCore) and also to the OTel log SDK (delegatingZapCore). Additional plot

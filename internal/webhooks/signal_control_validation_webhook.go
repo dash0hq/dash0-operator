@@ -136,8 +136,7 @@ func validateOperationProcessorCardinalityRules(rules []dash0v1alpha1.Cardinalit
 // validateCacheExpiration rejects a non-zero cacheExpiration outside the 10s–1h range. A nil or zero value is
 // accepted here because signalControlConfigFromResource omits a zero cacheExpiration from the rendered collector
 // config, so the component keeps its factory default (60s for the dash0signaltometrics connector, 60s for the
-// dash0filter processor) instead of validating a literal 0. The 10s–1h bounds mirror the Validate() functions of
-// those two components in the dash0 collector repo.
+// dash0filter processor) instead of validating a literal 0.
 func validateCacheExpiration(fieldPath string, d *metav1.Duration) error {
 	if d == nil || d.Duration == 0 {
 		return nil
