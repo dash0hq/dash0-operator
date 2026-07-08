@@ -968,9 +968,12 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 		return
 	}
 
-	// A foreign conversion webhook means another controller (typically the Perses operator) owns this CRD. We do not fight it,
-	// neither for the conversion stanza nor for the schema.
-	if hasForeignConversionWebhook(crd) {
+	// A foreign conversion webhook means another controller (typically the Perses operator) owns this CRD; we do not fight it,
+	// neither for the conversion stanza nor for the schema. Our own stanza is not foreign: hasForeignConversionWebhook alone
+	// returns true for any webhook (including ours), so we must exclude the case where the stanza already matches ours -
+	// otherwise, in the default steady state (autoPatchConversionWebhook=true, our stanza already applied), this would skip
+	// the panel-spec patch entirely.
+	if hasForeignConversionWebhook(crd) && !r.conversionStanzaMatchesOurs(crd) {
 		if !onUpdate {
 			logger.Info(
 				"Detected pre-existing conversion webhook on the perses.dev PersesDashboard CRD " +
@@ -1015,7 +1018,7 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 					"re-applied the Dash0-operator conversion webhook configuration. If this happens repeatedly, a GitOps reconciler " +
 					"(Argo CD, Flux, etc.) is likely overwriting the CRD. Configure your GitOps tooling to leave spec.conversion " +
 					"alone (preferred), install the Perses operator to let it handle the conversion, or set the Helm value " +
-					"operator.persesDashboard.autoPatchConversionWebhook=false.",
+					"operator.iac.persesDashboard.autoPatchConversionWebhook=false.",
 			)
 		} else {
 			logger.Info(
@@ -1029,7 +1032,7 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 				"Re-applied x-kubernetes-preserve-unknown-fields at the panel spec of the perses.dev PersesDashboard CRD on a " +
 					"CRD update (a GitOps reconciler or the Perses operator likely overwrote it). If this happens repeatedly, " +
 					"configure your tooling to leave the CRD schema alone, or set the Helm value " +
-					"operator.persesDashboard.autoPreservePanelSpecFields=false.",
+					"operator.iac.persesDashboard.autoPreservePanelSpecFields=false.",
 			)
 		} else {
 			logger.Info(
@@ -1082,56 +1085,57 @@ func (r *PersesDashboardCrdReconciler) readConversionWebhookCaBundle(logger logd
 func ensurePanelSpecPreservesUnknownFields(crd *apiextensionsv1.CustomResourceDefinition) bool {
 	changed := false
 	for i := range crd.Spec.Versions {
-		version := &crd.Spec.Versions[i]
-		if version.Schema == nil || version.Schema.OpenAPIV3Schema == nil {
+		panelSchema := panelSchemaForVersion(&crd.Spec.Versions[i])
+		if panelSchema == nil {
 			continue
 		}
-		specSchema, ok := version.Schema.OpenAPIV3Schema.Properties["spec"]
+		panelSpec, ok := panelSchema.Properties["spec"]
 		if !ok {
 			continue
 		}
-		panelsHolder := specSchema.Properties
-		if config, ok := specSchema.Properties["config"]; ok {
-			// v1alpha2: the dashboard body (incl. panels) is nested under spec.config.
-			panelsHolder = config.Properties
+		if panelSpec.XPreserveUnknownFields != nil && *panelSpec.XPreserveUnknownFields {
+			continue
 		}
-		if setPanelSpecPreservesUnknownFields(panelsHolder) {
-			changed = true
-		}
+		// Go note: apiextensionsv1.JSONSchemaProps is stored by value in map[string]JSONSchemaProps, so we read the panel
+		// spec struct, mutate it, and write it back. panelSchema.Properties lives under panels.AdditionalProperties.Schema,
+		// which is a pointer shared with the CRD we hand to Patch, so the write-back persists.
+		preserve := true
+		panelSpec.XPreserveUnknownFields = &preserve
+		panelSchema.Properties["spec"] = panelSpec
+		changed = true
 	}
 	return changed
 }
 
-// setPanelSpecPreservesUnknownFields flips x-kubernetes-preserve-unknown-fields to true on panels.<any>.spec, reached via the
-// panels object's additionalProperties schema. panelsHolder is the map that directly contains the "panels" key (spec.properties
-// for v1alpha1, spec.config.properties for v1alpha2). Returns true if a change was made.
-//
-// Go note: apiextensionsv1.JSONSchemaProps is stored by value in map[string]JSONSchemaProps, so we read the panel spec struct,
-// mutate it, and write it back into panelSchema.Properties. That map lives under panels.AdditionalProperties.Schema, which is a
-// pointer shared with the CRD we hand to Patch, so the write-back persists.
-func setPanelSpecPreservesUnknownFields(panelsHolder map[string]apiextensionsv1.JSONSchemaProps) bool {
+// panelSchemaForVersion returns the per-panel schema node (panels.<any>, whose Properties holds "spec") for a single CRD
+// version, or nil if the version's schema does not have the expected shape. v1alpha2 nests the dashboard body under
+// spec.config while v1alpha1 keeps it directly under spec; both are handled. The returned pointer aliases into the CRD, so
+// callers can mutate the schema in place. This is the single traversal shared by the production patch and the tests.
+func panelSchemaForVersion(version *apiextensionsv1.CustomResourceDefinitionVersion) *apiextensionsv1.JSONSchemaProps {
+	if version.Schema == nil || version.Schema.OpenAPIV3Schema == nil {
+		return nil
+	}
+	specSchema, ok := version.Schema.OpenAPIV3Schema.Properties["spec"]
+	if !ok {
+		return nil
+	}
+	panelsHolder := specSchema.Properties
+	if config, ok := specSchema.Properties["config"]; ok {
+		// v1alpha2: the dashboard body (incl. panels) is nested under spec.config.
+		panelsHolder = config.Properties
+	}
 	if panelsHolder == nil {
-		return false
+		return nil
 	}
 	panels, ok := panelsHolder["panels"]
 	if !ok || panels.AdditionalProperties == nil || panels.AdditionalProperties.Schema == nil {
-		return false
+		return nil
 	}
 	panelSchema := panels.AdditionalProperties.Schema
 	if panelSchema.Properties == nil {
-		return false
+		return nil
 	}
-	panelSpec, ok := panelSchema.Properties["spec"]
-	if !ok {
-		return false
-	}
-	if panelSpec.XPreserveUnknownFields != nil && *panelSpec.XPreserveUnknownFields {
-		return false
-	}
-	preserve := true
-	panelSpec.XPreserveUnknownFields = &preserve
-	panelSchema.Properties["spec"] = panelSpec
-	return true
+	return panelSchema
 }
 
 // conversionStanzaMatchesOurs reports whether the CRD's conversion stanza is already pointing
