@@ -1297,6 +1297,7 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 		util.ExtraConfigDefaults,
 		false,
 		false,
+		nil,
 		oTelColResourceManager,
 	)
 	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(

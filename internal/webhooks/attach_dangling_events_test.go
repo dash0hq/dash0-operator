@@ -72,6 +72,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			util.ExtraConfigDefaults,
 			false,
 			false,
+			nil,
 			oTelColResourceManager,
 		)
 

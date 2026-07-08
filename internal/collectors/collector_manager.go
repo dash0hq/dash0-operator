@@ -21,6 +21,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/resources"
+	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
@@ -33,6 +34,7 @@ type CollectorManager struct {
 	extraConfig                 atomic.Pointer[util.ExtraConfig]
 	developmentMode             bool
 	signalControlFeatureEnabled bool
+	enablementChecker           enablement.Checker
 	updateInProgress            atomic.Bool
 }
 
@@ -55,6 +57,7 @@ func NewCollectorManager(
 	extraConfig util.ExtraConfig,
 	developmentMode bool,
 	signalControlFeatureEnabled bool,
+	enablementChecker enablement.Checker,
 	oTelColResourceManager *otelcolresources.OTelColResourceManager,
 ) *CollectorManager {
 	m := &CollectorManager{
@@ -62,6 +65,7 @@ func NewCollectorManager(
 		clientset:                   clientset,
 		developmentMode:             developmentMode,
 		signalControlFeatureEnabled: signalControlFeatureEnabled,
+		enablementChecker:           enablementChecker,
 		oTelColResourceManager:      oTelColResourceManager,
 	}
 	m.extraConfig.Store(&extraConfig)
@@ -133,6 +137,19 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 			logger.Debug("found Signal Control resource for collector reconciliation", "name", signalControlResource.Name)
 		} else {
 			logger.Debug("no Signal Control resource found for collector reconciliation")
+		}
+
+		// Gate Signal Control on the organization's entitlement. If the organization is not entitled (or the
+		// entitlement cannot be confirmed), treat Signal Control as absent so the collector is rendered without any
+		// Signal Control components (plain collector image and config).
+		if signalControlResource != nil &&
+			m.enablementChecker != nil &&
+			operatorConfigurationResource != nil &&
+			(signalControlResource.Spec.Enabled == nil || *signalControlResource.Spec.Enabled) &&
+			!m.enablementChecker.EnsureAllowed(ctx, operatorConfigurationResource, logger) {
+			logger.WarnTelemetryCollectionIssue("The organization is not entitled to use Signal Control (or the " +
+				"entitlement could not be confirmed); Signal Control components will not be added to the collector.")
+			signalControlResource = nil
 		}
 	}
 

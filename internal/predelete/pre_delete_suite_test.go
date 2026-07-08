@@ -127,6 +127,7 @@ var _ = BeforeSuite(func() {
 		util.ExtraConfigDefaults,
 		false,
 		false,
+		nil,
 		oTelColResourceManager,
 	)
 	targetAllocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
