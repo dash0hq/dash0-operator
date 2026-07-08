@@ -7,9 +7,11 @@ The Dash0 Operator makes observability for Kubernetes _easy_.
 Install the operator into your cluster and create a Dash0 monitoring resource to get OpenTelemetry data flowing from
 your applications and infrastructure to Dash0.
 
-The detailed documentation for the Dash0 operator is in the
-[Helm chart documentation](helm-chart/dash0-operator/README.md), this README file only provides a brief overview of the
-operator's features.
+The detailed documentation for the Dash0 operator can be found in the official
+[Dash0 documentation](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/overview) for the operator.
+Alternatively, the same content is available in this repository's
+[Helm chart documentation](helm-chart/dash0-operator/README.md).
+This README file only provides a brief overview of the operator's features.
 
 ## Description
 
@@ -25,7 +27,7 @@ Auto-instrumentation if supported for the following runtimes:
 * Java 8+, using the [OpenTelemetry Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation)
 
 For more information on how the Dash0 operator automatically traces your applications, see the
-[Automatic Workload Instrumentation](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#automatic-workload-instrumentation)
+[Automatic Workload Instrumentation](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/auto-instrumentation)
 section of the Dash0 operator Helm chart documentation.
 
 ### Metrics
@@ -35,7 +37,7 @@ It also supports scraping Prometheus endpoints exposed by pods according to the 
 the Prometheus Helm chart:
 
 For more information on how the Dash0 operator scrapes Prometheus endpoints exposed by your applications, see the
-[Scraping Prometheus endpoints](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#scraping-prometheus-endpoints)
+[Scraping Prometheus endpoints](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/metrics-and-scraping)
 section of the Dash0 operator Helm chart documentation.
 
 ### Logs
@@ -43,7 +45,7 @@ section of the Dash0 operator Helm chart documentation.
 The Dash0 operator automatically collects pod logs from the pods that it monitors.
 
 For more information on how to have pods monitored by the Dash0 operator, see the
-[Enable Dash0 Monitoring For a Namespace](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#enable-dash0-monitoring-for-a-namespace) section of the Dash0 operator
+[Enable Dash0 Monitoring For a Namespace](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/configuration#enable-dash0-monitoring-for-a-namespace) section of the Dash0 operator
 Helm chart documentation.
 
 ### Profiling
@@ -51,7 +53,7 @@ Helm chart documentation.
 The Dash0 operator can be configured to accept, process, and export profiling data via OTLP.
 
 For more information on how to enable profiling support, see the
-[Profiling](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#profiling)
+[Profiling](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/profiling)
 section of the Dash0 operator Helm chart documentation.
 
 ### Alerting
@@ -94,8 +96,4 @@ logging or resource data within Dash0.
 ## Getting Started
 
 The preferred method of installation is via the operator's
-[Helm chart](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md).
-
-The [Helm chart documentation](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md)
-also contains all other relevant information for getting started with the operator, like how to enable Dash0 monitoring
-for your workloads etc.
+[Helm chart](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/installation).
