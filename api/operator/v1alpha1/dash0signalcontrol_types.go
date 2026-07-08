@@ -293,8 +293,9 @@ type SignalToMetricsConfig struct {
 	FlushInterval *metav1.Duration `json:"flushInterval,omitempty"`
 
 	// How long compiled rulesets are cached before the connector re-fetches them from the
-	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h.
-	// This setting is optional; the connector default applies when unset.
+	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h; a
+	// non-zero value outside this range is rejected at admission. This setting is optional; the connector
+	// default applies when unset.
 	//
 	// +kubebuilder:validation:Optional
 	CacheExpiration *metav1.Duration `json:"cacheExpiration,omitempty"`
@@ -311,8 +312,9 @@ type SpamFilterConfig struct {
 	Enabled *bool `json:"enabled"`
 
 	// How long compiled filter rules are cached before the processor re-fetches them from the
-	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h.
-	// This setting is optional; the processor default applies when unset.
+	// dash0settingsonedgeextension. Go duration syntax (e.g. "30s", "5m"). Must be between 10s and 1h; a
+	// non-zero value outside this range is rejected at admission. This setting is optional; the processor
+	// default applies when unset.
 	//
 	// +kubebuilder:validation:Optional
 	CacheExpiration *metav1.Duration `json:"cacheExpiration,omitempty"`
