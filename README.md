@@ -7,9 +7,11 @@ The Dash0 Operator makes observability for Kubernetes _easy_.
 Install the operator into your cluster and create a Dash0 monitoring resource to get OpenTelemetry data flowing from
 your applications and infrastructure to Dash0.
 
-The detailed documentation for the Dash0 operator is in the
-[Helm chart documentation](helm-chart/dash0-operator/README.md), this README file only provides a brief overview of the
-operator's features.
+The detailed documentation for the Dash0 operator can be found in the official
+[Dash0 documentation](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/overview) for the operator.
+Alternatively, the same content is available in this repository's
+[Helm chart documentation](helm-chart/dash0-operator/README.md).
+This README file only provides a brief overview of the operator's features.
 
 ## Description
 
