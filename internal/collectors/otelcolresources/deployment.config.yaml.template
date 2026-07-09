@@ -20,18 +20,33 @@ connectors:
   {{- if $hasNamespacedExporters }}
   {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
   routing/metrics:
+{{- if .SignalControl.Enabled }}
+    default_pipelines: [metrics/sc/default]
+{{- else }}
     default_pipelines: [metrics/export/default]
+{{- end }}
     error_mode: ignore
     table:
-    {{- range $ns := .Exporters.AllNamespaceKeys }}
-    {{- $exporters := index $.Exporters.Namespaced $ns }}
+{{- if .SignalControl.Enabled }}
+    {{- range $ns, $sc := $.Exporters.NamespaceSC }}
       - context: resource
         condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
         pipelines:
-        {{- range $i, $exporter := $exporters }}
-          - metrics/export/ns/{{ $ns }}
+        {{- range $b := $sc.DatasetBranches }}
+          - metrics/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+        {{- if $sc.Passthrough }}
+          - metrics/export/ns/{{ $ns }}/passthrough
         {{- end }}
     {{- end }}
+{{- else }}
+    {{- range $ns := .Exporters.AllNamespaceKeys }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+          - metrics/export/ns/{{ $ns }}
+    {{- end }}
+{{- end }}
   {{- end }}
   {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
   routing/logs:
@@ -39,13 +54,10 @@ connectors:
     error_mode: ignore
     table:
     {{- range $ns := .Exporters.AllNamespaceKeys }}
-    {{- $exporters := index $.Exporters.Namespaced $ns }}
       - context: resource
         condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
         pipelines:
-        {{- range $i, $exporter := $exporters }}
           - logs/export/ns/{{ $ns }}
-        {{- end }}
     {{- end }}
   {{- end }}
   {{- end }}
@@ -474,6 +486,20 @@ processors:
     - key: dash0.dataset
       value: {{ .SignalControl.Dataset }}
       action: upsert
+{{- if $hasNamespacedExporters }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    attributes:
+    - key: dash0.org.technical.id
+      value: edge
+      action: upsert
+    - key: dash0.dataset
+      value: {{ $b.Dataset }}
+      action: upsert
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if .SignalControl.SpamFilterEnabled }}
 {{- if or .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
   dash0filter:
@@ -609,7 +635,7 @@ service:
         - transform/metrics/custom_telemetry_transform
         {{- end }}
         - transform/resources
-        {{- if .SignalControl.Enabled }}
+        {{- if and .SignalControl.Enabled (not $hasNamespacedExporters) }}
         - resource/signal_control_attributes
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
@@ -622,9 +648,22 @@ service:
         - forward/metrics-default-exporter
         {{- end }}
 
+{{- if and .SignalControl.Enabled $hasNamespacedExporters }}
+    metrics/sc/default:
+      receivers:
+        - routing/metrics
+      processors:
+        - resource/signal_control_attributes
+        {{- if .SignalControl.SpamFilterEnabled }}
+        - dash0filter
+        {{- end }}
+      exporters:
+        - forward/metrics-default-exporter
+{{- end }}
+
     metrics/export/default:
       receivers:
-        {{- if $hasNamespacedExporters }}
+        {{- if and $hasNamespacedExporters (not .SignalControl.Enabled) }}
         - routing/metrics
         {{- else }}
         - forward/metrics-default-exporter
@@ -637,6 +676,39 @@ service:
         - {{ $exporter.Name }}
         {{- end }}
 
+{{- if .SignalControl.Enabled }}
+    {{- range $ns, $sc := $.Exporters.NamespaceSC }}
+    {{- range $b := $sc.DatasetBranches }}
+    metrics/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - routing/metrics
+      processors:
+        - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- if $.SignalControl.SpamFilterEnabled }}
+        - dash0filter
+        {{- end }}
+      exporters:
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+    {{- end }}
+    {{- if $sc.Passthrough }}
+    metrics/export/ns/{{ $ns }}/passthrough:
+      receivers:
+        - routing/metrics
+      exporters:
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $exporter := $sc.Passthrough }}
+        - {{ $exporter.Name }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+{{- else }}
     {{- range $ns := .Exporters.AllNamespaceKeys }}
     {{- $exporters := index $.Exporters.Namespaced $ns }}
     metrics/export/ns/{{- $ns -}}:
@@ -650,6 +722,7 @@ service:
         - {{ $exporter.Name }}
       {{- end }}
     {{- end }}
+{{- end }}
     {{- end}}
 
     {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}

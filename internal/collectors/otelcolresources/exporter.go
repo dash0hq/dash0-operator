@@ -27,6 +27,68 @@ type otlpExporter struct {
 	InsecureSkipVerify bool
 	Keepalive          *dash0common.KeepaliveClientConfig
 	BalancerName       string
+	// Dataset is the Dash0 dataset this exporter targets. It is only meaningful for Dash0 exporters
+	// (IsDash0 == true); for generic gRPC/HTTP exporters it is empty. An empty value on a Dash0 exporter
+	// means the default dataset.
+	Dataset string
+}
+
+// IsDash0 reports whether this is a Dash0 exporter (as opposed to a generic gRPC/HTTP exporter). Only Dash0
+// exporters carry a dataset and receive Signal Control processing; generic exporters are exported raw.
+func (e *otlpExporter) IsDash0() bool {
+	return e.Authorization != nil
+}
+
+// datasetBranch is one Signal Control dataset branch within a namespace: all of the namespace's Dash0 exporters
+// that share Dataset. Branches are ordered by the dataset's first appearance in the namespace's exporter list.
+// DatasetIndex (an integer) is used in the ID-safe pipeline/component names, while Dataset is emitted only as a
+// rendered value (unquoted, consistent with the existing default path's .SignalControl.Dataset). Tail sampling
+// runs only on the first branch (DatasetIndex 0).
+type datasetBranch struct {
+	DatasetIndex int
+	Dataset      string
+	Exporters    []otlpExporter
+}
+
+// namespaceSC is the per-namespace Signal Control grouping consumed by the collector config templates. The
+// namespace's Dash0 exporters are grouped into one datasetBranch per distinct dataset (DatasetBranches, ordered by
+// first appearance). Every branch runs the non-sampling SC components (resource/operation, spam filter, RED, s2m)
+// against its own dataset. Tail sampling is applied ONLY to the first branch (DatasetIndex 0), because a single
+// trace must not be run through the sampling processor under more than one dataset (the Decision Maker coordinates
+// per trace-id, dataset-blind). Non-Dash0 exporters (Passthrough) receive the raw telemetry without SC.
+type namespaceSC struct {
+	DatasetBranches []datasetBranch
+	Passthrough     []otlpExporter
+}
+
+// NamespaceSC groups each namespace's exporters into per-dataset SC branches plus a passthrough branch. Dash0
+// exporters are grouped by dataset (an empty dataset resolves to util.DatasetDefault), preserving the order in
+// which datasets first appear in the namespace's exporter list, so DatasetIndex 0 is the first exporter's dataset.
+func (e *otlpExporters) NamespaceSC() map[string]namespaceSC {
+	result := make(map[string]namespaceSC, len(e.Namespaced))
+	for _, ns := range e.AllNamespaceKeys() {
+		var sc namespaceSC
+		indexByDataset := map[string]int{}
+		for _, exp := range e.Namespaced[ns] {
+			if !exp.IsDash0() {
+				sc.Passthrough = append(sc.Passthrough, exp)
+				continue
+			}
+			dataset := exp.Dataset
+			if dataset == "" {
+				dataset = util.DatasetDefault
+			}
+			idx, ok := indexByDataset[dataset]
+			if !ok {
+				idx = len(sc.DatasetBranches)
+				indexByDataset[dataset] = idx
+				sc.DatasetBranches = append(sc.DatasetBranches, datasetBranch{DatasetIndex: idx, Dataset: dataset})
+			}
+			sc.DatasetBranches[idx].Exporters = append(sc.DatasetBranches[idx].Exporters, exp)
+		}
+		result[ns] = sc
+	}
+	return result
 }
 
 type defaultOtlpExporters = []otlpExporter
@@ -214,6 +276,7 @@ func convertDash0ExporterToOtlpExporter(
 		Endpoint:      d0.Endpoint,
 		Headers:       headers,
 		Authorization: auth,
+		Dataset:       d0.Dataset,
 		Keepalive:     d0.Keepalive,
 		// For the dash0 exporter we always use pick_first, since client-side load balancing is
 		// not needed and it avoids the issue of the exporter trying both the IPv4 and IPv6
