@@ -5,6 +5,7 @@ on:
     workflows: ["pages-build-deployment"]
     types:
       - completed
+
   workflow_dispatch:
     inputs:
       use_branch_chart:
@@ -16,8 +17,34 @@ on:
         description: "PR number to report results back to (set automatically when triggered via PR comment)."
         required: false
 
+  workflow_call:
+    inputs:
+      use_local_chart:
+        description: "Run the check against the local Helm chart from this ref instead of the most recently published chart."
+        required: false
+        default: false
+        type: boolean
+      image_repository_prefix:
+        description: "Container image repository prefix to use with the local chart (e.g. 'ghcr.io/dash0hq/'). Only used when use_local_chart is true."
+        required: false
+        default: ''
+        type: string
+      image_tag:
+        description: "Container image tag to use with the local chart. Only used when use_local_chart is true."
+        required: false
+        default: ''
+        type: string
+    secrets:
+      GKE_SA_KEY:
+        required: true
+      GKE_PROJECT:
+        required: true
+      SLACK_BOT_TOKEN:
+        required: true
+      SLACK_CHANNEL_ID:
+        required: true
+
 env:
-  PROJECT_ID: ${{ secrets.GKE_PROJECT }}
   GKE_CLUSTER: ci-workload-allowlist-check
   GKE_ZONE: europe-central2
 
@@ -91,10 +118,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build_and_push_images
     if: |
-      always() && (
-        (github.event_name == 'workflow_dispatch' && (!inputs.use_branch_chart || needs.build_and_push_images.result == 'success')) ||
-        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-      )
+      always() &&
+      (needs.build_and_push_images.result == 'success' || needs.build_and_push_images.result == 'skipped') &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     timeout-minutes: 8
     permissions:
       contents: read
@@ -117,8 +143,12 @@ jobs:
 
       - name: run check
         env:
-          USE_LOCAL_CHART: ${{ inputs.use_branch_chart && 'true' || 'false' }}
-          IMAGE_TAG: ${{ inputs.use_branch_chart && needs.build_and_push_images.outputs.image_tag || '' }}
+          # use_local_chart is set by workflow_call callers (e.g. ci.yaml); use_branch_chart is set by workflow_dispatch.
+          USE_LOCAL_CHART: ${{ (inputs.use_local_chart || inputs.use_branch_chart) && 'true' || 'false' }}
+          # Empty prefix lets the script fall back to its default (ghcr.io/dash0hq/gke-ap-) for the workflow_dispatch path.
+          IMAGE_REPOSITORY_PREFIX: ${{ inputs.image_repository_prefix }}
+          # Prefer an explicitly passed tag (workflow_call), otherwise use the tag of the images built for a branch chart.
+          IMAGE_TAG: ${{ inputs.image_tag != '' && inputs.image_tag || (inputs.use_branch_chart && needs.build_and_push_images.outputs.image_tag || '') }}
         run: |-
           .github/workflows/scripts/gke-ap-workload-allowlist-check.sh
 
