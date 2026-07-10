@@ -45,3 +45,7 @@ dash0-operator-values.yaml
 
 # local demo/test environment files with credentials
 test-resources/*.env
+
+# cluster diagnostics collected by the GKE Autopilot WorkloadAllowlist check on failure
+/gke-ap-allowlist-check-diagnostics
+/gke-ap-allowlist-check-diagnostics.tar.gz

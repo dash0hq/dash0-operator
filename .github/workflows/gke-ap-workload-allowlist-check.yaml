@@ -152,6 +152,14 @@ jobs:
         run: |-
           .github/workflows/scripts/gke-ap-workload-allowlist-check.sh
 
+      - name: Upload cluster diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gke-ap-allowlist-check-diagnostics
+          path: gke-ap-allowlist-check-diagnostics.tar.gz
+          if-no-files-found: ignore
+
       - name: send Slack notification on success
         if: ${{ success() && !inputs.use_branch_chart }}
         uses: ./.github/actions/slack-notification
