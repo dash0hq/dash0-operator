@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: send Slack notification
+description: >-
+  Sends a Slack chat.postMessage notification with a standard header and a context block (workflow run link and
+  commit link), optionally followed by additional context elements.
+
+inputs:
+  status:
+    description: "either 'success' or 'failure'; selects the emoji (:white_check_mark:/:x:) and verb (successful/failed)"
+    required: true
+  subject:
+    description: "what is being reported, e.g. 'Dash0 Operator E2E tests' or 'GKE Autopilot WorkloadAllowlist check'"
+    required: true
+  botToken:
+    description: "Slack bot token (secrets.SLACK_BOT_TOKEN)"
+    required: true
+  channelId:
+    description: "Slack channel id (secrets.SLACK_CHANNEL_ID)"
+    required: true
+  extraContext:
+    description: >-
+      optional multiline string; each non-empty line becomes an additional mrkdwn context element, appended after the
+      standard workflow run link and commit link
+    required: false
+    default: ''
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: build Slack payload
+      id: payload
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+      env:
+        STATUS: ${{ inputs.status }}
+        SUBJECT: ${{ inputs.subject }}
+        CHANNEL_ID: ${{ inputs.channelId }}
+        EXTRA_CONTEXT: ${{ inputs.extraContext }}
+      with:
+        script: |
+          const { STATUS, SUBJECT, CHANNEL_ID, EXTRA_CONTEXT } = process.env;
+
+          const variant = {
+            success: { emoji: ':white_check_mark:', verb: 'successful' },
+            failure: { emoji: ':x:', verb: 'failed' },
+          }[STATUS];
+          if (!variant) {
+            core.setFailed(`unsupported status '${STATUS}', expected 'success' or 'failure'.`);
+            return;
+          }
+
+          const { serverUrl, runId, sha, repo: { owner, repo } } = context;
+          const runLink = `:github: <${serverUrl}/${owner}/${repo}/actions/runs/${runId}|Workflow run #${runId}>`;
+          const commitLink = `:diff: <${serverUrl}/${owner}/${repo}/commit/${sha}|Commit>`;
+          const extraElements = EXTRA_CONTEXT
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean)
+            .map(text => ({ type: 'mrkdwn', text }));
+
+          const payload = {
+            channel: CHANNEL_ID,
+            text: `${SUBJECT} ${variant.verb}`,
+            blocks: [
+              { type: 'header', text: { type: 'plain_text', text: `${variant.emoji} ${SUBJECT} ${variant.verb}` } },
+              {
+                type: 'context',
+                elements: [
+                  { type: 'mrkdwn', text: runLink },
+                  { type: 'mrkdwn', text: commitLink },
+                  ...extraElements,
+                ],
+              },
+            ],
+          };
+
+          core.setOutput('payload', JSON.stringify(payload));
+
+    - name: send Slack notification
+      uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
+      with:
+        errors: true
+        method: chat.postMessage
+        token: ${{ inputs.botToken }}
+        payload: ${{ steps.payload.outputs.payload }}
