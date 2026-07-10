@@ -10,12 +10,15 @@
 # - By default, the most recent published Helm chart (dash0-operator/dash0-operator) will be tested.
 # - Set USE_LOCAL_CHART=true to test a local Helm chart.
 #   By default, the local chart directory helm-chart/dash0-operator will be used, set OPERATOR_HELM_CHART to override that.
-#   When using a local Helm chart, the container image repositories ghcr.io/dash0hq/gke-ap-xxx will be used.
+#   When using a local Helm chart, the container image repositories ghcr.io/dash0hq/gke-ap-xxx will be used by default.
 #   (These are allow-listed in addition to the official ghcr.io/dash0hq repositories in the Google GKE AutoPilot allowlists.
-#   Testing with arbitrarycontainer image repositories is not supported due to allowlist restrictions on the container images.)
+#   Testing with arbitrary container image repositories is not supported due to allowlist restrictions on the container images.)
 #   IMPORTANT: Make sure the ghcr.io/dash0hq/gke-ap-xxx repositories have up-to-date images that represent your current
 #   branch. This script does not build or push images.
-# - Use IMAGE_TAG to control which tag is used for the ghcr.io/dash0hq/gke-ap-xxx images (defaults to "latest").
+# - Use IMAGE_REPOSITORY_PREFIX to control the prefix of the container image repositories used with a local Helm chart
+#   (defaults to "ghcr.io/dash0hq/gke-ap-"). For example, set it to "ghcr.io/dash0hq/" to use the official image
+#   repositories (both prefixes are allow-listed on the GKE Autopilot cluster).
+# - Use IMAGE_TAG to control which tag is used for the container images (defaults to "latest").
 
 set -euo pipefail
 
@@ -27,6 +30,14 @@ use_local_chart="${USE_LOCAL_CHART:-}"
 if [[ "$use_local_chart" = "true" ]]; then
   chart="${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
   image_tag="${IMAGE_TAG:-latest}"
+  image_repository_prefix="${IMAGE_REPOSITORY_PREFIX:-ghcr.io/dash0hq/gke-ap-}"
+  # Only the official ghcr.io/dash0hq repositories and the ghcr.io/dash0hq/gke-ap- repositories are allow-listed on the
+  # GKE Autopilot cluster. Using any other prefix would make the operator pods unschedulable.
+  if [[ "$image_repository_prefix" != "ghcr.io/dash0hq/" && "$image_repository_prefix" != "ghcr.io/dash0hq/gke-ap-" ]]; then
+    echo "ERROR: unsupported IMAGE_REPOSITORY_PREFIX '$image_repository_prefix'."
+    echo "Only 'ghcr.io/dash0hq/' and 'ghcr.io/dash0hq/gke-ap-' are allow-listed."
+    exit 1
+  fi
 else
   chart="${OPERATOR_HELM_CHART:-dash0-operator/dash0-operator}"
 fi
@@ -140,19 +151,19 @@ helm_command+=" --set operator.dash0Export.apiEndpoint=https://api.dummy-url.aws
 helm_command+=" --set operator.prometheusCrdSupportEnabled=true"
 helm_command+=" --set operator.clusterName=dummy-cluster-name"
 if [[ "$use_local_chart" = "true" ]]; then
-  helm_command+=" --set operator.image.repository=ghcr.io/dash0hq/gke-ap-operator-controller"
+  helm_command+=" --set operator.image.repository=${image_repository_prefix}operator-controller"
   helm_command+=" --set operator.image.tag=$image_tag"
-  helm_command+=" --set operator.instrumentationImage.repository=ghcr.io/dash0hq/gke-ap-instrumentation"
+  helm_command+=" --set operator.instrumentationImage.repository=${image_repository_prefix}instrumentation"
   helm_command+=" --set operator.instrumentationImage.tag=$image_tag"
-  helm_command+=" --set operator.collectorImage.repository=ghcr.io/dash0hq/gke-ap-collector"
+  helm_command+=" --set operator.collectorImage.repository=${image_repository_prefix}collector"
   helm_command+=" --set operator.collectorImage.tag=$image_tag"
-  helm_command+=" --set operator.configurationReloaderImage.repository=ghcr.io/dash0hq/gke-ap-configuration-reloader"
+  helm_command+=" --set operator.configurationReloaderImage.repository=${image_repository_prefix}configuration-reloader"
   helm_command+=" --set operator.configurationReloaderImage.tag=$image_tag"
-  helm_command+=" --set operator.filelogOffsetSyncImage.repository=ghcr.io/dash0hq/gke-ap-filelog-offset-sync"
+  helm_command+=" --set operator.filelogOffsetSyncImage.repository=${image_repository_prefix}filelog-offset-sync"
   helm_command+=" --set operator.filelogOffsetSyncImage.tag=$image_tag"
-  helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=ghcr.io/dash0hq/gke-ap-filelog-offset-volume-ownership"
+  helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=${image_repository_prefix}filelog-offset-volume-ownership"
   helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.tag=$image_tag"
-  helm_command+=" --set operator.targetAllocatorImage.repository=ghcr.io/dash0hq/gke-ap-target-allocator"
+  helm_command+=" --set operator.targetAllocatorImage.repository=${image_repository_prefix}target-allocator"
   helm_command+=" --set operator.targetAllocatorImage.tag=$image_tag"
 fi
 helm_command+=" $helm_release_name"

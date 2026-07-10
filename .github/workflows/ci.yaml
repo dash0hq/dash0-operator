@@ -243,6 +243,94 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 
+  # Runs the GKE Autopilot WorkloadAllowlist check for every commit pushed to main, in parallel with the e2e tests. The
+  # check uses the local Helm chart from this commit together with the official images that build_and_push_images just
+  # pushed with the "main-dev" tag (the official ghcr.io/dash0hq repositories are allow-listed on the GKE Autopilot
+  # cluster). The standalone gke-ap-workload-allowlist-check.yaml workflow continues to handle the post-publish check
+  # (via workflow_run) and manual/PR-comment runs (via workflow_dispatch).
+  gke_ap_workload_allowlist_check:
+    name: GKE Autopilot WorkloadAllowlist Check
+    needs:
+      - build_and_push_images
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    # This check uses a shared GKE Autopilot cluster, allow only one execution at a time across this job and the
+    # standalone gke-ap-workload-allowlist-check.yaml workflow (which uses the same concurrency group).
+    concurrency:
+      group: gke-ap-workload-allowlist-check-concurrency-group
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - id: 'auth'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: '${{ secrets.GKE_SA_KEY }}'
+
+      # get the GKE credentials so we can deploy to the cluster
+      - uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395
+        with:
+          project_id: ${{ secrets.GKE_PROJECT }}
+          cluster_name: ci-workload-allowlist-check
+          location: europe-central2
+
+      - name: run check
+        env:
+          USE_LOCAL_CHART: 'true'
+          IMAGE_REPOSITORY_PREFIX: ghcr.io/dash0hq/
+          IMAGE_TAG: main-dev
+        run: |-
+          .github/workflows/scripts/gke-ap-workload-allowlist-check.sh
+
+      - name: send Slack notification on success
+        if: success()
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
+        with:
+          errors: true
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          # language=YAML
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: 'GKE Autopilot WorkloadAllowlist check successful'
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: ':white_check_mark: GKE Autopilot WorkloadAllowlist check successful'
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
+                  - type: mrkdwn
+                    text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
+
+      - name: send Slack notification on failure
+        if: failure()
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
+        with:
+          errors: true
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          # language=YAML
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: 'GKE Autopilot WorkloadAllowlist check has failed'
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: ':x: GKE Autopilot WorkloadAllowlist check has failed'
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
+                  - type: mrkdwn
+                    text: ':diff: <${{ github.event.head_commit.url }}|Commit>'
+
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
     runs-on: ubuntu-latest
