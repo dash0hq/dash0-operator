@@ -1,0 +1,10 @@
+# Note: All test cases share the same Python installation, i.e.
+# images/instrumentation/test/python-dependency-conflict/test-cases/xxx/requirements.txt and
+# images/instrumentation/test/python-dependency-conflict/test-cases/yyy/requirements.txt are not isolated from each
+# other. Please keep that in mind when designing test cases.
+
+# The Dash0 Python instrumentation depends on a recent urllib3 (pinned to <2.7.1, which resolves to a 2.7.x release).
+# This test case deliberately installs an older, conflicting urllib3 version; app.py verifies that the Dash0
+# auto-instrumentation detects the dependency version conflict and deactivates itself instead of running with an
+# incompatible dependency.
+urllib3==1.26.20

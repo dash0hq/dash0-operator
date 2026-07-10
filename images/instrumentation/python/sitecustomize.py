@@ -15,14 +15,13 @@ minimum_python_minor_version = 10
 double_instrumentation_check_packages = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
-    "opentelemetry-exporter-otlp-proto-common",
-    "opentelemetry-exporter-otlp-proto-grpc",
-    "opentelemetry-exporter-otlp-proto-http",
-    "opentelemetry-exporter-otlp-proto-http",
+    "opentelemetry-exporter-otlp-pyproto-common",
+    "opentelemetry-exporter-otlp-pyproto-http",
     "opentelemetry-exporter-prometheus",
     "opentelemetry-instrumentation",
     "opentelemetry-sdk",
     "opentelemetry-proto",
+    "opentelemetry-pyproto",
 ]
 
 debug_enabled = os.environ.get("OTEL_INJECTOR_LOG_LEVEL") == "debug"
