@@ -249,7 +249,7 @@ jobs:
     name: GKE Autopilot WorkloadAllowlist Check
     needs:
       - build_and_push_images
-    if: ${{ always() && needs.build_and_push_images.result == 'success' }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
     uses: ./.github/workflows/gke-ap-workload-allowlist-check.yaml
     with:
       use_local_chart: true
