@@ -43,7 +43,92 @@ else
 fi
 helm_release_name=dash0-operator
 
+# Directory and archive used to collect cluster diagnostics when the check fails. These paths are relative to the
+# repository root (we cd into it above), which is also the working directory of the GitHub Actions job, so the workflow
+# can upload the archive as an artifact.
+diagnostics_dir=gke-ap-allowlist-check-diagnostics
+diagnostics_archive="${diagnostics_dir}.tar.gz"
+
+# Set to "true" once all checks have passed. As long as this is not "true" when cleanup() runs, we assume the check has
+# failed and collect cluster diagnostics before tearing everything down.
+check_succeeded=false
+
+# Collects diagnostic information from the cluster (workloads, pods, their logs, events, config maps and the relevant
+# custom resources) into $diagnostics_dir and compresses it into $diagnostics_archive. This runs at the start of
+# cleanup() when the check has failed, that is, before "helm uninstall" removes everything from the cluster.
+collect_diagnostics() {
+  set +e
+  echo "the check did not succeed, collecting cluster diagnostics into \"$diagnostics_dir\" before cleanup"
+  mkdir -p "$diagnostics_dir"
+
+  # Runs a command and stores its combined stdout/stderr in $diagnostics_dir/$1. Best effort: a failing command must
+  # never abort the diagnostics collection or the cleanup.
+  dump() {
+    local file="$diagnostics_dir/$1"
+    shift
+    mkdir -p "$(dirname "$file")"
+    {
+      echo "\$ $*"
+      echo
+      "$@" 2>&1
+    } > "$file" || echo "(command exited with a non-zero status)" >> "$file"
+  }
+
+  # Cluster-scoped GKE Autopilot allowlist resources. A mismatch or a not-yet-ready AllowlistSynchronizer is the most
+  # likely reason for this check to fail.
+  dump allowlistsynchronizers-get.txt kubectl get allowlistsynchronizers.auto.gke.io -o wide
+  dump allowlistsynchronizers-describe.txt kubectl describe allowlistsynchronizers.auto.gke.io
+  dump workloadallowlists-get.txt kubectl get workloadallowlists.auto.gke.io -o wide
+  dump workloadallowlists-describe.txt kubectl describe workloadallowlists.auto.gke.io
+
+  # Dash0 custom resources.
+  dump dash0monitorings-get.txt kubectl get dash0monitorings.operator.dash0.com --all-namespaces -o wide
+  dump dash0monitorings-describe.txt kubectl describe dash0monitorings.operator.dash0.com --all-namespaces
+  dump dash0operatorconfigurations-get.txt kubectl get dash0operatorconfigurations.operator.dash0.com -o wide
+  dump dash0operatorconfigurations-describe.txt kubectl describe dash0operatorconfigurations.operator.dash0.com
+
+  # Cluster-wide events (scheduling and allowlist rejections often show up here).
+  dump events-all-namespaces.txt kubectl get events --all-namespaces --sort-by=.lastTimestamp
+
+  local namespace
+  for namespace in "$operator_namespace" "$monitored_namespace"; do
+    dump "$namespace/workloads-get.txt" \
+      kubectl get deployments,daemonsets,statefulsets,replicasets,jobs,pods,configmaps,services \
+      --namespace "$namespace" -o wide
+    dump "$namespace/workloads-describe.txt" \
+      kubectl describe deployments,daemonsets,statefulsets,jobs --namespace "$namespace"
+    dump "$namespace/pods-describe.txt" kubectl describe pods --namespace "$namespace"
+    dump "$namespace/configmaps-describe.txt" kubectl describe configmaps --namespace "$namespace"
+    dump "$namespace/events.txt" kubectl get events --namespace "$namespace" --sort-by=.lastTimestamp
+
+    # Collect logs (all containers, current and previous) for every pod in the namespace.
+    local pod
+    while IFS= read -r pod; do
+      [[ -z "$pod" ]] && continue
+      dump "$namespace/logs-${pod}.txt" \
+        kubectl logs --namespace "$namespace" "$pod" --all-containers=true --prefix=true
+      # Previous logs only exist for containers that have restarted; ignore the file if there are none.
+      if ! kubectl logs --namespace "$namespace" "$pod" --all-containers=true --prefix=true --previous \
+        > "$diagnostics_dir/$namespace/logs-${pod}-previous.txt" 2>/dev/null; then
+        rm -f "$diagnostics_dir/$namespace/logs-${pod}-previous.txt"
+      fi
+    done < <(kubectl get pods --namespace "$namespace" \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null)
+  done
+
+  if tar -czf "$diagnostics_archive" "$diagnostics_dir"; then
+    echo "cluster diagnostics have been collected in \"$diagnostics_archive\""
+  else
+    echo "WARNING: failed to create the diagnostics archive \"$diagnostics_archive\""
+  fi
+  set -e
+}
+
 cleanup() {
+  if [[ "$check_succeeded" != "true" ]]; then
+    collect_diagnostics
+  fi
+
   set +e
   set -x
   echo "running cleanup"
@@ -234,3 +319,6 @@ echo "the target-allocator is ready now"
 echo
 echo "success: all checks have passed"
 echo
+
+# Mark the check as successful so that cleanup() does not collect diagnostics.
+check_succeeded=true
