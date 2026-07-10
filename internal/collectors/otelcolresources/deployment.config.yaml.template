@@ -1,5 +1,11 @@
 {{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 -}}
 {{- $hasNamespacedExporters := gt (len .Exporters.Namespaced) 0 -}}
+{{- /* Signal Control is only applied to Dash0 exporters. When the default export list has a non-Dash0 exporter (with
+SC enabled), the default metrics have to be split (Dash0 -> SC, non-Dash0 -> passthrough) via routing, like the
+namespaced case. $useRouting drives the metrics routing; the k8s-events logs pipeline carries no SC and keeps using
+$hasNamespacedExporters. */}}
+{{- $hasDefaultPassthrough := and .SignalControl.Enabled (gt (len .Exporters.DefaultPassthrough) 0) -}}
+{{- $useRouting := or $hasNamespacedExporters $hasDefaultPassthrough -}}
 
 extensions:
   health_check:
@@ -17,11 +23,10 @@ connectors:
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
 
-  {{- if $hasNamespacedExporters }}
-  {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
+  {{- if and $useRouting .KubernetesInfrastructureMetricsCollectionEnabled }}
   routing/metrics:
 {{- if .SignalControl.Enabled }}
-    default_pipelines: [metrics/sc/default]
+    default_pipelines: [metrics/sc/default{{- if $hasDefaultPassthrough }}, metrics/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [metrics/export/default]
 {{- end }}
@@ -48,7 +53,7 @@ connectors:
     {{- end }}
 {{- end }}
   {{- end }}
-  {{- if $hasEventCollectionEnabledForAtLeastOneNamespace }}
+  {{- if and $hasNamespacedExporters $hasEventCollectionEnabledForAtLeastOneNamespace }}
   routing/logs:
     default_pipelines: [logs/export/default]
     error_mode: ignore
@@ -59,7 +64,6 @@ connectors:
         pipelines:
           - logs/export/ns/{{ $ns }}
     {{- end }}
-  {{- end }}
   {{- end }}
 
 receivers:
@@ -635,20 +639,20 @@ service:
         - transform/metrics/custom_telemetry_transform
         {{- end }}
         - transform/resources
-        {{- if and .SignalControl.Enabled (not $hasNamespacedExporters) }}
+        {{- if and .SignalControl.Enabled (not $useRouting) }}
         - resource/signal_control_attributes
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
         {{- end }}
         {{- end }}
       exporters:
-        {{- if $hasNamespacedExporters }}
+        {{- if $useRouting }}
         - routing/metrics
         {{- else }}
         - forward/metrics-default-exporter
         {{- end }}
 
-{{- if and .SignalControl.Enabled $hasNamespacedExporters }}
+{{- if and .SignalControl.Enabled $useRouting }}
     metrics/sc/default:
       receivers:
         - routing/metrics
@@ -663,7 +667,7 @@ service:
 
     metrics/export/default:
       receivers:
-        {{- if and $hasNamespacedExporters (not .SignalControl.Enabled) }}
+        {{- if and $useRouting (not .SignalControl.Enabled) }}
         - routing/metrics
         {{- else }}
         - forward/metrics-default-exporter
@@ -672,9 +676,28 @@ service:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
+        {{- if .SignalControl.Enabled }}
+        {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+        {{- else }}
         {{- range $i, $exporter := .Exporters.Default }}
         - {{ $exporter.Name }}
         {{- end }}
+        {{- end }}
+
+{{- if $hasDefaultPassthrough }}
+    metrics/export/default/passthrough:
+      receivers:
+        - routing/metrics
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := .Exporters.DefaultPassthrough }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
 
 {{- if .SignalControl.Enabled }}
     {{- range $ns, $sc := $.Exporters.NamespaceSC }}

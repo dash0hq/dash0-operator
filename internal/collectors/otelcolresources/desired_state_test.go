@@ -418,42 +418,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(collectorContainer.Resources.Requests.StorageEphemeral().String()).To(Equal("1280Mi"))
 	})
 
-	It("should scale the trace reservoir storage by the number of per-namespace samplers", func() {
-		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			OperatorNamespace: OperatorNamespace,
-			NamePrefix:        namePrefix,
-			// default path + namespace1 (which has Dash0 dataset branches -> one per-namespace sampler) = 2 disk
-			// reservoirs sharing the single trace-reservoir volume.
-			Exporters: cmTestNamespacedMultiDatasetExporters(),
-			Images:    TestImages,
-			SignalControl: SignalControlConfig{
-				Enabled:                       true,
-				SamplingEnabled:               true,
-				SamplingReservoirType:         "disk",
-				SamplingReservoirMaxDiskBytes: 1024 * 1024 * 1024, // 1Gi -> 1280Mi per reservoir (x1.25)
-				SamplingReservoirMetricLevel:  "basic",
-				Endpoint:                      "decision-maker.example.com:443",
-				ApiEndpoint:                   "https://control-plane-api.dash0.com",
-				Dataset:                       "default",
-			},
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-		}, nil, util.ExtraConfigDefaults)
-		Expect(err).ToNot(HaveOccurred())
-
-		daemonSet := getDaemonSet(desiredState)
-		Expect(daemonSet).NotTo(BeNil())
-		daemonSetPodSpec := daemonSet.Spec.Template.Spec
-
-		// One default reservoir + one per-namespace reservoir = 2 x 1280Mi = 2560Mi.
-		reservoirVolume := FindVolumeByName(daemonSetPodSpec.Volumes, "trace-reservoir")
-		Expect(reservoirVolume).NotTo(BeNil())
-		Expect(reservoirVolume.VolumeSource.EmptyDir.SizeLimit).NotTo(BeNil())
-		Expect(reservoirVolume.VolumeSource.EmptyDir.SizeLimit.String()).To(Equal("2560Mi"))
-
-		collectorContainer := daemonSetPodSpec.Containers[0]
-		Expect(collectorContainer.Resources.Requests.StorageEphemeral().String()).To(Equal("2560Mi"))
-	})
-
 	It("should not override an explicit ephemeral-storage request", func() {
 		extraConfig := util.ExtraConfigDefaults
 		extraConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{

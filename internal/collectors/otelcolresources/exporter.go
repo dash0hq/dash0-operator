@@ -91,6 +91,31 @@ func (e *otlpExporters) NamespaceSC() map[string]namespaceSC {
 	return result
 }
 
+// DefaultDash0Exporters returns the default-path Dash0 exporters, i.e. the ones that receive Signal Control
+// (Signal Control is only supported for Dash0 exporters). The SC dataset for the default path remains the
+// cluster-wide .SignalControl.Dataset (first default export's dataset).
+func (e *otlpExporters) DefaultDash0Exporters() []otlpExporter {
+	out := make([]otlpExporter, 0, len(e.Default))
+	for _, exp := range e.Default {
+		if exp.IsDash0() {
+			out = append(out, exp)
+		}
+	}
+	return out
+}
+
+// DefaultPassthrough returns the default-path non-Dash0 exporters (generic gRPC/HTTP). They receive the raw
+// telemetry without any Signal Control, mirroring the per-namespace passthrough behavior.
+func (e *otlpExporters) DefaultPassthrough() []otlpExporter {
+	out := make([]otlpExporter, 0, len(e.Default))
+	for _, exp := range e.Default {
+		if !exp.IsDash0() {
+			out = append(out, exp)
+		}
+	}
+	return out
+}
+
 type defaultOtlpExporters = []otlpExporter
 
 type namespacedOtlpExporters = map[string][]otlpExporter

@@ -1016,7 +1016,7 @@ func assembleCollectorDaemonSetVolumes(
 	}
 
 	if config.SignalControl.UsesDiskReservoir() {
-		traceReservoirSizeLimit := reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes, diskReservoirCount(config))
+		traceReservoirSizeLimit := reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
 		volumes = append(volumes, corev1.Volume{
 			Name: "trace-reservoir",
 			VolumeSource: corev1.VolumeSource{
@@ -1044,27 +1044,12 @@ const reservoirDefaultMaxDiskBytes int64 = 1024 * 1024 * 1024 // 1Gi
 // this floor to keep the reservoir functional.
 const reservoirMaxDiskBytesFloor int64 = 64 * 1024 * 1024 // 64Mi
 
-// reservoirDerivedStorage returns the Kubernetes storage quantity derived from the reservoir's max_disk_bytes by
-// applying reservoirStorageMargin, multiplied by reservoirCount. The daemonset renders one disk reservoir for the
-// default sampling path plus one per namespace that has a Dash0 dataset branch; they all share the single
-// trace-reservoir volume, so it must be sized for their combined on-disk usage.
-func reservoirDerivedStorage(maxDiskBytes int64, reservoirCount int) resource.Quantity {
-	derived := int64(math.Ceil(float64(maxDiskBytes)*reservoirStorageMargin)) * int64(reservoirCount)
+// reservoirDerivedStorage returns the Kubernetes storage quantity derived from the reservoir's
+// max_disk_bytes by applying reservoirStorageMargin. All sampling paths share a single dash0sampling
+// processor (one reservoir), so no per-namespace scaling is applied.
+func reservoirDerivedStorage(maxDiskBytes int64) resource.Quantity {
+	derived := int64(math.Ceil(float64(maxDiskBytes) * reservoirStorageMargin))
 	return *resource.NewQuantity(derived, resource.BinarySI)
-}
-
-// diskReservoirCount returns the number of disk-backed trace reservoirs the daemonset collector renders when the
-// disk reservoir is active: one for the default sampling path plus one for each namespace that has at least one
-// Dash0 dataset branch (each such namespace gets its own dash0sampling instance — see the collector config
-// templates). All of them share the single trace-reservoir EmptyDir volume.
-func diskReservoirCount(config *oTelColConfig) int {
-	count := 1
-	for _, sc := range config.Exporters.NamespaceSC() {
-		if len(sc.DatasetBranches) > 0 {
-			count++
-		}
-	}
-	return count
 }
 
 func assembleCollectorDaemonSetVolumeMounts(
@@ -1237,7 +1222,7 @@ func assembleDaemonSetCollectorContainer(
 			requests = corev1.ResourceList{}
 		}
 		requests[corev1.ResourceEphemeralStorage] =
-			reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes, diskReservoirCount(config))
+			reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
 		collectorResources.Requests = requests
 	}
 
