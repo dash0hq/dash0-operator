@@ -41,6 +41,12 @@ express a Dash0-vs-passthrough split, because the destination is not a record at
 {{- $splitDefault := and $scDefault (gt (len .Exporters.DefaultPassthrough) 0) -}}
 {{- $hasNamespacedDash0 := .Exporters.HasNamespacedDash0Exporters -}}
 {{- $samplingActive := and .SignalControl.SamplingEnabled (or $scDefault $hasNamespacedDash0) -}}
+{{- /*
+The dash0metricrecorder (extension + receiver) carries dash0filter's spam-filter counters into a dedicated metrics
+pipeline. Wired per branch so each dataset's counts egress through its own exporter (ingest keys the dataset off the
+Dash0-Dataset header): a default-path instance ($metricRecorderActive) plus one per (namespace, dataset) branch below.
+*/ -}}
+{{- $metricRecorderActive := and .SignalControl.SpamFilterEnabled $scDefault -}}
 
 extensions:
   health_check:
@@ -55,6 +61,16 @@ extensions:
   dash0settingsonedgeextension:
     endpoint: {{ .SignalControl.ApiEndpoint }}
     auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
+{{- end }}
+{{- if $metricRecorderActive }}
+  dash0metricrecorder: {}
+{{- end }}
+{{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
+{{- end }}
+{{- end }}
 {{- end }}
 
 connectors:
@@ -268,6 +284,18 @@ receivers:
         max_recv_msg_size_mib: 8388608
       http:
         endpoint: "{{ .SelfIpReference }}:4318"
+{{- if $metricRecorderActive }}
+  dash0metricrecorder:
+    metric_recorder: dash0metricrecorder
+{{- end }}
+{{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- end }}
+{{- end }}
+{{- end }}
 
   {{- if .KubeletStatsReceiverConfig.Enabled }}
   kubeletstats:
@@ -1233,8 +1261,11 @@ processors:
   dash0operation: {}
 {{- end }}
 {{- if .SignalControl.SpamFilterEnabled }}
-{{- if or .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- if or $metricRecorderActive .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
   dash0filter:
+{{- if $metricRecorderActive }}
+    metric_recorder: dash0metricrecorder
+{{- end }}
 {{- if .SignalControl.SpamFilterCacheExpiration }}
     cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
 {{- end }}
@@ -1243,6 +1274,20 @@ processors:
 {{- end }}
 {{- else }}
   dash0filter: {}
+{{- end }}
+{{- end }}
+{{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- if $.SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ $.SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if $.SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ $.SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- if .SignalControl.SamplingEnabled }}
@@ -1371,6 +1416,16 @@ service:
   {{- end }}
   {{- if .SignalControl.Enabled }}
   - dash0settingsonedgeextension
+  {{- end }}
+  {{- if $metricRecorderActive }}
+  - dash0metricrecorder
+  {{- end }}
+  {{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled }}
+  {{- range $ns, $sc := .Exporters.NamespaceSC }}
+  {{- range $b := $sc.DatasetBranches }}
+  - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+  {{- end }}
+  {{- end }}
   {{- end }}
 
   pipelines:
@@ -1526,7 +1581,7 @@ service:
         - dash0resource
         - dash0operation
         {{- if $.SignalControl.SpamFilterEnabled }}
-        - dash0filter
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
       exporters:
       {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
@@ -1676,6 +1731,38 @@ service:
         - forward/metrics-default-exporter
 {{- end }}
 
+{{- if $metricRecorderActive }}
+    metrics/spam-counters:
+      receivers:
+        - dash0metricrecorder
+      processors:
+        - batch
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        - forward/metrics-default-exporter
+{{- end }}
+
+{{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+    metrics/spam-counters/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+      processors:
+        - batch
+      exporters:
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
     metrics/export/default:
       receivers:
         {{- if and $useRouting (not $scDefault) }}
@@ -1720,7 +1807,7 @@ service:
       processors:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- if $.SignalControl.SpamFilterEnabled }}
-        - dash0filter
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
@@ -1889,7 +1976,7 @@ service:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         - dash0resource
         {{- if $.SignalControl.SpamFilterEnabled }}
-        - dash0filter
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}

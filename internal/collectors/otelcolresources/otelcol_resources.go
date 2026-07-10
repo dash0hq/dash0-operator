@@ -854,7 +854,7 @@ func signalControlConfigFromResource(
 		endpoint = resource.Spec.Sampling.DecisionMakerEndpoint
 	}
 	if resource.Spec.ControlPlaneApiEndpoint != "" {
-		apiEndpoint = resource.Spec.ControlPlaneApiEndpoint
+		apiEndpoint = deriveEdgeSettingsApiEndpoint(resource.Spec.ControlPlaneApiEndpoint)
 	}
 	if !hasDash0Export {
 		logger.WarnTelemetryCollectionIssue("No Dash0 export is configured in the operator configuration resource. The " +
@@ -868,7 +868,7 @@ func signalControlConfigFromResource(
 	}
 
 	if endpoint == "" && apiEndpoint == "" {
-		logger.Info("Signal Control is enabled but no Decision Maker or control plane API endpoints could be " +
+		logger.Info("Signal Control is enabled but no Decision Maker or Dash0 API endpoints could be " +
 			"derived from the operator configuration resource (and no explicit overrides are set). Signal " +
 			"Control will remain disabled in the collector config until a valid operator configuration with a " +
 			"Dash0 export is available.")
@@ -914,25 +914,21 @@ func deriveDash0EndpointsAndDataset(operatorConfig *dash0v1alpha1.Dash0OperatorC
 	for _, export := range exports {
 		if export.Dash0 != nil {
 			dmEndpoint := util.DeriveDecisionMakerEndpoint(export.Dash0.Endpoint)
-			cpaEndpoint := deriveCpaEndpoint(export.Dash0.ApiEndpoint)
+			apiEndpoint := deriveEdgeSettingsApiEndpoint(export.Dash0.ApiEndpoint)
 			dataset := export.Dash0.Dataset
 			if dataset == "" {
 				dataset = util.DatasetDefault
 			}
-			return dmEndpoint, cpaEndpoint, dataset
+			return dmEndpoint, apiEndpoint, dataset
 		}
 	}
 	return "", "", util.DatasetDefault
 }
 
-// deriveCpaEndpoint derives the control-plane API endpoint from a Dash0 API endpoint.
-// This assumes the input is a Dash0-hosted API endpoint (e.g., https://api.eu-central-1.aws.dash0.com).
-func deriveCpaEndpoint(apiEndpoint string) string {
-	host := strings.TrimPrefix(apiEndpoint, "https://")
-	host = strings.TrimPrefix(host, "http://")
-	host = strings.TrimSuffix(host, "/")
-	if idx := strings.Index(host, "dash0"); idx > 0 {
-		return "https://control-plane-api." + host[idx:]
-	}
-	return apiEndpoint
+// deriveEdgeSettingsApiEndpoint returns the endpoint the dash0settingsonedgeextension queries for edge settings
+// (it appends /api/edge/settings). Edge settings are served by the region-bound Dash0 public API, so the endpoint
+// is the Dash0 API endpoint from the operator configuration as-is (e.g. https://api.eu-central-1.aws.dash0.com);
+// only a trailing slash is trimmed so the extension's path join does not produce a double slash.
+func deriveEdgeSettingsApiEndpoint(apiEndpoint string) string {
+	return strings.TrimSuffix(apiEndpoint, "/")
 }

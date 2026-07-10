@@ -590,7 +590,7 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.Endpoint).To(Equal(util.DeriveDecisionMakerEndpoint(EndpointDash0Test)))
-		Expect(config.ApiEndpoint).To(Equal(deriveCpaEndpoint(ApiEndpointTest)))
+		Expect(config.ApiEndpoint).To(Equal(deriveEdgeSettingsApiEndpoint(ApiEndpointTest)))
 	})
 
 	It("should use explicit decision maker endpoint when set", func() {
@@ -607,7 +607,7 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.Enabled).To(BeTrue())
 		Expect(config.Endpoint).To(Equal("custom-dm.example.com:443"))
 		// CPA endpoint should still be derived
-		Expect(config.ApiEndpoint).To(Equal(deriveCpaEndpoint(ApiEndpointTest)))
+		Expect(config.ApiEndpoint).To(Equal(deriveEdgeSettingsApiEndpoint(ApiEndpointTest)))
 	})
 
 	It("should use explicit control plane API endpoint when set", func() {
