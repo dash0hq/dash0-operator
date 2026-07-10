@@ -419,9 +419,30 @@ func cmTestNamespacedMultiDatasetExporters() otlpExporters {
 }
 
 // cmTestMixedDefaultOtlpExporters models a default export list with both a Dash0 exporter and a non-Dash0
-// (passthrough) exporter, and no namespaced exporters, to exercise the default-path Dash0/passthrough split (SC
-// must not be applied to the non-Dash0 default exporter).
+// (passthrough) exporter, to exercise the default-path Dash0/passthrough split (SC must not be applied to the
+// non-Dash0 default exporter). A namespaced exporter is included because the default split is only performed for
+// configs that use routing, i.e. that have namespaced exporters.
 func cmTestMixedDefaultOtlpExporters() otlpExporters {
+	export := Dash0ExportWithEndpointAndToken()
+	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(export.Dash0, "default", auth)
+	Expect(err).ToNot(HaveOccurred())
+	grpcExporterDefault, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "default_1")
+	Expect(err).ToNot(HaveOccurred())
+	dash0ExporterNs1, err := convertDash0ExporterToOtlpExporter(export.Dash0, "ns/"+namespace1, auth)
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default: []otlpExporter{*dash0ExporterDefault, *grpcExporterDefault},
+		Namespaced: map[string][]otlpExporter{
+			namespace1: {*dash0ExporterNs1},
+		},
+	}
+}
+
+// cmTestMixedDefaultNoNamespacedExporters is the same mixed (Dash0 + non-Dash0) default as
+// cmTestMixedDefaultOtlpExporters but with NO namespaced exporters. Used to verify that a config without namespaced
+// exporters renders no routing connectors (which would otherwise have an empty, invalid table) and keeps SC inline.
+func cmTestMixedDefaultNoNamespacedExporters() otlpExporters {
 	export := Dash0ExportWithEndpointAndToken()
 	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
 	dash0ExporterDefault, err := convertDash0ExporterToOtlpExporter(export.Dash0, "default", auth)
@@ -2103,6 +2124,37 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(pipelines).To(HaveKey("traces/export/default/passthrough"))
 			Expect(readPipelineExporters(pipelines, "traces/export/default/passthrough")).To(ConsistOf(grpcName))
 			Expect(readPipelineProcessors(pipelines, "traces/export/default/passthrough")).ToNot(ContainElement("resource/signal_control_attributes"))
+		})
+
+		It("should not render routing connectors or split the default without namespaced exporters [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMixedDefaultNoNamespacedExporters(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			pipelines := readPipelines(collectorConfig)
+
+			// Without namespaced exporters there is no routing (an empty routing table would be rejected by the
+			// collector), so SC stays inline in common-processors and the whole default is exported as-is.
+			Expect(connectors).ToNot(HaveKey("routing/traces"))
+			Expect(connectors).ToNot(HaveKey("routing/traces-sampled"))
+			Expect(connectors).ToNot(HaveKey("routing/metrics"))
+			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).To(ContainElement("resource/signal_control_attributes"))
+			Expect(readPipelineExporters(pipelines, "traces/export/default")).
+				To(ContainElements("otlp_grpc/dash0/default", "otlp_grpc/default_1"))
 		})
 
 		It("should route namespaced traces before sampling when Signal Control is enabled [DaemonSet]", func() {

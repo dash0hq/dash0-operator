@@ -21,11 +21,14 @@ use option 2.
 */}}
 
 {{- $hasNamespacedExporters := gt (len .Exporters.Namespaced) 0 -}}
-{{- /* A non-Dash0 default exporter must not receive Signal Control, so when one is present (with SC enabled) the
-default telemetry has to be split (Dash0 -> SC, non-Dash0 -> passthrough) via the routing connector, just like the
-namespaced case. $useRouting is true whenever routing is needed for either reason. */}}
-{{- $hasDefaultPassthrough := and .SignalControl.Enabled (gt (len .Exporters.DefaultPassthrough) 0) -}}
-{{- $useRouting := or $hasNamespacedExporters $hasDefaultPassthrough -}}
+{{- /* Routing (splitting telemetry per destination) is only used when there are namespaced exporters: the routing
+connector requires a non-empty table, keyed on k8s.namespace.name. $useRouting is an alias for that condition.
+$splitDefault: when a (namespaced) config's DEFAULT export list mixes Dash0 + non-Dash0 exporters with SC enabled,
+the default telemetry is also split — SC'd -> default Dash0 exporters, raw -> default passthrough. Non-namespaced
+configs do not split the default (SC stays inline in common-processors, applied to all default exporters, as before
+this feature); splitting the non-namespaced default would need a fork rather than routing (see note). */}}
+{{- $useRouting := $hasNamespacedExporters -}}
+{{- $splitDefault := and $hasNamespacedExporters .SignalControl.Enabled (gt (len .Exporters.DefaultDash0Exporters) 0) (gt (len .Exporters.DefaultPassthrough) 0) -}}
 
 extensions:
   health_check:
@@ -130,7 +133,7 @@ connectors:
   {{- if $useRouting }}
   routing/traces:
 {{- if .SignalControl.Enabled }}
-    default_pipelines: [traces/signal-control-pre-sampling{{- if $hasDefaultPassthrough }}, traces/export/default/passthrough{{- end }}]
+    default_pipelines: [traces/signal-control-pre-sampling{{- if $splitDefault }}, traces/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [traces/export/default]
 {{- end }}
@@ -172,7 +175,7 @@ connectors:
 {{- end }}
   routing/metrics:
 {{- if .SignalControl.Enabled }}
-    default_pipelines: [metrics/sc/default{{- if $hasDefaultPassthrough }}, metrics/export/default/passthrough{{- end }}]
+    default_pipelines: [metrics/sc/default{{- if $splitDefault }}, metrics/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [metrics/export/default]
 {{- end }}
@@ -200,7 +203,7 @@ connectors:
 {{- end }}
   routing/logs:
 {{- if .SignalControl.Enabled }}
-    default_pipelines: [logs/sc/default{{- if $hasDefaultPassthrough }}, logs/export/default/passthrough{{- end }}]
+    default_pipelines: [logs/sc/default{{- if $splitDefault }}, logs/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [logs/export/default]
 {{- end }}
@@ -1441,8 +1444,14 @@ service:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
       {{- end }}
+      {{- if $splitDefault }}
       {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
         - {{ $exporter.Name }}
+      {{- end }}
+      {{- else }}
+      {{- range $i, $exporter := .Exporters.Default }}
+        - {{ $exporter.Name }}
+      {{- end }}
       {{- end }}
 {{- end }}
 
@@ -1474,7 +1483,7 @@ service:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
       {{- end }}
-      {{- if .SignalControl.Enabled }}
+      {{- if $splitDefault }}
       {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
         - {{ $exporter.Name }}
       {{- end }}
@@ -1484,7 +1493,7 @@ service:
       {{- end }}
       {{- end }}
 
-{{- if $hasDefaultPassthrough }}
+{{- if $splitDefault }}
     traces/export/default/passthrough:
       receivers:
         - routing/traces
@@ -1672,7 +1681,7 @@ service:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
-        {{- if .SignalControl.Enabled }}
+        {{- if $splitDefault }}
         {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
         - {{ $exporter.Name }}
         {{- end }}
@@ -1682,7 +1691,7 @@ service:
         {{- end }}
         {{- end }}
 
-{{- if $hasDefaultPassthrough }}
+{{- if $splitDefault }}
     metrics/export/default/passthrough:
       receivers:
         - routing/metrics
@@ -1840,7 +1849,7 @@ service:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
-        {{- if .SignalControl.Enabled }}
+        {{- if $splitDefault }}
         {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
         - {{ $exporter.Name }}
         {{- end }}
@@ -1850,7 +1859,7 @@ service:
         {{- end }}
         {{- end }}
 
-{{- if $hasDefaultPassthrough }}
+{{- if $splitDefault }}
     logs/export/default/passthrough:
       receivers:
         - routing/logs

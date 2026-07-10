@@ -1,11 +1,11 @@
 {{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 -}}
 {{- $hasNamespacedExporters := gt (len .Exporters.Namespaced) 0 -}}
-{{- /* Signal Control is only applied to Dash0 exporters. When the default export list has a non-Dash0 exporter (with
-SC enabled), the default metrics have to be split (Dash0 -> SC, non-Dash0 -> passthrough) via routing, like the
-namespaced case. $useRouting drives the metrics routing; the k8s-events logs pipeline carries no SC and keeps using
-$hasNamespacedExporters. */}}
-{{- $hasDefaultPassthrough := and .SignalControl.Enabled (gt (len .Exporters.DefaultPassthrough) 0) -}}
-{{- $useRouting := or $hasNamespacedExporters $hasDefaultPassthrough -}}
+{{- /* Routing is only used with namespaced exporters (the routing connector requires a non-empty table). $useRouting
+is an alias for that. $splitDefault: when a namespaced config's DEFAULT export list mixes Dash0 + non-Dash0 exporters
+with SC enabled, the default metrics are split too (SC'd -> default Dash0 exporters, raw -> default passthrough).
+Non-namespaced configs do not split the default. The k8s-events logs pipeline carries no SC (keeps $hasNamespacedExporters). */}}
+{{- $useRouting := $hasNamespacedExporters -}}
+{{- $splitDefault := and $hasNamespacedExporters .SignalControl.Enabled (gt (len .Exporters.DefaultDash0Exporters) 0) (gt (len .Exporters.DefaultPassthrough) 0) -}}
 
 extensions:
   health_check:
@@ -26,7 +26,7 @@ connectors:
   {{- if and $useRouting .KubernetesInfrastructureMetricsCollectionEnabled }}
   routing/metrics:
 {{- if .SignalControl.Enabled }}
-    default_pipelines: [metrics/sc/default{{- if $hasDefaultPassthrough }}, metrics/export/default/passthrough{{- end }}]
+    default_pipelines: [metrics/sc/default{{- if $splitDefault }}, metrics/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [metrics/export/default]
 {{- end }}
@@ -676,7 +676,7 @@ service:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
-        {{- if .SignalControl.Enabled }}
+        {{- if $splitDefault }}
         {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
         - {{ $exporter.Name }}
         {{- end }}
@@ -686,7 +686,7 @@ service:
         {{- end }}
         {{- end }}
 
-{{- if $hasDefaultPassthrough }}
+{{- if $splitDefault }}
     metrics/export/default/passthrough:
       receivers:
         - routing/metrics
