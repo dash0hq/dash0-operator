@@ -243,65 +243,23 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 
-  # Runs the GKE Autopilot WorkloadAllowlist check for every commit pushed to main, in parallel with the e2e tests. The
-  # check uses the local Helm chart from this commit together with the official images that build_and_push_images just
-  # pushed with the "main-dev" tag (the official ghcr.io/dash0hq repositories are allow-listed on the GKE Autopilot
-  # cluster). The standalone gke-ap-workload-allowlist-check.yaml workflow continues to handle the post-publish check
-  # (via workflow_run) and manual/PR-comment runs (via workflow_dispatch).
+  # Runs the GKE Autopilot WorkloadAllowlist check for every commit pushed to main. The check uses the local Helm chart
+  # from this commit together with the official images that build_and_push_images just pushed with the "main-dev" tag.
   gke_ap_workload_allowlist_check:
     name: GKE Autopilot WorkloadAllowlist Check
     needs:
       - build_and_push_images
     if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    permissions:
-      contents: read
-    # This check uses a shared GKE Autopilot cluster, allow only one execution at a time across this job and the
-    # standalone gke-ap-workload-allowlist-check.yaml workflow (which uses the same concurrency group).
-    concurrency:
-      group: gke-ap-workload-allowlist-check-concurrency-group
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-
-      - id: 'auth'
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-        with:
-          credentials_json: '${{ secrets.GKE_SA_KEY }}'
-
-      # get the GKE credentials so we can deploy to the cluster
-      - uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395
-        with:
-          project_id: ${{ secrets.GKE_PROJECT }}
-          cluster_name: ci-workload-allowlist-check
-          location: europe-central2
-
-      - name: run check
-        env:
-          USE_LOCAL_CHART: 'true'
-          IMAGE_REPOSITORY_PREFIX: ghcr.io/dash0hq/
-          IMAGE_TAG: main-dev
-        run: |-
-          .github/workflows/scripts/gke-ap-workload-allowlist-check.sh
-
-      - name: send Slack notification on success
-        if: success()
-        uses: ./.github/actions/slack-notification
-        with:
-          status: success
-          subject: GKE Autopilot WorkloadAllowlist check
-          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
-          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
-
-      - name: send Slack notification on failure
-        if: failure()
-        uses: ./.github/actions/slack-notification
-        with:
-          status: failure
-          subject: GKE Autopilot WorkloadAllowlist check
-          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
-          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
+    uses: ./.github/workflows/gke-ap-workload-allowlist-check.yaml
+    with:
+      use_local_chart: true
+      image_repository_prefix: ghcr.io/dash0hq/
+      image_tag: main-dev
+    secrets:
+      GKE_SA_KEY: ${{ secrets.GKE_SA_KEY }}
+      GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
