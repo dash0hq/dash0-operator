@@ -440,8 +440,7 @@ func cmTestMixedDefaultOtlpExporters() otlpExporters {
 }
 
 // cmTestMixedDefaultNoNamespacedExporters is the same mixed (Dash0 + non-Dash0) default as
-// cmTestMixedDefaultOtlpExporters but with NO namespaced exporters. Used to verify that a config without namespaced
-// exporters renders no routing connectors (which would otherwise have an empty, invalid table) and keeps SC inline.
+// cmTestMixedDefaultOtlpExporters but with NO namespaced exporters, to exercise the non-namespaced default split.
 func cmTestMixedDefaultNoNamespacedExporters() otlpExporters {
 	export := Dash0ExportWithEndpointAndToken()
 	auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
@@ -451,6 +450,55 @@ func cmTestMixedDefaultNoNamespacedExporters() otlpExporters {
 	Expect(err).ToNot(HaveOccurred())
 	return otlpExporters{
 		Default: []otlpExporter{*dash0ExporterDefault, *grpcExporterDefault},
+	}
+}
+
+// cmTestPassthroughOnlyDefaultExporters has a default export list with ONLY a non-Dash0 exporter (no Dash0), to
+// exercise the "SC enabled but nothing to apply it to" case (all default telemetry must be passthrough, no SC).
+func cmTestPassthroughOnlyDefaultExporters() otlpExporters {
+	grpcExporterDefault, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "default")
+	Expect(err).ToNot(HaveOccurred())
+	return otlpExporters{
+		Default: []otlpExporter{*grpcExporterDefault},
+	}
+}
+
+// assertCollectorConfigStructurallyValid checks invariants the OpenTelemetry collector enforces at load that the
+// per-field unit assertions do not: (1) no routing connector with an empty table, (2) no pipeline with an empty
+// receivers or exporters list, and (3) no "one-sided" connector (a connector used only as a receiver or only as an
+// exporter; it must be used on both sides, or not at all). This catches the classes of template bug that slipped
+// through structural map assertions (empty routing tables, dangling forks). desc labels the config under test.
+func assertCollectorConfigStructurallyValid(collectorConfig map[string]interface{}, desc string) {
+	connectorsRaw, _ := collectorConfig["connectors"].(map[string]interface{})
+	pipelines := readPipelines(collectorConfig)
+
+	for name, c := range connectorsRaw {
+		if strings.HasPrefix(name, "routing/") {
+			cm, _ := c.(map[string]interface{})
+			table, _ := cm["table"].([]interface{})
+			Expect(table).ToNot(BeEmpty(), "%s: routing connector %q has an empty table", desc, name)
+		}
+	}
+
+	usedAsReceiver := map[string]bool{}
+	usedAsExporter := map[string]bool{}
+	for name := range pipelines {
+		recv := readPipelineReceivers(pipelines, name)
+		exp := readPipelineExporters(pipelines, name)
+		Expect(recv).ToNot(BeEmpty(), "%s: pipeline %q has no receivers", desc, name)
+		Expect(exp).ToNot(BeEmpty(), "%s: pipeline %q has no exporters", desc, name)
+		for _, r := range recv {
+			usedAsReceiver[fmt.Sprintf("%v", r)] = true
+		}
+		for _, e := range exp {
+			usedAsExporter[fmt.Sprintf("%v", e)] = true
+		}
+	}
+
+	for name := range connectorsRaw {
+		r := usedAsReceiver[name]
+		e := usedAsExporter[name]
+		Expect(r).To(Equal(e), "%s: connector %q is one-sided (usedAsReceiver=%t usedAsExporter=%t)", desc, name, r, e)
 	}
 }
 
@@ -2018,6 +2066,56 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsExportDefaultReceivers).ToNot(ContainElement("routing/logs"))
 		})
 
+		It("should render structurally valid collector configs across exporter/SC combinations [DaemonSet+Deployment]", func() {
+			exporterCases := map[string]otlpExporters{
+				"single-default-dash0":          cmTestSingleDefaultOtlpExporter(),
+				"mixed-default-no-namespaced":   cmTestMixedDefaultNoNamespacedExporters(),
+				"mixed-default-with-namespaced": cmTestMixedDefaultOtlpExporters(),
+				"namespaced-multi-dataset":      cmTestNamespacedMultiDatasetExporters(),
+				"namespaced-passthrough-only":   cmTestNamespacedOtlpExporters(),
+				"passthrough-only-default":      cmTestPassthroughOnlyDefaultExporters(),
+			}
+			scVariants := map[string]SignalControlConfig{
+				"sc-off": {Enabled: false},
+				"sc-full": {
+					Enabled: true, SamplingEnabled: true, SpamFilterEnabled: true, SignalToMetricsEnabled: true,
+					Endpoint: "decision-maker.example.com:443", ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset: "default", SamplingReservoirType: "serialized_memory", SamplingReservoirMetricLevel: "basic",
+				},
+				"sc-no-sampling": {
+					Enabled: true, SamplingEnabled: false, SpamFilterEnabled: true, SignalToMetricsEnabled: true,
+					Endpoint: "decision-maker.example.com:443", ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset: "default",
+				},
+			}
+
+			for exName, exporters := range exporterCases {
+				for scName, sc := range scVariants {
+					desc := exName + "/" + scName
+
+					dsCM, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+						OperatorNamespace: OperatorNamespace,
+						NamePrefix:        namePrefix,
+						Exporters:         exporters,
+						SignalControl:     sc,
+						KubernetesInfrastructureMetricsCollectionEnabled: true,
+					}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+					Expect(err).ToNot(HaveOccurred(), "daemonset/"+desc)
+					assertCollectorConfigStructurallyValid(parseConfigMapContent(dsCM), "daemonset/"+desc)
+
+					depCM, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+						OperatorNamespace: OperatorNamespace,
+						NamePrefix:        namePrefix,
+						Exporters:         exporters,
+						SignalControl:     sc,
+						KubernetesInfrastructureMetricsCollectionEnabled: true,
+					}, monitoredNamespaces, nil, nil, false)
+					Expect(err).ToNot(HaveOccurred(), "deployment/"+desc)
+					assertCollectorConfigStructurallyValid(parseConfigMapContent(depCM), "deployment/"+desc)
+				}
+			}
+		})
+
 		It("should create per-dataset SC branches and sample only the first dataset for a multi-dataset namespace [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
@@ -2126,7 +2224,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelineProcessors(pipelines, "traces/export/default/passthrough")).ToNot(ContainElement("resource/signal_control_attributes"))
 		})
 
-		It("should not render routing connectors or split the default without namespaced exporters [DaemonSet]", func() {
+		It("should fork the non-namespaced mixed default: SC to the Dash0 default, passthrough raw [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -2148,20 +2246,43 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			pipelines := readPipelines(collectorConfig)
 
 			// Without namespaced exporters there is no routing (an empty routing table would be rejected by the
-			// collector), so SC stays inline in common-processors and the whole default is exported as-is.
+			// collector). Instead, common-processors forks via forward/traces-to-sc so SC reaches only the Dash0
+			// default exporter, while the non-Dash0 (passthrough) default exporter is attached to common-processors
+			// directly and receives raw telemetry.
 			Expect(connectors).ToNot(HaveKey("routing/traces"))
 			Expect(connectors).ToNot(HaveKey("routing/traces-sampled"))
 			Expect(connectors).ToNot(HaveKey("routing/metrics"))
-			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).To(ContainElement("resource/signal_control_attributes"))
-			Expect(readPipelineExporters(pipelines, "traces/export/default")).
-				To(ContainElements("otlp_grpc/dash0/default", "otlp_grpc/default_1"))
+			Expect(connectors).To(HaveKey("forward/traces-to-sc"))
+
+			// SC is no longer inline in common-processors; common-processors forks to the SC branch plus the raw
+			// passthrough exporter.
+			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
+			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
+			Expect(tracesCommonExporters).To(ContainElement("forward/traces-to-sc"))
+			Expect(tracesCommonExporters).To(ContainElement("otlp_grpc/default_1"))
+
+			// The SC branch applies Signal Control and feeds sampling + RED metrics.
+			Expect(readPipelineReceivers(pipelines, "traces/signal-control-pre-sampling")).To(ContainElement("forward/traces-to-sc"))
+			scProcessors := readPipelineProcessors(pipelines, "traces/signal-control-pre-sampling")
+			Expect(scProcessors).To(ContainElement("resource/signal_control_attributes"))
+			Expect(scProcessors).To(ContainElement("dash0filter"))
+
+			// The SC'd default sink exports ONLY the Dash0 default exporter, never the passthrough one.
+			Expect(readPipelineExporters(pipelines, "traces/export/default")).To(ContainElement("otlp_grpc/dash0/default"))
+			Expect(readPipelineExporters(pipelines, "traces/export/default")).ToNot(ContainElement("otlp_grpc/default_1"))
+
+			// Same fork for metrics (deployment-style k8s metrics run here too) and logs.
+			Expect(connectors).To(HaveKey("forward/metrics-to-sc"))
+			Expect(connectors).To(HaveKey("forward/logs-to-sc"))
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
+			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
 		})
 
 		It("should route namespaced traces before sampling when Signal Control is enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Exporters:         cmTestNamespacedOtlpExporters(),
+				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
 				SignalControl: SignalControlConfig{
 					Enabled:         true,
 					SamplingEnabled: true,
@@ -2207,12 +2328,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(tracesExportDefaultReceivers).To(ContainElement("routing/traces-sampled"))
 			Expect(tracesExportDefaultReceivers).ToNot(ContainElement("forward/traces-default-exporter"))
 
-			// non-Dash0 namespaced exporters route to passthrough pipelines (no Signal Control, no sampling)
+			// namespace1's non-Dash0 exporters route to a passthrough pipeline (no Signal Control, no sampling).
 			tracesPassthroughNs1Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace1+"/passthrough")
 			Expect(tracesPassthroughNs1Receivers).To(ContainElement("routing/traces"))
 			Expect(readPipelineProcessors(pipelines, "traces/export/ns/"+namespace1+"/passthrough")).ToNot(ContainElement("resource/signal_control_attributes"))
-			tracesPassthroughNs2Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace2+"/passthrough")
-			Expect(tracesPassthroughNs2Receivers).To(ContainElement("routing/traces"))
+
+			// namespace2's Dash0 exporter gets its own SC branch (branch 0), which feeds the shared sampler, and its
+			// kept traces are routed to a per-namespace sampled export.
+			ns2ScProcessors := readPipelineProcessors(pipelines, "traces/sc/ns/"+namespace2+"/0")
+			Expect(ns2ScProcessors).To(ContainElement("resource/signal_control_attributes/ns/" + namespace2 + "/0"))
+			Expect(readPipelineExporters(pipelines, "traces/sc/ns/"+namespace2+"/0")).To(ContainElement("forward/traces-to-sampling"))
+			Expect(readPipelineReceivers(pipelines, "traces/export/sampled/ns/"+namespace2)).To(ContainElement("routing/traces-sampled"))
 
 			// dash0settingsonedgeextension extension should be configured and listed in service extensions
 			extensions := collectorConfig["extensions"].(map[string]interface{})
@@ -2432,21 +2558,23 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			s2m := connectors["dash0signaltometrics"].(map[string]interface{})
 			Expect(s2m).To(BeEmpty(), "dash0signaltometrics should render as `{}` when no tunables set")
 
-			// Spans flow into the connector pre-sampling, alongside dash0redmetrics
+			// Spans flow into the connectors from the traces SC branch (common-processors forks to it), alongside
+			// dash0redmetrics.
 			pipelines := readPipelines(collectorConfig)
-			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
-			Expect(tracesCommonExporters).To(ContainElement("dash0redmetrics"))
-			Expect(tracesCommonExporters).To(ContainElement("dash0signaltometrics"))
+			Expect(readPipelineExporters(pipelines, "traces/common-processors")).To(ContainElement("forward/traces-to-sc"))
+			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/signal-control-pre-sampling")
+			Expect(scPreSamplingExporters).To(ContainElement("dash0redmetrics"))
+			Expect(scPreSamplingExporters).To(ContainElement("dash0signaltometrics"))
 
-			// Logs fan out to the connector alongside the default forward
-			logsCommonExporters := readPipelineExporters(pipelines, "logs/common-processors")
-			Expect(logsCommonExporters).To(ContainElement("forward/logs-default-exporter"))
-			Expect(logsCommonExporters).To(ContainElement("dash0signaltometrics"))
+			// Logs derive s2m in the logs SC branch, not in common-processors.
+			Expect(readPipelineExporters(pipelines, "logs/common-processors")).To(ContainElement("forward/logs-to-sc"))
+			Expect(readPipelineExporters(pipelines, "logs/sc/default")).To(ContainElement("dash0signaltometrics"))
 
-			// Emitted metrics enter the standard metrics path via metrics/otlp-to-forwarder
-			metricsForwarderReceivers := readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")
-			Expect(metricsForwarderReceivers).To(ContainElement("dash0redmetrics"))
-			Expect(metricsForwarderReceivers).To(ContainElement("dash0signaltometrics"))
+			// Emitted metrics enter the metrics path via metrics/derived/default (not re-ingested through the
+			// otlp forwarder).
+			derivedReceivers := readPipelineReceivers(pipelines, "metrics/derived/default")
+			Expect(derivedReceivers).To(ContainElement("dash0redmetrics"))
+			Expect(derivedReceivers).To(ContainElement("dash0signaltometrics"))
 		})
 
 		It("should also wire the dash0signaltometrics connector in traces/signal-control-pre-sampling when namespaced exporters are configured [DaemonSet]", func() {
@@ -2557,12 +2685,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(connectors).To(HaveKey("dash0signaltometrics"))
 			Expect(connectors).ToNot(HaveKey("dash0sampling"), "sampling processor is in processors map, not connectors")
 
+			// No sampling: the SC branch exports the derived-metric connectors plus the default forward directly.
 			pipelines := readPipelines(collectorConfig)
-			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
-			Expect(tracesCommonExporters).To(ContainElement("dash0signaltometrics"))
-			Expect(tracesCommonExporters).To(ContainElement("dash0redmetrics"))
-			Expect(tracesCommonExporters).To(ContainElement("forward/traces-default-exporter"))
-			Expect(tracesCommonExporters).ToNot(ContainElement("forward/traces-to-sampling"))
+			Expect(readPipelineExporters(pipelines, "traces/common-processors")).To(ContainElement("forward/traces-to-sc"))
+			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/signal-control-pre-sampling")
+			Expect(scPreSamplingExporters).To(ContainElement("dash0signaltometrics"))
+			Expect(scPreSamplingExporters).To(ContainElement("dash0redmetrics"))
+			Expect(scPreSamplingExporters).To(ContainElement("forward/traces-default-exporter"))
+			Expect(scPreSamplingExporters).ToNot(ContainElement("forward/traces-to-sampling"))
 		})
 
 		It("should not wire the dash0signaltometrics connector when signalToMetrics is disabled [DaemonSet]", func() {
@@ -2619,18 +2749,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			webFilter := processors["dash0filter"].(map[string]interface{})
 			Expect(webFilter).To(BeEmpty(), "dash0filter should render as `{}` when no tunables set")
 
+			// SC always runs in the dedicated SC branch (never inline in common-processors), even without
+			// namespaced exporters (the branch is fed via forward/{signal}-to-sc).
 			pipelines := readPipelines(collectorConfig)
-			tracesCommonProcessors := readPipelineProcessors(pipelines, "traces/common-processors")
-			Expect(tracesCommonProcessors).To(ContainElement("dash0filter"))
-			Expect(tracesCommonProcessors).To(ContainElements("dash0resource", "dash0operation", "dash0filter"),
+			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).ToNot(ContainElement("dash0filter"))
+			tracesScProcessors := readPipelineProcessors(pipelines, "traces/signal-control-pre-sampling")
+			Expect(tracesScProcessors).To(ContainElements("dash0resource", "dash0operation", "dash0filter"),
 				"dash0filter must run after dash0resource and dash0operation set Signal Control attributes")
-			logsCommonProcessors := readPipelineProcessors(pipelines, "logs/common-processors")
-			Expect(logsCommonProcessors).To(ContainElement("dash0filter"))
-			Expect(logsCommonProcessors).To(ContainElements("resource/signal_control_attributes", "dash0resource", "dash0filter"),
+			logsScProcessors := readPipelineProcessors(pipelines, "logs/sc/default")
+			Expect(logsScProcessors).To(ContainElements("resource/signal_control_attributes", "dash0resource", "dash0filter"),
 				"dash0filter must run after resource/signal_control_attributes, and dash0resource must run so dash0signaltometrics gets the resource hash")
-			metricsCommonProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
-			Expect(metricsCommonProcessors).To(ContainElement("dash0filter"))
-			Expect(metricsCommonProcessors).To(ContainElements("resource/signal_control_attributes", "dash0filter"),
+			metricsScProcessors := readPipelineProcessors(pipelines, "metrics/sc/default")
+			Expect(metricsScProcessors).To(ContainElements("resource/signal_control_attributes", "dash0filter"),
 				"dash0filter must run after resource/signal_control_attributes sets Signal Control attributes")
 		})
 
@@ -2715,9 +2845,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).To(HaveKey("dash0filter"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).To(ContainElement("dash0filter"))
-			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).To(ContainElement("dash0filter"))
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).ToNot(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "traces/signal-control-pre-sampling")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(ContainElement("dash0filter"))
 		})
 
 		It("should not wire the dash0filter processor when spamFilter is disabled [DaemonSet]", func() {
@@ -2781,10 +2912,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			serviceExtensions := (collectorConfig["service"].(map[string]interface{}))["extensions"].([]interface{})
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 
+			// SC always runs in the dedicated SC branch (fed via forward/metrics-to-sc without namespaced exporters),
+			// never inline in common-processors.
 			pipelines := readPipelines(collectorConfig)
-			metricsCommonProcessors := readPipelineProcessors(pipelines, "metrics/common-processors")
-			Expect(metricsCommonProcessors).To(ContainElement("dash0filter"))
-			Expect(metricsCommonProcessors).To(ContainElements("resource/signal_control_attributes", "dash0filter"),
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("dash0filter"))
+			metricsScProcessors := readPipelineProcessors(pipelines, "metrics/sc/default")
+			Expect(metricsScProcessors).To(ContainElements("resource/signal_control_attributes", "dash0filter"),
 				"dash0filter must run after resource/signal_control_attributes sets Signal Control attributes")
 		})
 
@@ -2863,7 +2996,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			grpcName := "otlp_grpc/default_1"
 			dash0Name := "otlp_grpc/dash0/default"
 
-			// Routing is used to split the default Dash0 vs non-Dash0 metrics even without namespaced exporters.
+			// Routing is used (namespaced exporters present) and its default_pipelines split the default Dash0 vs
+			// non-Dash0 metrics.
 			Expect(connectors).To(HaveKey("routing/metrics"))
 			// SC is not inline in common-processors; it runs in the default SC branch.
 			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
@@ -2901,7 +3035,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(extensions).To(HaveKey("dash0settingsonedgeextension"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(ContainElement("dash0filter"))
 		})
 
 		It("should not wire the dash0filter processor when spamFilter is disabled [Deployment]", func() {

@@ -91,6 +91,18 @@ func (e *otlpExporters) NamespaceSC() map[string]namespaceSC {
 	return result
 }
 
+// HasNamespacedDash0Exporters reports whether any namespace has at least one Dash0 exporter (i.e. at least one
+// dataset branch). Used to decide whether the post-sampling router / per-namespace sampled-export pipelines are
+// needed: when no namespace has a Dash0 exporter, sampled traces have only the default destination.
+func (e *otlpExporters) HasNamespacedDash0Exporters() bool {
+	for _, sc := range e.NamespaceSC() {
+		if len(sc.DatasetBranches) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // DefaultDash0Exporters returns the default-path Dash0 exporters, i.e. the ones that receive Signal Control
 // (Signal Control is only supported for Dash0 exporters). The SC dataset for the default path remains the
 // cluster-wide .SignalControl.Dataset (first default export's dataset).

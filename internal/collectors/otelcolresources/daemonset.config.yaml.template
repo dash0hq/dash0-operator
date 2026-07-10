@@ -21,14 +21,26 @@ use option 2.
 */}}
 
 {{- $hasNamespacedExporters := gt (len .Exporters.Namespaced) 0 -}}
-{{- /* Routing (splitting telemetry per destination) is only used when there are namespaced exporters: the routing
-connector requires a non-empty table, keyed on k8s.namespace.name. $useRouting is an alias for that condition.
-$splitDefault: when a (namespaced) config's DEFAULT export list mixes Dash0 + non-Dash0 exporters with SC enabled,
-the default telemetry is also split — SC'd -> default Dash0 exporters, raw -> default passthrough. Non-namespaced
-configs do not split the default (SC stays inline in common-processors, applied to all default exporters, as before
-this feature); splitting the non-namespaced default would need a fork rather than routing (see note). */}}
+{{- /* Signal Control (SC) is only ever applied to Dash0 exporters; non-Dash0 (passthrough) exporters always receive
+raw telemetry. SC always runs in a dedicated branch pipeline ({signal}/sc/... , or traces/signal-control-pre-sampling)
+downstream of {signal}/common-processors — never inline in common-processors. That branch is fed by the routing
+connector when there are namespaced exporters, and by a forward/{signal}-to-sc connector otherwise (routing cannot
+express a Dash0-vs-passthrough split, because the destination is not a record attribute). Variables:
+- $useRouting: routing is used (only with namespaced exporters; the routing connector requires a non-empty table).
+- $scDefault: the default path applies SC (SC enabled AND the default list has >=1 Dash0 exporter). When false the
+  whole default is passthrough (no SC branch).
+- $splitDefault: the default mixes Dash0 + non-Dash0 under SC, so it fans out — SC'd -> default Dash0 exporters, raw ->
+  default passthrough exporters (a per-namespace routing case) or the passthrough exporters attached to
+  common-processors directly (the non-namespaced case).
+- $hasNamespacedDash0: a namespace has a Dash0 exporter, so the post-sampling router + per-namespace sampled export
+  are needed.
+- $samplingActive: tail sampling is enabled AND something feeds it (the default is SC'd or a namespace has a Dash0
+  branch), so the shared sampling pipeline is exercised. */}}
 {{- $useRouting := $hasNamespacedExporters -}}
-{{- $splitDefault := and $hasNamespacedExporters .SignalControl.Enabled (gt (len .Exporters.DefaultDash0Exporters) 0) (gt (len .Exporters.DefaultPassthrough) 0) -}}
+{{- $scDefault := and .SignalControl.Enabled (gt (len .Exporters.DefaultDash0Exporters) 0) -}}
+{{- $splitDefault := and $scDefault (gt (len .Exporters.DefaultPassthrough) 0) -}}
+{{- $hasNamespacedDash0 := .Exporters.HasNamespacedDash0Exporters -}}
+{{- $samplingActive := and .SignalControl.SamplingEnabled (or $scDefault $hasNamespacedDash0) -}}
 
 extensions:
   health_check:
@@ -55,6 +67,11 @@ connectors:
   forward/traces-default-exporter: {}
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
+{{- if and (not $useRouting) $scDefault }}
+  forward/traces-to-sc: {}
+  forward/metrics-to-sc: {}
+  forward/logs-to-sc: {}
+{{- end }}
 {{- if .SignalControl.Enabled }}
 {{- if .SignalControl.SamplingEnabled }}
   forward/traces-to-sampling: {}
@@ -132,7 +149,7 @@ connectors:
 
   {{- if $useRouting }}
   routing/traces:
-{{- if .SignalControl.Enabled }}
+{{- if $scDefault }}
     default_pipelines: [traces/signal-control-pre-sampling{{- if $splitDefault }}, traces/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [traces/export/default]
@@ -159,7 +176,7 @@ connectors:
           - traces/export/ns/{{ $ns }}
     {{- end }}
 {{- end }}
-{{- if .SignalControl.SamplingEnabled }}
+{{- if and .SignalControl.SamplingEnabled $hasNamespacedDash0 }}
   routing/traces-sampled:
     default_pipelines: [traces/export/default]
     error_mode: ignore
@@ -174,7 +191,7 @@ connectors:
     {{- end }}
 {{- end }}
   routing/metrics:
-{{- if .SignalControl.Enabled }}
+{{- if $scDefault }}
     default_pipelines: [metrics/sc/default{{- if $splitDefault }}, metrics/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [metrics/export/default]
@@ -202,7 +219,7 @@ connectors:
     {{- end }}
 {{- end }}
   routing/logs:
-{{- if .SignalControl.Enabled }}
+{{- if $scDefault }}
     default_pipelines: [logs/sc/default{{- if $splitDefault }}, logs/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [logs/export/default]
@@ -1382,37 +1399,27 @@ service:
         - transform/traces/custom_telemetry_transform
         {{- end }}
         - transform/resources
-        {{- if and .SignalControl.Enabled (not $useRouting) }}
-        - resource/signal_control_attributes
-        - dash0resource
-        - dash0operation
-        {{- if .SignalControl.SpamFilterEnabled }}
-        - dash0filter
-        {{- end }}
-        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/traces
-        {{- else if .SignalControl.Enabled }}
-        {{- if .SignalControl.SamplingEnabled }}
-        - forward/traces-to-sampling
-        {{- end }}
-        - dash0redmetrics
-        {{- if .SignalControl.SignalToMetricsEnabled }}
-        - dash0signaltometrics
-        {{- end }}
-        {{- if not .SignalControl.SamplingEnabled }}
-        - forward/traces-default-exporter
+        {{- else if $scDefault }}
+        - forward/traces-to-sc
+        {{- range $exporter := .Exporters.DefaultPassthrough }}
+        - {{ $exporter.Name }}
         {{- end }}
         {{- else }}
         - forward/traces-default-exporter
         {{- end }}
 {{- if .SignalControl.Enabled }}
-{{- if $useRouting }}
+{{- if $scDefault }}
 
     traces/signal-control-pre-sampling:
       receivers:
+        {{- if $useRouting }}
         - routing/traces
+        {{- else }}
+        - forward/traces-to-sc
+        {{- end }}
       processors:
         - resource/signal_control_attributes
         - dash0resource
@@ -1455,14 +1462,14 @@ service:
       {{- end }}
 {{- end }}
 
-{{- if .SignalControl.SamplingEnabled }}
+{{- if $samplingActive }}
     traces/sampled:
       receivers:
         - forward/traces-to-sampling
       processors:
         - dash0sampling
       exporters:
-        {{- if $useRouting }}
+        {{- if $hasNamespacedDash0 }}
         - routing/traces-sampled
         {{- else }}
         - forward/traces-default-exporter
@@ -1472,13 +1479,15 @@ service:
 
     traces/export/default:
       receivers:
-        {{- if and .SignalControl.SamplingEnabled $useRouting }}
+        {{- if and $samplingActive $hasNamespacedDash0 }}
         - routing/traces-sampled
-        {{- else if and $useRouting (not .SignalControl.Enabled) }}
+        {{- end }}
+        {{- if and $useRouting (not $scDefault) }}
         - routing/traces
-        {{- else }}
+        {{- end }}
+        {{- if or (not $hasNamespacedExporters) (and $scDefault (or (not .SignalControl.SamplingEnabled) (not $hasNamespacedDash0))) }}
         - forward/traces-default-exporter
-        {{- end}}
+        {{- end }}
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
@@ -1493,7 +1502,7 @@ service:
       {{- end }}
       {{- end }}
 
-{{- if $splitDefault }}
+{{- if and $hasNamespacedExporters $splitDefault }}
     traces/export/default/passthrough:
       receivers:
         - routing/traces
@@ -1601,12 +1610,6 @@ service:
         {{- if .UseHostMetricsReceiver }}
         - hostmetrics
         {{- end }}
-        {{- if and .SignalControl.Enabled (not $useRouting) }}
-        - dash0redmetrics
-        {{- if .SignalControl.SignalToMetricsEnabled }}
-        - dash0signaltometrics
-        {{- end }}
-        {{- end }}
       processors:
         - memory_limiter
       exporters:
@@ -1644,23 +1647,26 @@ service:
         - transform/metrics/custom_telemetry_transform
         {{- end }}
         - transform/resources
-        {{- if and .SignalControl.Enabled (not $useRouting) }}
-        - resource/signal_control_attributes
-        {{- if .SignalControl.SpamFilterEnabled }}
-        - dash0filter
-        {{- end }}
-        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/metrics
+        {{- else if $scDefault }}
+        - forward/metrics-to-sc
+        {{- range $exporter := .Exporters.DefaultPassthrough }}
+        - {{ $exporter.Name }}
+        {{- end }}
         {{- else }}
         - forward/metrics-default-exporter
         {{- end }}
 
-{{- if and .SignalControl.Enabled $useRouting }}
+{{- if $scDefault }}
     metrics/sc/default:
       receivers:
+        {{- if $useRouting }}
         - routing/metrics
+        {{- else }}
+        - forward/metrics-to-sc
+        {{- end }}
       processors:
         - resource/signal_control_attributes
         {{- if .SignalControl.SpamFilterEnabled }}
@@ -1672,11 +1678,12 @@ service:
 
     metrics/export/default:
       receivers:
-        {{- if and $useRouting (not .SignalControl.Enabled) }}
+        {{- if and $useRouting (not $scDefault) }}
         - routing/metrics
-        {{- else }}
+        {{- end }}
+        {{- if or (not $hasNamespacedExporters) $scDefault }}
         - forward/metrics-default-exporter
-        {{- end}}
+        {{- end }}
       exporters:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
@@ -1691,7 +1698,7 @@ service:
         {{- end }}
         {{- end }}
 
-{{- if $splitDefault }}
+{{- if and $hasNamespacedExporters $splitDefault }}
     metrics/export/default/passthrough:
       receivers:
         - routing/metrics
@@ -1804,27 +1811,26 @@ service:
         - transform/logs/custom_telemetry_transform
         {{- end }}
         - transform/resources
-        {{- if and .SignalControl.Enabled (not $useRouting) }}
-        - resource/signal_control_attributes
-        - dash0resource
-        {{- if .SignalControl.SpamFilterEnabled }}
-        - dash0filter
-        {{- end }}
-        {{- end }}
       exporters:
         {{- if $useRouting }}
         - routing/logs
+        {{- else if $scDefault }}
+        - forward/logs-to-sc
+        {{- range $exporter := .Exporters.DefaultPassthrough }}
+        - {{ $exporter.Name }}
+        {{- end }}
         {{- else }}
         - forward/logs-default-exporter
         {{- end }}
-        {{- if and .SignalControl.Enabled .SignalControl.SignalToMetricsEnabled (not $useRouting) }}
-        - dash0signaltometrics
-        {{- end }}
 
-{{- if and .SignalControl.Enabled $useRouting }}
+{{- if $scDefault }}
     logs/sc/default:
       receivers:
+        {{- if $useRouting }}
         - routing/logs
+        {{- else }}
+        - forward/logs-to-sc
+        {{- end }}
       processors:
         - resource/signal_control_attributes
         - dash0resource
@@ -1840,11 +1846,12 @@ service:
 
     logs/export/default:
       receivers:
-        {{- if and $useRouting (not .SignalControl.Enabled) }}
+        {{- if and $useRouting (not $scDefault) }}
         - routing/logs
-        {{- else }}
+        {{- end }}
+        {{- if or (not $hasNamespacedExporters) $scDefault }}
         - forward/logs-default-exporter
-        {{- end}}
+        {{- end }}
       exporters:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
@@ -1859,7 +1866,7 @@ service:
         {{- end }}
         {{- end }}
 
-{{- if $splitDefault }}
+{{- if and $hasNamespacedExporters $splitDefault }}
     logs/export/default/passthrough:
       receivers:
         - routing/logs
