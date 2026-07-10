@@ -1045,7 +1045,8 @@ const reservoirDefaultMaxDiskBytes int64 = 1024 * 1024 * 1024 // 1Gi
 const reservoirMaxDiskBytesFloor int64 = 64 * 1024 * 1024 // 64Mi
 
 // reservoirDerivedStorage returns the Kubernetes storage quantity derived from the reservoir's
-// max_disk_bytes by applying reservoirStorageMargin.
+// max_disk_bytes by applying reservoirStorageMargin. All sampling paths share a single dash0sampling
+// processor (one reservoir), so no per-namespace scaling is applied.
 func reservoirDerivedStorage(maxDiskBytes int64) resource.Quantity {
 	derived := int64(math.Ceil(float64(maxDiskBytes) * reservoirStorageMargin))
 	return *resource.NewQuantity(derived, resource.BinarySI)
