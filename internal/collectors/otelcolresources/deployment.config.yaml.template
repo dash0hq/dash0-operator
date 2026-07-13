@@ -11,6 +11,12 @@ The k8s-events logs pipeline carries no SC. */}}
 {{- $useRouting := $hasNamespacedExporters -}}
 {{- $scDefault := and .SignalControl.Enabled (gt (len .Exporters.DefaultDash0Exporters) 0) -}}
 {{- $splitDefault := and $scDefault (gt (len .Exporters.DefaultPassthrough) 0) -}}
+{{- /*
+The dash0metricrecorder (extension + receiver) carries dash0filter's spam-filter counters into a dedicated metrics
+pipeline, wired per branch so each dataset's counts egress through its own exporter (see daemonset template). Here
+dash0filter only runs in the metrics pipelines, so every instance is additionally gated on infra-metrics.
+*/ -}}
+{{- $metricRecorderActive := and .SignalControl.SpamFilterEnabled $scDefault .KubernetesInfrastructureMetricsCollectionEnabled -}}
 
 extensions:
   health_check:
@@ -22,6 +28,16 @@ extensions:
   dash0settingsonedgeextension:
     endpoint: {{ .SignalControl.ApiEndpoint }}
     auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
+  {{- end }}
+  {{- if $metricRecorderActive }}
+  dash0metricrecorder: {}
+  {{- end }}
+  {{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
+  {{- range $ns, $sc := .Exporters.NamespaceSC }}
+  {{- range $b := $sc.DatasetBranches }}
+  dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
+  {{- end }}
+  {{- end }}
   {{- end }}
 
 connectors:
@@ -75,6 +91,18 @@ connectors:
   {{- end }}
 
 receivers:
+  {{- if $metricRecorderActive }}
+  dash0metricrecorder:
+    metric_recorder: dash0metricrecorder
+  {{- end }}
+  {{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
+  {{- range $ns, $sc := .Exporters.NamespaceSC }}
+  {{- range $b := $sc.DatasetBranches }}
+  dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
   {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
   k8s_cluster:
     collection_interval: 30s
@@ -513,8 +541,11 @@ processors:
 {{- end }}
 {{- end }}
 {{- if .SignalControl.SpamFilterEnabled }}
-{{- if or .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- if or $metricRecorderActive .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
   dash0filter:
+{{- if $metricRecorderActive }}
+    metric_recorder: dash0metricrecorder
+{{- end }}
 {{- if .SignalControl.SpamFilterCacheExpiration }}
     cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
 {{- end }}
@@ -523,6 +554,20 @@ processors:
 {{- end }}
 {{- else }}
   dash0filter: {}
+{{- end }}
+{{- end }}
+{{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- if $.SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ $.SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if $.SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ $.SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -620,6 +665,16 @@ service:
   {{- if .SignalControl.Enabled }}
   - dash0settingsonedgeextension
   {{- end }}
+  {{- if $metricRecorderActive }}
+  - dash0metricrecorder
+  {{- end }}
+  {{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
+  {{- range $ns, $sc := .Exporters.NamespaceSC }}
+  {{- range $b := $sc.DatasetBranches }}
+  - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
 
   pipelines:
 
@@ -676,6 +731,38 @@ service:
         - forward/metrics-default-exporter
 {{- end }}
 
+{{- if $metricRecorderActive }}
+    metrics/spam-counters:
+      receivers:
+        - dash0metricrecorder
+      processors:
+        - batch
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        - forward/metrics-default-exporter
+{{- end }}
+
+{{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+    metrics/spam-counters/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+      processors:
+        - batch
+      exporters:
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
     metrics/export/default:
       receivers:
         {{- if and $useRouting (not $scDefault) }}
@@ -720,7 +807,7 @@ service:
       processors:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- if $.SignalControl.SpamFilterEnabled }}
-        - dash0filter
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
       exporters:
         {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}

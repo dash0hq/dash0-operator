@@ -60,10 +60,11 @@ spec:
             properties:
               controlPlaneApiEndpoint:
                 description: |-
-                  The control plane API endpoint used by the dash0settingsonedge extension to fetch settings and rules.
-                  This setting is optional. When not set, the endpoint is derived from the Dash0 API endpoint configured
-                  in the operator configuration resource by stripping regional segments and replacing "api." with
-                  "control-plane-api." (e.g., https://api.eu-central-1.aws.dash0.com -> https://control-plane-api.dash0.com).
+                  The Dash0 API endpoint used by the dash0settingsonedge extension to fetch settings and rules (it queries
+                  {endpoint}/api/edge/settings on the region-bound Dash0 public API). This setting is optional. When not set,
+                  it defaults to the Dash0 API endpoint configured in the operator configuration resource as-is
+                  (e.g., https://api.eu-central-1.aws.dash0.com). The field name is retained for backwards compatibility;
+                  it must point at the public API host, not the control-plane-api host.
                 type: string
               edgeProxy:
                 description: |-

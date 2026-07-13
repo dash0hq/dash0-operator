@@ -1732,6 +1732,8 @@ trace_statements:
 						"dash0filter:",
 						"dash0resource:",
 						"dash0operation:",
+						"dash0metricrecorder:",
+						"metrics/spam-counters:",
 						"traces/sampled:",
 						"forward/traces-to-sampling",
 					}
@@ -1755,14 +1757,14 @@ trace_statements:
 						g.Expect(stored).NotTo(BeNil())
 						hasSettingsCall := false
 						for _, r := range stored.Requests {
-							if r.Method == http.MethodGet && strings.Contains(r.Url, "/public/edge/settings") {
+							if r.Method == http.MethodGet && strings.Contains(r.Url, "/api/edge/settings") {
 								hasSettingsCall = true
 								break
 							}
 						}
 						g.Expect(hasSettingsCall).To(
 							BeTrue(),
-							"expected at least one GET /public/edge/settings on the control-plane mock, got %v",
+							"expected at least one GET /api/edge/settings on the control-plane mock, got %v",
 							stored.Requests,
 						)
 					}, 60*time.Second, pollingInterval).Should(Succeed())
@@ -1900,6 +1902,8 @@ trace_statements:
 						"dash0filter:",
 						"dash0resource:",
 						"dash0operation:",
+						"dash0metricrecorder:",
+						"metrics/spam-counters:",
 						"traces/sampled:",
 						"forward/traces-to-sampling",
 					} {

@@ -2143,9 +2143,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).To(HaveKey("resource/signal_control_attributes/ns/" + namespace1 + "/0"))
 			Expect(processors).To(HaveKey("resource/signal_control_attributes/ns/" + namespace1 + "/1"))
 
-			// Non-sampling SC (spam filter) runs on BOTH branches.
-			Expect(readPipelineProcessors(pipelines, "traces/sc/ns/"+namespace1+"/0")).To(ContainElement("dash0filter"))
-			Expect(readPipelineProcessors(pipelines, "traces/sc/ns/"+namespace1+"/1")).To(ContainElement("dash0filter"))
+			// Non-sampling SC (spam filter) runs on BOTH branches, each via its own per-branch filter instance.
+			Expect(readPipelineProcessors(pipelines, "traces/sc/ns/"+namespace1+"/0")).To(ContainElement("dash0filter/ns/" + namespace1 + "/0"))
+			Expect(readPipelineProcessors(pipelines, "traces/sc/ns/"+namespace1+"/1")).To(ContainElement("dash0filter/ns/" + namespace1 + "/1"))
 
 			// Sampling ONLY on the first branch: branch 0 forwards to the SHARED sampler; branch 1 exports directly.
 			Expect(readPipelineExporters(pipelines, "traces/sc/ns/"+namespace1+"/0")).
@@ -2747,7 +2747,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			processors := collectorConfig["processors"].(map[string]interface{})
 			Expect(processors).To(HaveKey("dash0filter"))
 			webFilter := processors["dash0filter"].(map[string]interface{})
-			Expect(webFilter).To(BeEmpty(), "dash0filter should render as `{}` when no tunables set")
+			// With a default Dash0 exporter the metric recorder is active, so dash0filter always carries the
+			// metric_recorder wiring even when no spam-filter tunables are set.
+			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
+			Expect(webFilter).To(HaveLen(1), "dash0filter should carry only metric_recorder when no tunables set")
 
 			// SC always runs in the dedicated SC branch (never inline in common-processors), even without
 			// namespaced exporters (the branch is fed via forward/{signal}-to-sc).
@@ -2789,6 +2792,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			webFilter := processors["dash0filter"].(map[string]interface{})
 			Expect(webFilter["cache_expiration"]).To(Equal("30s"))
 			Expect(webFilter["allow_no_settings_ext"]).To(BeTrue())
+			// The metric_recorder wiring coexists with the spam-filter tunables.
+			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 		})
 
 		It("should move dash0filter out of common-processors into the SC branches with namespaced exporters [DaemonSet]", func() {
@@ -2905,7 +2910,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).To(HaveKey("resource/signal_control_attributes"))
 			Expect(processors).To(HaveKey("dash0filter"))
 			webFilter := processors["dash0filter"].(map[string]interface{})
-			Expect(webFilter).To(BeEmpty(), "dash0filter should render as `{}` when no tunables set")
+			// With a default Dash0 exporter and infrastructure metrics enabled the metric recorder is active, so
+			// dash0filter always carries the metric_recorder wiring even when no spam-filter tunables are set.
+			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
+			Expect(webFilter).To(HaveLen(1), "dash0filter should carry only metric_recorder when no tunables set")
 
 			extensions := collectorConfig["extensions"].(map[string]interface{})
 			Expect(extensions).To(HaveKey("dash0settingsonedgeextension"))
@@ -2946,6 +2954,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			webFilter := processors["dash0filter"].(map[string]interface{})
 			Expect(webFilter["cache_expiration"]).To(Equal("30s"))
 			Expect(webFilter["allow_no_settings_ext"]).To(BeTrue())
+			// The metric_recorder wiring coexists with the spam-filter tunables.
+			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 		})
 
 		It("should move dash0filter out of metrics/common-processors into the SC branch with namespaced exporters [Deployment]", func() {
@@ -3066,6 +3076,295 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			pipelines := readPipelines(collectorConfig)
 			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).
 				ToNot(ContainElement("dash0filter"))
+		})
+
+		It("should wire the dash0metricrecorder extension + receiver when Signal Control + spamFilter are enabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// The extension is declared with the built-in defaults (rendered as an empty body) and started via
+			// service.extensions.
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			Expect(extensions).To(HaveKey("dash0metricrecorder"))
+			Expect(extensions["dash0metricrecorder"].(map[string]interface{})).To(BeEmpty())
+			Expect(readServiceExtensions(collectorConfig)).To(ContainElement("dash0metricrecorder"))
+
+			// The receiver drains the extension of the same component ID.
+			receivers := collectorConfig["receivers"].(map[string]interface{})
+			Expect(receivers).To(HaveKey("dash0metricrecorder"))
+			Expect(receivers["dash0metricrecorder"].(map[string]interface{})["metric_recorder"]).
+				To(Equal("dash0metricrecorder"))
+
+			// The producer (dash0filter) points at the extension.
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0filter"].(map[string]interface{})["metric_recorder"]).
+				To(Equal("dash0metricrecorder"))
+
+			// The dedicated pipeline drains the receiver into the default Dash0 export path.
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineReceivers(pipelines, "metrics/spam-counters")).To(ConsistOf("dash0metricrecorder"))
+			Expect(readPipelineExporters(pipelines, "metrics/spam-counters")).
+				To(ContainElement("forward/metrics-default-exporter"))
+		})
+
+		It("should not wire the dash0metricrecorder when spamFilter is disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: false,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			Expect(collectorConfig["extensions"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
+			Expect(collectorConfig["receivers"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
+			Expect(readServiceExtensions(collectorConfig)).ToNot(ContainElement("dash0metricrecorder"))
+			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("metrics/spam-counters"))
+		})
+
+		It("should not wire the dash0metricrecorder when there is no default Dash0 export path [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestPassthroughOnlyDefaultExporters(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// $scDefault is false (no default Dash0 exporter), so the recorder is not wired and dash0filter carries
+			// no metric_recorder.
+			Expect(collectorConfig["extensions"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
+			Expect(collectorConfig["receivers"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
+			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("metrics/spam-counters"))
+			if dash0filter, ok := collectorConfig["processors"].(map[string]interface{})["dash0filter"].(map[string]interface{}); ok {
+				Expect(dash0filter).ToNot(HaveKey("metric_recorder"))
+			}
+		})
+
+		It("should wire the dash0metricrecorder extension + receiver when Signal Control + spamFilter are enabled [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			Expect(extensions).To(HaveKey("dash0metricrecorder"))
+			Expect(readServiceExtensions(collectorConfig)).To(ContainElement("dash0metricrecorder"))
+
+			receivers := collectorConfig["receivers"].(map[string]interface{})
+			Expect(receivers).To(HaveKey("dash0metricrecorder"))
+			Expect(receivers["dash0metricrecorder"].(map[string]interface{})["metric_recorder"]).
+				To(Equal("dash0metricrecorder"))
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0filter"].(map[string]interface{})["metric_recorder"]).
+				To(Equal("dash0metricrecorder"))
+
+			pipelines := readPipelines(collectorConfig)
+			Expect(readPipelineReceivers(pipelines, "metrics/spam-counters")).To(ConsistOf("dash0metricrecorder"))
+			Expect(readPipelineExporters(pipelines, "metrics/spam-counters")).
+				To(ContainElement("forward/metrics-default-exporter"))
+		})
+
+		It("should not wire the dash0metricrecorder when infrastructure metrics collection is disabled [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: false,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+
+			// Without the metrics pipelines there is nowhere to drain the recorder, so it stays unwired and
+			// dash0filter carries no metric_recorder. With infrastructure metrics disabled the deployment
+			// collector renders no metrics receivers/pipelines at all, so guard the (possibly nil) blocks.
+			Expect(collectorConfig["extensions"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
+			if receivers, ok := collectorConfig["receivers"].(map[string]interface{}); ok {
+				Expect(receivers).ToNot(HaveKey("dash0metricrecorder"))
+			}
+			if service, ok := collectorConfig["service"].(map[string]interface{}); ok {
+				if pipelines, ok := service["pipelines"].(map[string]interface{}); ok {
+					Expect(pipelines).ToNot(HaveKey("metrics/spam-counters"))
+				}
+			}
+			if processors, ok := collectorConfig["processors"].(map[string]interface{}); ok {
+				if dash0filter, ok := processors["dash0filter"].(map[string]interface{}); ok {
+					Expect(dash0filter).ToNot(HaveKey("metric_recorder"))
+				}
+			}
+		})
+
+		It("should wire a per-branch dash0metricrecorder for each namespaced dataset, exporting to that branch's exporters [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedMultiDatasetExporters(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// namespace-1 has two Dash0 dataset branches (0 and 1); each gets its own recorder instance.
+			for _, idx := range []string{"0", "1"} {
+				id := "dash0metricrecorder/ns/" + namespace1 + "/" + idx
+				filterID := "dash0filter/ns/" + namespace1 + "/" + idx
+
+				Expect(collectorConfig["extensions"].(map[string]interface{})).To(HaveKey(id))
+				Expect(readServiceExtensions(collectorConfig)).To(ContainElement(id))
+				Expect(collectorConfig["receivers"].(map[string]interface{})[id].(map[string]interface{})["metric_recorder"]).
+					To(Equal(id))
+				Expect(collectorConfig["processors"].(map[string]interface{})[filterID].(map[string]interface{})["metric_recorder"]).
+					To(Equal(id))
+
+				// The per-branch filter (not the shared dash0filter) runs in all three per-ns SC pipelines.
+				Expect(readPipelineProcessors(pipelines, "traces/sc/ns/"+namespace1+"/"+idx)).To(ContainElement(filterID))
+				Expect(readPipelineProcessors(pipelines, "metrics/sc/ns/"+namespace1+"/"+idx)).To(ContainElement(filterID))
+				Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+namespace1+"/"+idx)).To(ContainElement(filterID))
+
+				// The branch's spam-counters pipeline drains its recorder to the SAME exporters the branch's
+				// telemetry uses, so the counts carry that branch's dataset (via the exporter's Dash0-Dataset header).
+				spamPipeline := "metrics/spam-counters/ns/" + namespace1 + "/" + idx
+				Expect(readPipelineReceivers(pipelines, spamPipeline)).To(ConsistOf(id))
+				Expect(readPipelineExporters(pipelines, spamPipeline)).
+					To(ConsistOf(readPipelineExporters(pipelines, "metrics/sc/ns/"+namespace1+"/"+idx)))
+			}
+		})
+
+		It("should not wire any per-branch dash0metricrecorder when spamFilter is disabled with namespaced datasets [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedMultiDatasetExporters(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SamplingEnabled:   true,
+					SpamFilterEnabled: false,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// With the spam filter off, neither the shared nor any per-branch recorder/filter is wired.
+			Expect(collectorConfig["processors"].(map[string]interface{})).ToNot(HaveKey("dash0filter"))
+			for _, idx := range []string{"0", "1"} {
+				id := "dash0metricrecorder/ns/" + namespace1 + "/" + idx
+				Expect(collectorConfig["extensions"].(map[string]interface{})).ToNot(HaveKey(id))
+				Expect(collectorConfig["receivers"].(map[string]interface{})).ToNot(HaveKey(id))
+				Expect(collectorConfig["processors"].(map[string]interface{})).ToNot(HaveKey("dash0filter/ns/" + namespace1 + "/" + idx))
+				Expect(pipelines).ToNot(HaveKey("metrics/spam-counters/ns/" + namespace1 + "/" + idx))
+				Expect(readServiceExtensions(collectorConfig)).ToNot(ContainElement(id))
+			}
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "dash0filter")
+		})
+
+		It("should wire a per-branch dash0metricrecorder for each namespaced dataset [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedMultiDatasetExporters(),
+				SignalControl: SignalControlConfig{
+					Enabled:           true,
+					SpamFilterEnabled: true,
+					Endpoint:          "decision-maker.example.com:443",
+					ApiEndpoint:       "https://control-plane-api.dash0.com",
+					Dataset:           "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			for _, idx := range []string{"0", "1"} {
+				id := "dash0metricrecorder/ns/" + namespace1 + "/" + idx
+				filterID := "dash0filter/ns/" + namespace1 + "/" + idx
+
+				Expect(collectorConfig["extensions"].(map[string]interface{})).To(HaveKey(id))
+				Expect(readServiceExtensions(collectorConfig)).To(ContainElement(id))
+				Expect(collectorConfig["receivers"].(map[string]interface{})[id].(map[string]interface{})["metric_recorder"]).
+					To(Equal(id))
+				Expect(collectorConfig["processors"].(map[string]interface{})[filterID].(map[string]interface{})["metric_recorder"]).
+					To(Equal(id))
+				Expect(readPipelineProcessors(pipelines, "metrics/sc/ns/"+namespace1+"/"+idx)).To(ContainElement(filterID))
+
+				spamPipeline := "metrics/spam-counters/ns/" + namespace1 + "/" + idx
+				Expect(readPipelineReceivers(pipelines, spamPipeline)).To(ConsistOf(id))
+				Expect(readPipelineExporters(pipelines, spamPipeline)).
+					To(ConsistOf(readPipelineExporters(pipelines, "metrics/sc/ns/"+namespace1+"/"+idx)))
+			}
 		})
 
 		It("should render dash0operation as an empty object when no operation processor tunables are set [DaemonSet]", func() {
@@ -6459,6 +6758,14 @@ func pathToScrapeJob(jobName string) []string {
 
 func readPipelines(collectorConfig map[string]any) map[string]any {
 	return ((collectorConfig["service"]).(map[string]any)["pipelines"]).(map[string]any)
+}
+
+func readServiceExtensions(collectorConfig map[string]any) []any {
+	extensionsRaw := (collectorConfig["service"]).(map[string]any)["extensions"]
+	if extensionsRaw == nil {
+		return nil
+	}
+	return extensionsRaw.([]any)
 }
 
 func readPipelineReceivers(pipelines map[string]any, pipelineName string) []any {

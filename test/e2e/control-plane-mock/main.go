@@ -34,12 +34,13 @@ func main() {
 		ginCtx.Status(http.StatusNoContent)
 	})
 
-	// URL templates consumed by the dash0settingsonedgeextension in the
-	// Signal Control-enabled collector. See:
-	//   /components/collector/extension/dash0settingsonedgeextension/settings_provider.go
-	//   /components/collector/extension/dash0settingsonedgeextension/pattern_provider.go
-	// in the dash0 repo. Returning empty payloads is enough to keep the
-	// extension from error-looping during e2e tests.
+	// URL consumed by the dash0settingsonedgeextension in the Signal Control-enabled collector. The extension
+	// fetches all edge configuration (settings and log patterns) from the single GET /api/edge/settings endpoint
+	// on the region-bound Dash0 public API. See
+	// /components/collector/extension/dash0settingsonedgeextension/fetcher_http.go in the dash0 repo. Returning an
+	// empty payload is enough to keep the extension from error-looping during e2e tests.
+	router.GET("/api/edge/settings", handleEdgeSettings)
+	// Legacy endpoints, retained for older collector images that still poll the deprecated /public/edge paths.
 	router.GET("/public/edge/settings", handleEdgeSettings)
 	router.GET("/public/edge/patterns", handleEdgePatterns)
 	router.POST("/public/edge/patterns/report", handleEdgePatternsReport)
