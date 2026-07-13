@@ -124,7 +124,7 @@ jobs:
 
       - name: send Slack notification on success
         if: ${{ success() && !inputs.use_branch_chart }}
-        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
+        uses: slackapi/slack-github-action@0d95c9a7becc1e6e297d76df9bc735c44f4cbcbc
         with:
           errors: true
           method: chat.postMessage
@@ -147,7 +147,7 @@ jobs:
 
       - name: send Slack notification on failure
         if: ${{ failure() && !inputs.use_branch_chart }}
-        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
+        uses: slackapi/slack-github-action@0d95c9a7becc1e6e297d76df9bc735c44f4cbcbc
         with:
           errors: true
           method: chat.postMessage
