@@ -31,34 +31,46 @@ import (
 )
 
 const (
-	samplingRuleName        = "test-sampling-rule"
-	samplingRuleName2       = "test-sampling-rule-2"
-	samplingRuleApiBasePath = "/api/sampling-rules/"
+	samplingRuleName            = "test-sampling-rule"
+	extraNamespaceSamplingRules = "extra-namespace-sampling-rules"
+	samplingRuleName2           = "test-sampling-rule-2"
+	samplingRuleApiBasePath     = "/api/sampling-rules/"
 
-	samplingRuleId             = "sampling-rule-id"
-	samplingRuleOriginPattern  = "dash0-operator_%s_test-dataset_test-sampling-rule"
-	samplingRuleOriginPattern2 = "dash0-operator_%s_test-dataset_test-sampling-rule-2"
+	samplingRuleId                       = "sampling-rule-id"
+	samplingRuleOriginPattern            = "dash0-operator_%s_test-dataset_test-namespace_test-sampling-rule"
+	samplingRuleOriginPatternExtra       = "dash0-operator_%s_test-dataset_extra-namespace-sampling-rules_test-sampling-rule-2"
+	samplingRuleOriginPatternAlternative = "dash0-operator_%s_test-dataset-alt_test-namespace_test-sampling-rule"
 )
 
 var (
 	defaultExpectedPathSamplingRule = fmt.Sprintf(
 		"%s.*%s",
 		samplingRuleApiBasePath,
-		"dash0-operator_.*_test-dataset_test-sampling-rule",
+		"dash0-operator_.*_test-dataset_test-namespace_test-sampling-rule",
+	)
+	expectedPathSamplingRuleAlternative = fmt.Sprintf(
+		"%s.*%s",
+		samplingRuleApiBasePath,
+		"dash0-operator_.*_test-dataset-alt_test-namespace_test-sampling-rule",
 	)
 	defaultExpectedPathSamplingRule2 = fmt.Sprintf(
 		"%s.*%s",
 		samplingRuleApiBasePath,
-		"dash0-operator_.*_test-dataset_test-sampling-rule-2",
+		"dash0-operator_.*_test-dataset_extra-namespace-sampling-rules_test-sampling-rule-2",
 	)
+	samplingRuleLeaderElectionAware = NewLeaderElectionAwareMock(true)
 )
 
 var _ = Describe(
 	"The Sampling Rule controller", Ordered, func() {
+		var (
+			extraMonitoringResourceNames []types.NamespacedName
+			testStartedAt                time.Time
+			clusterId                    string
+		)
+
 		ctx := context.Background()
 		logger := logd.FromContext(ctx)
-		var testStartedAt time.Time
-		var clusterId string
 
 		BeforeAll(
 			func() {
@@ -71,6 +83,17 @@ var _ = Describe(
 		BeforeEach(
 			func() {
 				testStartedAt = time.Now()
+				extraMonitoringResourceNames = make([]types.NamespacedName, 0)
+			},
+		)
+
+		AfterEach(
+			func() {
+				DeleteMonitoringResource(ctx, k8sClient)
+				for _, name := range extraMonitoringResourceNames {
+					DeleteMonitoringResourceByName(ctx, k8sClient, name, true)
+				}
+				extraMonitoringResourceNames = make([]types.NamespacedName, 0)
 			},
 		)
 
@@ -82,6 +105,10 @@ var _ = Describe(
 					func() {
 						samplingRuleReconciler = createSamplingRuleReconciler(clusterId)
 
+						// Set default API configs directly (not via SetDefaultApiConfigs) to avoid
+						// triggering maybeDoInitialSynchronizationOfAllResources, which would set
+						// initialSyncHasHappened to true and prevent the DescribeTable tests from
+						// verifying initial sync behavior.
 						samplingRuleReconciler.defaultApiConfigs.Set(
 							[]ApiConfig{
 								{
@@ -96,26 +123,46 @@ var _ = Describe(
 
 				AfterEach(
 					func() {
-						VerifyNoUnmatchedGockRequests()
+						DeleteMonitoringResourceIfItExists(ctx, k8sClient)
+						deleteSamplingRuleResourceIfItExists(ctx, k8sClient, TestNamespaceName, samplingRuleName)
+						deleteSamplingRuleResourceIfItExists(ctx, k8sClient, extraNamespaceSamplingRules, samplingRuleName2)
+					},
+				)
 
-						deleteSamplingRuleResourceIfItExists(ctx, k8sClient, samplingRuleName)
-						deleteSamplingRuleResourceIfItExists(ctx, k8sClient, samplingRuleName2)
+				It(
+					"it ignores sampling rule resource changes if no Dash0 monitoring resource exists in the namespace", func() {
+						expectSamplingRulePutRequest(clusterId, defaultExpectedPathSamplingRule)
+						defer gock.Off()
+
+						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
+						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
+
+						Expect(gock.IsPending()).To(BeTrue())
+						verifySamplingRuleHasNoSynchronizationStatus(
+							ctx,
+							k8sClient,
+							TestNamespaceName,
+							samplingRuleName,
+						)
 					},
 				)
 
 				It(
 					"it ignores sampling rule resource changes if the API endpoint is not configured", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
 						expectSamplingRulePutRequest(clusterId, defaultExpectedPathSamplingRule)
 						defer gock.Off()
 
 						samplingRuleReconciler.RemoveDefaultApiConfigs(ctx, logger)
 
-						samplingRuleResource := createSamplingRuleResource(samplingRuleName)
+						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
 						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
 						result, err := samplingRuleReconciler.Reconcile(
 							ctx, reconcile.Request{
 								NamespacedName: types.NamespacedName{
-									Name: samplingRuleName,
+									Namespace: TestNamespaceName,
+									Name:      samplingRuleName,
 								},
 							},
 						)
@@ -126,6 +173,7 @@ var _ = Describe(
 						verifySamplingRuleHasNoSynchronizationStatus(
 							ctx,
 							k8sClient,
+							TestNamespaceName,
 							samplingRuleName,
 						)
 					},
@@ -133,16 +181,19 @@ var _ = Describe(
 
 				It(
 					"creates a sampling rule", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
 						expectSamplingRulePutRequest(clusterId, defaultExpectedPathSamplingRule)
 						defer gock.Off()
 
-						samplingRuleResource := createSamplingRuleResource(samplingRuleName)
+						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
 						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
 
 						result, err := samplingRuleReconciler.Reconcile(
 							ctx, reconcile.Request{
 								NamespacedName: types.NamespacedName{
-									Name: samplingRuleName,
+									Namespace: TestNamespaceName,
+									Name:      samplingRuleName,
 								},
 							},
 						)
@@ -152,6 +203,7 @@ var _ = Describe(
 						verifySamplingRuleSynchronizationStatus(
 							ctx,
 							k8sClient,
+							TestNamespaceName,
 							samplingRuleName,
 							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 							testStartedAt,
@@ -166,11 +218,66 @@ var _ = Describe(
 				)
 
 				It(
+					"creates a sampling rule with namespaced config from the monitoring resource", func() {
+						monitoringResource := DefaultMonitoringResourceWithCustomApiConfigAndToken(
+							MonitoringResourceQualifiedName,
+							ApiEndpointTestAlternative,
+							DatasetCustomTestAlternative,
+							AuthorizationTokenTestAlternative,
+						)
+						EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, monitoringResource.Spec)
+
+						expectSamplingRulePutRequestCustom(
+							clusterId,
+							expectedPathSamplingRuleAlternative,
+							ApiEndpointTestAlternative,
+							DatasetCustomTestAlternative,
+							AuthorizationTokenTestAlternative,
+							samplingRuleOriginPatternAlternative,
+							1,
+						)
+						defer gock.Off()
+
+						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
+						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
+
+						samplingRuleReconciler.SetNamespacedApiConfigs(
+							ctx, TestNamespaceName, []ApiConfig{
+								{
+									Endpoint: ApiEndpointTestAlternative,
+									Dataset:  DatasetCustomTestAlternative,
+									Token:    AuthorizationTokenTestAlternative,
+								},
+							}, logger,
+						)
+
+						// note: we don't trigger reconcile here because setting the API config and token already triggers a reconciliation
+
+						verifySamplingRuleSynchronizationStatus(
+							ctx,
+							k8sClient,
+							TestNamespaceName,
+							samplingRuleName,
+							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
+							testStartedAt,
+							samplingRuleId,
+							fmt.Sprintf(samplingRuleOriginPatternAlternative, clusterId),
+							ApiEndpointStandardizedTestAlternative,
+							DatasetCustomTestAlternative,
+							"",
+						)
+						Expect(gock.IsDone()).To(BeTrue())
+					},
+				)
+
+				It(
 					"updates a sampling rule", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
 						expectSamplingRulePutRequest(clusterId, defaultExpectedPathSamplingRule)
 						defer gock.Off()
 
-						samplingRuleResource := createSamplingRuleResource(samplingRuleName)
+						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
 						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
 
 						samplingRuleResource.Spec.Display = &dash0v1alpha1.Dash0SamplingRuleDisplay{
@@ -181,7 +288,8 @@ var _ = Describe(
 						result, err := samplingRuleReconciler.Reconcile(
 							ctx, reconcile.Request{
 								NamespacedName: types.NamespacedName{
-									Name: samplingRuleName,
+									Namespace: TestNamespaceName,
+									Name:      samplingRuleName,
 								},
 							},
 						)
@@ -191,6 +299,7 @@ var _ = Describe(
 						verifySamplingRuleSynchronizationStatus(
 							ctx,
 							k8sClient,
+							TestNamespaceName,
 							samplingRuleName,
 							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 							testStartedAt,
@@ -206,17 +315,20 @@ var _ = Describe(
 
 				It(
 					"deletes a sampling rule", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
 						expectSamplingRuleDeleteRequest(defaultExpectedPathSamplingRule)
 						defer gock.Off()
 
-						samplingRuleResource := createSamplingRuleResource(samplingRuleName)
+						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
 						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
 						Expect(k8sClient.Delete(ctx, samplingRuleResource)).To(Succeed())
 
 						result, err := samplingRuleReconciler.Reconcile(
 							ctx, reconcile.Request{
 								NamespacedName: types.NamespacedName{
-									Name: samplingRuleName,
+									Namespace: TestNamespaceName,
+									Name:      samplingRuleName,
 								},
 							},
 						)
@@ -229,17 +341,20 @@ var _ = Describe(
 
 				It(
 					"deletes a sampling rule if labelled with dash0.com/enable=false", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
 						expectSamplingRuleDeleteRequestWithHttpStatus(defaultExpectedPathSamplingRule, http.StatusNotFound)
 						defer gock.Off()
 
 						samplingRuleResource :=
-							createSamplingRuleResourceWithEnableLabel(samplingRuleName, "false")
+							createSamplingRuleResourceWithEnableLabel(TestNamespaceName, samplingRuleName, "false")
 						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
 
 						result, err := samplingRuleReconciler.Reconcile(
 							ctx, reconcile.Request{
 								NamespacedName: types.NamespacedName{
-									Name: samplingRuleName,
+									Namespace: TestNamespaceName,
+									Name:      samplingRuleName,
 								},
 							},
 						)
@@ -249,10 +364,11 @@ var _ = Describe(
 						verifySamplingRuleSynchronizationStatus(
 							ctx,
 							k8sClient,
+							TestNamespaceName,
 							samplingRuleName,
 							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 							testStartedAt,
-							"",
+							"", // when deleting an object, we do not get an HTTP response body with an ID
 							fmt.Sprintf(samplingRuleOriginPattern, clusterId),
 							ApiEndpointStandardizedTest,
 							DatasetCustomTest,
@@ -264,6 +380,8 @@ var _ = Describe(
 
 				It(
 					"reports http errors when synchronizing a sampling rule", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
 						gock.New(ApiEndpointTest).
 							Put(defaultExpectedPathSamplingRule).
 							MatchParam("dataset", DatasetCustomTest).
@@ -272,13 +390,14 @@ var _ = Describe(
 							JSON(map[string]string{})
 						defer gock.Off()
 
-						samplingRuleResource := createSamplingRuleResource(samplingRuleName)
+						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
 						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
 
 						result, err := samplingRuleReconciler.Reconcile(
 							ctx, reconcile.Request{
 								NamespacedName: types.NamespacedName{
-									Name: samplingRuleName,
+									Namespace: TestNamespaceName,
+									Name:      samplingRuleName,
 								},
 							},
 						)
@@ -288,6 +407,7 @@ var _ = Describe(
 						verifySamplingRuleSynchronizationStatus(
 							ctx,
 							k8sClient,
+							TestNamespaceName,
 							samplingRuleName,
 							dash0common.Dash0ApiResourceSynchronizationStatusFailed,
 							testStartedAt,
@@ -303,6 +423,8 @@ var _ = Describe(
 
 				It(
 					"retries synchronization when synchronizing a sampling rule", func() {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
 						gock.New(ApiEndpointTest).
 							Put(defaultExpectedPathSamplingRule).
 							MatchParam("dataset", DatasetCustomTest).
@@ -312,13 +434,14 @@ var _ = Describe(
 						expectSamplingRulePutRequest(clusterId, defaultExpectedPathSamplingRule)
 						defer gock.Off()
 
-						samplingRuleResource := createSamplingRuleResource(samplingRuleName)
+						samplingRuleResource := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
 						Expect(k8sClient.Create(ctx, samplingRuleResource)).To(Succeed())
 
 						result, err := samplingRuleReconciler.Reconcile(
 							ctx, reconcile.Request{
 								NamespacedName: types.NamespacedName{
-									Name: samplingRuleName,
+									Namespace: TestNamespaceName,
+									Name:      samplingRuleName,
 								},
 							},
 						)
@@ -328,6 +451,7 @@ var _ = Describe(
 						verifySamplingRuleSynchronizationStatus(
 							ctx,
 							k8sClient,
+							TestNamespaceName,
 							samplingRuleName,
 							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 							testStartedAt,
@@ -349,26 +473,48 @@ var _ = Describe(
 				DescribeTable(
 					"synchronizes all existing sampling rule resources when the auth token or api endpoint become available",
 					func(testConfig maybeDoInitialSynchronizationOfAllSamplingRulesTest) {
+						EnsureMonitoringResourceWithoutExportExistsAndIsAvailable(ctx, k8sClient)
+
+						// Disable synchronization by removing the auth token or api endpoint.
 						testConfig.disableSync()
+
+						EnsureNamespaceExists(ctx, k8sClient, extraNamespaceSamplingRules)
+						secondMonitoringResource := EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
+							ctx,
+							k8sClient,
+							MonitoringResourceDefaultSpecWithoutExport,
+							types.NamespacedName{Namespace: extraNamespaceSamplingRules, Name: MonitoringResourceName},
+						)
+						extraMonitoringResourceNames = append(
+							extraMonitoringResourceNames, types.NamespacedName{
+								Namespace: secondMonitoringResource.Namespace,
+								Name:      secondMonitoringResource.Name,
+							},
+						)
 
 						expectSamplingRulePutRequest(clusterId, defaultExpectedPathSamplingRule)
 						expectSamplingRulePutRequest(clusterId, defaultExpectedPathSamplingRule2)
 						defer gock.Off()
 
-						samplingRuleResource1 := createSamplingRuleResource(samplingRuleName)
+						samplingRuleResource1 := createSamplingRuleResource(TestNamespaceName, samplingRuleName)
 						Expect(k8sClient.Create(ctx, samplingRuleResource1)).To(Succeed())
-						samplingRuleResource2 := createSamplingRuleResource(samplingRuleName2)
+						samplingRuleResource2 := createSamplingRuleResource(extraNamespaceSamplingRules, samplingRuleName2)
 						Expect(k8sClient.Create(ctx, samplingRuleResource2)).To(Succeed())
 
+						// verify that the sampling rules have not been synchronized yet
 						Expect(gock.IsPending()).To(BeTrue())
-						verifySamplingRuleHasNoSynchronizationStatus(ctx, k8sClient, samplingRuleName)
-						verifySamplingRuleHasNoSynchronizationStatus(ctx, k8sClient, samplingRuleName2)
+						verifySamplingRuleHasNoSynchronizationStatus(ctx, k8sClient, TestNamespaceName, samplingRuleName)
+						verifySamplingRuleHasNoSynchronizationStatus(ctx, k8sClient, extraNamespaceSamplingRules, samplingRuleName2)
 
+						// Now provide the auth token or API endpoint, which was unset before. This should trigger initial
+						// synchronization of all resources.
 						testConfig.enabledSync()
 
+						// Verify both sampling rule resources have been synchronized
 						verifySamplingRuleSynchronizationStatus(
 							ctx,
 							k8sClient,
+							TestNamespaceName,
 							samplingRuleName,
 							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 							testStartedAt,
@@ -381,11 +527,12 @@ var _ = Describe(
 						verifySamplingRuleSynchronizationStatus(
 							ctx,
 							k8sClient,
+							extraNamespaceSamplingRules,
 							samplingRuleName2,
 							dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 							testStartedAt,
 							samplingRuleId,
-							fmt.Sprintf(samplingRuleOriginPattern2, clusterId),
+							fmt.Sprintf(samplingRuleOriginPatternExtra, clusterId),
 							ApiEndpointStandardizedTest,
 							DatasetCustomTest,
 							"",
@@ -413,10 +560,10 @@ var _ = Describe(
 					Entry(
 						"when the operator manager becomes leader", maybeDoInitialSynchronizationOfAllSamplingRulesTest{
 							disableSync: func() {
-								leaderElectionAware.SetLeader(false)
+								samplingRuleLeaderElectionAware.SetLeader(false)
 							},
 							enabledSync: func() {
-								leaderElectionAware.SetLeader(true)
+								samplingRuleLeaderElectionAware.SetLeader(true)
 								samplingRuleReconciler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
 							},
 						},
@@ -486,8 +633,9 @@ spec:
 						Token:    AuthorizationTokenTest,
 					}
 					preconditionValidationResult := &preconditionValidationResult{
-						k8sName:  "dash0-sampling-rule",
-						resource: samplingRule,
+						k8sName:      "dash0-sampling-rule",
+						k8sNamespace: TestNamespaceName,
+						resource:     samplingRule,
 						validatedApiConfigs: []ValidatedApiConfigAndToken{
 							*NewValidatedApiConfigAndToken(apiConfig.Endpoint, apiConfig.Dataset, apiConfig.Token),
 						},
@@ -534,7 +682,7 @@ func createSamplingRuleReconciler(clusterId string) *SamplingRuleReconciler {
 	return NewSamplingRuleReconciler(
 		k8sClient,
 		types.UID(clusterId),
-		leaderElectionAware,
+		samplingRuleLeaderElectionAware,
 		TestHTTPClient(),
 	)
 }
@@ -594,16 +742,18 @@ func expectSamplingRuleDeleteRequestWithHttpStatus(expectedPath string, status i
 		Reply(status)
 }
 
-func createSamplingRuleResource(name string) *dash0v1alpha1.Dash0SamplingRule {
-	return createSamplingRuleResourceWithEnableLabel(name, "")
+func createSamplingRuleResource(namespace string, name string) *dash0v1alpha1.Dash0SamplingRule {
+	return createSamplingRuleResourceWithEnableLabel(namespace, name, "")
 }
 
 func createSamplingRuleResourceWithEnableLabel(
+	namespace string,
 	name string,
 	dash0EnableLabelValue string,
 ) *dash0v1alpha1.Dash0SamplingRule {
 	objectMeta := metav1.ObjectMeta{
-		Name: name,
+		Name:      name,
+		Namespace: namespace,
 	}
 	if dash0EnableLabelValue != "" {
 		objectMeta.Labels = map[string]string{
@@ -634,11 +784,13 @@ func createSamplingRuleResourceWithEnableLabel(
 func deleteSamplingRuleResourceIfItExists(
 	ctx context.Context,
 	k8sClient client.Client,
+	namespace string,
 	name string,
 ) {
 	samplingRule := &dash0v1alpha1.Dash0SamplingRule{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:      name,
+			Namespace: namespace,
 		},
 	}
 	_ = k8sClient.Delete(
@@ -652,6 +804,7 @@ func deleteSamplingRuleResourceIfItExists(
 func verifySamplingRuleSynchronizationStatus(
 	ctx context.Context,
 	k8sClient client.Client,
+	namespace string,
 	name string,
 	expectedStatus dash0common.Dash0ApiResourceSynchronizationStatus,
 	testStartedAt time.Time,
@@ -666,7 +819,8 @@ func verifySamplingRuleSynchronizationStatus(
 			samplingRule := &dash0v1alpha1.Dash0SamplingRule{}
 			err := k8sClient.Get(
 				ctx, types.NamespacedName{
-					Name: name,
+					Namespace: namespace,
+					Name:      name,
 				}, samplingRule,
 			)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -690,6 +844,7 @@ func verifySamplingRuleSynchronizationStatus(
 func verifySamplingRuleHasNoSynchronizationStatus(
 	ctx context.Context,
 	k8sClient client.Client,
+	namespace string,
 	name string,
 ) {
 	Eventually(
@@ -697,7 +852,8 @@ func verifySamplingRuleHasNoSynchronizationStatus(
 			samplingRule := &dash0v1alpha1.Dash0SamplingRule{}
 			err := k8sClient.Get(
 				ctx, types.NamespacedName{
-					Name: name,
+					Namespace: namespace,
+					Name:      name,
 				}, samplingRule,
 			)
 			g.Expect(err).NotTo(HaveOccurred())

@@ -10,11 +10,17 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
-// Dash0SamplingRule is the Schema for the dash0samplingrules API
+// Dash0SamplingRule is the Schema for the dash0samplingrules API.
+//
+// The resource is namespaced: the namespace only selects which dataset and token the rule is synchronized to (the
+// dataset and token of the Dash0 export of the Dash0 monitoring resource in the same namespace, falling back to the
+// operator configuration resource). It does NOT restrict enforcement to that namespace's traces. Tail sampling is
+// applied cluster-wide and per whole trace by the Signal Control collector; the Decision Maker coordinates keep/drop
+// decisions per trace-id in a dataset-blind manner. Placing a sampling rule in a namespace therefore does not mean
+// "sample only this namespace's traces".
 //
 // +kubebuilder:object:root=true
 // +groupName=operator.dash0.com
-// +kubebuilder:resource:scope=Cluster
 // +kubebuilder:subresource:status
 type Dash0SamplingRule struct {
 	metav1.TypeMeta   `json:",inline"`

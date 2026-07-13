@@ -1399,6 +1399,18 @@ func startOperatorManager(
 	return nil
 }
 
+// appendSamplingRuleNamespacedApiClient appends the sampling rule reconciler to the given list of namespaced API
+// clients if it is present (it is only instantiated when the Signal Control feature is enabled).
+func appendSamplingRuleNamespacedApiClient(
+	clients []controller.NamespacedApiClient,
+	samplingRuleReconciler *controller.SamplingRuleReconciler,
+) []controller.NamespacedApiClient {
+	if samplingRuleReconciler != nil {
+		return append(clients, samplingRuleReconciler)
+	}
+	return clients
+}
+
 func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
@@ -1818,9 +1830,7 @@ func startDash0Controllers(
 	setupLog.Info("The operator configuration resource reconciler has been started.")
 
 	setupLog.Info("Creating the monitoring resource reconciler.")
-	monitoringReconciler := controller.NewMonitoringReconciler(
-		k8sClient,
-		clientset,
+	namespacedApiClients := appendSamplingRuleNamespacedApiClient(
 		[]controller.NamespacedApiClient{
 			syntheticCheckReconciler,
 			viewReconciler,
@@ -1830,6 +1840,12 @@ func startDash0Controllers(
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
+		samplingRuleReconciler,
+	)
+	monitoringReconciler := controller.NewMonitoringReconciler(
+		k8sClient,
+		clientset,
+		namespacedApiClients,
 		instrumenter,
 		collectorManager,
 		targetallocatorManager,

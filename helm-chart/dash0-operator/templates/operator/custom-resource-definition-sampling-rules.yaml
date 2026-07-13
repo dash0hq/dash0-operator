@@ -18,12 +18,20 @@ spec:
     listKind: Dash0SamplingRuleList
     plural: dash0samplingrules
     singular: dash0samplingrule
-  scope: Cluster
+  scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Dash0SamplingRule is the Schema for the dash0samplingrules API
+        description: |-
+          Dash0SamplingRule is the Schema for the dash0samplingrules API.
+
+          The resource is namespaced: the namespace only selects which dataset and token the rule is synchronized to (the
+          dataset and token of the Dash0 export of the Dash0 monitoring resource in the same namespace, falling back to the
+          operator configuration resource). It does NOT restrict enforcement to that namespace's traces. Tail sampling is
+          applied cluster-wide and per whole trace by the Signal Control collector; the Decision Maker coordinates keep/drop
+          decisions per trace-id in a dataset-blind manner. Placing a sampling rule in a namespace therefore does not mean
+          "sample only this namespace's traces".
         properties:
           apiVersion:
             description: |-
