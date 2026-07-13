@@ -502,6 +502,55 @@ func assertCollectorConfigStructurallyValid(collectorConfig map[string]interface
 	}
 }
 
+// topLevelComponentKeys returns the set of keys declared under a top-level collector config section
+// (e.g. "processors", "receivers", "exporters", "connectors", "extensions"), tolerating a missing/nil section.
+func topLevelComponentKeys(collectorConfig map[string]interface{}, section string) map[string]bool {
+	out := map[string]bool{}
+	if m, ok := collectorConfig[section].(map[string]interface{}); ok {
+		for k := range m {
+			out[k] = true
+		}
+	}
+	return out
+}
+
+// assertNoDanglingPipelineComponents verifies every component referenced by a pipeline is actually declared:
+// receivers/exporters must be a declared receiver/exporter or a connector, processors must be a declared processor,
+// and every service.extensions entry must be a declared extension. This catches dangling references (a component
+// referenced by a pipeline but never declared) that the OpenTelemetry collector rejects at startup but that the
+// per-field / structural-validity assertions do not surface. desc labels the config under test.
+func assertNoDanglingPipelineComponents(collectorConfig map[string]interface{}, desc string) {
+	declaredReceivers := topLevelComponentKeys(collectorConfig, "receivers")
+	declaredProcessors := topLevelComponentKeys(collectorConfig, "processors")
+	declaredExporters := topLevelComponentKeys(collectorConfig, "exporters")
+	declaredConnectors := topLevelComponentKeys(collectorConfig, "connectors")
+	declaredExtensions := topLevelComponentKeys(collectorConfig, "extensions")
+
+	pipelines := readPipelines(collectorConfig)
+	for name := range pipelines {
+		for _, r := range readPipelineReceivers(pipelines, name) {
+			key := fmt.Sprintf("%v", r)
+			Expect(declaredReceivers[key] || declaredConnectors[key]).
+				To(BeTrue(), "%s: pipeline %q references undeclared receiver %q", desc, name, key)
+		}
+		for _, p := range readPipelineProcessors(pipelines, name) {
+			key := fmt.Sprintf("%v", p)
+			Expect(declaredProcessors[key]).
+				To(BeTrue(), "%s: pipeline %q references undeclared processor %q", desc, name, key)
+		}
+		for _, e := range readPipelineExporters(pipelines, name) {
+			key := fmt.Sprintf("%v", e)
+			Expect(declaredExporters[key] || declaredConnectors[key]).
+				To(BeTrue(), "%s: pipeline %q references undeclared exporter %q", desc, name, key)
+		}
+	}
+	for _, ext := range readServiceExtensions(collectorConfig) {
+		key := fmt.Sprintf("%v", ext)
+		Expect(declaredExtensions[key]).
+			To(BeTrue(), "%s: service.extensions references undeclared extension %q", desc, key)
+	}
+}
+
 // cmTestMultipleDefaultDash0Exporters creates two Dash0 default exporters (simulating two Exports entries
 // each with a Dash0 config), which is only possible with multiple Exports array elements.
 func cmTestMultipleDefaultDash0Exporters() otlpExporters {
@@ -5190,6 +5239,200 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
 		)
+	})
+
+	Describe("Signal Control on the k8s-events logs pipeline [Deployment]", func() {
+		fullSC := func() SignalControlConfig {
+			return SignalControlConfig{
+				Enabled:                true,
+				SpamFilterEnabled:      true,
+				SignalToMetricsEnabled: true,
+				Endpoint:               "decision-maker.example.com:443",
+				ApiEndpoint:            "https://control-plane-api.dash0.com",
+				Dataset:                "default",
+			}
+		}
+
+		It("wires the SC prelude, spam filter and s2m on logs/sc/default when all gates are on [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl:     fullSC(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+			Expect(connectors).To(HaveKey("dash0signaltometrics"))
+			Expect(connectors).To(HaveKey("forward/logs-to-sc"))
+
+			// With a default Dash0 exporter the k8s-events pipeline feeds the SC branch (not the raw default
+			// exporter), and the SC prelude/spam filter run in the dedicated logs SC branch, not inline.
+			Expect(readPipelineExporters(pipelines, "logs/k8sevents")).To(ContainElement("forward/logs-to-sc"))
+			Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).ToNot(ContainElement("dash0filter"))
+			logsScProcessors := readPipelineProcessors(pipelines, "logs/sc/default")
+			Expect(logsScProcessors).To(ContainElements("resource/signal_control_attributes", "dash0resource", "dash0filter"),
+				"dash0filter must run after resource/signal_control_attributes, and dash0resource stamps the resource hash for s2m")
+
+			// s2m is an exporter on the logs SC branch and a receiver on the derived-metrics pipeline (it does not
+			// re-enter metrics/common-processors).
+			Expect(readPipelineExporters(pipelines, "logs/sc/default")).To(ContainElement("dash0signaltometrics"))
+			Expect(readPipelineReceivers(pipelines, "metrics/derived/default")).To(ConsistOf("dash0signaltometrics"))
+
+			// The shared default dash0filter records spam counts through the default metric recorder.
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0filter"].(map[string]interface{})).
+				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "deployment/all-on")
+			assertNoDanglingPipelineComponents(collectorConfig, "deployment/all-on")
+		})
+
+		It("renders dash0signaltometrics tunables on the deployment logs path [Deployment]", func() {
+			sc := fullSC()
+			sc.SignalToMetricsMaxTimeSeries = ptr.To(int32(50000))
+			sc.SignalToMetricsFlushInterval = "30s"
+			sc.SignalToMetricsCacheExpiration = "45s"
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			s2m := collectorConfig["connectors"].(map[string]interface{})["dash0signaltometrics"].(map[string]interface{})
+			Expect(s2m["max_time_series"]).To(Equal(50000))
+			Expect(s2m["metrics_flush_interval"]).To(Equal("30s"))
+			Expect(s2m["cache_expiration"]).To(Equal("45s"))
+		})
+
+		It("wires per-branch spam filter and s2m on logs/sc/ns for namespaced multi-dataset exporters [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedMultiDatasetExporters(),
+				SignalControl:     fullSC(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+			connectors := collectorConfig["connectors"].(map[string]interface{})
+
+			// k8s-events are routed per namespace/dataset branch.
+			Expect(readPipelineExporters(pipelines, "logs/k8sevents")).To(ContainElement("routing/logs"))
+
+			b0 := namespace1 + "/0"
+			Expect(connectors).To(HaveKey("dash0signaltometrics/ns/" + b0))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+b0)).To(ContainElements(
+				"resource/signal_control_attributes/ns/"+b0, "dash0resource", "dash0filter/ns/"+b0))
+			Expect(readPipelineExporters(pipelines, "logs/sc/ns/"+b0)).
+				To(ContainElement("dash0signaltometrics/ns/" + b0))
+			Expect(readPipelineReceivers(pipelines, "metrics/derived/ns/"+b0)).
+				To(ConsistOf("dash0signaltometrics/ns/" + b0))
+
+			// The per-branch dash0filter records spam counts through its own per-branch metric recorder.
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0filter/ns/"+b0].(map[string]interface{})).
+				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+b0))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "deployment/ns-multi-dataset")
+			assertNoDanglingPipelineComponents(collectorConfig, "deployment/ns-multi-dataset")
+		})
+
+		It("keeps logs spam filtering but omits s2m and the metric recorder when infra-metrics is off [Deployment]", func() {
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestNamespacedMultiDatasetExporters(),
+				SignalControl:     fullSC(),
+				KubernetesInfrastructureMetricsCollectionEnabled: false,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			// No metrics egress, so neither s2m nor the metric recorder can be wired.
+			connectors := topLevelComponentKeys(collectorConfig, "connectors")
+			b0 := namespace1 + "/0"
+			Expect(connectors).ToNot(HaveKey("dash0signaltometrics"))
+			Expect(connectors).ToNot(HaveKey("dash0signaltometrics/ns/" + b0))
+			Expect(topLevelComponentKeys(collectorConfig, "extensions")).ToNot(HaveKey("dash0metricrecorder/ns/" + b0))
+			for name := range pipelines {
+				Expect(strings.HasPrefix(name, "metrics/")).
+					To(BeFalse(), "unexpected metrics pipeline %q with infra-metrics off", name)
+			}
+
+			// The per-branch spam filter still runs on the logs SC branch, declared without a metric_recorder.
+			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+b0)).To(ContainElement("dash0filter/ns/" + b0))
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0filter/ns/"+b0].(map[string]interface{})).To(BeEmpty())
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "deployment/infra-off")
+			assertNoDanglingPipelineComponents(collectorConfig, "deployment/infra-off")
+		})
+
+		It("keeps the logs spam filter but omits s2m when signalToMetrics is disabled [Deployment]", func() {
+			sc := fullSC()
+			sc.SignalToMetricsEnabled = false
+			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(topLevelComponentKeys(collectorConfig, "connectors")).ToNot(HaveKey("dash0signaltometrics"))
+			Expect(pipelines).ToNot(HaveKey("metrics/derived/default"))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(ContainElement("dash0filter"))
+			Expect(readPipelineExporters(pipelines, "logs/sc/default")).ToNot(ContainElement("dash0signaltometrics"))
+
+			assertNoDanglingPipelineComponents(collectorConfig, "deployment/s2m-off")
+		})
+
+		It("renders structurally valid configs with event collection across exporter/SC/infra combinations [Deployment]", func() {
+			exporterCases := map[string]otlpExporters{
+				"single-default-dash0":          cmTestSingleDefaultOtlpExporter(),
+				"mixed-default-with-namespaced": cmTestMixedDefaultOtlpExporters(),
+				"mixed-default-no-namespaced":   cmTestMixedDefaultNoNamespacedExporters(),
+				"namespaced-multi-dataset":      cmTestNamespacedMultiDatasetExporters(),
+				"namespaced-passthrough-only":   cmTestNamespacedOtlpExporters(),
+				"passthrough-only-default":      cmTestPassthroughOnlyDefaultExporters(),
+			}
+			scVariants := map[string]SignalControlConfig{
+				"sc-off":  {Enabled: false},
+				"sc-spam": {Enabled: true, SpamFilterEnabled: true, Endpoint: "dm:443", ApiEndpoint: "https://cp", Dataset: "default"},
+				"sc-s2m":  {Enabled: true, SignalToMetricsEnabled: true, Endpoint: "dm:443", ApiEndpoint: "https://cp", Dataset: "default"},
+				"sc-full": {Enabled: true, SpamFilterEnabled: true, SignalToMetricsEnabled: true, Endpoint: "dm:443", ApiEndpoint: "https://cp", Dataset: "default"},
+			}
+			for exName, exporters := range exporterCases {
+				for scName, sc := range scVariants {
+					for _, infra := range []bool{true, false} {
+						desc := fmt.Sprintf("deployment/%s/%s/infra=%t", exName, scName, infra)
+						cm, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+							OperatorNamespace: OperatorNamespace,
+							NamePrefix:        namePrefix,
+							Exporters:         exporters,
+							SignalControl:     sc,
+							KubernetesInfrastructureMetricsCollectionEnabled: infra,
+						}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+						Expect(err).ToNot(HaveOccurred(), desc)
+						collectorConfig := parseConfigMapContent(cm)
+						assertCollectorConfigStructurallyValid(collectorConfig, desc)
+						assertNoDanglingPipelineComponents(collectorConfig, desc)
+					}
+				}
+			}
+		})
 	})
 
 	Describe("configurable filtering of telemetry per namespace", func() {

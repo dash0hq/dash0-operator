@@ -272,9 +272,9 @@ type RedMetricsConfig struct {
 // custom metrics from spans and log records at the edge based on Dash0SignalToMetrics rules synced to
 // the Dash0 control plane.
 type SignalToMetricsConfig struct {
-	// Whether to wire the dash0signaltometrics connector into the daemonset collector pipeline. When
-	// disabled, Dash0SignalToMetrics rules synced to the Dash0 control plane are not evaluated at the
-	// edge. This setting is optional, it defaults to true.
+	// Whether to wire the dash0signaltometrics connector into the daemonset and deployment collector
+	// pipelines. When disabled, Dash0SignalToMetrics rules synced to the Dash0 control plane are not
+	// evaluated at the edge. This setting is optional, it defaults to true.
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`
