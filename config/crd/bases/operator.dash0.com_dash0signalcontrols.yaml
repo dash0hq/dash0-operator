@@ -324,9 +324,9 @@ spec:
                   enabled:
                     default: true
                     description: |-
-                      Whether to wire the dash0signaltometrics connector into the daemonset collector pipeline. When
-                      disabled, Dash0SignalToMetrics rules synced to the Dash0 control plane are not evaluated at the
-                      edge. This setting is optional, it defaults to true.
+                      Whether to wire the dash0signaltometrics connector into the daemonset and deployment collector
+                      pipelines. When disabled, Dash0SignalToMetrics rules synced to the Dash0 control plane are not
+                      evaluated at the edge. This setting is optional, it defaults to true.
                     type: boolean
                   flushInterval:
                     description: |-
