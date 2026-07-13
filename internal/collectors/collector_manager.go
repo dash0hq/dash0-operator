@@ -139,13 +139,28 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 			logger.Debug("no Signal Control resource found for collector reconciliation")
 		}
 
+		signalControlEnabled := signalControlResource != nil &&
+			(signalControlResource.Spec.Enabled == nil || *signalControlResource.Spec.Enabled)
+
+		// Gate Signal Control on a Dash0 export in the operator configuration. Signal Control requires a Dash0 export
+		// with an auth token for the Decision Maker connection; without it, treat Signal Control as absent so the
+		// collector is rendered without any Signal Control components (plain collector image and config). Note the
+		// operator configuration export precondition below only removes the collector when there is no export at all;
+		// an Http/Grpc-only export would still build a collector, so this Dash0-specific gate is required separately.
+		if signalControlEnabled &&
+			(operatorConfigurationResource == nil || !operatorConfigurationResource.HasDash0ExportConfigured()) {
+			logger.WarnTelemetryCollectionIssue("Signal Control is enabled, but the operator configuration has no " +
+				"Dash0 export; Signal Control components will not be added to the collector.")
+			signalControlResource = nil
+		}
+
 		// Gate Signal Control on the organization's entitlement. If the organization is not entitled (or the
 		// entitlement cannot be confirmed), treat Signal Control as absent so the collector is rendered without any
 		// Signal Control components (plain collector image and config).
 		if signalControlResource != nil &&
+			signalControlEnabled &&
 			m.enablementChecker != nil &&
 			operatorConfigurationResource != nil &&
-			(signalControlResource.Spec.Enabled == nil || *signalControlResource.Spec.Enabled) &&
 			!m.enablementChecker.EnsureAllowed(ctx, operatorConfigurationResource, logger) {
 			logger.WarnTelemetryCollectionIssue("The organization is not entitled to use Signal Control (or the " +
 				"entitlement could not be confirmed); Signal Control components will not be added to the collector.")

@@ -5,6 +5,7 @@ package webhooks
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -418,6 +419,101 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided Dash0 " +
 				"operator configuration resource has a monitoring template with `export`. Please use the `exports` field in " +
 				"the operator configuration and remove the `export` from the monitoringTemplate.spec.")))
+	})
+
+	Context("when Signal Control is enabled", func() {
+		const signalControlName = "dash0-signal-control-test"
+
+		createSignalControl := func(enabled *bool) {
+			Expect(k8sClient.Create(ctx, &dash0v1alpha1.Dash0SignalControl{
+				ObjectMeta: metav1.ObjectMeta{Name: signalControlName},
+				Spec:       dash0v1alpha1.Dash0SignalControlSpec{Enabled: enabled},
+			})).To(Succeed())
+		}
+
+		AfterEach(func() {
+			signalControl := &dash0v1alpha1.Dash0SignalControl{ObjectMeta: metav1.ObjectMeta{Name: signalControlName}}
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, signalControl))).To(Succeed())
+		})
+
+		It("should reject creating an operator configuration resource without a Dash0 export", func() {
+			createSignalControl(new(true))
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
+					},
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl)))
+		})
+
+		It("should reject creating an operator configuration resource with only a non-Dash0 export", func() {
+			createSignalControl(new(true))
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
+						Exports:        []dash0common.Export{*HttpExportTest()},
+					},
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl)))
+		})
+
+		It("should reject removing the Dash0 export from an existing operator configuration resource", func() {
+			createSignalControl(new(true))
+			operatorConfiguration, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
+						Exports:        []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			operatorConfiguration.Spec.Exports = nil
+			err = k8sClient.Update(ctx, operatorConfiguration)
+			Expect(err).To(MatchError(ContainSubstring(
+				ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl)))
+		})
+
+		It("should allow an operator configuration resource that keeps a Dash0 export", func() {
+			createSignalControl(new(true))
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should allow an operator configuration resource without a Dash0 export when Signal Control is disabled", func() {
+			createSignalControl(new(false))
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+		})
 	})
 
 	Context("with telemetry collection disabled via Helm", Ordered, func() {

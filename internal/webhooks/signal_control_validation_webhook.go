@@ -18,6 +18,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 const (
@@ -76,7 +77,8 @@ func (h *SignalControlValidationWebhookHandler) Handle(ctx context.Context, requ
 	}
 
 	if request.Operation == admissionv1.Create || request.Operation == admissionv1.Update {
-		if !h.hasDash0ExportConfigured(ctx) {
+		if pointers.ReadBoolPointerWithDefault(signalControlResource.Spec.Enabled, true) &&
+			!h.hasDash0ExportConfigured(ctx) {
 			logger.Warn("Rejecting Signal Control resource, no Dash0 export configured.")
 			return admission.Denied(
 				"No Dash0 operator configuration with a Dash0 export was found. Signal Control " +
