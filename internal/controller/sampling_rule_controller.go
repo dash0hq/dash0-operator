@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -40,9 +42,11 @@ type SamplingRuleReconciler struct {
 	leaderElectionAware    util.LeaderElectionAware
 	httpClient             *http.Client
 	defaultApiConfigs      selfmonitoringapiaccess.SynchronizedSlice[ApiConfig]
+	namespacedApiConfigs   selfmonitoringapiaccess.SynchronizedMapSlice[ApiConfig]
 	initialSyncMutex       sync.Mutex
 	initialSyncInProgress  atomic.Bool
 	initialSyncHasHappened atomic.Bool
+	namespacedSyncMutex    selfmonitoringapiaccess.NamespaceMutex
 }
 
 var (
@@ -56,11 +60,13 @@ func NewSamplingRuleReconciler(
 	httpClient *http.Client,
 ) *SamplingRuleReconciler {
 	return &SamplingRuleReconciler{
-		Client:              k8sClient,
-		pseudoClusterUid:    pseudoClusterUid,
-		leaderElectionAware: leaderElectionAware,
-		httpClient:          httpClient,
-		defaultApiConfigs:   *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
+		Client:               k8sClient,
+		pseudoClusterUid:     pseudoClusterUid,
+		leaderElectionAware:  leaderElectionAware,
+		httpClient:           httpClient,
+		defaultApiConfigs:    *selfmonitoringapiaccess.NewSynchronizedSlice[ApiConfig](),
+		namespacedApiConfigs: *selfmonitoringapiaccess.NewSynchronizedMapSlice[ApiConfig](),
+		namespacedSyncMutex:  *selfmonitoringapiaccess.NewNamespaceMutex(),
 	}
 }
 
@@ -99,8 +105,8 @@ func (r *SamplingRuleReconciler) GetDefaultApiConfigs() []ApiConfig {
 	return r.defaultApiConfigs.Get()
 }
 
-func (r *SamplingRuleReconciler) GetNamespacedApiConfigs(_ string) ([]ApiConfig, bool) {
-	return nil, false
+func (r *SamplingRuleReconciler) GetNamespacedApiConfigs(namespace string) ([]ApiConfig, bool) {
+	return r.namespacedApiConfigs.Get(namespace)
 }
 
 func (r *SamplingRuleReconciler) ControllerName() string {
@@ -120,17 +126,53 @@ func (r *SamplingRuleReconciler) SetDefaultApiConfigs(
 	apiConfigs []ApiConfig,
 	logger logd.Logger,
 ) {
-	if len(apiConfigs) > 1 {
-		logger.Warn("Sampling rules only support a single API config, using the first one and ignoring the rest.",
-			"total", len(apiConfigs))
-		apiConfigs = apiConfigs[:1]
-	}
 	r.defaultApiConfigs.Set(apiConfigs)
 	r.maybeDoInitialSynchronizationOfAllResources(ctx, logger)
 }
 
 func (r *SamplingRuleReconciler) RemoveDefaultApiConfigs(_ context.Context, _ logd.Logger) {
 	r.defaultApiConfigs.Clear()
+}
+
+func (r *SamplingRuleReconciler) SetNamespacedApiConfigs(
+	ctx context.Context,
+	namespace string,
+	updatedApiConfigs []ApiConfig,
+	logger logd.Logger,
+) {
+	if updatedApiConfigs != nil {
+		previousApiConfigs, _ := r.namespacedApiConfigs.Get(namespace)
+
+		r.namespacedApiConfigs.Set(namespace, updatedApiConfigs)
+
+		if !slices.Equal(previousApiConfigs, updatedApiConfigs) {
+			r.synchronizeNamespacedResources(ctx, namespace, logger)
+		}
+	}
+}
+
+func (r *SamplingRuleReconciler) RemoveNamespacedApiConfigs(
+	ctx context.Context,
+	namespace string,
+	logger logd.Logger,
+) {
+	if _, exists := r.namespacedApiConfigs.Get(namespace); exists {
+		r.namespacedApiConfigs.Delete(namespace)
+		r.synchronizeNamespacedResources(ctx, namespace, logger)
+	}
+}
+
+func (r *SamplingRuleReconciler) SetSynchronizationEnabled(
+	_ context.Context,
+	_ string,
+	_ *dash0v1beta1.Dash0Monitoring,
+	_ logd.Logger,
+) {
+	// no-op: sampling rules do not have a per-namespace sync toggle
+}
+
+func (r *SamplingRuleReconciler) RemoveSynchronizationEnabled(_ string) {
+	// no-op: sampling rules do not have a per-namespace sync toggle
 }
 
 func (r *SamplingRuleReconciler) NotifyOperatorManagerJustBecameLeader(ctx context.Context, logger logd.Logger) {
@@ -185,7 +227,8 @@ func (r *SamplingRuleReconciler) maybeDoInitialSynchronizationOfAllResources(
 		for _, samplingRuleResource := range allSamplingRuleResourcesInCluster.Items {
 			pseudoReconcileRequest := ctrl.Request{
 				NamespacedName: client.ObjectKey{
-					Name: samplingRuleResource.Name,
+					Namespace: samplingRuleResource.Namespace,
+					Name:      samplingRuleResource.Name,
 				},
 			}
 			_, _ = r.Reconcile(ctx, pseudoReconcileRequest)
@@ -193,6 +236,56 @@ func (r *SamplingRuleReconciler) maybeDoInitialSynchronizationOfAllResources(
 		}
 		logger.Info("Initial synchronization of sampling rules has finished.")
 		r.initialSyncHasHappened.Store(true)
+	}()
+}
+
+func (r *SamplingRuleReconciler) synchronizeNamespacedResources(
+	ctx context.Context,
+	namespace string,
+	logger logd.Logger,
+) {
+	if !r.leaderElectionAware.IsLeader() {
+		logger.Info(
+			"Waiting for this operator manager replica to become leader before running " +
+				"synchronization of sampling rules.",
+		)
+		return
+	}
+
+	// namespacedSyncMutex is used so we don't trigger multiple syncs in parallel in a single namespace.
+	// That happens for example when the export from a monitoring resource is removed, since that updates both the API
+	// config and auth token at almost the same time, triggering two resyncs.
+	r.namespacedSyncMutex.Lock(namespace)
+
+	logger.Info(fmt.Sprintf("Running synchronization of sampling rules in namespace %s now.", namespace))
+
+	go func() {
+		defer r.namespacedSyncMutex.Unlock(namespace)
+
+		allResources := dash0v1alpha1.Dash0SamplingRuleList{}
+		if err := r.List(
+			ctx,
+			&allResources,
+			&client.ListOptions{
+				Namespace: namespace,
+			},
+		); err != nil {
+			logger.Error(err, fmt.Sprintf("Failed to list Dash0 sampling rule resources in namespace %s.", namespace))
+			return
+		}
+
+		for _, resource := range allResources.Items {
+			pseudoReconcileRequest := ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: resource.Namespace,
+					Name:      resource.Name,
+				},
+			}
+			_, _ = r.Reconcile(ctx, pseudoReconcileRequest)
+			// stagger API requests a bit
+			time.Sleep(50 * time.Millisecond)
+		}
+		logger.Info(fmt.Sprintf("Synchronization of sampling rules in namespace %s has finished.", namespace))
 	}()
 }
 
@@ -213,7 +306,8 @@ func (r *SamplingRuleReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			logger.Info("reconciling the deletion of the sampling rule resource", "name", qualifiedName)
 			samplingRuleResource = &dash0v1alpha1.Dash0SamplingRule{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: req.Name,
+					Namespace: req.Namespace,
+					Name:      req.Name,
 				},
 			}
 		} else {
@@ -386,9 +480,12 @@ func (r *SamplingRuleReconciler) renderSamplingRuleUrl(
 ) (string, string) {
 	datasetUrlEncoded := url.QueryEscape(dataset)
 	samplingRuleOrigin := fmt.Sprintf(
-		"dash0-operator_%s_%s_%s",
+		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
+		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
+		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
 		datasetUrlEncoded,
+		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
 	)
 	return fmt.Sprintf(

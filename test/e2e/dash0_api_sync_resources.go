@@ -427,19 +427,22 @@ func renderSamplingRuleTemplate(values dash0ApiResourceValues) string {
 	return renderResourceTemplate(samplingRuleTemplate, values, "dash0samplingrule")
 }
 
-// Dash0SamplingRule is cluster-scoped, so the helpers below do not take a namespace.
-
-func deploySamplingRuleResource(values dash0ApiResourceValues) {
+func deploySamplingRuleResource(
+	namespace string,
+	values dash0ApiResourceValues,
+) {
 	renderedResourceFileName := renderSamplingRuleTemplate(values)
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0SamplingRule resource with values %v", values))
+		"deploying a Dash0SamplingRule resource to namespace %s with values %v", namespace, values))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
+		"-n",
+		namespace,
 		"-f",
 		renderedResourceFileName,
 	))).To(Succeed())
@@ -475,12 +478,14 @@ func deploySpamFilterResource(
 	))).To(Succeed())
 }
 
-func setOptOutLabelInSamplingRule(value string) {
+func setOptOutLabelInSamplingRule(namespace string, value string) {
 	By(fmt.Sprintf("setting the opt-out label in the sampling rule with value %s", value))
 	Expect(
 		runAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"label",
+			"-n",
+			namespace,
 			"--overwrite",
 			"Dash0SamplingRule",
 			samplingRuleName,
@@ -505,11 +510,13 @@ func setOptOutLabelInSpamFilter(namespace string, value string) {
 	).To(Succeed())
 }
 
-func removeSamplingRuleResource() {
+func removeSamplingRuleResource(namespace string) {
 	_ = runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"delete",
 		"--ignore-not-found",
+		"-n",
+		namespace,
 		"Dash0SamplingRule",
 		samplingRuleName,
 	))
@@ -592,7 +599,7 @@ func removeDash0ApiSyncResources(namespace string) {
 	removePrometheusRuleResource(namespace)
 	removeViewResource(namespace)
 	removeNotificationChannelResource(namespace)
-	removeSamplingRuleResource()
+	removeSamplingRuleResource(namespace)
 	removeSignalToMetricsResource(namespace)
 	removeSpamFilterResource(namespace)
 }

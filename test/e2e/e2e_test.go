@@ -1627,12 +1627,21 @@ trace_statements:
 
 			//nolint:dupl
 			It("should synchronize a Dash0SamplingRule to the Dash0 API", func() {
-				deploySamplingRuleResource(dash0ApiResourceValues{})
-				defer removeSamplingRuleResource()
+				// Dash0SamplingRule is namespaced and synchronizes to the dataset/token of the Dash0 monitoring
+				// resource in its namespace (falling back to the operator configuration), so a monitoring resource
+				// needs to exist in the namespace.
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+				defer undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
-				// Dash0SamplingRule is cluster-scoped, so the origin has no namespace segment.
+				deploySamplingRuleResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+				defer removeSamplingRuleResource(applicationUnderTestNamespace)
+
 				//nolint:lll
-				routeRegex := "/api/sampling-rules/dash0-operator_.*_default_sampling-rule-e2e-test\\?dataset=default"
+				routeRegex := "/api/sampling-rules/dash0-operator_.*_default_e2e-test-ns_sampling-rule-e2e-test\\?dataset=default"
 
 				By("verifying the sampling rule has been synchronized to the Dash0 API via PUT")
 				req := fetchCapturedApiRequest(0)
@@ -1645,13 +1654,13 @@ trace_statements:
 				Expect(*req.Body).To(ContainSubstring("\"dash0.com/dataset\":\"default\""))
 				verifySamplingRuleApiSyncRequest(req)
 
-				setOptOutLabelInSamplingRule("false")
+				setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "false")
 				By("verifying the sampling rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
 				req = fetchCapturedApiRequest(1)
 				Expect(req.Method).To(Equal("DELETE"))
 				Expect(req.Url).To(MatchRegexp(routeRegex))
 
-				setOptOutLabelInSamplingRule("true")
+				setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "true")
 				//nolint:lll
 				By("verifying the sampling rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
 				req = fetchCapturedApiRequest(2)
@@ -1661,7 +1670,7 @@ trace_statements:
 				Expect(*req.Body).To(ContainSubstring("\"rate\":0.1"))
 				verifySamplingRuleApiSyncRequest(req)
 
-				removeSamplingRuleResource()
+				removeSamplingRuleResource(applicationUnderTestNamespace)
 				By("verifying the sampling rule has been deleted via the Dash0 API (after removing the resource)")
 				req = fetchCapturedApiRequest(3)
 				Expect(req.Method).To(Equal("DELETE"))
