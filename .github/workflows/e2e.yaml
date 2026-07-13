@@ -141,30 +141,15 @@ jobs:
 
       - name: Send Slack notification on success
         if: success() && inputs.notify_slack
-        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
+        uses: ./.github/actions/slack-notification
         with:
-          errors: true
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          # language=YAML
-          payload: |
-            channel: ${{ secrets.SLACK_CHANNEL_ID }}
-            text: 'Dash0 Operator E2E tests successful'
-            blocks:
-              - type: header
-                text:
-                  type: plain_text
-                  text: ':white_check_mark: Dash0 Operator E2E tests successful'
-              - type: context
-                elements:
-                  - type: mrkdwn
-                    text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
-                  - type: mrkdwn
-                    text: ':seedling: <${{ github.server_url }}/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}|${{ github.head_ref || github.ref_name }}>'
-                  - type: mrkdwn
-                    text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
-                  - type: mrkdwn
-                    text: ":mag: ${{ inputs.focus != '' && inputs.focus || 'full test suite' }}"
+          status: success
+          subject: Dash0 Operator E2E tests
+          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
+          extraContext: |
+            :seedling: <${{ github.server_url }}/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}|${{ github.head_ref || github.ref_name }}>
+            :mag: ${{ inputs.focus != '' && inputs.focus || 'full test suite' }}
 
       - name: Upload Kubernetes cluster information and pod logs for failed tests
         id: upload-k8s-logs
@@ -177,32 +162,16 @@ jobs:
 
       - name: Send Slack notification on failure
         if: failure() && inputs.notify_slack
-        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c
+        uses: ./.github/actions/slack-notification
         with:
-          errors: true
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          # language=YAML
-          payload: |
-            channel: ${{ secrets.SLACK_CHANNEL_ID }}
-            text: 'Dash0 Operator E2E tests failed'
-            blocks:
-              - type: header
-                text:
-                  type: plain_text
-                  text: ':x: Dash0 Operator E2E tests failed'
-              - type: context
-                elements:
-                  - type: mrkdwn
-                    text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
-                  - type: mrkdwn
-                    text: ':seedling: <${{ github.server_url }}/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}|${{ github.head_ref || github.ref_name }}>'
-                  - type: mrkdwn
-                    text: ':diff: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|Commit>'
-                  - type: mrkdwn
-                    text: ':scroll: <${{ steps.upload-k8s-logs.outputs.artifact-url }}|K8s cluster info/pod logs>'
-                  - type: mrkdwn
-                    text: ":mag: ${{ inputs.focus != '' && inputs.focus || 'full test suite' }}"
+          status: failure
+          subject: Dash0 Operator E2E tests
+          botToken: ${{ secrets.SLACK_BOT_TOKEN }}
+          channelId: ${{ secrets.SLACK_CHANNEL_ID }}
+          extraContext: |
+            :seedling: <${{ github.server_url }}/${{ github.repository }}/tree/${{ github.head_ref || github.ref_name }}|${{ github.head_ref || github.ref_name }}>
+            :scroll: <${{ steps.upload-k8s-logs.outputs.artifact-url }}|K8s cluster info/pod logs>
+            :mag: ${{ inputs.focus != '' && inputs.focus || 'full test suite' }}
 
       - name: Post PR comment on success
         if: success() && inputs.pr_number != ''

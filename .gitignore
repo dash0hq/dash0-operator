@@ -42,3 +42,7 @@ dash0-operator-values.yaml
 
 # direnv
 .envrc
+
+# cluster diagnostics collected by the GKE Autopilot WorkloadAllowlist check on failure
+/gke-ap-allowlist-check-diagnostics
+/gke-ap-allowlist-check-diagnostics.tar.gz
