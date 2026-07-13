@@ -41,6 +41,21 @@ updates:
     schedule:
       interval: "daily"
 
+  # OpenTelemetry Distro for Python
+  - package-ecosystem: "pip"
+    directory: "images/instrumentation/python/"
+    schedule:
+      interval: "daily"
+      time: "09:15"
+      timezone: "Europe/Berlin"
+    # The OpenTelemetry Python packages are pinned in lockstep (the 0.x beta instrumentation packages together with
+    # the matching 1.x stable exporter). Group them into a single pull request so they are always updated together;
+    # updating them individually would break the lockstep and likely fail pip's dependency resolution.
+    groups:
+      all:
+        patterns:
+          - "*"
+
   # Docker
   - package-ecosystem: "docker"
     directories:
