@@ -43,6 +43,11 @@ const ErrorMessageOperatorConfigurationMonitoringTemplateWithExports = "The prov
 const ErrorMessageOperatorConfigurationMonitoringTemplateWithExport = "The provided Dash0 operator configuration resource has a monitoring template with `export`. Please use the " +
 	"`exports` field in the operator configuration and remove the `export` from the monitoringTemplate.spec."
 
+const ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl = "The provided Dash0 operator configuration resource has no Dash0 export, but Signal Control is " +
+	"enabled. Signal Control requires a Dash0 export with an auth token for the Decision Maker connection. " +
+	"Either keep a Dash0 export in the operator configuration, or disable/remove the Dash0 Signal Control " +
+	"resource before removing the Dash0 export."
+
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
 	telemetryCollectionEnabledViaHelm bool
@@ -117,61 +122,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		return admission.Denied(msg)
 	}
 
-	if !pointers.ReadBoolPointerWithDefault(spec.TelemetryCollection.Enabled, true) {
-		if pointers.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollection.Enabled, true) {
-			msg := "The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
-				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
-				"Please either set telemetryCollection.enabled=true or " +
-				"kubernetesInfrastructureMetricsCollection.enabled=false."
-			logger.Warn(msg)
-			return admission.Denied(msg)
-		}
-		//nolint:staticcheck
-		if pointers.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollectionEnabled, true) {
-			msg := "The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
-				"explicitly enabled (via the deprecated legacy setting " +
-				"kubernetesInfrastructureMetricsCollectionEnabled), although telemetry collection is disabled. " +
-				"This is an invalid combination. Please either set telemetryCollection.enabled=true or " +
-				"kubernetesInfrastructureMetricsCollection.enabled=false."
-			logger.Warn(msg)
-			return admission.Denied(msg)
-		}
-		if pointers.ReadBoolPointerWithDefault(spec.CollectPodLabelsAndAnnotations.Enabled, true) {
-			msg := "The provided Dash0 operator configuration resource has pod label and annotation collection " +
-				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
-				"Please either set telemetryCollection.enabled=true or " +
-				"collectPodLabelsAndAnnotations.enabled=false."
-			logger.Warn(msg)
-			return admission.Denied(msg)
-		}
-		if pointers.ReadBoolPointerWithDefault(spec.CollectNamespaceLabelsAndAnnotations.Enabled, true) {
-			msg := "The provided Dash0 operator configuration resource has namespace label and annotation collection " +
-				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
-				"Please either set telemetryCollection.enabled=true or " +
-				"collectNamespaceLabelsAndAnnotations.enabled=false."
-			logger.Warn(msg)
-			return admission.Denied(msg)
-		}
-		if pointers.ReadBoolPointerWithDefault(spec.CollectNodeLabelsAndAnnotations.Enabled, true) {
-			msg := "The provided Dash0 operator configuration resource has node label and annotation collection " +
-				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
-				"Please either set telemetryCollection.enabled=true or " +
-				"collectNodeLabelsAndAnnotations.enabled=false."
-			logger.Warn(msg)
-			return admission.Denied(msg)
-		}
-		if pointers.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
-			logger.Warn(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
-			return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
-		}
-		if spec.Profiling != nil && pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
-			msg := "The provided Dash0 operator configuration resource has profiling " +
-				"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
-				"Please either set telemetryCollection.enabled=true or " +
-				"profiling.enabled=false."
-			logger.Warn(msg)
-			return admission.Denied(msg)
-		}
+	if response, denied := validateTelemetryCollectionDisabledConsistency(spec, logger); denied {
+		return response
 	}
 
 	for _, export := range spec.Exports {
@@ -197,6 +149,17 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
+	if !operatorConfigurationResource.HasDash0ExportConfigured() {
+		enabled, name, err := h.hasEnabledSignalControl(ctx)
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError, err)
+		}
+		if enabled {
+			logger.Warn(ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl, "signalControl", name)
+			return admission.Denied(ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl)
+		}
+	}
+
 	if request.Operation == admissionv1.Create {
 		allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 		if err := h.Client.List(ctx, allOperatorConfigurationResources); err != nil {
@@ -215,4 +178,87 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	return admission.Allowed("")
+}
+
+// validateTelemetryCollectionDisabledConsistency rejects operator configuration resources that keep individual
+// collection features explicitly enabled while telemetry collection as a whole is disabled. It returns denied=true
+// together with the denial response when such an invalid combination is detected.
+func validateTelemetryCollectionDisabledConsistency(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if pointers.ReadBoolPointerWithDefault(spec.TelemetryCollection.Enabled, true) {
+		return admission.Response{}, false
+	}
+	if pointers.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollection.Enabled, true) {
+		msg := "The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
+			"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+			"Please either set telemetryCollection.enabled=true or " +
+			"kubernetesInfrastructureMetricsCollection.enabled=false."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	//nolint:staticcheck
+	if pointers.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollectionEnabled, true) {
+		msg := "The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
+			"explicitly enabled (via the deprecated legacy setting " +
+			"kubernetesInfrastructureMetricsCollectionEnabled), although telemetry collection is disabled. " +
+			"This is an invalid combination. Please either set telemetryCollection.enabled=true or " +
+			"kubernetesInfrastructureMetricsCollection.enabled=false."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	if pointers.ReadBoolPointerWithDefault(spec.CollectPodLabelsAndAnnotations.Enabled, true) {
+		msg := "The provided Dash0 operator configuration resource has pod label and annotation collection " +
+			"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+			"Please either set telemetryCollection.enabled=true or " +
+			"collectPodLabelsAndAnnotations.enabled=false."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	if pointers.ReadBoolPointerWithDefault(spec.CollectNamespaceLabelsAndAnnotations.Enabled, true) {
+		msg := "The provided Dash0 operator configuration resource has namespace label and annotation collection " +
+			"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+			"Please either set telemetryCollection.enabled=true or " +
+			"collectNamespaceLabelsAndAnnotations.enabled=false."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	if pointers.ReadBoolPointerWithDefault(spec.CollectNodeLabelsAndAnnotations.Enabled, true) {
+		msg := "The provided Dash0 operator configuration resource has node label and annotation collection " +
+			"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+			"Please either set telemetryCollection.enabled=true or " +
+			"collectNodeLabelsAndAnnotations.enabled=false."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	if pointers.ReadBoolPointerWithDefault(spec.PrometheusCrdSupport.Enabled, true) {
+		logger.Warn(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid)
+		return admission.Denied(ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid), true
+	}
+	if spec.Profiling != nil && pointers.ReadBoolPointerWithDefault(spec.Profiling.Enabled, false) {
+		msg := "The provided Dash0 operator configuration resource has profiling " +
+			"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
+			"Please either set telemetryCollection.enabled=true or " +
+			"profiling.enabled=false."
+		logger.Warn(msg)
+		return admission.Denied(msg), true
+	}
+	return admission.Response{}, false
+}
+
+// hasEnabledSignalControl reports whether an enabled Dash0SignalControl resource exists in the cluster. It returns the
+// name of the first such resource for logging. Signal Control requires a Dash0 export, so the operator configuration
+// must not drop its Dash0 export while Signal Control is enabled.
+func (h *OperatorConfigurationValidationWebhookHandler) hasEnabledSignalControl(ctx context.Context) (bool, string, error) {
+	allSignalControlResources := &dash0v1alpha1.Dash0SignalControlList{}
+	if err := h.Client.List(ctx, allSignalControlResources); err != nil {
+		return false, "", fmt.Errorf("failed to list all Dash0 Signal Control resources: %w", err)
+	}
+	for _, signalControlResource := range allSignalControlResources.Items {
+		if pointers.ReadBoolPointerWithDefault(signalControlResource.Spec.Enabled, true) {
+			return true, signalControlResource.Name, nil
+		}
+	}
+	return false, "", nil
 }

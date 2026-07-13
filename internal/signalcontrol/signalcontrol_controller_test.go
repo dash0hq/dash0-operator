@@ -155,6 +155,33 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 		Expect(apierrors.IsNotFound(err)).To(BeTrue())
 	})
 
+	It("marks the resource degraded and does not deploy the Edge Proxy when no Dash0 export is configured", func() {
+		By("replacing the operator configuration with one that has no Dash0 export")
+		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(false)},
+			Exports:        []dash0common.Export{*HttpExportTest()},
+		})
+
+		// No entitlement mock is registered: the Dash0-export precheck happens before the entitlement HTTP check,
+		// so no request is made. The reconcile returns an error to requeue until a Dash0 export is configured.
+		_, err := reconciler.Reconcile(ctx, scRequest)
+		Expect(err).To(HaveOccurred())
+
+		signalControlResource := loadSignalControlResource(ctx)
+		Expect(signalControlResource.IsDegraded()).To(BeTrue())
+		degraded := meta.FindStatusCondition(
+			signalControlResource.Status.Conditions,
+			string(dash0common.ConditionTypeDegraded),
+		)
+		Expect(degraded).ToNot(BeNil())
+		Expect(degraded.Reason).To(Equal(reasonSignalControlNoDash0Export))
+
+		By("verifying no Edge Proxy deployment has been created")
+		err = k8sClient.Get(ctx, edgeProxyName, &appsv1.Deployment{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue())
+	})
+
 	It("marks the resource degraded and requeues when the entitlement check cannot be completed", func() {
 		gock.New(ApiEndpointTest).
 			Get("/api/signal-control/edge/settings").

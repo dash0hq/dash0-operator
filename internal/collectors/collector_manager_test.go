@@ -481,6 +481,21 @@ var _ = Describe("The collector manager", Ordered, func() {
 			cm := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace)
 			Expect(cm.Data["config.yaml"]).ToNot(ContainSubstring("dash0settingsonedgeextension"))
 		})
+
+		It("renders a plain collector when the operator configuration has no Dash0 export, even when entitled", func() {
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+			CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(false)},
+				Exports:        []dash0common.Export{*HttpExportTest()},
+			})
+			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: true})
+
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			cm := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace)
+			Expect(cm.Data["config.yaml"]).ToNot(ContainSubstring("dash0settingsonedgeextension"))
+		})
 	})
 
 	Describe("when updating the extra config map", func() {

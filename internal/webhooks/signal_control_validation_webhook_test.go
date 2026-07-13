@@ -196,6 +196,61 @@ var _ = Describe("The Signal Control validation webhook (cacheExpiration bounds)
 	})
 })
 
+var _ = Describe("The Signal Control validation webhook (Dash0 export requirement)", func() {
+
+	var handler *SignalControlValidationWebhookHandler
+
+	BeforeEach(func() {
+		handler = NewSignalControlValidationWebhookHandler(k8sClient)
+	})
+
+	AfterEach(func() {
+		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+	})
+
+	It("should deny an enabled resource when no Dash0 export is configured", func() {
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{})
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeFalse())
+		Expect(response.Result.Message).To(ContainSubstring("No Dash0 operator configuration with a Dash0 export"))
+	})
+
+	It("should deny an enabled resource when only a non-Dash0 export is configured", func() {
+		createOperatorConfigurationWithExport(*HttpExportTest())
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{})
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeFalse())
+		Expect(response.Result.Message).To(ContainSubstring("No Dash0 operator configuration with a Dash0 export"))
+	})
+
+	It("should allow a disabled resource even when no Dash0 export is configured", func() {
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{Enabled: new(false)})
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeTrue())
+	})
+
+	It("should allow an enabled resource when a Dash0 export is configured", func() {
+		createOperatorConfigurationWithExport(*Dash0ExportWithEndpointAndToken())
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{})
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeTrue())
+	})
+})
+
+func createOperatorConfigurationWithExport(export dash0common.Export) {
+	_, err := CreateOperatorConfigurationResource(
+		ctx,
+		k8sClient,
+		&dash0v1alpha1.Dash0OperatorConfiguration{
+			ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+			Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: new(false)},
+				Exports:        []dash0common.Export{export},
+			},
+		})
+	Expect(err).ToNot(HaveOccurred())
+}
+
 func signalControlAdmissionRequest(spec dash0v1alpha1.Dash0SignalControlSpec) admission.Request {
 	rawJson, err := json.Marshal(dash0v1alpha1.Dash0SignalControl{Spec: spec})
 	Expect(err).ToNot(HaveOccurred())
