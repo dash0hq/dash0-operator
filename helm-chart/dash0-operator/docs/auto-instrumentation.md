@@ -63,9 +63,9 @@ Note: Changing the instrumentation delivery setting for an existing operator ins
 
 To enable auto-instrumentation for Python workloads, set `operator.instrumentation.enablePythonAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Python auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
 
-Python auto-instrumentation is only supported for Python 3.9 or later. If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.8 or older), it will automatically deactivate itself safely and print a warning to `stderr`:
+Python auto-instrumentation is only supported for Python 3.10 or later. If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.9 or older), it will automatically deactivate itself safely and print a warning to `stderr`:
 ```
-[dash0] warning: cannot auto-instrument Python process: unsupported Python version: 3.8.0
+[dash0] warning: cannot auto-instrument Python process: unsupported Python version: 3.9.0
 ```
 This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace. Update the Python version to enable automatic Python instrumentation by Dash0 for this workload.
 
