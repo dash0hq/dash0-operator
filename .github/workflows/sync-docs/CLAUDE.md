@@ -22,6 +22,16 @@ opening a pull request against the documentation repository.
    is a meaningful diff, commits to the branch `sync-dash0-operator-helm-chart-docs`, force-pushes it, and opens
    a PR against `main` (or relies on the force-push to update an already-open PR).
 
+### Dry-run mode
+
+The workflow accepts a boolean `dry-run` input (for both `workflow_dispatch` and `workflow_call`). With
+`dry-run: true`, only steps 1–3 run — the workflow verifies that the transformations still apply cleanly and then
+stops; the steps involving the target repository (4–6) are skipped and no secrets are required. The `ci.yaml` workflow
+invokes the dry run on every CI build except release builds (job `sync_docs_to_website_dry_run`), so that drift
+between the docs and `transformations.yaml` is caught early instead of only after the next release has been published.
+The real sync (without `dry-run`) is invoked from `ci.yaml` after a release has been published (job
+`sync_docs_to_website`).
+
 ### Configuration (repository secrets)
 
 - `DASH0_DOCS_REPO_GITHUB_PAT` — fine-grained PAT scoped to the target repo with **Contents: Read and write**

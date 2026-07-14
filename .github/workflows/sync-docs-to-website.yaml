@@ -13,7 +13,9 @@ name: Synchronize Helm chart docs to dash0.com/docs
 # in the target repository and is not touched by this sync.
 #
 # This workflow can be run manually (workflow_dispatch) and is also invoked from ci.yaml (workflow_call) after a new
-# release has been published.
+# release has been published. Additionally, ci.yaml invokes it with dry-run: true on every CI build), to verify early
+# that the transformations declared in sync-docs/transformations.yaml still apply cleanly. In dry-run mode, only the
+# transformation step runs; no PR is created for the website docs.
 #
 # The target repository and the target directory within it are configured via the repository secrets
 # SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_DIRECTORY (the path of the directory holding the
@@ -26,17 +28,27 @@ name: Synchronize Helm chart docs to dash0.com/docs
 
 on:
   workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only verify that the doc transformations still apply cleanly, do not create a pull request in the target repository.
+        type: boolean
+        default: false
   workflow_call:
+    inputs:
+      dry-run:
+        description: Only verify that the doc transformations still apply cleanly, do not create a pull request in the target repository.
+        type: boolean
+        default: false
     secrets:
       DASH0_DOCS_REPO_GITHUB_PAT:
-        description: Fine-grained PAT with contents + pull-requests write access for the documentation repository.
-        required: true
+        description: Fine-grained PAT with contents + pull-requests write access for the documentation repository. Only required when dry-run is false.
+        required: false
       SYNC_DOCUMENTATION_TARGET_REPOSITORY:
-        description: The owner/name of the documentation repository to sync the docs into.
-        required: true
+        description: The owner/name of the documentation repository to sync the docs into. Only required when dry-run is false.
+        required: false
       SYNC_DOCUMENTATION_TARGET_DIRECTORY:
-        description: The path of the directory holding the documentation pages within the target repository.
-        required: true
+        description: The path of the directory holding the documentation pages within the target repository. Only required when dry-run is false.
+        required: false
 
 env:
   PR_BRANCH: sync-dash0-operator-helm-chart-docs
@@ -68,7 +80,14 @@ jobs:
             dash0-operator/.github/workflows/sync-docs/transformations.yaml \
             "${RUNNER_TEMP}/transformed-docs"
 
+      - name: dry run, stopping after applying the doc transformations
+        if: ${{ inputs.dry-run }}
+        run: |
+          echo "This is a dry run: the doc transformations have been applied successfully, all steps involving the" \
+            "target repository are skipped."
+
       - name: checkout target repo
+        if: ${{ ! inputs.dry-run }}
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
@@ -76,6 +95,7 @@ jobs:
           path: target-repository
 
       - name: copy transformed docs
+        if: ${{ ! inputs.dry-run }}
         env:
           TARGET_DIRECTORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
         run: |
@@ -85,6 +105,7 @@ jobs:
           cp -R "${RUNNER_TEMP}/transformed-docs/." "$target_path/"
 
       - name: create pull request in target repository
+        if: ${{ ! inputs.dry-run }}
         working-directory: target-repository
         env:
           GH_TOKEN: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
