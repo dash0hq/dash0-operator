@@ -1,5 +1,10 @@
 version: 2
 updates:
+
+  # Maintenance note: every update block below sets its own commit-message.prefix explicitly, new blocks should do the
+  # same. When a block leaves the prefix unset, Dependabot infers a commit message prefix, and this is not always
+  # reliable.
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -7,6 +12,8 @@ updates:
       day: "tuesday"
       time: "07:00"
       timezone: "Europe/Berlin"
+    commit-message:
+      prefix: "ci(deps)"
 
   - package-ecosystem: "gomod"
     directories:
@@ -26,6 +33,8 @@ updates:
         dependency-type: "production"
       development-dependencies:
         dependency-type: "development"
+    commit-message:
+      prefix: "chore(deps)"
 
   # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
@@ -34,12 +43,16 @@ updates:
       interval: "daily"
       time: "07:10"
       timezone: "Europe/Berlin"
+    commit-message:
+      prefix: "chore(deps)"
 
   # OpenTelemetry Java agent
   - package-ecosystem: "maven"
     directory: "images/instrumentation/jvm/"
     schedule:
       interval: "daily"
+    commit-message:
+      prefix: "chore(deps)"
 
   # OpenTelemetry Distro for Python
   - package-ecosystem: "pip"
@@ -48,6 +61,8 @@ updates:
       interval: "daily"
       time: "09:15"
       timezone: "Europe/Berlin"
+    commit-message:
+      prefix: "chore(deps)"
     # The OpenTelemetry Python packages are pinned in lockstep (the 0.x beta instrumentation packages together with
     # the matching 1.x stable exporter). Group them into a single pull request so they are always updated together;
     # updating them individually would break the lockstep and likely fail pip's dependency resolution.
@@ -75,6 +90,8 @@ updates:
     groups:
       production-dependencies:
         dependency-type: "production"
+    commit-message:
+      prefix: "chore(deps)"
     # The following 'ignore' rules are workarounds to prevent noisy/repeated dependabot PRs
     # that update dependencies to pre-release versions.
     # The rules need to be manually disabled when a new stable minor version is available.
@@ -104,6 +121,8 @@ updates:
     groups:
       development-dependencies:
         dependency-type: "development"
+    commit-message:
+      prefix: "test"
     ignore:
       - dependency-name: "golang"
         update-types: ["version-update:semver-minor"]
@@ -119,6 +138,8 @@ updates:
     groups:
       development-dependencies:
         dependency-type: "development"
+    commit-message:
+      prefix: "test"
 
   - package-ecosystem: "gomod"
     directories:
