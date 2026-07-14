@@ -6,11 +6,7 @@ on:
       - 'main'
     tags:
       - '*.*.*'
-    paths-ignore:
-      - '*.md'
   pull_request:
-    paths-ignore:
-      - '*.md'
   merge_group:
   workflow_dispatch:
 
@@ -294,6 +290,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           echo "publishing helm chart version ${{ github.ref_name }}"
           helm-chart/bin/publish.sh ${{ github.ref_name }}
+
+  # Verify that docs sync (runs for each release build, see below) still works.
+  sync_docs_to_website_dry_run:
+    name: Synchronize Helm chart docs to dash0.com/docs (dry run)
+    needs: check_for_successful_builds_for_same_commit
+    # The dry run is skipped on release builds (tags), where the actual docs sync (see the sync_docs_to_website job
+    # below) runs after the Helm chart has been published.
+    if: always() && ! contains(github.ref, 'refs/tags/') && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
+    uses: ./.github/workflows/sync-docs-to-website.yaml
+    with:
+      dry-run: true
 
   # After publishing a release, sync the Helm chart docs to the documentation on https://www.dash0.com/docs.
   sync_docs_to_website:
