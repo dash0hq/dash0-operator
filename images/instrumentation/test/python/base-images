@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-python:3.14.2-slim-trixie
-python:3.14.2-alpine3.23
+python:3.14.6-slim-trixie
+python:3.14.6-alpine3.23
 
-# Python 3.9.0 is the minimum supported Python version.
-python:3.9.0-slim-buster
+# Python 3.10.0 is the minimum supported Python version.
+python:3.10.0-slim-bullseye
 
-# Python 3.8 is not supported, test-cases/verify-distro-is-loaded/app.py checks for that as well.
-python:3.8.20-slim-bullseye
+# Python 3.9 is not supported, test-cases/verify-distro-is-loaded/app.py checks for that as well.
+python:3.9.25-slim-bookworm

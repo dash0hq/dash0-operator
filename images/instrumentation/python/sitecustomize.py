@@ -9,6 +9,9 @@ from os.path import dirname
 import sys
 from sys import path, version, version_info, stderr
 
+required_python_major_version = 3
+minimum_python_minor_version = 10
+
 double_instrumentation_check_packages = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
@@ -171,7 +174,7 @@ def import_distro():
     current_site = dirname(__file__)
 
     # We cannot use `sys.version_info.major` or other named attributes, as they only got introduced only in Python 3.1.
-    if version_info[0] != 3 or version_info[1] < 9:
+    if version_info[0] != required_python_major_version or version_info[1] < minimum_python_minor_version:
         _self_deactivate(current_site)
         _print_cannot_auto_instrument_message("unsupported Python version: {}".format(version))
         return

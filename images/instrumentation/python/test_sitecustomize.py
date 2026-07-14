@@ -71,7 +71,7 @@ class TestImportDistro(unittest.TestCase):
     @patch('sys.version_info', (2, 7, 0, 'final', 0))
     @patch('sys.version', '2.7.0')
     def test_python_2_7_too_old(self, mock_stderr):
-        """Test that Python versions older than 3.9 are rejected."""
+        """Test that Python versions older than 3.10 are rejected."""
         mock_site = '/mock/site-packages'
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
@@ -85,10 +85,10 @@ class TestImportDistro(unittest.TestCase):
                       output)
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 8, 0, 'final', 0))
-    @patch('sys.version', '3.8.0')
-    def test_python_3_8_too_old(self, mock_stderr):
-        """Test that Python 3.8 is rejected (needs 3.9+)."""
+    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version', '3.9.0')
+    def test_python_3_9_too_old(self, mock_stderr):
+        """Test that Python 3.9 is rejected (needs 3.10+)."""
         mock_site = '/mock/site-packages'
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
@@ -97,7 +97,7 @@ class TestImportDistro(unittest.TestCase):
                 spec.loader.exec_module(module)
 
         output = mock_stderr.getvalue()
-        self.assertIn("\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: unsupported Python version: 3.8.0",
+        self.assertIn("\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: unsupported Python version: 3.9.0",
                       output)
 
     @patch('sys.stderr', new_callable=StringIO)
@@ -133,7 +133,7 @@ class TestImportDistro(unittest.TestCase):
         self.assertEqual(os.environ.get("PYTHON_AUTO_INSTRUMENTATION_AGENT_PATH_PREFIX"), "")
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version_info', (3, 10, 0, 'final', 0))
     def test_missing_otlp_protocol_env_var(self, mock_stderr):
         """Test that missing OTEL_EXPORTER_OTLP_PROTOCOL is rejected."""
         os.environ.pop('OTEL_EXPORTER_OTLP_PROTOCOL', None)
@@ -149,7 +149,7 @@ class TestImportDistro(unittest.TestCase):
                       output)
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version_info', (3, 10, 0, 'final', 0))
     def test_grpc_protocol_rejected(self, mock_stderr):
         """Test that OTEL_EXPORTER_OTLP_PROTOCOL=grpc is rejected."""
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'grpc'
@@ -166,7 +166,7 @@ class TestImportDistro(unittest.TestCase):
             output)
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version_info', (3, 10, 0, 'final', 0))
     def test_dependency_conflict_detection(self, mock_stderr):
         """Test that dependency version conflicts are detected."""
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'http/protobuf'
@@ -201,7 +201,7 @@ class TestImportDistro(unittest.TestCase):
             output)
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version_info', (3, 10, 0, 'final', 0))
     def test_successful_initialization(self, mock_stderr):
         """Test successful auto-instrumentation initialization."""
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'http/protobuf'
@@ -230,7 +230,7 @@ class TestImportDistro(unittest.TestCase):
         self.assertIn("\"level\": \"debug\", \"message\": \"importing and initializing the Python auto-instrumentation now", output)
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version_info', (3, 10, 0, 'final', 0))
     def test_package_not_found_in_dependency_tree(self, mock_stderr):
         """Test dependency conflict when a required package is missing."""
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'http/protobuf'
@@ -260,7 +260,7 @@ class TestImportDistro(unittest.TestCase):
         self.assertIn("\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: dependency conflicts", output)
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version_info', (3, 10, 0, 'final', 0))
     def test_double_instrumentation_detected_single_package(self, mock_stderr):
         """Test that double instrumentation is detected when an offending opentelemetry-* package is found."""
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'http/protobuf'
@@ -285,7 +285,7 @@ class TestImportDistro(unittest.TestCase):
         self.assertEqual(os.environ.get("PYTHON_AUTO_INSTRUMENTATION_AGENT_PATH_PREFIX"), "")
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version_info', (3, 10, 0, 'final', 0))
     def test_double_instrumentation_detected_multiple_packages(self, mock_stderr):
         """Test that all offending packages are listed when multiple are found."""
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'http/protobuf'
@@ -313,7 +313,7 @@ class TestImportDistro(unittest.TestCase):
         self.assertIn("/app/site-packages/opentelemetry_distro-1.0.0.dist-info", output)
 
     @patch('sys.stderr', new_callable=StringIO)
-    @patch('sys.version_info', (3, 9, 0, 'final', 0))
+    @patch('sys.version_info', (3, 10, 0, 'final', 0))
     def test_no_double_instrumentation_with_no_otel_packages(self, mock_stderr):
         """Test that unrelated packages do not trigger double instrumentation."""
         os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'http/protobuf'
