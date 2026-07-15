@@ -145,3 +145,11 @@ kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-pr
 kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-injector
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-operator-configuration-validator
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-validator
+
+# Clean up the cadvisor ScrapeConfig helper resources (see deploy_cadvisor_scrapeconfig, both the default and the GKE
+# Autopilot variant). The ClusterRole/ClusterRoleBinding are cluster-scoped and thus survive namespace deletion, the
+# ServiceAccount/Secret survive when cleanup is invoked with delete_namespaces=false.
+kubectl delete clusterrole        --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
+kubectl delete clusterrolebinding --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
+kubectl delete -n "$target_namespace" serviceaccount --ignore-not-found prometheus-cadvisor prometheus-cadvisor-autopilot
+kubectl delete -n "$target_namespace" secret         --ignore-not-found prometheus-sa-token prometheus-sa-token-autopilot

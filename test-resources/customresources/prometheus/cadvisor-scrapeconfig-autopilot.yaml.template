@@ -1,0 +1,81 @@
+# Variant of cadvisor-scrapeconfig.yaml.template for clusters that block the kube-apiserver -> kubelet proxy
+# (for example GKE Autopilot). Instead of scraping via /api/v1/nodes/<node>/proxy/metrics/cadvisor, this scrapes
+# each kubelet directly on its InternalIP:10250/metrics/cadvisor. This requires the nodes/metrics subresource
+# (rather than nodes/proxy) and skipping TLS verification, since the kubelet serving certificate is not signed by
+# the cluster CA contained in the service account token secret.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-cadvisor-autopilot
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-cadvisor-autopilot
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [list, watch, get]
+  - apiGroups: [""]
+    resources: [nodes/metrics]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-cadvisor-autopilot
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-cadvisor-autopilot
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-cadvisor-autopilot
+    namespace: $TARGET_NAMESPACE
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-sa-token-autopilot
+  annotations:
+    kubernetes.io/service-account.name: prometheus-cadvisor-autopilot
+type: kubernetes.io/service-account-token
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: cadvisor-autopilot
+spec:
+  scheme: https
+  scrapeInterval: 30s
+
+  authorization:
+    type: Bearer
+    credentials:
+      name: prometheus-sa-token-autopilot
+      key: token
+
+  tlsConfig:
+    # The kubelet serving certificate is not signed by the cluster CA, so verification cannot succeed here.
+    insecureSkipVerify: true
+
+  kubernetesSDConfigs:
+    - role: Node
+      selectors:
+        - role: Node
+          field: spec.unschedulable=false
+
+  relabelings:
+    - action: labelmap
+      regex: __meta_kubernetes_node_label_(.+)
+
+    - sourceLabels: [__meta_kubernetes_node_address_InternalIP]
+      regex: (.+)
+      targetLabel: __address__
+      replacement: ${1}:10250
+
+    - targetLabel: __metrics_path__
+      replacement: /metrics/cadvisor
+
+    - sourceLabels: [__meta_kubernetes_node_name]
+      targetLabel: instance
