@@ -29,7 +29,17 @@ const (
 
 	publishedChart    = "dash0-operator/dash0-operator"
 	publishedChartUrl = "https://dash0hq.github.io/dash0-operator"
+
+	// agent0ConnectorDummyToken is the auth token configured for the agent0-connector in the corresponding test.
+	agent0ConnectorDummyToken = "auth_e2e-agent0-connector-dummy-token"
 )
+
+// secretsThatMustNeverAppearInLogs enumerates every plaintext secret value the e2e suite configures. The operator
+// manager must never write any of them to its logs; they must be redacted. Extend this list when adding new secrets.
+var secretsThatMustNeverAppearInLogs = []string{
+	defaultToken,
+	agent0ConnectorDummyToken,
+}
 
 var (
 	operatorHelmChart    = localHelmChart
@@ -444,7 +454,43 @@ func ensureDash0OperatorHelmRepoIsInstalledAndUpToDate(
 	}
 }
 
+// verifyNoSecretsLeakedInOperatorManagerLogs fetches the operator manager's accumulated logs and asserts that none of
+// the plaintext secrets configured by the suite appear in them. It is a no-op when the operator manager is not
+// currently deployed (some teardown paths run after it has already been removed).
+func verifyNoSecretsLeakedInOperatorManagerLogs() {
+	deployment, err := run(exec.Command(
+		"kubectl",
+		"-n",
+		operatorNamespace,
+		"get",
+		"deployment",
+		"dash0-operator-controller",
+		"--ignore-not-found",
+		"--output=name",
+	))
+	if err != nil || strings.TrimSpace(deployment) == "" {
+		return
+	}
+	logs, err := getOperatorManagerLogs()
+	if err != nil {
+		return
+	}
+	for _, secret := range secretsThatMustNeverAppearInLogs {
+		if secret == "" {
+			continue
+		}
+		Expect(logs).ToNot(
+			ContainSubstring(secret),
+			fmt.Sprintf("operator manager logs must not contain the plaintext secret %q", secret),
+		)
+	}
+}
+
 func undeployOperator(operatorNamespace string) {
+	// Scan the operator manager's accumulated logs for leaked secrets before tearing it down. undeployOperator is the
+	// common teardown funnel for every operator deployment, so this covers all feature paths exercised in the suite.
+	verifyNoSecretsLeakedInOperatorManagerLogs()
+
 	By("undeploying the operator")
 	Expect(
 		runAndIgnoreOutput(
