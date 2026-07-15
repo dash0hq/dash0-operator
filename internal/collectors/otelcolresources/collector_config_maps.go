@@ -8,6 +8,7 @@ import (
 	"compress/gzip"
 	_ "embed"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"text/template"
@@ -91,6 +92,7 @@ type collectorConfigurationTemplateValues struct {
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
+	LabelAndAnnotationExclusionPatterns              []string
 	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
@@ -144,6 +146,54 @@ var (
 	deploymentCollectorConfigurationTemplate       = template.Must(
 		template.New("deployment-collector-configuration").Parse(deploymentCollectorConfigurationTemplateSource))
 )
+
+type excludedMetadataKey struct {
+	// key is the literal label/annotation key that must not be collected.
+	key string
+	// entities lists the Kubernetes object types ("pod", "namespace", "node") on which the key must not be collected.
+	entities []string
+}
+
+// labelAndAnnotationKeysExcludedFromCollection lists the keys of labels and annotations that must never be collected
+// as resource attributes, even if collecting labels and annotations is enabled for the respective object type. This
+// is meant for metadata that is either controller-internal bookkeeping updated on live objects (which would lead to
+// constant resource attribute churn), or large payloads without telemetry value, or annotations that might contain
+// sensitive information. Customers can always add custom transforms additionally
+var labelAndAnnotationKeysExcludedFromCollection = []excludedMetadataKey{
+	// CAST AI workload autoscaler bookkeeping, updated on running pods whenever a recommendation is applied.
+	{key: "autoscaling.cast.ai/recommendation-applied-at", entities: []string{"pod"}},
+	{key: "autoscaling.cast.ai/vertical-recommendation-hash", entities: []string{"pod"}},
+
+	// Rewritten by the kubelet whenever CSI drivers (re)register on the node.
+	{key: "csi.volume.kubernetes.io/nodeid", entities: []string{"node"}},
+
+	// Karpenter drift-detection bookkeeping, updated on running nodes whenever the owning NodePool/EC2NodeClass
+	// changes.
+	{key: "karpenter.sh/nodepool-hash", entities: []string{"node"}},
+	{key: "karpenter.sh/nodepool-hash-version", entities: []string{"node"}},
+	{key: "karpenter.sh/nodeclaim-termination-timestamp", entities: []string{"node"}},
+	{key: "karpenter.k8s.aws/ec2nodeclass-hash", entities: []string{"node"}},
+	{key: "karpenter.k8s.aws/ec2nodeclass-hash-version", entities: []string{"node"}},
+
+	// Written by kubectl apply (and compatible clients), contains the full previous object spec (up to 256KB) and can
+	// contain sensitive data like environment variable values.
+	{key: "kubectl.kubernetes.io/last-applied-configuration", entities: []string{"pod", "namespace", "node"}},
+
+	// Managed by the node TTL controller, its value changes with the cluster size.
+	{key: "node.alpha.kubernetes.io/ttl", entities: []string{"node"}},
+
+	// Kyverno mutation bookkeeping, contains the JSON patches applied by mutation policies.
+	{key: "policies.kyverno.io/last-applied-patches", entities: []string{"pod", "namespace", "node"}},
+
+	// Vertical pod autoscaler admission controller bookkeeping, written to every pod that is managed by a
+	// VerticalPodAutoscaler.
+	{key: "vpaUpdates", entities: []string{"pod"}},
+	{key: "vpaObservedContainers", entities: []string{"pod"}},
+
+	// kured (Kubernetes reboot daemon) bookkeeping, updated on running nodes during reboot cycles.
+	{key: "weave.works/kured-reboot-in-progress", entities: []string{"node"}},
+	{key: "weave.works/kured-most-recent-reboot-needed", entities: []string{"node"}},
+}
 
 func assembleDaemonSetCollectorConfigMap(
 	config *oTelColConfig,
@@ -256,6 +306,7 @@ func assembleCollectorConfigMap(
 			CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 			CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
 			CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
+			LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
 			K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
 			K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
@@ -394,6 +445,22 @@ func renderOttlNamespaceFilter(
 			fmt.Sprintf("          and resource.attributes[\"k8s.namespace.name\"] != \"%s\"\n", namespace)
 	}
 	return namespaceOttlFilter
+}
+
+// labelAndAnnotationExclusionPatterns renders labelAndAnnotationKeysExcludedFromCollection into regex patterns for
+// the OTTL function delete_matching_keys, each matching both the label and the annotation resource attribute of the
+// excluded key on all affected object types. The patterns are rendered into OTTL string literals, which unescape
+// `\\` to `\`, hence the backslashes of the regex-quoted key need to be doubled.
+func labelAndAnnotationExclusionPatterns() []string {
+	patterns := make([]string, 0, len(labelAndAnnotationKeysExcludedFromCollection))
+	for _, excludedKey := range labelAndAnnotationKeysExcludedFromCollection {
+		patterns = append(patterns, fmt.Sprintf(
+			`^k8s\\.(%s)\\.(label|annotation)\\.%s$`,
+			strings.Join(excludedKey.entities, "|"),
+			strings.ReplaceAll(regexp.QuoteMeta(excludedKey.key), `\`, `\\`),
+		))
+	}
+	return patterns
 }
 
 func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
