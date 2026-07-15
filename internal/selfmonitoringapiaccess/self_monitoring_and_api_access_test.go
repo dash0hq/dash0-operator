@@ -1751,3 +1751,85 @@ func expectedMetricsPipeline(exporterSuffix string) string {
             exporter:
               otlp:` + exporterSuffix
 }
+
+var _ = Describe("redacting the self-monitoring configuration for logging", func() {
+
+	It("redacts the resolved token, the literal export token and resolved secret header values", func() {
+		literalToken := AuthorizationTokenTest
+		resolvedToken := AuthorizationTokenTest
+		cfg := SelfMonitoringConfiguration{
+			SelfMonitoringEnabled: true,
+			Export: dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:      EndpointDash0Test,
+					Dataset:       DatasetCustomTest,
+					Authorization: dash0common.Authorization{Token: &literalToken},
+				},
+			},
+			Token:                      &resolvedToken,
+			ResolvedSecretHeaderValues: map[string]string{"Authorization": "Bearer secret"},
+		}
+
+		redacted := cfg.RedactedForLogging()
+
+		Expect(redacted.SelfMonitoringEnabled).To(BeTrue())
+		Expect(*redacted.Token).To(Equal(dash0common.RedactedValue))
+		Expect(*redacted.Export.Dash0.Authorization.Token).To(Equal(dash0common.RedactedValue))
+		Expect(redacted.Export.Dash0.Endpoint).To(Equal(EndpointDash0Test))
+		Expect(redacted.Export.Dash0.Dataset).To(Equal(DatasetCustomTest))
+		Expect(redacted.ResolvedSecretHeaderValues["Authorization"]).To(Equal(dash0common.RedactedValue))
+
+		// the original configuration must not be mutated
+		Expect(*cfg.Token).To(Equal(AuthorizationTokenTest))
+		Expect(*cfg.Export.Dash0.Authorization.Token).To(Equal(AuthorizationTokenTest))
+		Expect(cfg.ResolvedSecretHeaderValues["Authorization"]).To(Equal("Bearer secret"))
+	})
+
+	It("leaves a secret-ref-only authorization untouched and does not add a redacted token", func() {
+		secretRef := SecretRefTest
+		cfg := SelfMonitoringConfiguration{
+			Export: dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:      EndpointDash0Test,
+					Authorization: dash0common.Authorization{SecretRef: &secretRef},
+				},
+			},
+		}
+
+		redacted := cfg.RedactedForLogging()
+
+		Expect(redacted.Token).To(BeNil())
+		Expect(redacted.Export.Dash0.Authorization.Token).To(BeNil())
+		Expect(redacted.Export.Dash0.Authorization.SecretRef).ToNot(BeNil())
+		Expect(redacted.Export.Dash0.Authorization.SecretRef.Name).To(Equal(SecretRefTest.Name))
+	})
+})
+
+var _ = Describe("redacting the OTel SDK config for logging", func() {
+
+	It("redacts all header values while preserving header names and non-header fields", func() {
+		cfg := &common.OTelSdkConfig{
+			Endpoint: EndpointDash0Test,
+			Protocol: common.ProtocolGrpc,
+			Headers: map[string]string{
+				util.AuthorizationHeaderName: "Bearer secret-token",
+				util.Dash0DatasetHeaderName:  DatasetCustomTest,
+			},
+		}
+
+		redacted := redactOTelSdkConfigForLogging(cfg)
+
+		Expect(redacted.Endpoint).To(Equal(EndpointDash0Test))
+		Expect(redacted.Protocol).To(Equal(common.ProtocolGrpc))
+		Expect(redacted.Headers[util.AuthorizationHeaderName]).To(Equal(dash0common.RedactedValue))
+		Expect(redacted.Headers[util.Dash0DatasetHeaderName]).To(Equal(dash0common.RedactedValue))
+
+		// the original config must not be mutated
+		Expect(cfg.Headers[util.AuthorizationHeaderName]).To(Equal("Bearer secret-token"))
+		Expect(cfg.Headers[util.Dash0DatasetHeaderName]).To(Equal(DatasetCustomTest))
+	})
+
+	It("returns nil for a nil config", func() {
+		Expect(redactOTelSdkConfigForLogging(nil)).To(BeNil())
+	})
+})

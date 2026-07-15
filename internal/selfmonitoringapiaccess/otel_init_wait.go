@@ -155,9 +155,9 @@ func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger log
 				logger.Info(
 					"restarting the OpenTelemetry SDK for self-monitoring (config has changed)",
 					"old configuration",
-					currentlyActiveConfig,
+					redactOTelSdkConfigForLogging(currentlyActiveConfig),
 					"new configuration",
-					newOTelSDKConfig,
+					redactOTelSdkConfigForLogging(newOTelSDKConfig),
 				)
 				s.ShutDownOTelSdk(ctx, logger)
 				s.startOrRestartOTelSdkChannel <- newOTelSDKConfig
@@ -174,6 +174,23 @@ func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger log
 
 func (s *OTelSdkStarter) UpdateOTelSdkState(newState bool) {
 	s.sdkIsActive.Store(newState)
+}
+
+// redactOTelSdkConfigForLogging returns a copy of the config that is safe to log: all header values are replaced
+// with the redaction marker, since any header value (in particular the Authorization header) may carry a secret.
+func redactOTelSdkConfigForLogging(c *common.OTelSdkConfig) *common.OTelSdkConfig {
+	if c == nil {
+		return nil
+	}
+	redacted := *c
+	if len(c.Headers) > 0 {
+		redactedHeaders := make(map[string]string, len(c.Headers))
+		for k := range c.Headers {
+			redactedHeaders[k] = dash0common.RedactedValue
+		}
+		redacted.Headers = redactedHeaders
+	}
+	return &redacted
 }
 
 // convertExportConfigurationToOTelSDKConfig is used when enabling self-monitoring from within an already running
