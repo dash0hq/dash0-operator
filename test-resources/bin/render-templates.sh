@@ -190,6 +190,13 @@ cat \
   envsubst > \
   test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml
 
+# shellcheck disable=SC2002
+cat \
+  test-resources/customresources/prometheus/cadvisor-scrapeconfig-autopilot.yaml.template | \
+  TARGET_NAMESPACE="$target_namespace" \
+  envsubst > \
+  test-resources/customresources/prometheus/cadvisor-scrapeconfig-autopilot.yaml
+
 DASH0_DATASET_RESOLVED="${OPERATOR_CONFIGURATION_VIA_HELM_DATASET:-${DASH0_DATASET:-default}}"
 
 # shellcheck disable=SC2002

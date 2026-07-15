@@ -783,6 +783,10 @@ run_helm() {
     helm_install_command+=" --set operator.replicaCount=${OPERATOR_REPLICAS:-1}"
   fi
 
+  if [[ "${GKE_AUTOPILOT_ENABLED:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.gke.autopilot.enabled=true"
+  fi
+
   # on kind, the collectors sometimes need more time to start
   if [[ "${ALLOW_MORE_TIME_FOR_COLLECTOR_STARTUP:-}" == "true" ]]; then
     helm_install_command+=" --set operator.collectors.daemonSetProbes.startup.failureThreshold=60"
@@ -1087,8 +1091,14 @@ deploy_cadvisor_scrapeconfig() {
   if [[ "${DEPLOY_CADVISOR_SCRAPECONFIG:-}" != "true" ]]; then
     return
   fi
+  # On GKE Autopilot the kube-apiserver -> kubelet proxy is not available, so use the variant that scrapes the
+  # kubelet directly (see cadvisor-scrapeconfig-autopilot.yaml.template).
+  local scrapeconfig_file="test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml"
+  if [[ "${GKE_AUTOPILOT_ENABLED:-}" = "true" ]]; then
+    scrapeconfig_file="test-resources/customresources/prometheus/cadvisor-scrapeconfig-autopilot.yaml"
+  fi
   echo "STEP $step_counter: deploy a ScrapeConfig for scraping cadvisor metrics to ${target_namespace}"
-  kubectl apply -n "$target_namespace" -f test-resources/customresources/prometheus/cadvisor-scrapeconfig.yaml
+  kubectl apply -n "$target_namespace" -f "$scrapeconfig_file"
   finish_step
 }
 
