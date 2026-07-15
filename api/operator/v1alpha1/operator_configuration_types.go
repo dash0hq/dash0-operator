@@ -620,6 +620,8 @@ func (d *Dash0OperatorConfiguration) cloneAndRedact() Dash0OperatorConfiguration
 	redactedResource := Dash0OperatorConfiguration{}
 	d.DeepCopyInto(&redactedResource)
 	redactedResource.ManagedFields = nil
+	// This annotation embeds a verbatim copy of the spec (including the plaintext token) that Export.Redact() cannot reach.
+	delete(redactedResource.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
 	for _, export := range redactedResource.EffectiveExports() {
 		export.Redact()
 	}

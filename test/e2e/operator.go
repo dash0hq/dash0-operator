@@ -454,10 +454,12 @@ func ensureDash0OperatorHelmRepoIsInstalledAndUpToDate(
 	}
 }
 
-// verifyNoSecretsLeakedInOperatorManagerLogs fetches the operator manager's accumulated logs and asserts that none of
-// the plaintext secrets configured by the suite appear in them. It is a no-op when the operator manager is not
-// currently deployed (some teardown paths run after it has already been removed).
-func verifyNoSecretsLeakedInOperatorManagerLogs() {
+// leakedSecretLogFileCounter makes the artifact file names written on a detected leak unique across deployments.
+var leakedSecretLogFileCounter int
+
+// getOperatorManagerLogsIfDeployed returns the operator manager's logs, or "" when it is not deployed (some teardown
+// paths run after it has been removed) or its logs cannot be retrieved.
+func getOperatorManagerLogsIfDeployed() string {
 	deployment, err := run(exec.Command(
 		"kubectl",
 		"-n",
@@ -469,27 +471,44 @@ func verifyNoSecretsLeakedInOperatorManagerLogs() {
 		"--output=name",
 	))
 	if err != nil || strings.TrimSpace(deployment) == "" {
-		return
+		return ""
 	}
 	logs, err := getOperatorManagerLogs()
 	if err != nil {
-		return
+		return ""
 	}
-	for _, secret := range secretsThatMustNeverAppearInLogs {
-		if secret == "" {
-			continue
+	return logs
+}
+
+// findLeakedSecretLogLines returns each log line containing a configured secret, with the secret masked. The masked
+// line (its message and field key) identifies the offending call site without re-printing the secret.
+func findLeakedSecretLogLines(logs string) []string {
+	var offendingLines []string
+	for _, line := range strings.Split(logs, "\n") {
+		masked := line
+		containsSecret := false
+		for _, secret := range secretsThatMustNeverAppearInLogs {
+			if secret != "" && strings.Contains(masked, secret) {
+				containsSecret = true
+				masked = strings.ReplaceAll(masked, secret, "<redacted>")
+			}
 		}
-		Expect(logs).ToNot(
-			ContainSubstring(secret),
-			fmt.Sprintf("operator manager logs must not contain the plaintext secret %q", secret),
-		)
+		if containsSecret {
+			// Truncate very long lines (e.g. patch dumps) but keep the identifying prefix (timestamp, level, message).
+			if len(masked) > 1500 {
+				masked = masked[:1500] + "…(truncated)"
+			}
+			offendingLines = append(offendingLines, masked)
+		}
 	}
+	return offendingLines
 }
 
 func undeployOperator(operatorNamespace string) {
-	// Scan the operator manager's accumulated logs for leaked secrets before tearing it down. undeployOperator is the
-	// common teardown funnel for every operator deployment, so this covers all feature paths exercised in the suite.
-	verifyNoSecretsLeakedInOperatorManagerLogs()
+	// Capture logs before teardown but assert only after uninstalling below, so a detected leak never aborts teardown
+	// and leaves the release installed. undeployOperator is the teardown funnel for every deployment, covering all paths.
+	operatorManagerLogs := getOperatorManagerLogsIfDeployed()
+	leakedSecretLogLines := findLeakedSecretLogLines(operatorManagerLogs)
 
 	By("undeploying the operator")
 	Expect(
@@ -517,6 +536,24 @@ func undeployOperator(operatorNamespace string) {
 			))).To(Succeed())
 
 	verifyDash0OperatorReleaseIsNotInstalled(Default, operatorNamespace)
+
+	if len(leakedSecretLogLines) > 0 {
+		// The operator is already torn down, so the standard on-failure collection can no longer capture its logs;
+		// persist them as a CI artifact (their only secret is the dummy e2e token).
+		writeToFile(
+			[]byte(operatorManagerLogs),
+			collectedLogsBaseDir,
+			fmt.Sprintf("leaked-secret-operator-manager-logs-%d.log", leakedSecretLogFileCounter),
+		)
+		leakedSecretLogFileCounter++
+	}
+
+	Expect(leakedSecretLogLines).To(
+		BeEmpty(),
+		"the operator manager logged plaintext secret(s); each of the following lines (secret masked here) must be "+
+			"redacted at its source:\n%s",
+		strings.Join(leakedSecretLogLines, "\n"),
+	)
 }
 
 func verifyDash0OperatorReleaseIsNotInstalled(g Gomega, operatorNamespace string) {

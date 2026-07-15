@@ -35,12 +35,12 @@ type SelfMonitoringConfiguration struct {
 	ResolvedSecretHeaderValues map[string]string
 }
 
-// RedactedForLogging returns a copy of the configuration that is safe to log: the resolved token, the literal
-// export token, gRPC/HTTP header values and resolved secret header values are replaced with the redaction marker.
+// RedactedForLogging returns a copy safe to log: the resolved token, the literal export token, header values and
+// resolved secret header values are replaced with the redaction marker.
 func (c SelfMonitoringConfiguration) RedactedForLogging() SelfMonitoringConfiguration {
 	redacted := c
 	redacted.Export = *c.Export.DeepCopy()
-	redacted.Export.Redact() // handles Dash0.Authorization.Token and gRPC/HTTP header values
+	redacted.Export.Redact()
 	if c.Token != nil && len(*c.Token) > 0 {
 		redactedToken := dash0common.RedactedValue
 		redacted.Token = &redactedToken

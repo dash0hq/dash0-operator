@@ -176,8 +176,8 @@ func (s *OTelSdkStarter) UpdateOTelSdkState(newState bool) {
 	s.sdkIsActive.Store(newState)
 }
 
-// redactOTelSdkConfigForLogging returns a copy of the config that is safe to log: all header values are replaced
-// with the redaction marker, since any header value (in particular the Authorization header) may carry a secret.
+// redactOTelSdkConfigForLogging returns a copy safe to log: all header values are redacted, since any of them (in
+// particular the Authorization header) may carry a secret.
 func redactOTelSdkConfigForLogging(c *common.OTelSdkConfig) *common.OTelSdkConfig {
 	if c == nil {
 		return nil
