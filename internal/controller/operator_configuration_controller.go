@@ -220,7 +220,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("applying self-monitoring configuration", "configuration", selfMonitoringConfiguration)
+	logger.Info("applying self-monitoring configuration", "configuration", selfMonitoringConfiguration.RedactedForLogging())
 	r.applyOperatorManagerSelfMonitoringSettings(
 		ctx,
 		selfMonitoringConfiguration,

@@ -29,7 +29,17 @@ const (
 
 	publishedChart    = "dash0-operator/dash0-operator"
 	publishedChartUrl = "https://dash0hq.github.io/dash0-operator"
+
+	// agent0ConnectorDummyToken is the auth token configured for the agent0-connector in the corresponding test.
+	agent0ConnectorDummyToken = "auth_e2e-agent0-connector-dummy-token"
 )
+
+// secretsThatMustNeverAppearInLogs enumerates every plaintext secret value the e2e suite configures. The operator
+// manager must never write any of them to its logs; they must be redacted. Extend this list when adding new secrets.
+var secretsThatMustNeverAppearInLogs = []string{
+	defaultToken,
+	agent0ConnectorDummyToken,
+}
 
 var (
 	operatorHelmChart    = localHelmChart
@@ -444,7 +454,62 @@ func ensureDash0OperatorHelmRepoIsInstalledAndUpToDate(
 	}
 }
 
+// leakedSecretLogFileCounter makes the artifact file names written on a detected leak unique across deployments.
+var leakedSecretLogFileCounter int
+
+// getOperatorManagerLogsIfDeployed returns the operator manager's logs, or "" when it is not deployed (some teardown
+// paths run after it has been removed) or its logs cannot be retrieved.
+func getOperatorManagerLogsIfDeployed() string {
+	deployment, err := run(exec.Command(
+		"kubectl",
+		"-n",
+		operatorNamespace,
+		"get",
+		"deployment",
+		"dash0-operator-controller",
+		"--ignore-not-found",
+		"--output=name",
+	))
+	if err != nil || strings.TrimSpace(deployment) == "" {
+		return ""
+	}
+	logs, err := getOperatorManagerLogs()
+	if err != nil {
+		return ""
+	}
+	return logs
+}
+
+// findLeakedSecretLogLines returns each log line containing a configured secret, with the secret masked. The masked
+// line (its message and field key) identifies the offending call site without re-printing the secret.
+func findLeakedSecretLogLines(logs string) []string {
+	var offendingLines []string
+	for _, line := range strings.Split(logs, "\n") {
+		masked := line
+		containsSecret := false
+		for _, secret := range secretsThatMustNeverAppearInLogs {
+			if secret != "" && strings.Contains(masked, secret) {
+				containsSecret = true
+				masked = strings.ReplaceAll(masked, secret, "<redacted>")
+			}
+		}
+		if containsSecret {
+			// Truncate very long lines (e.g. patch dumps) but keep the identifying prefix (timestamp, level, message).
+			if len(masked) > 1500 {
+				masked = masked[:1500] + "…(truncated)"
+			}
+			offendingLines = append(offendingLines, masked)
+		}
+	}
+	return offendingLines
+}
+
 func undeployOperator(operatorNamespace string) {
+	// Capture logs before teardown but assert only after uninstalling below, so a detected leak never aborts teardown
+	// and leaves the release installed. undeployOperator is the teardown funnel for every deployment, covering all paths.
+	operatorManagerLogs := getOperatorManagerLogsIfDeployed()
+	leakedSecretLogLines := findLeakedSecretLogLines(operatorManagerLogs)
+
 	By("undeploying the operator")
 	Expect(
 		runAndIgnoreOutput(
@@ -471,6 +536,24 @@ func undeployOperator(operatorNamespace string) {
 			))).To(Succeed())
 
 	verifyDash0OperatorReleaseIsNotInstalled(Default, operatorNamespace)
+
+	if len(leakedSecretLogLines) > 0 {
+		// The operator is already torn down, so the standard on-failure collection can no longer capture its logs;
+		// persist them as a CI artifact (their only secret is the dummy e2e token).
+		writeToFile(
+			[]byte(operatorManagerLogs),
+			collectedLogsBaseDir,
+			fmt.Sprintf("leaked-secret-operator-manager-logs-%d.log", leakedSecretLogFileCounter),
+		)
+		leakedSecretLogFileCounter++
+	}
+
+	Expect(leakedSecretLogLines).To(
+		BeEmpty(),
+		"the operator manager logged plaintext secret(s); each of the following lines (secret masked here) must be "+
+			"redacted at its source:\n%s",
+		strings.Join(leakedSecretLogLines, "\n"),
+	)
 }
 
 func verifyDash0OperatorReleaseIsNotInstalled(g Gomega, operatorNamespace string) {

@@ -356,7 +356,7 @@ func (m *OTelColResourceManager) updateResource(
 		desiredResource.GetName(),
 	),
 		"patch",
-		string(patchResult.Patch),
+		util.RedactSensitiveEnvVarsInPatch(patchResult.Patch),
 	)
 
 	return hasChanged, nil

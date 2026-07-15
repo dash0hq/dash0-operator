@@ -66,6 +66,25 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 			Expect(*original.Spec.Exports[0].Dash0.Authorization.Token).To(Equal("my-secret-token"))
 		})
 
+		It("should drop the kubectl last-applied-configuration annotation, which may embed a plaintext token", func() {
+			lastApplied := `{"spec":{"exports":[{"dash0":{"authorization":{"token":"my-secret-token"}}}]}}`
+			original := Dash0OperatorConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"kubectl.kubernetes.io/last-applied-configuration": lastApplied,
+						"some-other-annotation":                            "keep-me",
+					},
+				},
+			}
+
+			redacted := original.cloneAndRedact()
+
+			Expect(redacted.Annotations).ToNot(HaveKey("kubectl.kubernetes.io/last-applied-configuration"))
+			Expect(redacted.Annotations["some-other-annotation"]).To(Equal("keep-me"))
+			// the original resource must not be mutated
+			Expect(original.Annotations).To(HaveKeyWithValue("kubectl.kubernetes.io/last-applied-configuration", lastApplied))
+		})
+
 		It("should not redact a Dash0 export that uses a SecretRef instead of a token", func() {
 			original := Dash0OperatorConfiguration{
 				Spec: Dash0OperatorConfigurationSpec{

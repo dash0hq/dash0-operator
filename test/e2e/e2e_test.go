@@ -367,6 +367,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						)
 					}, 45*time.Second, pollingInterval).Should(Succeed())
 				})
+
 			})
 
 			Describe("log collection", func() {
@@ -1941,8 +1942,6 @@ trace_statements:
 	}
 
 	Context("with the agent0-connector enabled", Ordered, func() {
-		const agent0ConnectorDummyToken = "auth_e2e-agent0-connector-dummy-token"
-
 		agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
 
 		BeforeAll(func() {

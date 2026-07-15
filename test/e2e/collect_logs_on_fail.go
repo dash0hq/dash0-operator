@@ -90,6 +90,19 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 	))
 }
 
+// getOperatorManagerLogs returns the full accumulated stdout of the operator-manager deployment.
+func getOperatorManagerLogs() (string, error) {
+	return run(exec.Command(
+		"kubectl",
+		"-n",
+		operatorNamespace,
+		"logs",
+		"deployment/dash0-operator-controller",
+		"--all-containers=true",
+		"--tail=-1",
+	))
+}
+
 func getPodLogs(namespace string, outputPath string) {
 	podNames := getPodNames(namespace, outputPath)
 	for _, podName := range podNames {

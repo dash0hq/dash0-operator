@@ -35,6 +35,26 @@ type SelfMonitoringConfiguration struct {
 	ResolvedSecretHeaderValues map[string]string
 }
 
+// RedactedForLogging returns a copy safe to log: the resolved token, the literal export token, header values and
+// resolved secret header values are replaced with the redaction marker.
+func (c SelfMonitoringConfiguration) RedactedForLogging() SelfMonitoringConfiguration {
+	redacted := c
+	redacted.Export = *c.Export.DeepCopy()
+	redacted.Export.Redact()
+	if c.Token != nil && len(*c.Token) > 0 {
+		redactedToken := dash0common.RedactedValue
+		redacted.Token = &redactedToken
+	}
+	if len(c.ResolvedSecretHeaderValues) > 0 {
+		redactedHeaders := make(map[string]string, len(c.ResolvedSecretHeaderValues))
+		for k := range c.ResolvedSecretHeaderValues {
+			redactedHeaders[k] = dash0common.RedactedValue
+		}
+		redacted.ResolvedSecretHeaderValues = redactedHeaders
+	}
+	return redacted
+}
+
 type EndpointAndHeaders struct {
 	Endpoint string
 	Protocol string
