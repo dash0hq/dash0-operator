@@ -779,6 +779,9 @@ run_helm() {
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
+  if [[ "${GKE_AUTOPILOT_ENABLED:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.gke.autopilot.enabled=true"
+  fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
     helm_install_command+=" --set operator.replicaCount=${OPERATOR_REPLICAS:-1}"
   fi
