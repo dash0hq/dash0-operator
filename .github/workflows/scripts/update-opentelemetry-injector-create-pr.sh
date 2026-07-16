@@ -10,38 +10,24 @@ if ! command -v gh &> /dev/null; then
   exit 1
 fi
 
-branch_name="update-dash0-collector-components"
-config_file="images/collector/src/builder/config.yaml"
+branch_name="update-opentelemetry-injector"
+version_file="images/instrumentation/opentelemetry-injector/version"
 
 # Base commit that the new branch and the signed commit will be based on. Capturing HEAD is unaffected by the
-# working-tree edits the bump script makes below (those changes are not committed locally).
+# working-tree edit the update script makes below (that change is not committed locally).
 base_sha=$(git rev-parse HEAD)
 
-COLLECTOR_VERSIONS_OUTPUT=$(mktemp)
-export COLLECTOR_VERSIONS_OUTPUT
-trap 'rm -f "$COLLECTOR_VERSIONS_OUTPUT"' EXIT
-.github/workflows/scripts/update-collector-components-check-and-bump-versions.sh
-# shellcheck source=/dev/null
-source "$COLLECTOR_VERSIONS_OUTPUT"
+images/instrumentation/opentelemetry-injector/update.sh
 
 # git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
-if git diff-files --quiet "$config_file"; then
+if git diff-files --quiet "$version_file"; then
   echo "There are no changes, everything up to date."
   exit 0
 fi
 
 echo "There are changes, creating a pull request."
-
-commit_message="chore(deps): bump Dash0 collector components"
-pr_body=""
-# Note: new_stable_version etc. are sourced from $COLLECTOR_VERSIONS_OUTPUT, which is populated by
-# .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
-# shellcheck disable=SC2154
-if [[ -n "${new_stable_version:-}" && -n "${new_beta_version:-}" && -n "${new_contrib_version:-}" ]]; then
-  commit_message="chore(deps): bump Dash0 collector components (${new_stable_version}/${new_beta_version}/${new_contrib_version})"
-  pr_body=$(printf 'Update to:\n- core stable version: %s\n- core beta version: v%s\n- contrib version: v%s' \
-    "$new_stable_version" "$new_beta_version" "$new_contrib_version")
-fi
+new_version=$(cat "$version_file")
+commit_message="chore(deps): update opentelemetry-injector to ${new_version}"
 
 # Create the commit via the GitHub API rather than "git commit"/"git push", so commit are automatically signed.
 
@@ -57,16 +43,15 @@ jq -n \
   --arg repo "$GITHUB_REPOSITORY" \
   --arg branch "$branch_name" \
   --arg headline "$commit_message" \
-  --arg body "$pr_body" \
   --arg oid "$base_sha" \
-  --arg path "$config_file" \
-  --arg contents "$(base64 -w0 "$config_file")" \
+  --arg path "$version_file" \
+  --arg contents "$(base64 -w0 "$version_file")" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {
       input: {
         branch:          { repositoryNameWithOwner: $repo, branchName: $branch },
-        message:         { headline: $headline, body: $body },
+        message:         { headline: $headline },
         expectedHeadOid: $oid,
         fileChanges:     { additions: [ { path: $path, contents: $contents } ] }
       }
@@ -77,4 +62,4 @@ gh pr create \
   -B main \
   -H "$branch_name" \
   --title "$commit_message" \
-  --body "$pr_body"
+  --body "This PR updates the opentelemetry-injector version to ${new_version}."
