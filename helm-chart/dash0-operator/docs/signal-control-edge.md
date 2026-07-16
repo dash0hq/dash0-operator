@@ -1,6 +1,6 @@
-# Dash0 Signal Control
+# Dash0 SignalControl Edge
 
-Signal Control (SC) processes observability data inside your own Kubernetes cluster to cut egress cost. In order to
+SignalControl Edge (SCE) processes observability data inside your own Kubernetes cluster to cut egress cost. In order to
 achieve that, the operator wires a set of custom Dash0 components into the OpenTelemetry collector pipelines:
 - tail-sampling drops ordinary/repetitive traces while keeping the ones that matter e.g., errors, fixed percentage, or
 based on custom criteria via OTTL
@@ -18,29 +18,29 @@ Dash0 backend.
 
 ## Note about availability
 
-Signal Control is not generally available and must be enabled for your organization on the Dash0 side. The operator verifies this entitlement
-against the Dash0 API; if the organization is not entitled, the `Dash0SignalControl` resource is marked degraded, Signal Control is
+SignalControl Edge is not generally available and must be enabled for your organization on the Dash0 side. The operator verifies this entitlement
+against the Dash0 API; if the organization is not entitled, the `Dash0SignalControl` resource is marked degraded, SignalControl Edge is
 not applied and the standard collector is used, even when the Helm flag and the `Dash0SignalControl` resource are set.
 
 ## Quickstart
 
-Enabling Signal Control takes two steps: turning the feature flag on in the Helm chart, and creating a
+Enabling SignalControl Edge takes two steps: turning the feature flag on in the Helm chart, and creating a
 `Dash0SignalControl` resource to configure it.
 
-The Helm flag controls which collector image will be used (the one with SC components or without them) and whether the
+The Helm flag controls which collector image will be used (the one with SCE components or without them) and whether the
 `Dash0SignalControl` and `Dash0SamplingRule` CRDs will be installed in the cluster. It is set to `false` by default to
-ensure that without explicitly enabling it, there are zero changes to clusters of customers not using SC.
+ensure that without explicitly enabling it, there are zero changes to clusters of customers not using SCE.
 
-The `Dash0SignalControl` resource configures the individual SC components. Please refer to
+The `Dash0SignalControl` resource configures the individual SCE components. Please refer to
 [dash0signalcontrol_types.go](https://github.com/dash0hq/dash0-operator/blob/main/api/operator/v1alpha1/dash0signalcontrol_types.go)
 for all available configuration
 fields and their defaults.
 
-Signal Control builds on top of the standard operator setup, so if you are new to the Dash0 operator, please read the
+SignalControl Edge builds on top of the standard operator setup, so if you are new to the Dash0 operator, please read the
 [Helm chart README](/helm-chart/dash0-operator/README.md) first.
 
-Signal Control only acts on telemetry destined for Dash0, so the operator must have a default Dash0 exporter
-configured; without one, SC has no effect. A few export constraints apply in the current beta: multi-organization
+SignalControl Edge only acts on telemetry destined for Dash0, so the operator must have a default Dash0 exporter
+configured; without one, SCE has no effect. A few export constraints apply in the current beta: multi-organization
 exporters are not supported, and tail-sampling is applied only to the first Dash0 exporter/dataset of each namespace —
 configuring multiple Dash0 exporters/datasets within a single namespace is not supported for sampling.
 
@@ -48,16 +48,16 @@ Because tail-sampling makes a single keep-or-drop decision for an entire trace, 
 trace are routed to the same dataset. When the spans of a trace are split across multiple namespaces and sampling is only
 applied to some of them, it might result in orphaned spans in Dash0.
 
-To enable Signal Control, the only additional required Helm setting is `operator.signalControl.enabled` which can be
-either supplied in the values file or via `--set operator.signalControl.enabled=true`. Because the SC components add
+To enable SignalControl Edge, the only additional required Helm setting is `operator.signalControl.enabled` which can be
+either supplied in the values file or via `--set operator.signalControl.enabled=true`. Because the SCE components add
 extra processing and buffering — tail-sampling in particular buffers traces in memory while decisions are pending —
-plan to increase the collector's memory when enabling Signal Control; at least 500Mi of additional memory is a
+plan to increase the collector's memory when enabling SignalControl Edge; at least 500Mi of additional memory is a
 reasonable starting point.
 
 Once the helm install or upgrade has completed, the next step is to create a `Dash0SignalControl` resource.
 Note that this resource is a singleton: only one instance may exist per cluster.
 
-Since every component defaults to enabled, a minimal resource with an empty spec turns on the full SC pipeline,
+Since every component defaults to enabled, a minimal resource with an empty spec turns on the full SCE pipeline,
 including the Edge Proxy (recommended whenever you run more than one collector instance):
 
 ```yaml
@@ -69,7 +69,7 @@ spec: {}
 ```
 
 After creating this resource, you should now see a new component (edge proxy) in the operator namespace and if you inspect
-the collector config, you will see the inserted SC components.
+the collector config, you will see the inserted SCE components.
 
 As a test, you can define a cluster-scoped `Dash0SamplingRule` resource. The probabilistic rule below keeps 10% of all
 traces and is evaluated locally in the collector, without involving the Decision Maker:
@@ -91,17 +91,17 @@ spec:
 
 ## How it works
 
-Signal Control does not replace the collector's normal processing — it runs after it. Telemetry first passes
+SignalControl Edge does not replace the collector's normal processing — it runs after it. Telemetry first passes
 through the standard collector processors (resource detection, Kubernetes attributes, batching, and so on), and only
-then is handed to the Signal Control components, right before it is exported to Dash0. The regular collection behavior
+then is handed to the SignalControl Edge components, right before it is exported to Dash0. The regular collection behavior
 stays unchanged; the egress-reduction logic is layered on top.
 
-The simplified traces pipeline below shows the order in which the SC components are applied (metrics and logs
+The simplified traces pipeline below shows the order in which the SCE components are applied (metrics and logs
 follow the same shape):
 
 ```mermaid
 flowchart LR
-    normal["non-SC collector components"] --> op["operation processor"]
+    nonsce["non-SCE collector components"] --> op["operation processor"]
     op --> spam["spam filter"]
     spam --> sampling["tail-sampling"] --> dash0(["Dash0"])
     spam --> red["RED metrics"] --> dash0
@@ -110,7 +110,7 @@ flowchart LR
 
 The rules that drive these components (sampling rules, spam filters, signal-to-metrics rules) are authored as Kubernetes
 custom resources. The operator reconciles each resource and syncs it to the Dash0 backend via the Dash0 API. Independently, the
-collector pulls the effective, merged settings back down at runtime and feeds them to the Signal Control components, so
+collector pulls the effective, merged settings back down at runtime and feeds them to the SignalControl Edge components, so
 rule changes take effect without redeploying the collector.
 
 Most rules are evaluated locally in the collector. Tail-sampling decisions that require coordination across collector

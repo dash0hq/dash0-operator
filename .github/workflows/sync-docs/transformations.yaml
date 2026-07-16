@@ -135,7 +135,7 @@ files:
     title: Troubleshooting
     description: Troubleshoot and debug the Dash0 operator.
 
-  - source: docs/signal-control.md
-    target: dash0-operator/signal-control.md
-    title: Dash0 Signal Control 
-    description: Configure Signal Control in the Dash0 operator.
+  - source: docs/signal-control-edge.md
+    target: dash0-operator/signal-control-edge.md
+    title: Dash0 SignalControl Edge
+    description: Configure SignalControl Edge in the Dash0 operator.

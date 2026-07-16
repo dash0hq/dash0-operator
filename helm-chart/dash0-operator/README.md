@@ -91,7 +91,7 @@ This README provides a quick overview. Detailed documentation is organized by to
 * **[Managing Dash0 Resources](docs/managing-dash0-resources.md)** - Managing dashboards, check rules, synthetic checks, views, notification channels, spam filters, and signal-to-metrics via infrastructure-as-code
 * **[Advanced Configuration](docs/advanced-configuration.md)** - cert-manager, node affinity, tolerations, sysctls, and filelog offset volumes
 * **[Platform Specific](docs/platform-specific.md)** - Notes for AWS EKS, GKE Autopilot, Azure AKS, Docker Desktop, Minikube, Apple Silicon, and compatibility with OPA and Kyverno
-* **[Signal Control](docs/signal-control.md)** - How to configure Signal Control, which offers in-cluster tail-sampling, RED metrics, signal-to-metrics, and spam filters to reduce egress costs.
+* **[SignalControl Edge](docs/signal-control-edge.md)** - How to configure Signal Control, which offers in-cluster tail-sampling, RED metrics, signal-to-metrics, and spam filters to reduce egress costs.
 
 ### Operations
 
