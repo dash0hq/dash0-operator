@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -4235,6 +4236,57 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(ReadFromMap(annotationsSnippet, []string{"1", "tag_name"})).To(Equal("k8s.node.annotation.$$1"))
 			Expect(ReadFromMap(annotationsSnippet, []string{"2", "tag_name"})).To(Equal("k8s.pod.annotation.$$1"))
 		}, daemonSetAndDeployment)
+
+		DescribeTable("should remove labels and annotations that are excluded from collection", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				CollectPodLabelsAndAnnotationsEnabled:            true,
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			for _, statementGroup := range []string{"trace_statements", "metric_statements", "log_statements"} {
+				statementsRaw := ReadFromMap(
+					collectorConfig,
+					[]string{"processors", "transform/resources", statementGroup, "0", "statements"},
+				)
+				Expect(statementsRaw).ToNot(BeNil())
+				statements := statementsRaw.([]any)
+				// spot-check a few fully rendered statements to pin down the escaping
+				Expect(statements).To(ContainElement(
+					`delete_matching_keys(resource.attributes, ` +
+						`"^k8s\\.(pod)\\.(label|annotation)\\.autoscaling\\.cast\\.ai/recommendation-applied-at$")`))
+				Expect(statements).To(ContainElement(
+					`delete_matching_keys(resource.attributes, ` +
+						`"^k8s\\.(pod|namespace|node)\\.(label|annotation)\\.kubectl\\.kubernetes\\.io/last-applied-configuration$")`))
+				Expect(statements).To(ContainElement(
+					`delete_matching_keys(resource.attributes, ` +
+						`"^k8s\\.(node)\\.(label|annotation)\\.karpenter\\.sh/nodepool-hash$")`))
+				for _, pattern := range labelAndAnnotationExclusionPatterns() {
+					Expect(statements).To(ContainElement(
+						fmt.Sprintf(`delete_matching_keys(resource.attributes, "%s")`, pattern)))
+				}
+			}
+		}, daemonSetAndDeployment)
+
+		It("should render valid exclusion regexes that match exactly the excluded label/annotation attributes", func() {
+			patterns := labelAndAnnotationExclusionPatterns()
+			Expect(patterns).To(HaveLen(len(labelAndAnnotationKeysExcludedFromCollection)))
+			for i, excludedKey := range labelAndAnnotationKeysExcludedFromCollection {
+				// delete_matching_keys receives the pattern after OTTL string literal unescaping (`\\` becomes `\`).
+				regex, err := regexp.Compile(strings.ReplaceAll(patterns[i], `\\`, `\`))
+				Expect(err).ToNot(HaveOccurred())
+				for _, entity := range excludedKey.entities {
+					Expect(regex.MatchString(fmt.Sprintf("k8s.%s.label.%s", entity, excludedKey.key))).To(BeTrue())
+					Expect(regex.MatchString(fmt.Sprintf("k8s.%s.annotation.%s", entity, excludedKey.key))).To(BeTrue())
+				}
+				// attributes the operator relies on for service attribute mapping must never match
+				Expect(regex.MatchString("k8s.pod.label.app.kubernetes.io/name")).To(BeFalse())
+				Expect(regex.MatchString("k8s.pod.annotation.prometheus.io/port")).To(BeFalse())
+			}
+		})
 	})
 
 	Describe("discard metrics from unmonitored namespaces", func() {

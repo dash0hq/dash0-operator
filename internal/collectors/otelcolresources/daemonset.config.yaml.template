@@ -932,25 +932,38 @@ processors:
 
   # Limit resource attributes to a reasonable maximum length. This is particularly important when transforming
   # Kubernetes pod annotations to resource attributes, which can hold up to 256KB of data.
+  # Also, remove labels and annotations that are deliberately excluded from collection.
   transform/resources:
     error_mode: ignore
     trace_statements:
       - context: resource
         statements:
         - truncate_all(resource.attributes, 2048)
+        {{- range .LabelAndAnnotationExclusionPatterns }}
+        - delete_matching_keys(resource.attributes, "{{ . }}")
+        {{- end }}
     metric_statements:
       - context: resource
         statements:
         - truncate_all(resource.attributes, 2048)
+        {{- range .LabelAndAnnotationExclusionPatterns }}
+        - delete_matching_keys(resource.attributes, "{{ . }}")
+        {{- end }}
     log_statements:
       - context: resource
         statements:
         - truncate_all(resource.attributes, 2048)
+        {{- range .LabelAndAnnotationExclusionPatterns }}
+        - delete_matching_keys(resource.attributes, "{{ . }}")
+        {{- end }}
     {{- if .ProfilingEnabled }}
     profile_statements:
       - context: resource
         statements:
         - truncate_all(resource.attributes, 2048)
+        {{- range .LabelAndAnnotationExclusionPatterns }}
+        - delete_matching_keys(resource.attributes, "{{ . }}")
+        {{- end }}
     {{- end }}
 
   {{- if or $hasPrometheusScrapingEnabledForAtLeastOneNamespace (and .SelfMonitoringEnabled .PrometheusCrdSupportEnabled) }}
