@@ -1454,7 +1454,7 @@ func startDash0Controllers(
 		images.GetOperatorVersion(),
 	)
 
-	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
+	isIPv6Cluster := util.IsIPv6Address(envVars.podIp)
 	possibleCollectorUrls := collectors.RenderCollectorBaseUrls(
 		envVars.oTelCollectorNamePrefix,
 		envVars.operatorNamespace,
