@@ -6,6 +6,8 @@ FROM --platform=${BUILDPLATFORM} golang:1.26.5-alpine3.23 AS builder
 RUN apk add --update git make yq && apk cache clean
 
 COPY src/builder /src/builder
+# Custom internal-telemetry factory, adds k8s.node.uid to self-monitoring collector telemetry.
+COPY src/telemetry /src/telemetry
 WORKDIR /src
 
 RUN export builder_version=$(yq '.connectors[0].gomod | match(" v(\d+\.\d+\.\d+)$"; "g") | .captures[0].string' builder/config.yaml) \
