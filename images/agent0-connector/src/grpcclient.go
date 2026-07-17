@@ -48,7 +48,7 @@ const (
 	authTokenEnvVarName = "DASH0_AGENT0_CONNECTOR_AUTH_TOKEN"
 
 	// clusterUidEnvVarName is the environment variable through which the operator passes the pseudo cluster UID
-	// (the UID of the default namespace, equal to the k8s.cluster.uid resource attribute). It is used as the
+	// (the UID of the kube-system namespace, equal to the k8s.cluster.uid resource attribute). It is used as the
 	// client ID when subscribing to command requests.
 	clusterUidEnvVarName = "K8S_CLUSTER_UID"
 

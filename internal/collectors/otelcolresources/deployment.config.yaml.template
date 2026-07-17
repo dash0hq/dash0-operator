@@ -514,6 +514,15 @@ processors:
         action: insert
   {{- end }}
 
+  # The k8s_attributes processor only adds k8s.cluster.uid on pod-scoped telemetry, see
+  # See https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49717. Since all telemetry collected
+  # here originates from this cluster, we add k8s.cluster.uid via the resource processor.
+  resource/cluster_uid:
+    attributes:
+      - key: k8s.cluster.uid
+        value: "{{ .PseudoClusterUid }}"
+        action: insert
+
   resource/dash0_operator_attributes:
     attributes:
       - key: dash0.operator.collector_managed_by
@@ -780,6 +789,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        - resource/cluster_uid
         - resource/dash0_operator_attributes
         {{- if .NamespaceOttlFilter }}
         - filter/metrics/only_monitored_namespaces
@@ -985,6 +995,7 @@ service:
         {{- if .ClusterName }}
         - resource/clustername
         {{- end }}
+        - resource/cluster_uid
         - resource/dash0_operator_attributes
         - batch
         - transform/resources
