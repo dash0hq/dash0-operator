@@ -11,3 +11,19 @@ spec:
     - key: "k8s.namespace.name"
       operator: "is"
       value: "$TARGET_NAMESPACE"
+---
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SpamFilter
+metadata:
+  name: drop-noisy-namespaces-logs
+  labels:
+    dash0.com/dataset: $DASH0_DATASET
+spec:
+  contexts:
+    - log
+  filter:
+    - key: "k8s.namespace.name"
+      operator: "is_one_of"
+      values:
+        - "kube-system"
+        - "kube-public"

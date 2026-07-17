@@ -50,6 +50,10 @@ type Dash0SpamFilterCondition struct {
 	// The value to compare against. Optional for operators like "is_set" and "is_not_set".
 	// +kubebuilder:validation:Optional
 	Value *string `json:"value,omitempty"`
+
+	// The list of values to compare against. Mandatory for the "is_one_of" and "is_not_one_of" operators.
+	// +kubebuilder:validation:Optional
+	Values []string `json:"values,omitempty"`
 }
 
 // Dash0SpamFilterStatus defines the observed state of Dash0SpamFilter
