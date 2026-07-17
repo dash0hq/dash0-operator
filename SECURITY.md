@@ -31,7 +31,5 @@ This information will help us triage your report more quickly.
 ## Supported Versions
 
 In general, confirmed vulnerabilities will be fixed in the next version of the Dash0 operator.
-The decision whether a fix will be ported over to existing older releases is made on a case-by-case basis, and depends
-on the severity of the issue, among other factors.
 We recommend to always use the latest available [release](https://github.com/dash0hq/dash0-operator/releases) of the
 Dash0 operator.
