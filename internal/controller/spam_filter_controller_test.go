@@ -620,6 +620,25 @@ spec:
 						},
 					),
 					Entry(
+						"should map spam filter with values", spamFilterToRequestTestConfig{
+							spamFilter: `
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SpamFilter
+metadata:
+  name: dash0-spam-filter
+spec:
+  contexts:
+    - log
+  filter:
+    - key: k8s.namespace.name
+      operator: is_one_of
+      values:
+        - kube-system
+        - kube-public
+`,
+						},
+					),
+					Entry(
 						"should send annotations", spamFilterToRequestTestConfig{
 							spamFilter: `
 apiVersion: operator.dash0.com/v1alpha1
