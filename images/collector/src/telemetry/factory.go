@@ -9,14 +9,21 @@
 // (unlike k8s.node.name, which comes from spec.nodeName). It also cannot be added by the k8sattributes or
 // resourcedetection processors, because the collector's self-monitoring telemetry is emitted directly by the
 // OpenTelemetry SDK and never passes through the collector's processing pipelines. This factory therefore resolves the
-// node UID at collector startup by looking up the node (identified by the K8S_NODE_NAME environment variable) via the
-// Kubernetes API and adds it to the telemetry resource.
+// node UID by looking up the node (identified by the K8S_NODE_NAME environment variable) via the Kubernetes API and
+// adds it to the telemetry resource.
+//
+// The lookup is started as early as possible (when the factory is constructed) so that it overlaps with the rest of
+// collector startup and, in the common case, has already finished by the time the self-monitoring resource is created.
+// Waiting for the result is bounded by a short deadline so that a slow or unreachable API server does not noticeably
+// delay collector startup.
 //
 // This factory is wired into the collector build via the "telemetry" section of the OpenTelemetry Collector Builder
 // config (images/collector/src/builder/config.yaml).
 package dash0telemetry
 
 import (
+	"context"
+
 	"go.opentelemetry.io/collector/service/telemetry"
 	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 )
@@ -26,9 +33,12 @@ import (
 // unchanged to the wrapped factory.
 func NewFactory() telemetry.Factory {
 	base := otelconftelemetry.NewFactory()
+	// Kick off the node UID lookup right away so it runs concurrently with the remaining startup work and is usually
+	// already resolved by the time CreateResource is called.
+	nodeUIDFuture := startNodeUIDPrefetch(context.Background())
 	return telemetry.NewFactory(
 		base.CreateDefaultConfig,
-		telemetry.WithCreateResource(createResourceWithNodeUID(base)),
+		telemetry.WithCreateResource(createResourceWithNodeUID(base, nodeUIDFuture)),
 		telemetry.WithCreateLogger(base.CreateLogger),
 		telemetry.WithCreateMeterProvider(base.CreateMeterProvider),
 		telemetry.WithCreateTracerProvider(base.CreateTracerProvider),
