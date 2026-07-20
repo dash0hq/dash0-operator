@@ -95,7 +95,7 @@ type Agent0ConnectorConfig struct {
 	// NamePrefix is used as a prefix for the agent0-connector Kubernetes resources created by the operator. It is the
 	// same prefix that is used for the collector workloads and the target-allocator, that is, the Helm release name.
 	NamePrefix string
-	// PseudoClusterUid is the UID of the default namespace (equal to the k8s.cluster.uid resource attribute). The
+	// PseudoClusterUid is the UID of the kube-system namespace (equal to the k8s.cluster.uid resource attribute). The
 	// agent0-connector workload uses it as its client ID when connecting to the Dash0 backend.
 	PseudoClusterUid types.UID
 	// ServerAddress is the address of the Dash0 backend service the agent0-connector workload connects to. It is set
