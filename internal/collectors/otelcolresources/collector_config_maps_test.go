@@ -3878,7 +3878,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
-				KubeletStatsReceiverConfig:                       KubeletStatsReceiverConfig{Enabled: false},
+				KubeletStatsReceiverConfig:                       util.KubeletStatsReceiverConfig{Enabled: false},
 				UseHostMetricsReceiver:                           false,
 			}, nil, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -3905,7 +3905,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		type kubeletStatsReceiverConfigTest struct {
-			kubeletStatsReceiverConfig KubeletStatsReceiverConfig
+			kubeletStatsReceiverConfig util.KubeletStatsReceiverConfig
 			wanted                     kubeletStatsReceiverConfigTestWanted
 		}
 
@@ -3950,7 +3950,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			},
 
 			Entry("should use node name as endpoint", kubeletStatsReceiverConfigTest{
-				kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+				kubeletStatsReceiverConfig: util.KubeletStatsReceiverConfig{
 					Enabled:  true,
 					Endpoint: "https://${env:K8S_NODE_NAME}:10250",
 					AuthType: "serviceAccount",
@@ -3961,7 +3961,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 			}),
 			Entry("should use node IP as endpoint", kubeletStatsReceiverConfigTest{
-				kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+				kubeletStatsReceiverConfig: util.KubeletStatsReceiverConfig{
 					Enabled:  true,
 					Endpoint: "https://${env:K8S_NODE_IP}:10250",
 					AuthType: "serviceAccount",
@@ -3972,7 +3972,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 			}),
 			Entry("should use read-only endpoint", kubeletStatsReceiverConfigTest{
-				kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+				kubeletStatsReceiverConfig: util.KubeletStatsReceiverConfig{
 					Enabled:  true,
 					Endpoint: "http://${env:K8S_NODE_IP}:10255",
 					AuthType: "none",
@@ -3983,7 +3983,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 			}),
 			Entry("should use node IP as endpoint with insecure_skip_verify", kubeletStatsReceiverConfigTest{
-				kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+				kubeletStatsReceiverConfig: util.KubeletStatsReceiverConfig{
 					Enabled:            true,
 					Endpoint:           "https://${env:K8S_NODE_IP}:10250",
 					AuthType:           "serviceAccount",

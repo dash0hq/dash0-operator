@@ -737,6 +737,95 @@ tests:
           path: spec.template.spec.containers[0].env[18].value
           value: "true"
 
+  - it: should not render kubeletstats env vars when autoDetectEndpoint is true (default)
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT
+            value: "false"
+
+  - it: should render kubeletstats env vars when autoDetectEndpoint is false
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        collectors:
+          kubeletstats:
+            autoDetectEndpoint: false
+            endpoint: "https://${env:K8S_NODE_IP}:10250"
+            authType: none
+            insecureSkipVerify: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_KUBELETSTATS_ENDPOINT
+            value: "https://${env:K8S_NODE_IP}:10250"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_KUBELETSTATS_AUTH_TYPE
+            value: none
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_KUBELETSTATS_INSECURE_SKIP_VERIFY
+            value: "true"
+
+  - it: should default kubeletstats authType and insecureSkipVerify when autoDetectEndpoint is false
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        collectors:
+          kubeletstats:
+            autoDetectEndpoint: false
+            endpoint: "https://${env:K8S_NODE_IP}:10250"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_KUBELETSTATS_AUTH_TYPE
+            value: serviceAccount
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_COLLECTOR_KUBELETSTATS_INSECURE_SKIP_VERIFY
+            value: "false"
+
+  - it: should fail when autoDetectEndpoint is false and endpoint is not provided
+    set:
+      operator:
+        collectors:
+          kubeletstats:
+            autoDetectEndpoint: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.kubeletstats.endpoint is required when operator.collectors.kubeletstats.autoDetectEndpoint is set to false."
+
+  - it: should fail when autoDetectEndpoint is false and authType is empty
+    set:
+      operator:
+        collectors:
+          kubeletstats:
+            autoDetectEndpoint: false
+            endpoint: "https://${env:K8S_NODE_IP}:10250"
+            authType: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.kubeletstats.authType is required when operator.collectors.kubeletstats.autoDetectEndpoint is set to false."
+
   - it: should add args for creating an operator configuration resource with a token to the deployment
     documentSelector:
       path: metadata.name

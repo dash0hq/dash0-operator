@@ -105,7 +105,7 @@ type oTelColConfig struct {
 	TargetAllocatorNamePrefix                        string
 	Agent0ConnectorEnabled                           bool
 	Agent0ConnectorDeploymentName                    string
-	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
+	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	DisableHostPorts                                 bool
 	PseudoClusterUid                                 types.UID

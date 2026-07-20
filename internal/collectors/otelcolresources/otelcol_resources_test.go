@@ -60,10 +60,11 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			k8sClient.Scheme(),
 			OperatorManagerDeployment,
 			util.CollectorConfig{
-				Images:                  TestImages,
-				OperatorNamespace:       OperatorNamespace,
-				OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
-				DevelopmentMode:         true,
+				Images:                         TestImages,
+				OperatorNamespace:              OperatorNamespace,
+				OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+				KubeletStatsAutoDetectEndpoint: true,
+				DevelopmentMode:                true,
 			},
 		)
 	})
@@ -547,15 +548,113 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(oTelColResourceManager.kubeletStatsReceiverConfig.Load()).ToNot(BeNil())
 		})
 	})
+
+	Context("when kubeletstats endpoint auto-detection is disabled", func() {
+		It("should use the configuration provided via the Helm chart instead of probing", func() {
+			manager := NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: false,
+					KubeletStatsReceiverConfig: &util.KubeletStatsReceiverConfig{
+						Endpoint:           "https://${env:K8S_NODE_IP}:10250",
+						AuthType:           kubeletStatsAuthTypeServiceAccount,
+						InsecureSkipVerify: true,
+					},
+					DevelopmentMode: true,
+				},
+			)
+			result := manager.determineKubeletstatsReceiverEndpoint(true, probeKubeletStatsEndpointFailIfCalled, logger)
+			Expect(result.Enabled).To(BeTrue())
+			Expect(result.Endpoint).To(Equal("https://${env:K8S_NODE_IP}:10250"))
+			Expect(result.AuthType).To(Equal(kubeletStatsAuthTypeServiceAccount))
+			Expect(result.InsecureSkipVerify).To(BeTrue())
+		})
+
+		It("should disable the receiver when infrastructure metrics collection is disabled", func() {
+			manager := NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: false,
+					KubeletStatsReceiverConfig: &util.KubeletStatsReceiverConfig{
+						Endpoint: "https://${env:K8S_NODE_IP}:10250",
+						AuthType: kubeletStatsAuthTypeServiceAccount,
+					},
+					DevelopmentMode: true,
+				},
+			)
+			result := manager.determineKubeletstatsReceiverEndpoint(false, probeKubeletStatsEndpointFailIfCalled, logger)
+			Expect(result.Enabled).To(BeFalse())
+		})
+
+		It("should disable the receiver when no explicit configuration is provided", func() {
+			manager := NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: false,
+					KubeletStatsReceiverConfig:     nil,
+					DevelopmentMode:                true,
+				},
+			)
+			result := manager.determineKubeletstatsReceiverEndpoint(true, probeKubeletStatsEndpointFailIfCalled, logger)
+			Expect(result.Enabled).To(BeFalse())
+			// The disabled result must be cached so subsequent reconciles do not fall back to probing.
+			Expect(manager.kubeletStatsReceiverConfig.Load()).ToNot(BeNil())
+			Expect(manager.kubeletStatsReceiverConfig.Load().Enabled).To(BeFalse())
+		})
+
+		It("should disable the receiver when the provided configuration has an empty endpoint", func() {
+			manager := NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: false,
+					KubeletStatsReceiverConfig: &util.KubeletStatsReceiverConfig{
+						Endpoint: "",
+						AuthType: kubeletStatsAuthTypeServiceAccount,
+					},
+					DevelopmentMode: true,
+				},
+			)
+			result := manager.determineKubeletstatsReceiverEndpoint(true, probeKubeletStatsEndpointFailIfCalled, logger)
+			Expect(result.Enabled).To(BeFalse())
+		})
+	})
 })
 
-func probeKubeletStatsEndpointMock(util.CollectorConfig, logd.Logger) (KubeletStatsReceiverConfig, bool) {
-	return KubeletStatsReceiverConfig{
+func probeKubeletStatsEndpointMock(util.CollectorConfig, logd.Logger) (util.KubeletStatsReceiverConfig, bool) {
+	return util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsNodeNameEndpoint,
 		AuthType:           kubeletStatsAuthTypeServiceAccount,
 		InsecureSkipVerify: false,
 	}, true
+}
+
+// probeKubeletStatsEndpointFailIfCalled is used in tests that must not probe the kubelet (e.g. when endpoint
+// auto-detection is disabled and a fixed configuration is provided via the Helm chart).
+func probeKubeletStatsEndpointFailIfCalled(util.CollectorConfig, logd.Logger) (util.KubeletStatsReceiverConfig, bool) {
+	defer GinkgoRecover()
+	Fail("the kubeletstats endpoint probe must not be called when endpoint auto-detection is disabled")
+	return util.KubeletStatsReceiverConfig{}, false
 }
 
 var _ = Describe("signalControlConfigFromResource", func() {

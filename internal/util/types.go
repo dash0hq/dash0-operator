@@ -65,15 +65,34 @@ type CollectorConfig struct {
 	K8sAttributesWaitForMetadataTimeout    string
 	NodeIp                                 string
 	NodeName                               string
-	PseudoClusterUid                       types.UID
-	IsIPv6Cluster                          bool
-	IsDocker                               bool
-	DisableHostPorts                       bool
-	IsGkeAutopilot                         bool
-	DevelopmentMode                        bool
-	DebugVerbosityDetailed                 bool
-	EnableProfExtension                    bool
-	CompressConfigMap                      bool
+	// KubeletStatsAutoDetectEndpoint controls whether the operator probes the node's kubelet at startup to determine the
+	// kubeletstats receiver endpoint and TLS mode automatically. It is set from the Helm value
+	// operator.collectors.kubeletstats.autoDetectEndpoint (default true). When false, KubeletStatsReceiverConfig is used
+	// to configure the kubeletstats receiver instead of probing.
+	KubeletStatsAutoDetectEndpoint bool
+	// KubeletStatsReceiverConfig is the fixed kubeletstats receiver configuration provided via the Helm chart
+	// (operator.collectors.kubeletstats.endpoint / authType / insecureSkipVerify). It is only set (non-nil) when
+	// KubeletStatsAutoDetectEndpoint is false and is used verbatim instead of probing the node's kubelet.
+	KubeletStatsReceiverConfig *KubeletStatsReceiverConfig
+	PseudoClusterUid           types.UID
+	IsIPv6Cluster              bool
+	IsDocker                   bool
+	DisableHostPorts           bool
+	IsGkeAutopilot             bool
+	DevelopmentMode            bool
+	DebugVerbosityDetailed     bool
+	EnableProfExtension        bool
+	CompressConfigMap          bool
+}
+
+// KubeletStatsReceiverConfig holds the configuration for the kubeletstats receiver in the DaemonSet collector. It is
+// either determined automatically by probing the node's kubelet (see the otelcolresources package) or provided
+// explicitly via the Helm chart when endpoint auto-detection is disabled.
+type KubeletStatsReceiverConfig struct {
+	Enabled            bool
+	Endpoint           string
+	AuthType           string
+	InsecureSkipVerify bool
 }
 
 type TargetAllocatorConfig struct {

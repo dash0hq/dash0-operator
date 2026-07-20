@@ -19,6 +19,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
+	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 const (
@@ -104,7 +105,7 @@ type collectorConfigurationTemplateValues struct {
 	TargetAllocatorMtlsClientCertsDir                string
 	Agent0ConnectorEnabled                           bool
 	Agent0ConnectorDeploymentName                    string
-	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
+	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	IsGkeAutopilot                                   bool
 	PseudoClusterUid                                 string
@@ -126,13 +127,6 @@ type collectorConfigurationTemplateValues struct {
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
 	SignalControl                                    SignalControlConfig
-}
-
-type KubeletStatsReceiverConfig struct {
-	Enabled            bool
-	Endpoint           string
-	AuthType           string
-	InsecureSkipVerify bool
 }
 
 var (

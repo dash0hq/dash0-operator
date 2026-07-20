@@ -942,6 +942,36 @@ operator:
       wait_for_metadata: false
       wait_for_metadata_timeout: 15s
 
+    # Settings for the kubeletstats receiver in the DaemonSet collector, which scrapes the local kubelet for Kubernetes
+    # infrastructure metrics.
+    #
+    # By default, the operator probes the node's kubelet once at startup and automatically selects kubeletstats receiver
+    # endpoint and TLS mode.
+    # With the settings in this section you can disable the auto-detection and set a fixed configuration. There should
+    # usually be no reason to override these; the default ("autoDetectEndpoint: true") works for the vast majority of
+    # clusters.
+    kubeletstats:
+      # Whether to automatically detect the kubeletstats receiver endpoint. If set to false, auto-detection is disabled
+      # and explicit values for the kubeletstats receiver endpoint have to be provided via the settings below.
+      # Defaults to true, e.g. using auto-detection.
+      autoDetectEndpoint: true
+
+      # The kubeletstats receiver endpoint. This value is required when autoDetectEndpoint is set to false; the Helm
+      # installation/upgrade will fail if it is not provided in that case. When autoDetectEndpoint is true, this value
+      # is ignored. Example: "https://${env:K8S_NODE_IP}:10250".
+      endpoint: ""
+
+      # The auth_type for the kubeletstats receiver. Only used when autoDetectEndpoint is set to false. Supported values
+      # are "serviceAccount" (the default), "none" (for the unauthenticated, unencrypted read-only endpoint on port
+      # 10255) and "tls". Must not be empty when autoDetectEndpoint is set to false. When autoDetectEndpoint is true,
+      # this value is ignored.
+      # See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/kubeletstatsreceiver.
+      authType: serviceAccount
+
+      # Whether the kubeletstats receiver should skip TLS certificate verification (insecure_skip_verify). Defaults to
+      # false. When autoDetectEndpoint is true, this value is ignored.
+      insecureSkipVerify: false
+
   # Settings related to the target-allocator managed by the operator.
   targetAllocator:
     mTls:
