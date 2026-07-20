@@ -485,7 +485,7 @@ operator:
   signalControlCollectorImage:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # overrides the image tag, which defaults to the chart appVersion.
-    tag: "v2.0.2666"
+    tag: "v2.0.2756"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -495,7 +495,7 @@ operator:
   edgeProxyImage:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # overrides the image tag, which defaults to the chart appVersion.
-    tag: "v2.0.2666"
+    tag: "v2.0.2756"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy

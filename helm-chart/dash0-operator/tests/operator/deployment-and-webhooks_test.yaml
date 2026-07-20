@@ -1130,13 +1130,13 @@ tests:
           value: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "ghcr.io/dash0hq/signal-control-collector:v2.0.2666"
+          value: "ghcr.io/dash0hq/signal-control-collector:v2.0.2756"
       - equal:
           path: spec.template.spec.containers[0].env[18].name
           value: DASH0_EDGE_PROXY_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[18].value
-          value: "ghcr.io/dash0hq/edge-proxy:v2.0.2666"
+          value: "ghcr.io/dash0hq/edge-proxy:v2.0.2756"
       - equal:
           path: spec.template.spec.containers[0].env[20].name
           value: K8S_POD_UID
