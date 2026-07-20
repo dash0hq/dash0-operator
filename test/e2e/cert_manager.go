@@ -20,7 +20,8 @@ type certificateValues struct {
 }
 
 const (
-	certmanagerVersion = "v1.18.2"
+	certmanagerVersion   = "v1.18.2"
+	certManagerNamespace = "cert-manager"
 )
 
 var (
@@ -32,7 +33,7 @@ var (
 )
 
 func ensureCertManagerIsInstalled() {
-	err := runAndIgnoreOutput(exec.Command("kubectl", "get", "ns", "cert-manager"), false)
+	err := runAndIgnoreOutput(exec.Command("kubectl", "get", "ns", certManagerNamespace), false)
 	if err != nil {
 		By("installing the cert-manager")
 		e2ePrint(
@@ -78,7 +79,7 @@ func installCertManager() error {
 		"cert-manager",
 		"jetstack/cert-manager",
 		"--namespace",
-		"cert-manager",
+		certManagerNamespace,
 		"--create-namespace",
 		"--version",
 		certmanagerVersion,
@@ -100,7 +101,7 @@ func installCertManager() error {
 			"--for",
 			"condition=Available",
 			"--namespace",
-			"cert-manager",
+			certManagerNamespace,
 			"--timeout",
 			"5m",
 		)); err != nil {
@@ -114,7 +115,7 @@ func installCertManager() error {
 			"--for",
 			"condition=Available",
 			"--namespace",
-			"cert-manager",
+			certManagerNamespace,
 			"--timeout",
 			"60s",
 		)); err != nil {
@@ -128,7 +129,7 @@ func installCertManager() error {
 			"--for",
 			"condition=Available",
 			"--namespace",
-			"cert-manager",
+			certManagerNamespace,
 			"--timeout",
 			"60s",
 		)); err != nil {
@@ -155,7 +156,7 @@ func uninstallCertManager() {
 		"uninstall",
 		"cert-manager",
 		"--namespace",
-		"cert-manager",
+		certManagerNamespace,
 		"--ignore-not-found",
 	)); err != nil {
 		e2ePrint("warning: %v\n", err)
@@ -163,7 +164,7 @@ func uninstallCertManager() {
 
 	if err := runAndIgnoreOutput(
 		exec.Command(
-			"kubectl", "delete", "namespace", "cert-manager", "--ignore-not-found")); err != nil {
+			"kubectl", "delete", "namespace", certManagerNamespace, "--ignore-not-found")); err != nil {
 		e2ePrint("warning: %v\n", err)
 	}
 }
