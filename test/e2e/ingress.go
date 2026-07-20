@@ -12,6 +12,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const (
+	ingressNginxNamespace = "ingress-nginx"
+)
+
 func ensureNginxIngressControllerIsInstalled(cleanupSteps *neccessaryCleanupSteps) {
 	if os.Getenv("DEPLOY_NGINX_INGRESS") == "false" {
 		return
@@ -22,7 +26,7 @@ func ensureNginxIngressControllerIsInstalled(cleanupSteps *neccessaryCleanupStep
 			"kubectl",
 			"wait",
 			"--namespace",
-			"ingress-nginx",
+			ingressNginxNamespace,
 			"--for=condition=ready",
 			"pod",
 			"--selector=app.kubernetes.io/component=controller",
@@ -53,7 +57,7 @@ func installNginxIngressController(cleanupSteps *neccessaryCleanupSteps) {
 		"kubectl",
 		"wait",
 		"--namespace",
-		"ingress-nginx",
+		ingressNginxNamespace,
 		"--for=condition=ready",
 		"pod",
 		"--selector=app.kubernetes.io/component=controller",
@@ -72,7 +76,7 @@ func installNginxIngressController(cleanupSteps *neccessaryCleanupSteps) {
 			"kubectl",
 			"get",
 			"--namespace",
-			"ingress-nginx",
+			ingressNginxNamespace,
 			"service",
 			"ingress-nginx-controller-admission",
 		))).To(Succeed())
@@ -80,7 +84,7 @@ func installNginxIngressController(cleanupSteps *neccessaryCleanupSteps) {
 			"kubectl",
 			"get",
 			"--namespace",
-			"ingress-nginx",
+			ingressNginxNamespace,
 			"endpointslice",
 			"-l",
 			"kubernetes.io/service-name=ingress-nginx-controller-admission",
@@ -92,7 +96,7 @@ func installNginxIngressController(cleanupSteps *neccessaryCleanupSteps) {
 			"kubectl",
 			"get",
 			"--namespace",
-			"ingress-nginx",
+			ingressNginxNamespace,
 			"endpointslice",
 			"-l",
 			"kubernetes.io/service-name=ingress-nginx-controller-admission",

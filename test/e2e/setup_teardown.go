@@ -22,9 +22,9 @@ var (
 	kubernetesMinor int
 
 	standardNamespaces = []string{
-		"cert-manager",
+		certManagerNamespace,
 		"default",
-		"ingress-nginx",
+		ingressNginxNamespace,
 	}
 )
 

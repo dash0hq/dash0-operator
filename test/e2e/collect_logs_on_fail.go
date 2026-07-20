@@ -69,9 +69,13 @@ func collectPodInfoAndLogs(specReport SpecReport) {
 
 	e2eTestNamespaces := getNamespacesWithPrefix("e2e-test-ns", outputPath)
 	for _, namespace := range append([]string{
+		certManagerNamespace,
+		controlPlaneMockNamespace,
+		dash0ApiMockNamespace,
+		decisionMakerMockNamespace,
+		ingressNginxNamespace,
 		operatorNamespace,
 		otlpSinkNamespace,
-		dash0ApiMockNamespace,
 		outboundConnectorMockNamespace,
 	}, e2eTestNamespaces...) {
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get pods", namespace), outputPath)
