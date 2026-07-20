@@ -18,6 +18,11 @@ if [[ -z "${HEAD_REF:-}" ]]; then
   exit 1
 fi
 
+if ! command -v gh &> /dev/null; then
+  echo "Error: the gh executable is not available." >&2
+  exit 1
+fi
+
 # Mapping of "Dockerfile:go.mod" pairs. Each Dockerfile's golang base image tag is the source of truth; the `go`
 # directive in the associated go.mod is updated to match it. The list intentionally only contains Dockerfiles that
 # build from a golang:* base image and have an associated go.mod file. images/collector has no tracked go.mod (the
@@ -79,14 +84,44 @@ if [[ "$changed" != "true" ]]; then
   exit 0
 fi
 
-git config user.name "github-actions[bot]"
-git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-if git diff --quiet; then
+# Determine which go.mod files actually changed on disk.
+mapfile -t changed_files < <(git diff --name-only -- '*go.mod')
+if [[ ${#changed_files[@]} -eq 0 ]]; then
   echo "No file changes detected after processing, no commit needed."
   exit 0
 fi
 
-git add -- '*go.mod'
-git commit --message "chore(deps): sync go directive in go.mod with golang base image"
-git push origin "HEAD:${HEAD_REF}"
+commit_message="chore(deps): sync go directive in go.mod with golang base image"
+
+# The tip of the pull request's head branch, which the signed commit will be based on. We checked out this branch
+# (github.head_ref), so HEAD points at its tip.
+base_sha=$(git rev-parse HEAD)
+
+# Create the commit via the GitHub API rather than "git commit"/"git push", so commits are automatically signed.
+# Build the fileChanges.additions array, one entry per changed go.mod with its contents base64-encoded.
+additions=$(
+  for f in "${changed_files[@]}"; do
+    jq -n --arg path "$f" --arg contents "$(base64 -w0 "$f")" '{path: $path, contents: $contents}'
+  done | jq -s '.'
+)
+
+# expectedHeadOid is an optimistic lock: if Dependabot force-pushed the branch in the meantime, its tip no longer
+# matches base_sha and the mutation fails instead of clobbering that push (the concurrency group also cancels
+# superseded runs).
+jq -n \
+  --arg repo "$GITHUB_REPOSITORY" \
+  --arg branch "$HEAD_REF" \
+  --arg headline "$commit_message" \
+  --arg oid "$base_sha" \
+  --argjson additions "$additions" \
+  '{
+    query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+    variables: {
+      input: {
+        branch:          { repositoryNameWithOwner: $repo, branchName: $branch },
+        message:         { headline: $headline },
+        expectedHeadOid: $oid,
+        fileChanges:     { additions: $additions }
+      }
+    }
+  }' | gh api graphql --input - >/dev/null

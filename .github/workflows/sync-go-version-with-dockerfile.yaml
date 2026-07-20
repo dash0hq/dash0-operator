@@ -54,4 +54,5 @@ jobs:
         shell: bash
         env:
           HEAD_REF: ${{ github.head_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: .github/workflows/scripts/sync-go-version-with-dockerfile.sh
