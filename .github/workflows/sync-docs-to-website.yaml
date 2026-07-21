@@ -6,6 +6,9 @@ name: Synchronize Helm chart docs to dash0.com/docs
 # Copies the docs from helm-chart/dash0-operator into the documentation on https://www.dash0.com/docs, applying the
 # modifications declared in sync-docs/transformations.yaml, and opens a pull request against the target repository.
 #
+# The transformation logic and the PR flow live in the shared dash0hq/sync-docs-action composite action; this workflow
+# only supplies the operator-specific inputs (source root, transformations file, PR metadata) and the token.
+#
 # The documentation is a set of files: the top-level README.md (which becomes the operator overview page
 # dash0-operator/overview.md) and the topic files in helm-chart/dash0-operator/docs/*.md (which keep their names but
 # move into the same dash0-operator/ subdirectory, i.e. the docs/ directory is renamed to dash0-operator/). They are
@@ -13,18 +16,16 @@ name: Synchronize Helm chart docs to dash0.com/docs
 # in the target repository and is not touched by this sync.
 #
 # This workflow can be run manually (workflow_dispatch) and is also invoked from ci.yaml (workflow_call) after a new
-# release has been published. Additionally, ci.yaml invokes it with dry-run: true on every CI build), to verify early
-# that the transformations declared in sync-docs/transformations.yaml still apply cleanly. In dry-run mode, only the
-# transformation step runs; no PR is created for the website docs.
+# release has been published. Additionally, ci.yaml invokes it with dry-run: true on every CI build, to verify early
+# that the transformations declared in sync-docs/transformations.yaml still apply cleanly (including the coverage
+# check). In dry-run mode the action stops after the transformation step: no target repository is checked out, no PR
+# is created, and no token is required.
 #
-# The target repository and the target directory within it are configured via the repository secrets
-# SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_DIRECTORY (the path of the directory holding the
-# documentation pages within that repository).
-#
-# Authentication to the (private) target repository is done via the DASH0_DOCS_REPO_GITHUB_PAT secret. This must be a
-# fine-grained personal access token scoped to the target repository with the following repository permissions:
-# - Contents: Read and write (to push the branch)
-# - Pull requests: Read and write (to open the PR)
+# The target repository and the directory within it that receives the pages are supplied from the repository secrets
+# SYNC_DOCUMENTATION_TARGET_REPOSITORY and SYNC_DOCUMENTATION_TARGET_DIRECTORY, so the (non-public) target repository
+# name and its internal layout are not hardcoded in this workflow. Authentication to the target repository is done via
+# the DASH0_DOCS_REPO_GITHUB_PAT secret: a fine-grained personal access token scoped to the target repository with
+# Contents: Read and write (to push the branch) and Pull requests: Read and write (to open the PR).
 
 on:
   workflow_dispatch:
@@ -44,14 +45,11 @@ on:
         description: Fine-grained PAT with contents + pull-requests write access for the documentation repository. Only required when dry-run is false.
         required: false
       SYNC_DOCUMENTATION_TARGET_REPOSITORY:
-        description: The owner/name of the documentation repository to sync the docs into. Only required when dry-run is false.
+        description: owner/name of the target documentation repository. Only required when dry-run is false.
         required: false
       SYNC_DOCUMENTATION_TARGET_DIRECTORY:
-        description: The path of the directory holding the documentation pages within the target repository. Only required when dry-run is false.
+        description: Directory within the target repository that receives the transformed pages. Only required when dry-run is false.
         required: false
-
-env:
-  PR_BRANCH: sync-dash0-operator-helm-chart-docs
 
 jobs:
   sync-docs:
@@ -62,89 +60,27 @@ jobs:
     steps:
       - name: checkout dash0-operator
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Single invocation for both modes. On a dry run the action applies the transformations and the coverage check,
+      # then stops before touching the target repository; the target-side inputs are ignored, so they can be supplied
+      # unconditionally. The operator's pages live under dash0-operator/ within the target directory; each
+      # transformations.yaml `target:` (dash0-operator/<page>.md) is resolved relative to target-directory.
+      - name: synchronize docs to the website
+        uses: dash0hq/sync-docs-action@v0.4.0
         with:
-          path: dash0-operator
-
-      - name: set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.x'
-
-      - name: install dependencies
-        run: pip install -r dash0-operator/.github/workflows/sync-docs/requirements.txt
-
-      - name: apply doc transformations
-        run: |
-          python dash0-operator/.github/workflows/sync-docs/apply-transformations.py \
-            dash0-operator/helm-chart/dash0-operator \
-            dash0-operator/.github/workflows/sync-docs/transformations.yaml \
-            "${RUNNER_TEMP}/transformed-docs"
-
-      - name: dry run, stopping after applying the doc transformations
-        if: ${{ inputs.dry-run }}
-        run: |
-          echo "This is a dry run: the doc transformations have been applied successfully, all steps involving the" \
-            "target repository are skipped."
-
-      - name: checkout target repo
-        if: ${{ ! inputs.dry-run }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
-          token: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
-          path: target-repository
-
-      - name: copy transformed docs
-        if: ${{ ! inputs.dry-run }}
-        env:
-          TARGET_DIRECTORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
-        run: |
-          target_path="target-repository/${TARGET_DIRECTORY}"
-          mkdir -p "$target_path"
-          # Copy the transformed tree (dash0-operator/overview.md and dash0-operator/*.md) into the target directory.
-          cp -R "${RUNNER_TEMP}/transformed-docs/." "$target_path/"
-
-      - name: create pull request in target repository
-        if: ${{ ! inputs.dry-run }}
-        working-directory: target-repository
-        env:
-          GH_TOKEN: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
-          TARGET_DIRECTORY: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Stage all changes within the target directory (including newly created files) so they are visible to the
-          # diff check below.
-          git add --all -- "${TARGET_DIRECTORY}"
-
-          # git diff --cached --quiet exits with 1 if there are staged differences, 0 means the docs are already up to
-          # date. The lastUpdated timestamp in each page's metadata changes on every run, so it is ignored (via -I)
-          # when determining whether the docs are up to date; otherwise every run would create a commit and a pull
-          # request.
-          if git diff --cached --quiet -I '^lastUpdated: ' -- "${TARGET_DIRECTORY}"; then
-            echo "The documentation pages are already up to date, nothing to do."
-            exit 0
-          fi
-
-          echo "The documentation pages have changed, creating/updating a pull request."
-          git checkout -B "${PR_BRANCH}"
-          git commit --message "docs: synchronize Dash0 operator docs"
-          git push --force origin "${PR_BRANCH}"
-
-          # Only open a new PR if there is no open one for this branch yet (otherwise the force-push above already
-          # updated the existing PR).
-          if [ -z "$(gh pr list --head "${PR_BRANCH}" --state open --json number --jq '.[].number')" ]; then
-            gh pr create \
-              --base main \
-              --head "${PR_BRANCH}" \
-              --title "docs: synchronize Dash0 operator documentation" \
-              --body "This PR synchronizes the content of the Dash0 operator documentation from [dash0hq/dash0-operator](https://github.com/dash0hq/dash0-operator) into the documentation on https://www.dash0.com/docs." \
-              --reviewer dash0hq/operator \
-              --reviewer dash0hq/engineering-docs \
-              --assignee basti1302 \
-              --assignee p-d0 \
-              --assignee geertjanw
-          else
-            echo "An open pull request for branch ${PR_BRANCH} already exists, it was updated by the force-push above."
-          fi
+          dry-run: ${{ inputs.dry-run }}
+          source-root: helm-chart/dash0-operator
+          # transformations-file is resolved relative to source-root, but this repo keeps the file at the repo-root
+          # .github/ (not under helm-chart/dash0-operator/.github/), so step back up to the repository root.
+          transformations-file: ../../.github/workflows/sync-docs/transformations.yaml
+          target-repository: ${{ secrets.SYNC_DOCUMENTATION_TARGET_REPOSITORY }}
+          target-directory: ${{ secrets.SYNC_DOCUMENTATION_TARGET_DIRECTORY }}
+          target-github-token: ${{ secrets.DASH0_DOCS_REPO_GITHUB_PAT }}
+          pr-branch: sync-dash0-operator-helm-chart-docs
+          pr-title: "docs: synchronize Dash0 operator documentation"
+          pr-body: >-
+            This PR synchronizes the content of the Dash0 operator documentation from
+            [dash0hq/dash0-operator](https://github.com/dash0hq/dash0-operator) into the documentation on
+            https://www.dash0.com/docs.
+          commit-message: "docs: synchronize Dash0 operator docs"
+          pr-reviewers: dash0hq/operator,dash0hq/engineering-docs
