@@ -141,7 +141,7 @@ jobs:
 
       - name: Send Slack notification on success
         if: success() && inputs.notify_slack
-        uses: slackapi/slack-github-action@0d95c9a7becc1e6e297d76df9bc735c44f4cbcbc
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d
         with:
           errors: true
           method: chat.postMessage
@@ -177,7 +177,7 @@ jobs:
 
       - name: Send Slack notification on failure
         if: failure() && inputs.notify_slack
-        uses: slackapi/slack-github-action@0d95c9a7becc1e6e297d76df9bc735c44f4cbcbc
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d
         with:
           errors: true
           method: chat.postMessage
