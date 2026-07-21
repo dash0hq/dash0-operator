@@ -15,7 +15,8 @@ VENV_DIR=".venv-analysis"
 python -m venv "$VENV_DIR"
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
-pip install --quiet pipdeptree
+# Pin pipdeptree to the last version that ships prebuilt wheels (see extract-flattened-requirements.sh).
+pip install --quiet pipdeptree==2.27.0
 pip install --quiet -r requirements.txt
 
 echo ""
