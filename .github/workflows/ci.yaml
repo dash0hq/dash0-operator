@@ -50,7 +50,7 @@ jobs:
     if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
@@ -127,7 +127,7 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
 
@@ -247,7 +247,7 @@ jobs:
     if: ${{ always() && ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: publish helm chart (dry run)
         run: |
@@ -282,7 +282,7 @@ jobs:
       - build_and_push_images
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: publish helm chart
         run: |
