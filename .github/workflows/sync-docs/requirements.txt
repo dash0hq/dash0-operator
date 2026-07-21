@@ -1,2 +1,0 @@
-# Python dependencies for apply-transformations.py (used by the sync-docs-to-website workflow).
-PyYAML==6.0.2
