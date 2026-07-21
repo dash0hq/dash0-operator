@@ -64,6 +64,9 @@ COPY python/sitecustomize.py .
 
 # install Python artifacts (musl)
 FROM python:3.14.6-alpine3.23 AS build-python-musl
+# git is required to install the pyproto exporter packages from their git+https source URLs. Remove git once pyproto
+# is included in an official release.
+RUN apk add --no-cache git
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/requirements.txt .

@@ -1,7 +1,13 @@
 opentelemetry-distro==0.64b0
 
 urllib3 <2.7.1
-opentelemetry-exporter-otlp-proto-http==1.43.0
+
+# opentelemetry-exporter-otlp-pyproto-http & Co sourced from the ocelotl's fork until these packages are released
+# upstream. (This is the fork of a Dash0 employee, which will be ultimately contributed upstream.)
+opentelemetry-pyproto @ git+https://github.com/ocelotl/opentelemetry-python@pyproto_0000#subdirectory=opentelemetry-pyproto
+opentelemetry-exporter-otlp-pyproto-common @ git+https://github.com/ocelotl/opentelemetry-python@pyproto_0000#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-common
+opentelemetry-exporter-otlp-pyproto-http @ git+https://github.com/ocelotl/opentelemetry-python@pyproto_0000#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-http
+
 opentelemetry-exporter-prometheus==0.64b0
 
 opentelemetry-propagator-aws-xray==1.0.2
