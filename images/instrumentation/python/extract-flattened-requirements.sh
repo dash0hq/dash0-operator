@@ -18,7 +18,9 @@ python -m venv "$venv_dir"
 . "$venv_dir/bin/activate"
 
 pip install --quiet --root-user-action ignore -r requirements.txt
-pip install --quiet --root-user-action ignore pipdeptree
+# Pin pipdeptree to the last version that ships prebuilt wheels; 4.0.0+ is sdist-only and requires a Rust toolchain
+# (cargo) to build from source, which the Python build stages do not have.
+pip install --quiet --root-user-action ignore pipdeptree==2.27.0
 pipdeptree --exclude pipdeptree > "$pipdeptree_output_file"
 
 while IFS= read -r line; do
