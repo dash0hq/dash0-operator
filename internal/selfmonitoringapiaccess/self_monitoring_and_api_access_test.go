@@ -1714,36 +1714,6 @@ func createSelfMonitoringConfiguration(export *dash0common.Export) SelfMonitorin
 func expectedMetricsPipeline(exporterSuffix string) string {
 	return `
     metrics:
-      level: detailed
-      views:
-        # this metric was added in 0.145.0 and has a high cardinality due to its pod_identifier attribute
-        - selector:
-            instrument_name: "otelcol.k8s.pod.association"
-          stream:
-            aggregation:
-              drop: {}
-        # the metrics below are not directly related to the issue, but have been added by enabling 'level: detailed',
-        # which is required to use views
-        - selector:
-            instrument_name: "http.client.*"
-          stream:
-            aggregation:
-              drop: {}
-        - selector:
-            instrument_name: "http.server.*"
-          stream:
-            aggregation:
-              drop: {}
-        - selector:
-            instrument_name: "rpc.*"
-          stream:
-            aggregation:
-              drop: {}
-        - selector:
-            instrument_name: "otelcol_processor_batch_batch_send_size_bytes"
-          stream:
-            aggregation:
-              drop: {}
       readers:
         - periodic:
             interval: 30000
