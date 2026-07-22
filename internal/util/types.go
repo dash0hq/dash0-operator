@@ -110,7 +110,9 @@ type Agent0ConnectorConfig struct {
 	// from the Helm value operator.agent0Connector.token) or as a reference to a Kubernetes secret (set from the Helm
 	// value operator.agent0Connector.secretRef). It is passed to the workload via the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN
 	// environment variable.
-	Authorization   dash0common.Authorization
+	Authorization dash0common.Authorization
+
+	IsGkeAutopilot  bool
 	DevelopmentMode bool
 }
 

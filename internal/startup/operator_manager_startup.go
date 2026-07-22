@@ -475,7 +475,7 @@ func defineCommandLineArguments() *commandLineArguments {
 		&cliArgs.allowlistVersion,
 		"allowlist-version",
 		"",
-		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.3). Used with --allowlist-synchronizer-ready-check.",
+		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.4). Used with --allowlist-synchronizer-ready-check.",
 	)
 	flag.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
@@ -1622,6 +1622,7 @@ func startDash0Controllers(
 		images,
 		operatorDeploymentSelfReference,
 		clusterUid,
+		cliArgs,
 		developmentMode,
 	)
 	if err != nil {
@@ -1642,6 +1643,7 @@ func startDash0Controllers(
 			envVars.edgeProxyImage,
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
+			cliArgs.isGkeAutopilot,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,
@@ -2041,6 +2043,7 @@ func setupAgent0ConnectorManager(
 	images util.Images,
 	operatorDeploymentSelfReference *appsv1.Deployment,
 	pseudoClusterUid types.UID,
+	cliArgs *commandLineArguments,
 	developmentMode bool,
 ) (*agent0connector.Agent0ConnectorManager, error) {
 	if !envVars.agent0ConnectorEnabled {
@@ -2056,6 +2059,7 @@ func setupAgent0ConnectorManager(
 		ServerAddress:     envVars.agent0ConnectorServerAddress,
 		Insecure:          envVars.agent0ConnectorInsecure,
 		Authorization:     agent0ConnectorAuthorization(envVars),
+		IsGkeAutopilot:    cliArgs.isGkeAutopilot,
 		DevelopmentMode:   developmentMode,
 	}
 	agent0ConnectorResourceManager := a0cresources.NewAgent0ConnectorResourceManager(
