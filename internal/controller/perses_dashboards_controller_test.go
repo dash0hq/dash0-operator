@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
@@ -23,6 +24,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -673,6 +675,193 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 	)
 
 	Describe(
+		"panel-spec unknown-field preservation", func() {
+
+			AfterEach(func() {
+				deletePersesDashboardCrdIfItExists(ctx)
+			})
+
+			// readStoredPanelAnnotations creates the given dashboard via the real (envtest) API server, reads it back, and
+			// returns whatever survived at spec.config.panels.<panelId>.spec.annotations. A nil return means the field was
+			// pruned by CRD field-pruning at admission.
+			readStoredPanelAnnotations := func(dashboard *unstructured.Unstructured) (any, bool) {
+				// The CRD may need a moment to become served after being (re-)created; retry the create until it succeeds.
+				Eventually(func(g Gomega) {
+					err := k8sClient.Create(ctx, dashboard.DeepCopy())
+					g.Expect(err).NotTo(HaveOccurred())
+				}, timeout, pollingInterval).Should(Succeed())
+
+				stored := &unstructured.Unstructured{}
+				stored.SetGroupVersionKind(dashboard.GroupVersionKind())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dashboard), stored)).To(Succeed())
+				annotations, found, err := unstructured.NestedFieldNoCopy(
+					stored.Object,
+					"spec", "config", "panels", examplePanelId, "spec", "annotations",
+				)
+				Expect(err).NotTo(HaveOccurred())
+				return annotations, found
+			}
+
+			It("prunes panel-spec annotations with the unpatched upstream CRD (reproduces the bug)", func() {
+				ensurePersesDashboardCrdExists(ctx)
+
+				annotations, found := readStoredPanelAnnotations(buildV1Alpha2DashboardWithPanelAnnotations())
+
+				// GATE: the whole CRD-pruning diagnosis hinges on this. If the annotation survives here, the theory is wrong
+				// for this setup and the fix below would be speculative.
+				Expect(found).To(BeFalse(), "expected the upstream CRD to prune spec.config.panels[].spec.annotations")
+				Expect(annotations).To(BeNil())
+			})
+
+			It("preserves panel-spec annotations after the operator patches the CRD (proves the fix)", func() {
+				ensurePersesDashboardCrdExists(ctx)
+
+				// Patch the live CRD via the operator's reconcile path (schema preservation only, no conversion patch).
+				r := createPersesDashboardCrdReconcilerWithSettings(true, false, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+
+				// The stored CRD now carries x-kubernetes-preserve-unknown-fields at both versions' panel spec.
+				patchedCrd := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, patchedCrd)).To(Succeed())
+				for _, versionName := range []string{persesDashboardV1Alpha1, persesDashboardV1Alpha2} {
+					Expect(panelSpecPreservesUnknownFields(patchedCrd, versionName)).To(
+						BeTrue(), "expected panel spec of %s to preserve unknown fields", versionName)
+				}
+
+				// End to end: the annotation now survives admission pruning. Retry create/get because the API server may take
+				// a moment to serve the updated schema.
+				dashboard := buildV1Alpha2DashboardWithPanelAnnotations()
+				Eventually(func(g Gomega) {
+					_ = k8sClient.Delete(ctx, dashboard.DeepCopy())
+					g.Expect(k8sClient.Create(ctx, dashboard.DeepCopy())).To(Succeed())
+
+					stored := &unstructured.Unstructured{}
+					stored.SetGroupVersionKind(dashboard.GroupVersionKind())
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dashboard), stored)).To(Succeed())
+					annotations, found, err := unstructured.NestedSlice(
+						stored.Object, "spec", "config", "panels", examplePanelId, "spec", "annotations")
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(found).To(BeTrue(), "expected spec.config.panels[].spec.annotations to survive")
+					g.Expect(annotations).To(HaveLen(1))
+				}, timeout, pollingInterval).Should(Succeed())
+			})
+
+			It("leaves the CRD schema untouched when a foreign conversion webhook is present", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				fresh := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, fresh)).To(Succeed())
+				patched := fresh.DeepCopy()
+				foreignPath := "/foreign-convert"
+				foreignPort := int32(8443)
+				patched.Spec.Conversion = &apiextensionsv1.CustomResourceConversion{
+					Strategy: apiextensionsv1.WebhookConverter,
+					Webhook: &apiextensionsv1.WebhookConversion{
+						ConversionReviewVersions: []string{"v1"},
+						ClientConfig: &apiextensionsv1.WebhookClientConfig{
+							CABundle: caPEM,
+							Service: &apiextensionsv1.ServiceReference{
+								Name:      "perses-operator-webhook-service",
+								Namespace: "perses-system",
+								Path:      &foreignPath,
+								Port:      &foreignPort,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Patch(ctx, patched, client.MergeFrom(fresh))).To(Succeed())
+
+				r := createPersesDashboardCrdReconcilerWithSettings(true, false, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, patched, false, logger)
+
+				after := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, after)).To(Succeed())
+				Expect(panelSpecPreservesUnknownFields(after, persesDashboardV1Alpha2)).To(
+					BeFalse(), "expected panel spec to be left untouched while the Perses operator owns the CRD")
+			})
+
+			It("does not patch the schema when autoPreservePanelSpecFields is disabled", func() {
+				ensurePersesDashboardCrdExists(ctx)
+
+				r := createPersesDashboardCrdReconcilerWithSettings(false, false, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+
+				after := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, after)).To(Succeed())
+				Expect(panelSpecPreservesUnknownFields(after, persesDashboardV1Alpha2)).To(BeFalse())
+			})
+
+			It("still patches the schema when the operator's own conversion webhook is already present", func() {
+				// Regression test: hasForeignConversionWebhook returns true for our own stanza too, so in the default steady
+				// state (autoPatchConversionWebhook=true, our stanza already applied) the schema patch must not be skipped.
+				ensurePersesDashboardCrdExists(ctx)
+
+				// Steady state: the operator has already applied its own conversion stanza, schema not yet preserved.
+				conv := createPersesDashboardCrdReconcilerWithSettings(false, true, caBundlePath)
+				conv.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+				withOurStanza := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, withOurStanza)).To(Succeed())
+				Expect(withOurStanza.Spec.Conversion).NotTo(BeNil())
+				Expect(withOurStanza.Spec.Conversion.Strategy).To(Equal(apiextensionsv1.WebhookConverter))
+				Expect(panelSpecPreservesUnknownFields(withOurStanza, persesDashboardV1Alpha2)).To(BeFalse())
+
+				// A preservation-enabled reconcile must NOT be blocked by our own conversion stanza.
+				r := createPersesDashboardCrdReconcilerWithSettings(true, true, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, withOurStanza, false, logger)
+
+				after := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, after)).To(Succeed())
+				for _, versionName := range []string{persesDashboardV1Alpha1, persesDashboardV1Alpha2} {
+					Expect(panelSpecPreservesUnknownFields(after, versionName)).To(
+						BeTrue(), "expected panel spec of %s to be preserved despite our own conversion stanza", versionName)
+				}
+			})
+
+			It("re-applies the schema preservation on update if it was removed", func() {
+				ensurePersesDashboardCrdExists(ctx)
+				r := createPersesDashboardCrdReconcilerWithSettings(true, false, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, persesDashboardCrd, false, logger)
+
+				preserved := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, preserved)).To(Succeed())
+				Expect(panelSpecPreservesUnknownFields(preserved, persesDashboardV1Alpha2)).To(BeTrue())
+
+				// Simulate a GitOps reconciler wiping the preserve flag back off.
+				wiped := preserved.DeepCopy()
+				for i := range wiped.Spec.Versions {
+					if panelSchema := panelSchemaForVersion(&wiped.Spec.Versions[i]); panelSchema != nil {
+						if panelSpec, ok := panelSchema.Properties["spec"]; ok {
+							panelSpec.XPreserveUnknownFields = nil
+							panelSchema.Properties["spec"] = panelSpec
+						}
+					}
+				}
+				Expect(k8sClient.Patch(ctx, wiped, client.MergeFrom(preserved))).To(Succeed())
+
+				updated := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, updated)).To(Succeed())
+				Expect(panelSpecPreservesUnknownFields(updated, persesDashboardV1Alpha2)).To(BeFalse())
+
+				r.ensurePersesConversionWebhookConfigured(ctx, updated, true, logger)
+
+				after := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, after)).To(Succeed())
+				Expect(panelSpecPreservesUnknownFields(after, persesDashboardV1Alpha2)).To(BeTrue())
+			})
+
+			It("ensurePanelSpecPreservesUnknownFields is idempotent and covers both versions (unit)", func() {
+				crd := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(yaml.Unmarshal(embeddedPersesDashboardCrdYaml(), crd)).To(Succeed())
+
+				Expect(ensurePanelSpecPreservesUnknownFields(crd)).To(BeTrue(), "expected the first pass to change the schema")
+				for _, versionName := range []string{persesDashboardV1Alpha1, persesDashboardV1Alpha2} {
+					Expect(panelSpecPreservesUnknownFields(crd, versionName)).To(BeTrue())
+				}
+				Expect(ensurePanelSpecPreservesUnknownFields(crd)).To(BeFalse(), "expected a second pass to be a no-op")
+			})
+		},
+	)
+
+	Describe(
 		"the Perses dashboard resource reconciler", func() {
 			var persesDashboardCrdReconciler *PersesDashboardCrdReconciler
 			var persesDashboardReconciler *PersesDashboardReconciler
@@ -1314,18 +1503,29 @@ spec:
 )
 
 func createPersesDashboardCrdReconciler(autoPatch bool, caBundlePath string) *PersesDashboardCrdReconciler {
+	// AutoPreservePanelSpecFields defaults to disabled here so the conversion-webhook tests remain isolated; the panel-spec
+	// preservation tests opt in via createPersesDashboardCrdReconcilerWithSettings.
+	return createPersesDashboardCrdReconcilerWithSettings(false, autoPatch, caBundlePath)
+}
+
+func createPersesDashboardCrdReconcilerWithSettings(
+	autoPreservePanelSpecFields bool,
+	autoPatch bool,
+	caBundlePath string,
+) *PersesDashboardCrdReconciler {
 	crdReconciler := NewPersesDashboardCrdReconciler(
 		k8sClient,
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},
 		TestHTTPClient(),
 		PersesDashboardConversionWebhookSettings{
-			// Default to disabled in tests; individual tests that exercise the patch logic set this back to true.
-			AutoPatchConversionWebhook: autoPatch,
-			OperatorNamespace:          OperatorNamespace,
-			WebhookServiceName:         OperatorWebhookServiceName,
-			WebhookServicePort:         OperatorWebhookServicePort,
-			CaBundlePath:               caBundlePath,
+			// Default to disabled in tests; individual tests that exercise the patch logic set these back to true.
+			AutoPatchConversionWebhook:  autoPatch,
+			AutoPreservePanelSpecFields: autoPreservePanelSpecFields,
+			OperatorNamespace:           OperatorNamespace,
+			WebhookServiceName:          OperatorWebhookServiceName,
+			WebhookServicePort:          OperatorWebhookServicePort,
+			CaBundlePath:                caBundlePath,
 		},
 	)
 
@@ -1439,6 +1639,90 @@ func createDashboardResourceWithEnableLabel(dash0EnableLabelValue string) unstru
 	err = json.Unmarshal(marshalled, &unstructuredObject)
 	Expect(err).NotTo(HaveOccurred())
 	return unstructuredObject
+}
+
+// examplePanelId is the id of the example GeoMap panel used by the panel-spec preservation tests.
+const examplePanelId = "example-geomap-panel"
+
+// buildV1Alpha2DashboardWithPanelAnnotations returns a minimal but schema-valid perses.dev/v1alpha2 PersesDashboard
+// whose single panel carries a Dash0 `annotations` block at panel-spec level (sibling of plugin/queries). v1alpha2 is the
+// storage version, so creating it needs no conversion webhook; the only thing that can drop `annotations` is CRD field
+// pruning at admission.
+func buildV1Alpha2DashboardWithPanelAnnotations() *unstructured.Unstructured {
+	dashboard := &unstructured.Unstructured{}
+	dashboard.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "perses.dev",
+		Version: "v1alpha2",
+		Kind:    "PersesDashboard",
+	})
+	dashboard.SetName("test-dashboard")
+	dashboard.SetNamespace(TestNamespaceName)
+	dashboard.Object["spec"] = map[string]any{
+		"config": map[string]any{
+			"display":  map[string]any{"name": "Example Dashboard"},
+			"duration": "5m",
+			"layouts":  []any{},
+			"panels": map[string]any{
+				examplePanelId: map[string]any{
+					"kind": "Panel",
+					"spec": map[string]any{
+						"display": map[string]any{"name": "Example Panel"},
+						"plugin": map[string]any{
+							"kind": "GeoMap",
+							"spec": map[string]any{},
+						},
+						"annotations": []any{
+							map[string]any{
+								"kind": "LogsAnnotation",
+								"spec": map[string]any{
+									"id":   "example-annotation-id",
+									"name": "Example Annotation",
+									"query": map[string]any{
+										"filter": []any{
+											map[string]any{
+												"key":      "otel.log.body",
+												"operator": "contains",
+												"value":    "example log message",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return dashboard
+}
+
+// panelSpecPreservesUnknownFields reports whether the panel spec object of the given CRD version has
+// x-kubernetes-preserve-unknown-fields set to true. It reuses the production traversal (panelSchemaForVersion) so the test
+// cannot drift from the code it verifies.
+func panelSpecPreservesUnknownFields(crd *apiextensionsv1.CustomResourceDefinition, versionName string) bool {
+	for i := range crd.Spec.Versions {
+		if crd.Spec.Versions[i].Name != versionName {
+			continue
+		}
+		panelSchema := panelSchemaForVersion(&crd.Spec.Versions[i])
+		if panelSchema == nil {
+			return false
+		}
+		panelSpec, ok := panelSchema.Properties["spec"]
+		if !ok {
+			return false
+		}
+		return panelSpec.XPreserveUnknownFields != nil && *panelSpec.XPreserveUnknownFields
+	}
+	return false
+}
+
+// embeddedPersesDashboardCrdYaml reads the checked-in upstream Perses CRD used to seed envtest, for pure-function unit tests.
+func embeddedPersesDashboardCrdYaml() []byte {
+	data, err := os.ReadFile(filepath.Join("..", "..", "test", "util", "crds", "perses.dev_persesdashboards.yaml"))
+	Expect(err).NotTo(HaveOccurred())
+	return data
 }
 
 func ensurePersesDashboardCrdExists(ctx context.Context) {

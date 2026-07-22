@@ -92,8 +92,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
           value: metadata.name
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[23].name
+          value: DASH0_PERSES_DASHBOARD_AUTO_PRESERVE_PANEL_SPEC_FIELDS
+      - equal:
+          path: spec.template.spec.containers[0].env[23].value
+          value: "true"
+      - notExists:
+          path: spec.template.spec.containers[0].env[24].name
 
   - it: secret should contain ca and cert
     documentSelector:
@@ -652,8 +658,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[41].valueFrom.fieldRef.fieldPath
           value: metadata.name
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[42].name
+          value: DASH0_PERSES_DASHBOARD_AUTO_PRESERVE_PANEL_SPEC_FIELDS
+      - equal:
+          path: spec.template.spec.containers[0].env[42].value
+          value: "true"
+      - notExists:
+          path: spec.template.spec.containers[0].env[43].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -1319,8 +1331,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
           value: metadata.name
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[23].name
+          value: DASH0_PERSES_DASHBOARD_AUTO_PRESERVE_PANEL_SPEC_FIELDS
+      - equal:
+          path: spec.template.spec.containers[0].env[23].value
+          value: "true"
+      - notExists:
+          path: spec.template.spec.containers[0].env[24].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -1430,8 +1448,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
           value: metadata.name
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[23].name
+          value: DASH0_PERSES_DASHBOARD_AUTO_PRESERVE_PANEL_SPEC_FIELDS
+      - equal:
+          path: spec.template.spec.containers[0].env[23].value
+          value: "true"
+      - notExists:
+          path: spec.template.spec.containers[0].env[24].name
 
   - it: mutating webhook should have caBundle set
     documentSelector:
