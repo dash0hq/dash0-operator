@@ -20,6 +20,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	openslov1 "github.com/dash0hq/dash0-operator/api/openslo/v1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 
@@ -70,6 +71,7 @@ var _ = BeforeSuite(func() {
 
 	Expect(dash0v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(dash0v1beta1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(openslov1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(persesv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})

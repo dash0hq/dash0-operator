@@ -175,6 +175,8 @@ require (
 
 replace github.com/dash0hq/dash0-operator => ../..
 
+replace github.com/dash0hq/dash0-api-client-go => ../../../../../dash0-api-client-go/.iac_maintainer/slos
+
 replace github.com/dash0hq/dash0-operator/images/pkg/common => ../../images/pkg/common
 
 replace github.com/dash0hq/dash0-operator/test/e2e/pkg/shared => ./pkg/shared

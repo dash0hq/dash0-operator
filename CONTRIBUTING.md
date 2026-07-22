@@ -227,6 +227,9 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `DEPLOY_SYNTHETIC_CHECK`: Set to "true" to deploy a synthetic check resource that will be synchronized to Dash0
       via the Dash0 API.
       This defaults to "false".
+    * `DEPLOY_SLO`: Set to "true" to deploy an SLO resource (openslo.com/v1) that will be synchronized to Dash0 via the
+      Dash0 API.
+      This defaults to "false".
     * `DEPLOY_VIEW`: Set to "true" to deploy a view resource that will be synchronized to Dash0 via the Dash0 API.
       This defaults to "false".
     * `DEPLOY_SPAM_FILTER`: Set to "true" to deploy a spam filter resource that will be synchronized to Dash0 via the Dash0 API.
