@@ -50,14 +50,32 @@ COPY dotnet/opentelemetry-dotnet-instrumentation-version .
 COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
+# download the Dash0 OpenTelemetry Python distribution source tree at a pinned commit
+FROM alpine:3.24.1 AS download-dash0-python-distribution
+RUN apk add --no-cache curl tar
+COPY python/dash0-python-distribution-version /tmp/dash0-python-distribution-version
+RUN distribution_version=$(cat /tmp/dash0-python-distribution-version) && \
+  mkdir -p /dash0-python-distribution && \
+  curl -sSL "https://github.com/dash0hq/opentelemetry-python-distribution/archive/${distribution_version}.tar.gz" | \
+    tar -xz --strip-components=1 -C /dash0-python-distribution
+
 # install Python artifacts (glibc)
 FROM python:3.14.6-trixie AS build-python-glibc
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
-COPY python/requirements.txt .
 COPY python/extract-flattened-requirements.sh .
+COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/dash0-python-distribution
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt && \
+# Install the Dash0 Python distribution's workspace packages from local paths, since they are not yet published to
+# PyPI. Listing them in the same pip invocation lets pip resolve the inter-dependencies against the local sources.
+# The dash0-opentelemetry-distro package pins the full instrumentation set as regular dependencies, so we do not need
+# to install any additional packages on top.
+RUN pip install --quiet --root-user-action ignore --target . \
+  /tmp/dash0-python-distribution/packages/opentelemetry-pyproto \
+  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-common \
+  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-grpc \
+  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-distro && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh
 COPY python/sitecustomize.py .
@@ -66,10 +84,15 @@ COPY python/sitecustomize.py .
 FROM python:3.14.6-alpine3.23 AS build-python-musl
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
-COPY python/requirements.txt .
 COPY python/extract-flattened-requirements.sh .
+COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/dash0-python-distribution
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-RUN pip install --quiet --root-user-action ignore --target . -r requirements.txt && \
+RUN pip install --quiet --root-user-action ignore --target . \
+  /tmp/dash0-python-distribution/packages/opentelemetry-pyproto \
+  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-common \
+  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-grpc \
+  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-distro && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh
 COPY python/sitecustomize.py .

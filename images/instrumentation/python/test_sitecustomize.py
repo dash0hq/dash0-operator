@@ -56,7 +56,12 @@ class TestImportDistro(unittest.TestCase):
         # Store original sys.path
         self.original_sys_path = sys.path.copy()
         # Clear relevant environment variables for clean test state
-        for key in ['OTEL_INJECTOR_LOG_LEVEL', 'OTEL_EXPORTER_OTLP_PROTOCOL']:
+        for key in [
+            'OTEL_INJECTOR_LOG_LEVEL',
+            'OTEL_EXPORTER_OTLP_PROTOCOL',
+            'OTEL_EXPORTER_OTLP_ENDPOINT',
+            'DASH0_OTEL_COLLECTOR_BASE_URL',
+        ]:
             os.environ.pop(key, None)
 
     def tearDown(self):
@@ -134,36 +139,54 @@ class TestImportDistro(unittest.TestCase):
 
     @patch('sys.stderr', new_callable=StringIO)
     @patch('sys.version_info', (3, 10, 0, 'final', 0))
-    def test_missing_otlp_protocol_env_var(self, mock_stderr):
-        """Test that missing OTEL_EXPORTER_OTLP_PROTOCOL is rejected."""
-        os.environ.pop('OTEL_EXPORTER_OTLP_PROTOCOL', None)
+    def test_bridges_otlp_endpoint_to_dash0_collector_base_url(self, mock_stderr):
+        """Test that OTEL_EXPORTER_OTLP_ENDPOINT is bridged to DASH0_OTEL_COLLECTOR_BASE_URL."""
+        os.environ['OTEL_EXPORTER_OTLP_ENDPOINT'] = 'http://collector.local:4318'
         mock_site = '/mock/site-packages'
+
+        mock_packaging = Mock()
+        mock_packaging.version = '21.0'
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                module, spec = load_sitecustomize_module()
-                spec.loader.exec_module(module)
+                with patch('builtins.open', unittest.mock.mock_open(read_data='packaging >=20.0\n')):
+                    with patch('importlib.metadata.distribution') as mock_dist:
+                        mock_dist.return_value = mock_packaging
+                        with patch.dict('sys.modules', {
+                            'opentelemetry': MagicMock(),
+                            'opentelemetry.instrumentation': MagicMock(),
+                            'opentelemetry.instrumentation.auto_instrumentation': MagicMock()
+                        }):
+                            module, spec = load_sitecustomize_module()
+                            spec.loader.exec_module(module)
 
-        output = mock_stderr.getvalue()
-        self.assertIn("\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL is not set",
-                      output)
+        self.assertEqual(os.environ.get('DASH0_OTEL_COLLECTOR_BASE_URL'), 'http://collector.local:4318')
 
     @patch('sys.stderr', new_callable=StringIO)
     @patch('sys.version_info', (3, 10, 0, 'final', 0))
-    def test_grpc_protocol_rejected(self, mock_stderr):
-        """Test that OTEL_EXPORTER_OTLP_PROTOCOL=grpc is rejected."""
-        os.environ['OTEL_EXPORTER_OTLP_PROTOCOL'] = 'grpc'
+    def test_does_not_override_existing_dash0_collector_base_url(self, mock_stderr):
+        """Test that a pre-existing DASH0_OTEL_COLLECTOR_BASE_URL is not overwritten."""
+        os.environ['OTEL_EXPORTER_OTLP_ENDPOINT'] = 'http://collector.local:4318'
+        os.environ['DASH0_OTEL_COLLECTOR_BASE_URL'] = 'http://pre-configured.local:4318'
         mock_site = '/mock/site-packages'
+
+        mock_packaging = Mock()
+        mock_packaging.version = '21.0'
 
         with patch('os.path.dirname', side_effect=create_dirname_side_effect(mock_site)):
             with patch('sys.path', [mock_site]):
-                module, spec = load_sitecustomize_module()
-                spec.loader.exec_module(module)
+                with patch('builtins.open', unittest.mock.mock_open(read_data='packaging >=20.0\n')):
+                    with patch('importlib.metadata.distribution') as mock_dist:
+                        mock_dist.return_value = mock_packaging
+                        with patch.dict('sys.modules', {
+                            'opentelemetry': MagicMock(),
+                            'opentelemetry.instrumentation': MagicMock(),
+                            'opentelemetry.instrumentation.auto_instrumentation': MagicMock()
+                        }):
+                            module, spec = load_sitecustomize_module()
+                            spec.loader.exec_module(module)
 
-        output = mock_stderr.getvalue()
-        self.assertIn(
-            "\"level\": \"warn\", \"message\": \"cannot auto-instrument Python process: OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported",
-            output)
+        self.assertEqual(os.environ.get('DASH0_OTEL_COLLECTOR_BASE_URL'), 'http://pre-configured.local:4318')
 
     @patch('sys.stderr', new_callable=StringIO)
     @patch('sys.version_info', (3, 10, 0, 'final', 0))

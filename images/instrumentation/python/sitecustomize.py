@@ -13,16 +13,13 @@ required_python_major_version = 3
 minimum_python_minor_version = 10
 
 double_instrumentation_check_packages = [
+    "dash0-opentelemetry-distro",
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
-    "opentelemetry-exporter-otlp-proto-common",
-    "opentelemetry-exporter-otlp-proto-grpc",
-    "opentelemetry-exporter-otlp-proto-http",
-    "opentelemetry-exporter-otlp-proto-http",
     "opentelemetry-exporter-prometheus",
     "opentelemetry-instrumentation",
-    "opentelemetry-sdk",
     "opentelemetry-proto",
+    "opentelemetry-sdk",
 ]
 
 debug_enabled = os.environ.get("OTEL_INJECTOR_LOG_LEVEL") == "debug"
@@ -179,34 +176,16 @@ def import_distro():
         _print_cannot_auto_instrument_message("unsupported Python version: {}".format(version))
         return
     _log_debug("found eligible Python version: {}".format(version_info))
-    _log_debug("checking OTEL_EXPORTER_OTLP_PROTOCOL")
 
-    otlp_protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
-    if otlp_protocol is None:
-        # If OTEL_EXPORTER_OTLP_PROTOCOL is not set, opentelemetry-distro defaults to the grpc export, but we do not
-        # include the package for that exporter, this would lead to
-        # "RuntimeError: Requested component 'otlp_proto_grpc' not found in entry point 'opentelemetry_traces_exporter'"
-        _self_deactivate(current_site)
-        _print_cannot_auto_instrument_message(
-            "OTEL_EXPORTER_OTLP_PROTOCOL is not set. (The container likely has OTEL_EXPORTER_OTLP_ENDPOINT set, which " +
-            "prevented the Dash0 operator from setting its own values for OTEL_EXPORTER_OTLP_ENDPOINT/PROTOCOL, " +
-            "please remove OTEL_EXPORTER_OTLP_ENDPOINT from the container if you want to use Python " +
-            "auto-instrumentation.)"
-        )
-        return
-    if otlp_protocol == "grpc":
-        # If OTEL_EXPORTER_OTLP_PROTOCOL is set to grpc explicitly, we need to stand down for the same reason, we do not
-        # include the package for that exporter, this would lead to
-        # "RuntimeError: Requested component 'otlp_proto_grpc' not found in entry point 'opentelemetry_traces_exporter'"
-        _self_deactivate(current_site)
-        _print_cannot_auto_instrument_message(
-            "OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported. (The container has OTEL_EXPORTER_OTLP_PROTOCOL set " +
-            "which prevented the Dash0 operator from setting its own values for OTEL_EXPORTER_OTLP_ENDPOINT/PROTOCOL, " +
-            "please remove OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_EXPORTER_OTLP_PROTOCOL from the container if you want " +
-            "to use Python auto-instrumentation.)"
-        )
-        return
-    _log_debug("found eligible OTEL_EXPORTER_OTLP_PROTOCOL value: {}".format(otlp_protocol))
+    # The Dash0 Python distribution requires DASH0_OTEL_COLLECTOR_BASE_URL to activate and derives its OTLP endpoint
+    # from it. The Dash0 operator sets OTEL_EXPORTER_OTLP_ENDPOINT; bridge it here so the distribution activates
+    # without requiring operator-side changes.
+    if not os.environ.get("DASH0_OTEL_COLLECTOR_BASE_URL"):
+        otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+        if otlp_endpoint:
+            _log_debug("bridging OTEL_EXPORTER_OTLP_ENDPOINT to DASH0_OTEL_COLLECTOR_BASE_URL: {}".format(otlp_endpoint))
+            os.environ["DASH0_OTEL_COLLECTOR_BASE_URL"] = otlp_endpoint
+
     _log_debug("checking for double instrumentation")
 
     # Temporarily remove this site to be able to check for problematic dependencies in all other available sites.
