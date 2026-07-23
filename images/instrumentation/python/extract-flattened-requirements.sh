@@ -58,8 +58,8 @@ while IFS= read -r line; do
       echo "${package_name} ${version_spec}"
     fi
   elif echo "$line" | grep -qE '[a-zA-Z0-9_-]+[=<>!~]+[0-9]'; then
-    # Lines representing direct dependencies listed in requirements.txt look like this:
-    # opentelemetry-exporter-otlp-proto-http==1.39.1.
+    # Lines representing top-level direct dependencies look like this:
+    # dash0-opentelemetry-distro==0.2.0
     # Write this as-is to the output file (via echo, we pipe the output of the while loop into the file).
     echo "$line"
   fi
