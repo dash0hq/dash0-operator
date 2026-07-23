@@ -1,0 +1,14 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: operator-test-team-by-id
+spec:
+  display:
+    name: Platform Team
+    description: Owns the shared platform, on-call rotation, and infrastructure tooling.
+    color:
+      from: "#F59E0B"
+      to: "#EF4444"
+  members:
+    - user_01ABCDEFGHIJKLMNOPQRSTUVW1
+    - user_01ABCDEFGHIJKLMNOPQRSTUVW2

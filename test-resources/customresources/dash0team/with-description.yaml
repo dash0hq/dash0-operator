@@ -1,0 +1,14 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: operator-test-team-with-description
+spec:
+  display:
+    name: Backend Team
+    description: Owns backend services and the data platform.
+    color:
+      from: "#6366F1"
+      to: "#8B5CF6"
+  members:
+    - alice@example.com
+    - bob@example.com

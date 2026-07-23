@@ -1,0 +1,15 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: operator-test-team-by-email
+spec:
+  display:
+    name: Frontend Team
+    description: Owns frontend services and the design system.
+    color:
+      from: "#22D3EE"
+      to: "#3B82F6"
+  members:
+    - alice@example.com
+    - bob@example.com
+    - carol@example.com

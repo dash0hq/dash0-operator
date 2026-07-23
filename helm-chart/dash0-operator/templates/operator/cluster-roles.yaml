@@ -253,6 +253,27 @@ rules:
   - patch
   - update
 
+# Permissions required to watch Dash0 team resources. Note that dash0teams live in the dash0.com Kubernetes API
+# group (not operator.dash0.com), so that the group matches the Dash0 platform group.
+- apiGroups:
+  - dash0.com
+  resources:
+  - dash0teams
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to Dash0 team resource status:
+- apiGroups:
+  - dash0.com
+  resources:
+  - dash0teams/status
+  verbs:
+  - get
+  - patch
+  - update
+
 # Permissions required to read Dash0 spam filter resources:
 - apiGroups:
   - operator.dash0.com
