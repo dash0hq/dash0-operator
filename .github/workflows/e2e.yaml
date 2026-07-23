@@ -39,7 +39,6 @@ env:
   ALLOWED_KUBECTXS: kind-dash0-operator-ci
   E2E_KUBECTX: kind-dash0-operator-ci
   IMAGE_REPOSITORY_PREFIX: "localhost:5001/"
-  E2E_ENABLE_SIGNAL_CONTROL_TESTS: "true"
 
 jobs:
   run-e2e-tests-on-kind:
