@@ -293,7 +293,7 @@ var _ = Describe(
 				)
 
 				It(
-					"builds an openslo/v1 SLO API body with apiVersion, kind and spec", func() {
+					"builds an openslo.com/v1 SLO API body with apiVersion, kind and spec", func() {
 						slo := map[string]any{}
 						Expect(yaml.Unmarshal([]byte(sloYamlForMapping), &slo)).To(Succeed())
 						apiConfig := ApiConfig{
@@ -331,8 +331,8 @@ var _ = Describe(
 						resultingSLO := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingSLO)).To(Succeed())
 						// The controller must ensure the apiVersion/kind envelope is present on the outbound body, using
-						// the same openslo/v1 / SLO values (they are stripped from TypeMeta on read).
-						Expect(resultingSLO["apiVersion"]).To(Equal("openslo/v1"))
+						// the same openslo.com/v1 / SLO values (they are stripped from TypeMeta on read).
+						Expect(resultingSLO["apiVersion"]).To(Equal("openslo.com/v1"))
 						Expect(resultingSLO["kind"]).To(Equal("SLO"))
 						Expect(resultingSLO["spec"]).ToNot(BeNil())
 						Expect(ReadFromMap(resultingSLO, []string{"spec", "budgetingMethod"})).To(Equal("Occurrences"))

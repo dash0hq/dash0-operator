@@ -40,13 +40,14 @@ import (
 const (
 	// sloCrdQualifiedName is the name of the CustomResourceDefinition that backs the SLO kind. The Kubernetes CRD
 	// group is domain-qualified ("openslo.com") because Kubernetes rejects CRD groups without a dot (see
-	// api/openslo/v1/groupversion_info.go); the Dash0 API body still uses the bare "openslo/v1" document version.
+	// api/openslo/v1/groupversion_info.go). The Dash0 API body uses the same "openslo.com/v1" document version.
 	sloCrdQualifiedName = "slos.openslo.com"
 
-	// sloApiVersion and sloKind are the OpenSLO document envelope values for the Dash0 API body. They are the bare
-	// upstream OpenSLO v1 values (matching the Dash0 SLO API), independent of the Kubernetes CRD group. The controller
-	// only ensures they are present on the outbound body (client-go strips TypeMeta from typed objects on read).
-	sloApiVersion = "openslo/v1"
+	// sloApiVersion and sloKind are the OpenSLO document envelope values for the Dash0 API body. They match the
+	// Kubernetes CRD group ("openslo.com/v1"), so the CR and the API body share the same apiVersion with no version
+	// mapping. The controller only ensures they are present on the outbound body (client-go strips TypeMeta from typed
+	// objects on read).
+	sloApiVersion = "openslo.com/v1"
 	sloKind       = "SLO"
 )
 
@@ -521,7 +522,7 @@ func (r *SLOReconciler) MapResourceToHttpRequests(
 // map. It uses the api client's dash0.SloDefinition wire type: the CR's spec and metadata mirror the API's SloSpec /
 // SloMetadata JSON shape field-for-field, so a JSON round-trip carries them across without any field-level conversion.
 // The apiVersion and kind envelope is set explicitly because client-go strips TypeMeta from typed objects on read
-// (both the CR and the API body use the identical openslo/v1 / SLO values, so there is no version rewrite). Any
+// (both the CR and the API body use the identical openslo.com/v1 / SLO values, so there is no version rewrite). Any
 // server-managed labels/annotations and the ID are stripped defensively.
 func buildSLOApiBody(resource map[string]any) ([]byte, error) {
 	resourceBytes, err := json.Marshal(resource)

@@ -11,9 +11,9 @@
 // OpenSLO group "openslo" (apiVersion "openslo/v1"). However, the Kubernetes API server rejects any
 // CustomResourceDefinition whose spec.group is not a DNS subdomain with at least one dot ("openslo" is invalid), so a
 // bare-group CRD cannot be installed in any real cluster. We therefore use the domain-qualified group "openslo.com"
-// for the Kubernetes CRD (Kubernetes apiVersion "openslo.com/v1"). This is a Kubernetes-layer detail only: the
-// controller still sends the bare "openslo/v1" apiVersion and "SLO" kind in the Dash0 API body (see the slo controller),
-// matching the Dash0 SLO API and the upstream OpenSLO v1 document version.
+// for the Kubernetes CRD (Kubernetes apiVersion "openslo.com/v1"). The Dash0 SLO API document version matches this
+// group: the controller sends the same "openslo.com/v1" apiVersion and "SLO" kind in the Dash0 API body (see the slo
+// controller), so the CR and the API body share one apiVersion with no version mapping.
 //
 // +kubebuilder:object:generate=true
 // +groupName=openslo.com
@@ -27,8 +27,8 @@ import (
 
 var (
 	// GroupVersion is the group version used to register these objects. The Kubernetes CRD group is domain-qualified
-	// ("openslo.com") because Kubernetes requires CRD groups to contain a dot; the Dash0 API body still uses the bare
-	// "openslo/v1" document version (set explicitly by the controller).
+	// ("openslo.com") because Kubernetes requires CRD groups to contain a dot; the Dash0 API body uses the same
+	// "openslo.com/v1" document version (set explicitly by the controller).
 	GroupVersion = schema.GroupVersion{Group: "openslo.com", Version: "v1"}
 
 	// SchemeBuilder collects the functions that register this group-version's types into a runtime.Scheme.

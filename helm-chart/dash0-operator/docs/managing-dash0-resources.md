@@ -944,7 +944,7 @@ and `total` Prometheus sources, `Occurrences` budgeting, and a rolling time wind
 The SLO custom resource uses the Kubernetes API group `openslo.com` (`apiVersion: openslo.com/v1`).
 Kubernetes requires custom resource definition groups to be a domain with at least one dot, so the bare `openslo` group
 from the OpenSLO document format cannot be used as a Kubernetes CRD group.
-The operator still sends the bare `openslo/v1` document version to the Dash0 SLO API.
+The operator sends this same `openslo.com/v1` document version to the Dash0 SLO API.
 
 ```yaml
 apiVersion: openslo.com/v1
