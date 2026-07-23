@@ -50,11 +50,10 @@ COPY dotnet/opentelemetry-dotnet-instrumentation-version .
 COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
-# download the Dash0 OpenTelemetry Python distribution source tree at a pinned commit. The pin file
-# (images/instrumentation/python/dash0-python-distribution-version) holds a bare git SHA of
-# github.com/dash0hq/opentelemetry-python-distribution — no comments, since it is inlined into the tarball URL. Until
-# the distribution publishes tagged releases the pin is a commit SHA; bump it to a merged main SHA after each upstream
-# release, or to a PR-branch head when this repository depends on unmerged upstream work.
+# download the Dash0 OpenTelemetry Python distribution source tree at a pinned version. The pin file
+# (images/instrumentation/python/dash0-python-distribution-version) holds a bare git ref of
+# github.com/dash0hq/opentelemetry-python-distribution — no comments, since it is inlined into the tarball URL. Prefer
+# a release tag (`vX.Y.Z`); use a commit SHA only when the operator needs to consume unreleased upstream work.
 FROM alpine:3.24.1 AS download-dash0-python-distribution
 RUN apk add --no-cache curl tar
 COPY python/dash0-python-distribution-version /tmp/dash0-python-distribution-version
