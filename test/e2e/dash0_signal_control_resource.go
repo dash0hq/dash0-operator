@@ -16,10 +16,6 @@ import (
 
 const signalControlName = "dash0-signal-control"
 
-func shouldRunSignalControlTests() bool {
-	return os.Getenv("E2E_ENABLE_SIGNAL_CONTROL_TESTS") == "true"
-}
-
 type signalControlValues struct {
 	DecisionMakerEndpoint   string
 	ControlPlaneApiEndpoint string
