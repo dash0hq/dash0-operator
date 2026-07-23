@@ -77,8 +77,8 @@ RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-http \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-distro && \
   ./extract-flattened-requirements.sh && \
-  rm extract-flattened-requirements.sh
-COPY python/sitecustomize.py .
+  rm extract-flattened-requirements.sh && \
+  cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # install Python artifacts (musl)
 FROM python:3.14.6-alpine3.23 AS build-python-musl
@@ -94,8 +94,8 @@ RUN pip install --quiet --root-user-action ignore --target . \
   /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-http \
   /tmp/dash0-python-distribution/packages/dash0-opentelemetry-distro && \
   ./extract-flattened-requirements.sh && \
-  rm extract-flattened-requirements.sh
-COPY python/sitecustomize.py .
+  rm extract-flattened-requirements.sh && \
+  cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # build the final instrumentation image
 FROM alpine:3.24.1
