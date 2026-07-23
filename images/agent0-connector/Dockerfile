@@ -5,7 +5,7 @@
 
 # agent0-connector executes read-only kubectl commands, so a statically-linked kubectl binary has to be present in the
 # final (scratch) image. We source it from the official Kubernetes-published kubectl image.
-FROM registry.k8s.io/kubectl:v1.36.2 AS kubectl
+FROM registry.k8s.io/kubectl:v1.36.3 AS kubectl
 
 FROM --platform=${BUILDPLATFORM} golang:1.26.5-alpine3.24 AS builder
 
