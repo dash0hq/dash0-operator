@@ -942,7 +942,7 @@ The custom resource definition for Dash0 teams can be found
 Here is an example of a team resource:
 
 ```yaml
-apiVersion: operator.dash0.com/v1alpha1
+apiVersion: dash0.com/v1alpha1
 kind: Dash0Team
 metadata:
   name: backend-team
