@@ -347,6 +347,22 @@ spec:
         - name: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
           value: {{ .Values.operator.collectors.compressConfigMaps | toString | quote }}
         {{- end }}
+        {{- if not .Values.operator.collectors.kubeletstats.autoDetectEndpoint }}
+        {{- if not .Values.operator.collectors.kubeletstats.endpoint }}
+        {{- fail "Error: operator.collectors.kubeletstats.endpoint is required when operator.collectors.kubeletstats.autoDetectEndpoint is set to false." -}}
+        {{- end }}
+        {{- if not .Values.operator.collectors.kubeletstats.authType }}
+        {{- fail "Error: operator.collectors.kubeletstats.authType is required when operator.collectors.kubeletstats.autoDetectEndpoint is set to false." -}}
+        {{- end }}
+        - name: OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT
+          value: "false"
+        - name: OTEL_COLLECTOR_KUBELETSTATS_ENDPOINT
+          value: {{ .Values.operator.collectors.kubeletstats.endpoint | quote }}
+        - name: OTEL_COLLECTOR_KUBELETSTATS_AUTH_TYPE
+          value: {{ .Values.operator.collectors.kubeletstats.authType | quote }}
+        - name: OTEL_COLLECTOR_KUBELETSTATS_INSECURE_SKIP_VERIFY
+          value: {{ .Values.operator.collectors.kubeletstats.insecureSkipVerify | toString | quote }}
+        {{- end }}
         - name: K8S_POD_UID
           valueFrom:
             fieldRef:

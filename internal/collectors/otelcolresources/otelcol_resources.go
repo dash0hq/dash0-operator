@@ -35,7 +35,7 @@ type OTelColResourceManager struct {
 	operatorManagerDeployment        *appsv1.Deployment
 	collectorConfig                  util.CollectorConfig
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
-	kubeletStatsReceiverConfig       atomic.Pointer[KubeletStatsReceiverConfig]
+	kubeletStatsReceiverConfig       atomic.Pointer[util.KubeletStatsReceiverConfig]
 }
 
 const (
@@ -545,7 +545,7 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	kubernetesInfrastructureMetricsCollectionEnabled bool,
 	probeKubeletStatsEndpointFn endpointProbeFn,
 	logger logd.Logger,
-) KubeletStatsReceiverConfig {
+) util.KubeletStatsReceiverConfig {
 	if !kubernetesInfrastructureMetricsCollectionEnabled {
 		// No need to probe for the kubeletstats endpoint if metric collection is disabled. Not caching the
 		// KubeletStatsReceiverConfig for this case (and removing any potentially cached entry) makes sure that switching
@@ -553,11 +553,45 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 		logger.Info(
 			"Kubernetes infrastructure metrics collection is disabled, skipping kubeletstats receiver endpoint lookup.")
 		m.kubeletStatsReceiverConfig.Store(nil)
-		return KubeletStatsReceiverConfig{Enabled: false}
+		return util.KubeletStatsReceiverConfig{Enabled: false}
 	}
+
 	if cached := m.kubeletStatsReceiverConfig.Load(); cached != nil {
 		return *cached
 	}
+
+	if !m.collectorConfig.KubeletStatsAutoDetectEndpoint {
+		// Endpoint auto-detection has been disabled via the Helm chart; use the explicitly provided configuration
+		// instead of probing the node's kubelet.
+		if m.collectorConfig.KubeletStatsReceiverConfig == nil ||
+			m.collectorConfig.KubeletStatsReceiverConfig.Endpoint == "" {
+			// This case does not actually occur, due to Helm level validations: the Helm chart guarantees that a
+			// configuration with a non-empty endpoint has been provided if auto-detection is disabled (see the
+			// validation in the deployment-and-webhooks.yaml template).
+			logger.ErrorTelemetryCollectionIssue(
+				fmt.Errorf("no valid explicit kubeletstats receiver configuration provided"),
+				"Auto-detection of the kubeletstats receiver endpoint is disabled, but no valid explicit configuration "+
+					"has been provided, the endpoint is missing. The kubeletstats receiver will be disabled. Some "+
+					"Kubernetes infrastructure metrics will be missing.",
+			)
+			kubeletStatsReceiverConfig := util.KubeletStatsReceiverConfig{Enabled: false}
+			m.kubeletStatsReceiverConfig.Store(&kubeletStatsReceiverConfig)
+			return kubeletStatsReceiverConfig
+		}
+
+		kubeletStatsReceiverConfig := *m.collectorConfig.KubeletStatsReceiverConfig
+		kubeletStatsReceiverConfig.Enabled = true
+		logger.Info(fmt.Sprintf(
+			"Auto-detection of the kubeletstats receiver endpoint is disabled, using the configuration provided via "+
+				"the Helm chart: endpoint %s (auth_type: %s, insecure_skip_verify: %t).",
+			kubeletStatsReceiverConfig.Endpoint,
+			kubeletStatsReceiverConfig.AuthType,
+			kubeletStatsReceiverConfig.InsecureSkipVerify,
+		))
+		m.kubeletStatsReceiverConfig.Store(&kubeletStatsReceiverConfig)
+		return kubeletStatsReceiverConfig
+	}
+
 	kubeletStatsReceiverConfig, ok := probeKubeletStatsEndpointFn(m.collectorConfig, logger)
 	if !ok {
 		logger.ErrorTelemetryCollectionIssue(
@@ -566,8 +600,9 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 				"kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.",
 		)
 	}
-	// Cache the KubeletStatsReceiverConfig, otherwise we would execute the DNS lookup and the probe HTTP request on every
-	// collector reconcile.
+
+	// Cache the KubeletStatsReceiverConfig, we do not execute the probeKubeletStatsEndpoint probe on every collector
+	// reconcile.
 	m.kubeletStatsReceiverConfig.Store(&kubeletStatsReceiverConfig)
 	return kubeletStatsReceiverConfig
 }

@@ -19,7 +19,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
-type endpointProbeFn func(util.CollectorConfig, logd.Logger) (KubeletStatsReceiverConfig, bool)
+type endpointProbeFn func(util.CollectorConfig, logd.Logger) (util.KubeletStatsReceiverConfig, bool)
 
 const (
 	kubeletStatsNodeIpEndpoint       = "https://${env:K8S_NODE_IP}:10250"
@@ -58,60 +58,60 @@ var (
 		},
 	}
 
-	configNodeIpSecureTls = KubeletStatsReceiverConfig{
+	configNodeIpSecureTls = util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsNodeIpEndpoint,
 		AuthType:           kubeletStatsAuthTypeServiceAccount,
 		InsecureSkipVerify: false,
 	}
-	configNodeIpSecureTlsIpv6 = KubeletStatsReceiverConfig{
+	configNodeIpSecureTlsIpv6 = util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsNodeIpEndpointIpv6,
 		AuthType:           kubeletStatsAuthTypeServiceAccount,
 		InsecureSkipVerify: false,
 	}
 
-	configNodeIpInsecureSkipVerify = KubeletStatsReceiverConfig{
+	configNodeIpInsecureSkipVerify = util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsNodeIpEndpoint,
 		AuthType:           kubeletStatsAuthTypeServiceAccount,
 		InsecureSkipVerify: true,
 	}
-	configNodeIpInsecureSkipVerifyIpv6 = KubeletStatsReceiverConfig{
+	configNodeIpInsecureSkipVerifyIpv6 = util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsNodeIpEndpointIpv6,
 		AuthType:           kubeletStatsAuthTypeServiceAccount,
 		InsecureSkipVerify: true,
 	}
 
-	configNodeIpReadOnlyEndpointUnencrypted = KubeletStatsReceiverConfig{
+	configNodeIpReadOnlyEndpointUnencrypted = util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsReadOnlyEndpoint,
 		AuthType:           kubeletStatsAuthTypeNone,
 		InsecureSkipVerify: false,
 	}
-	configNodeIpReadOnlyEndpointUnencryptedIpv6 = KubeletStatsReceiverConfig{
+	configNodeIpReadOnlyEndpointUnencryptedIpv6 = util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsReadOnlyEndpointIpv6,
 		AuthType:           kubeletStatsAuthTypeNone,
 		InsecureSkipVerify: false,
 	}
 
-	configNodeNameSecureTls = KubeletStatsReceiverConfig{
+	configNodeNameSecureTls = util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsNodeNameEndpoint,
 		AuthType:           kubeletStatsAuthTypeServiceAccount,
 		InsecureSkipVerify: false,
 	}
 
-	configNodeNameInsecureSkipVerify = KubeletStatsReceiverConfig{
+	configNodeNameInsecureSkipVerify = util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           kubeletStatsNodeNameEndpoint,
 		AuthType:           kubeletStatsAuthTypeServiceAccount,
 		InsecureSkipVerify: true,
 	}
 
-	configDisabled = KubeletStatsReceiverConfig{Enabled: false}
+	configDisabled = util.KubeletStatsReceiverConfig{Enabled: false}
 )
 
 // kubeletStatsEndpointProbes bundles the external interactions performed while probing for a viable kubeletstats
@@ -133,7 +133,7 @@ type kubeletStatsEndpointProbes struct {
 func probeKubeletStatsEndpoint(
 	collectorConfig util.CollectorConfig,
 	logger logd.Logger,
-) (KubeletStatsReceiverConfig, bool) {
+) (util.KubeletStatsReceiverConfig, bool) {
 	httpClient := getSecureProbeClient(logger)
 	probes := kubeletStatsEndpointProbes{
 		sendProbeRequest:         func(endpoint string) error { return executeHttpRequest(httpClient, endpoint) },
@@ -218,7 +218,7 @@ func executeProbes(
 	collectorConfig util.CollectorConfig,
 	probes kubeletStatsEndpointProbes,
 	logger logd.Logger,
-) (KubeletStatsReceiverConfig, bool) {
+) (util.KubeletStatsReceiverConfig, bool) {
 	if collectorConfig.NodeName == "" && collectorConfig.NodeIp == "" {
 		logger.Warn(
 			"No K8s_NODE_NAME and no K8S_NODE_IP available, skipping kubeletstats receiver endpoint lookup. " +
@@ -258,7 +258,7 @@ func probeNodeIpEndpoints(
 	collectorConfig util.CollectorConfig,
 	probes kubeletStatsEndpointProbes,
 	logger logd.Logger,
-) (KubeletStatsReceiverConfig, bool) {
+) (util.KubeletStatsReceiverConfig, bool) {
 	logger.Info(fmt.Sprintf("Checking the address family of the node IP %s.", collectorConfig.NodeIp))
 	isIPv6 := util.IsIPv6Address(collectorConfig.NodeIp)
 	if isIPv6 {
@@ -365,7 +365,7 @@ func probeNodeNameEndpoint(
 	collectorConfig util.CollectorConfig,
 	probes kubeletStatsEndpointProbes,
 	logger logd.Logger,
-) (KubeletStatsReceiverConfig, bool) {
+) (util.KubeletStatsReceiverConfig, bool) {
 	nodeNameEndpointWithPath := fmt.Sprintf("https://%s:10250%s", collectorConfig.NodeName, kubeletStatsSummaryPath)
 	logger.Info(fmt.Sprintf("Attempting probe request to %s.", nodeNameEndpointWithPath))
 	nodeNameProbeErr := probes.sendProbeRequest(nodeNameEndpointWithPath)

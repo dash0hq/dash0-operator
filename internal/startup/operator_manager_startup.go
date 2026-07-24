@@ -112,6 +112,8 @@ type environmentVariables struct {
 	k8sAttributesDisableReplicasetInformer      bool
 	k8sAttributesWaitForMetadata                bool
 	k8sAttributesWaitForMetadataTimeout         string
+	kubeletStatsAutoDetectEndpoint              bool
+	kubeletStatsReceiverConfig                  *util.KubeletStatsReceiverConfig
 	instrumentationDebug                        bool
 	enablePythonAutoInstrumentation             bool
 	debugVerbosityDetailed                      bool
@@ -213,6 +215,10 @@ const (
 	k8sAttributesWaitForMetadataTimeoutEnvVarName    = "OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT"
 	enablePprofExtensionEnvVarName                   = "OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION"
 	compressConfigMapsEnvVarName                     = "OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS"
+	kubeletStatsAutoDetectEndpointEnvVarName         = "OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT"
+	kubeletStatsEndpointEnvVarName                   = "OTEL_COLLECTOR_KUBELETSTATS_ENDPOINT"
+	kubeletStatsAuthTypeEnvVarName                   = "OTEL_COLLECTOR_KUBELETSTATS_AUTH_TYPE"
+	kubeletStatsInsecureSkipVerifyEnvVarName         = "OTEL_COLLECTOR_KUBELETSTATS_INSECURE_SKIP_VERIFY"
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
@@ -934,6 +940,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	k8sAttributesWaitForMetadata := isSet && strings.ToLower(k8sAttributesWaitForMetadataRaw) == envVarValueTrue
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
 
+	kubeletStatsAutoDetectEndpoint, kubeletStatsReceiverConfig := readKubeletStatsReceiverConfigFromEnv()
+
 	enablePprofExtensionRaw, isSet := os.LookupEnv(enablePprofExtensionEnvVarName)
 	enablePprofExtension := isSet && strings.ToLower(enablePprofExtensionRaw) == envVarValueTrue
 
@@ -983,6 +991,8 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		k8sAttributesDisableReplicasetInformer:      k8sAttributesDisableReplicasetInformer,
 		k8sAttributesWaitForMetadata:                k8sAttributesWaitForMetadata,
 		k8sAttributesWaitForMetadataTimeout:         k8sAttributesWaitForMetadataTimeout,
+		kubeletStatsAutoDetectEndpoint:              kubeletStatsAutoDetectEndpoint,
+		kubeletStatsReceiverConfig:                  kubeletStatsReceiverConfig,
 		instrumentationDebug:                        instrumentationDebug,
 		enablePythonAutoInstrumentation:             enablePythonAutoInstrumentation,
 		debugVerbosityDetailed:                      debugVerbosityDetailed,
@@ -992,6 +1002,29 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	}
 
 	return nil
+}
+
+// readKubeletStatsReceiverConfigFromEnv reads the kubeletstats receiver settings from the environment. Endpoint
+// auto-detection is enabled by default; only an explicit "false" for OTEL_COLLECTOR_KUBELETSTATS_AUTO_DETECT_ENDPOINT
+// disables it. When it is disabled, the Helm chart provides the fixed configuration via the
+// OTEL_COLLECTOR_KUBELETSTATS_* env vars (and guarantees that at least an endpoint is set), and the returned config
+// is non-nil.
+func readKubeletStatsReceiverConfigFromEnv() (bool, *util.KubeletStatsReceiverConfig) {
+	autoDetectEndpointRaw, isSet := os.LookupEnv(kubeletStatsAutoDetectEndpointEnvVarName)
+	autoDetectEndpoint := !isSet || strings.ToLower(autoDetectEndpointRaw) != "false"
+	if autoDetectEndpoint {
+		return true, nil
+	}
+	endpoint, _ := os.LookupEnv(kubeletStatsEndpointEnvVarName)
+	authType, _ := os.LookupEnv(kubeletStatsAuthTypeEnvVarName)
+	insecureSkipVerifyRaw, isSet := os.LookupEnv(kubeletStatsInsecureSkipVerifyEnvVarName)
+	insecureSkipVerify := isSet && strings.ToLower(insecureSkipVerifyRaw) == envVarValueTrue
+	return false, &util.KubeletStatsReceiverConfig{
+		Enabled:            true,
+		Endpoint:           endpoint,
+		AuthType:           authType,
+		InsecureSkipVerify: insecureSkipVerify,
+	}
 }
 
 // readExtraConfigMap reads the config map content, which is basically a container for structured configuration data
@@ -1551,6 +1584,8 @@ func startDash0Controllers(
 			K8sAttributesWaitForMetadataTimeout:    envVars.k8sAttributesWaitForMetadataTimeout,
 			NodeIp:                                 envVars.nodeIp,
 			NodeName:                               envVars.nodeName,
+			KubeletStatsAutoDetectEndpoint:         envVars.kubeletStatsAutoDetectEndpoint,
+			KubeletStatsReceiverConfig:             envVars.kubeletStatsReceiverConfig,
 			PseudoClusterUid:                       clusterUid,
 			IsIPv6Cluster:                          isIPv6Cluster,
 			IsDocker:                               isDocker,
