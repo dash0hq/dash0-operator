@@ -26,6 +26,16 @@ The directory `test/util` contains additional Go code only used in unit tests.
 The directory `test/e2e` contains the end-to-end test suite.
 The directory `test-resources` contains a collection of scripts for running semi-manual tests scenarios.
 
+## Code Comments
+
+When making changes, never add comments regarding the state before your changes - code comments are not a place for
+history lessons.
+The motiviation for a specific change can be part of the commit comment (if you have been asked to commit).
+Add godoc comments for public functions.
+Adding implementation comments in function bodies should be used very sparingly: If the code is understandable without a
+comment, prefer to not add implementation comments at all.
+You may use implementation comments to explain non-obvious aspects, but keep it as short as possible.
+
 ## Formatting
 
 Use the current year in the license header comment when adding new files.

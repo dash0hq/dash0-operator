@@ -17,7 +17,22 @@ python -m venv "$venv_dir"
 # shellcheck disable=SC1091
 . "$venv_dir/bin/activate"
 
-pip install --quiet --root-user-action ignore -r requirements.txt
+# The Dash0 Python distribution's workspace packages are copied into /tmp/dash0-python-distribution by the Dockerfile
+# stage that runs this script. The dash0-opentelemetry-distro package pins the full instrumentation set as regular
+# dependencies, so installing it (together with the pure-Python OTLP exporter packages it depends on) gives us the
+# complete injected tree.
+dash0_distribution_dir="/tmp/dash0-python-distribution"
+if [ ! -d "$dash0_distribution_dir" ]; then
+  echo "$dash0_distribution_dir does not exist; this script must run inside the instrumentation image build" >&2
+  exit 1
+fi
+
+pip install --quiet --root-user-action ignore \
+  "$dash0_distribution_dir/packages/opentelemetry-pyproto" \
+  "$dash0_distribution_dir/packages/opentelemetry-exporter-otlp-pyproto-common" \
+  "$dash0_distribution_dir/packages/opentelemetry-exporter-otlp-pyproto-grpc" \
+  "$dash0_distribution_dir/packages/opentelemetry-exporter-otlp-pyproto-http" \
+  "$dash0_distribution_dir/packages/dash0-opentelemetry-distro"
 # Pin pipdeptree to the last version that ships prebuilt wheels; 4.0.0+ is sdist-only and requires a Rust toolchain
 # (cargo) to build from source, which the Python build stages do not have.
 pip install --quiet --root-user-action ignore pipdeptree==2.27.0
@@ -34,11 +49,17 @@ while IFS= read -r line; do
     package_name=$(echo "$normalized" | sed 's/ \[required:.*//')
     # Extract the version spec (between "required: " and ", installed:")
     version_spec=$(echo "$normalized" | sed 's/.*\[required: \(.*\), installed:.*/\1/')
-    # Write the package requirement to the output file (via echo, we pipe the output of the while loop into the file).
-    echo "${package_name} ${version_spec}"
+    # pipdeptree emits the literal string "Any" when a dependency has no version constraint. That is not a valid PEP
+    # 440 specifier, so packaging.requirements.Requirement would raise on it. Drop the spec in that case: an empty
+    # specifier matches any installed version, which is exactly what we want.
+    if [ "$version_spec" = "Any" ]; then
+      echo "${package_name}"
+    else
+      echo "${package_name} ${version_spec}"
+    fi
   elif echo "$line" | grep -qE '[a-zA-Z0-9_-]+[=<>!~]+[0-9]'; then
-    # Lines representing direct dependencies listed in requirements.txt look like this:
-    # opentelemetry-exporter-otlp-proto-http==1.39.1.
+    # Lines representing top-level direct dependencies look like this:
+    # dash0-opentelemetry-distro==0.2.0
     # Write this as-is to the output file (via echo, we pipe the output of the while loop into the file).
     echo "$line"
   fi

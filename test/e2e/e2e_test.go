@@ -1591,355 +1591,350 @@ trace_statements:
 
 	// Signal Control (Signal Control) tests need their own operator install since Signal Control swaps out the
 	// collector image.
-	//
-	// Gated behind E2E_ENABLE_SIGNAL_CONTROL_TESTS=true so the e2e runs can be run without
-	// requring access to the currently private images by default.
-	if shouldRunSignalControlTests() {
-		Context("with the Signal Control feature enabled", Ordered, func() {
+	Context("with the Signal Control feature enabled", Ordered, func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator with the signal-control feature flag")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				false,
+				map[string]string{
+					"operator.signalControl.enabled": "true",
+				},
+			)
+
+			installDash0ApiMock()
+			installControlPlaneMock()
+			installDecisionMakerMock()
+		})
+
+		AfterEach(func() {
+			cleanupStoredApiRequests()
+		})
+
+		AfterAll(func() {
+			uninstallDecisionMakerMock()
+			uninstallControlPlaneMock()
+			uninstallDash0ApiMock()
+			undeployOperator(operatorNamespace)
+		})
+
+		//nolint:dupl
+		It("should synchronize a Dash0SamplingRule to the Dash0 API", func() {
+			// Dash0SamplingRule is namespaced and synchronizes to the dataset/token of the Dash0 monitoring
+			// resource in its namespace (falling back to the operator configuration), so a monitoring resource
+			// needs to exist in the namespace.
+			deployDash0MonitoringResourceWithRetry(
+				applicationUnderTestNamespace,
+				dash0MonitoringValuesDefault,
+				operatorNamespace,
+			)
+			defer undeployDash0MonitoringResource(applicationUnderTestNamespace)
+
+			deploySamplingRuleResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+			defer removeSamplingRuleResource(applicationUnderTestNamespace)
+
+			//nolint:lll
+			routeRegex := "/api/sampling-rules/dash0-operator_.*_default_e2e-test-ns_sampling-rule-e2e-test\\?dataset=default"
+
+			By("verifying the sampling rule has been synchronized to the Dash0 API via PUT")
+			req := fetchCapturedApiRequest(0)
+			Expect(req.Method).To(Equal("PUT"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+			Expect(req.Body).ToNot(BeNil())
+			Expect(*req.Body).To(ContainSubstring("\"kind\":\"Dash0Sampling\""))
+			Expect(*req.Body).To(ContainSubstring("E2E test sampling rule"))
+			Expect(*req.Body).To(ContainSubstring("\"rate\":0.1"))
+			Expect(*req.Body).To(ContainSubstring("\"dash0.com/dataset\":\"default\""))
+			verifySamplingRuleApiSyncRequest(req)
+
+			setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "false")
+			By("verifying the sampling rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+			req = fetchCapturedApiRequest(1)
+			Expect(req.Method).To(Equal("DELETE"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+
+			setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "true")
+			//nolint:lll
+			By("verifying the sampling rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+			req = fetchCapturedApiRequest(2)
+			Expect(req.Method).To(Equal("PUT"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+			Expect(*req.Body).To(ContainSubstring("E2E test sampling rule"))
+			Expect(*req.Body).To(ContainSubstring("\"rate\":0.1"))
+			verifySamplingRuleApiSyncRequest(req)
+
+			removeSamplingRuleResource(applicationUnderTestNamespace)
+			By("verifying the sampling rule has been deleted via the Dash0 API (after removing the resource)")
+			req = fetchCapturedApiRequest(3)
+			Expect(req.Method).To(Equal("DELETE"))
+			Expect(req.Url).To(MatchRegexp(routeRegex))
+		})
+
+		Describe("with a deployed Dash0SignalControl resource", Ordered, func() {
 			BeforeAll(func() {
-				By("deploying the Dash0 operator with the signal-control feature flag")
-				deployOperatorWithDefaultAutoOperationConfiguration(
-					operatorNamespace,
-					operatorHelmChart,
-					operatorHelmChartUrl,
-					"",
-					&images,
-					false,
-					map[string]string{
-						"operator.signalControl.enabled": "true",
-					},
-				)
-
-				installDash0ApiMock()
-				installControlPlaneMock()
-				installDecisionMakerMock()
-			})
-
-			AfterEach(func() {
-				cleanupStoredApiRequests()
+				deploySignalControlResource(signalControlValues{
+					DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
+					ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
+				})
 			})
 
 			AfterAll(func() {
-				uninstallDecisionMakerMock()
-				uninstallControlPlaneMock()
-				uninstallDash0ApiMock()
-				undeployOperator(operatorNamespace)
+				removeSignalControlResource()
 			})
 
-			//nolint:dupl
-			It("should synchronize a Dash0SamplingRule to the Dash0 API", func() {
-				// Dash0SamplingRule is namespaced and synchronizes to the dataset/token of the Dash0 monitoring
-				// resource in its namespace (falling back to the operator configuration), so a monitoring resource
-				// needs to exist in the namespace.
-				deployDash0MonitoringResourceWithRetry(
-					applicationUnderTestNamespace,
-					dash0MonitoringValuesDefault,
-					operatorNamespace,
-				)
-				defer undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			It("deploys the Edge Proxy wired to the configured Decision Maker endpoint", func() {
+				edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
 
-				deploySamplingRuleResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
-				defer removeSamplingRuleResource(applicationUnderTestNamespace)
-
-				//nolint:lll
-				routeRegex := "/api/sampling-rules/dash0-operator_.*_default_e2e-test-ns_sampling-rule-e2e-test\\?dataset=default"
-
-				By("verifying the sampling rule has been synchronized to the Dash0 API via PUT")
-				req := fetchCapturedApiRequest(0)
-				Expect(req.Method).To(Equal("PUT"))
-				Expect(req.Url).To(MatchRegexp(routeRegex))
-				Expect(req.Body).ToNot(BeNil())
-				Expect(*req.Body).To(ContainSubstring("\"kind\":\"Dash0Sampling\""))
-				Expect(*req.Body).To(ContainSubstring("E2E test sampling rule"))
-				Expect(*req.Body).To(ContainSubstring("\"rate\":0.1"))
-				Expect(*req.Body).To(ContainSubstring("\"dash0.com/dataset\":\"default\""))
-				verifySamplingRuleApiSyncRequest(req)
-
-				setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "false")
-				By("verifying the sampling rule has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
-				req = fetchCapturedApiRequest(1)
-				Expect(req.Method).To(Equal("DELETE"))
-				Expect(req.Url).To(MatchRegexp(routeRegex))
-
-				setOptOutLabelInSamplingRule(applicationUnderTestNamespace, "true")
-				//nolint:lll
-				By("verifying the sampling rule has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
-				req = fetchCapturedApiRequest(2)
-				Expect(req.Method).To(Equal("PUT"))
-				Expect(req.Url).To(MatchRegexp(routeRegex))
-				Expect(*req.Body).To(ContainSubstring("E2E test sampling rule"))
-				Expect(*req.Body).To(ContainSubstring("\"rate\":0.1"))
-				verifySamplingRuleApiSyncRequest(req)
-
-				removeSamplingRuleResource(applicationUnderTestNamespace)
-				By("verifying the sampling rule has been deleted via the Dash0 API (after removing the resource)")
-				req = fetchCapturedApiRequest(3)
-				Expect(req.Method).To(Equal("DELETE"))
-				Expect(req.Url).To(MatchRegexp(routeRegex))
-			})
-
-			Describe("with a deployed Dash0SignalControl resource", Ordered, func() {
-				BeforeAll(func() {
-					deploySignalControlResource(signalControlValues{
-						DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
-						ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
-					})
-				})
-
-				AfterAll(func() {
-					removeSignalControlResource()
-				})
-
-				It("deploys the Edge Proxy wired to the configured Decision Maker endpoint", func() {
-					edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
-
-					By("waiting for the Edge Proxy deployment to become available")
-					Eventually(func(g Gomega) {
-						g.Expect(runAndIgnoreOutput(exec.Command(
-							"kubectl",
-							"-n", operatorNamespace,
-							"wait", "--for=condition=Available",
-							"deployment/"+edgeProxyDeployment,
-							"--timeout=30s",
-						))).To(Succeed())
-					}, 120*time.Second, 2*time.Second).Should(Succeed())
-
-					By("verifying the Edge Proxy service exists")
-					Expect(runAndIgnoreOutput(exec.Command(
-						"kubectl", "-n", operatorNamespace, "get", "service", edgeProxyDeployment,
-					))).To(Succeed())
-
-					By("verifying the Edge Proxy container is configured with the Decision Maker mock endpoint")
-					upstream, err := run(exec.Command(
+				By("waiting for the Edge Proxy deployment to become available")
+				Eventually(func(g Gomega) {
+					g.Expect(runAndIgnoreOutput(exec.Command(
 						"kubectl",
 						"-n", operatorNamespace,
-						"get", "deployment", edgeProxyDeployment,
-						"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="edge-proxy")].env`+
-							`[?(@.name=="UPSTREAM_ADDRESS")].value}`,
-					), false)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(strings.TrimSpace(upstream)).To(Equal(decisionMakerMockGrpcEndpoint))
+						"wait", "--for=condition=Available",
+						"deployment/"+edgeProxyDeployment,
+						"--timeout=30s",
+					))).To(Succeed())
+				}, 120*time.Second, 2*time.Second).Should(Succeed())
 
-					By("verifying that the Edge Proxy actually connects upstream to the Decision Maker mock")
-					Eventually(func(g Gomega) {
-						counts := fetchDecisionMakerGrpcCallCounts(g)
-						g.Expect(counts).NotTo(BeEmpty())
-						// The Edge Proxy opens both subscription streams (server-info + sampling-rules)
-						// on connect; either is sufficient signal that the upstream wiring
-						// works end-to-end.
-						g.Expect(counts["SubscribeServerInfo"]+counts["SubscribeSamplingRules"]).To(
-							BeNumerically(">", 0),
-							"expected at least one subscription RPC, got %v", counts)
-					}, 60*time.Second, pollingInterval).Should(Succeed())
-				})
+				By("verifying the Edge Proxy service exists")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl", "-n", operatorNamespace, "get", "service", edgeProxyDeployment,
+				))).To(Succeed())
 
-				It("reconfigures the collector daemonset to include the Signal Control pipeline", func() {
-					expectedSnippets := []string{
-						"dash0settingsonedgeextension",
-						"dash0sampling:",
-						"dash0redmetrics:",
-						"dash0signaltometrics:",
-						"dash0filter:",
-						"dash0resource:",
-						"dash0operation:",
-						"dash0metricrecorder:",
-						"metrics/spam-counters:",
-						"traces/sampled:",
-						"forward/traces-to-sampling",
+				By("verifying the Edge Proxy container is configured with the Decision Maker mock endpoint")
+				upstream, err := run(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"get", "deployment", edgeProxyDeployment,
+					"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="edge-proxy")].env`+
+						`[?(@.name=="UPSTREAM_ADDRESS")].value}`,
+				), false)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(strings.TrimSpace(upstream)).To(Equal(decisionMakerMockGrpcEndpoint))
+
+				By("verifying that the Edge Proxy actually connects upstream to the Decision Maker mock")
+				Eventually(func(g Gomega) {
+					counts := fetchDecisionMakerGrpcCallCounts(g)
+					g.Expect(counts).NotTo(BeEmpty())
+					// The Edge Proxy opens both subscription streams (server-info + sampling-rules)
+					// on connect; either is sufficient signal that the upstream wiring
+					// works end-to-end.
+					g.Expect(counts["SubscribeServerInfo"]+counts["SubscribeSamplingRules"]).To(
+						BeNumerically(">", 0),
+						"expected at least one subscription RPC, got %v", counts)
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+			})
+
+			It("reconfigures the collector daemonset to include the Signal Control pipeline", func() {
+				expectedSnippets := []string{
+					"dash0settingsonedgeextension",
+					"dash0sampling:",
+					"dash0redmetrics:",
+					"dash0signaltometrics:",
+					"dash0filter:",
+					"dash0resource:",
+					"dash0operation:",
+					"dash0metricrecorder:",
+					"metrics/spam-counters:",
+					"traces/sampled:",
+					"forward/traces-to-sampling",
+				}
+
+				By("verifying the daemonset collector configmap contains the Signal Control components")
+				for _, snippet := range expectedSnippets {
+					verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, snippet)
+				}
+
+				By("verifying the collector daemonset rolls out cleanly after the Signal Control config change")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"rollout", "status", collectorDaemonSetNameQualified,
+					"--timeout=120s",
+				))).To(Succeed())
+
+				By("verifying the dash0settingsonedgeextension polled the control-plane mock")
+				Eventually(func(g Gomega) {
+					stored := getStoredControlPlaneRequests(g)
+					g.Expect(stored).NotTo(BeNil())
+					hasSettingsCall := false
+					for _, r := range stored.Requests {
+						if r.Method == http.MethodGet && strings.Contains(r.Url, "/api/edge/settings") {
+							hasSettingsCall = true
+							break
+						}
 					}
+					g.Expect(hasSettingsCall).To(
+						BeTrue(),
+						"expected at least one GET /api/edge/settings on the control-plane mock, got %v",
+						stored.Requests,
+					)
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+			})
 
-					By("verifying the daemonset collector configmap contains the Signal Control components")
-					for _, snippet := range expectedSnippets {
-						verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, snippet)
-					}
-
-					By("verifying the collector daemonset rolls out cleanly after the Signal Control config change")
+			Describe("with a workload sending traces", Ordered, func() {
+				BeforeAll(func() {
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
+					By("verifying the collector daemonset rolls out cleanly after the Dash0Monitoring config change")
 					Expect(runAndIgnoreOutput(exec.Command(
 						"kubectl",
 						"-n", operatorNamespace,
 						"rollout", "status", collectorDaemonSetNameQualified,
 						"--timeout=120s",
 					))).To(Succeed())
-
-					By("verifying the dash0settingsonedgeextension polled the control-plane mock")
-					Eventually(func(g Gomega) {
-						stored := getStoredControlPlaneRequests(g)
-						g.Expect(stored).NotTo(BeNil())
-						hasSettingsCall := false
-						for _, r := range stored.Requests {
-							if r.Method == http.MethodGet && strings.Contains(r.Url, "/api/edge/settings") {
-								hasSettingsCall = true
-								break
-							}
-						}
-						g.Expect(hasSettingsCall).To(
-							BeTrue(),
-							"expected at least one GET /api/edge/settings on the control-plane mock, got %v",
-							stored.Requests,
-						)
-					}, 60*time.Second, pollingInterval).Should(Succeed())
-				})
-
-				Describe("with a workload sending traces", Ordered, func() {
-					BeforeAll(func() {
-						deployDash0MonitoringResourceWithRetry(
-							applicationUnderTestNamespace,
-							dash0MonitoringValuesDefault,
-							operatorNamespace,
-						)
-						By("verifying the collector daemonset rolls out cleanly after the Dash0Monitoring config change")
-						Expect(runAndIgnoreOutput(exec.Command(
-							"kubectl",
-							"-n", operatorNamespace,
-							"rollout", "status", collectorDaemonSetNameQualified,
-							"--timeout=120s",
-						))).To(Succeed())
-						Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-					})
-
-					AfterAll(func() {
-						removeAllTestApplications(applicationUnderTestNamespace)
-						undeployDash0MonitoringResource(applicationUnderTestNamespace)
-					})
-
-					It("emits dash0.spans.red metrics via the dash0redmetrics connector", func() {
-						timestampLowerBound := time.Now()
-						testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
-
-						By("driving trace activity through the test app")
-						verifyThatWorkloadHasBeenInstrumented(
-							applicationUnderTestNamespace,
-							runtimeTypeNodeJs,
-							workloadTypeDeployment,
-							testId,
-							images,
-							"webhook",
-						)
-
-						By("verifying the dash0redmetrics connector emitted dash0.spans.red_services")
-						Eventually(func(g Gomega) {
-							askTelemetryMatcherForMetricNames(
-								g,
-								shared.ExpectAtLeastOne,
-								[]string{"dash0.spans.red_services"},
-								timestampLowerBound,
-							)
-						}, 90*time.Second, pollingInterval).Should(Succeed())
-					})
-				})
-
-				It("tears down the Edge Proxy and reverts the collector when the resource is deleted", func() {
-					edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
-
-					removeSignalControlResource()
-
-					By("verifying the Edge Proxy deployment is removed")
-					Expect(runAndIgnoreOutput(exec.Command(
-						"kubectl",
-						"-n", operatorNamespace,
-						"wait", "--for=delete",
-						"deployment/"+edgeProxyDeployment,
-						"--timeout=60s",
-					))).To(Succeed())
-
-					By("verifying the Edge Proxy service is removed")
-					Eventually(func(g Gomega) {
-						_, err := run(exec.Command(
-							"kubectl", "-n", operatorNamespace, "get", "service", edgeProxyDeployment,
-						), false)
-						g.Expect(err).To(HaveOccurred())
-					}, 30*time.Second, pollingInterval).Should(Succeed())
-
-					By("verifying the daemonset collector configmap no longer references the Signal Control pipeline")
-					Eventually(func(g Gomega) {
-						verifyConfigMapDoesNotContainStrings(operatorNamespace,
-							collectorDaemonSetConfigMapNameQualified, "dash0settingsonedgeextension")
-					}, 60*time.Second, pollingInterval).Should(Succeed())
-				})
-			})
-
-			Describe("with a Dash0SignalControl resource for an organization that is not entitled", Ordered, func() {
-				BeforeAll(func() {
-					setSignalControlEntitlementInApiMock(false)
-					deploySignalControlResource(signalControlValues{
-						DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
-						ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
-					})
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 				})
 
 				AfterAll(func() {
-					removeSignalControlResource()
-					// Restore the default entitlement so subsequent tests (and re-runs) see an entitled organization.
-					setSignalControlEntitlementInApiMock(true)
+					removeAllTestApplications(applicationUnderTestNamespace)
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
 				})
 
-				It("does not apply Signal Control and marks the resource as degraded", func() {
-					edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
+				It("emits dash0.spans.red metrics via the dash0redmetrics connector", func() {
+					timestampLowerBound := time.Now()
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 
-					By("verifying the operator queried the Signal Control entitlement on the Dash0 API")
+					By("driving trace activity through the test app")
+					verifyThatWorkloadHasBeenInstrumented(
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testId,
+						images,
+						"webhook",
+					)
+
+					By("verifying the dash0redmetrics connector emitted dash0.spans.red_services")
 					Eventually(func(g Gomega) {
-						g.Expect(countCapturedApiRequests(g, http.MethodGet, "/api/signal-control/edge/settings")).To(
-							BeNumerically(">", 0),
-							"expected at least one GET /api/signal-control/edge/settings on the Dash0 API mock",
+						askTelemetryMatcherForMetricNames(
+							g,
+							shared.ExpectAtLeastOne,
+							[]string{"dash0.spans.red_services"},
+							timestampLowerBound,
 						)
-					}, 60*time.Second, pollingInterval).Should(Succeed())
-
-					By("verifying the Dash0SignalControl resource is marked as degraded")
-					Eventually(func(g Gomega) {
-						status, err := run(exec.Command(
-							"kubectl",
-							"get", "Dash0SignalControl", signalControlName,
-							"-o", `jsonpath={.status.conditions[?(@.type=="Degraded")].status}`,
-						), false)
-						g.Expect(err).ToNot(HaveOccurred())
-						g.Expect(strings.TrimSpace(status)).To(Equal("True"))
-					}, 60*time.Second, pollingInterval).Should(Succeed())
-
-					By("verifying the Edge Proxy deployment is not created")
-					Consistently(func(g Gomega) {
-						_, err := run(exec.Command(
-							"kubectl", "-n", operatorNamespace, "get", "deployment", edgeProxyDeployment,
-						), false)
-						g.Expect(err).To(HaveOccurred())
-					}, 15*time.Second, pollingInterval).Should(Succeed())
-
-					By("verifying the daemonset collector configmap contains none of the Signal Control components")
-					for _, snippet := range []string{
-						"dash0settingsonedgeextension",
-						"dash0sampling:",
-						"dash0redmetrics:",
-						"dash0signaltometrics:",
-						"dash0filter:",
-						"dash0resource:",
-						"dash0operation:",
-						"dash0metricrecorder:",
-						"metrics/spam-counters:",
-						"traces/sampled:",
-						"forward/traces-to-sampling",
-					} {
-						verifyConfigMapDoesNotContainStrings(
-							operatorNamespace, collectorDaemonSetConfigMapNameQualified, snippet)
-					}
-
-					By("verifying the collector daemonset was not swapped to the Signal Control image")
-					Eventually(func(g Gomega) {
-						image, err := run(exec.Command(
-							"kubectl",
-							"-n", operatorNamespace,
-							"get", collectorDaemonSetNameQualified,
-							"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="opentelemetry-collector")].image}`,
-						), false)
-						g.Expect(err).ToNot(HaveOccurred())
-						g.Expect(strings.TrimSpace(image)).ToNot(BeEmpty())
-						g.Expect(image).ToNot(
-							ContainSubstring(signalControlCollectorImageName),
-							"the collector daemonset must use the regular collector image, not the Signal Control image",
-						)
-					}, 60*time.Second, pollingInterval).Should(Succeed())
+					}, 90*time.Second, pollingInterval).Should(Succeed())
 				})
 			})
-		}) // end of suite "with the Signal Control feature enabled"
-	}
+
+			It("tears down the Edge Proxy and reverts the collector when the resource is deleted", func() {
+				edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
+
+				removeSignalControlResource()
+
+				By("verifying the Edge Proxy deployment is removed")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"wait", "--for=delete",
+					"deployment/"+edgeProxyDeployment,
+					"--timeout=60s",
+				))).To(Succeed())
+
+				By("verifying the Edge Proxy service is removed")
+				Eventually(func(g Gomega) {
+					_, err := run(exec.Command(
+						"kubectl", "-n", operatorNamespace, "get", "service", edgeProxyDeployment,
+					), false)
+					g.Expect(err).To(HaveOccurred())
+				}, 30*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying the daemonset collector configmap no longer references the Signal Control pipeline")
+				Eventually(func(g Gomega) {
+					verifyConfigMapDoesNotContainStrings(operatorNamespace,
+						collectorDaemonSetConfigMapNameQualified, "dash0settingsonedgeextension")
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+			})
+		})
+
+		Describe("with a Dash0SignalControl resource for an organization that is not entitled", Ordered, func() {
+			BeforeAll(func() {
+				setSignalControlEntitlementInApiMock(false)
+				deploySignalControlResource(signalControlValues{
+					DecisionMakerEndpoint:   decisionMakerMockGrpcEndpoint,
+					ControlPlaneApiEndpoint: controlPlaneMockServiceBaseUrl,
+				})
+			})
+
+			AfterAll(func() {
+				removeSignalControlResource()
+				// Restore the default entitlement so subsequent tests (and re-runs) see an entitled organization.
+				setSignalControlEntitlementInApiMock(true)
+			})
+
+			It("does not apply Signal Control and marks the resource as degraded", func() {
+				edgeProxyDeployment := operatorHelmReleaseName + "-edge-proxy"
+
+				By("verifying the operator queried the Signal Control entitlement on the Dash0 API")
+				Eventually(func(g Gomega) {
+					g.Expect(countCapturedApiRequests(g, http.MethodGet, "/api/signal-control/edge/settings")).To(
+						BeNumerically(">", 0),
+						"expected at least one GET /api/signal-control/edge/settings on the Dash0 API mock",
+					)
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying the Dash0SignalControl resource is marked as degraded")
+				Eventually(func(g Gomega) {
+					status, err := run(exec.Command(
+						"kubectl",
+						"get", "Dash0SignalControl", signalControlName,
+						"-o", `jsonpath={.status.conditions[?(@.type=="Degraded")].status}`,
+					), false)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(strings.TrimSpace(status)).To(Equal("True"))
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying the Edge Proxy deployment is not created")
+				Consistently(func(g Gomega) {
+					_, err := run(exec.Command(
+						"kubectl", "-n", operatorNamespace, "get", "deployment", edgeProxyDeployment,
+					), false)
+					g.Expect(err).To(HaveOccurred())
+				}, 15*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying the daemonset collector configmap contains none of the Signal Control components")
+				for _, snippet := range []string{
+					"dash0settingsonedgeextension",
+					"dash0sampling:",
+					"dash0redmetrics:",
+					"dash0signaltometrics:",
+					"dash0filter:",
+					"dash0resource:",
+					"dash0operation:",
+					"dash0metricrecorder:",
+					"metrics/spam-counters:",
+					"traces/sampled:",
+					"forward/traces-to-sampling",
+				} {
+					verifyConfigMapDoesNotContainStrings(
+						operatorNamespace, collectorDaemonSetConfigMapNameQualified, snippet)
+				}
+
+				By("verifying the collector daemonset was not swapped to the Signal Control image")
+				Eventually(func(g Gomega) {
+					image, err := run(exec.Command(
+						"kubectl",
+						"-n", operatorNamespace,
+						"get", collectorDaemonSetNameQualified,
+						"-o", `jsonpath={.spec.template.spec.containers[?(@.name=="opentelemetry-collector")].image}`,
+					), false)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(strings.TrimSpace(image)).ToNot(BeEmpty())
+					g.Expect(image).ToNot(
+						ContainSubstring(signalControlCollectorImageName),
+						"the collector daemonset must use the regular collector image, not the Signal Control image",
+					)
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+			})
+		})
+	}) // end of suite "with the Signal Control feature enabled"
 
 	Context("with the agent0-connector enabled", Ordered, func() {
 		agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"

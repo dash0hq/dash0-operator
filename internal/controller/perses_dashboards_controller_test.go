@@ -640,6 +640,49 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				Expect(conv.Webhook.ClientConfig.Service.Name).To(Equal(OperatorWebhookServiceName))
 			})
 
+			It("re-patches the CRD when the caBundle is stale (CA rotated) but the service target is unchanged", func() {
+				// Reproduces OPE-486: after a `helm upgrade` the Helm chart generates a fresh CA and rotates the serving
+				// cert, but the perses.dev PersesDashboard CRD conversion stanza still points at our service, so a
+				// service-target-only comparison would leave the old caBundle in place and the API server would reject
+				// every conversion request. Here the CRD carries an old bundle while our CaBundlePath file holds the new one.
+				ensurePersesDashboardCrdExists(ctx)
+				staleCaPEM := generateTestCaPem()
+				Expect(staleCaPEM).NotTo(Equal(caPEM))
+
+				fresh := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, fresh)).To(Succeed())
+				patched := fresh.DeepCopy()
+				ourPath := util.PersesDashboardConversionWebhookPath
+				ourPort := OperatorWebhookServicePort
+				patched.Spec.Conversion = &apiextensionsv1.CustomResourceConversion{
+					Strategy: apiextensionsv1.WebhookConverter,
+					Webhook: &apiextensionsv1.WebhookConversion{
+						ConversionReviewVersions: []string{"v1"},
+						ClientConfig: &apiextensionsv1.WebhookClientConfig{
+							CABundle: staleCaPEM,
+							Service: &apiextensionsv1.ServiceReference{
+								Name:      OperatorWebhookServiceName,
+								Namespace: OperatorNamespace,
+								Path:      &ourPath,
+								Port:      &ourPort,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Patch(ctx, patched, client.MergeFrom(fresh))).To(Succeed())
+
+				updated := &apiextensionsv1.CustomResourceDefinition{}
+				Expect(k8sClient.Get(ctx, PersesDashboardCrdQualifiedName, updated)).To(Succeed())
+
+				r := createPersesDashboardCrdReconciler(true, caBundlePath)
+				r.ensurePersesConversionWebhookConfigured(ctx, updated, true, logger)
+
+				conv := readCrdConversion()
+				Expect(conv.Webhook.ClientConfig.Service.Name).To(Equal(OperatorWebhookServiceName))
+				Expect(conv.Webhook.ClientConfig.CABundle).To(
+					Equal(caPEM), "expected the stale caBundle to be refreshed to the current one")
+			})
+
 			It("does nothing on update when our conversion stanza is still intact", func() {
 				ensurePersesDashboardCrdExists(ctx)
 				r := createPersesDashboardCrdReconciler(true, caBundlePath)
