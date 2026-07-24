@@ -96,6 +96,18 @@ through the standard collector processors (resource detection, Kubernetes attrib
 then is handed to the SignalControl Edge components, right before it is exported to Dash0. The regular collection behavior
 stays unchanged; the egress-reduction logic is layered on top.
 
+The simplified traces pipeline below shows the order in which the SCE components are applied (metrics and logs
+follow the same shape):
+
+```mermaid
+flowchart LR
+    nonsce["non-SCE collector components"] --> op["operation processor"]
+    op --> spam["spam filter"]
+    spam --> sampling["tail-sampling"] --> dash0(["Dash0"])
+    spam --> red["RED metrics"] --> dash0
+    spam --> s2m["signal-to-metrics"] --> dash0
+```
+
 The rules that drive these components (sampling rules, spam filters, signal-to-metrics rules) are authored as Kubernetes
 custom resources. The operator reconciles each resource and syncs it to the Dash0 backend via the Dash0 API. Independently, the
 collector pulls the effective, merged settings back down at runtime and feeds them to the SignalControl Edge components, so
