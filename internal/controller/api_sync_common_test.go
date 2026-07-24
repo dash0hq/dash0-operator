@@ -118,7 +118,6 @@ var _ = Describe("The API Sync", Ordered, func() {
 				},
 			},
 		}),
-
 	)
 
 	Describe("stripKubernetesOnlyMetadataFields", func() {

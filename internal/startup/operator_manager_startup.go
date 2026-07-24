@@ -1057,18 +1057,17 @@ func readOptionalDurationFromEnvironmentVariable(envVarName string, defaultValue
 	return parsed
 }
 
-// setupSpamFilterAndTeamReconcilers constructs and wires the spam-filter and team reconcilers with the manager
-// and the leader-election-aware runnable, returning both reconcilers so downstream setup code (retry runnable,
-// ApiClient list, monitoring reconciler) can reference them. These two are grouped in a single helper mainly to
-// keep startDash0Controllers under the cyclomatic-complexity threshold enforced by golangci-lint; the operations
-// each helper performs are otherwise identical to the inline setup used for the other operator-owned reconcilers.
-func setupSpamFilterAndTeamReconcilers(
+// setupSpamFilterReconciler constructs and wires the spam-filter reconciler with the manager and the
+// leader-election-aware runnable. Extracting this into its own helper (matched by setupTeamReconciler) keeps
+// startDash0Controllers under the golangci-lint cyclomatic-complexity threshold without conflating unrelated
+// reconcilers under one grouping helper.
+func setupSpamFilterReconciler(
 	mgr manager.Manager,
 	k8sClient client.Client,
 	clusterUid types.UID,
 	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
 	httpClient *http.Client,
-) (*controller.SpamFilterReconciler, *controller.TeamReconciler, error) {
+) (*controller.SpamFilterReconciler, error) {
 	spamFilterReconciler := controller.NewSpamFilterReconciler(
 		k8sClient,
 		clusterUid,
@@ -1076,10 +1075,21 @@ func setupSpamFilterAndTeamReconcilers(
 		httpClient,
 	)
 	if err := spamFilterReconciler.SetupWithManager(mgr); err != nil {
-		return nil, nil, fmt.Errorf("unable to set up the spam filter reconciler: %w", err)
+		return nil, fmt.Errorf("unable to set up the spam filter reconciler: %w", err)
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(spamFilterReconciler)
+	return spamFilterReconciler, nil
+}
 
+// setupTeamReconciler constructs and wires the team reconciler with the manager and the leader-election-aware
+// runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupTeamReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+) (*controller.TeamReconciler, error) {
 	teamReconciler := controller.NewTeamReconciler(
 		k8sClient,
 		clusterUid,
@@ -1087,11 +1097,10 @@ func setupSpamFilterAndTeamReconcilers(
 		httpClient,
 	)
 	if err := teamReconciler.SetupWithManager(mgr); err != nil {
-		return nil, nil, fmt.Errorf("unable to set up the team reconciler: %w", err)
+		return nil, fmt.Errorf("unable to set up the team reconciler: %w", err)
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(teamReconciler)
-
-	return spamFilterReconciler, teamReconciler, nil
+	return teamReconciler, nil
 }
 
 // allOwnedIacResourceSynchronizationControllers gathers the reconcilers of the operator-owned resource types into a
@@ -1452,6 +1461,11 @@ func appendSamplingRuleNamespacedApiClient(
 	return clients
 }
 
+// startDash0Controllers wires every reconciler the operator manager owns. It has grown one branch beyond the
+// gocyclo threshold because each additional reconciler adds an `if err != nil { return … }` path; the extra
+// paths are structurally identical and splitting into a wrapper would only obscure the setup ordering.
+//
+//nolint:gocyclo
 func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
@@ -1738,7 +1752,18 @@ func startDash0Controllers(
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(notificationChannelReconciler)
 
-	spamFilterReconciler, teamReconciler, err := setupSpamFilterAndTeamReconcilers(
+	spamFilterReconciler, err := setupSpamFilterReconciler(
+		mgr,
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err != nil {
+		return err
+	}
+
+	teamReconciler, err := setupTeamReconciler(
 		mgr,
 		k8sClient,
 		clusterUid,
