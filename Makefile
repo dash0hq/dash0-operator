@@ -176,7 +176,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -193,6 +193,10 @@ common-package-unit-tests: ## Run the Go unit tests for the common package (code
 .PHONY: agent0-connector-unit-tests
 agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
 	cd images/agent0-connector/src && go test ./...
+
+.PHONY: collector-telemetry-unit-tests
+collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
+	cd images/collector/src/telemetry && go test ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
