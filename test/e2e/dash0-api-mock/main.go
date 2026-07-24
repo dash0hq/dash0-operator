@@ -70,6 +70,9 @@ func main() {
 	router.PUT("/api/synthetic-checks/:origin", handleSyntheticCheckRequest)
 	router.DELETE("/api/synthetic-checks/:origin", handleSyntheticCheckRequest)
 
+	router.PUT("/api/slos/:origin", handleSloRequest)
+	router.DELETE("/api/slos/:origin", handleSloRequest)
+
 	router.PUT("/api/views/:origin", handleViewRequest)
 	router.DELETE("/api/views/:origin", handleViewRequest)
 
@@ -118,6 +121,11 @@ func main() {
 }
 
 func handleSyntheticCheckRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	respondWithOverrideOrOK(ginCtx)
+}
+
+func handleSloRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	respondWithOverrideOrOK(ginCtx)
 }

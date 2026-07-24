@@ -42,6 +42,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	openslov1 "github.com/dash0hq/dash0-operator/api/openslo/v1"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -247,6 +248,10 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1alpha1.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1beta1.AddToScheme(runtimeScheme))
+
+	// The SLO CRD adopts the upstream OpenSLO v1 group (openslo/v1, kind SLO); register its scheme so the operator can
+	// watch and reconcile SLO resources.
+	utilruntime.Must(openslov1.AddToScheme(runtimeScheme))
 
 	// required for Perses dashboard controller and Prometheus rules controller.
 	utilruntime.Must(apiextensionsv1.AddToScheme(runtimeScheme))
@@ -1064,6 +1069,7 @@ func allOwnedIacResourceSynchronizationControllers(
 	signalToMetricsReconciler *controller.SignalToMetricsReconciler,
 	spamFilterReconciler *controller.SpamFilterReconciler,
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
+	sloReconciler *controller.SLOReconciler,
 	viewReconciler *controller.ViewReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
 ) []controller.OwnedIacResourceSynchronizationController {
@@ -1072,12 +1078,49 @@ func allOwnedIacResourceSynchronizationControllers(
 		signalToMetricsReconciler,
 		spamFilterReconciler,
 		syntheticCheckReconciler,
+		sloReconciler,
 		viewReconciler,
 	}
 	if samplingRuleReconciler != nil {
 		controllers = append(controllers, samplingRuleReconciler)
 	}
 	return controllers
+}
+
+// setupSyntheticCheckAndSLOReconcilers creates, sets up and registers the synthetic check reconciler and the SLO
+// reconciler. Both are operator-owned API sync reconcilers created with the same dependencies; they are grouped here to
+// keep the complexity of startDash0Controllers manageable. The SLO reconciler adopts the upstream openslo/v1 group and
+// performs conflict detection during its setup (see SLOReconciler.SetupWithManager).
+func setupSyntheticCheckAndSLOReconcilers(
+	ctx context.Context,
+	mgr ctrl.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	httpClient *http.Client,
+) (*controller.SyntheticCheckReconciler, *controller.SLOReconciler, error) {
+	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
+		return nil, nil, fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(syntheticCheckReconciler)
+
+	sloReconciler := controller.NewSLOReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := sloReconciler.SetupWithManager(ctx, mgr, setupLog); err != nil {
+		return nil, nil, fmt.Errorf("unable to set up the SLO reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(sloReconciler)
+
+	return syntheticCheckReconciler, sloReconciler, nil
 }
 
 // setupSynchronizationRetryRunnable adds the periodic synchronization retry runnable to the manager, unless it has been
@@ -1664,16 +1707,16 @@ func startDash0Controllers(
 		setupLog.Info("The Signal Control reconciler has been started.")
 	} // closes else (Signal Control enabled)
 
-	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
+	syntheticCheckReconciler, sloReconciler, err := setupSyntheticCheckAndSLOReconcilers(
+		ctx,
+		mgr,
 		k8sClient,
 		clusterUid,
-		leaderElectionAwareRunnable,
 		httpClient,
 	)
-	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
+	if err != nil {
+		return err
 	}
-	leaderElectionAwareRunnable.AddLeaderElectionClient(syntheticCheckReconciler)
 
 	viewReconciler := controller.NewViewReconciler(
 		k8sClient,
@@ -1782,6 +1825,7 @@ func startDash0Controllers(
 			signalToMetricsReconciler,
 			spamFilterReconciler,
 			syntheticCheckReconciler,
+			sloReconciler,
 			viewReconciler,
 			samplingRuleReconciler,
 		),
@@ -1795,6 +1839,7 @@ func startDash0Controllers(
 	setupLog.Info("Creating the operator configuration resource reconciler.")
 	apiClients := []controller.ApiClient{
 		syntheticCheckReconciler,
+		sloReconciler,
 		viewReconciler,
 		notificationChannelReconciler,
 		spamFilterReconciler,
@@ -1833,6 +1878,7 @@ func startDash0Controllers(
 	namespacedApiClients := appendSamplingRuleNamespacedApiClient(
 		[]controller.NamespacedApiClient{
 			syntheticCheckReconciler,
+			sloReconciler,
 			viewReconciler,
 			notificationChannelReconciler,
 			spamFilterReconciler,
@@ -1901,6 +1947,7 @@ func startDash0Controllers(
 		operatorConfigurationReconciler,
 		monitoringReconciler,
 		syntheticCheckReconciler,
+		sloReconciler,
 		viewReconciler,
 		spamFilterReconciler,
 		signalToMetricsReconciler,
