@@ -31,6 +31,7 @@ const (
 	samplingRuleName          = "sampling-rule-e2e-test"
 	signalToMetricsName       = "signal-to-metrics-e2e-test"
 	spamFilterName            = "spam-filter-e2e-test"
+	teamName                  = "team-e2e-test"
 )
 
 var (
@@ -69,6 +70,10 @@ var (
 	//go:embed dash0spamfilter.yaml.template
 	spamFilterSource   string
 	spamFilterTemplate *template.Template
+
+	//go:embed dash0team.yaml.template
+	teamSource   string
+	teamTemplate *template.Template
 )
 
 func deployThirdPartyCrds(cleanupSteps *neccessaryCleanupSteps) {
@@ -534,6 +539,64 @@ func removeSpamFilterResource(namespace string) {
 	))
 }
 
+func renderTeamTemplate(values dash0ApiResourceValues) string {
+	teamTemplate = initTemplateOnce(
+		teamTemplate,
+		teamSource,
+		"dash0team",
+	)
+	return renderResourceTemplate(teamTemplate, values, "dash0team")
+}
+
+func deployTeamResource(
+	namespace string,
+	values dash0ApiResourceValues,
+) {
+	renderedResourceFileName := renderTeamTemplate(values)
+	defer func() {
+		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
+	}()
+
+	By(fmt.Sprintf(
+		"deploying a Dash0Team resource to namespace %s with values %v", namespace, values))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"apply",
+		"-n",
+		namespace,
+		"-f",
+		renderedResourceFileName,
+	))).To(Succeed())
+}
+
+func setOptOutLabelInTeam(namespace string, value string) {
+	By(fmt.Sprintf("setting the opt-out label in the team with value %s", value))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"-n",
+			namespace,
+			"--overwrite",
+			"Dash0Team",
+			teamName,
+			fmt.Sprintf("dash0.com/enable=%s", value),
+		)),
+	).To(Succeed())
+}
+
+func removeTeamResource(namespace string) {
+	_ = runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"delete",
+		"--ignore-not-found",
+		"-n",
+		namespace,
+		"Dash0Team",
+		teamName,
+	))
+}
+
 func renderSignalToMetricsTemplate(values dash0ApiResourceValues) string {
 	signalToMetricsTemplate = initTemplateOnce(
 		signalToMetricsTemplate,
@@ -602,6 +665,7 @@ func removeDash0ApiSyncResources(namespace string) {
 	removeSamplingRuleResource(namespace)
 	removeSignalToMetricsResource(namespace)
 	removeSpamFilterResource(namespace)
+	removeTeamResource(namespace)
 }
 
 // verifyPersesDashboardCrdConversionWebhookConfigured polls the perses.dev PersesDashboard CRD and asserts that the Dash0
