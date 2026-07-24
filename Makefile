@@ -198,10 +198,6 @@ agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector i
 helm-unit-tests: ## Run the Helm chart unit tests.
 	cd helm-chart/dash0-operator && helm unittest -f 'tests/**/*.yaml' .
 
-.PHONY: python-instrumentation-unit-tests
-python-instrumentation-unit-tests:
-	cd images/instrumentation/python && python -m unittest test_sitecustomize.py -v
-
 .PHONY: build-all-test-e2e
 build-all-test-e2e: all-images test-e2e ## Builds (but does not push) all container images, then runs the end-to-end tests.
 
