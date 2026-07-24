@@ -425,42 +425,22 @@ func (r *TeamReconciler) MapResourceToHttpRequests(
 }
 
 // prepareTeamApiPayload projects the operator's CR shape into the TeamDefinitionV1Alpha1 envelope the Dash0
-// API expects. Concretely it:
-//   - ensures the kind is set to "Dash0Team" (the server tolerates missing values but this makes payloads
-//     match the CRD envelope on the wire),
-//   - keeps metadata.name so the CR's technical name is persisted on the server as-is, and
-//   - removes CR-specific bookkeeping (status, apiVersion, and the Kubernetes-style ObjectMeta fields that
-//     the server does not consume) to keep the payload minimal.
+// API expects. cleanUpMetadata (called earlier via the shared precondition path) has already stripped
+// managedFields, dash0.com/{id,dataset,source,version} labels, and the kubectl last-applied-configuration
+// annotation. This helper adds team-specific projections and delegates the remaining Kubernetes-only field
+// stripping to stripKubernetesOnlyMetadataFields (safe here because the resource map for teams comes from
+// structToMap, i.e. a fresh copy — not the Unstructured backing map used by third-party controllers).
 func prepareTeamApiPayload(resource map[string]any, k8sName string) {
-	// The kind on the wire is "Dash0Team" per the API contract, regardless of how the Kubernetes object is typed
-	// (dash0.com/v1alpha1). Setting it explicitly makes the payload self-describing.
 	resource["kind"] = "Dash0Team"
-	// apiVersion is optional on write and the server defaults it. Set it to the API's expected value so that a
-	// tool re-reading the wire payload can round-trip it cleanly.
 	resource["apiVersion"] = "dash0.com/v1alpha1"
+
+	stripKubernetesOnlyMetadataFields(resource)
 
 	if metadataRaw, ok := resource["metadata"]; ok {
 		if metadata, ok := metadataRaw.(map[string]any); ok {
-			// Force metadata.name to the CR's technical name. cleanUpMetadata already strips managedFields,
-			// dash0.com/{id,dataset,source,version} labels, and the kubectl last-applied-configuration
-			// annotation. Any remaining Kubernetes-specific attributes (namespace, resourceVersion, uid, etc.)
-			// are ignored by the API server, so leaving them in place is harmless — the wire cost is a few
-			// bytes per PUT.
 			metadata["name"] = k8sName
-			// Remove Kubernetes-only fields that would otherwise leak into the wire payload.
-			delete(metadata, "namespace")
-			delete(metadata, "resourceVersion")
-			delete(metadata, "uid")
-			delete(metadata, "generation")
-			delete(metadata, "creationTimestamp")
-			delete(metadata, "deletionTimestamp")
-			delete(metadata, "deletionGracePeriodSeconds")
-			delete(metadata, "ownerReferences")
-			delete(metadata, "finalizers")
-			delete(metadata, "selfLink")
 		}
 	}
-	// Status is a Kubernetes concept; it must not be sent on the wire.
 	delete(resource, "status")
 }
 

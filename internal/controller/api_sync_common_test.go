@@ -118,7 +118,62 @@ var _ = Describe("The API Sync", Ordered, func() {
 				},
 			},
 		}),
+
 	)
+
+	Describe("stripKubernetesOnlyMetadataFields", func() {
+		It("removes ObjectMeta fields the Dash0 API does not consume", func() {
+			resource := map[string]any{
+				"metadata": map[string]any{
+					"name":                       "some-name",
+					"namespace":                  "some-namespace",
+					"resourceVersion":            "12345",
+					"uid":                        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+					"generation":                 int64(3),
+					"creationTimestamp":          "2026-07-01T00:00:00Z",
+					"deletionTimestamp":          "2026-07-02T00:00:00Z",
+					"deletionGracePeriodSeconds": int64(30),
+					"ownerReferences": []map[string]any{
+						{"apiVersion": "v1", "kind": "Pod", "name": "owner"},
+					},
+					"finalizers": []string{"dash0.com/finalizer"},
+					"selfLink":   "/api/v1/namespaces/some-namespace/objects/some-name",
+					"labels": map[string]any{
+						"team": "backend",
+					},
+				},
+				"spec": map[string]any{
+					"key": "value",
+				},
+			}
+
+			stripKubernetesOnlyMetadataFields(resource)
+
+			Expect(resource).To(Equal(map[string]any{
+				"metadata": map[string]any{
+					"name": "some-name",
+					"labels": map[string]any{
+						"team": "backend",
+					},
+				},
+				"spec": map[string]any{
+					"key": "value",
+				},
+			}))
+		})
+
+		It("is a no-op when metadata is missing", func() {
+			resource := map[string]any{"spec": map[string]any{"key": "value"}}
+			stripKubernetesOnlyMetadataFields(resource)
+			Expect(resource).To(Equal(map[string]any{"spec": map[string]any{"key": "value"}}))
+		})
+
+		It("is a no-op when metadata is not a map", func() {
+			resource := map[string]any{"metadata": "not-a-map"}
+			stripKubernetesOnlyMetadataFields(resource)
+			Expect(resource).To(Equal(map[string]any{"metadata": "not-a-map"}))
+		})
+	})
 
 	Describe("resourceSyncStatus", func() {
 		It("returns successful when all configs succeed and there are no validation issues", func() {

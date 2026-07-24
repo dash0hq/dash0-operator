@@ -856,6 +856,12 @@ func isSyncDisabledViaLabel(dash0ApiResourceObject map[string]any) bool {
 // cleanUpMetadata removes fields from the resource that are somewhat large and not relevant for synchronizing a
 // resource with the Dash0 API, to reduce the payload size of the request sent to the API (e.g. metadata.managedFields,
 // metadata.annotations.kubectl.kubernetes.io/last-applied-configuration).
+//
+// This runs on the Unstructured backing map for third-party resources, so it must NOT strip fields that
+// controller-runtime / Unstructured helpers (GetNamespace, GetUID, GetResourceVersion, GetOwnerReferences, ...)
+// read on the SAME object later — doing so produces silent status-write bugs when qualifiedName or similar keys
+// are derived from those getters. Per-controller wire-payload prep helpers can call
+// stripKubernetesOnlyMetadataFields on a copied map to drop those K8s-only fields safely.
 func cleanUpMetadata(resource map[string]any) {
 	metadataRaw := resource["metadata"]
 	if metadataRaw != nil {
@@ -881,6 +887,33 @@ func cleanUpMetadata(resource map[string]any) {
 			}
 		}
 	}
+}
+
+// stripKubernetesOnlyMetadataFields removes ObjectMeta fields that the Dash0 API does not consume (namespace,
+// resourceVersion, uid, generation, timestamps, ownerReferences, finalizers, selfLink). This exists as a
+// separate helper — rather than being folded into cleanUpMetadata — because these fields are read by the
+// controller-runtime / Unstructured helpers on the SAME object during downstream reconciliation (qualifiedName
+// derivation, retry bookkeeping). Only call it on a resource map that will be used solely for the outbound
+// wire payload (e.g. the map produced by structToMap for owned resources, or a copied map for third-party).
+func stripKubernetesOnlyMetadataFields(resource map[string]any) {
+	metadataRaw, ok := resource["metadata"]
+	if !ok {
+		return
+	}
+	metadata, ok := metadataRaw.(map[string]any)
+	if !ok {
+		return
+	}
+	delete(metadata, "namespace")
+	delete(metadata, "resourceVersion")
+	delete(metadata, "uid")
+	delete(metadata, "generation")
+	delete(metadata, "creationTimestamp")
+	delete(metadata, "deletionTimestamp")
+	delete(metadata, "deletionGracePeriodSeconds")
+	delete(metadata, "ownerReferences")
+	delete(metadata, "finalizers")
+	delete(metadata, "selfLink")
 }
 
 func fetchExistingOrigins(
