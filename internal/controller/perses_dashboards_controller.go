@@ -952,14 +952,22 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 	logger logd.Logger,
 ) {
 	if !r.conversionWebhookSettings.AutoPatchConversionWebhook {
+		logger.Info("PersesDashboard CRD conversion webhook auto-patch is disabled via " +
+			"operator.iac.persesDashboard.autoPatchConversionWebhook=false.")
 		return
 	}
 
-	if r.conversionStanzaMatchesOurs(crd) {
-		return
-	}
+	logger.Info("Checking whether the PersesDashboard CRD conversion webhook needs patching (auto-patch is enabled, " +
+		"operator.iac.persesDashboard.autoPatchConversionWebhook=true).")
 
-	if hasForeignConversionWebhook(crd) {
+	// stanzaMatches tells us whether the conversion stanza already points at our webhook service. It intentionally
+	// ignores the caBundle, so we also need caBundleMatches to detect a rotated CA on an otherwise-unchanged stanza
+	// (see below).
+	stanzaMatches := r.conversionStanzaMatchesOurs(crd)
+
+	// Only defer to a foreign conversion webhook when the stanza is not ours to begin with. If stanzaMatches is true we
+	// own the stanza and are merely refreshing a rotated caBundle, so the foreign-webhook check does not apply.
+	if !stanzaMatches && hasForeignConversionWebhook(crd) {
 		if !onUpdate {
 			logger.Info(
 				"Detected pre-existing conversion webhook on the perses.dev PersesDashboard CRD " +
@@ -969,6 +977,8 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 		return
 	}
 
+	// The CA bundle might need changes independently of the conversion webhook stanza, if certs get rotated (for example
+	// when using the Helm-chart-generated certs and doing a helm upgrade).
 	caBundle, err := os.ReadFile(r.conversionWebhookSettings.CaBundlePath)
 	if err != nil {
 		logger.Error(
@@ -993,6 +1003,12 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 		return
 	}
 
+	if stanzaMatches && caBundleMatches(crd, caBundle) {
+		// Fully up to date: our service target and the current CA bundle are both already in place.
+		logger.Info("PersesDashboard CRD conversion webhook (stanza and caBundle) is up to date, no need to patch.")
+		return
+	}
+
 	patched := crd.DeepCopy()
 	patched.Spec.Conversion = r.buildConversionStanza(caBundle)
 
@@ -1005,7 +1021,14 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 		return
 	}
 
-	if onUpdate {
+	switch {
+	case stanzaMatches:
+		// The stanza already pointed at us and only the caBundle changed: this is a routine CA rotation (e.g. after a
+		// `helm upgrade`), not a patch-war, so log it at info level.
+		logger.Info(
+			"Refreshed the CA bundle on the perses.dev PersesDashboard CRD conversion webhook after a certificate rotation.",
+		)
+	case onUpdate:
 		logger.Warn(
 			"The conversion stanza on the perses.dev PersesDashboard CRD was missing or pointing elsewhere on a CRD update; " +
 				"re-applied the Dash0-operator conversion webhook configuration. If this happens repeatedly, a GitOps reconciler " +
@@ -1013,16 +1036,16 @@ func (r *PersesDashboardCrdReconciler) ensurePersesConversionWebhookConfigured(
 				"alone (preferred), install the Perses operator to let it handle the conversion, or set the Helm value " +
 				"operator.persesDashboard.autoPatchConversionWebhook=false.",
 		)
-	} else {
+	default:
 		logger.Info(
 			"Patched the perses.dev PersesDashboard CRD to route conversions through the Dash0 operator's conversion webhook.",
 		)
 	}
 }
 
-// conversionStanzaMatchesOurs reports whether the CRD's conversion stanza is already pointing
-// at our webhook (same service/namespace/path). The caBundle is intentionally not compared,
-// since it can rotate independently of who owns the patch.
+// conversionStanzaMatchesOurs reports whether the CRD's conversion stanza is already pointing at our webhook (same
+// service/namespace/path). The caBundle is intentionally not compared here, since it can rotate independently of who
+// owns the patch. Whether the caBundle needs to be updated is checked separately via caBundleMatches.
 func (r *PersesDashboardCrdReconciler) conversionStanzaMatchesOurs(crd *apiextensionsv1.CustomResourceDefinition) bool {
 	c := crd.Spec.Conversion
 	if c == nil || c.Strategy != apiextensionsv1.WebhookConverter || c.Webhook == nil {
@@ -1042,6 +1065,17 @@ func (r *PersesDashboardCrdReconciler) conversionStanzaMatchesOurs(crd *apiexten
 		return false
 	}
 	return true
+}
+
+// caBundleMatches reports whether the caBundle currently stored on the CRD's conversion webhook stanza is equal to the
+// given bundle. Returns false when the stanza (or its client config) is absent, so that a missing bundle is treated as
+// needing a patch.
+func caBundleMatches(crd *apiextensionsv1.CustomResourceDefinition, caBundle []byte) bool {
+	c := crd.Spec.Conversion
+	if c == nil || c.Webhook == nil || c.Webhook.ClientConfig == nil {
+		return false
+	}
+	return bytes.Equal(c.Webhook.ClientConfig.CABundle, caBundle)
 }
 
 // hasForeignConversionWebhook reports whether the CRD already has a Webhook conversion strategy configured but pointing somewhere

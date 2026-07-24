@@ -23,14 +23,15 @@
 #              description      The `description` rendered into the page's frontmatter.
 #              transformations  Optional list of transformations applied to this file only, after the common ones.
 #
-# Every *.md file in helm-chart/dash0-operator/docs (except dotfiles such as .docs-structure.md) must have a `files`
-# entry; otherwise apply-transformations.py fails. This guards against new topic files being silently dropped from the
-# sync.
+# `files` is the sole opt-in list. The `coverage` block below guards against forgetting to wire up a new page: every
+# file matching a `coverage.include` glob must either appear as a `files` entry or be listed under `coverage.ignore`,
+# otherwise the sync (including the dry run on every CI build) fails. When adding a new topic file under docs/, add a
+# matching `files` entry (or, to intentionally exclude it, add it to `coverage.ignore`).
 #
 # A frontmatter block is generated from each entry's `title`/`description` (plus a `lastUpdated` timestamp) and
-# prepended to the transformed file. Two kinds of relative links are rewritten automatically by
-# apply-transformations.py: links pointing at the renamed README.md (e.g. ../README.md#supported-runtimes) are
-# rewritten to the README's target name (overview#supported-runtimes), and links pointing into the renamed docs/
+# prepended to the transformed file. Two kinds of relative links are rewritten automatically by the transformation
+# engine in dash0hq/sync-docs-action: links pointing at the renamed README.md (e.g. ../README.md#supported-runtimes)
+# are rewritten to the README's target name (overview#supported-runtimes), and links pointing into the renamed docs/
 # directory (e.g. docs/configuration.md#enable-dash0-monitoring-for-a-namespace) are rewritten to the same-directory
 # sibling (configuration#enable-dash0-monitoring-for-a-namespace); the .md suffix is dropped in both cases because the
 # target website serves pages under extensionless URLs. Absolute URLs that happen to contain README.md or a docs/ path
@@ -39,7 +40,7 @@
 # The supported transformation types are:
 #
 # - prepend          Insert `content` at the very beginning of the document.
-# - replace-regex    Replace matches of the Python regular expression `find` with `replace`.
+# - replace-regex    Replace matches of the regular expression `find` with `replace`.
 #                    Optional `flags` is a list drawn from: multiline (^/$ match line boundaries),
 #                    dotall (. matches newlines), ignorecase.
 # - remove-line      Remove the whole line containing the literal marker `line`. If this leaves multiple
@@ -59,8 +60,17 @@
 common:
   - description: remove the leading top-level heading (the frontmatter title replaces it)
     type: replace-regex
-    find: '\A#\s+[^\n]*\n'
+    find: '^#\s+[^\n]*\n'
     replace: ''
+
+# Coverage guard: every file matching an `include` glob must be synced (declared under `files`) or explicitly
+# excluded (listed under `ignore`), otherwise the run fails. This restores the "add a new docs page -> the sync breaks
+# until it is wired up" safety net, so a new page cannot be silently skipped.
+coverage:
+  include:
+    - README.md
+    - docs/*.md
+  ignore: []
 
 files:
   - source: README.md
