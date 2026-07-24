@@ -1941,10 +1941,15 @@ func startDash0Controllers(
 		return err
 	}
 
+	// Every reconciler that implements SelfMonitoringMetricsClient (i.e. exposes
+	// InitializeSelfMonitoringMetrics) must be listed here. Missing entries silently drop the
+	// reconciler's counters — the metric handle stays nil and no values are ever emitted.
 	selfMonitoringClients := []selfmonitoringapiaccess.SelfMonitoringMetricsClient{
 		operatorConfigurationReconciler,
 		monitoringReconciler,
+		notificationChannelReconciler,
 		syntheticCheckReconciler,
+		teamReconciler,
 		viewReconciler,
 		spamFilterReconciler,
 		signalToMetricsReconciler,

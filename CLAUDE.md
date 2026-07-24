@@ -63,3 +63,11 @@ CRD specs must be fully typed with structured Go types (enums, nested objects, r
 kubebuilder validation annotations). Do not use opaque string fields to hold structured data. Validate the Go types
 against the canonical OpenAPI spec in `https://github.com/dash0hq/dash0hq/dash0/tree/main/modules/openapi-types/internal/spec/` to ensure they match the Dash0 API
 object schemas.
+
+### Adding a new reconciler with self-monitoring metrics
+
+Any reconciler that implements `InitializeSelfMonitoringMetrics` (i.e. exposes counters or other OpenTelemetry
+instruments) must be added to the `selfMonitoringClients` slice in `internal/startup/operator_manager_startup.go`.
+Missing that step is silent: the metric handle stays `nil`, `Reconcile` skips the counter update via its nil-guard,
+and the reconciler emits nothing for the entire process lifetime — no build error, no test failure, no runtime
+warning. When wiring a new reconciler, grep for `selfMonitoringClients` and add the new entry before opening the PR.
