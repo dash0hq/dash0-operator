@@ -757,6 +757,46 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				})
 
 				//nolint:dupl
+				It("should synchronize a team to the Dash0 API", func() {
+					deployTeamResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					// Teams are org-level, so the URL has no dataset query parameter.
+					routeRegex := "/api/teams/dash0-operator_.*_e2e-test-ns_team-e2e-test"
+
+					By("verifying the team has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("E2E test team"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInTeam(applicationUnderTestNamespace, "false")
+					By("verifying the team has been deleted via the Dash0 API (after setting dash0.com/enable=false)")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInTeam(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the team has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("E2E test team"))
+					verifyApiSyncRequest(req)
+
+					removeTeamResource(applicationUnderTestNamespace)
+					By("verifying the team has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:dupl
 				It("should synchronize a spam filter to the Dash0 API", func() {
 					deploySpamFilterResource(
 						applicationUnderTestNamespace,

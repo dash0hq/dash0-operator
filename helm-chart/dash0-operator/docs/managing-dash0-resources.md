@@ -72,7 +72,7 @@ Status:
 ```
 
 > **Note:** If you only want to manage dashboards, check rules, synthetic checks, views, notification channels, spam
-> filters and signal-to-metrics rules via the Dash0 operator, and you do not want it to collect telemetry, you can set
+> filters, signal-to-metrics rules and teams via the Dash0 operator, and you do not want it to collect telemetry, you can set
 > `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 > This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 > OpenTelemetry collector in your cluster.
@@ -259,7 +259,7 @@ Status:
 ```
 
 > **Note:** If you only want to manage dashboards, check rules, synthetic checks, views, notification channels, spam
-> filters and signal-to-metrics rules via the Dash0 operator, and you do not want it to collect telemetry, you can set
+> filters, signal-to-metrics rules and teams via the Dash0 operator, and you do not want it to collect telemetry, you can set
 > `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 > This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 > OpenTelemetry collector in your cluster.
@@ -331,7 +331,7 @@ Status:
 ```
 
 > **Note:** If you only want to manage dashboards, check rules, synthetic checks, views, notification channels, spam
-> filters and signal-to-metrics rules via the Dash0 operator, and you do not want it to collect telemetry, you can set
+> filters, signal-to-metrics rules and teams via the Dash0 operator, and you do not want it to collect telemetry, you can set
 > `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 > This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 > OpenTelemetry collector in your cluster.
@@ -399,7 +399,7 @@ Status:
 ```
 
 > **Note:** If you only want to manage dashboards, check rules, synthetic checks, views, notification channels, spam
-> filters and signal-to-metrics rules via the Dash0 operator, and you do not want it to collect telemetry, you can set
+> filters, signal-to-metrics rules and teams via the Dash0 operator, and you do not want it to collect telemetry, you can set
 > `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 > This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 > OpenTelemetry collector in your cluster.
@@ -909,6 +909,84 @@ Kind: Dash0SignalToMetrics
 Status:
   Synchronization Status: successful
   Synchronized At:        2026-05-16T12:00:00Z
+```
+
+### Managing Dash0 Teams
+
+You can manage your Dash0 teams via the Dash0 operator.
+Teams are an organization-scoped resource in Dash0.
+They do not belong to a dataset.
+
+Pre-requisites for this feature:
+
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have at least one Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+* The operator will only pick up team resources in namespaces that have a Dash0 monitoring resource deployed.
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
+  monitoring resource.
+
+With the prerequisites in place, you can manage Dash0 teams via the operator.
+The Dash0 operator will watch for team resources in all namespaces that have a Dash0 monitoring resource deployed, and
+synchronize the team resources with the Dash0 backend:
+
+* When a new team resource is created, the operator will create a corresponding team via Dash0's API.
+* When a team resource is changed, the operator will update the corresponding team via Dash0's API.
+* When a team resource is deleted, the operator will delete the corresponding team via Dash0's API.
+
+The custom resource definition for Dash0 teams can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-teams.yaml).
+
+Here is an example of a team resource:
+
+```yaml
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: backend-team
+spec:
+  display:
+    name: Backend Team
+    description: Owns backend services and the data platform.
+    color:
+      from: "#6366F1"
+      to: "#8B5CF6"
+  members:
+    - alice@example.com
+    - bob@example.com
+```
+
+The CR's `metadata.name` is the team's technical name, distinct from `spec.display.name`, which is the human-facing
+name shown in the Dash0 UI.
+Each entry in `spec.members` is either an email address or an internal member ID (the `dash0.com/id` label value,
+for example `user_01ABC...`).
+The Dash0 API resolves emails case-insensitively against the organization's members during reconciliation, so no
+client-side lookup is needed.
+Unresolvable emails cause the synchronization to fail with the offending emails reported on
+`status.synchronizationResults[i].synchronizationError`.
+
+Because teams are organization-scoped, the `dataset` setting of the Dash0 operator configuration resource does not
+apply.
+
+You can opt out of synchronization for individual team resources by adding the Kubernetes label
+`dash0.com/enable: false` to the team resource.
+If this label is added to a team which has previously been synchronized to Dash0, the operator will delete the
+corresponding team in Dash0.
+
+When a team resource has been synchronized to Dash0, the operator will write a summary of that synchronization
+operation to its status.
+The result of the synchronization operation will be written directly to the team resource status (not to the
+Dash0 monitoring resource).
+The status will also show whether an error occurred during synchronization.
+
+```yaml
+Kind: Dash0Team
+...
+Status:
+  Synchronization Status: successful
+  Synchronized At:        2026-07-16T12:00:00Z
 ```
 
 ### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)

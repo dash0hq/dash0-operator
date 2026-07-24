@@ -235,6 +235,10 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     `test-resources/customresources/dash0notificationchannel` to deploy a notification channel resource that will be
     synchronized to Dash0 via the Dash0 API. E.g. `DEPLOY_NOTIFICATION_CHANNEL=slack` will deploy `slack.yaml`.
     This defaults to being empty, which means no resource will be deployed.
+    * `DEPLOY_TEAM`: Set to the name of one of the example files in
+    `test-resources/customresources/dash0team` to deploy a team resource that will be synchronized to Dash0 via
+    the Dash0 API. E.g. `DEPLOY_TEAM=with-description` will deploy `with-description.yaml`.
+    This defaults to being empty, which means no resource will be deployed.
     * `DEPLOY_SIGNAL_TO_METRICS`: Set to the name of one of the example files in
     `test-resources/customresources/dash0signaltometrics` to deploy a signal-to-metrics resource that will be
     synchronized to Dash0 via the Dash0 API. E.g. `DEPLOY_SIGNAL_TO_METRICS=spans` will deploy `spans.yaml`.

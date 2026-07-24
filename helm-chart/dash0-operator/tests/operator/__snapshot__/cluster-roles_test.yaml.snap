@@ -209,6 +209,22 @@ cluster roles should match snapshot:
           - patch
           - update
       - apiGroups:
+          - dash0.com
+        resources:
+          - dash0teams
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - dash0.com
+        resources:
+          - dash0teams/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
           - operator.dash0.com
         resources:
           - dash0spamfilters

@@ -76,6 +76,9 @@ func main() {
 	router.PUT("/api/notification-channels/:origin", handleNotificationChannelRequest)
 	router.DELETE("/api/notification-channels/:origin", handleNotificationChannelRequest)
 
+	router.PUT("/api/teams/:origin", handleTeamRequest)
+	router.DELETE("/api/teams/:origin", handleTeamRequest)
+
 	router.PUT("/api/spam-filters/:origin", handleSpamFilterRequest)
 	router.DELETE("/api/spam-filters/:origin", handleSpamFilterRequest)
 
@@ -135,6 +138,74 @@ func handleDashboardRequest(ginCtx *gin.Context) {
 func handleNotificationChannelRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	respondWithOverrideOrOK(ginCtx)
+}
+
+// handleTeamRequest serves the PUT and DELETE endpoints under /api/teams/:origin.
+//
+// On PUT the mock echoes a canonical TeamDefinitionV1Alpha1 envelope carrying a stable Dash0 id, the caller's
+// origin, and the server-assigned source label, mirroring the create-response.yaml shared fixture. This is what
+// the operator parses to populate status.synchronizationResults[i].dash0Id.
+//
+// A response override configured via PUT /control/response-overrides short-circuits the happy path and lets tests
+// exercise the failure branches (e.g. HTTP 400 with an unresolvable-email body). Overrides matching the request's
+// method and route substring take precedence over the canned envelope. DELETE reuses the shared override-or-OK
+// handler because delete responses have no body to inspect.
+func handleTeamRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	if ginCtx.Request.Method == http.MethodDelete {
+		respondWithOverrideOrOK(ginCtx)
+		return
+	}
+	if statusCode, ok := consumeResponseOverride(ginCtx.Request); ok {
+		// The unresolvable-email 400 shape mirrors what the server returns in production so the operator's
+		// synchronizationResults[i].synchronizationError reflects a realistic body.
+		if statusCode == http.StatusBadRequest {
+			ginCtx.JSON(statusCode, map[string]any{
+				"message": "the following emails could not be resolved to any organization member: ghost@example.com",
+			})
+			return
+		}
+		ginCtx.JSON(statusCode, map[string]any{"message": "simulated failure"})
+		return
+	}
+	origin := ginCtx.Param("origin")
+	ginCtx.JSON(http.StatusOK, teamPutResponsePayload(origin))
+}
+
+// teamPutResponsePayload returns the TeamDefinitionV1Alpha1 envelope the mock echoes on a successful PUT. It
+// carries a stable dash0.com/id label, the origin the caller supplied, and mirrors the shape of the shared
+// create-response.yaml fixture, including internal-ID-shaped members (the server always echoes resolved IDs).
+func teamPutResponsePayload(origin string) map[string]any {
+	return map[string]any{
+		"apiVersion": "dash0.com/v1alpha1",
+		"kind":       "Dash0Team",
+		"metadata": map[string]any{
+			"name": "backend-team",
+			"labels": map[string]any{
+				"dash0.com/id":     "00000000-0000-0000-0000-000000000001",
+				"dash0.com/origin": origin,
+				"dash0.com/source": "operator",
+			},
+			"annotations": map[string]any{
+				"dash0.com/created-at": "2026-01-15T10:00:00Z",
+				"dash0.com/updated-at": "2026-01-15T10:00:00Z",
+			},
+		},
+		"spec": map[string]any{
+			"display": map[string]any{
+				"name":        "Backend Team",
+				"description": "Owns backend services and the data platform.",
+				"color": map[string]any{
+					"from": "#6366F1",
+					"to":   "#8B5CF6",
+				},
+			},
+			"members": []string{
+				"00000000-0000-0000-0000-0000000000A1",
+				"00000000-0000-0000-0000-0000000000A2",
+			},
+		},
+	}
 }
 
 func handleSamplingRuleRequest(ginCtx *gin.Context) {

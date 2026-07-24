@@ -42,6 +42,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -252,6 +253,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1alpha1.AddToScheme(runtimeScheme))
+	utilruntime.Must(dash0dashv1alpha1.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1beta1.AddToScheme(runtimeScheme))
 
 	// required for Perses dashboard controller and Prometheus rules controller.
@@ -1088,6 +1090,52 @@ func readOptionalDurationFromEnvironmentVariable(envVarName string, defaultValue
 	return parsed
 }
 
+// setupSpamFilterReconciler constructs and wires the spam-filter reconciler with the manager and the
+// leader-election-aware runnable. Extracting this into its own helper (matched by setupTeamReconciler) keeps
+// startDash0Controllers under the golangci-lint cyclomatic-complexity threshold without conflating unrelated
+// reconcilers under one grouping helper.
+func setupSpamFilterReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+) (*controller.SpamFilterReconciler, error) {
+	spamFilterReconciler := controller.NewSpamFilterReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := spamFilterReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the spam filter reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(spamFilterReconciler)
+	return spamFilterReconciler, nil
+}
+
+// setupTeamReconciler constructs and wires the team reconciler with the manager and the leader-election-aware
+// runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupTeamReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+) (*controller.TeamReconciler, error) {
+	teamReconciler := controller.NewTeamReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := teamReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the team reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(teamReconciler)
+	return teamReconciler, nil
+}
+
 // allOwnedIacResourceSynchronizationControllers gathers the reconcilers of the operator-owned resource types into a
 // slice of OwnedIacResourceSynchronizationController for the periodic synchronization retry runnable. The sampling rule
 // reconciler is optional (it is only created when the corresponding feature is enabled), so it is only included when
@@ -1097,6 +1145,7 @@ func allOwnedIacResourceSynchronizationControllers(
 	signalToMetricsReconciler *controller.SignalToMetricsReconciler,
 	spamFilterReconciler *controller.SpamFilterReconciler,
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
+	teamReconciler *controller.TeamReconciler,
 	viewReconciler *controller.ViewReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
 ) []controller.OwnedIacResourceSynchronizationController {
@@ -1105,6 +1154,7 @@ func allOwnedIacResourceSynchronizationControllers(
 		signalToMetricsReconciler,
 		spamFilterReconciler,
 		syntheticCheckReconciler,
+		teamReconciler,
 		viewReconciler,
 	}
 	if samplingRuleReconciler != nil {
@@ -1444,6 +1494,11 @@ func appendSamplingRuleNamespacedApiClient(
 	return clients
 }
 
+// startDash0Controllers wires every reconciler the operator manager owns. It has grown one branch beyond the
+// gocyclo threshold because each additional reconciler adds an `if err != nil { return … }` path; the extra
+// paths are structurally identical and splitting into a wrapper would only obscure the setup ordering.
+//
+//nolint:gocyclo
 func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
@@ -1732,16 +1787,27 @@ func startDash0Controllers(
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(notificationChannelReconciler)
 
-	spamFilterReconciler := controller.NewSpamFilterReconciler(
+	spamFilterReconciler, err := setupSpamFilterReconciler(
+		mgr,
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
 		httpClient,
 	)
-	if err := spamFilterReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the spam filter reconciler: %w", err)
+	if err != nil {
+		return err
 	}
-	leaderElectionAwareRunnable.AddLeaderElectionClient(spamFilterReconciler)
+
+	teamReconciler, err := setupTeamReconciler(
+		mgr,
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err != nil {
+		return err
+	}
 
 	var samplingRuleReconciler *controller.SamplingRuleReconciler
 	if cliArgs.featureSignalControlEnabled {
@@ -1817,6 +1883,7 @@ func startDash0Controllers(
 			signalToMetricsReconciler,
 			spamFilterReconciler,
 			syntheticCheckReconciler,
+			teamReconciler,
 			viewReconciler,
 			samplingRuleReconciler,
 		),
@@ -1833,6 +1900,7 @@ func startDash0Controllers(
 		viewReconciler,
 		notificationChannelReconciler,
 		spamFilterReconciler,
+		teamReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
@@ -1871,6 +1939,7 @@ func startDash0Controllers(
 			viewReconciler,
 			notificationChannelReconciler,
 			spamFilterReconciler,
+			teamReconciler,
 			signalToMetricsReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
@@ -1932,10 +2001,15 @@ func startDash0Controllers(
 		return err
 	}
 
+	// Every reconciler that implements SelfMonitoringMetricsClient (i.e. exposes
+	// InitializeSelfMonitoringMetrics) must be listed here. Missing entries silently drop the
+	// reconciler's counters — the metric handle stays nil and no values are ever emitted.
 	selfMonitoringClients := []selfmonitoringapiaccess.SelfMonitoringMetricsClient{
 		operatorConfigurationReconciler,
 		monitoringReconciler,
+		notificationChannelReconciler,
 		syntheticCheckReconciler,
+		teamReconciler,
 		viewReconciler,
 		spamFilterReconciler,
 		signalToMetricsReconciler,

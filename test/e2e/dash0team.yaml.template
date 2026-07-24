@@ -1,0 +1,19 @@
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Team
+metadata:
+  name: team-e2e-test
+  labels:
+    app.kubernetes.io/name: team-e2e-test
+{{- if .Dash0ComEnabled }}
+    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
+{{- end }}
+spec:
+  display:
+    name: E2E test team
+    description: Team resource used by the operator e2e suite.
+    color:
+      from: "#6366F1"
+      to: "#8B5CF6"
+  members:
+    - alice@example.com
+    - bob@example.com
