@@ -61,6 +61,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 		e2eKubernetesContext = os.Getenv("E2E_KUBECTX")
 		verboseHttp = strings.ToLower(os.Getenv("E2E_VERBOSE_HTTP")) == "true"
+		includeProfilingTests = strings.ToLower(os.Getenv("E2E_INCLUDE_PROFILING_TESTS")) == "true"
 		if e2eKubernetesContext == "" {
 			Fail(
 				fmt.Sprintf(
@@ -3818,6 +3819,10 @@ trace_statements:
 
 	Context("with an existing operator deployment and profiling enabled", func() {
 		BeforeAll(func() {
+			if !includeProfilingTests {
+				Skip("profiling e2e tests are excluded by default because the eBPF profiler does not work in kind; " +
+					"set E2E_INCLUDE_PROFILING_TESTS=true to include them")
+			}
 			By("deploying the Dash0 operator with profiling enabled")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
@@ -3840,6 +3845,9 @@ trace_statements:
 		})
 
 		AfterAll(func() {
+			if !includeProfilingTests {
+				return
+			}
 			removeAllTestApplications(applicationUnderTestNamespace)
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			teardownEbpfProfiler(operatorNamespace)
