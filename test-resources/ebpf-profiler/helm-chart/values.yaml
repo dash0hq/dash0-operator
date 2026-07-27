@@ -3,7 +3,7 @@
 
 image:
   repository: otel/opentelemetry-collector-ebpf-profiler
-  tag: 0.153.0
+  tag: 0.157.0
 
 collector:
   endpoint: dash0-operator-opentelemetry-collector-service.dash0-system.svc.cluster.local:4317
