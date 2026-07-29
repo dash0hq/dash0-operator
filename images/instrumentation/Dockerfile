@@ -138,6 +138,8 @@ COPY copy-instrumentation.sh /
 COPY --from=download-injector-binary /libotelinject.so /dash0-instrumentation/injector/libotelinject.so
 COPY opentelemetry-injector/injector.conf /dash0-instrumentation/injector/injector.conf
 COPY opentelemetry-injector/injector-with-python.conf /dash0-instrumentation/injector/injector-with-python.conf
+COPY opentelemetry-injector/injector-with-ruby.conf /dash0-instrumentation/injector/injector-with-ruby.conf
+COPY opentelemetry-injector/injector-with-python-and-ruby.conf /dash0-instrumentation/injector/injector-with-python-and-ruby.conf
 COPY --from=build-dotnet /glibc /dash0-instrumentation/agents/dotnet/glibc
 COPY --from=build-dotnet /musl /dash0-instrumentation/agents/dotnet/musl
 COPY --from=build-jvm /dash0-instrumentation/jvm/build /dash0-instrumentation/agents/jvm
