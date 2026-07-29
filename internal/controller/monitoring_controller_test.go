@@ -91,6 +91,7 @@ var _ = Describe(
 						nil,
 						false,
 						false,
+						false,
 					),
 				)
 				oTelColResourceManager := otelcolresources.NewOTelColResourceManager(

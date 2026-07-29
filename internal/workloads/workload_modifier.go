@@ -44,6 +44,8 @@ const (
 	envVarOtelInjectorConfigFileName                                    = "OTEL_INJECTOR_CONFIG_FILE"
 	envVarOtelInjectorConfigFileValue                                   = "/__otel_auto_instrumentation/injector/injector.conf"
 	envVarOtelInjectorConfigFilePythonEnabledValue                      = "/__otel_auto_instrumentation/injector/injector-with-python.conf"
+	envVarOtelInjectorConfigFileRubyEnabledValue                        = "/__otel_auto_instrumentation/injector/injector-with-ruby.conf"
+	envVarOtelInjectorConfigFilePythonAndRubyEnabledValue               = "/__otel_auto_instrumentation/injector/injector-with-python-and-ruby.conf"
 	envVarOtelExporterOtlpEndpointName                                  = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envVarOtelExporterOtlpProtocolName                                  = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	envVarOtelLogsExporterName                                          = "OTEL_LOGS_EXPORTER"
@@ -670,15 +672,11 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	m.addOtelLogsExporterEnvVar(container)
 
 	instrumentationIssues = m.addOrAppendToLdPreloadEnvVar(container, instrumentationIssues, perContainerLogger)
-	otelInjectorConfigFile := envVarOtelInjectorConfigFileValue
-	if m.clusterInstrumentationConfig.EnablePythonAutoInstrumentation {
-		otelInjectorConfigFile = envVarOtelInjectorConfigFilePythonEnabledValue
-	}
 	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name:  envVarOtelInjectorConfigFileName,
-			Value: otelInjectorConfigFile,
+			Value: otelInjectorConfigFileFor(m.clusterInstrumentationConfig),
 		},
 	)
 
@@ -1338,6 +1336,23 @@ func captureSqlQueryParametersCanBeUpdatedForContainer(
 	return false
 }
 
+// otelInjectorConfigFileFor returns the value for the OTEL_INJECTOR_CONFIG_FILE environment variable, that is, the
+// injector configuration file matching the runtimes that are enabled via opt-in. The instrumentation image ships one
+// configuration file per combination.
+func otelInjectorConfigFileFor(clusterInstrumentationConfig *util.ClusterInstrumentationConfig) string {
+	switch {
+	case clusterInstrumentationConfig.EnablePythonAutoInstrumentation &&
+		clusterInstrumentationConfig.EnableRubyAutoInstrumentation:
+		return envVarOtelInjectorConfigFilePythonAndRubyEnabledValue
+	case clusterInstrumentationConfig.EnablePythonAutoInstrumentation:
+		return envVarOtelInjectorConfigFilePythonEnabledValue
+	case clusterInstrumentationConfig.EnableRubyAutoInstrumentation:
+		return envVarOtelInjectorConfigFileRubyEnabledValue
+	default:
+		return envVarOtelInjectorConfigFileValue
+	}
+}
+
 func otelInjectorConfEnvVarWillBeUpdatedForAtLeastOneContainer(
 	containers []corev1.Container,
 	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
@@ -1358,10 +1373,7 @@ func otelInjectorConfEnvVarWillBeUpdatedForAtLeastOneContainer(
 		}
 
 		currentEnvVarValue := (*envVarOnContainer).Value
-		desiredValue := envVarOtelInjectorConfigFileValue
-		if clusterInstrumentationConfig.EnablePythonAutoInstrumentation {
-			desiredValue = envVarOtelInjectorConfigFilePythonEnabledValue
-		}
+		desiredValue := otelInjectorConfigFileFor(clusterInstrumentationConfig)
 
 		if strings.TrimSpace(currentEnvVarValue) != strings.TrimSpace(desiredValue) {
 			// The container has the wrong value for OTEL_INJECTOR_CONFIG_FILE, this will be updated in

@@ -1337,6 +1337,7 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 			nil,
 			false,
 			false,
+			false,
 		),
 		ClusterUidTest,
 		OperatorManagerDeployment.Namespace,

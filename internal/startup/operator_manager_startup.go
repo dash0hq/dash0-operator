@@ -117,6 +117,7 @@ type environmentVariables struct {
 	kubeletStatsReceiverConfig                  *util.KubeletStatsReceiverConfig
 	instrumentationDebug                        bool
 	enablePythonAutoInstrumentation             bool
+	enableRubyAutoInstrumentation               bool
 	debugVerbosityDetailed                      bool
 	disableCollectorResourceWatches             bool
 	enablePprofExtension                        bool
@@ -207,6 +208,7 @@ const (
 	pprofPortEnvVarName                              = "DASH0_PPROF_PORT"
 	instrumentationDebugEnvVarName                   = "DASH0_INSTRUMENTATION_DEBUG"
 	enablePythonAutoInstrumentationEnvVarName        = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
+	enableRubyAutoInstrumentationEnvVarName          = "DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION"
 	disableCollectorResourceWatchesEnvVarName        = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName                 = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
@@ -266,8 +268,7 @@ func init() {
 func Start() {
 	ctx := context.Background()
 
-	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
-	developmentMode := isSet && strings.ToLower(developmentModeRaw) == envVarValueTrue
+	developmentMode := readBooleanEnvVar(developmentModeEnvVarName)
 
 	cliArgs := defineCommandLineArguments()
 	opts := parseCommandLineOptions(cliArgs, developmentMode)
@@ -785,6 +786,12 @@ func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 	return delegatingZapCoreWrapper
 }
 
+// readBooleanEnvVar reports whether the environment variable with the given name is set to "true", ignoring case.
+func readBooleanEnvVar(name string) bool {
+	value, isSet := os.LookupEnv(name)
+	return isSet && strings.ToLower(value) == envVarValueTrue
+}
+
 func readEnvironmentVariables(logger logd.Logger) error {
 	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
@@ -882,8 +889,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	agent0ConnectorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(agent0ConnectorImagePullPolicyEnvVarName)
 	agent0ConnectorEnabled := readOptionalBoolFromEnvironmentVariable(agent0ConnectorEnabledEnvVarName, false)
 	agent0ConnectorServerAddress, _ := os.LookupEnv(agent0ConnectorServerAddressEnvVarName)
-	agent0ConnectorInsecureRaw, isSet := os.LookupEnv(agent0ConnectorInsecureEnvVarName)
-	agent0ConnectorInsecure := isSet && strings.ToLower(agent0ConnectorInsecureRaw) == envVarValueTrue
+	agent0ConnectorInsecure := readBooleanEnvVar(agent0ConnectorInsecureEnvVarName)
 	agent0ConnectorToken, _ := os.LookupEnv(agent0ConnectorTokenEnvVarName)
 	agent0ConnectorSecretRefName, _ := os.LookupEnv(agent0ConnectorSecretRefNameEnvVarName)
 	agent0ConnectorSecretRefKey, _ := os.LookupEnv(agent0ConnectorSecretRefKeyEnvVarName)
@@ -901,16 +907,13 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sPodIpEnvVarName)
 	}
 
-	instrumentationDebugRaw, isSet := os.LookupEnv(instrumentationDebugEnvVarName)
-	instrumentationDebug := isSet && strings.ToLower(instrumentationDebugRaw) == envVarValueTrue
-	enablePythonAutoInstrumentationRaw, isSet := os.LookupEnv(enablePythonAutoInstrumentationEnvVarName)
-	enablePythonAutoInstrumentation := isSet && strings.ToLower(enablePythonAutoInstrumentationRaw) == envVarValueTrue
+	instrumentationDebug := readBooleanEnvVar(instrumentationDebugEnvVarName)
+	enablePythonAutoInstrumentation := readBooleanEnvVar(enablePythonAutoInstrumentationEnvVarName)
+	enableRubyAutoInstrumentation := readBooleanEnvVar(enableRubyAutoInstrumentationEnvVarName)
 
-	debugVerbosityDetailedRaw, isSet := os.LookupEnv(debugVerbosityDetailedEnvVarName)
-	debugVerbosityDetailed := isSet && strings.ToLower(debugVerbosityDetailedRaw) == envVarValueTrue
+	debugVerbosityDetailed := readBooleanEnvVar(debugVerbosityDetailedEnvVarName)
 
-	disableCollectorResourceWatchesRaw, isSet := os.LookupEnv(disableCollectorResourceWatchesEnvVarName)
-	disableCollectorResourceWatches := isSet && strings.ToLower(disableCollectorResourceWatchesRaw) == envVarValueTrue
+	disableCollectorResourceWatches := readBooleanEnvVar(disableCollectorResourceWatchesEnvVarName)
 
 	var sendBatchSize *uint32
 	sendBatchSizeRaw, isSet := os.LookupEnv(sendBatchSizeEnvVarName)
@@ -934,21 +937,16 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		}
 	}
 
-	k8sAttributesDisableReplicasetInformerRaw, isSet := os.LookupEnv(k8sAttributesDisableReplicasetInformerEnvVarName)
-	k8sAttributesDisableReplicasetInformer :=
-		isSet && strings.ToLower(k8sAttributesDisableReplicasetInformerRaw) == envVarValueTrue
+	k8sAttributesDisableReplicasetInformer := readBooleanEnvVar(k8sAttributesDisableReplicasetInformerEnvVarName)
 
-	k8sAttributesWaitForMetadataRaw, isSet := os.LookupEnv(k8sAttributesWaitForMetadataEnvVarName)
-	k8sAttributesWaitForMetadata := isSet && strings.ToLower(k8sAttributesWaitForMetadataRaw) == envVarValueTrue
+	k8sAttributesWaitForMetadata := readBooleanEnvVar(k8sAttributesWaitForMetadataEnvVarName)
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
 
 	kubeletStatsAutoDetectEndpoint, kubeletStatsReceiverConfig := readKubeletStatsReceiverConfigFromEnv()
 
-	enablePprofExtensionRaw, isSet := os.LookupEnv(enablePprofExtensionEnvVarName)
-	enablePprofExtension := isSet && strings.ToLower(enablePprofExtensionRaw) == envVarValueTrue
+	enablePprofExtension := readBooleanEnvVar(enablePprofExtensionEnvVarName)
 
-	compressConfigMapsRaw, isSet := os.LookupEnv(compressConfigMapsEnvVarName)
-	compressConfigMaps := isSet && strings.ToLower(compressConfigMapsRaw) == envVarValueTrue
+	compressConfigMaps := readBooleanEnvVar(compressConfigMapsEnvVarName)
 
 	envVars = environmentVariables{
 		operatorNamespace:                           operatorNamespace,
@@ -997,6 +995,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		kubeletStatsReceiverConfig:                  kubeletStatsReceiverConfig,
 		instrumentationDebug:                        instrumentationDebug,
 		enablePythonAutoInstrumentation:             enablePythonAutoInstrumentation,
+		enableRubyAutoInstrumentation:               enableRubyAutoInstrumentation,
 		debugVerbosityDetailed:                      debugVerbosityDetailed,
 		disableCollectorResourceWatches:             disableCollectorResourceWatches,
 		enablePprofExtension:                        enablePprofExtension,
@@ -1019,8 +1018,7 @@ func readKubeletStatsReceiverConfigFromEnv() (bool, *util.KubeletStatsReceiverCo
 	}
 	endpoint, _ := os.LookupEnv(kubeletStatsEndpointEnvVarName)
 	authType, _ := os.LookupEnv(kubeletStatsAuthTypeEnvVarName)
-	insecureSkipVerifyRaw, isSet := os.LookupEnv(kubeletStatsInsecureSkipVerifyEnvVarName)
-	insecureSkipVerify := isSet && strings.ToLower(insecureSkipVerifyRaw) == envVarValueTrue
+	insecureSkipVerify := readBooleanEnvVar(kubeletStatsInsecureSkipVerifyEnvVarName)
 	return false, &util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           endpoint,
@@ -1433,6 +1431,8 @@ func startOperatorManager(
 		envVars.instrumentationDebug,
 		"Python auto-instrumentation enabled",
 		envVars.enablePythonAutoInstrumentation,
+		"Ruby auto-instrumentation enabled",
+		envVars.enableRubyAutoInstrumentation,
 		"watch collector resources",
 		!envVars.disableCollectorResourceWatches,
 		"Kubernetes version",
@@ -1586,6 +1586,7 @@ func startDash0Controllers(
 		cliArgs.instrumentationDelays,
 		envVars.instrumentationDebug,
 		envVars.enablePythonAutoInstrumentation,
+		envVars.enableRubyAutoInstrumentation,
 	)
 	clusterInstrumentationConfig.SetKubernetesVersion(kubernetesVersionInfo, kubernetesVersionDetected)
 	clusterUid, err := cluster.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, setupLog)
