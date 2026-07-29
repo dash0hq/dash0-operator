@@ -566,6 +566,9 @@ operator:
     # If set to true, it enables Python auto-instrumentation (beta).
     enablePythonAutoInstrumentation: false
 
+    # If set to true, it enables Ruby auto-instrumentation (beta).
+    enableRubyAutoInstrumentation: false
+
     # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator
     # startup or when enabling instrumentation for a new namespace via the Dash0Monitoring resource. This delay will be
     # applied after each individual workload.

@@ -208,6 +208,7 @@ type ClusterInstrumentationConfig struct {
 	InstrumentationDelays           *DelayConfig
 	InstrumentationDebug            bool
 	EnablePythonAutoInstrumentation bool
+	EnableRubyAutoInstrumentation   bool
 }
 
 func NewClusterInstrumentationConfig(
@@ -219,6 +220,7 @@ func NewClusterInstrumentationConfig(
 	instrumentationDelays *DelayConfig,
 	instrumentationDebug bool,
 	enablePythonAutoInstrumentation bool,
+	enableRubyAutoInstrumentation bool,
 ) *ClusterInstrumentationConfig {
 	c := &ClusterInstrumentationConfig{
 		Images:                          images,
@@ -227,6 +229,7 @@ func NewClusterInstrumentationConfig(
 		InstrumentationDelays:           instrumentationDelays,
 		InstrumentationDebug:            instrumentationDebug,
 		EnablePythonAutoInstrumentation: enablePythonAutoInstrumentation,
+		EnableRubyAutoInstrumentation:   enableRubyAutoInstrumentation,
 	}
 	c.ExtraConfig.Store(&extraConfig)
 	c.ResolvedDelivery.Store(&instrumentationDelivery)

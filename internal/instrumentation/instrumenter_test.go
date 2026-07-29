@@ -64,6 +64,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				nil,
 				false,
 				false,
+				false,
 			),
 		)
 	})
@@ -805,6 +806,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 					cluster.ResolvedInstrumentationDeliveryInitContainer,
 					nil,
 					true,
+					false,
 					false,
 				),
 			)
