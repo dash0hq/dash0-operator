@@ -24,6 +24,7 @@ Supported runtimes for automatic workload instrumentation:
 * Node.js 16+
 * .NET
 * Python ([opt-in](https://github.com/dash0hq/dash0-operator/blob/0.100.0/helm-chart/dash0-operator/values.yaml#L408-L409))
+* Ruby 3.3+ ([opt-in](docs/configuration.md#ruby-auto-instrumentation))
 
 Metrics and log collection are independent of the runtime of workloads.
 
@@ -82,7 +83,7 @@ This README provides a quick overview. Detailed documentation is organized by to
 
 * **[Installation](docs/installation.md)** - Comprehensive installation guide
 * **[Configuration](docs/configuration.md)** - Backend connections, namespace monitoring, secrets, datasets, and operator configuration
-* **[Auto-Instrumentation](docs/auto-instrumentation.md)** - Workload instrumentation details, Python support, disabling instrumentation, and custom label selectors
+* **[Auto-Instrumentation](docs/auto-instrumentation.md)** - Workload instrumentation details, Python and Ruby support, disabling instrumentation, and custom label selectors
 * **[Metrics and Scraping](docs/metrics-and-scraping.md)** - Metrics collection, Prometheus endpoint scraping, and Prometheus CRD support
 * **[Profiling](docs/profiling.md)** - Profiling support and OpenTelemetry eBPF profiler setup
 
@@ -100,7 +101,7 @@ This README provides a quick overview. Detailed documentation is organized by to
 
 ## Key Features
 
-* **Automatic Workload Instrumentation** - Automatically add OpenTelemetry tracing to Java, Node.js, .NET, and Python applications
+* **Automatic Workload Instrumentation** - Automatically add OpenTelemetry tracing to Java, Node.js, .NET, Python and Ruby applications
 * **Kubernetes Metrics Collection** - Collect cluster, node, pod, and container metrics
 * **Log Collection** - Gather pod logs and forward them to Dash0
 * **Prometheus Scraping** - Scrape Prometheus endpoints and support for Prometheus CRDs (ServiceMonitor, PodMonitor, ScrapeConfig)
