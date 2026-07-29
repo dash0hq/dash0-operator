@@ -577,6 +577,10 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
         testCmd = ['node', `/test-cases/${testCase}/index.js`];
         break;
 
+      case 'ruby':
+        testCmd = ['ruby', `/test-cases/${testCase}/app.rb`];
+        break;
+
       default:
         console.error(
           `Error: Test handler for runtime "${runtime}" is not implemented. Please update "${__filename}", function runTestCasesForArchitectureRuntimeAndBaseImage.`,
