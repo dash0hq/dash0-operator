@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# one base image per line
+ruby:3.4.10-slim-trixie
+ruby:3.4.10-alpine3.23
+
+# Ruby 3.3 is the minimum supported Ruby version.
+ruby:3.3.12-slim-trixie
+
+# Ruby 3.2 is not supported, test-cases/verify-distro-is-loaded/app.rb checks for that as well.
+ruby:3.2.11-slim-trixie
