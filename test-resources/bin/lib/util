@@ -404,6 +404,9 @@ determine_test_app_images() {
   test_app_python_image_repository="${image_repository_prefix}dash0-operator-python-flask-test-app"
   test_app_python_image_tag="$image_tag"
   test_app_python_image_pull_policy="$pull_policy"
+  test_app_ruby_image_repository="${image_repository_prefix}dash0-operator-ruby-rails-test-app"
+  test_app_ruby_image_tag="$image_tag"
+  test_app_ruby_image_pull_policy="$pull_policy"
   telemetry_matcher_image_repository="${image_repository_prefix}telemetry-matcher"
   telemetry_matcher_image_tag="$image_tag"
   telemetry_matcher_image_pull_policy="$pull_policy"
@@ -446,6 +449,16 @@ determine_test_app_images() {
   fi
   if [[ -n "${TEST_APP_PYTHON_IMAGE_PULL_POLICY:-}" ]]; then
     test_app_python_image_pull_policy="$TEST_APP_PYTHON_IMAGE_PULL_POLICY"
+  fi
+
+  if [[ -n "${TEST_APP_RUBY_IMAGE_REPOSITORY:-}" ]]; then
+    test_app_ruby_image_repository="$TEST_APP_RUBY_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${TEST_APP_RUBY_IMAGE_TAG:-}" ]]; then
+    test_app_ruby_image_tag="$TEST_APP_RUBY_IMAGE_TAG"
+  fi
+  if [[ -n "${TEST_APP_RUBY_IMAGE_PULL_POLICY:-}" ]]; then
+    test_app_ruby_image_pull_policy="$TEST_APP_RUBY_IMAGE_PULL_POLICY"
   fi
 
   if [[ -n "${TELEMETRY_MATCHER_IMAGE_REPOSITORY:-}" ]]; then
@@ -1003,6 +1016,38 @@ deploy_application_under_monitoring() {
         "$test_app_python_image_repository" \
         "$test_app_python_image_tag" \
         "$test_app_python_image_pull_policy" \
+        "$extraValues"
+    fi
+  elif [[ "${runtime_under_test:-}" = "ruby" ]]; then
+    build_test_application test-app-image-ruby
+    push_test_application_image push-test-app-image-ruby
+    helm_install_test_application \
+      "test-resources/ruby/rails/helm-chart" \
+      "test-app-ruby" \
+      "${target_namespace}" \
+      "${kind}" \
+      "$test_app_ruby_image_repository" \
+      "$test_app_ruby_image_tag" \
+      "$test_app_ruby_image_pull_policy" \
+      "$extraValues"
+    if [[ "$additional_namespaces" = true ]]; then
+      helm_install_test_application \
+        "test-resources/ruby/rails/helm-chart" \
+        "test-app-ruby-ns2" \
+        "test-namespace-2" \
+        "daemonset" \
+        "$test_app_ruby_image_repository" \
+        "$test_app_ruby_image_tag" \
+        "$test_app_ruby_image_pull_policy" \
+        "$extraValues"
+      helm_install_test_application \
+        "test-resources/ruby/rails/helm-chart" \
+        "test-app-ruby-ns3" \
+        "test-namespace-3" \
+        "statefulset" \
+        "$test_app_ruby_image_repository" \
+        "$test_app_ruby_image_tag" \
+        "$test_app_ruby_image_pull_policy" \
         "$extraValues"
     fi
   else

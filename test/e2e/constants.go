@@ -28,6 +28,11 @@ const (
 	workloadNamePython      = "dash0-operator-python-flask-test"
 	releaseNamePythonPrefix = "python"
 
+	runtimeTypeLabelRuby  = "Ruby"
+	applicationPathRuby   = "test-resources/ruby/rails"
+	workloadNameRuby      = "dash0-operator-ruby-rails-test"
+	releaseNameRubyPrefix = "ruby"
+
 	defaultIngressPort = "8080"
 )
 
@@ -36,4 +41,5 @@ var (
 	chartPathJvm    = fmt.Sprintf("%s/helm-chart", applicationPathJvm)
 	chartPathNodeJs = fmt.Sprintf("%s/helm-chart", applicationPathNodeJs)
 	chartPathPython = fmt.Sprintf("%s/helm-chart", applicationPathPython)
+	chartPathRuby   = fmt.Sprintf("%s/helm-chart", applicationPathRuby)
 )
