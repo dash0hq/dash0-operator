@@ -61,6 +61,19 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "--follow is rejected", command: "kubectl", arguments: []string{"logs", "x", "--follow"}, allowed: false},
 		{name: "--follow=true is rejected", command: "kubectl", arguments: []string{"logs", "x", "--follow=true"}, allowed: false},
 
+		// Flags outside the allowlist are rejected, whatever they are for; --raw would otherwise turn "get" into an
+		// arbitrary API request, bypassing the resource-based secret check below.
+		{name: "--raw is rejected", command: "kubectl", arguments: []string{"get", "--raw", "/api/v1/namespaces/default/secrets/my-secret"}, allowed: false},
+		{name: "--raw=value is rejected", command: "kubectl", arguments: []string{"get", "--raw=/api/v1/namespaces/default/secrets/my-secret"}, allowed: false},
+		{name: "--raw for a cluster-wide collection is rejected", command: "kubectl", arguments: []string{"get", "--raw", "/api/v1/secrets"}, allowed: false},
+		{name: "--raw for a configmap is rejected", command: "kubectl", arguments: []string{"get", "--raw", "/api/v1/namespaces/default/configmaps/my-cm"}, allowed: false},
+		{name: "an unknown flag is rejected", command: "kubectl", arguments: []string{"get", "pods", "--show-managed-fields-typo"}, allowed: false},
+		{name: "a grouped shorthand with an unknown member is rejected", command: "kubectl", arguments: []string{"get", "pods", "-Az"}, allowed: false},
+		{name: "--filename is rejected", command: "kubectl", arguments: []string{"get", "--filename", "pod.yaml"}, allowed: false},
+		{name: "--kustomize is rejected", command: "kubectl", arguments: []string{"get", "-k", "dir"}, allowed: false},
+		{name: "the end-of-flags separator is rejected", command: "kubectl", arguments: []string{"get", "pods", "--"}, allowed: false},
+		{name: "a bare dash is rejected", command: "kubectl", arguments: []string{"get", "pods", "-"}, allowed: false},
+
 		{name: "impersonation (--as) is rejected", command: "kubectl", arguments: []string{"get", "pods", "--as", "system:admin"}, allowed: false},
 		{name: "--as-group is rejected", command: "kubectl", arguments: []string{"get", "pods", "--as-group=system:masters"}, allowed: false},
 		{name: "--server is rejected", command: "kubectl", arguments: []string{"get", "pods", "--server", "https://evil"}, allowed: false},
@@ -118,6 +131,15 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "presence check of a secret with a leading flag is allowed",
 			command: "kubectl", arguments: []string{"-n", "x", "get", "secret", "my-secret"}, allowed: true},
 
+		{name: "secret with the output format in a grouped shorthand is rejected",
+			command: "kubectl", arguments: []string{"get", "secret", "-Aoyaml"}, allowed: false},
+		{name: "secret with an allowed output format overridden by yaml is rejected",
+			command: "kubectl", arguments: []string{"get", "secret", "-o", "name", "-o", "yaml"}, allowed: false},
+		{name: "secret with yaml overridden by an allowed output format is rejected",
+			command: "kubectl", arguments: []string{"get", "secret", "-o", "yaml", "-o", "name"}, allowed: false},
+		{name: "secret with --template in front of the resource is rejected",
+			command: "kubectl", arguments: []string{"get", "--template", "{{.data}}", "secret"}, allowed: false},
+
 		// Non-secret resources are unaffected by the secret-content check.
 		{name: "non-secret resource as yaml is allowed",
 			command: "kubectl", arguments: []string{"get", "pods", "-o", "yaml"}, allowed: true},
@@ -125,6 +147,28 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "pods", "secret", "-o", "yaml"}, allowed: true},
 		{name: "namespace named secret as yaml is allowed",
 			command: "kubectl", arguments: []string{"get", "pods", "-n", "secret", "-o", "yaml"}, allowed: true},
+		{name: "label selector value named secret is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-l", "app=secret", "-o", "yaml"}, allowed: true},
+
+		// Allowlisted flags keep working, in every spelling and combination.
+		{name: "all-namespaces and output shaping flags are allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-A", "--no-headers", "--show-labels", "-L", "app"}, allowed: true},
+		{name: "selector, field selector and sort-by are allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-l", "app=x", "--field-selector", "status.phase=Running", "--sort-by", ".metadata.name"}, allowed: true},
+		{name: "a value starting with a dash is not mistaken for a flag",
+			command: "kubectl", arguments: []string{"logs", "my-pod", "--tail", "-1"}, allowed: true},
+		{name: "logs flags are allowed",
+			command: "kubectl", arguments: []string{"logs", "my-pod", "-c", "c1", "--since", "5m", "--previous", "--timestamps"}, allowed: true},
+		{name: "grouped shorthands of allowed flags are allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-Ao", "wide"}, allowed: true},
+		{name: "output format attached to a shorthand is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-owide"}, allowed: true},
+		{name: "top and events flags are allowed",
+			command: "kubectl", arguments: []string{"events", "--for", "pod/my-pod", "--types", "Warning"}, allowed: true},
+		{name: "api-resources flags are allowed",
+			command: "kubectl", arguments: []string{"api-resources", "--api-group", "apps", "--namespaced=false", "-o", "name"}, allowed: true},
+		{name: "explain flags are allowed",
+			command: "kubectl", arguments: []string{"explain", "pods", "--recursive", "--api-version", "v1"}, allowed: true},
 	}
 
 	for _, tt := range tests {
@@ -136,6 +180,85 @@ func TestValidateCommandRequest(t *testing.T) {
 			}
 			if !tt.allowed && err == nil {
 				t.Errorf("expected request to be rejected, but it was allowed")
+			}
+		})
+	}
+}
+
+func TestInspectFlagToken(t *testing.T) {
+	tests := []struct {
+		token           string
+		allowed         bool
+		valueFlag       string
+		inlineValue     string
+		consumesNextArg bool
+	}{
+		{token: "--namespace", allowed: true, valueFlag: "namespace", consumesNextArg: true},
+		{token: "--namespace=x", allowed: true, valueFlag: "namespace", inlineValue: "x"},
+		{token: "--all-namespaces", allowed: true},
+		{token: "--namespaced=false", allowed: true},
+		{token: "-n", allowed: true, valueFlag: "n", consumesNextArg: true},
+		{token: "-nx", allowed: true, valueFlag: "n", inlineValue: "x"},
+		{token: "-n=x", allowed: true, valueFlag: "n", inlineValue: "x"},
+		{token: "-A", allowed: true},
+		{token: "-Ao", allowed: true, valueFlag: "o", consumesNextArg: true},
+		{token: "-Aoyaml", allowed: true, valueFlag: "o", inlineValue: "yaml"},
+		{token: "-oyaml", allowed: true, valueFlag: "o", inlineValue: "yaml"},
+		{token: "--raw"},
+		{token: "--raw=/api/v1/secrets"},
+		{token: "-w"},
+		{token: "-Az"},
+		{token: "--"},
+		{token: "-"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.token, func(t *testing.T) {
+			info := inspectFlagToken(tt.token)
+			if info.allowed != tt.allowed {
+				t.Fatalf("expected allowed=%t, got %t", tt.allowed, info.allowed)
+			}
+			if info.valueFlag != tt.valueFlag {
+				t.Errorf("expected valueFlag %q, got %q", tt.valueFlag, info.valueFlag)
+			}
+			if info.hasInlineValue && info.inlineValue != tt.inlineValue {
+				t.Errorf("expected inline value %q, got %q", tt.inlineValue, info.inlineValue)
+			}
+			if info.hasInlineValue == (tt.inlineValue == "") {
+				t.Errorf("expected hasInlineValue=%t, got %t", tt.inlineValue != "", info.hasInlineValue)
+			}
+			if info.consumesNextArg != tt.consumesNextArg {
+				t.Errorf("expected consumesNextArg=%t, got %t", tt.consumesNextArg, info.consumesNextArg)
+			}
+		})
+	}
+}
+
+func TestOutputFormats(t *testing.T) {
+	tests := []struct {
+		name      string
+		arguments []string
+		expected  []string
+	}{
+		{name: "no output flag", arguments: []string{"get", "pods"}, expected: nil},
+		{name: "separate value", arguments: []string{"get", "pods", "-o", "YAML"}, expected: []string{"yaml"}},
+		{name: "inline value", arguments: []string{"get", "pods", "-o=json"}, expected: []string{"json"}},
+		{name: "attached value", arguments: []string{"get", "pods", "-oyaml"}, expected: []string{"yaml"}},
+		{name: "grouped shorthand", arguments: []string{"get", "pods", "-Aoyaml"}, expected: []string{"yaml"}},
+		{name: "long form", arguments: []string{"get", "pods", "--output=wide"}, expected: []string{"wide"}},
+		{name: "composite format",
+			arguments: []string{"get", "pods", "-o", "jsonpath={.items}"}, expected: []string{"jsonpath"}},
+		{name: "every occurrence of a repeated flag is reported",
+			arguments: []string{"get", "pods", "-o", "name", "--output=yaml"}, expected: []string{"name", "yaml"}},
+		{name: "value of another flag is not read as the format",
+			arguments: []string{"get", "pods", "-l", "o=yaml"}, expected: nil},
+		{name: "output flag without a value", arguments: []string{"get", "pods", "-o"}, expected: []string{""}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := outputFormats(tt.arguments); !slices.Equal(got, tt.expected) {
+				t.Errorf("expected output formats %q, got %q", tt.expected, got)
 			}
 		})
 	}
