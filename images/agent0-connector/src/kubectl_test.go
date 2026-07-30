@@ -140,7 +140,51 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "secret with --template in front of the resource is rejected",
 			command: "kubectl", arguments: []string{"get", "--template", "{{.data}}", "secret"}, allowed: false},
 
-		// Non-secret resources are unaffected by the secret-content check.
+		// Config maps: listing and presence checks are allowed, reading their contents is not. Unlike `describe secret`,
+		// `describe configmap` prints every value and is therefore rejected.
+		{name: "listing config maps is allowed",
+			command: "kubectl", arguments: []string{"get", "configmaps"}, allowed: true},
+		{name: "listing config maps via the shortname is allowed",
+			command: "kubectl", arguments: []string{"get", "cm", "-n", "x"}, allowed: true},
+		{name: "presence check of a config map is allowed",
+			command: "kubectl", arguments: []string{"get", "configmap", "my-cm"}, allowed: true},
+		{name: "config map with -o name is allowed",
+			command: "kubectl", arguments: []string{"get", "cm", "-o", "name"}, allowed: true},
+		{name: "config map with -o wide is allowed",
+			command: "kubectl", arguments: []string{"get", "cm", "-o", "wide"}, allowed: true},
+		{name: "explain for config maps is allowed",
+			command: "kubectl", arguments: []string{"explain", "cm"}, allowed: true},
+
+		{name: "config map with -o yaml is rejected",
+			command: "kubectl", arguments: []string{"get", "configmap", "my-cm", "-o", "yaml"}, allowed: false},
+		{name: "config map shortname with -o yaml is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "my-cm", "-o", "yaml"}, allowed: false},
+		{name: "config map via type/name as json is rejected",
+			command: "kubectl", arguments: []string{"get", "cm/my-cm", "-o", "json"}, allowed: false},
+		{name: "config map with -o jsonpath is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "my-cm", "-o", "jsonpath={.data}"}, allowed: false},
+		{name: "config map with -o custom-columns is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "-o", "custom-columns=D:.data"}, allowed: false},
+		{name: "config map with --template is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "--template={{.data}}"}, allowed: false},
+		{name: "config map with an attached output format is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "-oyaml"}, allowed: false},
+		{name: "fully qualified config map as yaml is rejected",
+			command: "kubectl", arguments: []string{"get", "configmaps.v1.", "-o", "yaml"}, allowed: false},
+		{name: "config maps in all namespaces as yaml is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "-A", "-o", "yaml"}, allowed: false},
+		{name: "multi-resource list including config maps as yaml is rejected",
+			command: "kubectl", arguments: []string{"get", "pods,cm", "-o", "yaml"}, allowed: false},
+		{name: "type/name pair for a config map in a later positional slot as yaml is rejected",
+			command: "kubectl", arguments: []string{"get", "pod/a", "cm/b", "-o", "yaml"}, allowed: false},
+		{name: "describe configmap is rejected",
+			command: "kubectl", arguments: []string{"describe", "configmap", "my-cm"}, allowed: false},
+		{name: "describe cm is rejected",
+			command: "kubectl", arguments: []string{"describe", "cm"}, allowed: false},
+		{name: "describe config map via type/name is rejected",
+			command: "kubectl", arguments: []string{"describe", "cm/my-cm"}, allowed: false},
+
+		// Non-sensitive resources are unaffected by the content check.
 		{name: "non-secret resource as yaml is allowed",
 			command: "kubectl", arguments: []string{"get", "pods", "-o", "yaml"}, allowed: true},
 		{name: "pod named secret as yaml is allowed",
@@ -149,6 +193,12 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "pods", "-n", "secret", "-o", "yaml"}, allowed: true},
 		{name: "label selector value named secret is allowed",
 			command: "kubectl", arguments: []string{"get", "pods", "-l", "app=secret", "-o", "yaml"}, allowed: true},
+		{name: "namespace named cm as yaml is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-n", "cm", "-o", "yaml"}, allowed: true},
+		{name: "pod named cm as yaml is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "cm", "-o", "yaml"}, allowed: true},
+		{name: "describe pod named cm is allowed",
+			command: "kubectl", arguments: []string{"describe", "pod", "cm"}, allowed: true},
 
 		// Allowlisted flags keep working, in every spelling and combination.
 		{name: "all-namespaces and output shaping flags are allowed",
@@ -229,6 +279,39 @@ func TestInspectFlagToken(t *testing.T) {
 			}
 			if info.consumesNextArg != tt.consumesNextArg {
 				t.Errorf("expected consumesNextArg=%t, got %t", tt.consumesNextArg, info.consumesNextArg)
+			}
+		})
+	}
+}
+
+func TestLookupSensitiveResourceType(t *testing.T) {
+	tests := []struct {
+		resourceType string
+		displayName  string
+	}{
+		{resourceType: "secret", displayName: "secret"},
+		{resourceType: "secrets", displayName: "secret"},
+		{resourceType: "Secrets", displayName: "secret"},
+		{resourceType: "secrets.v1.", displayName: "secret"},
+		{resourceType: "configmap", displayName: "config map"},
+		{resourceType: "configmaps", displayName: "config map"},
+		{resourceType: "cm", displayName: "config map"},
+		{resourceType: "CM", displayName: "config map"},
+		{resourceType: "configmaps.v1.", displayName: "config map"},
+		{resourceType: "cm.v1.", displayName: "config map"},
+		{resourceType: "pods"},
+		{resourceType: "sealedsecrets"},
+		{resourceType: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.resourceType, func(t *testing.T) {
+			resource, isSensitive := lookupSensitiveResourceType(tt.resourceType)
+			if isSensitive != (tt.displayName != "") {
+				t.Fatalf("expected isSensitive=%t, got %t", tt.displayName != "", isSensitive)
+			}
+			if resource.displayName != tt.displayName {
+				t.Errorf("expected display name %q, got %q", tt.displayName, resource.displayName)
 			}
 		})
 	}

@@ -257,7 +257,7 @@ func validateCommandRequest(req *pb.CommandRequest) error {
 		}
 	}
 
-	if reason, blocked := secretContentRequested(arguments); blocked {
+	if reason, blocked := sensitiveContentRequested(arguments); blocked {
 		return errors.New(reason)
 	}
 
@@ -393,53 +393,91 @@ func flagValues(arguments []string, names ...string) []string {
 	return values
 }
 
-// allowedSecretOutputFormats are the output formats that only reveal a secret's name, type and key count, i.e. that
-// allow listing secrets or checking for the presence of a particular secret without exposing the secret's data. Any
-// other output format (yaml, json, jsonpath, go-template, custom-columns, ...) can serialize the secret's data and is
-// therefore rejected when the request targets secrets.
-var allowedSecretOutputFormats = map[string]struct{}{
+// allowedSensitiveOutputFormats are the output formats that only reveal a resource's name and, for secrets, its type
+// and key count, i.e. that allow listing sensitive resources or checking for the presence of a particular one without
+// exposing its data. Any other output format (yaml, json, jsonpath, go-template, custom-columns, ...) can serialize the
+// data and is therefore rejected when the request targets a sensitive resource.
+var allowedSensitiveOutputFormats = map[string]struct{}{
 	"":     {}, // the default, human-readable table output
 	"name": {},
 	"wide": {},
 }
 
-// secretContentRequested reports whether the kubectl arguments would read the contents of a secret, returning a
-// human-readable reason when they do. Listing secrets (`kubectl get secrets`) and checking for the presence of a
-// particular secret (`kubectl get secret <name>`, `kubectl describe secret <name>`) are allowed; serializing a secret's
-// data via an output format such as -o yaml/json/jsonpath/go-template/custom-columns (or --template) is not. This is a
-// fail-closed check: output formats that could expose the data are rejected even if a particular invocation would only
-// read metadata, and a repeated output flag is rejected if any of its occurrences would expose the data.
-func secretContentRequested(arguments []string) (string, bool) {
-	if !targetsSecrets(arguments) {
-		return "", false
-	}
-	if !hasTemplateFlag(arguments) && allSecretOutputFormatsAllowed(arguments) {
-		return "", false
-	}
-	return "reading the contents of a secret is not allowed; listing secrets or checking for the presence of a " +
-		"particular secret is supported, but serializing a secret's data (e.g. via -o yaml/json/jsonpath/go-template/" +
-		"custom-columns) is not", true
+// sensitiveResource describes how a resource type whose contents must not be exposed is guarded.
+type sensitiveResource struct {
+	// displayName names the resource in rejection messages.
+	displayName string
+	// contentExposingSubcommands are subcommands that print the resource's data regardless of the output format:
+	// kubectl's describer for secrets prints only key names and byte counts, but the one for config maps prints every
+	// value.
+	contentExposingSubcommands []string
 }
 
-// allSecretOutputFormatsAllowed reports whether every output format in the arguments is one that does not expose a
-// secret's data.
-func allSecretOutputFormatsAllowed(arguments []string) bool {
+var (
+	secretResource    = sensitiveResource{displayName: "secret"}
+	configMapResource = sensitiveResource{displayName: "config map", contentExposingSubcommands: []string{"describe"}}
+)
+
+// sensitiveResourceTypes maps the resource type names whose contents must not be exposed to their guard, in singular
+// and plural form. Config maps additionally have the kubectl shortname "cm"; secrets have no shortname.
+var sensitiveResourceTypes = map[string]sensitiveResource{
+	"secret":     secretResource,
+	"secrets":    secretResource,
+	"configmap":  configMapResource,
+	"configmaps": configMapResource,
+	"cm":         configMapResource,
+}
+
+// sensitiveContentRequested reports whether the kubectl arguments would read the contents of a sensitive resource,
+// returning a human-readable reason when they do. Listing them (`kubectl get secrets`) and checking for the presence of
+// a particular one (`kubectl get secret <name>`) are allowed; serializing the data via an output format such as
+// -o yaml/json/jsonpath/go-template/custom-columns (or --template), or via a subcommand that prints the data anyway, is
+// not. This is a fail-closed check: output formats that could expose the data are rejected even if a particular
+// invocation would only read metadata, and a repeated output flag is rejected if any of its occurrences would expose
+// the data.
+func sensitiveContentRequested(arguments []string) (string, bool) {
+	resource, targeted := targetedSensitiveResource(arguments)
+	if !targeted {
+		return "", false
+	}
+	if subcommand, _ := findSubcommand(arguments); slices.Contains(resource.contentExposingSubcommands, subcommand) {
+		return fmt.Sprintf(
+			"the kubectl subcommand %q prints the contents of a %s, which is not allowed",
+			subcommand,
+			resource.displayName,
+		), true
+	}
+	if !hasTemplateFlag(arguments) && allSensitiveOutputFormatsAllowed(arguments) {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"reading the contents of a %s is not allowed; listing %ss or checking for the presence of a particular %s is "+
+			"supported, but serializing its data (e.g. via -o yaml/json/jsonpath/go-template/custom-columns) is not",
+		resource.displayName,
+		resource.displayName,
+		resource.displayName,
+	), true
+}
+
+// allSensitiveOutputFormatsAllowed reports whether every output format in the arguments is one that does not expose a
+// sensitive resource's data.
+func allSensitiveOutputFormatsAllowed(arguments []string) bool {
 	for _, format := range outputFormats(arguments) {
-		if _, allowed := allowedSecretOutputFormats[format]; !allowed {
+		if _, allowed := allowedSensitiveOutputFormats[format]; !allowed {
 			return false
 		}
 	}
 	return true
 }
 
-// targetsSecrets reports whether the kubectl arguments reference the secrets resource. It scans the positional resource
-// arguments, skipping flags and their values. A bare resource type (e.g. "secret") is only recognized as the first
-// positional argument (the resource type slot); a type/name reference (e.g. "secret/my-secret") is recognized in any
-// positional slot, since `kubectl get secret/a pod/b` lists multiple type/name pairs.
-func targetsSecrets(arguments []string) bool {
+// targetedSensitiveResource returns the guard for the first sensitive resource the kubectl arguments reference. It
+// scans the positional resource arguments, skipping flags and their values. A bare resource type (e.g. "secret") is
+// only recognized as the first positional argument (the resource type slot); a type/name reference (e.g.
+// "secret/my-secret") is recognized in any positional slot, since `kubectl get secret/a pod/b` lists multiple pairs.
+func targetedSensitiveResource(arguments []string) (sensitiveResource, bool) {
 	_, subcommandIndex := findSubcommand(arguments)
 	if subcommandIndex < 0 {
-		return false
+		return sensitiveResource{}, false
 	}
 	positionalIndex := 0
 	// Resource references start in the argument following the subcommand (which may itself be preceded by global flags).
@@ -451,19 +489,19 @@ func targetsSecrets(arguments []string) bool {
 			}
 			continue
 		}
-		if referencesSecretType(arg, positionalIndex == 0) {
-			return true
+		if resource, referenced := referencedSensitiveResource(arg, positionalIndex == 0); referenced {
+			return resource, true
 		}
 		positionalIndex++
 	}
-	return false
+	return sensitiveResource{}, false
 }
 
-// referencesSecretType reports whether a positional argument references the secrets resource type. The argument may be
-// a comma-separated list of resources (e.g. "secret,configmap") and each entry may be a bare type or a type/name pair
-// (e.g. "secret/my-secret"). A bare type only counts as a resource type when it is the first positional argument;
-// type/name pairs always denote a resource type.
-func referencesSecretType(token string, firstPositional bool) bool {
+// referencedSensitiveResource returns the guard for the sensitive resource a positional argument references. The
+// argument may be a comma-separated list of resources (e.g. "secret,configmap") and each entry may be a bare type or a
+// type/name pair (e.g. "secret/my-secret"). A bare type only counts as a resource type when it is the first positional
+// argument; type/name pairs always denote a resource type.
+func referencedSensitiveResource(token string, firstPositional bool) (sensitiveResource, bool) {
 	for _, part := range strings.Split(token, ",") {
 		resourceType := part
 		typeName := false
@@ -471,21 +509,25 @@ func referencesSecretType(token string, firstPositional bool) bool {
 			resourceType = part[:idx]
 			typeName = true
 		}
-		if (typeName || firstPositional) && isSecretResourceType(resourceType) {
-			return true
+		if !typeName && !firstPositional {
+			continue
+		}
+		if resource, isSensitive := lookupSensitiveResourceType(resourceType); isSensitive {
+			return resource, true
 		}
 	}
-	return false
+	return sensitiveResource{}, false
 }
 
-// isSecretResourceType reports whether the given resource type refers to secrets, accepting the singular and plural
-// forms as well as fully qualified forms such as "secrets.v1." (the API group/version suffix is ignored).
-func isSecretResourceType(resourceType string) bool {
+// lookupSensitiveResourceType returns the guard for the given resource type, accepting the singular and plural forms as
+// well as fully qualified forms such as "secrets.v1." (the API group/version suffix is ignored).
+func lookupSensitiveResourceType(resourceType string) (sensitiveResource, bool) {
 	resourceType = strings.ToLower(resourceType)
 	if idx := strings.Index(resourceType, "."); idx >= 0 {
 		resourceType = resourceType[:idx] // strip the API group/version: "secrets.v1." -> "secrets"
 	}
-	return resourceType == "secret" || resourceType == "secrets"
+	resource, isSensitive := sensitiveResourceTypes[resourceType]
+	return resource, isSensitive
 }
 
 // outputFormats returns the normalized output formats requested via -o/--output (handling the "-o yaml", "-o=yaml",
@@ -512,7 +554,7 @@ func normalizeOutputFormat(value string) string {
 }
 
 // hasTemplateFlag reports whether the arguments contain the --template flag, which selects go-template output and can
-// therefore expose a secret's data.
+// therefore expose a sensitive resource's data.
 func hasTemplateFlag(arguments []string) bool {
 	return len(flagValues(arguments, "template")) > 0
 }
