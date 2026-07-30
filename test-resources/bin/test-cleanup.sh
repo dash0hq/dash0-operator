@@ -39,6 +39,9 @@ helm uninstall --namespace test-namespace-3 test-app-dotnet-ns3 --ignore-not-fou
 helm uninstall --namespace "$target_namespace" test-app-python --ignore-not-found || true
 helm uninstall --namespace test-namespace-2 test-app-python-ns2 --ignore-not-found || true
 helm uninstall --namespace test-namespace-3 test-app-python-ns3 --ignore-not-found || true
+helm uninstall --namespace "$target_namespace" test-app-ruby --ignore-not-found || true
+helm uninstall --namespace test-namespace-2 test-app-ruby-ns2 --ignore-not-found || true
+helm uninstall --namespace test-namespace-3 test-app-ruby-ns3 --ignore-not-found || true
 
 wait_for_third_party_resource_deletion="false"
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml; then

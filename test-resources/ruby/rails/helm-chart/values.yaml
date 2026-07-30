@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: dash0-operator-ruby-rails-test-app
+  tag: latest
+  pullPolicy: Never
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+    ephemeral-storage: 500Mi
+  requests:
+    cpu: 200m
+    memory: 128Mi
+    ephemeral-storage: 500Mi
+
+daemonset:
+  enabled: false
+  port: 1606
+  targetPort: 1606
+  selector: dash0-operator-ruby-rails-test-daemonset-app
+  ingressPath: /daemonset/ruby(/|$)(.*)
+
+deployment:
+  enabled: false
+  port: 1607
+  targetPort: 1607
+  selector: dash0-operator-ruby-rails-test-deployment-app
+  ingressPath: /deployment/ruby(/|$)(.*)
+
+pod:
+  enabled: false
+  port: 1611
+  targetPort: 1611
+  selector: dash0-operator-ruby-rails-test-pod-app
+  ingressPath: /pod/ruby(/|$)(.*)
+
+replicaset:
+  enabled: false
+  port: 1609
+  targetPort: 1609
+  selector: dash0-operator-ruby-rails-test-replicaset-app
+  ingressPath: /replicaset/ruby(/|$)(.*)
+
+statefulset:
+  enabled: false
+  port: 1610
+  targetPort: 1610
+  selector: dash0-operator-ruby-rails-test-statefulset-app
+  ingressPath: /statefulset/ruby(/|$)(.*)

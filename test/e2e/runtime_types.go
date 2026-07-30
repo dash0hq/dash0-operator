@@ -35,4 +35,10 @@ var (
 		helmChartPath:     chartPathPython,
 		helmReleasePrefix: releaseNamePythonPrefix,
 	}
+	runtimeTypeRuby = runtimeType{
+		runtimeTypeLabel:  runtimeTypeLabelRuby,
+		workloadName:      workloadNameRuby,
+		helmChartPath:     chartPathRuby,
+		helmReleasePrefix: releaseNameRubyPrefix,
+	}
 )
