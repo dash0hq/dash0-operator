@@ -20,11 +20,17 @@ runtimes, automatic log collection and metrics.
 
 ### Distributed tracing
 
-Auto-instrumentation if supported for the following runtimes:
+Auto-instrumentation is supported for the following runtimes:
 
 * Node.js 16+, using
   [Dash0 Node.js OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-js-distribution)
 * Java 8+, using the [OpenTelemetry Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation)
+* .NET, using the
+  [OpenTelemetry .NET automatic instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation)
+* Python 3.10+ (opt-in), using the
+  [Dash0 Python OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-python-distribution)
+* Ruby 3.3+ (opt-in), using the
+  [Dash0 Ruby OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-ruby-distribution)
 
 For more information on how the Dash0 operator automatically traces your applications, see the
 [Automatic Workload Instrumentation](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/auto-instrumentation)

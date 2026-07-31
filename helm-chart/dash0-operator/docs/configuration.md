@@ -819,7 +819,7 @@ re-deployment of the workload.
 The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
 Dash0Monitoring resource.
 
-Python auto-instrumentation is only supported for Python 3.9 or later.
+Python auto-instrumentation is only supported for Python 3.10 or later.
 If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.9 or older), it will
 automatically deactivate itself safely and print a warning to `stderr`:
 ```
