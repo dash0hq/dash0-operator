@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Deliberately no OpenTelemetry gems: the operator injects the Dash0 Ruby distribution from
+# outside this bundle, which is exactly what the demo verifies.
+
+source 'https://rubygems.org'
+
+gem 'puma', '~> 8.0'
+gem 'sinatra', '~> 4.0'

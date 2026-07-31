@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruby-activerecord-demo
+  labels:
+    app: ruby-activerecord-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ruby-activerecord-demo
+  template:
+    metadata:
+      labels:
+        app: ruby-activerecord-demo
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: PORT
+              value: "{{ .Values.port }}"
+          ports:
+            - containerPort: {{ .Values.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.port }}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+        - name: traffic-generator
+          image: curlimages/curl:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Waiting for app to become ready..."
+              until curl -sf http://localhost:{{ .Values.port }}/ready; do sleep 1; done
+              echo "App is ready, starting traffic generation."
+              while true; do
+                curl -sf "http://localhost:{{ .Values.port }}/dash0-k8s-operator-test" > /dev/null
+                sleep 3
+              done
+          resources:
+            limits:
+              cpu: 50m
+              memory: 32Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi

@@ -1,0 +1,6 @@
+apiVersion: v2
+version: 1.0.0
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+name: ruby-activerecord-demo-app
+description: Rails+ActiveRecord+SQLite demo app for the Dash0 Ruby auto-instrumentation demo

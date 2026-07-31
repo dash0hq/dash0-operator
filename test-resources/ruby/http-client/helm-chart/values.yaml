@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: dash0-operator-ruby-http-client-demo-app
+  tag: latest
+  pullPolicy: IfNotPresent
+
+port: 8080
+
+# URL of the upstream service this app calls on each request.
+# Points to the Rails demo app by default.
+upstreamUrl: "http://ruby-rails-demo-svc:8080/dash0-k8s-operator-test"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi

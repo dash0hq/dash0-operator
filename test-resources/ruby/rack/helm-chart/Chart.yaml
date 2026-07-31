@@ -1,0 +1,6 @@
+apiVersion: v2
+version: 1.0.0
+# SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+name: ruby-rack-demo-app
+description: Pure Rack demo app for the Dash0 Ruby auto-instrumentation demo
