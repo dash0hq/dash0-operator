@@ -76,9 +76,14 @@ type ConfigMapParams struct {
 
 	MtlsEnabled bool
 	CertsDir    string
+
+	AllowInsecureAuthSecrets bool
 }
 
 const targetAllocatorTemplate = `allocation_strategy: per-node
+{{- if .AllowInsecureAuthSecrets }}
+allow_insecure_auth_secrets: true
+{{- end }}
 collector_namespace: {{ .CollectorNamespace }}
 collector_selector:
   matchLabels:
@@ -131,7 +136,7 @@ func assembleDesiredState(
 	// sort namespaces so we don't re-trigger reconciliation because of unstable ordering
 	slices.Sort(namespacesWithPrometheusScraping)
 	desiredState := make([]clientObject, 0, 6)
-	cm, err := assembleConfigMap(config, namespacesWithPrometheusScraping, extraConfig.TargetAllocatorMtlsEnabled, forDeletion)
+	cm, err := assembleConfigMap(config, namespacesWithPrometheusScraping, extraConfig, forDeletion)
 	if err != nil {
 		return desiredState, err
 	}
@@ -148,7 +153,12 @@ func assembleDesiredState(
 	return desiredState, nil
 }
 
-func assembleConfigMap(c *targetAllocatorConfig, namespacesWithPrometheusScraping []string, mTlsEnabled bool, forDeletion bool) (*corev1.ConfigMap, error) {
+func assembleConfigMap(
+	c *targetAllocatorConfig,
+	namespacesWithPrometheusScraping []string,
+	extraConfig util.ExtraConfig,
+	forDeletion bool,
+) (*corev1.ConfigMap, error) {
 	var configMapData map[string]string
 
 	if forDeletion {
@@ -164,8 +174,9 @@ func assembleConfigMap(c *targetAllocatorConfig, namespacesWithPrometheusScrapin
 			CollectorNamespace:               c.OperatorNamespace,
 			CollectorComponent:               c.CollectorComponent,
 			NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
-			MtlsEnabled:                      mTlsEnabled,
+			MtlsEnabled:                      extraConfig.TargetAllocatorMtlsEnabled,
 			CertsDir:                         targetAllocatorCertsVolumeDir,
+			AllowInsecureAuthSecrets:         extraConfig.TargetAllocatorAllowInsecureAuthSecrets,
 		}
 
 		var buf bytes.Buffer

@@ -9,6 +9,7 @@ This document covers metrics collection, Prometheus endpoint scraping, profiling
 - [Scraping Prometheus Endpoints](#scraping-prometheus-endpoints)
 - [Support for Prometheus CRDs](#support-for-prometheus-crds)
   - [Authorization](#authorization)
+    - [Allowing Insecure Auth Secrets](#allowing-insecure-auth-secrets)
   - [Configuring Resource Requests/Limits for the Target-Allocator](#configuring-resource-requestslimits-for-the-target-allocator)
 
 ## Configure Metrics Collection
@@ -131,7 +132,8 @@ The Dash0 Operator uses the [OpenTelemetry Target Allocator](https://github.com/
 
 ### Authorization
 
-If the scraped endpoints require authorization, it is mandatory to configure mTLS for the communication between the OpenTelemetry Target Allocator and the collectors, so the credentials can be transfered in a secure manner.
+If the scraped endpoints require authorization, the credentials need to be transferred from the OpenTelemetry Target Allocator to the collectors in a secure manner.
+By default, the Target Allocator only serves the credentials over mTLS; see [Allowing Insecure Auth Secrets](#allowing-insecure-auth-secrets) for an alternative if the transport security is already provided by other means.
 
 We recommend to use [cert-manager](https://cert-manager.io/) for the creation of the certificates/secrets, but any secrets following the [kubernetes.io/tls](https://kubernetes.io/docs/concepts/configuration/secret/#tls-secrets) secret type and providing `ca.crt`, `tls.crt`, and `tls.key` should be compatible.
 Note that the server and client certificates need to be signed by the same CA to be trusted (i.e. two random self-signed certificates won't work).
@@ -150,6 +152,19 @@ operator:
       serverCertSecretName: "ta-mtls-server-cert-secret"
       clientCertSecretName: "ta-mtls-client-cert-secret"
 ```
+
+#### Allowing Insecure Auth Secrets
+
+If the transport security between the OpenTelemetry Target Allocator and the collectors is already guaranteed by other means, for example by a service mesh, you can skip the mTLS setup and let the Target Allocator serve the credentials over plain HTTP instead:
+
+```yaml
+operator:
+  targetAllocator:
+    allowInsecureAuthSecrets: true
+```
+
+Only enable this setting if transport-level security is guaranteed by other means, otherwise the credentials for the scraped endpoints are transferred unencrypted.
+See the [upstream documentation](https://github.com/open-telemetry/opentelemetry-operator/blob/main/docs/target-allocator/README.md#alternative-allow-insecure-auth-secrets) for details.
 
 ### Configuring Resource Requests/Limits for the Target-Allocator
 

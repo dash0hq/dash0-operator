@@ -579,6 +579,9 @@ run_helm() {
   if [[ "${TA_MTLS_ENABLED:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/cert-manager/ta-mtls-values.yaml"
   fi
+  if [[ "${TA_ALLOW_INSECURE_AUTH_SECRETS:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.targetAllocator.allowInsecureAuthSecrets=true"
+  fi
   if [[ "${DEVELOPMENT_MODE:-}" != "false" ]]; then
   helm_install_command+=" --set operator.developmentMode=true"
   fi

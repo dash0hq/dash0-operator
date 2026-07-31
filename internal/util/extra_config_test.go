@@ -423,6 +423,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.TargetAllocatorMtlsEnabled).To(BeFalse())
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal(""))
+					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeFalse())
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(BeNil())
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
 					Expect(extraConfig.TargetAllocatorContainerResources.GoMemLimit).To(BeEmpty())
@@ -575,6 +576,7 @@ deploymentNodeAffinity:
 targetAllocatorMtlsEnabled: true
 targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
 targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
+targetAllocatorAllowInsecureAuthSecrets: true
 targetAllocatorContainerResources:
   limits:
     cpu: 500m
@@ -755,6 +757,7 @@ monitoringTemplate:
 					Expect(extraConfig.TargetAllocatorMtlsEnabled).To(BeTrue())
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal("ta-mtls-server-cert"))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal("ta-mtls-client-cert"))
+					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeTrue())
 
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("500m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("806Mi"))
