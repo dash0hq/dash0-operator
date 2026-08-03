@@ -2321,6 +2321,7 @@ trace_statements:
 		})
 
 		// This test suite should be removed once Python auto-instrumentation is on by default.
+		//nolint:dupl
 		Describe("with Python auto-instrumentation disabled", func() {
 			BeforeAll(func() {
 				By("deploying the Dash0 operator")
@@ -2385,6 +2386,76 @@ trace_statements:
 				timestampLowerBound := time.Now()
 				Consistently(func(g Gomega) {
 					verifyNoSpans(g, runtimeTypePython, workloadTypeDeployment, testEndpoint, query, timestampLowerBound)
+				}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
+			})
+		})
+
+		// This test suite should be removed once Ruby auto-instrumentation is on by default.
+		//nolint:dupl
+		Describe("with Ruby auto-instrumentation disabled", func() {
+			BeforeAll(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					true,
+					nil,
+				)
+				deployDash0MonitoringResourceWithRetry(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not instrument Ruby if Ruby auto-instrumentation is not enabled", func() {
+				testId := generateNewTestId(runtimeTypeRuby, workloadTypeDeployment)
+				query := fmt.Sprintf("id=%s", testId)
+				By("installing the Ruby deployment")
+				Expect(installRubyDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("waiting for the Ruby deployment to get modified (polling its labels and events to check)")
+				Eventually(func(g Gomega) {
+					verifyLabels(
+						g,
+						applicationUnderTestNamespace,
+						runtimeTypeRuby,
+						workloadTypeDeployment,
+						true,
+						images,
+						"webhook",
+					)
+					verifySuccessfulInstrumentationEvent(
+						g,
+						applicationUnderTestNamespace,
+						runtimeTypeRuby,
+						workloadTypeDeployment,
+						"webhook",
+					)
+				}, labelChangeTimeout, pollingInterval).Should(Succeed())
+
+				waitForApplicationToBecomeResponsive(
+					runtimeTypeRuby,
+					workloadTypeDeployment,
+					testEndpoint,
+					query,
+				)
+				secondsToCheckForSpans := 20
+				By(
+					fmt.Sprintf("verifying that no spans are produced (checking for %d seconds)",
+						secondsToCheckForSpans,
+					))
+				timestampLowerBound := time.Now()
+				Consistently(func(g Gomega) {
+					verifyNoSpans(g, runtimeTypeRuby, workloadTypeDeployment, testEndpoint, query, timestampLowerBound)
 				}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 			})
 		})

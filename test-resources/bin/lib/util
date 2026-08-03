@@ -790,6 +790,9 @@ run_helm() {
     if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.signalControl.enabled=true"
     fi
+    if [[ "${ENABLE_RUBY_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.instrumentation.enableRubyAutoInstrumentation=true"
+    fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
   if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
@@ -1070,6 +1073,10 @@ build_test_application() {
     TEST_APP_JVM_IMAGE_TAG="$test_app_jvm_image_tag" \
     TEST_APP_NODEJS_IMAGE_REPOSITORY="$test_app_nodejs_image_repository" \
     TEST_APP_NODEJS_IMAGE_TAG="$test_app_nodejs_image_tag" \
+    TEST_APP_PYTHON_IMAGE_REPOSITORY="$test_app_python_image_repository" \
+    TEST_APP_PYTHON_IMAGE_TAG="$test_app_python_image_tag" \
+    TEST_APP_RUBY_IMAGE_REPOSITORY="$test_app_ruby_image_repository" \
+    TEST_APP_RUBY_IMAGE_TAG="$test_app_ruby_image_tag" \
     make "$make_rule"
 }
 
@@ -1085,6 +1092,10 @@ push_test_application_image() {
     TEST_APP_JVM_IMAGE_TAG="$test_app_jvm_image_tag" \
     TEST_APP_NODEJS_IMAGE_REPOSITORY="$test_app_nodejs_image_repository" \
     TEST_APP_NODEJS_IMAGE_TAG="$test_app_nodejs_image_tag" \
+    TEST_APP_PYTHON_IMAGE_REPOSITORY="$test_app_python_image_repository" \
+    TEST_APP_PYTHON_IMAGE_TAG="$test_app_python_image_tag" \
+    TEST_APP_RUBY_IMAGE_REPOSITORY="$test_app_ruby_image_repository" \
+    TEST_APP_RUBY_IMAGE_TAG="$test_app_ruby_image_tag" \
     make "$make_rule"
 }
 

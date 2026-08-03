@@ -184,6 +184,17 @@ func installPythonDeployment(namespace string) error {
 	)
 }
 
+func installRubyDeployment(namespace string) error {
+	return installTestAppWorkload(
+		runtimeTypeRuby,
+		workloadTypeDeployment,
+		namespace,
+		"",
+		nil,
+		nil,
+	)
+}
+
 // installTestAppWorkload runs helm install for a single workload, that is, for one particular runtime (Node.js, JVM,
 // ...) and one particular workload type (i.e. Deployment, DaemonSet, ...).
 func installTestAppWorkload(
