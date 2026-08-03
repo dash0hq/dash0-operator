@@ -790,6 +790,9 @@ run_helm() {
     if [[ "${FEATURE_SIGNAL_CONTROL_ENABLED:-}" = "true" ]]; then
       helm_install_command+=" --set operator.signalControl.enabled=true"
     fi
+    if [[ "${ENABLE_PYTHON_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
+      helm_install_command+=" --set operator.instrumentation.enablePythonAutoInstrumentation=true"
+    fi
     if [[ "${ENABLE_RUBY_AUTO_INSTRUMENTATION:-}" = "true" ]]; then
       helm_install_command+=" --set operator.instrumentation.enableRubyAutoInstrumentation=true"
     fi

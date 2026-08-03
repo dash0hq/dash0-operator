@@ -243,6 +243,8 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     `test-resources/customresources/dash0signaltometrics` to deploy a signal-to-metrics resource that will be
     synchronized to Dash0 via the Dash0 API. E.g. `DEPLOY_SIGNAL_TO_METRICS=spans` will deploy `spans.yaml`.
     This defaults to being empty, which means no resource will be deployed.
+    * `ENABLE_PYTHON_AUTO_INSTRUMENTATION`: Set this to "true" to enable Python auto-instrumentation. This corresponds
+      to the Helm setting `operator.instrumentation.enablePythonAutoInstrumentation=true`. This defaults to "false".
     * `ENABLE_RUBY_AUTO_INSTRUMENTATION`: Set this to "true" to enable Ruby auto-instrumentation. This corresponds to
       the Helm setting `operator.instrumentation.enableRubyAutoInstrumentation=true`. This defaults to "false".
     * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
