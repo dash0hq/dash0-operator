@@ -78,7 +78,18 @@ type ConfigMapParams struct {
 	CertsDir    string
 }
 
+// The per-node strategy assigns each target to the collector running on that
+// target's node, which is what gives the collector DaemonSet its node locality.
+// A target that is not a pod -- anything a ScrapeConfig points at outside the
+// cluster, such as a hosted message broker or database -- has no node, so
+// per-node on its own can never assign it: the allocator reports "could not
+// find collector for node" for it indefinitely and it is never scraped.
+//
+// The fallback is consulted only for targets with no node name, so pod scraping
+// keeps its locality unchanged while external targets are distributed across
+// the collectors by consistent hashing instead of being dropped.
 const targetAllocatorTemplate = `allocation_strategy: per-node
+allocation_fallback_strategy: consistent-hashing
 collector_namespace: {{ .CollectorNamespace }}
 collector_selector:
   matchLabels:

@@ -193,6 +193,10 @@ func VerifyTargetAllocatorConfigMap(
 	Expect(cm.Data).To(HaveKey("targetallocator.yaml"))
 	config := cm.Data["targetallocator.yaml"]
 	Expect(config).To(ContainSubstring("allocation_strategy: per-node"))
+	// Without the fallback, targets that have no node -- everything a
+	// ScrapeConfig points at outside the cluster -- are never assigned to a
+	// collector and are silently never scraped.
+	Expect(config).To(ContainSubstring("allocation_fallback_strategy: consistent-hashing"))
 	Expect(config).To(ContainSubstring("prometheus_cr:"))
 	Expect(config).To(ContainSubstring("enabled: true"))
 	return cm
