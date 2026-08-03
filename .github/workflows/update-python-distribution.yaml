@@ -1,0 +1,30 @@
+name: Check for Dash0 Python Distribution Updates
+
+on:
+  schedule:
+    - cron: "35 09 * * MON"
+
+  workflow_dispatch:
+
+jobs:
+  check-and-update:
+    name: check for new opentelemetry-python-distribution release and update version file
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: check if open PR already exists
+        id: open_pr_exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/workflows/scripts/update-python-distribution-check-if-pr-exists.sh
+
+      - name: update opentelemetry-python-distribution version and create PR
+        if: steps.open_pr_exists.outputs.pr_exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: .github/workflows/scripts/update-python-distribution-create-pr.sh
