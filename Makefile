@@ -89,6 +89,9 @@ TEST_APP_NODEJS_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 TEST_APP_PYTHON_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-python-flask-test-app
 TEST_APP_PYTHON_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
+TEST_APP_RUBY_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-ruby-rails-test-app
+TEST_APP_RUBY_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+
 # Variables for additional container images used in end-to-end tests:
 
 DASH0_API_MOCK_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-api-mock
@@ -279,6 +282,7 @@ helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@$(call lint_helm_chart,test-resources/jvm/spring-boot/helm-chart)
 	@$(call lint_helm_chart,test-resources/node.js/express/helm-chart)
 	@$(call lint_helm_chart,test-resources/python/flask/helm-chart)
+	@$(call lint_helm_chart,test-resources/ruby/rails/helm-chart)
 	@$(call lint_helm_chart,test/e2e/dash0-api-mock/helm-chart)
 	@$(call lint_helm_chart,test/e2e/control-plane-mock/helm-chart)
 	@$(call lint_helm_chart,test/e2e/decision-maker-mock/helm-chart)
@@ -376,7 +380,8 @@ test-app-images: \
   test-app-image-dotnet \
   test-app-image-jvm \
   test-app-image-nodejs \
-  test-app-image-python ## Build all test application container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
+  test-app-image-python \
+  test-app-image-ruby ## Build all test application container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 .PHONY: test-app-image-dotnet
 test-app-image-dotnet: ## Build the .NET test application.
@@ -393,6 +398,10 @@ test-app-image-nodejs: ## Build the Node.js test application.
 .PHONY: test-app-image-python
 test-app-image-python: ## Build the Python test application.
 	@$(call build_container_image,$(TEST_APP_PYTHON_IMAGE_REPOSITORY),$(TEST_APP_PYTHON_IMAGE_TAG),test-resources/python/flask)
+
+.PHONY: test-app-image-ruby
+test-app-image-ruby: ## Build the Ruby test application.
+	@$(call build_container_image,$(TEST_APP_RUBY_IMAGE_REPOSITORY),$(TEST_APP_RUBY_IMAGE_TAG),test-resources/ruby/rails)
 
 .PHONY: dash0-api-mock-image
 dash0-api-mock-image: ## Build the Dash0 API mock container image, which is used in end-to-end tests.
@@ -433,7 +442,8 @@ push-test-app-images: \
   push-test-app-image-dotnet \
   push-test-app-image-jvm \
   push-test-app-image-nodejs \
-  push-test-app-image-python ## Push all test application container images.
+  push-test-app-image-python \
+  push-test-app-image-ruby ## Push all test application container images.
 
 .PHONY: push-test-app-image-dotnet
 push-test-app-image-dotnet: ## Push the .NET test app image.
@@ -450,6 +460,10 @@ push-test-app-image-nodejs: ## Push the Node.js test app image.
 .PHONY: push-test-app-image-python
 push-test-app-image-python: ## Push the Python test app image.
 	@$(call push_container_image,$(TEST_APP_PYTHON_IMAGE_REPOSITORY),$(TEST_APP_PYTHON_IMAGE_TAG))
+
+.PHONY: push-test-app-image-ruby
+push-test-app-image-ruby: ## Push the Ruby test app image.
+	@$(call push_container_image,$(TEST_APP_RUBY_IMAGE_REPOSITORY),$(TEST_APP_RUBY_IMAGE_TAG))
 
 .PHONY: push-dash0-api-mock-image
 push-dash0-api-mock-image: ## Push the Dash0 API mock container image.

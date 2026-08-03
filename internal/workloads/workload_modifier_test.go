@@ -44,6 +44,7 @@ var (
 		nil,
 		false,
 		false,
+		false,
 	)
 
 	clusterInstrumentationConfigWithImageVolumes = util.NewClusterInstrumentationConfig(
@@ -53,6 +54,7 @@ var (
 		util.ExtraConfigDefaults,
 		cluster.ResolvedInstrumentationDeliveryImageVolume,
 		nil,
+		false,
 		false,
 		false,
 	)
@@ -66,8 +68,28 @@ var (
 		nil,
 		false,
 		false,
+		false,
 	)
 )
+
+// clusterInstrumentationConfigWithOptIns creates a cluster instrumentation config with the given auto-instrumentation
+// opt-ins, all other settings are defaults.
+func clusterInstrumentationConfigWithOptIns(
+	enablePythonAutoInstrumentation bool,
+	enableRubyAutoInstrumentation bool,
+) *util.ClusterInstrumentationConfig {
+	return util.NewClusterInstrumentationConfig(
+		TestImages,
+		PossibleCollectorUrlsTest,
+		OTelCollectorNodeLocalBaseUrlTest,
+		util.ExtraConfigDefaults,
+		cluster.ResolvedInstrumentationDeliveryInitContainer,
+		nil,
+		false,
+		enablePythonAutoInstrumentation,
+		enableRubyAutoInstrumentation,
+	)
+}
 
 var _ = Describe("Dash0 Workload Modification", func() {
 
@@ -135,6 +157,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						util.ExtraConfigDefaults,
 						cluster.ResolvedInstrumentationDeliveryInitContainer,
 						nil,
+						false,
 						false,
 						false,
 					),
@@ -3259,15 +3282,15 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 		)
 
-		type pythonAutoInstrumentationTest struct {
+		type autoInstrumentationOptInTest struct {
 			existingEnvVars                       []corev1.EnvVar
 			clusterInstrumentationConfig          *util.ClusterInstrumentationConfig
 			expectedPreInstrumentationCheckResult bool
 			expectedEnvVars                       map[string]*EnvVarExpectation
 		}
 
-		DescribeTable("should update Python auto-instrumentation support",
-			func(testConfig pythonAutoInstrumentationTest) {
+		DescribeTable("should update the injector config file for the runtime auto-instrumentation opt-ins",
+			func(testConfig autoInstrumentationOptInTest) {
 				container := &corev1.Container{}
 				if testConfig.existingEnvVars != nil {
 					container.Env = testConfig.existingEnvVars
@@ -3293,87 +3316,51 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				envVars := container.Env
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
 			},
-			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf when enabling Python auto-instrumentation", pythonAutoInstrumentationTest{
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf when enabling Python auto-instrumentation", autoInstrumentationOptInTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInjectorConfigFileName,
 					Value: envVarOtelInjectorConfigFileValue,
 				}},
-				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
-					TestImages,
-					PossibleCollectorUrlsTest,
-					OTelCollectorNodeLocalBaseUrlTest,
-					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
-					nil,
-					false,
-					true,
-				),
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(true, false),
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonEnabledValue},
 				},
 			}),
-			Entry("should do nothing if Python auto-instrumentation is already enabled for the container", pythonAutoInstrumentationTest{
+			Entry("should do nothing if Python auto-instrumentation is already enabled for the container", autoInstrumentationOptInTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInjectorConfigFileName,
 					Value: envVarOtelInjectorConfigFilePythonEnabledValue,
 				}},
-				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
-					TestImages,
-					PossibleCollectorUrlsTest,
-					OTelCollectorNodeLocalBaseUrlTest,
-					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
-					nil,
-					false,
-					true,
-				),
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(true, false),
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonEnabledValue},
 				},
 			}),
-			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector.conf when disabling Python auto-instrumentation", pythonAutoInstrumentationTest{
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector.conf when disabling Python auto-instrumentation", autoInstrumentationOptInTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInjectorConfigFileName,
 					Value: envVarOtelInjectorConfigFilePythonEnabledValue,
 				}},
-				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
-					TestImages,
-					PossibleCollectorUrlsTest,
-					OTelCollectorNodeLocalBaseUrlTest,
-					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
-					nil,
-					false,
-					false,
-				),
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(false, false),
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileValue},
 				},
 			}),
-			Entry("should do nothing if Python auto-instrumentation is already disabled for the container", pythonAutoInstrumentationTest{
+			Entry("should do nothing if Python auto-instrumentation is already disabled for the container", autoInstrumentationOptInTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInjectorConfigFileName,
 					Value: envVarOtelInjectorConfigFileValue,
 				}},
-				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
-					TestImages,
-					PossibleCollectorUrlsTest,
-					OTelCollectorNodeLocalBaseUrlTest,
-					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
-					nil,
-					false,
-					false,
-				),
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(false, false),
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileValue},
 				},
 			}),
-			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf if the existing env var uses ValueFrom", pythonAutoInstrumentationTest{
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf if the existing env var uses ValueFrom", autoInstrumentationOptInTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name: envVarOtelInjectorConfigFileName,
 					ValueFrom: &corev1.EnvVarSource{
@@ -3382,22 +3369,13 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						},
 					},
 				}},
-				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
-					TestImages,
-					PossibleCollectorUrlsTest,
-					OTelCollectorNodeLocalBaseUrlTest,
-					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
-					nil,
-					false,
-					true,
-				),
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(true, false),
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonEnabledValue},
 				},
 			}),
-			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector.conf if the existing env var uses ValueFrom", pythonAutoInstrumentationTest{
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector.conf if the existing env var uses ValueFrom", autoInstrumentationOptInTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name: envVarOtelInjectorConfigFileName,
 					ValueFrom: &corev1.EnvVarSource{
@@ -3406,55 +3384,105 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						},
 					},
 				}},
-				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
-					TestImages,
-					PossibleCollectorUrlsTest,
-					OTelCollectorNodeLocalBaseUrlTest,
-					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
-					nil,
-					false,
-					false,
-				),
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(false, false),
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileValue},
 				},
 			}),
-			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf if the env var does not exist", pythonAutoInstrumentationTest{
-				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
-					TestImages,
-					PossibleCollectorUrlsTest,
-					OTelCollectorNodeLocalBaseUrlTest,
-					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
-					nil,
-					false,
-					true,
-				),
+			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector-with-python.conf if the env var does not exist", autoInstrumentationOptInTest{
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(true, false),
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonEnabledValue},
 				},
 			}),
-			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector.conf if the existing env var is empty", pythonAutoInstrumentationTest{
+			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector.conf if the existing env var is empty", autoInstrumentationOptInTest{
 				existingEnvVars: []corev1.EnvVar{{
 					Name:  envVarOtelInjectorConfigFileName,
 					Value: "",
 				}},
-				clusterInstrumentationConfig: util.NewClusterInstrumentationConfig(
-					TestImages,
-					PossibleCollectorUrlsTest,
-					OTelCollectorNodeLocalBaseUrlTest,
-					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
-					nil,
-					false,
-					false,
-				),
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(false, false),
 				expectedPreInstrumentationCheckResult: true,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileValue},
+				},
+			}),
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector-with-ruby.conf when enabling Ruby auto-instrumentation", autoInstrumentationOptInTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelInjectorConfigFileName,
+					Value: envVarOtelInjectorConfigFileValue,
+				}},
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(false, true),
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileRubyEnabledValue},
+				},
+			}),
+			Entry("should do nothing if Ruby auto-instrumentation is already enabled for the container", autoInstrumentationOptInTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelInjectorConfigFileName,
+					Value: envVarOtelInjectorConfigFileRubyEnabledValue,
+				}},
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(false, true),
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileRubyEnabledValue},
+				},
+			}),
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector.conf when disabling Ruby auto-instrumentation", autoInstrumentationOptInTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelInjectorConfigFileName,
+					Value: envVarOtelInjectorConfigFileRubyEnabledValue,
+				}},
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(false, false),
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileValue},
+				},
+			}),
+			Entry("should set OTEL_INJECTOR_CONFIG_FILE to injector-with-python-and-ruby.conf when enabling both Python and Ruby auto-instrumentation", autoInstrumentationOptInTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelInjectorConfigFileName,
+					Value: envVarOtelInjectorConfigFileValue,
+				}},
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(true, true),
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonAndRubyEnabledValue},
+				},
+			}),
+			Entry("should do nothing if both Python and Ruby auto-instrumentation are already enabled for the container", autoInstrumentationOptInTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelInjectorConfigFileName,
+					Value: envVarOtelInjectorConfigFilePythonAndRubyEnabledValue,
+				}},
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(true, true),
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonAndRubyEnabledValue},
+				},
+			}),
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE from injector-with-python.conf to injector-with-python-and-ruby.conf when additionally enabling Ruby auto-instrumentation", autoInstrumentationOptInTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelInjectorConfigFileName,
+					Value: envVarOtelInjectorConfigFilePythonEnabledValue,
+				}},
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(true, true),
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFilePythonAndRubyEnabledValue},
+				},
+			}),
+			Entry("should change OTEL_INJECTOR_CONFIG_FILE to injector-with-ruby.conf when disabling Python auto-instrumentation while Ruby auto-instrumentation stays enabled", autoInstrumentationOptInTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelInjectorConfigFileName,
+					Value: envVarOtelInjectorConfigFilePythonAndRubyEnabledValue,
+				}},
+				clusterInstrumentationConfig:          clusterInstrumentationConfigWithOptIns(false, true),
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelInjectorConfigFileName: {Value: envVarOtelInjectorConfigFileRubyEnabledValue},
 				},
 			}),
 		)

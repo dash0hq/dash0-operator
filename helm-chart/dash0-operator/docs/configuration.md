@@ -870,6 +870,57 @@ by updating the dependency versions used by the workload.
 If the conflicting dependencies cannot be resolved, you might need to instrument this workload individually, for
 example by using the OpenTelemetry Python [zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/).
 
+### Ruby Auto-Instrumentation
+
+To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true`
+via Helm.
+If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled
+immediately for workloads in namespaces that have a Dash0Monitoring resource with
+[`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
+This will cause all pods in these namespaces to be restarted.
+For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
+re-deployment of the workload.
+The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
+Dash0Monitoring resource.
+
+Ruby auto-instrumentation is only supported for Ruby 3.3 or later.
+On an older Ruby version, the Dash0 Ruby distribution deactivates itself safely and prints a warning to `stderr`:
+```
+[Dash0 OpenTelemetry Distribution] Ruby 3.2.11 is not supported (requires >= 3.3.0). OpenTelemetry data will not be sent to Dash0.
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+Update the Ruby version to enable automatic Ruby instrumentation by Dash0 for this workload.
+
+Ruby auto-instrumentation only works if the configured OTLP export protocol is `http/protobuf`, the only protocol the
+OpenTelemetry Ruby OTLP exporter supports.
+If the operator is managing the container's `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` variables,
+this will be set correctly automatically.
+If the container sets `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` itself, its workload is still instrumented, but no telemetry
+is exported, and the OpenTelemetry SDK prints a warning to `stderr` for each affected signal:
+```
+The grpc transport protocol is not supported by the OTLP exporter, spans will not be exported.
+```
+Remove these environment variables from the pod spec template to enable automatic Ruby instrumentation by Dash0 for
+this workload.
+
+If the Dash0 Ruby distribution cannot be loaded at all, it deactivates itself safely, so the workload always starts,
+and prints a warning to `stderr`:
+```
+[Dash0 OpenTelemetry Distribution] Initialization failed: <reason>. OpenTelemetry data will not be sent to Dash0.
+```
+
+Instrumentation for a library is installed when the application loads that library, so no particular load order is
+required: Rails applications, applications using Bundler, and plain Ruby scripts without a `Gemfile` are all
+instrumented.
+
+Because the Dash0 Ruby distribution is loaded before the application's own libraries, its bundled `google-protobuf`
+takes precedence over the version the application declares.
+This only matters for applications that use protobuf themselves and depend on behavior that changed between the bundled
+version and their own.
+Set `DISALLOWED_LIB_PATH=google-protobuf` on the container to make the distribution defer to the application's copy
+instead; if that copy is outside the range the OTLP exporter supports, the distribution deactivates itself safely rather
+than break the application.
+
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 
 If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,

@@ -12,7 +12,8 @@ keywords:
   - Java
   - JVM
   - .NET
-  # - Python
+  - Python
+  - Ruby
 home: https://www.dash0.com/
 sources:
   - https://github.com/dash0hq/dash0-operator

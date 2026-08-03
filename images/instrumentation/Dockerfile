@@ -100,6 +100,36 @@ RUN pip install --quiet --root-user-action ignore --target . \
   rm extract-flattened-requirements.sh && \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
+# download the Dash0 OpenTelemetry Ruby distribution source tree at a pinned version. The pin file
+# (images/instrumentation/ruby/dash0-ruby-distribution-version) holds a bare git ref of
+# github.com/dash0hq/opentelemetry-ruby-distribution — no comments, since it is inlined into the tarball URL. Prefer a
+# release tag (`vX.Y.Z`); use a commit SHA only when the operator needs to consume unreleased upstream work.
+FROM alpine:3.24.1 AS download-dash0-ruby-distribution
+RUN apk add --no-cache curl tar
+COPY ruby/dash0-ruby-distribution-version /tmp/dash0-ruby-distribution-version
+RUN distribution_version=$(cat /tmp/dash0-ruby-distribution-version) && \
+  mkdir -p /dash0-ruby-distribution && \
+  curl -sSL "https://github.com/dash0hq/opentelemetry-ruby-distribution/archive/${distribution_version}.tar.gz" | \
+    tar -xz --strip-components=1 -C /dash0-ruby-distribution
+
+# install Ruby artifacts (glibc)
+FROM ruby:3.4.10-slim-trixie AS build-ruby-glibc
+# A C toolchain is only needed while installing the bundle, because a transitive dependency ships as source and compiles
+# a native extension. The bundle copied into the final image contains no source gems and needs no compiler.
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends build-essential && \
+  rm -rf /var/lib/apt/lists/*
+COPY --from=download-dash0-ruby-distribution /dash0-ruby-distribution /tmp/dash0-ruby-distribution
+COPY ruby/install-bundle.sh /tmp/install-bundle.sh
+RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
+
+# install Ruby artifacts (musl)
+FROM ruby:3.4.10-alpine3.23 AS build-ruby-musl
+RUN apk add --no-cache build-base
+COPY --from=download-dash0-ruby-distribution /dash0-ruby-distribution /tmp/dash0-ruby-distribution
+COPY ruby/install-bundle.sh /tmp/install-bundle.sh
+RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
+
 # build the final instrumentation image
 FROM alpine:3.24.1
 COPY copy-instrumentation.sh /
@@ -108,12 +138,16 @@ COPY copy-instrumentation.sh /
 COPY --from=download-injector-binary /libotelinject.so /dash0-instrumentation/injector/libotelinject.so
 COPY opentelemetry-injector/injector.conf /dash0-instrumentation/injector/injector.conf
 COPY opentelemetry-injector/injector-with-python.conf /dash0-instrumentation/injector/injector-with-python.conf
+COPY opentelemetry-injector/injector-with-ruby.conf /dash0-instrumentation/injector/injector-with-ruby.conf
+COPY opentelemetry-injector/injector-with-python-and-ruby.conf /dash0-instrumentation/injector/injector-with-python-and-ruby.conf
 COPY --from=build-dotnet /glibc /dash0-instrumentation/agents/dotnet/glibc
 COPY --from=build-dotnet /musl /dash0-instrumentation/agents/dotnet/musl
 COPY --from=build-jvm /dash0-instrumentation/jvm/build /dash0-instrumentation/agents/jvm
 COPY --from=build-node-js /dash0-instrumentation/node.js /dash0-instrumentation/agents/node.js
 COPY --from=build-python-glibc /dash0-instrumentation/python /dash0-instrumentation/agents/python/glibc
 COPY --from=build-python-musl /dash0-instrumentation/python /dash0-instrumentation/agents/python/musl
+COPY --from=build-ruby-glibc /dash0-instrumentation/ruby /dash0-instrumentation/agents/ruby/glibc
+COPY --from=build-ruby-musl /dash0-instrumentation/ruby /dash0-instrumentation/agents/ruby/musl
 
 WORKDIR /
 CMD ["/copy-instrumentation.sh"]

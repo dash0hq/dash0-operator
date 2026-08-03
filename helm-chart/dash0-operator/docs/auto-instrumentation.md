@@ -1,12 +1,13 @@
 # Automatic Workload Instrumentation
 
-This guide covers automatic workload instrumentation, including Python support, image volumes, disabling instrumentation, and resource attributes.
+This guide covers automatic workload instrumentation, including Python and Ruby support, image volumes, disabling instrumentation, and resource attributes.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Using Image Volumes for Auto-Instrumentation Files](#using-image-volumes-for-auto-instrumentation-files)
 - [Python Auto-Instrumentation](#python-auto-instrumentation)
+- [Ruby Auto-Instrumentation](#ruby-auto-instrumentation)
 - [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)
 - [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation)
 - [Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations)
@@ -88,6 +89,31 @@ Last but not least, due to the nature of Python's dependency management, Python 
 [dash0] warning: cannot auto-instrument Python process: dependency conflicts: {'package-name': {'version_required': '>=20.0', 'version_found': '19.0'}}
 ```
 This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace. Resolve the version conflicts to enable automatic Python instrumentation by Dash0 for this workload, for example by updating the dependency versions used by the workload. If the conflicting dependencies cannot be resolved, you might need to instrument this workload individually, for example by using the OpenTelemetry Python [zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/).
+
+## Ruby Auto-Instrumentation
+
+To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
+
+Ruby auto-instrumentation is only supported for Ruby 3.3 or later. On an older Ruby version, the Dash0 Ruby distribution deactivates itself safely and prints a warning to `stderr`:
+```
+[Dash0 OpenTelemetry Distribution] Ruby 3.2.11 is not supported (requires >= 3.3.0). OpenTelemetry data will not be sent to Dash0.
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace. Update the Ruby version to enable automatic Ruby instrumentation by Dash0 for this workload.
+
+Ruby auto-instrumentation only works if the configured OTLP export protocol is `http/protobuf`, the only protocol the OpenTelemetry Ruby OTLP exporter supports. If the operator is managing the container's `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` variables, this will be set correctly automatically. If the container sets `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` itself, its workload is still instrumented, but no telemetry is exported, and the OpenTelemetry SDK prints a warning to `stderr` for each affected signal:
+```
+The grpc transport protocol is not supported by the OTLP exporter, spans will not be exported.
+```
+Remove these environment variables from the pod spec template to enable automatic Ruby instrumentation by Dash0 for this workload.
+
+If the Dash0 Ruby distribution cannot be loaded at all, it deactivates itself safely, so the workload always starts, and prints a warning to `stderr`:
+```
+[Dash0 OpenTelemetry Distribution] Initialization failed: <reason>. OpenTelemetry data will not be sent to Dash0.
+```
+
+Instrumentation for a library is installed when the application loads that library, so no particular load order is required: Rails applications, applications using Bundler, and plain Ruby scripts without a `Gemfile` are all instrumented.
+
+Because the Dash0 Ruby distribution is loaded before the application's own libraries, its bundled `google-protobuf` takes precedence over the version the application declares. This only matters for applications that use protobuf themselves and depend on behavior that changed between the bundled version and their own. Set `DISALLOWED_LIB_PATH=google-protobuf` on the container to make the distribution defer to the application's copy instead; if that copy is outside the range the OTLP exporter supports, the distribution deactivates itself safely rather than break the application.
 
 ## Disabling Auto-Instrumentation for Specific Workloads
 
@@ -297,5 +323,5 @@ The remainder of this section provides a more detailed step-by-step description 
 1. The Dash0 operator adds the `dash0-instrumentation` init container with the [Dash0 instrumentation image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation) to the pod spec template of workloads. The instrumentation image contains OpenTelemetry SDKs and distributions for all supported runtimes and the [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) binary.
 2. When the init container starts, it copies the OpenTelemetry distributions and the OpenTelemetry injector binary to a dedicated shared volume mount that has been added by the operator, so they are available in the target container's file system. When it has copied all files, the init container exits.
 3. The operator also adds environment variables to the target container to ensure that the OpenTelemetry SDK has the correct configuration and will get activated at startup. The activation of the OpenTelemetry SDK happens via an `LD_PRELOAD` hook. For that purpose, the Dash0 operator adds the `LD_PRELOAD` environment variable to the pod spec template of the workload. `LD_PRELOAD` is an environment variable that is evaluated by the [dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts. In general, it specifies a list of additional shared objects to be loaded before the actual code of the executable. In this specific case, the OpenTelemetry injector binary is added to the `LD_PRELOAD` list.
-4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and others). The reason for doing that at process startup and not when modifying the pod spec (where environment variables can also be added and modified) is that the original environment variables are not necessarily fully known at that time. Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment variables are only available at process runtime. For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect tracing data from all Node.js workloads. For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely adding a `-javaagent`). For .NET or other CLR-based workloads, the `CORECLR_PROFILER` mechanism is used to add the OpenTelemetry .NET instrumentation. For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`. (Python auto-instrumentation needs to be [enabled](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) explicitly via Helm.)
+4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and others). The reason for doing that at process startup and not when modifying the pod spec (where environment variables can also be added and modified) is that the original environment variables are not necessarily fully known at that time. Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment variables are only available at process runtime. For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect tracing data from all Node.js workloads. For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely adding a `-javaagent`). For .NET or other CLR-based workloads, the `CORECLR_PROFILER` mechanism is used to add the OpenTelemetry .NET instrumentation. For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`. For Ruby auto-instrumentation, `RUBYOPT` is set (or prepended to) so that Ruby requires the [Dash0 OpenTelemetry distribution for Ruby](https://github.com/dash0hq/opentelemetry-ruby-distribution) at startup, and `OTEL_RUBY_ADDITIONAL_GEM_PATH` points at the distribution's gems. (Python and Ruby auto-instrumentation need to be [enabled](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) explicitly via Helm.)
 5. The OpenTelemetry injector also automatically improves Kubernetes-related resource attributes as follows: The operator sets the environment variables `OTEL_INJECTOR_K8S_NAMESPACE_NAME`, `OTEL_INJECTOR_K8S_POD_NAME`, `OTEL_INJECTOR_K8S_POD_UID` and `OTEL_INJECTOR_K8S_CONTAINER_NAME` on workloads. The OpenTelemetry injector binary picks these values up and uses them to populate the resource attributes `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable. If `OTEL_RESOURCE_ATTRIBUTES` is already set on the process, the key-value pairs for these attributes are appended to the existing value of `OTEL_RESOURCE_ATTRIBUTES`. If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the OpenTelemetry injector will add `OTEL_RESOURCE_ATTRIBUTES` as a new environment variable.
