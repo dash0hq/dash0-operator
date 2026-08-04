@@ -113,7 +113,7 @@ RUN distribution_version=$(cat /tmp/dash0-ruby-distribution-version) && \
     tar -xz --strip-components=1 -C /dash0-ruby-distribution
 
 # install Ruby artifacts (glibc)
-FROM ruby:3.4.10-slim-trixie AS build-ruby-glibc
+FROM ruby:4.0.6-slim-trixie AS build-ruby-glibc
 # A C toolchain is only needed while installing the bundle, because a transitive dependency ships as source and compiles
 # a native extension. The bundle copied into the final image contains no source gems and needs no compiler.
 RUN apt-get update && \
@@ -124,7 +124,7 @@ COPY ruby/install-bundle.sh /tmp/install-bundle.sh
 RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
 
 # install Ruby artifacts (musl)
-FROM ruby:3.4.10-alpine3.23 AS build-ruby-musl
+FROM ruby:4.0.6-alpine3.23 AS build-ruby-musl
 RUN apk add --no-cache build-base
 COPY --from=download-dash0-ruby-distribution /dash0-ruby-distribution /tmp/dash0-ruby-distribution
 COPY ruby/install-bundle.sh /tmp/install-bundle.sh
