@@ -5,10 +5,17 @@
 
 set -euo pipefail
 
+for executable in gh jq base64; do
+  if ! command -v "$executable" &> /dev/null; then
+    echo "Error: the $executable executable is not available." >&2
+    exit 1
+  fi
+done
+
 cd "$(dirname "${BASH_SOURCE[0]}")"/..
 
 # Use DRY_RUN=true to verify that the helm chart can be successfully packaged -- all steps will be executed except for
-# the final git push to the gh-pages branch.
+# the final commit to the gh-pages branch.
 #
 # For testing the script locally, provide the relative path to a directory with a separate clone of the
 # repository, as seen from the helm-chart directory via TEST_PUBLISH_DIR. For example:
@@ -73,15 +80,48 @@ rm -rf helm-chart
 echo "creating Helm chart index"
 helm repo index .
 
-echo "git add & commit"
-git add "dash0-operator-$version.tgz" index.yaml
-git commit -m"feat(chart): publish version $version"
+chart_archive="dash0-operator-$version.tgz"
+
+# Commit that the new commit will be based on: the current tip of gh-pages.
+base_sha=$(git rev-parse HEAD)
+
+# The base64-encoded file contents are passed to jq via --rawfile and not via --arg: they exceed the maximum length of a
+# single command line argument (MAX_ARG_STRLEN, 128 KiB).
+chart_base64=$(mktemp)
+index_base64=$(mktemp)
+trap 'rm -f "$chart_base64" "$index_base64"' EXIT
+base64 -w0 "$chart_archive" > "$chart_base64"
+base64 -w0 index.yaml > "$index_base64"
+
+# Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
+# commits are automatically signed.
+# Note: expectedHeadOid is an optimistic lock: gh-pages must still be at the commit we just fetched.
+payload=$(jq -n \
+  --arg repo "${GITHUB_REPOSITORY:-}" \
+  --arg headline "feat(chart): publish version $version" \
+  --arg oid "$base_sha" \
+  --arg chartPath "$chart_archive" \
+  --rawfile chartContents "$chart_base64" \
+  --rawfile indexContents "$index_base64" \
+  '{
+    query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+    variables: {
+      input: {
+        branch:          { repositoryNameWithOwner: $repo, branchName: "gh-pages" },
+        message:         { headline: $headline },
+        expectedHeadOid: $oid,
+        fileChanges:     { additions: [
+          { path: $chartPath,   contents: $chartContents },
+          { path: "index.yaml", contents: $indexContents }
+        ] }
+      }
+    }
+  }')
 
 if [[ "${DRY_RUN:-}" = "true" ]]; then
-  echo "executing git push (--dry-run)"
-  git push --no-verify --dry-run origin gh-pages
+  echo "skipping commit to gh-pages (dry run)"
 else
-  echo "executing git push"
-  git push --no-verify --set-upstream origin gh-pages
+  echo "committing $chart_archive and index.yaml to gh-pages"
+  echo "$payload" | gh api graphql --input - > /dev/null
 fi
 
