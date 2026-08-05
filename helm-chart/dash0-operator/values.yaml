@@ -976,10 +976,10 @@ operator:
   targetAllocator:
     mTls:
       # Whether to enable mTLS for the communication between the target-allocator and the collectors.
-      # If your metrics endpoints require authorization, enabling mTLS is required so the the target-allocator
+      # If your metrics endpoints require authorization, enabling mTLS ensures the target-allocator
       # can share the credentials with the collectors in a secure way.
       # Alternatively, you can explicitly configure the target-allocator to share the credentials over plain HTTP by
-      # setting allowInsecureAuthSecrets to true, but please be aware that transport security should then be ensured by
+      # setting allowInsecureAuthSecrets to true, but note that transport security must then be ensured by
       # other means.
       # Enabling mTLS without providing the required secrets will result in a validation error.
       enabled: false

@@ -163,7 +163,7 @@ operator:
     allowInsecureAuthSecrets: true
 ```
 
-Only enable this setting if transport-level security is guaranteed by other means, otherwise the credentials for the scraped endpoints are transferred unencrypted.
+Do not enable this setting unless transport-level security is guaranteed by other means, otherwise the credentials for the scraped endpoints are transferred unencrypted.
 See the [upstream documentation](https://github.com/open-telemetry/opentelemetry-operator/blob/main/docs/target-allocator/README.md#alternative-allow-insecure-auth-secrets) for details.
 
 ### Configuring Resource Requests/Limits for the Target-Allocator
