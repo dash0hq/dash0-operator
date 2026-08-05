@@ -231,6 +231,49 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 			Expect(httpsConfig["tls_key_file_path"]).To(Equal(fmt.Sprintf("%s/tls.key", targetAllocatorCertsVolumeDir)))
 		})
 	})
+
+	It("should not allow insecure auth secrets by default", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+		}, nil, util.ExtraConfig{})
+		Expect(err).ToNot(HaveOccurred())
+
+		taConfig := parseConfigMapContent(getConfigMap(desiredState))
+		Expect(taConfig).ToNot(HaveKey("allow_insecure_auth_secrets"))
+	})
+
+	It("should add config for allowing insecure auth secrets to the ConfigMap", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+		}, nil, util.ExtraConfig{
+			TargetAllocatorAllowInsecureAuthSecrets: true,
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		taConfig := parseConfigMapContent(getConfigMap(desiredState))
+		Expect(ReadFromMap(taConfig, []string{"allow_insecure_auth_secrets"})).To(Equal(true))
+	})
+
+	It("should add config for both mTLS and allowing insecure auth secrets to the ConfigMap", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+		}, nil, util.ExtraConfig{
+			TargetAllocatorMtlsEnabled:              true,
+			TargetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert-secret",
+			TargetAllocatorAllowInsecureAuthSecrets: true,
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		taConfig := parseConfigMapContent(getConfigMap(desiredState))
+		Expect(ReadFromMap(taConfig, []string{"allow_insecure_auth_secrets"})).To(Equal(true))
+		Expect(ReadFromMap(taConfig, []string{"https", "enabled"})).To(Equal(true))
+	})
 })
 
 func getConfigMap(desiredState []clientObject) *corev1.ConfigMap {

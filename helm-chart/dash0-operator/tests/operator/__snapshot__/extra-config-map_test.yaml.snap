@@ -98,6 +98,7 @@ extra config map should match snapshot:
         targetAllocatorMtlsEnabled: false
         targetAllocatorMtlsServerCertSecretName: ""
         targetAllocatorMtlsClientCertSecretName: ""
+        targetAllocatorAllowInsecureAuthSecrets: false
         targetAllocatorContainerResources:
           gomemlimit: 400MiB
           limits:

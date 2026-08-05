@@ -162,6 +162,7 @@ tests:
             enabled: true
             serverCertSecretName: ta-mtls-server-cert
             clientCertSecretName: ta-mtls-client-cert
+          allowInsecureAuthSecrets: true
           containerResources:
             limits:
               memory: 2Gi
@@ -434,6 +435,7 @@ tests:
             targetAllocatorMtlsEnabled: true
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
+            targetAllocatorAllowInsecureAuthSecrets: true
             targetAllocatorContainerResources:
               gomemlimit: 1500MiB
               limits:
@@ -881,6 +883,7 @@ tests:
             targetAllocatorMtlsEnabled: false
             targetAllocatorMtlsServerCertSecretName: ""
             targetAllocatorMtlsClientCertSecretName: ""
+            targetAllocatorAllowInsecureAuthSecrets: false
             targetAllocatorContainerResources:
               gomemlimit: 400MiB
               limits:

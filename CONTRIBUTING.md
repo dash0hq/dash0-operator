@@ -304,6 +304,12 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `SYNCHRONIZE_PROMETHEUS_RULES`: Set this to "false" to disable synchronizing Prometheus rule resources via the
       Dash0 API.
       This defaults to "true".
+    * `TA_ALLOW_INSECURE_AUTH_SECRETS`: Set this to "true" to have the target allocator serve the credentials for
+      metrics endpoints which require authorization over plain HTTP, instead of over mTLS.
+      This defaults to "false".
+    * `TA_MTLS_ENABLED`: Set this to "true" to enable mTLS for the communication between the target allocator and the
+      collectors. Requires `USE_CERT_MANAGER=true`, since the certificates are provisioned via cert-manager.
+      This defaults to "false", except in test scenario 06, where it defaults to "true".
     * `TELEMETRY_COLLECTION_ENABLED`: Set this to "false" to instruct the operator to not deploy OpenTelemetry
       collectors and the target allocator.
       This defaults to "true".

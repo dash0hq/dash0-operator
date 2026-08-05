@@ -127,6 +127,7 @@ data:
     targetAllocatorMtlsEnabled: {{ .Values.operator.targetAllocator.mTls.enabled }}
     targetAllocatorMtlsServerCertSecretName: {{ .Values.operator.targetAllocator.mTls.serverCertSecretName | quote }}
     targetAllocatorMtlsClientCertSecretName: {{ .Values.operator.targetAllocator.mTls.clientCertSecretName | quote }}
+    targetAllocatorAllowInsecureAuthSecrets: {{ .Values.operator.targetAllocator.allowInsecureAuthSecrets }}
     targetAllocatorContainerResources:
       {{- toYaml .Values.operator.targetAllocator.containerResources | nindent 6 }}
 {{- if .Values.operator.targetAllocator.labels }}

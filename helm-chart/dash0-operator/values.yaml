@@ -979,14 +979,22 @@ operator:
   targetAllocator:
     mTls:
       # Whether to enable mTLS for the communication between the target-allocator and the collectors.
-      # If your metrics endpoints require authorization, enabling mTLS is required, so the credentials can be provided
-      # to the collectors securily.
+      # If your metrics endpoints require authorization, enabling mTLS ensures the target-allocator
+      # can share the credentials with the collectors in a secure way.
+      # Alternatively, you can explicitly configure the target-allocator to share the credentials over plain HTTP by
+      # setting allowInsecureAuthSecrets to true, but note that transport security must then be ensured by
+      # other means.
       # Enabling mTLS without providing the required secrets will result in a validation error.
       enabled: false
       # Name of the secret containing the server certificate.
       serverCertSecretName: ""
       # Name of the secret containing the client (collector) certificate.
       clientCertSecretName: ""
+
+    # Whether to let the target-allocator serve the credentials for metrics endpoints which require authorization over
+    # plain HTTP, instead of over mTLS. Only enable this if the transport security for the communication between the
+    # target-allocator and the collectors is guaranteed by other means, for example by a service mesh.
+    allowInsecureAuthSecrets: false
 
     # Resource settings for the target-allocator container of the target-allocator deployment managed by the operator.
     containerResources:
