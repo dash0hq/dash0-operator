@@ -56,6 +56,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			"edge-proxy-image:test",
 			corev1.PullIfNotPresent,
 			OperatorVersionTest,
+			false,
 		)
 		scManager := NewSignalControlManager(k8sClient, scResourceManager, checker, util.ExtraConfigDefaults)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(

@@ -32,6 +32,9 @@ const (
 	edgeProxyUserID int64 = 10001
 
 	defaultDataset = "default"
+
+	gkeAutopilotAllowlistLabelKey            = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistLabelEdgeProxyValue = "dash0-edge-proxy-v1.0.4"
 )
 
 var (
@@ -55,6 +58,7 @@ func assembleDesiredState(
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	extraConfig util.ExtraConfig,
+	isGkeAutopilot bool,
 	forDeletion bool,
 	logger logd.Logger,
 ) []clientObject {
@@ -71,7 +75,7 @@ func assembleDesiredState(
 	if forDeletion || edgeProxyEnabled {
 		if edgeProxyEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, extraConfig, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, extraConfig, isGkeAutopilot, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
 			)
 		} else {
@@ -89,7 +93,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, false, true, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -101,6 +105,7 @@ func assembleEdgeProxyDeployment(
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	extraConfig util.ExtraConfig,
+	isGkeAutopilot bool,
 	logger logd.Logger,
 ) *appsv1.Deployment {
 	replicas := extraConfig.EdgeProxyReplicas
@@ -237,6 +242,11 @@ func assembleEdgeProxyDeployment(
 		}
 	}
 
+	templateLabels := edgeProxyLabels()
+	if isGkeAutopilot {
+		templateLabels[gkeAutopilotAllowlistLabelKey] = gkeAutopilotAllowlistLabelEdgeProxyValue
+	}
+
 	deployment := assembleEdgeProxyDeploymentForDeletion(operatorNamespace, namePrefix)
 	deployment.Spec = appsv1.DeploymentSpec{
 		Replicas: &replicas,
@@ -245,7 +255,7 @@ func assembleEdgeProxyDeployment(
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: edgeProxyLabels(),
+				Labels: templateLabels,
 			},
 			Spec: podSpec,
 		},

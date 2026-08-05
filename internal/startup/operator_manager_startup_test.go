@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	crzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -46,6 +45,7 @@ var _ = Describe("operator manager startup", func() {
 				util.Images{},
 				&appsv1.Deployment{},
 				"cluster-uid",
+				new(commandLineArguments),
 				false,
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -65,7 +65,8 @@ var _ = Describe("operator manager startup", func() {
 				envVars,
 				util.Images{},
 				&appsv1.Deployment{},
-				types.UID("cluster-uid"),
+				"cluster-uid",
+				new(commandLineArguments),
 				false,
 			)
 			Expect(err).NotTo(HaveOccurred())
