@@ -536,7 +536,6 @@ func buildSLOApiBody(resource map[string]any) ([]byte, error) {
 	sloDefinition.ApiVersion = dash0.SloDefinitionApiVersion(sloApiVersion)
 	sloDefinition.Kind = dash0.SloDefinitionKind(sloKind)
 	dash0.StripSLOServerFields(sloDefinition)
-	dash0.ClearSLOID(sloDefinition)
 	return json.Marshal(sloDefinition)
 }
 
