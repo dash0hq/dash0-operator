@@ -3,7 +3,7 @@ module github.com/dash0hq/dash0-operator/images/pkg/common
 go 1.26.5
 
 require (
-	go.opentelemetry.io/contrib/bridges/otelzap v0.19.0
+	go.opentelemetry.io/contrib/bridges/otelzap v0.20.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.21.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.21.0
