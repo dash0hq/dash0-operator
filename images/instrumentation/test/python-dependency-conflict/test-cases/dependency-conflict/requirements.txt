@@ -3,6 +3,6 @@
 # images/instrumentation/test/python-dependency-conflict/test-cases/yyy/requirements.txt are not isolated from each
 # other. Please keep that in mind when designing test cases.
 
-# Deliberately importing an old version of protobuf, app.py verifies that this version is used and not the version that
-# might be brought in by the Dash0 instrumentation image (which is 6.x).
-protobuf==4.25.8
+# Deliberately add a requirement that conflicts with the Dash0 OpenTelemetry Python distro, to verify this case is
+# detected correctly and the distro deactivates itself instead of running with an incompatible dependency.
+opentelemetry-api==1.40.0
