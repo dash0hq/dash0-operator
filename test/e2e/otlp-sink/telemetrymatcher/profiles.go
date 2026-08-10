@@ -117,7 +117,7 @@ func matchAnyProfileMatcher() func(
 }
 
 // profilesResourceMatcher validates that profile resource attributes contain Kubernetes metadata enriched by the
-// resourcedetection and k8s_attributes processors in the operator's collector pipeline.
+// resource_detection and k8s_attributes processors in the operator's collector pipeline.
 func profilesResourceMatcher(expectedNamespace string) func(
 	pprofile.ResourceProfiles,
 	*ResourceMatchResult[pprofile.ResourceProfiles],
@@ -125,7 +125,7 @@ func profilesResourceMatcher(expectedNamespace string) func(
 	return func(resourceProfiles pprofile.ResourceProfiles, matchResult *ResourceMatchResult[pprofile.ResourceProfiles]) {
 		resourceAttributes := resourceProfiles.Resource().Attributes()
 
-		// Added by the resourcedetection processor (k8snode detector).
+		// Added by the resource_detection processor (k8snode detector).
 		verifyResourceAttributeExists[pprofile.ResourceProfiles](
 			resourceAttributes,
 			"k8s.node.name",

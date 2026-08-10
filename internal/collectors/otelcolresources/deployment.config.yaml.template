@@ -209,7 +209,7 @@ processors:
   # cloud.region). Deliberately not adding node- or host-related attributes (k8s.node.*, host.*,
   # cloud.availability_zone, GCE/Azure instance identifiers) here, since that would incorrectly include node attribtues
   # from the collector deployment's node to the telemetry.
-  resourcedetection:
+  resource_detection:
     {{- /*
       Unconditionally add fail_on_missing_metadata and remove
       "--feature-gates=-processor.resourcedetection.propagateerrors" once the SignalControl Edge image updates to
@@ -792,7 +792,7 @@ service:
         - k8s_cluster
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
@@ -997,7 +997,7 @@ service:
         - k8s_events
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - transform/k8s_events
         - k8s_attributes
         {{- if .ClusterName }}

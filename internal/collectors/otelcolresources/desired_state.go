@@ -597,7 +597,7 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 					"namespaces",
 					"nodes",
 					"configmaps",
-					// required for Kubelet Metrics/Kubeletstats receiver and resourcedetection processor
+					// required for Kubelet Metrics/Kubeletstats receiver and resource_detection processor
 					"nodes/stats",
 					"persistentvolumes",
 					"persistentvolumeclaims",
@@ -1245,7 +1245,7 @@ func assembleDaemonSetCollectorContainer(
 		"--config=file:" + collectorConfigurationFilePath,
 	}
 	// The SignalControl Edge image is still based on a collector-contrib version < 0.158.0, which requires this
-	// feature gate instead of the resourcedetection processor's fail_on_missing_metadata attribute. Remove this
+	// feature gate instead of the resource_detection processor's fail_on_missing_metadata attribute. Remove this
 	// once the SignalControl Edge image updates to collector-contrib version >= 0.158.0.
 	if config.SignalControl.Enabled {
 		collectorArgs = append(collectorArgs, "--feature-gates=-processor.resourcedetection.propagateerrors")
@@ -1781,7 +1781,7 @@ func assembleDeploymentCollectorContainer(
 		"--config=file:" + collectorConfigurationFilePath,
 	}
 	// The SignalControl Edge image is still based on a collector-contrib version < 0.158.0, which requires this
-	// feature gate instead of the resourcedetection processor's fail_on_missing_metadata attribute. Remove this
+	// feature gate instead of the resource_detection processor's fail_on_missing_metadata attribute. Remove this
 	// once the SignalControl Edge image updates to collector-contrib version >= 0.158.0.
 	if config.SignalControl.Enabled {
 		collectorArgs = append(collectorArgs, "--feature-gates=-processor.resourcedetection.propagateerrors")

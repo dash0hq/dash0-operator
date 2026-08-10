@@ -733,7 +733,7 @@ processors:
   batch: {}
   {{- end }}
 
-  resourcedetection:
+  resource_detection:
     {{- /*
       Unconditionally add fail_on_missing_metadata and remove
       "--feature-gates=-processor.resourcedetection.propagateerrors" once the SignalControl Edge image updates to
@@ -1470,7 +1470,7 @@ service:
         - forward/traces-processors
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
@@ -1716,7 +1716,7 @@ service:
       receivers:
         - forward/metrics-processors
       processors:
-        - resourcedetection
+        - resource_detection
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
@@ -1913,7 +1913,7 @@ service:
       receivers:
         - forward/logs-processors
       processors:
-        - resourcedetection
+        - resource_detection
         - k8s_attributes
         {{- if .NamespacesWithLogCollection }}
         - transform/logs/filelog_service_attributes
@@ -2063,7 +2063,7 @@ service:
         - forward/profiles-processors
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8s_attributes/profiles
         {{- if .ClusterName }}
         - resource/clustername

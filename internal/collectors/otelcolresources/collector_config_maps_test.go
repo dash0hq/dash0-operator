@@ -1649,7 +1649,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify the profiles/common-processors pipeline
 			commonProcessors := readPipelineProcessors(pipelines, "profiles/common-processors")
 			Expect(commonProcessors).To(ContainElement("memory_limiter"))
-			Expect(commonProcessors).To(ContainElement("resourcedetection"))
+			Expect(commonProcessors).To(ContainElement("resource_detection"))
 			Expect(commonProcessors).To(ContainElement("k8s_attributes/profiles"))
 			Expect(commonProcessors).ToNot(ContainElement("k8s_attributes"))
 			Expect(commonProcessors).To(ContainElement("transform/resources"))
@@ -3871,7 +3871,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(metricsProcessors).To(ContainElement("resource/clustername"))
 	}, daemonSetAndDeployment)
 
-	Context("the resourcedetection processor", func() {
+	Context("the resource_detection processor", func() {
 		DescribeTable("should render fail_on_missing_metadata: false if Signal Control is disabled",
 			func(cmTypeDef configMapTypeDefinition) {
 				configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -3885,7 +3885,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(err).ToNot(HaveOccurred())
 				collectorConfig := parseConfigMapContent(configMap)
 				resourceDetectionProcessor :=
-					ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})
+					ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})
 				Expect(resourceDetectionProcessor).ToNot(BeNil())
 				Expect(resourceDetectionProcessor).To(HaveKeyWithValue("fail_on_missing_metadata", false))
 			}, daemonSetAndDeployment)
@@ -3908,7 +3908,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(err).ToNot(HaveOccurred())
 				collectorConfig := parseConfigMapContent(configMap)
 				resourceDetectionProcessor :=
-					ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})
+					ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})
 				Expect(resourceDetectionProcessor).ToNot(BeNil())
 				Expect(resourceDetectionProcessor).ToNot(HaveKey("fail_on_missing_metadata"))
 			}, daemonSetAndDeployment)
@@ -5214,7 +5214,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(pipelines["metrics/common-processors"]).To(BeNil())
 		})
 
-		It("should not render the resourcedetection processor if neither cluster metrics nor event collection is enabled", func() {
+		It("should not render the resource_detection processor if neither cluster metrics nor event collection is enabled", func() {
 			configMap, err := assembleDeploymentCollectorConfigMap(
 				&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
@@ -5230,7 +5230,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).To(BeNil())
 		})
 
 		DescribeTable("should render the k8s_cluster receiver and the associated pipeline if Kubernetes infrastructure metrics collection is enabled",
@@ -5263,11 +5263,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"processors",
 					"filter/drop-replicaset-metrics-zero-value",
 				})).ToNot(BeNil())
-				Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).ToNot(BeNil())
+				Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).ToNot(BeNil())
 				pipelines := readPipelines(collectorConfig)
 				Expect(pipelines["metrics/common-processors"]).NotTo(BeNil())
 				Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).
-					To(ContainElement("resourcedetection"))
+					To(ContainElement("resource_detection"))
 			},
 			Entry("without K8s event collection", false),
 			Entry("together with K8s event collection", true),
@@ -5324,12 +5324,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(namespaces).To(ContainElement("namespace-2"))
 
 				Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_events"})).ToNot(BeNil())
-				Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).ToNot(BeNil())
+				Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).ToNot(BeNil())
 
 				pipelines := readPipelines(collectorConfig)
 				Expect(pipelines["logs/k8sevents"]).NotTo(BeNil())
 				Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).
-					To(ContainElement("resourcedetection"))
+					To(ContainElement("resource_detection"))
 			},
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
