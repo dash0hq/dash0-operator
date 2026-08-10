@@ -12,7 +12,9 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 COPY test-cases /test-cases
 WORKDIR /
 # Note: The individual pip install commands from each test case will all install dependencies into the system-wide
-# PYTHONHOME. Depencies of test cases are not isolated from each other.
+# PYTHONHOME. Depencies of test cases are not isolated from each other; dependencies of different runtime-like folders
+# (e.g. images/instrumentation/test/python vs. images/instrumentation/test/python-dependency-conflict) are isolated
+# from each other.
 RUN for test in /test-cases/*; do \
   cd "${test}" && \
   if [ -f requirements.txt ]; then \
