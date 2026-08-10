@@ -210,6 +210,14 @@ processors:
   # cloud.availability_zone, GCE/Azure instance identifiers) here, since that would incorrectly include node attribtues
   # from the collector deployment's node to the telemetry.
   resourcedetection:
+    {{- /*
+      Unconditionally add fail_on_missing_metadata and remove
+      "--feature-gates=-processor.resourcedetection.propagateerrors" once the SignalControl Edge image updates to
+      collector-contrib version >= 0.158.0.
+    */}}
+    {{- if not .SignalControl.Enabled }}
+    fail_on_missing_metadata: false
+    {{- end }}
     detectors:
     # Note: Later detectors do *not* overwrite attributes provided by earlier detectors, hence more specific detectors
     # must come first (e.g. eks before ec2 - both write to cloud.platform).

@@ -1243,7 +1243,12 @@ func assembleDaemonSetCollectorContainer(
 
 	collectorArgs := []string{
 		"--config=file:" + collectorConfigurationFilePath,
-		"--feature-gates=-processor.resourcedetection.propagateerrors",
+	}
+	// The SignalControl Edge image is still based on a collector-contrib version < 0.158.0, which requires this
+	// feature gate instead of the resourcedetection processor's fail_on_missing_metadata attribute. Remove this
+	// once the SignalControl Edge image updates to collector-contrib version >= 0.158.0.
+	if config.SignalControl.Enabled {
+		collectorArgs = append(collectorArgs, "--feature-gates=-processor.resourcedetection.propagateerrors")
 	}
 	if config.ProfilingEnabled {
 		collectorArgs = append(collectorArgs, "--feature-gates=service.profilesSupport")
@@ -1772,12 +1777,19 @@ func assembleDeploymentCollectorContainer(
 		return corev1.Container{}, err
 	}
 
+	collectorArgs := []string{
+		"--config=file:" + collectorConfigurationFilePath,
+	}
+	// The SignalControl Edge image is still based on a collector-contrib version < 0.158.0, which requires this
+	// feature gate instead of the resourcedetection processor's fail_on_missing_metadata attribute. Remove this
+	// once the SignalControl Edge image updates to collector-contrib version >= 0.158.0.
+	if config.SignalControl.Enabled {
+		collectorArgs = append(collectorArgs, "--feature-gates=-processor.resourcedetection.propagateerrors")
+	}
+
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,
-		Args: []string{
-			"--config=file:" + collectorConfigurationFilePath,
-			"--feature-gates=-processor.resourcedetection.propagateerrors",
-		},
+		Args: collectorArgs,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
 			ReadOnlyRootFilesystem:   new(false),
