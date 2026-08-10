@@ -18,7 +18,7 @@ python -m venv "$venv_dir"
 . "$venv_dir/bin/activate"
 
 # The Dash0 Python distribution's workspace packages are copied into /tmp/dash0-python-distribution by the Dockerfile
-# stage that runs this script. The dash0-opentelemetry-distro package pins the full instrumentation set as regular
+# stage that runs this script. The dash0-opentelemetry package pins the full instrumentation set as regular
 # dependencies, so installing it (together with the pure-Python OTLP exporter packages it depends on) gives us the
 # complete injected tree.
 dash0_distribution_dir="/tmp/dash0-python-distribution"
@@ -28,11 +28,12 @@ if [ ! -d "$dash0_distribution_dir" ]; then
 fi
 
 pip install --quiet --root-user-action ignore \
-  "$dash0_distribution_dir/packages/opentelemetry-pyproto" \
-  "$dash0_distribution_dir/packages/opentelemetry-exporter-otlp-pyproto-common" \
-  "$dash0_distribution_dir/packages/opentelemetry-exporter-otlp-pyproto-grpc" \
-  "$dash0_distribution_dir/packages/opentelemetry-exporter-otlp-pyproto-http" \
-  "$dash0_distribution_dir/packages/dash0-opentelemetry-distro"
+  "$dash0_distribution_dir/packages/dash0-opentelemetry-pyproto" \
+  "$dash0_distribution_dir/packages/dash0-opentelemetry-exporter-otlp-pyproto-common" \
+  "$dash0_distribution_dir/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc" \
+  "$dash0_distribution_dir/packages/dash0-opentelemetry-exporter-otlp-pyproto-http" \
+  "$dash0_distribution_dir/packages/dash0-opentelemetry"
+
 # Pin pipdeptree to the last version that ships prebuilt wheels; 4.0.0+ is sdist-only and requires a Rust toolchain
 # (cargo) to build from source, which the Python build stages do not have.
 pip install --quiet --root-user-action ignore pipdeptree==2.27.0
@@ -59,7 +60,7 @@ while IFS= read -r line; do
     fi
   elif echo "$line" | grep -qE '[a-zA-Z0-9_-]+[=<>!~]+[0-9]'; then
     # Lines representing top-level direct dependencies look like this:
-    # dash0-opentelemetry-distro==0.2.0
+    # dash0-opentelemetry==0.2.0
     # Write this as-is to the output file (via echo, we pipe the output of the while loop into the file).
     echo "$line"
   fi

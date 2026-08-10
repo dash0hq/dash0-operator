@@ -71,14 +71,14 @@ COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/d
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 # Install the Dash0 Python distribution's workspace packages from local paths, since they are not yet published to
 # PyPI. Listing them in the same pip invocation lets pip resolve the inter-dependencies against the local sources.
-# The dash0-opentelemetry-distro package pins the full instrumentation set as regular dependencies, so we do not need
+# The dash0-opentelemetry package pins the full instrumentation set as regular dependencies, so we do not need
 # to install any additional packages on top.
 RUN pip install --quiet --root-user-action ignore --target . \
-  /tmp/dash0-python-distribution/packages/opentelemetry-pyproto \
-  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-common \
-  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-grpc \
-  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-http \
-  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-distro && \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-pyproto \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh && \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
@@ -91,11 +91,11 @@ COPY python/extract-flattened-requirements.sh .
 COPY --from=download-dash0-python-distribution /dash0-python-distribution /tmp/dash0-python-distribution
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN pip install --quiet --root-user-action ignore --target . \
-  /tmp/dash0-python-distribution/packages/opentelemetry-pyproto \
-  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-common \
-  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-grpc \
-  /tmp/dash0-python-distribution/packages/opentelemetry-exporter-otlp-pyproto-http \
-  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-distro && \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-pyproto \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-common \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-grpc \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry-exporter-otlp-pyproto-http \
+  /tmp/dash0-python-distribution/packages/dash0-opentelemetry && \
   ./extract-flattened-requirements.sh && \
   rm extract-flattened-requirements.sh && \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
