@@ -63,7 +63,7 @@ RUN distribution_version=$(cat /tmp/dash0-python-distribution-version) && \
     tar -xz --strip-components=1 -C /dash0-python-distribution
 
 # install Python artifacts (glibc)
-FROM python:3.14.6-trixie AS build-python-glibc
+FROM python:3.14.7-trixie AS build-python-glibc
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .
@@ -84,7 +84,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # install Python artifacts (musl)
-FROM python:3.14.6-alpine3.23 AS build-python-musl
+FROM python:3.14.7-alpine3.23 AS build-python-musl
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .
