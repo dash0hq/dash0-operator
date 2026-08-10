@@ -35,6 +35,16 @@ type InstrumentationWebhookHandler struct {
 	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
 }
 
+type discardingEventRecorder struct{}
+
+func (discardingEventRecorder) Eventf(
+	_ runtime.Object,
+	_ runtime.Object,
+	_, _, _, _ string,
+	_ ...interface{},
+) {
+}
+
 type resourceHandler func(
 	h *InstrumentationWebhookHandler,
 	request admission.Request,
@@ -224,8 +234,14 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	gvkLabel := fmt.Sprintf("%s/%s.%s", group, version, kind)
 
 	logger.Debug("routing admission request to handler", "group", group, "kind", kind, "version", version)
+	handler := h
+	if request.DryRun != nil && *request.DryRun {
+		dryRunHandler := *h
+		dryRunHandler.Recorder = discardingEventRecorder{}
+		handler = &dryRunHandler
+	}
 	return routes.routeFor(group, kind, version)(
-		h,
+		handler,
 		request,
 		gvkLabel,
 		dash0MonitoringResource.GetNamespaceInstrumentationConfig(),
