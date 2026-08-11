@@ -1,10 +1,10 @@
-# https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.4.0/config/crd/bases/perses.dev_persesdashboards.yaml
+# https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.5.0/config/crd/bases/perses.dev_persesdashboards.yaml
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: persesdashboards.perses.dev
 spec:
   group: perses.dev
@@ -43,6 +43,54 @@ spec:
             type: object
           spec:
             properties:
+              annotations:
+                items:
+                  properties:
+                    display:
+                      properties:
+                        color:
+                          type: string
+                        description:
+                          type: string
+                        hidden:
+                          type: boolean
+                        name:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    plugin:
+                      properties:
+                        kind:
+                          description: Kind is the type of the plugin (e.g., Panel,
+                            Variable, Datasource, etc.).
+                          type: string
+                        metadata:
+                          description: Metadata is an optional field that contains
+                            additional information such as version and registry of
+                            the plugin.
+                          properties:
+                            registry:
+                              description: 'Registry is optional. If not provided,
+                                it means the default registry is: "perses.dev".'
+                              type: string
+                            version:
+                              description: |-
+                                Version is optional. If not provided, it means the latest version available in the Perses instance.
+                                Version needs to follow the semantic versioning format (e.g., "1.0.0" or "v1.0.0")
+                              type: string
+                          type: object
+                        spec:
+                          x-kubernetes-preserve-unknown-fields: true
+                      required:
+                      - kind
+                      - spec
+                      type: object
+                  required:
+                  - display
+                  - plugin
+                  type: object
+                type: array
               datasources:
                 additionalProperties:
                   properties:
@@ -71,11 +119,12 @@ spec:
                           properties:
                             registry:
                               description: 'Registry is optional. If not provided,
-                                it means the default registry: "perses.dev".'
+                                it means the default registry is: "perses.dev".'
                               type: string
                             version:
-                              description: Version is optional. If not provided, it
-                                means the latest version available in the Perses instance.
+                              description: |-
+                                Version is optional. If not provided, it means the latest version available in the Perses instance.
+                                Version needs to follow the semantic versioning format (e.g., "1.0.0" or "v1.0.0")
                               type: string
                           type: object
                         spec:
@@ -178,12 +227,12 @@ spec:
                               properties:
                                 registry:
                                   description: 'Registry is optional. If not provided,
-                                    it means the default registry: "perses.dev".'
+                                    it means the default registry is: "perses.dev".'
                                   type: string
                                 version:
-                                  description: Version is optional. If not provided,
-                                    it means the latest version available in the Perses
-                                    instance.
+                                  description: |-
+                                    Version is optional. If not provided, it means the latest version available in the Perses instance.
+                                    Version needs to follow the semantic versioning format (e.g., "1.0.0" or "v1.0.0")
                                   type: string
                               type: object
                             spec:
@@ -214,13 +263,13 @@ spec:
                                         properties:
                                           registry:
                                             description: 'Registry is optional. If
-                                              not provided, it means the default registry:
-                                              "perses.dev".'
+                                              not provided, it means the default registry
+                                              is: "perses.dev".'
                                             type: string
                                           version:
-                                            description: Version is optional. If not
-                                              provided, it means the latest version
-                                              available in the Perses instance.
+                                            description: |-
+                                              Version is optional. If not provided, it means the latest version available in the Perses instance.
+                                              Version needs to follow the semantic versioning format (e.g., "1.0.0" or "v1.0.0")
                                             type: string
                                         type: object
                                       spec:
@@ -250,6 +299,9 @@ spec:
                   when landing on the dashboard
                 format: duration
                 pattern: ^(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?$
+                type: string
+              timezone:
+                description: Timezone is the dashboard level timezone
                 type: string
               variables:
                 items:
@@ -363,6 +415,54 @@ spec:
               config:
                 description: config specifies the Perses dashboard configuration
                 properties:
+                  annotations:
+                    items:
+                      properties:
+                        display:
+                          properties:
+                            color:
+                              type: string
+                            description:
+                              type: string
+                            hidden:
+                              type: boolean
+                            name:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        plugin:
+                          properties:
+                            kind:
+                              description: Kind is the type of the plugin (e.g., Panel,
+                                Variable, Datasource, etc.).
+                              type: string
+                            metadata:
+                              description: Metadata is an optional field that contains
+                                additional information such as version and registry
+                                of the plugin.
+                              properties:
+                                registry:
+                                  description: 'Registry is optional. If not provided,
+                                    it means the default registry is: "perses.dev".'
+                                  type: string
+                                version:
+                                  description: |-
+                                    Version is optional. If not provided, it means the latest version available in the Perses instance.
+                                    Version needs to follow the semantic versioning format (e.g., "1.0.0" or "v1.0.0")
+                                  type: string
+                              type: object
+                            spec:
+                              x-kubernetes-preserve-unknown-fields: true
+                          required:
+                          - kind
+                          - spec
+                          type: object
+                      required:
+                      - display
+                      - plugin
+                      type: object
+                    type: array
                   datasources:
                     additionalProperties:
                       properties:
@@ -391,12 +491,12 @@ spec:
                               properties:
                                 registry:
                                   description: 'Registry is optional. If not provided,
-                                    it means the default registry: "perses.dev".'
+                                    it means the default registry is: "perses.dev".'
                                   type: string
                                 version:
-                                  description: Version is optional. If not provided,
-                                    it means the latest version available in the Perses
-                                    instance.
+                                  description: |-
+                                    Version is optional. If not provided, it means the latest version available in the Perses instance.
+                                    Version needs to follow the semantic versioning format (e.g., "1.0.0" or "v1.0.0")
                                   type: string
                               type: object
                             spec:
@@ -499,12 +599,12 @@ spec:
                                   properties:
                                     registry:
                                       description: 'Registry is optional. If not provided,
-                                        it means the default registry: "perses.dev".'
+                                        it means the default registry is: "perses.dev".'
                                       type: string
                                     version:
-                                      description: Version is optional. If not provided,
-                                        it means the latest version available in the
-                                        Perses instance.
+                                      description: |-
+                                        Version is optional. If not provided, it means the latest version available in the Perses instance.
+                                        Version needs to follow the semantic versioning format (e.g., "1.0.0" or "v1.0.0")
                                       type: string
                                   type: object
                                 spec:
@@ -538,13 +638,12 @@ spec:
                                               registry:
                                                 description: 'Registry is optional.
                                                   If not provided, it means the default
-                                                  registry: "perses.dev".'
+                                                  registry is: "perses.dev".'
                                                 type: string
                                               version:
-                                                description: Version is optional.
-                                                  If not provided, it means the latest
-                                                  version available in the Perses
-                                                  instance.
+                                                description: |-
+                                                  Version is optional. If not provided, it means the latest version available in the Perses instance.
+                                                  Version needs to follow the semantic versioning format (e.g., "1.0.0" or "v1.0.0")
                                                 type: string
                                             type: object
                                           spec:
@@ -574,6 +673,9 @@ spec:
                       use when landing on the dashboard
                     format: duration
                     pattern: ^(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?$
+                    type: string
+                  timezone:
+                    description: Timezone is the dashboard level timezone
                     type: string
                   variables:
                     items:
