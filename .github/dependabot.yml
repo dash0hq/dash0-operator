@@ -3,7 +3,8 @@ updates:
 
   # Maintenance note: every update block below sets its own commit-message.prefix explicitly, new blocks should do the
   # same. When a block leaves the prefix unset, Dependabot infers a commit message prefix, and this is not always
-  # reliable.
+  # reliable. The same applies to cooldown.default-days: set it explicitly instead of relying on Dependabot's implicit
+  # default.
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -12,6 +13,8 @@ updates:
       day: "tuesday"
       time: "07:00"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     commit-message:
       prefix: "ci(deps)"
 
@@ -28,6 +31,8 @@ updates:
       day: "tuesday"
       time: "07:05"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -43,6 +48,8 @@ updates:
       interval: "daily"
       time: "07:10"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
 
@@ -51,6 +58,8 @@ updates:
     directory: "images/instrumentation/jvm/"
     schedule:
       interval: "daily"
+    cooldown:
+      default-days: 4
     commit-message:
       prefix: "chore(deps)"
 
@@ -70,6 +79,8 @@ updates:
       interval: "daily"
       time: "07:15"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -101,6 +112,8 @@ updates:
       interval: "daily"
       time: "07:18"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       development-dependencies:
         dependency-type: "development"
@@ -118,6 +131,8 @@ updates:
       interval: "daily"
       time: "09:00"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       development-dependencies:
         dependency-type: "development"
@@ -137,6 +152,8 @@ updates:
       day: "tuesday"
       time: "07:15"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       all:
         patterns:
@@ -155,6 +172,8 @@ updates:
       day: "tuesday"
       time: "07:25"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       all:
         patterns:
@@ -170,6 +189,8 @@ updates:
       day: "tuesday"
       time: "07:30"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 7
     groups:
       all:
         patterns:
