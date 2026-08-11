@@ -548,9 +548,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
 		Expect(daemonSetCollectorContainer.Resources.Limits.Memory().String()).To(Equal("500Mi"))
 		Expect(daemonSetCollectorContainer.Resources.Requests.Memory().String()).To(Equal("500Mi"))
-		Expect(daemonSetCollectorContainerArgs).To(HaveLen(2))
+		Expect(daemonSetCollectorContainerArgs).To(HaveLen(1))
 		Expect(daemonSetCollectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(daemonSetCollectorContainerArgs[1]).To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
 		Expect(daemonSetCollectorContainer.VolumeMounts).To(HaveLen(6))
 		Expect(daemonSetCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
@@ -610,9 +609,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentCollectorContainer.Resources.Limits.Memory().String()).To(Equal("500Mi"))
 		Expect(deploymentCollectorContainer.Resources.Requests.Memory().String()).To(Equal("500Mi"))
 		deploymentCollectorContainerArgs := deploymentCollectorContainer.Args
-		Expect(deploymentCollectorContainerArgs).To(HaveLen(2))
+		Expect(deploymentCollectorContainerArgs).To(HaveLen(1))
 		Expect(deploymentCollectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(deploymentCollectorContainerArgs[1]).To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
 		Expect(deploymentCollectorContainer.VolumeMounts).To(HaveLen(2))
 		Expect(deploymentCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
@@ -706,10 +704,60 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSetPodSpec := daemonSet.(*appsv1.DaemonSet).Spec.Template.Spec
 		daemonSetCollectorContainer := daemonSetPodSpec.Containers[0]
 		Expect(daemonSetCollectorContainer.Name).To(Equal("opentelemetry-collector"))
-		Expect(daemonSetCollectorContainer.Args).To(HaveLen(3))
+		Expect(daemonSetCollectorContainer.Args).To(HaveLen(2))
 		Expect(daemonSetCollectorContainer.Args[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(daemonSetCollectorContainer.Args[1]).To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
-		Expect(daemonSetCollectorContainer.Args[2]).To(Equal("--feature-gates=service.profilesSupport"))
+		Expect(daemonSetCollectorContainer.Args[1]).To(Equal("--feature-gates=service.profilesSupport"))
+	})
+
+	It("should not add the -processor.resourcedetection.propagateerrors feature gate to the collector args when Signal Control is disabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			SignalControl:     SignalControlConfig{Enabled: false},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(daemonSetCollectorContainer.Args).
+			ToNot(ContainElement("--feature-gates=-processor.resourcedetection.propagateerrors"))
+
+		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(deploymentCollectorContainer.Args).
+			ToNot(ContainElement("--feature-gates=-processor.resourcedetection.propagateerrors"))
+	})
+
+	It("should add the -processor.resourcedetection.propagateerrors feature gate to the collector args when Signal Control is enabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			SignalControl: SignalControlConfig{
+				Enabled:     true,
+				Endpoint:    "decision-maker.example.com:443",
+				ApiEndpoint: "https://control-plane-api.dash0.com",
+				Dataset:     "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(daemonSetCollectorContainer.Args).To(HaveLen(2))
+		Expect(daemonSetCollectorContainer.Args[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(daemonSetCollectorContainer.Args[1]).
+			To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
+
+		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(deploymentCollectorContainer.Args).To(HaveLen(2))
+		Expect(deploymentCollectorContainer.Args[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(deploymentCollectorContainer.Args[1]).
+			To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
 	})
 
 	It("should omit all resources related to the collector deployment if collecting cluster metrics is disabled", func() {

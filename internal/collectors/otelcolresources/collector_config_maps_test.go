@@ -3871,6 +3871,49 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(metricsProcessors).To(ContainElement("resource/clustername"))
 	}, daemonSetAndDeployment)
 
+	Context("the resourcedetection processor", func() {
+		DescribeTable("should render fail_on_missing_metadata: false if Signal Control is disabled",
+			func(cmTypeDef configMapTypeDefinition) {
+				configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					SignalControl: SignalControlConfig{Enabled: false},
+				}, monitoredNamespaces, nil, nil, false)
+
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				resourceDetectionProcessor :=
+					ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})
+				Expect(resourceDetectionProcessor).ToNot(BeNil())
+				Expect(resourceDetectionProcessor).To(HaveKeyWithValue("fail_on_missing_metadata", false))
+			}, daemonSetAndDeployment)
+
+		DescribeTable("should not render fail_on_missing_metadata if Signal Control is enabled",
+			func(cmTypeDef configMapTypeDefinition) {
+				configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					SignalControl: SignalControlConfig{
+						Enabled:     true,
+						Endpoint:    "decision-maker.example.com:443",
+						ApiEndpoint: "https://control-plane-api.dash0.com",
+						Dataset:     "default",
+					},
+				}, monitoredNamespaces, nil, nil, false)
+
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				resourceDetectionProcessor :=
+					ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})
+				Expect(resourceDetectionProcessor).ToNot(BeNil())
+				Expect(resourceDetectionProcessor).ToNot(HaveKey("fail_on_missing_metadata"))
+			}, daemonSetAndDeployment)
+	})
+
 	Describe("should enable/disable kubernetes infrastructure metrics collection and the hostmetrics receiver", func() {
 		It("should not render the kubeletstats receiver and hostmetrics if kubernetes infrastructure metrics collection is disabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
