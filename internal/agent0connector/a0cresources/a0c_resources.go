@@ -24,7 +24,6 @@ type Agent0ConnectorResourceManager struct {
 	scheme                    *runtime.Scheme
 	operatorManagerDeployment *appsv1.Deployment
 	agent0ConnectorConfig     util.Agent0ConnectorConfig
-	extraConfig               util.ExtraConfig
 }
 
 func NewAgent0ConnectorResourceManager(
@@ -32,19 +31,18 @@ func NewAgent0ConnectorResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	agent0ConnectorConfig util.Agent0ConnectorConfig,
-	extraConfig util.ExtraConfig,
 ) *Agent0ConnectorResourceManager {
 	return &Agent0ConnectorResourceManager{
 		Client:                    k8sClient,
 		scheme:                    scheme,
 		operatorManagerDeployment: operatorManagerDeployment,
 		agent0ConnectorConfig:     agent0ConnectorConfig,
-		extraConfig:               extraConfig,
 	}
 }
 
 func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
 	authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
@@ -57,7 +55,7 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 		return false, false, err
 	}
 
-	desiredState := assembleDesiredState(&m.agent0ConnectorConfig, &authTokenEnvVar, m.extraConfig)
+	desiredState := assembleDesiredState(&m.agent0ConnectorConfig, &authTokenEnvVar, extraConfig)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
@@ -177,6 +175,7 @@ func (m *Agent0ConnectorResourceManager) updateResource(
 
 func (m *Agent0ConnectorResourceManager) DeleteResources(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, error) {
 	logger.Info(
@@ -184,7 +183,7 @@ func (m *Agent0ConnectorResourceManager) DeleteResources(
 			"Deleting the agent0-connector Kubernetes resources in the Dash0 operator namespace %s (if existing).",
 			m.agent0ConnectorConfig.OperatorNamespace,
 		))
-	desiredResources := assembleDesiredState(&m.agent0ConnectorConfig, nil, m.extraConfig)
+	desiredResources := assembleDesiredState(&m.agent0ConnectorConfig, nil, extraConfig)
 	var allErrors []error
 	resourcesHaveBeenDeleted := false
 	for _, wrapper := range desiredResources {

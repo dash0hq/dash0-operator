@@ -175,6 +175,10 @@ data:
     agent0ConnectorPodAnnotations:
       {{- toYaml .Values.operator.agent0Connector.podAnnotations | nindent 6 }}
 {{- end }}
+    agent0ConnectorTolerations:
+      {{- toYaml .Values.operator.agent0Connector.tolerations | nindent 6 }}
+    agent0ConnectorNodeAffinity:
+      {{- toYaml .Values.operator.agent0Connector.nodeAffinity | nindent 6 }}
 
     {{- if .Values.operator.autoMonitorNamespaces.monitoringTemplate }}
     {{- fail "Error: operator.autoMonitorNamespaces.monitoringTemplate is not a valid setting. The monitoring template is a top-level operator setting; please use operator.monitoringTemplate instead." -}}

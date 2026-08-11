@@ -59,7 +59,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		_, err := manager.DeleteResources(ctx, logger)
+		_, err := manager.DeleteResources(ctx, util.ExtraConfig{}, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Eventually(func(g Gomega) {
 			verifyAgent0ConnectorResourcesDoNotExist(ctx, g)
@@ -105,7 +105,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when creating all agent0-connector resources", func() {
 		It("should create the service account, cluster role, cluster role binding, and deployment", func() {
-			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 			Expect(updated).To(BeFalse())
@@ -116,7 +116,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when resolving the authorization for the agent0-connector workload", func() {
 		It("passes a literal token as the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN environment variable", func() {
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -132,7 +132,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 					Key:  "token",
 				},
 			})
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -150,7 +150,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			// Authorization is deliberately left unset (neither token nor secretRef).
 			manager = newAgent0ConnectorResourceManager(dash0common.Authorization{})
 
-			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 
 			Expect(err).To(HaveOccurred())
 			Expect(created).To(BeFalse())
@@ -161,7 +161,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when agent0-connector resources have been modified externally", func() {
 		It("should reconcile the resources back into the desired state", func() {
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -177,7 +177,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			deployment.Spec.Replicas = &changedReplicas
 			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
 
-			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeFalse())
 			Expect(updated).To(BeTrue())
@@ -194,7 +194,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when agent0-connector resources have been deleted externally", func() {
 		It("should re-create the resources", func() {
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -206,7 +206,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, serviceAccount)).To(Succeed())
 
-			created, _, err = manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, _, err = manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -222,12 +222,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when all agent0-connector resources are up to date", func() {
 		It("should report that nothing has changed", func() {
-			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 			Expect(updated).To(BeFalse())
 
-			created, updated, err = manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			created, updated, err = manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeFalse())
 			Expect(updated).To(BeFalse())
@@ -238,18 +238,18 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when deleting all agent0-connector resources", func() {
 		It("should delete the resources", func() {
-			_, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+			_, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			verifyAgent0ConnectorResourcesExist(ctx)
 
-			deleted, err := manager.DeleteResources(ctx, logger)
+			deleted, err := manager.DeleteResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(deleted).To(BeTrue())
 
 			verifyAgent0ConnectorResourcesDoNotExist(ctx, Default)
 
 			// Deletion must be idempotent: deleting again must not error, but must report that nothing was deleted.
-			deleted, err = manager.DeleteResources(ctx, logger)
+			deleted, err = manager.DeleteResources(ctx, util.ExtraConfig{}, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(deleted).To(BeFalse())
 		})
@@ -273,7 +273,6 @@ func newAgent0ConnectorResourceManager(authorization dash0common.Authorization) 
 			Authorization:     authorization,
 			DevelopmentMode:   true,
 		},
-		util.ExtraConfig{},
 	)
 }
 
