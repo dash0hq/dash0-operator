@@ -5,11 +5,14 @@ package agent0connector
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"sync/atomic"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
@@ -17,6 +20,7 @@ import (
 type Agent0ConnectorManager struct {
 	client.Client
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager
+	extraConfig                    atomic.Pointer[util.ExtraConfig]
 	enabled                        bool
 	developmentMode                bool
 	updateInProgress               atomic.Bool
@@ -32,14 +36,34 @@ const (
 func NewAgent0ConnectorManager(
 	k8sClient client.Client,
 	enabled bool,
+	extraConfig util.ExtraConfig,
 	developmentMode bool,
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager,
 ) *Agent0ConnectorManager {
-	return &Agent0ConnectorManager{
+	m := &Agent0ConnectorManager{
 		Client:                         k8sClient,
 		enabled:                        enabled,
 		developmentMode:                developmentMode,
 		agent0ConnectorResourceManager: agent0ConnectorResourceManager,
+	}
+	m.extraConfig.Store(&extraConfig)
+	return m
+}
+
+// UpdateExtraConfig applies an updated extra config map (e.g. changed labels, annotations, tolerations or node
+// affinity) to the agent0-connector resources managed by the operator.
+func (m *Agent0ConnectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logd.Logger) {
+	previousConfig := m.extraConfig.Swap(&newConfig)
+	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
+		hasBeenReconciled, err := m.ReconcileAgent0Connector(ctx, TriggeredByWatchEvent)
+		if err != nil {
+			logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update agent0-connector resources after extra config map update.")
+		}
+		if hasBeenReconciled {
+			logger.Info("successfully reconciled agent0-connector resources after extra config map update")
+		}
+	} else {
+		logger.Info("ignoring extra config map update, both the new and the old extra config map have the same content")
 	}
 }
 
@@ -81,29 +105,35 @@ func (m *Agent0ConnectorManager) ReconcileAgent0Connector(
 		return false, err
 	}
 
+	extraConfig := m.extraConfig.Load()
+	if extraConfig == nil {
+		return false, fmt.Errorf("extra config is nil in Agent0ConnectorManager#ReconcileAgent0Connector")
+	}
+
 	if operatorConfigurationResource == nil {
 		logger.Debug("The Dash0OperatorConfiguration resource is missing or has been deleted, the agent0-connector " +
 			"deployment (if present) will be removed.")
-		err = m.removeAgent0Connector(ctx, logger)
+		err = m.removeAgent0Connector(ctx, *extraConfig, logger)
 		return err == nil, err
 	}
 
 	if !m.agent0ConnectorEnabled() {
 		logger.Debug("The agent0-connector deployment is disabled, it (if present) will be removed.")
-		err = m.removeAgent0Connector(ctx, logger)
+		err = m.removeAgent0Connector(ctx, *extraConfig, logger)
 		return err == nil, err
 	}
 
-	err = m.createOrUpdateAgent0Connector(ctx, logger)
+	err = m.createOrUpdateAgent0Connector(ctx, *extraConfig, logger)
 	return err == nil, err
 }
 
 func (m *Agent0ConnectorManager) createOrUpdateAgent0Connector(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
-		m.agent0ConnectorResourceManager.CreateOrUpdateAgent0ConnectorResources(ctx, logger)
+		m.agent0ConnectorResourceManager.CreateOrUpdateAgent0ConnectorResources(ctx, extraConfig, logger)
 	if err != nil {
 		logger.Error(err, "failed to create one or more of the agent0-connector resources")
 		return err
@@ -124,9 +154,10 @@ func (m *Agent0ConnectorManager) createOrUpdateAgent0Connector(
 
 func (m *Agent0ConnectorManager) removeAgent0Connector(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) error {
-	resourcesHaveBeenDeleted, err := m.agent0ConnectorResourceManager.DeleteResources(ctx, logger)
+	resourcesHaveBeenDeleted, err := m.agent0ConnectorResourceManager.DeleteResources(ctx, extraConfig, logger)
 	if err != nil {
 		logger.Error(err, "Failed to delete the agent0-connector Kubernetes resources, requeuing reconcile request.")
 		return err

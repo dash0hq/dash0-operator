@@ -2173,14 +2173,15 @@ func setupAgent0ConnectorManager(
 		mgr.GetScheme(),
 		operatorDeploymentSelfReference,
 		agent0ConnectorConfig,
-		extraConfig,
 	)
 	agent0ConnectorManager := agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
 		envVars.agent0ConnectorEnabled,
+		extraConfig,
 		developmentMode,
 		agent0ConnectorResourceManager,
 	)
+	extraConfigMapWatcher.AddClient(agent0ConnectorManager)
 	agent0ConnectorReconciler := agent0connector.NewAgent0ConnectorReconciler(
 		k8sClient,
 		agent0ConnectorManager,

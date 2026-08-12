@@ -38,12 +38,11 @@ func newResourceManager() *a0cresources.Agent0ConnectorResourceManager {
 			ServerAddress:     "https://example.com:4317",
 			Authorization:     dash0common.Authorization{Token: &token},
 		},
-		util.ExtraConfig{},
 	)
 }
 
 func newManager(enabled bool) *Agent0ConnectorManager {
-	return NewAgent0ConnectorManager(k8sClient, enabled, false, newResourceManager())
+	return NewAgent0ConnectorManager(k8sClient, enabled, util.ExtraConfig{}, false, newResourceManager())
 }
 
 var _ = Describe("The agent0-connector manager", Ordered, func() {
@@ -54,7 +53,7 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		_, err := newResourceManager().DeleteResources(ctx, logd.FromContext(ctx))
+		_, err := newResourceManager().DeleteResources(ctx, util.ExtraConfig{}, logd.FromContext(ctx))
 		Expect(err).ToNot(HaveOccurred())
 		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 	})
@@ -98,6 +97,31 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(hasBeenReconciled).To(BeTrue())
 		expectAgent0ConnectorResourcesToNotExist(ctx)
+	})
+
+	It("applies an updated extra config map to the agent0-connector deployment", func() {
+		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+		manager := newManager(true)
+		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		Expect(err).ToNot(HaveOccurred())
+		expectAgent0ConnectorResourcesToExist(ctx)
+
+		manager.UpdateExtraConfig(ctx, util.ExtraConfig{
+			Agent0ConnectorTolerations: []corev1.Toleration{
+				{
+					Key:      "agent0-connector-key",
+					Operator: corev1.TolerationOpExists,
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+			},
+		}, logd.FromContext(ctx))
+
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx,
+			client.ObjectKey{Namespace: OperatorNamespace, Name: a0cresources.DeploymentName(agent0ConnectorTestNamePrefix)},
+			deployment)).To(Succeed())
+		Expect(deployment.Spec.Template.Spec.Tolerations).To(HaveLen(1))
+		Expect(deployment.Spec.Template.Spec.Tolerations[0].Key).To(Equal("agent0-connector-key"))
 	})
 
 	It("does not reconcile when an update is already in progress", func() {

@@ -121,6 +121,20 @@ extra config map should match snapshot:
                 operator: In
                 values:
                 - linux
+        agent0ConnectorTolerations:
+          []
+        agent0ConnectorNodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dash0.com/enable
+                operator: NotIn
+                values:
+                - "false"
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
     kind: ConfigMap
     metadata:
       labels:

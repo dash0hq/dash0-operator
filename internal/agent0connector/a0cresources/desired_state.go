@@ -215,6 +215,7 @@ func assembleDeployment(
 
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: ServiceAccountName(c.NamePrefix),
+		Tolerations:        extraConfig.Agent0ConnectorTolerations,
 		Containers: []corev1.Container{
 			container,
 		},
@@ -235,6 +236,12 @@ func assembleDeployment(
 			RunAsUser:  new(defaultUser),
 			RunAsGroup: new(defaultGroup),
 		},
+	}
+
+	if extraConfig.Agent0ConnectorNodeAffinity != nil {
+		podSpec.Affinity = &corev1.Affinity{
+			NodeAffinity: extraConfig.Agent0ConnectorNodeAffinity,
+		}
 	}
 
 	return &appsv1.Deployment{
