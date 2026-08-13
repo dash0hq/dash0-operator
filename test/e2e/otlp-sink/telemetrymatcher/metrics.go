@@ -31,6 +31,7 @@ const (
 	serviceNamespaceKey = "service.namespace"
 	serviceVersionKey   = "service.version"
 	nodeNameKey         = "k8s.node.name"
+	nodeUidKey          = "k8s.node.uid"
 	podUidKey           = "k8s.pod.uid"
 	metricNameKey       = "metric.name"
 )
@@ -425,6 +426,19 @@ func resourceAttributeMatcherSelfMonitoringCollector(operatorNamespace string) r
 			)
 		} else {
 			matchResult.addPassedAssertion(nodeNameKey)
+		}
+
+		// k8s.node.uid is added by the collector image's custom internal-telemetry factory (see
+		// images/collector/src/telemetry), which resolves the node UID via the Kubernetes API at collector startup. The
+		// node UID is not available via the downward API, hence it cannot be set as a static resource attribute.
+		_, isSet = attributes.Get(nodeUidKey)
+		if !isSet {
+			matchResult.addFailedAssertion(
+				nodeUidKey,
+				"expected attribute to be set, but the metric has no such resource attribute",
+			)
+		} else {
+			matchResult.addPassedAssertion(nodeUidKey)
 		}
 
 		checkPodUid(attributes, true, matchResult)
