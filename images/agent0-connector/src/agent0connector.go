@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/dash0hq/dash0-operator/images/agent0-connector/grpc"
 )
 
 // The agent0-connector executable executes read-only kubectl commands from within the cluster on behalf of an upstream
@@ -23,7 +25,7 @@ func main() {
 	defer stop()
 
 	// Subscribe to command requests and execute them until a termination signal is received.
-	runSubscriber(ctx, logger)
+	grpc.RunSubscriber(ctx, logger)
 
 	logger.Info("dash0 agent0-connector received a termination signal, shutting down")
 }

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package grpc
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dash0hq/dash0-operator/images/agent0-connector/kubectl"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -65,9 +66,9 @@ const (
 	healthyStreamThreshold = 1 * time.Minute
 )
 
-// runSubscriber opens the SubscribeToCommandRequests stream to the backend and keeps it open, reconnecting
+// RunSubscriber opens the SubscribeToCommandRequests stream to the backend and keeps it open, reconnecting
 // whenever the stream drops, until the provided context is cancelled (e.g. on shutdown).
-func runSubscriber(ctx context.Context, logger *slog.Logger) {
+func RunSubscriber(ctx context.Context, logger *slog.Logger) {
 	serverAddress := resolveServerAddress(logger)
 	transportCredentials := resolveTransportCredentials(logger)
 	clientID := resolveClientID(logger)
@@ -196,11 +197,11 @@ func resolveAuthToken(logger *slog.Logger) string {
 // HOME for its caches. (When the operator deploys this workload the variable is always provided, and the image
 // defaults it to /tmp.)
 func resolveKubectlTmpDir(logger *slog.Logger) string {
-	tmpDir := os.Getenv(kubectlTmpEnvVarName)
+	tmpDir := os.Getenv(kubectl.KubectlTmpEnvVarName)
 	if tmpDir == "" {
 		logger.Error(
 			"the kubectl tmp directory environment variable is not set, cannot run kubectl with a writable cache directory",
-			"envVar", kubectlTmpEnvVarName,
+			"envVar", kubectl.KubectlTmpEnvVarName,
 		)
 		os.Exit(1)
 	}
@@ -289,7 +290,7 @@ func listenToCommandRequests(
 			"arguments", req.GetArguments(),
 		)
 
-		resp := executeCommandRequest(ctx, logger, kubectlTmpDir, req)
+		resp := kubectl.ExecuteCommandRequest(ctx, logger, kubectlTmpDir, req)
 
 		if err := stream.Send(resp); err != nil {
 			return fmt.Errorf("stream send failed: %w", err)

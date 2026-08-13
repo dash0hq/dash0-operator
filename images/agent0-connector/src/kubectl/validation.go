@@ -1,0 +1,145 @@
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// Validation for kubectl command requests. Checks whether a command kubectl invocation is allowed or if it needs to be
+// rejected.
+
+package kubectl
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+
+	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
+)
+
+// readOnlyKubectlSubcommands is the allowlist of kubectl subcommands the executor is allowed to run. Everything else
+// is rejected. The list deliberately contains only subcommands that read cluster state and never mutate it. This is
+// additional defense-in-depth on top of the strictly read-only RBAC (get & list only) granted to the agent0-connector
+// service account.
+var readOnlyKubectlSubcommands = map[string]struct{}{
+	"api-resources": {},
+	"api-versions":  {},
+	"cluster-info":  {},
+	"describe":      {},
+	"events":        {},
+	"explain":       {},
+	"get":           {},
+	"logs":          {},
+	"top":           {},
+	"version":       {},
+}
+
+// sensitiveResource describes how a resource type whose contents must not be exposed is guarded.
+type sensitiveResource struct {
+	// displayName names the resource in rejection messages.
+	displayName string
+	// contentExposingSubcommands are subcommands that print the resource's data regardless of the output format:
+	// kubectl's describer for secrets prints only key names and byte counts, but the one for config maps prints every
+	// value.
+	contentExposingSubcommands []string
+}
+
+var (
+	secretResource    = sensitiveResource{displayName: "secret"}
+	configMapResource = sensitiveResource{displayName: "config map", contentExposingSubcommands: []string{"describe"}}
+)
+
+// sensitiveResourceTypes maps the resource type names whose contents must not be exposed to their guard, in singular
+// and plural form. Config maps additionally have the kubectl shortname "cm"; secrets have no shortname.
+var sensitiveResourceTypes = map[string]sensitiveResource{
+	"secret":     secretResource,
+	"secrets":    secretResource,
+	"configmap":  configMapResource,
+	"configmaps": configMapResource,
+	"cm":         configMapResource,
+}
+
+// validateCommandAndParseArguments parses the request's argument list and ensures the request invokes an allowed
+// read-only kubectl command, and only uses allowed flags. It returns the parsed argument list, which the caller may
+// reuse for further processing (e.g. redacting the response). If the request is allowed, the returned error is nil.
+// If an error is returned, the error describes why the request is rejected. The returned argument list must not be
+// used when the error is non-nil.
+func validateCommandAndParseArguments(req *pb.CommandRequest) (parsedArguments, error) {
+	if req.GetCommand() != kubectlCommand {
+		return parsedArguments{}, fmt.Errorf(
+			"only the %q command is allowed, but got %q",
+			kubectlCommand,
+			req.GetCommand(),
+		)
+	}
+
+	arguments := parseArguments(req.GetArguments())
+
+	// The flags are checked first: which token is the subcommand and which tokens reference resources depends on knowing
+	// which flags consume the following argument as their value, which is only known for flags from the allowlist.
+	if len(arguments.disallowedFlags) > 0 {
+		return parsedArguments{}, fmt.Errorf("the kubectl flag %q is not allowed", arguments.disallowedFlags[0])
+	}
+
+	// Invoking kubectl with no subcommand at all - bare `kubectl`, or only global flags such as `kubectl --help` - is
+	// allowed: kubectl then prints its usage/help, which is read-only and harmless.
+	if arguments.subcommand != "" {
+		if _, allowed := readOnlyKubectlSubcommands[arguments.subcommand]; !allowed {
+			return parsedArguments{}, fmt.Errorf(
+				"the kubectl subcommand %q is not an allowed read-only command",
+				arguments.subcommand,
+			)
+		}
+	}
+
+	if reason, blocked := sensitiveContentRequested(arguments); blocked {
+		return parsedArguments{}, errors.New(reason)
+	}
+
+	return arguments, nil
+}
+
+// sensitiveContentRequested reports whether the kubectl arguments would read the contents of a sensitive resource,
+// returning a human-readable reason when they do. Listing them (`kubectl get secrets`) and checking for the presence of
+// a particular one (`kubectl get secret <name>`) are allowed; serializing the data via an output format such as
+// -o yaml/json/jsonpath/go-template/custom-columns (or --template), or via a subcommand that prints the data anyway, is
+// not. This is a fail-closed check: output formats that could expose the data are rejected even if a particular
+// invocation would only read metadata, and a repeated output flag is rejected if any of its occurrences would expose
+// the data.
+func sensitiveContentRequested(parsed parsedArguments) (string, bool) {
+	resource, targeted := targetedSensitiveResource(parsed)
+	if !targeted {
+		return "", false
+	}
+	if slices.Contains(resource.contentExposingSubcommands, parsed.subcommand) {
+		return fmt.Sprintf(
+			"the kubectl subcommand %q prints the contents of a %s, which is not allowed",
+			parsed.subcommand,
+			resource.displayName,
+		), true
+	}
+	if parsed.outputIsContentFree() {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"reading the contents of a %s is not allowed; listing %ss or checking for the presence of a particular %s is "+
+			"supported, but serializing its data (e.g. via -o yaml/json/jsonpath/go-template/custom-columns) is not",
+		resource.displayName,
+		resource.displayName,
+		resource.displayName,
+	), true
+}
+
+// targetedSensitiveResource returns the guard for the first sensitive resource the kubectl arguments reference.
+func targetedSensitiveResource(parsed parsedArguments) (sensitiveResource, bool) {
+	for _, resourceType := range parsed.resourceTypes {
+		if resource, isSensitive := lookupSensitiveResourceType(resourceType); isSensitive {
+			return resource, true
+		}
+	}
+	return sensitiveResource{}, false
+}
+
+// lookupSensitiveResourceType returns the guard for the given resource type, accepting the singular and plural forms as
+// well as fully qualified forms such as "secrets.v1." (the API group/version suffix is ignored).
+func lookupSensitiveResourceType(resourceType string) (sensitiveResource, bool) {
+	resource, isSensitive := sensitiveResourceTypes[normalizeResourceType(resourceType)]
+	return resource, isSensitive
+}

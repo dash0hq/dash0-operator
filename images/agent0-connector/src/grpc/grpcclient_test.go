@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package grpc
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dash0hq/dash0-operator/images/agent0-connector/kubectl"
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
@@ -42,7 +43,7 @@ func TestResolveClientID(t *testing.T) {
 
 func TestResolveKubectlTmpDir(t *testing.T) {
 	logger := discardLogger()
-	t.Setenv(kubectlTmpEnvVarName, "/var/cache/kubectl")
+	t.Setenv(kubectl.KubectlTmpEnvVarName, "/var/cache/kubectl")
 
 	if tmpDir := resolveKubectlTmpDir(logger); tmpDir != "/var/cache/kubectl" {
 		t.Errorf("expected the tmp dir to be read from the environment variable, got %q", tmpDir)
@@ -144,8 +145,8 @@ func TestListenToCommandRequests(t *testing.T) {
 		if stream.sent[0].GetRequestId() != "req-1" {
 			t.Errorf("expected the response to echo the request ID, got %q", stream.sent[0].GetRequestId())
 		}
-		if stream.sent[0].GetExitCode() != exitCodeRejected {
-			t.Errorf("expected the rejected exit code %d, got %d", exitCodeRejected, stream.sent[0].GetExitCode())
+		if stream.sent[0].GetExitCode() != 1 {
+			t.Errorf("expected the rejected exit code %d, got %d", 1, stream.sent[0].GetExitCode())
 		}
 	})
 
