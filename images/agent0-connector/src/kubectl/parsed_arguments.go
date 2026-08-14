@@ -59,37 +59,6 @@ func (p parsedArguments) valuesOf(names ...string) []string {
 	return values
 }
 
-// hasBooleanFlag reports whether any of the given flags (long names or shorthands, without leading dashes) is set.
-// Boolean flags also accept an explicit value in pflag ("--all-namespaces=false"), which is not tracked: the flag
-// counts as set no matter which value it was given.
-func (p parsedArguments) hasBooleanFlag(names ...string) bool {
-	for _, flag := range p.flags {
-		for _, booleanName := range flag.booleanNames {
-			if slices.Contains(names, booleanName) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// namespaceScopeArguments returns the arguments that give another kubectl invocation the same namespace scope as this
-// invocation: --all-namespaces when this invocation reads all namespaces, the namespace it selects when it selects one,
-// and nothing at all otherwise - an invocation without a namespace flag resolves the same default namespace, since it
-// runs with the same kubeconfig/service account and the same environment. kubectl applies the last occurrence of
-// --namespace and lets --all-namespaces win over it, which is mirrored here. Anything that is not clearly
-// namespace-scoped - notably "--all-namespaces=false", whose value is not tracked (see hasBooleanFlag) - widens the
-// scope to all namespaces rather than narrowing it.
-func (p parsedArguments) namespaceScopeArguments() []string {
-	if p.hasBooleanFlag("all-namespaces", "A") {
-		return []string{"--all-namespaces"}
-	}
-	if namespaces := p.valuesOf("n", "namespace"); len(namespaces) > 0 {
-		return []string{"--namespace", namespaces[len(namespaces)-1]}
-	}
-	return nil
-}
-
 // outputFormats returns the normalized output formats requested via -o/--output (handling the "-o yaml", "-o=yaml",
 // "-oyaml", "-Aoyaml" and "--output=yaml" forms), or an empty slice if none is set. For composite formats it returns
 // the base type, e.g. "jsonpath" for "jsonpath={.data}". Repeating the flag yields one entry per occurrence: kubectl

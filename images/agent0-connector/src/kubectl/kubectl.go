@@ -173,7 +173,7 @@ func ExecuteCommandRequest(
 
 	// The response is redacted before any notice is appended, so that redaction only ever operates on kubectl's own
 	// output.
-	redactionErr := redactSecretsInResponse(ctx, kubectlTmpDir, parsed, resp, stdout.truncated)
+	redactionErr := redactSecretsInResponse(parsed, resp, stdout.truncated)
 	if redactionErr != nil {
 		logger.Error(
 			"withholding a command response that could not be redacted",

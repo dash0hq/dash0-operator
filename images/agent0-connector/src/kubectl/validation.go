@@ -145,7 +145,25 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (parsedArguments, 
 		return parsedArguments{}, errors.New(reason)
 	}
 
+	if reason, blocked := describeOfResourceTypeWithSecrets(arguments); blocked {
+		return parsedArguments{}, errors.New(reason)
+	}
+
 	return arguments, nil
+}
+
+// describeOfResourceTypeWithSecrets reports whether the kubectl arguments describe a Dash0 custom resource that can
+// contain secrets, returning a human-readable reason when they do. The describer renders a resource in a text format
+// that is not meant to be parsed and for which no parser is available, so the connector cannot locate the credentials
+// in its output in order to redact them.
+func describeOfResourceTypeWithSecrets(parsed parsedArguments) (string, bool) {
+	if parsed.subcommand != "describe" || !targetsResourceTypeWithSecrets(parsed) {
+		return "", false
+	}
+	return "describing a Dash0 custom resource is not supported, because it can contain an authorization token or " +
+		"third-party credentials which cannot be redacted from the output of \"kubectl describe\"; read the resource " +
+		"with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns the same content with its credentials " +
+		"redacted, and its events with \"kubectl events --for <resource-type>/<name>\"", true
 }
 
 // disallowedOutputFormat returns the first output format requested via -o/--output that is not in the

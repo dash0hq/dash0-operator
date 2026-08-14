@@ -1,32 +1,35 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Handles secret redaction for the output of kubectl commands
+// Handles secret redaction for the output of kubectl commands.
 //
-// Redacting secrets from kubectl responses is not exactly trivial for a couple of reasons:
+// Secrets are redacted where they live: the response is parsed into a document, the credential values are replaced
+// within that document, and the document is rendered again. Nothing is matched against the rendered text, so how the
+// serializer escaped or wrapped a value is irrelevant, and a credential that happens to be a common string cannot
+// garble unrelated parts of the response.
 //
-// - "kubectl get" supports a variety of output formats (-o xxx), not all of them can be reliably parsed and
-//   interpreted. "go-template"/"go-template-file", "jsonpath"/"jsonpath-as-json"/"jsonpath-file" as well as
-//   "custom-columns"/"custom-columns-file" can basically reshape the response arbitrarily; this makes reliably finding
-//   the export tokens or export headers in such a response is basically impossible (or would require parsing and
-//   interpreting the template/jsonpath/colum definitions as well)
-// - "kubectl describe" output is somewhat structured, but not meant to be parsed, and there seem to no parsers
-//   available for its format. Hand-rolling a parser might be possible, but potentially error-prone.
+// This is only possible because a request that targets a Dash0 custom resource which can contain secrets is restricted
+// to output formats the connector can parse and render itself (see safeOrRedactableOutputFormats in validation.go):
 //
-// Taking all of this into account, the approach to secret redaction is as follows:
-// When a kubectl command involves CRDs for which we want to redact secrets, and if the command uses an output format
-// that requires secret redaction (e.g. not a simple "kubectl get name" etc.):
-// 1. gather the relevant secret values as strings, either
-//     - from the response itself, when the command rendered the resources as a JSON or YAML document
-//       (e.g. -ojson/-oyaml), or
-//     - from the response of an additional kubectl command for the same resource types and with the same namespace
-//       scope, using an output format that we can easily parse,
-// 2. do a find-and-replace for these strings in the actual kubectl response that is sent back to the server
+//   - "-o json" and "-o yaml" render the resources as a document. kubectl serializes a custom resource from its
+//     unstructured (map) form, so re-rendering the parsed document reproduces kubectl's output byte for byte, apart
+//     from the redacted values.
+//   - the content-free formats ("-o name", "-o wide", the default table) do not expose the content of a resource at
+//     all and are passed through untouched.
+//   - "-o go-template", "-o jsonpath", "-o custom-columns" and "kubectl describe" are rejected for these resource
+//     types. The template formats can reshape a value beyond recognition, and the describer renders a text format
+//     that is not meant to be parsed; in neither case can the credentials be located in the output.
+//
+// A response that cannot be parsed after all - output truncated at maxOutputBytesPerStream, a multi-document YAML
+// stream, or an error message on stderr with nothing on stdout - is withheld rather than handed out, see
+// withholdResponse.
+//
+// stderr is scrubbed by replacing the values that were redacted from the document, since kubectl formats an error
+// with Go's %v verbs rather than as a document.
 
 package kubectl
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -38,31 +41,26 @@ import (
 )
 
 const (
-	// maxExtractionOutputBytes caps how many bytes are captured from the kubectl invocation that re-reads the Dash0
-	// custom resources of the requested namespace scope to learn which values have to be redacted (see
-	// gatherRedactableSecretsViaAdditionalKubectlCall). The limit is higher than maxOutputBytesPerStream because this
-	// output is never sent to the backend, it is only parsed to collect secret values; truncating it would silently drop
-	// values that then would not be redacted, so a truncated extraction is treated as a failure.
-	maxExtractionOutputBytes = 8 * 1024 * 1024 // 8 MiB
-
 	// redactedValue replaces secrets in the response. It is the same placeholder the operator uses when it logs a Dash0
-	// custom resource (see api/operator/common.RedactedValue).
+	// custom resource (see api/operator/common.RedactedValue). Note that it is subject to the escaping of the output
+	// format like any other value: a JSON response renders it as "\u003credacted\u003e", since that is how kubectl
+	// renders a value containing angle brackets, and rendering it verbatim instead would mean rendering every other
+	// value differently from kubectl as well.
 	redactedValue = "<redacted>"
 
-	// minCredentialValueLength is the length of the shortest value that is treated as a potential secret (see
-	// addSecretIfPlausible). Shorter values are no plausible credentials, but would frequently match unrelated
-	// parts of the response and garble it.
+	// minCredentialValueLength is the length of the shortest redacted value that is also scrubbed from stderr (see
+	// valuesToScrubFromStderr). The values are removed from the document by position, so their length does not matter
+	// there; stderr is scrubbed by replacing the value itself, where a short one would frequently match unrelated
+	// output and garble it.
 	minCredentialValueLength = 4
 
-	// minTruncatedSecretFragmentLength is the length of the shortest fragment of a secret value that is stripped from
-	// the end of truncated output (see trimTruncatedSecretFragment). Shorter fragments are left alone: they reveal
-	// nothing, but would frequently match the last characters of unrelated output.
-	minTruncatedSecretFragmentLength = 5
-
 	// outputFormatJson and outputFormatYaml are the output formats that render the targeted resources as a document the
-	// connector can parse itself, see parseableOutputFormat and secretsFromResponse.
+	// connector can parse and render itself, see parseableOutputFormat and redactSecretsInResponse.
 	outputFormatJson = "json"
 	outputFormatYaml = "yaml"
+
+	// jsonIndent is the indentation kubectl uses for "-o json", so that a re-rendered document matches its output.
+	jsonIndent = "    "
 )
 
 // contentFreeOutputFormats are the output formats that do not require secret redaction, i.e. that allow listing
@@ -77,8 +75,10 @@ var contentFreeOutputFormats = map[string]struct{}{
 	"wide": {},
 }
 
-// wellKnownNonSecretValues lists values which are very unlikely to be secrets/credentials. Values are matched
-// case-insensitively (see addSecretIfPlausible).
+// wellKnownNonSecretValues lists values which are very unlikely to be secrets/credentials. They are only consulted for
+// the header and query parameter values (see redactHeaderValuesIfPlausible), the one position that legitimately holds
+// non-credentials such as a content type next to the credentials it is meant to protect. Values are matched
+// case-insensitively.
 var wellKnownNonSecretValues = map[string]struct{}{
 	"true":                   {},
 	"false":                  {},
@@ -106,21 +106,21 @@ var wellKnownNonSecretValues = map[string]struct{}{
 	"application/x-protobuf": {},
 }
 
-// dash0ResourceTypesWithSecrets maps the resource type names of the Dash0 custom resources whose content can contain
-// secrets to the fully qualified name under which they are re-read for redaction: the Dash0 auth token and the header
-// values of non-Dash0 exports (Dash0OperatorConfiguration, Dash0Monitoring), the credentials of the third-party
-// integrations of a notification channel (Dash0NotificationChannel), and the credentials a synthetic check sends with
-// its request (Dash0SyntheticCheck). Singular and plural form are listed; none of these custom resources have short
-// names, and kubectl also accepts the kind (e.g. "Dash0Monitoring"), which normalizes to the singular form.
-var dash0ResourceTypesWithSecrets = map[string]string{
-	"dash0operatorconfiguration":  "dash0operatorconfigurations.operator.dash0.com",
-	"dash0operatorconfigurations": "dash0operatorconfigurations.operator.dash0.com",
-	"dash0monitoring":             "dash0monitorings.operator.dash0.com",
-	"dash0monitorings":            "dash0monitorings.operator.dash0.com",
-	"dash0notificationchannel":    "dash0notificationchannels.operator.dash0.com",
-	"dash0notificationchannels":   "dash0notificationchannels.operator.dash0.com",
-	"dash0syntheticcheck":         "dash0syntheticchecks.operator.dash0.com",
-	"dash0syntheticchecks":        "dash0syntheticchecks.operator.dash0.com",
+// dash0ResourceTypesWithSecrets lists the resource type names of the Dash0 custom resources whose content can contain
+// secrets: the Dash0 auth token and the header values of non-Dash0 exports (Dash0OperatorConfiguration,
+// Dash0Monitoring), the credentials of the third-party integrations of a notification channel
+// (Dash0NotificationChannel), and the credentials a synthetic check sends with its request (Dash0SyntheticCheck).
+// Singular and plural form are listed; none of these custom resources have short names, and kubectl also accepts the
+// kind (e.g. "Dash0Monitoring"), which normalizes to the singular form.
+var dash0ResourceTypesWithSecrets = map[string]struct{}{
+	"dash0operatorconfiguration":  {},
+	"dash0operatorconfigurations": {},
+	"dash0monitoring":             {},
+	"dash0monitorings":            {},
+	"dash0notificationchannel":    {},
+	"dash0notificationchannels":   {},
+	"dash0syntheticcheck":         {},
+	"dash0syntheticchecks":        {},
 }
 
 // credentialFieldsPerConfigObject maps the name of a configuration object in a Dash0 custom resource to the fields
@@ -148,94 +148,108 @@ var parseableOutputFormats = map[string]struct{}{
 	outputFormatYaml: {},
 }
 
-// redactSecretsInResponse redacs secrets in a command response, in place. The values (Dash0 auth tokens,
-// third-party credentials) are redacted wherever they occur, no matter how kubectl rendered the resource (`describe`,
-// `-o yaml`, `-o json`, `-o jsonpath`, `-o go-template`, ..., including the copy of the spec that kubectl apply leaves
-// behind in the "kubectl.kubernetes.io/last-applied-configuration" annotation).
+// redactSecretsInResponse redacts secrets in a command response, in place. The response is parsed into a document, the
+// credential values (Dash0 auth tokens, third-party credentials) are replaced within that document - including in the
+// copy of the spec that kubectl apply leaves behind in the "kubectl.kubernetes.io/last-applied-configuration"
+// annotation - and the document is rendered again in the format the request asked for.
 //
-// redactSecretsInResponse only redacts secrets from Dash0-related resource types, for which we know the structure
-// and format, and in which places they might contain secrets.
+// Only responses that render a Dash0 custom resource which can contain secrets are redacted; for those, validation.go
+// has already restricted the request to an output format the connector can parse and render (see
+// safeOrRedactableOutputFormats).
 //
-// The values that need to be redacted are determined from the response itself (see secretsFromResponse) or, when it
-// uses a format that cannot be parsed and interpreted reliably (e.g. kubectl describe, kubectl get -o jsonpath), by
-// re-reading the targeted resource types from the cluster (see gatherRedactableSecretsViaAdditionalKubectlCall), so
-// responses are matched on the actual secret values rather than on a particular serialization format. A non-nil error
-// means the response could not be redacted and must not be sent to the backend, see withholdResponse.
-func redactSecretsInResponse(
-	ctx context.Context,
-	kubectlTmpDir string,
-	parsed parsedArguments,
-	resp *pb.CommandResponse,
-	stdoutTruncated bool,
-) error {
+// A non-nil error means the response could not be redacted and must not be sent to the backend, see withholdResponse.
+func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, stdoutTruncated bool) error {
 	// If there is no output at all, there is nothing to redact.
 	if resp.GetStdout() == "" && resp.GetStderr() == "" {
 		return nil
 	}
-	resourceTypes := extractResourceTypesThatRequireSecretRedaction(parsed)
-	if len(resourceTypes) == 0 {
-		// None of the resource types are subject to secret redaction.
+	if !responseCanContainSecrets(parsed) {
 		return nil
 	}
 
-	secrets, fromResponse := secretsFromResponse(parsed, resp.GetStdout(), stdoutTruncated)
-	if !fromResponse {
-		var err error
-		if secrets, err = gatherRedactableSecretsViaAdditionalKubectlCall(
-			ctx,
-			kubectlTmpDir,
-			parsed,
-			resourceTypes,
-		); err != nil {
-			return err
-		}
+	format, parseable := parsed.parseableOutputFormat()
+	if !parseable {
+		// Unreachable for a validated request: the only other formats left for these resource types are the
+		// content-free ones, which responseCanContainSecrets already ruled out.
+		return fmt.Errorf("the output format of this command cannot be parsed for redaction")
 	}
-	if len(secrets) == 0 {
-		return nil
-	}
-
-	resp.Stdout = redactAllSecrets(resp.GetStdout(), secrets)
 	if stdoutTruncated {
-		resp.Stdout = trimTruncatedSecretFragment(resp.GetStdout(), secrets)
+		return fmt.Errorf(
+			"the output exceeds the limit of %d bytes and the truncated response cannot be parsed for redaction",
+			maxOutputBytesPerStream,
+		)
 	}
-	// kubectl does not print resource content to stderr, but redacting it as well is free at this point.
-	resp.Stderr = redactAllSecrets(resp.GetStderr(), secrets)
+	if resp.GetStdout() == "" {
+		// Only stderr carries content, which is not a document (kubectl formats an error message, not a resource).
+		return fmt.Errorf("the command produced no output that could be parsed for redaction")
+	}
+	document, parsedSuccessfully := parseResponseDocument(format, resp.GetStdout())
+	if !parsedSuccessfully {
+		return fmt.Errorf("the response is not a single %s document that could be parsed for redaction", format)
+	}
+
+	redacted := &redactedValues{values: make(map[string]struct{})}
+	if err := redactResourceList(document, redacted); err != nil {
+		return err
+	}
+
+	stdout, err := renderResponseDocument(format, document)
+	if err != nil {
+		return fmt.Errorf("the redacted response could not be rendered as %s: %w", format, err)
+	}
+	resp.Stdout = stdout
+	// kubectl does not print resource content to stderr, but scrubbing the redacted values from it as well is cheap.
+	resp.Stderr = redactAllSecrets(resp.GetStderr(), redacted.valuesToScrubFromStderr())
 	return nil
 }
 
-// extractResourceTypesThatRequireSecretRedaction inspects the kubectl arguments and returns the fully qualified names
-// of the custom resource types that satisfy the following conditions:
-//   - it is a resource type which can potentially include sensitive information (a Dash0 auth token in an export,
-//     third party credentials in non-Dash0 export configurations, in the integration of a notification channel, or in
-//     the request of a synthetic check),
-//   - the kubectl command asks for the actual content of the resource (e.g. kubectl describe, or
-//     kubectl get with -oyaml etc.),
-//
-// The resource names are returned without duplicates. The method returns an empty slice for requests that do not match
-// the conditions above.
-func extractResourceTypesThatRequireSecretRedaction(parsed parsedArguments) []string {
-	switch parsed.subcommand {
-	case "describe":
-		// The describer always prints the whole resource, regardless of the output format.
-	case "get":
-		if parsed.outputIsContentFree() {
-			// kubectl get -o name or similar, no actual resource content in the response, hence no need to redact secrets
-			return nil
-		}
-		// All other "kubectl get" formats require secret redaction.
-	default:
-		// No other allowed subcommand renders the content of a custom resource ("explain" only prints its schema).
-		return nil
+// responseCanContainSecrets reports whether the response of the given invocation renders the content of a Dash0 custom
+// resource that can contain secrets, and therefore has to be redacted.
+func responseCanContainSecrets(parsed parsedArguments) bool {
+	if parsed.subcommand != "get" {
+		// No other allowed subcommand renders the content of a custom resource: "describe" is rejected for these
+		// resource types (see describeOfResourceTypeWithSecrets), and "explain" only prints the schema.
+		return false
 	}
+	if parsed.outputIsContentFree() {
+		// kubectl get -o name or similar, no actual resource content in the response.
+		return false
+	}
+	return targetsResourceTypeWithSecrets(parsed)
+}
 
-	var resourceTypes []string
-	for _, resourceType := range parsed.resourceTypes {
-		qualifiedName, hasSecrets := dash0ResourceTypesWithSecrets[resourceType]
-		if hasSecrets && !slices.Contains(resourceTypes, qualifiedName) {
-			resourceTypes = append(resourceTypes, qualifiedName)
+// redactedValues collects the values that have been replaced in a document. The count is tracked separately from the
+// set, so that a caller can tell whether a node changed even when it held a value that had already been replaced
+// elsewhere (see redactAnnotations).
+type redactedValues struct {
+	values map[string]struct{}
+	count  int
+}
+
+func (r *redactedValues) add(value string) {
+	r.values[value] = struct{}{}
+	r.count++
+}
+
+// valuesToScrubFromStderr returns the redacted values that are worth replacing in stderr as well, ordered from longest
+// to shortest so that a longer value is replaced before a shorter one contained in it. Values shorter than
+// minCredentialValueLength are left out: they reveal little, but would frequently match unrelated output and garble
+// the error message. The value itself is matched here, which is reliable because kubectl formats an error message with
+// Go's %v verbs rather than as a document, so no escaping is applied to it.
+func (r *redactedValues) valuesToScrubFromStderr() []string {
+	sorted := make([]string, 0, len(r.values))
+	for value := range r.values {
+		if len(value) >= minCredentialValueLength {
+			sorted = append(sorted, value)
 		}
 	}
-	return resourceTypes
+	slices.SortFunc(sorted, func(first, second string) int {
+		if diff := len(second) - len(first); diff != 0 {
+			return diff
+		}
+		return strings.Compare(first, second)
+	})
+	return sorted
 }
 
 // targetsResourceTypeWithSecrets reports whether the kubectl arguments reference a Dash0 custom resource type whose
@@ -253,47 +267,10 @@ func targetsResourceTypeWithSecrets(parsed parsedArguments) bool {
 	return false
 }
 
-// secretsFromResponse returns the secret values that occur in the response itself, sorted from longest to shortest (see
-// redactAllSecrets). This is the fast-path to be used when the original response can be used to identify secrets
-// reliably.
-//
-// The second return value is false when the response is not a document that can be parsed with confidence
-// (e.g. for kubectl get -o jsonpath) the caller then has to fall back to re-reading the resources via
-// gatherRedactableSecretsViaAdditionalKubectlCall.
-//
-// The whole document is walked, including resources of other types that the same command rendered (as in
-// "kubectl get pods,dash0monitorings -o json"): a secret value of such a resource is redacted as well, which errs
-// towards redacting too much rather than too little.
-func secretsFromResponse(parsed parsedArguments, stdout string, stdoutTruncated bool) ([]string, bool) {
-	if stdout == "" {
-		// Nothing can be learned from an empty stdout, and it must not be mistaken for a document that was parsed
-		// successfully: an empty string is a valid (empty) YAML document, which would yield an empty secret list and
-		// thereby skip the redaction of a stderr that does carry resource content.
-		return nil, false
-	}
-	if stdoutTruncated {
-		// A truncated document does not parse, and trimming the fragment of a secret at the very end of the output
-		// requires the full value anyway (see trimTruncatedSecretFragment).
-		return nil, false
-	}
-	format, parseable := parsed.parseableOutputFormat()
-	if !parseable {
-		return nil, false
-	}
-	document, parsedSuccessfully := parseResponseDocument(format, stdout)
-	if !parsedSuccessfully {
-		return nil, false
-	}
-
-	secrets := make(map[string]struct{})
-	collectSecretsFromResourceList(document, secrets)
-	return sortedSecrets(secrets), true
-}
-
 // parseResponseDocument parses a kubectl response that renders resources in the given output format. It reports false
 // when the response cannot be parsed, or when it cannot be guaranteed that the parsed result covers the whole response.
 // YAML is converted to JSON before it is unmarshalled, so that both formats yield the same types and are walked by
-// exactly the same code (see collectSecretsFromDocumentNodeRecursively).
+// exactly the same code (see redactDocumentNodeRecursively).
 func parseResponseDocument(format string, stdout string) (any, bool) {
 	var document any
 	switch format {
@@ -329,98 +306,81 @@ func hasYamlDocumentSeparator(stdout string) bool {
 	return false
 }
 
-// gatherRedactableSecretsViaAdditionalKubectlCall reads the custom resources with the given CRD type and collects
-// secret values they contain, sorted from longest to shortest (see redactAllSecrets). It returns an error if the
-// resources cannot be read or parsed; the caller must then reject the kubectl command in that case.
-func gatherRedactableSecretsViaAdditionalKubectlCall(
-	ctx context.Context,
-	kubectlTmpDir string,
-	parsed parsedArguments,
-	resourceTypes []string,
-) ([]string, error) {
-	extractionCtx, cancel := context.WithTimeout(ctx, commandTimeout)
-	defer cancel()
-
-	arguments := extractionArguments(parsed, resourceTypes)
-	stdout, stderr, err := runKubectl(extractionCtx, kubectlTmpDir, arguments, maxExtractionOutputBytes)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"reading the resources via \"%s %s\" failed: %w: %s",
-			kubectlCommand,
-			strings.Join(arguments, " "),
-			err,
-			strings.TrimSpace(stderr.String()),
-		)
+// renderResponseDocument renders the redacted document in the output format the request asked for. kubectl serializes
+// a custom resource from its unstructured (map) form, with alphabetically ordered keys, four-space indentation and a
+// trailing newline for JSON - exactly what encoding/json and sigs.k8s.io/yaml produce for the same document - so the
+// rendered response matches kubectl's output byte for byte, apart from the redacted values. Built-in resource types
+// that the same command rendered (as in "kubectl get pods,dash0monitorings -o json") are serialized from a Go struct
+// by kubectl and therefore come back with their fields ordered alphabetically rather than in the order kubectl used;
+// the document is equivalent, only its field order differs.
+func renderResponseDocument(format string, document any) (string, error) {
+	switch format {
+	case outputFormatJson:
+		rendered, err := json.MarshalIndent(document, "", jsonIndent)
+		if err != nil {
+			return "", err
+		}
+		return string(rendered) + "\n", nil
+	case outputFormatYaml:
+		rendered, err := yaml.Marshal(document)
+		if err != nil {
+			return "", err
+		}
+		return string(rendered), nil
+	default:
+		return "", fmt.Errorf("unsupported output format %q", format)
 	}
-	if stdout.truncated {
-		return nil, fmt.Errorf("the resources exceed the limit of %d bytes", maxExtractionOutputBytes)
-	}
-
-	var document any
-	if err = json.Unmarshal([]byte(stdout.String()), &document); err != nil {
-		return nil, fmt.Errorf("cannot parse the Dash0 resources: %w", err)
-	}
-
-	secrets := make(map[string]struct{})
-	collectSecretsFromResourceList(document, secrets)
-	return sortedSecrets(secrets), nil
 }
 
-// extractionArguments returns the arguments of the kubectl invocation that re-reads the given resource types to learn
-// which values have to be redacted. The invocation is given the same namespace scope as the command whose response is
-// redacted (see namespaceScopeArguments).
-func extractionArguments(parsed parsedArguments, resourceTypes []string) []string {
-	namespaceScope := parsed.namespaceScopeArguments()
-	arguments := make([]string, 0, 4+len(namespaceScope))
-	arguments = append(arguments, "get", strings.Join(resourceTypes, ","))
-	arguments = append(arguments, namespaceScope...)
-	return append(arguments, "--output", outputFormatJson)
-}
-
-// collectSecretsFromResourceList adds the secrets of all resources in a parsed resource document - the response of the
-// command itself or the one of the invocation that re-reads the resources - to secrets. Such a document usually is a
-// list, but a document that is not a list is treated as a single resource.
-func collectSecretsFromResourceList(document any, secrets map[string]struct{}) {
+// redactResourceList redacts the secrets of all resources in a parsed resource document, in place. Such a document
+// usually is a list, but a document that is not a list is treated as a single resource. The whole document is walked,
+// including resources of other types that the same command rendered (as in
+// "kubectl get pods,dash0monitorings -o json"): a credential-shaped field of such a resource is redacted as well,
+// which errs towards redacting too much rather than too little.
+func redactResourceList(document any, redacted *redactedValues) error {
 	documentMap, isMap := document.(map[string]any)
 	if !isMap {
-		return
+		return nil
 	}
 	items, isList := documentMap["items"].([]any)
 	if !isList {
-		collectSecretsFromResourceItem(document, secrets)
-		return
+		return redactResourceItem(document, redacted)
 	}
 	for _, item := range items {
-		collectSecretsFromResourceItem(item, secrets)
+		if err := redactResourceItem(item, redacted); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-// collectSecretsFromResourceItem adds the secrets of a single Dash0 custom resource to secrets, both from its own
-// content and from the copies of it that tools embed in its annotations.
-func collectSecretsFromResourceItem(resource any, secrets map[string]struct{}) {
-	collectSecretsFromDocumentNodeRecursively(resource, secrets)
-	collectSecretsFromAnnotations(resource, secrets)
+// redactResourceItem redacts the secrets of a single resource, both in its own content and in the copies of it that
+// tools embed in its annotations.
+func redactResourceItem(resource any, redacted *redactedValues) error {
+	redactDocumentNodeRecursively(resource, redacted)
+	return redactAnnotations(resource, redacted)
 }
 
-// collectSecretsFromAnnotations adds the secrets of the resource copies that tools embed in the metadata.annotations of
-// a resource to secrets. kubectl apply stores a verbatim copy of the applied manifest - including the plaintext auth
-// token, potentially an older one than the one in the current spec - in the
+// redactAnnotations redacts the secrets in the resource copies that tools embed in the metadata.annotations of a
+// resource. kubectl apply stores a verbatim copy of the applied manifest - including the plaintext auth token,
+// potentially an older one than the one in the current spec - in the
 // "kubectl.kubernetes.io/last-applied-configuration" annotation. Every annotation value that parses as JSON is walked,
-// so that equivalent annotations of other tools are covered as well.
-func collectSecretsFromAnnotations(resource any, secrets map[string]struct{}) {
+// so that equivalent annotations of other tools are covered as well, and is rendered again only when the walk actually
+// replaced something, so that an unrelated annotation is handed out exactly as kubectl rendered it.
+func redactAnnotations(resource any, redacted *redactedValues) error {
 	resourceMap, isMap := resource.(map[string]any)
 	if !isMap {
-		return
+		return nil
 	}
 	metadata, isMap := resourceMap["metadata"].(map[string]any)
 	if !isMap {
-		return
+		return nil
 	}
 	annotations, isMap := metadata["annotations"].(map[string]any)
 	if !isMap {
-		return
+		return nil
 	}
-	for _, annotationValue := range annotations {
+	for name, annotationValue := range annotations {
 		annotationString, isString := annotationValue.(string)
 		if !isString {
 			continue
@@ -429,12 +389,23 @@ func collectSecretsFromAnnotations(resource any, secrets map[string]struct{}) {
 		if err := json.Unmarshal([]byte(annotationString), &embeddedResource); err != nil {
 			continue
 		}
-		collectSecretsFromDocumentNodeRecursively(embeddedResource, secrets)
+		countBefore := redacted.count
+		redactDocumentNodeRecursively(embeddedResource, redacted)
+		if redacted.count == countBefore {
+			continue
+		}
+		rendered, err := json.Marshal(embeddedResource)
+		if err != nil {
+			// The annotation still holds the credential in plaintext, so the response must not be handed out.
+			return fmt.Errorf("the redacted %q annotation could not be rendered: %w", name, err)
+		}
+		annotations[name] = string(rendered)
 	}
+	return nil
 }
 
-// collectSecretsFromDocumentNodeRecursively recursively walks the content of a Dash0 custom resource and adds every
-// secret value it finds to secrets:
+// redactDocumentNodeRecursively recursively walks the content of a resource and replaces every credential value it
+// finds with redactedValue:
 //   - the Dash0 auth token (all spec.exports.dash0.authorization.token and its legacy counterpart
 //     spec.export.dash0.authorization.token) and the basic authentication password of a synthetic check,
 //   - the literal header values of the gRPC and HTTP exports, of the webhook notification channels, and of the request
@@ -445,152 +416,101 @@ func collectSecretsFromAnnotations(resource any, secrets map[string]struct{}) {
 // sourced via valueFrom are ignored. Apart from the fields that are only credentials within a particular
 // configuration object, the walk is not bound to specific paths, so it covers any future location of these fields as
 // well. It is applied to the resources themselves as well as to the copies of them that are embedded in annotations
-// (see collectSecretsFromResourceItem).
-func collectSecretsFromDocumentNodeRecursively(node any, secrets map[string]struct{}) {
+// (see redactResourceItem).
+func redactDocumentNodeRecursively(node any, redacted *redactedValues) {
 	switch typedNode := node.(type) {
 	case map[string]any:
+		// Only the values of existing keys are replaced, never new ones added, so the map may be modified while it is
+		// ranged over.
 		for key, value := range typedNode {
 			switch key {
 			case "token", "password":
-				addSecret(value, secrets)
+				redactValueOf(typedNode, key, redacted)
 			case "headers", "queryParameters":
-				collectHeaderValues(value, secrets)
+				redactHeaderValues(typedNode, key, redacted)
 			default:
 				if credentialFields, hasCredentials := credentialFieldsPerConfigObject[key]; hasCredentials {
-					collectCredentialFields(value, credentialFields, secrets)
+					redactCredentialFields(value, credentialFields, redacted)
 				}
 			}
-			collectSecretsFromDocumentNodeRecursively(value, secrets)
+			redactDocumentNodeRecursively(value, redacted)
 		}
 	case []any:
-		// recursively collect secrets from nested objects
+		// recursively redact nested objects
 		for _, item := range typedNode {
-			collectSecretsFromDocumentNodeRecursively(item, secrets)
+			redactDocumentNodeRecursively(item, redacted)
 		}
 	}
 }
 
-// collectHeaderValues adds the literal header or query parameter values in node to secrets. Three shapes occur in the
-// Dash0 custom resources: the list of name/value pairs of the exports and of the request of a synthetic check, the map
-// of the generic webhook notification channel, and the single header value of the Incident.io notification channel.
-func collectHeaderValues(node any, secrets map[string]struct{}) {
-	switch typedNode := node.(type) {
+// redactHeaderValues redacts the literal header or query parameter values held by the given key of node. Three shapes
+// occur in the Dash0 custom resources: the list of name/value pairs of the exports and of the request of a synthetic
+// check, the map of the generic webhook notification channel, and the single header value of the Incident.io
+// notification channel, which is why the enclosing node is passed rather than the value itself.
+func redactHeaderValues(node map[string]any, key string, redacted *redactedValues) {
+	switch typedValue := node[key].(type) {
 	case []any:
-		for _, header := range typedNode {
+		for _, header := range typedValue {
 			headerMap, isMap := header.(map[string]any)
 			if !isMap {
 				continue
 			}
-			addSecretIfPlausible(headerMap["value"], secrets)
+			redactHeaderValueIfPlausible(headerMap, "value", redacted)
 		}
 	case map[string]any:
-		for _, value := range typedNode {
-			addSecretIfPlausible(value, secrets)
+		for name := range typedValue {
+			redactHeaderValueIfPlausible(typedValue, name, redacted)
 		}
 	case string:
-		addSecretIfPlausible(typedNode, secrets)
+		redactHeaderValueIfPlausible(node, key, redacted)
 	}
 }
 
-// collectCredentialFields adds the values of the given fields of a configuration object to secrets, see
-// credentialFieldsPerConfigObject.
-func collectCredentialFields(node any, credentialFields []string, secrets map[string]struct{}) {
+// redactHeaderValueIfPlausible redacts a header or query parameter value, unless it is a well-known non-secret value.
+// Unlike the fields that are credentials by definition (a token, a password, the credential of a notification
+// channel), a header is a position that also carries values which are not credentials at all - a content type, an
+// encoding - and rendering those as the placeholder would hide harmless information from the reader without protecting
+// anything.
+func redactHeaderValueIfPlausible(node map[string]any, key string, redacted *redactedValues) {
+	value, isString := node[key].(string)
+	if !isString {
+		return
+	}
+	if _, isWellKnown := wellKnownNonSecretValues[strings.ToLower(value)]; isWellKnown {
+		return
+	}
+	redactValueOf(node, key, redacted)
+}
+
+// redactCredentialFields redacts the given fields of a configuration object, see credentialFieldsPerConfigObject.
+func redactCredentialFields(node any, credentialFields []string, redacted *redactedValues) {
 	configObject, isMap := node.(map[string]any)
 	if !isMap {
 		return
 	}
 	for _, field := range credentialFields {
-		addSecretIfPlausible(configObject[field], secrets)
+		redactValueOf(configObject, field, redacted)
 	}
 }
 
-// addSecretIfPlausible adds value to secrets, unless it is shorter than minCredentialValueLength or a well-known
-// non-secret value.
-func addSecretIfPlausible(value any, secrets map[string]struct{}) {
-	secret, isString := value.(string)
-	if !isString || len(secret) < minCredentialValueLength {
+// redactValueOf replaces the value the given key holds in node with redactedValue and records the replaced value, so
+// that it can be scrubbed from stderr as well. Non-string and empty values are left alone; a value sourced via
+// valueFrom is an object rather than a string and is therefore not a credential the response exposes. No length or
+// plausibility check is applied: the value is replaced where it lives, so an unusually short credential cannot affect
+// anything else in the response.
+func redactValueOf(node map[string]any, key string, redacted *redactedValues) {
+	value, isString := node[key].(string)
+	if !isString || value == "" {
 		return
 	}
-	if _, isWellKnown := wellKnownNonSecretValues[strings.ToLower(secret)]; isWellKnown {
-		return
-	}
-	addSecret(secret, secrets)
-}
-
-// addSecret adds value to secrets if it is a non-empty string.
-func addSecret(value any, secrets map[string]struct{}) {
-	if secret, isString := value.(string); isString && secret != "" {
-		secrets[secret] = struct{}{}
-	}
-}
-
-// jsonEscapedVariant returns the value as encoding/json renders it within a JSON document, without the enclosing
-// quotes, or "" when it is rendered verbatim. The secrets are collected from a parsed document (or from the parsed
-// response of the invocation that re-reads the resources) and are therefore unescaped, while the response they are
-// redacted from is still encoded: kubectl renders "&", "<" and ">" as &, < and >, and quotes,
-// backslashes and control characters with their usual escape sequences. A credential containing any of them - a
-// webhook URL with several query parameters, for instance - does not occur literally in a "-o json" response and would
-// be handed out in full.
-func jsonEscapedVariant(secret string) string {
-	encoded, err := json.Marshal(secret)
-	if err != nil {
-		return ""
-	}
-	// json.Marshal encloses a string in quotes, which are part of the response but not of the value.
-	escaped := string(encoded[1 : len(encoded)-1])
-	if escaped == secret {
-		return ""
-	}
-	return escaped
-}
-
-// sortedSecrets returns the collected secrets, plus the escaped rendering of every secret the JSON serializer does not
-// render verbatim (see jsonEscapedVariant), ordered from longest to shortest, so that redactAllSecrets replaces a
-// longer secret before a shorter one that is contained in it.
-func sortedSecrets(secrets map[string]struct{}) []string {
-	// Collected first, then added: adding to a map while ranging over it may or may not visit the new entries, which
-	// would escape an already escaped variant a second time.
-	var escapedVariants []string
-	for secret := range secrets {
-		if escaped := jsonEscapedVariant(secret); escaped != "" {
-			escapedVariants = append(escapedVariants, escaped)
-		}
-	}
-	for _, escaped := range escapedVariants {
-		secrets[escaped] = struct{}{}
-	}
-
-	sorted := make([]string, 0, len(secrets))
-	for secret := range secrets {
-		sorted = append(sorted, secret)
-	}
-	slices.SortFunc(sorted, func(first, second string) int {
-		if diff := len(second) - len(first); diff != 0 {
-			return diff
-		}
-		return strings.Compare(first, second)
-	})
-	return sorted
+	node[key] = redactedValue
+	redacted.add(value)
 }
 
 // redactAllSecrets replaces every occurrence of every secret in text with redactedValue.
 func redactAllSecrets(text string, secrets []string) string {
 	for _, secret := range secrets {
 		text = strings.ReplaceAll(text, secret, redactedValue)
-	}
-	return text
-}
-
-// trimTruncatedSecretFragment replaces a fragment of a secret at the very end of truncated output with redactedValue.
-// Output that has been capped at maxOutputBytesPerStream can end in the middle of a secret value, which
-// redactAllSecrets (matching whole values) would leave in place.
-func trimTruncatedSecretFragment(text string, secrets []string) string {
-	for _, secret := range secrets {
-		for length := len(secret) - 1; length >= minTruncatedSecretFragmentLength; length-- {
-			if strings.HasSuffix(text, secret[:length]) {
-				return text[:len(text)-length] + redactedValue
-			}
-		}
 	}
 	return text
 }

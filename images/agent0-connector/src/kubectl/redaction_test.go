@@ -14,195 +14,98 @@ import (
 )
 
 //nolint:lll
-func TestTargetedDash0ResourceTypes(t *testing.T) {
-	const (
-		monitoringResource            = "dash0monitorings.operator.dash0.com"
-		operatorConfigurationResource = "dash0operatorconfigurations.operator.dash0.com"
-		notificationChannelResource   = "dash0notificationchannels.operator.dash0.com"
-		syntheticCheckResource        = "dash0syntheticchecks.operator.dash0.com"
-	)
-
+func TestResponseCanContainSecrets(t *testing.T) {
 	tests := []struct {
 		name      string
 		arguments []string
-		expected  []string
+		expected  bool
 	}{
-		{name: "monitoring resources as yaml", arguments: []string{"get", "dash0monitorings", "-o", "yaml"}, expected: []string{monitoringResource}},
-		{name: "singular form as json", arguments: []string{"get", "dash0monitoring", "-o", "json"}, expected: []string{monitoringResource}},
-		{name: "kind form as yaml", arguments: []string{"get", "Dash0Monitoring", "-o", "yaml"}, expected: []string{monitoringResource}},
-		{name: "fully qualified form as yaml", arguments: []string{"get", "dash0monitorings.v1beta1.operator.dash0.com", "-o", "yaml"}, expected: []string{monitoringResource}},
-		{name: "type/name pair as yaml", arguments: []string{"get", "dash0monitoring/my-resource", "-o", "yaml"}, expected: []string{monitoringResource}},
-		{name: "type/name pair in a later positional slot as yaml", arguments: []string{"get", "pod/a", "dash0monitoring/b", "-o", "yaml"}, expected: []string{monitoringResource}},
-		{name: "operator configuration as yaml", arguments: []string{"get", "dash0operatorconfigurations", "-o", "yaml"}, expected: []string{operatorConfigurationResource}},
-		{name: "multi-resource list", arguments: []string{"get", "pods,dash0monitorings,dash0operatorconfiguration", "-o", "yaml"}, expected: []string{monitoringResource, operatorConfigurationResource}},
-		{name: "repeated references are deduplicated", arguments: []string{"get", "dash0monitorings", "dash0monitoring/a", "-o", "yaml"}, expected: []string{monitoringResource}},
-		{name: "jsonpath output", arguments: []string{"get", "dash0monitorings", "-o", "jsonpath={.items[*].spec.export.dash0.authorization.token}"}, expected: []string{monitoringResource}},
-		{name: "custom-columns output", arguments: []string{"get", "dash0monitorings", "-o", "custom-columns=T:.spec.export.dash0.authorization.token"}, expected: []string{monitoringResource}},
-		{name: "go-template via --template", arguments: []string{"get", "dash0monitorings", "--template={{.items}}"}, expected: []string{monitoringResource}},
-		{name: "attached output format", arguments: []string{"get", "dash0monitorings", "-oyaml"}, expected: []string{monitoringResource}},
-		{name: "grouped shorthand output format", arguments: []string{"get", "dash0monitorings", "-Aoyaml"}, expected: []string{monitoringResource}},
-		{name: "any occurrence of a repeated output flag counts", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "--output=name"}, expected: []string{monitoringResource}},
-		{name: "leading global flag before the subcommand", arguments: []string{"-n", "my-namespace", "get", "dash0monitorings", "-o", "yaml"}, expected: []string{monitoringResource}},
-		{name: "describe", arguments: []string{"describe", "dash0monitorings"}, expected: []string{monitoringResource}},
-		{name: "describe a single resource", arguments: []string{"describe", "dash0monitoring", "my-resource", "-n", "my-namespace"}, expected: []string{monitoringResource}},
-		{name: "describe the operator configuration", arguments: []string{"describe", "dash0operatorconfiguration"}, expected: []string{operatorConfigurationResource}},
-		{name: "notification channels as yaml", arguments: []string{"get", "dash0notificationchannels", "-o", "yaml"}, expected: []string{notificationChannelResource}},
-		{name: "notification channel kind form", arguments: []string{"get", "Dash0NotificationChannel", "-o", "yaml"}, expected: []string{notificationChannelResource}},
-		{name: "synthetic checks as yaml", arguments: []string{"get", "dash0syntheticchecks", "-o", "yaml"}, expected: []string{syntheticCheckResource}},
-		{name: "describe a single synthetic check", arguments: []string{"describe", "dash0syntheticcheck", "my-check"}, expected: []string{syntheticCheckResource}},
-		{name: "all resource types with secrets at once", arguments: []string{"get", "dash0notificationchannels,dash0syntheticchecks,dash0views", "-o", "yaml"},
-			expected: []string{notificationChannelResource, syntheticCheckResource}},
+		{name: "monitoring resources as yaml", arguments: []string{"get", "dash0monitorings", "-o", "yaml"}, expected: true},
+		{name: "singular form as json", arguments: []string{"get", "dash0monitoring", "-o", "json"}, expected: true},
+		{name: "kind form as yaml", arguments: []string{"get", "Dash0Monitoring", "-o", "yaml"}, expected: true},
+		{name: "fully qualified form as yaml", arguments: []string{"get", "dash0monitorings.v1beta1.operator.dash0.com", "-o", "yaml"}, expected: true},
+		{name: "type/name pair as yaml", arguments: []string{"get", "dash0monitoring/my-resource", "-o", "yaml"}, expected: true},
+		{name: "type/name pair in a later positional slot as yaml", arguments: []string{"get", "pod/a", "dash0monitoring/b", "-o", "yaml"}, expected: true},
+		{name: "operator configuration as yaml", arguments: []string{"get", "dash0operatorconfigurations", "-o", "yaml"}, expected: true},
+		{name: "notification channels as yaml", arguments: []string{"get", "dash0notificationchannels", "-o", "yaml"}, expected: true},
+		{name: "synthetic checks as json", arguments: []string{"get", "dash0syntheticchecks", "-o", "json"}, expected: true},
+		{name: "multi-resource list", arguments: []string{"get", "pods,dash0monitorings,dash0operatorconfiguration", "-o", "yaml"}, expected: true},
+		{name: "attached output format", arguments: []string{"get", "dash0monitorings", "-oyaml"}, expected: true},
+		{name: "grouped shorthand output format", arguments: []string{"get", "dash0monitorings", "-Aoyaml"}, expected: true},
+		{name: "leading global flag before the subcommand", arguments: []string{"-n", "my-namespace", "get", "dash0monitorings", "-o", "yaml"}, expected: true},
 
-		{name: "table output has no resource content", arguments: []string{"get", "dash0monitorings"}, expected: nil},
-		{name: "wide output has no resource content", arguments: []string{"get", "dash0monitorings", "-A", "-o", "wide"}, expected: nil},
-		{name: "name output has no resource content", arguments: []string{"get", "dash0monitorings", "-o", "name"}, expected: nil},
-		{name: "labels in table output have no resource content", arguments: []string{"get", "dash0monitorings", "--show-labels", "-L", "app"}, expected: nil},
-		{name: "explain only prints the schema", arguments: []string{"explain", "dash0monitorings", "--recursive"}, expected: nil},
-		{name: "events do not reference the resource positionally", arguments: []string{"events", "--for", "dash0monitoring/my-resource"}, expected: nil},
-		{name: "other resources are unaffected", arguments: []string{"get", "pods", "-o", "yaml"}, expected: nil},
-		{name: "Dash0 resource types without secrets are unaffected", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: nil},
-		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "pods", "dash0monitorings", "-o", "yaml"}, expected: nil},
-		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "pods", "-n", "dash0monitorings", "-o", "yaml"}, expected: nil},
-		{name: "no subcommand", arguments: []string{"--help"}, expected: nil},
+		{name: "table output has no resource content", arguments: []string{"get", "dash0monitorings"}, expected: false},
+		{name: "wide output has no resource content", arguments: []string{"get", "dash0monitorings", "-A", "-o", "wide"}, expected: false},
+		{name: "name output has no resource content", arguments: []string{"get", "dash0monitorings", "-o", "name"}, expected: false},
+		{name: "labels in table output have no resource content", arguments: []string{"get", "dash0monitorings", "--show-labels", "-L", "app"}, expected: false},
+		// describe is rejected for these resource types in validation.go, so its response is never redacted here.
+		{name: "describe is not redacted", arguments: []string{"describe", "dash0monitorings"}, expected: false},
+		{name: "explain only prints the schema", arguments: []string{"explain", "dash0monitorings", "--recursive"}, expected: false},
+		{name: "events do not reference the resource positionally", arguments: []string{"events", "--for", "dash0monitoring/my-resource"}, expected: false},
+		{name: "other resources are unaffected", arguments: []string{"get", "pods", "-o", "yaml"}, expected: false},
+		{name: "Dash0 resource types without secrets are unaffected", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: false},
+		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "pods", "dash0monitorings", "-o", "yaml"}, expected: false},
+		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "pods", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
+		{name: "no subcommand", arguments: []string{"--help"}, expected: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractResourceTypesThatRequireSecretRedaction(parseArguments(tt.arguments))
-			if !slices.Equal(got, tt.expected) {
-				t.Errorf("expected targeted resource types %q, got %q", tt.expected, got)
+			if got := responseCanContainSecrets(parseArguments(tt.arguments)); got != tt.expected {
+				t.Errorf("expected responseCanContainSecrets=%t, got %t", tt.expected, got)
 			}
 		})
 	}
 }
 
-//nolint:lll
-func TestExtractionArguments(t *testing.T) {
-	const monitoringResource = "dash0monitorings.operator.dash0.com"
+// redactDocument parses a document, redacts it and renders it again as JSON, mirroring what redactSecretsInResponse
+// does, and returns the rendered document together with the values that were replaced.
+func redactDocument(t *testing.T, document string) (string, []string) {
+	t.Helper()
 
-	tests := []struct {
-		name      string
-		arguments []string
-		expected  []string
-	}{
-		{name: "no namespace flag reads the same default namespace", arguments: []string{"describe", "dash0monitorings"},
-			expected: []string{"get", monitoringResource, "--output", "json"}},
-		{name: "namespace shorthand", arguments: []string{"describe", "dash0monitorings", "-n", "my-namespace"},
-			expected: []string{"get", monitoringResource, "--namespace", "my-namespace", "--output", "json"}},
-		{name: "namespace long form", arguments: []string{"describe", "dash0monitorings", "--namespace=my-namespace"},
-			expected: []string{"get", monitoringResource, "--namespace", "my-namespace", "--output", "json"}},
-		{name: "attached namespace value", arguments: []string{"describe", "dash0monitorings", "-nmy-namespace"},
-			expected: []string{"get", monitoringResource, "--namespace", "my-namespace", "--output", "json"}},
-		{name: "the last namespace wins, as in kubectl", arguments: []string{"describe", "dash0monitorings", "-n", "first", "-n", "second"},
-			expected: []string{"get", monitoringResource, "--namespace", "second", "--output", "json"}},
-		{name: "all namespaces shorthand", arguments: []string{"describe", "dash0monitorings", "-A"},
-			expected: []string{"get", monitoringResource, "--all-namespaces", "--output", "json"}},
-		{name: "all namespaces long form", arguments: []string{"describe", "dash0monitorings", "--all-namespaces"},
-			expected: []string{"get", monitoringResource, "--all-namespaces", "--output", "json"}},
-		{name: "all namespaces in a shorthand group", arguments: []string{"get", "dash0monitorings", "-Aoyaml"},
-			expected: []string{"get", monitoringResource, "--all-namespaces", "--output", "json"}},
-		{name: "all namespaces wins over a namespace, as in kubectl", arguments: []string{"describe", "dash0monitorings", "-n", "my-namespace", "-A"},
-			expected: []string{"get", monitoringResource, "--all-namespaces", "--output", "json"}},
-		// Fail-safe: an explicitly disabled --all-namespaces widens the scope rather than narrowing it, and a namespace
-		// that is not a resource type slot is not mistaken for one.
-		{name: "explicitly disabled all namespaces", arguments: []string{"describe", "dash0monitorings", "--all-namespaces=false", "-n", "my-namespace"},
-			expected: []string{"get", monitoringResource, "--all-namespaces", "--output", "json"}},
+	var parsed any
+	if err := json.Unmarshal([]byte(document), &parsed); err != nil {
+		t.Fatalf("cannot parse the test document: %v", err)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			parsed := parseArguments(tt.arguments)
-			got := extractionArguments(parsed, extractResourceTypesThatRequireSecretRedaction(parsed))
-			if !slices.Equal(got, tt.expected) {
-				t.Errorf("expected extraction arguments %q, got %q", tt.expected, got)
-			}
-		})
+	redacted := &redactedValues{values: make(map[string]struct{})}
+	if err := redactResourceList(parsed, redacted); err != nil {
+		t.Fatalf("cannot redact the test document: %v", err)
 	}
+	rendered, err := renderResponseDocument(outputFormatJson, parsed)
+	if err != nil {
+		t.Fatalf("cannot render the redacted test document: %v", err)
+	}
+	return rendered, redacted.valuesToScrubFromStderr()
 }
 
-//nolint:lll
-func TestSecretsFromResponse(t *testing.T) {
-	tests := []struct {
-		name            string
-		arguments       []string
-		stdout          string
-		stdoutTruncated bool
-		expected        []string
-		expectedOk      bool
-	}{
-		{name: "json response", arguments: []string{"get", "dash0monitorings", "-A", "-o", "json"}, stdout: dash0ResourcesJson,
-			expected:   []string{operatorConfigurationToken, httpHeaderValue, lastAppliedToken, monitoringToken, grpcHeaderValue},
-			expectedOk: true},
-		{name: "yaml response", arguments: []string{"get", "dash0monitorings", "-o", "yaml"}, stdout: monitoringResourceYaml,
-			expected:   []string{httpHeaderValue, lastAppliedToken, monitoringToken, grpcHeaderValue},
-			expectedOk: true},
-		{name: "attached output format", arguments: []string{"get", "dash0monitorings", "-oyaml"}, stdout: monitoringResourceYaml,
-			expected:   []string{httpHeaderValue, lastAppliedToken, monitoringToken, grpcHeaderValue},
-			expectedOk: true},
-		{name: "a response without secrets", arguments: []string{"get", "dash0monitorings", "-o", "json"}, stdout: `{"items":[]}`,
-			expected: []string{}, expectedOk: true},
+func TestRedactDocument(t *testing.T) {
+	t.Run("redacts tokens and header values of all exports", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, dash0ResourcesJson)
 
-		// Everything that is not certainly a full resource document has to be re-read from the cluster instead.
-		{name: "truncated response", arguments: []string{"get", "dash0monitorings", "-o", "json"}, stdout: dash0ResourcesJson, stdoutTruncated: true},
-		{name: "unparseable response", arguments: []string{"get", "dash0monitorings", "-o", "json"}, stdout: "not json"},
-		{name: "multi-document yaml response", arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
-			stdout: monitoringResourceYaml + "---\n" + monitoringResourceYaml},
-		{name: "jsonpath output that happens to parse", arguments: []string{"get", "dash0monitorings", "-o", "jsonpath={.items[*].spec.exports[0].dash0.authorization.token}"},
-			stdout: monitoringToken},
-		{name: "custom-columns output", arguments: []string{"get", "dash0monitorings", "-o", "custom-columns=T:.spec.export.dash0.authorization.token"}, stdout: monitoringToken},
-		{name: "go-template output", arguments: []string{"get", "dash0monitorings", "-o", "json", "--template={{.items}}"}, stdout: dash0ResourcesJson},
-		{name: "repeated output flag", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "--output=json"}, stdout: dash0ResourcesJson},
-		{name: "describe output", arguments: []string{"describe", "dash0monitorings"}, stdout: monitoringResourceYaml},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := secretsFromResponse(parseArguments(tt.arguments), tt.stdout, tt.stdoutTruncated)
-			if ok != tt.expectedOk {
-				t.Fatalf("expected ok=%t, got %t (secrets: %q)", tt.expectedOk, ok, got)
-			}
-			if tt.expectedOk && !slices.Equal(got, tt.expected) {
-				t.Errorf("expected secrets %q, got %q", tt.expected, got)
-			}
-		})
-	}
-}
-
-func TestCollectSecrets(t *testing.T) {
-	t.Run("collects tokens and header values from all exports", func(t *testing.T) {
-		var document any
-		if err := json.Unmarshal([]byte(dash0ResourcesJson), &document); err != nil {
-			t.Fatalf("cannot parse the test document: %v", err)
-		}
-
-		secrets := make(map[string]struct{})
-		collectSecretsFromResourceList(document, secrets)
-
-		// Ordered from longest to shortest, so that a secret containing another secret is replaced first.
-		expected := []string{
+		for _, secret := range []string{
 			operatorConfigurationToken,
-			httpHeaderValue,
-			lastAppliedToken,
-			// Secrets of equal length are ordered alphabetically.
 			monitoringToken,
+			lastAppliedToken,
+			httpHeaderValue,
 			grpcHeaderValue,
+		} {
+			if strings.Contains(rendered, secret) {
+				t.Errorf("expected the secret %q to be redacted, got %q", secret, rendered)
+			}
+			if !slices.Contains(replaced, secret) {
+				t.Errorf("expected the secret %q to be reported as replaced, got %q", secret, replaced)
+			}
 		}
-		if got := sortedSecrets(secrets); !slices.Equal(got, expected) {
-			t.Errorf("expected secrets %q, got %q", expected, got)
+		// Everything that is not a credential stays in place.
+		if !strings.Contains(rendered, "ingress.dash0.com:4317") {
+			t.Errorf("expected the non-secret content to be preserved, got %q", rendered)
 		}
 	})
 
-	t.Run("collects the third-party credentials of notification channels and synthetic checks", func(t *testing.T) {
-		var document any
-		if err := json.Unmarshal([]byte(dash0ApiResourcesJson), &document); err != nil {
-			t.Fatalf("cannot parse the test document: %v", err)
-		}
+	t.Run("redacts the third-party credentials of notification channels and synthetic checks", func(t *testing.T) {
+		rendered, _ := redactDocument(t, dash0ApiResourcesJson)
 
-		secrets := make(map[string]struct{})
-		collectSecretsFromResourceList(document, secrets)
-
-		// The order is verified by the test above; here only the set of collected values matters.
-		expected := []string{
+		for _, secret := range []string{
 			slackWebhookUrl,
 			webhookUrl,
 			webhookHeaderValue,
@@ -214,31 +117,152 @@ func TestCollectSecrets(t *testing.T) {
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
+		} {
+			if strings.Contains(rendered, secret) {
+				t.Errorf("expected the credential %q to be redacted, got %q", secret, rendered)
+			}
 		}
-		got := sortedSecrets(secrets)
-		slices.Sort(got)
-		slices.Sort(expected)
-		if !slices.Equal(got, expected) {
-			t.Errorf("expected secrets %q, got %q", expected, got)
+		// Values that are not credentials keep their place, even where they sit next to one.
+		for _, preserved := range []string{
+			pagerdutyEventsUrl,
+			syntheticCheckUsername,
+			syntheticCheckUrl,
+			routingFilterAttributeKey,
+		} {
+			if !strings.Contains(rendered, preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+			}
 		}
 	})
 
-	t.Run("collects nothing from resources without secrets", func(t *testing.T) {
-		var document any
-		if err := json.Unmarshal([]byte(`{"items":[{"spec":{"exports":[{"dash0":{"endpoint":"ingress.dash0.com:4317",
+	t.Run("keeps the redacted last-applied-configuration annotation parseable", func(t *testing.T) {
+		rendered, _ := redactDocument(t, dash0ResourcesJson)
+
+		var document map[string]any
+		if err := json.Unmarshal([]byte(rendered), &document); err != nil {
+			t.Fatalf("the redacted document does not parse: %v", err)
+		}
+		items, _ := document["items"].([]any)
+		for _, item := range items {
+			annotations, hasAnnotations := annotationsOf(item)
+			if !hasAnnotations {
+				continue
+			}
+			for name, value := range annotations {
+				annotation, isString := value.(string)
+				if !isString || !strings.HasPrefix(strings.TrimSpace(annotation), "{") {
+					continue
+				}
+				var embedded any
+				if err := json.Unmarshal([]byte(annotation), &embedded); err != nil {
+					t.Errorf("the redacted %q annotation is not valid JSON: %v", name, err)
+				}
+			}
+		}
+	})
+
+	t.Run("redacts nothing when the values are sourced from a secret", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, `{"items":[{"spec":{"exports":[{"dash0":{"endpoint":"ingress.dash0.com:4317",
 			"authorization":{"secretRef":{"name":"dash0-authorization-secret","key":"token"}}}},
-			{"http":{"headers":[{"name":"X-From-Secret","valueFrom":{"secretKeyRef":{"name":"s","key":"k"}}}]}}]}}]}`),
-			&document); err != nil {
-			t.Fatalf("cannot parse the test document: %v", err)
+			{"http":{"headers":[{"name":"X-From-Secret","valueFrom":{"secretKeyRef":{"name":"s","key":"k"}}}]}}]}}]}`)
+
+		if len(replaced) != 0 {
+			t.Errorf("expected no replaced values, got %q", replaced)
 		}
-
-		secrets := make(map[string]struct{})
-		collectSecretsFromResourceList(document, secrets)
-
-		if len(secrets) != 0 {
-			t.Errorf("expected no secrets, got %q", sortedSecrets(secrets))
+		if strings.Contains(rendered, redactedValue) {
+			t.Errorf("expected nothing to be redacted, got %q", rendered)
 		}
 	})
+
+	t.Run("redacts a short credential without touching anything else", func(t *testing.T) {
+		// A credential is replaced where it lives, so even a value that occurs all over the response cannot garble it.
+		// Matching this value would have rewritten the resource name and every other occurrence of "ku" as well.
+		rendered, replaced := redactDocument(t,
+			`{"items":[{"metadata":{"name":"ku"},"spec":{"exports":[{"dash0":{"authorization":{"token":"ku"}}}]}}]}`)
+
+		if !strings.Contains(rendered, `"name": "ku"`) {
+			t.Errorf("expected the unrelated occurrence to be preserved, got %q", rendered)
+		}
+		if got := tokenOfFirstExport(t, rendered); got != redactedValue {
+			t.Errorf("expected the token to be %q, got %q", redactedValue, got)
+		}
+		// Too short to be scrubbed from stderr, where it would match unrelated output.
+		if len(replaced) != 0 {
+			t.Errorf("expected no value to be scrubbed from stderr, got %q", replaced)
+		}
+	})
+
+	t.Run("keeps well-known non-secret header values", func(t *testing.T) {
+		// A header is the one credential-bearing position that also carries values which are not credentials.
+		rendered, _ := redactDocument(t, `{"items":[{"spec":{"exports":[{"http":{"headers":[
+			{"name":"Content-Type","value":"application/json"},
+			{"name":"Accept-Encoding","value":"GZIP"},
+			{"name":"Authorization","value":"Bearer my-secret-header"}]}}]}}]}`)
+
+		for _, preserved := range []string{"application/json", "GZIP"} {
+			if !strings.Contains(rendered, preserved) {
+				t.Errorf("expected the well-known header value %q to be preserved, got %q", preserved, rendered)
+			}
+		}
+		if strings.Contains(rendered, "Bearer my-secret-header") {
+			t.Errorf("expected the credential header value to be redacted, got %q", rendered)
+		}
+	})
+
+	t.Run("renders the placeholder with the escaping of the output format", func(t *testing.T) {
+		// The placeholder contains angle brackets, which the JSON serializer escapes like it escapes them in any other
+		// value; a parser sees the placeholder itself.
+		rendered, _ := redactDocument(t,
+			`{"items":[{"spec":{"exports":[{"dash0":{"authorization":{"token":"`+monitoringToken+`"}}}]}}]}`)
+
+		if !strings.Contains(rendered, `\u003credacted\u003e`) {
+			t.Errorf("expected the placeholder to be escaped like kubectl escapes angle brackets, got %q", rendered)
+		}
+		if got := tokenOfFirstExport(t, rendered); got != redactedValue {
+			t.Errorf("expected the parsed token to be %q, got %q", redactedValue, got)
+		}
+	})
+}
+
+// tokenOfFirstExport parses a rendered document and returns
+// items[0].spec.exports[0].dash0.authorization.token, so that a test can assert on the value rather than on its
+// rendering.
+func tokenOfFirstExport(t *testing.T, rendered string) string {
+	t.Helper()
+
+	var document map[string]any
+	if err := json.Unmarshal([]byte(rendered), &document); err != nil {
+		t.Fatalf("the rendered document does not parse: %v", err)
+	}
+	items, _ := document["items"].([]any)
+	if len(items) == 0 {
+		t.Fatalf("the rendered document has no items: %q", rendered)
+	}
+	item, _ := items[0].(map[string]any)
+	spec, _ := item["spec"].(map[string]any)
+	exports, _ := spec["exports"].([]any)
+	if len(exports) == 0 {
+		t.Fatalf("the rendered document has no exports: %q", rendered)
+	}
+	export, _ := exports[0].(map[string]any)
+	dash0, _ := export["dash0"].(map[string]any)
+	authorization, _ := dash0["authorization"].(map[string]any)
+	token, _ := authorization["token"].(string)
+	return token
+}
+
+// annotationsOf returns the metadata.annotations of a parsed resource.
+func annotationsOf(resource any) (map[string]any, bool) {
+	resourceMap, isMap := resource.(map[string]any)
+	if !isMap {
+		return nil, false
+	}
+	metadata, isMap := resourceMap["metadata"].(map[string]any)
+	if !isMap {
+		return nil, false
+	}
+	annotations, isMap := metadata["annotations"].(map[string]any)
+	return annotations, isMap
 }
 
 func TestRedactSecrets(t *testing.T) {
@@ -284,199 +308,22 @@ func TestRedactSecrets(t *testing.T) {
 	}
 }
 
-// TestRedactSecretsEscapedByTheJsonSerializer covers the credentials that a "-o json" response does not contain
-// literally: the secrets are collected from the parsed document and are therefore unescaped, while the response they
-// are redacted from is still encoded.
-func TestRedactSecretsEscapedByTheJsonSerializer(t *testing.T) {
-	tests := []struct {
-		name   string
-		secret string
-	}{
-		// The canonical shape of a Google Chat or generic webhook URL, which is a credential in itself.
-		{name: "ampersand", secret: "https://chat.example.com/v1/spaces/S/messages?key=my-key&token=my-token"},
-		{name: "angle brackets", secret: "auth_token-<with>-brackets"},
-		{name: "quote", secret: `auth_token-"with"-quotes`},
-		{name: "backslash", secret: `auth_token-\with\-backslashes`},
-		{name: "newline", secret: "auth_token-with\nnewline"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Render the value the way kubectl renders it in a "-o json" response: both use encoding/json.
-			encoded, err := json.Marshal(map[string]string{"token": tt.secret})
-			if err != nil {
-				t.Fatalf("cannot encode the fixture: %v", err)
-			}
-			response := string(encoded)
-			if strings.Contains(response, tt.secret) {
-				t.Fatalf("the fixture does not exercise escaping, the secret occurs verbatim in %q", response)
-			}
-
-			redacted := redactAllSecrets(response, sortedSecrets(map[string]struct{}{tt.secret: {}}))
-
-			escaped := jsonEscapedVariant(tt.secret)
-			if escaped == "" {
-				t.Fatalf("expected %q to be escaped by the JSON serializer", tt.secret)
-			}
-			if strings.Contains(redacted, escaped) {
-				t.Errorf("expected the escaped secret to be redacted, got %q", redacted)
-			}
-			if !strings.Contains(redacted, redactedValue) {
-				t.Errorf("expected the redaction placeholder in %q", redacted)
-			}
-		})
-	}
-}
-
-func TestTrimTruncatedSecretFragment(t *testing.T) {
-	secrets := []string{"auth_a-rather-long-token-value"}
-
-	tests := []struct {
-		name     string
-		text     string
-		expected string
-	}{
-		{name: "removes a secret fragment at the end of the output",
-			text:     "      token: auth_a-rather-long",
-			expected: "      token: <redacted>"},
-		{name: "keeps output that ends in a fragment shorter than the minimum length",
-			text:     "      token: auth",
-			expected: "      token: auth"},
-		{name: "keeps output that does not end in a secret fragment",
-			text:     "      dataset: default",
-			expected: "      dataset: default"},
-		{name: "keeps output that ends in a secret fragment somewhere in the middle",
-			text:     "      token: auth_a-rather-long value: x",
-			expected: "      token: auth_a-rather-long value: x"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := trimTruncatedSecretFragment(tt.text, secrets); got != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, got)
-			}
-		})
-	}
-}
-
 func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	logger := discardLogger()
 
-	t.Run("redacts all secrets from the response of a Dash0 resource request", func(t *testing.T) {
-		fakeKubectlOnPath(t, fakeKubectlWithDash0Resources(dash0ResourcesJson, monitoringResourceYaml))
-
-		// "describe" output cannot be parsed, so the values to redact are re-read from the cluster.
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-redact",
-			Command:   "kubectl",
-			Arguments: []string{"describe", "dash0monitorings", "-A"},
-		})
-
-		if resp.GetExitCode() != 0 {
-			t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
-		}
-		for _, secret := range []string{monitoringToken, lastAppliedToken, httpHeaderValue, grpcHeaderValue} {
-			if strings.Contains(resp.GetStdout(), secret) {
-				t.Errorf("expected the secret %q to be redacted, got %q", secret, resp.GetStdout())
-			}
-		}
-		if count := strings.Count(resp.GetStdout(), redactedValue); count != 4 {
-			t.Errorf("expected 4 redacted values, got %d in %q", count, resp.GetStdout())
-		}
-		// Everything that is not a secret is passed through unchanged.
-		if !strings.Contains(resp.GetStdout(), "endpoint: ingress.dash0.com:4317") {
-			t.Errorf("expected the non-secret content to be preserved, got %q", resp.GetStdout())
-		}
-	})
-
-	t.Run("leaves the response of a request for other resources untouched", func(t *testing.T) {
-		// The fake kubectl echoes a token-like value for any request; a request that does not target a Dash0 resource
-		// must not be post-processed at all.
-		fakeKubectlOnPath(t, "#!/bin/sh\necho \""+monitoringToken+"\"\n")
-
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-other-resource",
-			Command:   "kubectl",
-			Arguments: []string{"get", "pods", "-o", "yaml"},
-		})
-
-		if strings.TrimSpace(resp.GetStdout()) != monitoringToken {
-			t.Errorf("expected the response to be passed through unchanged, got %q", resp.GetStdout())
-		}
-	})
-
-	t.Run("leaves a response that cannot contain resource content untouched", func(t *testing.T) {
-		fakeKubectlOnPath(t, "#!/bin/sh\necho \""+monitoringToken+"\"\n")
-
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-table-output",
-			Command:   "kubectl",
-			Arguments: []string{"get", "dash0monitorings", "-A"},
-		})
-
-		if strings.TrimSpace(resp.GetStdout()) != monitoringToken {
-			t.Errorf("expected the response to be passed through unchanged, got %q", resp.GetStdout())
-		}
-	})
-
-	t.Run("re-reads the Dash0 resources with the namespace scope of the request", func(t *testing.T) {
-		// The fake fails the re-read unless it is scoped to the namespace of the request, which would withhold the
-		// response.
-		fakeKubectlOnPath(t, fakeKubectlWithDash0ResourcesForScope(
-			dash0ResourcesJson,
-			monitoringResourceYaml,
-			"--namespace my-namespace",
-		))
-
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-namespace-scope",
-			Command:   "kubectl",
-			Arguments: []string{"describe", "dash0monitoring", "my-resource", "-n", "my-namespace"},
-		})
-
-		if resp.GetExitCode() != 0 {
-			t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
-		}
-		if strings.Contains(resp.GetStdout(), monitoringToken) {
-			t.Errorf("expected the secret %q to be redacted, got %q", monitoringToken, resp.GetStdout())
-		}
-	})
-
 	for _, tt := range []struct {
-		name             string
-		outputFormat     string
-		response         string
-		expectedSecrets  []string
-		expectedRedacted int
+		name         string
+		outputFormat string
+		response     string
 	}{
-		{
-			name:         "json",
-			outputFormat: "json",
-			response:     dash0ResourcesJson,
-			expectedSecrets: []string{
-				operatorConfigurationToken,
-				monitoringToken,
-				lastAppliedToken,
-				httpHeaderValue,
-				grpcHeaderValue,
-			},
-			expectedRedacted: 5,
-		},
-		{
-			name:             "yaml",
-			outputFormat:     "yaml",
-			response:         monitoringResourceYaml,
-			expectedSecrets:  []string{monitoringToken, lastAppliedToken, httpHeaderValue, grpcHeaderValue},
-			expectedRedacted: 4,
-		},
+		{name: "json", outputFormat: "json", response: dash0ResourcesJson},
+		{name: "yaml", outputFormat: "yaml", response: monitoringResourceYaml},
 	} {
-		t.Run("redacts a "+tt.name+" response without re-reading the Dash0 resources", func(t *testing.T) {
-			// The fake fails every invocation that re-reads the Dash0 resources, which would withhold the response, so a
-			// redacted response proves that the values were taken from the response itself.
-			fakeKubectlOnPath(t, fakeKubectlRejectingTheReRead("dash0monitorings.operator.dash0.com", tt.response))
+		t.Run("redacts the secrets of a "+tt.name+" response", func(t *testing.T) {
+			fakeKubectlEchoing(t, tt.response)
 
 			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-				RequestId: "req-redact-from-response-" + tt.name,
+				RequestId: "req-redact-" + tt.name,
 				Command:   "kubectl",
 				Arguments: []string{"get", "dash0monitorings", "-A", "-o", tt.outputFormat},
 			})
@@ -484,22 +331,55 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			if resp.GetExitCode() != 0 {
 				t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
 			}
-			for _, secret := range tt.expectedSecrets {
+			for _, secret := range []string{monitoringToken, lastAppliedToken, httpHeaderValue, grpcHeaderValue} {
 				if strings.Contains(resp.GetStdout(), secret) {
 					t.Errorf("expected the secret %q to be redacted, got %q", secret, resp.GetStdout())
 				}
 			}
-			if count := strings.Count(resp.GetStdout(), redactedValue); count != tt.expectedRedacted {
-				t.Errorf("expected %d redacted values, got %d in %q", tt.expectedRedacted, count, resp.GetStdout())
+			// Everything that is not a secret is passed through unchanged.
+			if !strings.Contains(resp.GetStdout(), "ingress.dash0.com:4317") {
+				t.Errorf("expected the non-secret content to be preserved, got %q", resp.GetStdout())
 			}
 		})
 	}
 
+	t.Run("renders a response that holds no secret exactly as kubectl did", func(t *testing.T) {
+		// The response is parsed and rendered again, so a document without credentials has to come back byte for byte:
+		// kubectl serializes a custom resource from its unstructured form, which is what the connector renders too.
+		response := `{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "operator.dash0.com/v1beta1",
+            "kind": "Dash0Monitoring",
+            "metadata": {
+                "name": "my-resource",
+                "namespace": "my-namespace"
+            },
+            "spec": {
+                "logCollection": {
+                    "enabled": true
+                }
+            }
+        }
+    ],
+    "kind": "List"
+}`
+		fakeKubectlEchoing(t, response)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-render-fidelity",
+			Command:   "kubectl",
+			Arguments: []string{"get", "dash0monitorings", "-o", "json"},
+		})
+
+		if resp.GetStdout() != response+"\n" {
+			t.Errorf("expected the response to be rendered unchanged, got %q", resp.GetStdout())
+		}
+	})
+
 	t.Run("redacts the third-party credentials of notification channels and synthetic checks", func(t *testing.T) {
-		fakeKubectlOnPath(t, fakeKubectlRejectingTheReRead(
-			"dash0notificationchannels.operator.dash0.com",
-			dash0ApiResourcesJson,
-		))
+		fakeKubectlEchoing(t, dash0ApiResourcesJson)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
 			RequestId: "req-redact-api-resources",
@@ -524,130 +404,116 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			syntheticCheckPassword,
 		} {
 			if strings.Contains(resp.GetStdout(), secret) {
-				t.Errorf("expected the secret %q to be redacted, got %q", secret, resp.GetStdout())
-			}
-		}
-		// Values that are no credentials are passed through unchanged.
-		for _, preserved := range []string{
-			pagerdutyEventsUrl,
-			syntheticCheckUrl,
-			syntheticCheckUsername,
-			routingFilterAttributeKey,
-			"application/json",
-		} {
-			if !strings.Contains(resp.GetStdout(), preserved) {
-				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+				t.Errorf("expected the credential %q to be redacted, got %q", secret, resp.GetStdout())
 			}
 		}
 	})
 
-	t.Run("withholds the response when the Dash0 resources cannot be read", func(t *testing.T) {
-		// The request itself succeeds, but the invocation that re-reads the Dash0 resources to learn which values need
-		// to be redacted fails, so the response must not be handed out.
-		fakeKubectlOnPath(t, `#!/bin/sh
-if echo "$*" | grep -q -- dash0monitorings.operator.dash0.com; then
-  echo "error: the server doesn't have a resource type \"dash0monitorings\"" >&2
-  exit 1
-fi
-echo "`+monitoringToken+`"
-`)
+	t.Run("leaves the response of a request for other resources untouched", func(t *testing.T) {
+		// The fake kubectl echoes a token-like value for any request; a request that does not target a Dash0 resource
+		// must not be post-processed at all.
+		fakeKubectlEchoing(t, monitoringToken)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-harvest-failure",
+			RequestId: "req-other-resource",
 			Command:   "kubectl",
-			Arguments: []string{"describe", "dash0monitorings"},
+			Arguments: []string{"get", "pods", "-o", "yaml"},
 		})
 
-		if resp.GetStdout() != "" {
-			t.Errorf("expected the response to be withheld, got %q", resp.GetStdout())
-		}
-		if !strings.Contains(resp.GetStderr(), "withheld the response") {
-			t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
-		}
-		if strings.Contains(resp.GetStderr(), monitoringToken) {
-			t.Errorf("expected the explanation to not contain the token, got %q", resp.GetStderr())
-		}
-		if resp.GetExitCode() != exitCodeRejected {
-			t.Errorf("expected the rejected exit code %d, got %d", exitCodeRejected, resp.GetExitCode())
+		if strings.TrimSpace(resp.GetStdout()) != monitoringToken {
+			t.Errorf("expected the response to be passed through unchanged, got %q", resp.GetStdout())
 		}
 	})
 
-	t.Run("withholds the response when the Dash0 resources cannot be parsed", func(t *testing.T) {
-		fakeKubectlOnPath(t, fakeKubectlWithDash0Resources("not json", monitoringResourceYaml))
+	t.Run("leaves a response that cannot contain resource content untouched", func(t *testing.T) {
+		fakeKubectlEchoing(t, monitoringToken)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-unparsable-harvest",
+			RequestId: "req-content-free",
 			Command:   "kubectl",
-			Arguments: []string{"describe", "dash0monitoring", "my-resource"},
+			Arguments: []string{"get", "dash0monitorings", "-o", "name"},
 		})
 
-		if resp.GetStdout() != "" {
-			t.Errorf("expected the response to be withheld, got %q", resp.GetStdout())
-		}
-		if !strings.Contains(resp.GetStderr(), "withheld the response") {
-			t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+		if strings.TrimSpace(resp.GetStdout()) != monitoringToken {
+			t.Errorf("expected the response to be passed through unchanged, got %q", resp.GetStdout())
 		}
 	})
 
-}
-
-// TestRedactDash0SecretsWithEmptyStdout covers the responses that carry resource content on stderr while stdout stays
-// empty: kubectl reports some errors by formatting the offending value - for a template or jsonpath error even the
-// whole object - into a message it writes to stderr.
-func TestRedactDash0SecretsWithEmptyStdout(t *testing.T) {
-	logger := discardLogger()
-
+	// A response that cannot be parsed cannot be redacted, and must not be handed out.
 	for _, tt := range []struct {
 		name      string
 		arguments []string
+		response  string
 	}{
-		{name: "describe", arguments: []string{"describe", "dash0monitorings"}},
-		// An empty stdout is a valid (empty) YAML document. It must not be mistaken for a successfully parsed
-		// response, which would yield an empty secret list and skip the redaction of stderr entirely.
 		{
-			name:      "an output format that parses an empty stdout",
+			name:      "the response does not parse",
+			arguments: []string{"get", "dash0monitorings", "-o", "json"},
+			response:  "not json",
+		},
+		{
+			name:      "the response is a multi-document yaml stream",
 			arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
+			response:  monitoringResourceYaml + "\n---\n" + monitoringResourceYaml,
 		},
 	} {
-		t.Run("redacts a secret on stderr when stdout is empty ("+tt.name+")", func(t *testing.T) {
-			fakeKubectlOnPath(t, fakeKubectlFailingWithMessageOnStderr(
-				dash0ResourcesJson,
-				`error: the object given to the engine was map[token:`+monitoringToken+`]`,
-			))
+		t.Run("withholds the response when "+tt.name, func(t *testing.T) {
+			fakeKubectlEchoing(t, tt.response)
 
 			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-				RequestId: "req-secret-on-stderr-" + tt.name,
+				RequestId: "req-unparseable",
 				Command:   "kubectl",
 				Arguments: tt.arguments,
 			})
 
 			if resp.GetStdout() != "" {
-				t.Fatalf("expected an empty stdout, got %q", resp.GetStdout())
+				t.Errorf("expected the response to be withheld, got %q", resp.GetStdout())
+			}
+			if !strings.Contains(resp.GetStderr(), "withheld the response") {
+				t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
 			}
 			if strings.Contains(resp.GetStderr(), monitoringToken) {
-				t.Errorf("expected the token to be redacted from stderr, got %q", resp.GetStderr())
+				t.Errorf("expected the explanation to not contain the token, got %q", resp.GetStderr())
 			}
-			if !strings.Contains(resp.GetStderr(), redactedValue) {
-				t.Errorf("expected stderr to contain the redaction placeholder, got %q", resp.GetStderr())
+			if resp.GetExitCode() != exitCodeRejected {
+				t.Errorf("expected the rejected exit code %d, got %d", exitCodeRejected, resp.GetExitCode())
 			}
 		})
 	}
+}
 
-	t.Run("does not re-read the Dash0 resources when the response is empty altogether", func(t *testing.T) {
-		// Nothing can be redacted from a response without any output, so the re-read must not happen at all: the fake
-		// fails it, which would withhold the response.
+func TestRedactDash0SecretsWithEmptyStdout(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("withholds a response that only has content on stderr", func(t *testing.T) {
+		// kubectl reports some errors by formatting the offending value - for a template or jsonpath error even the
+		// whole object - into a message on stderr while stdout stays empty. There is no document to redact then, so the
+		// response has to be withheld rather than handed out.
 		fakeKubectlOnPath(t, `#!/bin/sh
-if echo "$*" | grep -q -- dash0monitorings.operator.dash0.com; then
-  echo "the Dash0 resources must not be re-read for this request" >&2
-  exit 1
-fi
-exit 0
+echo "error: the object given to the engine was map[token:`+monitoringToken+`]" >&2
+exit 1
 `)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-secret-on-stderr",
+			Command:   "kubectl",
+			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
+		})
+
+		if strings.Contains(resp.GetStderr(), monitoringToken) {
+			t.Errorf("expected the token to be withheld, got %q", resp.GetStderr())
+		}
+		if !strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+		}
+	})
+
+	t.Run("passes a response through that has no content at all", func(t *testing.T) {
+		fakeKubectlOnPath(t, "#!/bin/sh\nexit 0\n")
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
 			RequestId: "req-empty-response",
 			Command:   "kubectl",
-			Arguments: []string{"describe", "dash0monitorings"},
+			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
 		})
 
 		if strings.Contains(resp.GetStderr(), "withheld the response") {
@@ -657,70 +523,40 @@ exit 0
 			t.Errorf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
 		}
 	})
-}
 
-// fakeKubectlWithDash0Resources returns a fake kubectl that answers the invocation which re-reads the Dash0 custom
-// resources for redaction with dash0Resources, and every other invocation with the given output. The re-reading
-// invocation is recognized by the fully qualified resource name, which only it uses.
-func fakeKubectlWithDash0Resources(dash0Resources string, output string) string {
-	return fakeKubectlWithDash0ResourcesForScope(dash0Resources, output, "")
-}
-
-// fakeKubectlWithDash0ResourcesForScope is fakeKubectlWithDash0Resources, but the invocation that re-reads the Dash0
-// custom resources has to contain expectedScope in its arguments; otherwise the fake fails, which makes the connector
-// withhold the response and thereby lets a test verify the namespace scope of that invocation.
-func fakeKubectlWithDash0ResourcesForScope(dash0Resources string, output string, expectedScope string) string {
-	scopeCheck := ""
-	if expectedScope != "" {
-		scopeCheck = `if ! echo "$*" | grep -q -- "` + expectedScope + `"; then
-  echo "unexpected namespace scope: $*" >&2
-  exit 1
-fi
-`
-	}
-	return `#!/bin/sh
-if echo "$*" | grep -q -- dash0monitorings.operator.dash0.com; then
-` + scopeCheck + `cat <<'DASH0_RESOURCES'
-` + dash0Resources + `
-DASH0_RESOURCES
-else
+	t.Run("scrubs the redacted values from stderr", func(t *testing.T) {
+		// The document is redacted structurally; stderr is not a document, so the values that were replaced in the
+		// document are removed from it by matching them.
+		fakeKubectlOnPath(t, `#!/bin/sh
 cat <<'OUTPUT'
-` + output + `
+`+monitoringResourceYaml+`
 OUTPUT
-fi
-`
+echo "warning: could not reach the endpoint with `+grpcHeaderValue+`" >&2
+`)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-stderr-scrub",
+			Command:   "kubectl",
+			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
+		})
+
+		if strings.Contains(resp.GetStderr(), grpcHeaderValue) {
+			t.Errorf("expected the header value to be scrubbed from stderr, got %q", resp.GetStderr())
+		}
+		if !strings.Contains(resp.GetStderr(), redactedValue) {
+			t.Errorf("expected the redaction placeholder on stderr, got %q", resp.GetStderr())
+		}
+	})
 }
 
-// fakeKubectlRejectingTheReRead returns a fake kubectl that answers every invocation with the given output, except for
-// the invocation that re-reads the given Dash0 custom resource type for redaction, which it fails.
-func fakeKubectlRejectingTheReRead(qualifiedResourceType string, output string) string {
-	return `#!/bin/sh
-if echo "$*" | grep -q -- ` + qualifiedResourceType + `; then
-  echo "the Dash0 resources must not be re-read for this request" >&2
-  exit 1
-fi
+// fakeKubectlEchoing installs a fake kubectl that answers every invocation with the given output.
+func fakeKubectlEchoing(t *testing.T, output string) {
+	t.Helper()
+	fakeKubectlOnPath(t, `#!/bin/sh
 cat <<'OUTPUT'
-` + output + `
+`+output+`
 OUTPUT
-`
-}
-
-// fakeKubectlFailingWithMessageOnStderr returns a fake kubectl that answers the invocation which re-reads the Dash0
-// custom resources for redaction with dash0Resources, and fails every other invocation with the given message on
-// stderr and nothing at all on stdout, the way kubectl reports an error that carries the offending value.
-func fakeKubectlFailingWithMessageOnStderr(dash0Resources string, stderrMessage string) string {
-	return `#!/bin/sh
-if echo "$*" | grep -q -- dash0monitorings.operator.dash0.com; then
-cat <<'DASH0_RESOURCES'
-` + dash0Resources + `
-DASH0_RESOURCES
-else
-cat >&2 <<'MESSAGE'
-` + stderrMessage + `
-MESSAGE
-exit 1
-fi
-`
+`)
 }
 
 const (
@@ -748,7 +584,7 @@ const (
 	routingFilterAttributeKey         = "service.namespace"
 )
 
-// dash0ResourcesJson is the output of the kubectl invocation that re-reads the Dash0 custom resources for redaction: an
+// dash0ResourcesJson is a "kubectl get dash0operatorconfigurations,dash0monitorings -o json" response: an
 // operator configuration resource and a monitoring resource, covering the deprecated single export as well as the
 // exports list, a token sourced from a secret, literal and secret-sourced header values, header values that are too
 // short or too well-known to be secrets, and the copy of the spec that kubectl apply leaves behind in the
