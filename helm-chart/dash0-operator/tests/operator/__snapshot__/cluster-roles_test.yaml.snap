@@ -340,6 +340,18 @@ cluster roles should match snapshot:
           - update
           - watch
       - apiGroups:
+          - policy
+        resources:
+          - poddisruptionbudgets
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
           - ""
         resources:
           - configmaps

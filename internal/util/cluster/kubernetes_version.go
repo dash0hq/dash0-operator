@@ -27,6 +27,15 @@ const (
 	// imageVolumesAlwaysMinimumMinorVersion is the lowest 1.x Kubernetes minor version that supports image volumes at
 	// all (1.31).
 	imageVolumesAlwaysMinimumMinorVersion = 31
+
+	// trafficDistributionMinimumMajorVersion is the lowest Kubernetes major version that knows the service field
+	// spec.trafficDistribution. Used together with trafficDistributionMinimumMinorVersion.
+	trafficDistributionMinimumMajorVersion = 1
+
+	// trafficDistributionMinimumMinorVersion is the lowest 1.x Kubernetes minor version that knows the service field
+	// spec.trafficDistribution (1.30, alpha; beta in 1.31, GA in 1.33). Used together with
+	// trafficDistributionMinimumMajorVersion.
+	trafficDistributionMinimumMinorVersion = 30
 )
 
 var leadingDigitsRegex = regexp.MustCompile(`^[0-9]+`)

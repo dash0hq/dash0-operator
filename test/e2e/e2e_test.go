@@ -1773,25 +1773,40 @@ trace_statements:
 				}, 60*time.Second, pollingInterval).Should(Succeed())
 			})
 
-			It("reconfigures the collector daemonset to include the Signal Control pipeline", func() {
-				expectedSnippets := []string{
-					"dash0settingsonedgeextension",
-					"dash0sampling:",
-					"dash0redmetrics:",
-					"dash0signaltometrics:",
-					"dash0filter:",
-					"dash0resource:",
-					"dash0operation:",
-					"dash0metricrecorder:",
-					"metrics/spam-counters:",
-					"traces/sampled:",
-					"forward/traces-to-sampling",
+			It("deploys the Signal Control collector and reconfigures the daemonset to forward to it", func() {
+				By("verifying the Signal Control collector deployment and service have been created")
+				Eventually(func(g Gomega) {
+					g.Expect(runAndIgnoreOutput(exec.Command(
+						"kubectl", "-n", operatorNamespace, "get", signalControlCollectorNameQualified,
+					))).To(Succeed())
+					g.Expect(runAndIgnoreOutput(exec.Command(
+						"kubectl", "-n", operatorNamespace, "get", signalControlCollectorServiceNameQualified,
+					))).To(Succeed())
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying the Signal Control collector configmap contains the Signal Control components")
+				for _, snippet := range signalControlComponentSnippets {
+					verifyConfigMapContainsString(
+						operatorNamespace, signalControlCollectorConfigMapNameQualified, snippet)
 				}
 
-				By("verifying the daemonset collector configmap contains the Signal Control components")
-				for _, snippet := range expectedSnippets {
-					verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, snippet)
+				By("verifying the two producer collectors forward to the Signal Control collector instead")
+				verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, "otlp/signal-control-collector")
+				verifyDeploymentCollectorConfigMapContainsString(operatorNamespace, "otlp/signal-control-collector")
+				for _, snippet := range signalControlComponentSnippets {
+					verifyConfigMapDoesNotContainStrings(
+						operatorNamespace, collectorDaemonSetConfigMapNameQualified, snippet)
+					verifyConfigMapDoesNotContainStrings(
+						operatorNamespace, collectorDeploymentConfigMapNameQualified, snippet)
 				}
+
+				By("verifying the Signal Control collector rolls out cleanly")
+				Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"rollout", "status", signalControlCollectorNameQualified,
+					"--timeout=120s",
+				))).To(Succeed())
 
 				By("verifying the collector daemonset rolls out cleanly after the Signal Control config change")
 				Expect(runAndIgnoreOutput(exec.Command(
@@ -1800,6 +1815,51 @@ trace_statements:
 					"rollout", "status", collectorDaemonSetNameQualified,
 					"--timeout=120s",
 				))).To(Succeed())
+
+				By("verifying zone-aware routing is configured on the Signal Control collector service")
+				if kubernetesMajor == 1 && kubernetesMinor < 30 {
+					GinkgoWriter.Printf(
+						"skipping the spec.trafficDistribution assertions, the field requires Kubernetes 1.30+, "+
+							"server is %d.%d\n", kubernetesMajor, kubernetesMinor)
+				} else {
+					Eventually(func(g Gomega) {
+						trafficDistribution, err := run(exec.Command(
+							"kubectl",
+							"-n", operatorNamespace,
+							"get", signalControlCollectorServiceNameQualified,
+							"-o", "jsonpath={.spec.trafficDistribution}",
+						), false)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(strings.TrimSpace(trafficDistribution)).To(Equal("PreferClose"))
+					}, 30*time.Second, pollingInterval).Should(Succeed())
+
+					// The endpoint slice controller writes the zone hints kube-proxy needs only for ready endpoints,
+					// so this has to be eventually-consistent even though the rollout has already completed.
+					By("verifying every ready endpoint is hinted for its own zone")
+					Eventually(func(g Gomega) {
+						endpoints, err := run(exec.Command(
+							"kubectl",
+							"-n", operatorNamespace,
+							"get", "endpointslice",
+							"-l", "kubernetes.io/service-name="+signalControlCollectorServiceName,
+							"-o", "jsonpath={range .items[*].endpoints[?(@.conditions.ready==true)]}"+
+								"{.zone}={.hints.forZones[0].name}{\"\\n\"}{end}",
+						), false)
+						g.Expect(err).ToNot(HaveOccurred())
+						pairs := strings.Fields(strings.TrimSpace(endpoints))
+						g.Expect(pairs).To(
+							HaveLen(signalControlCollectorExpectedReplicas),
+							"expected one ready endpoint per replica, got %q", endpoints)
+						for _, pair := range pairs {
+							zone, hint, found := strings.Cut(pair, "=")
+							g.Expect(found).To(BeTrue(), "malformed endpoint entry %q", pair)
+							g.Expect(zone).ToNot(BeEmpty(), "endpoint has no zone, is the kind node labelled?")
+							g.Expect(hint).To(
+								Equal(zone),
+								"endpoint in zone %s must be hinted for its own zone, got %q", zone, hint)
+						}
+					}, 60*time.Second, pollingInterval).Should(Succeed())
+				}
 
 				By("verifying the dash0settingsonedgeextension polled the control-plane mock")
 				Eventually(func(g Gomega) {
@@ -1857,6 +1917,9 @@ trace_statements:
 					)
 
 					By("verifying the dash0redmetrics connector emitted dash0.spans.red_services")
+					// The connector aggregates in memory and exports only on its flush interval, which defaults to
+					// 60 seconds. The budget has to cover a full interval plus the lag until the first spans reach
+					// the Signal Control collector, whose ticker starts when its pod starts.
 					Eventually(func(g Gomega) {
 						askTelemetryMatcherForMetricNames(
 							g,
@@ -1864,7 +1927,7 @@ trace_statements:
 							[]string{"dash0.spans.red_services"},
 							timestampLowerBound,
 						)
-					}, 90*time.Second, pollingInterval).Should(Succeed())
+					}, 180*time.Second, pollingInterval).Should(Succeed())
 				})
 			})
 
@@ -1890,10 +1953,22 @@ trace_statements:
 					g.Expect(err).To(HaveOccurred())
 				}, 30*time.Second, pollingInterval).Should(Succeed())
 
-				By("verifying the daemonset collector configmap no longer references the Signal Control pipeline")
+				By("verifying the Signal Control collector is removed")
+				Eventually(func(g Gomega) {
+					_, err := run(exec.Command(
+						"kubectl", "-n", operatorNamespace, "get", signalControlCollectorNameQualified,
+					), false)
+					g.Expect(err).To(HaveOccurred())
+					_, err = run(exec.Command(
+						"kubectl", "-n", operatorNamespace, "get", signalControlCollectorServiceNameQualified,
+					), false)
+					g.Expect(err).To(HaveOccurred())
+				}, 60*time.Second, pollingInterval).Should(Succeed())
+
+				By("verifying the daemonset collector configmap no longer forwards to the Signal Control collector")
 				Eventually(func(g Gomega) {
 					verifyConfigMapDoesNotContainStrings(operatorNamespace,
-						collectorDaemonSetConfigMapNameQualified, "dash0settingsonedgeextension")
+						collectorDaemonSetConfigMapNameQualified, "otlp/signal-control-collector")
 				}, 60*time.Second, pollingInterval).Should(Succeed())
 			})
 		})
@@ -1943,20 +2018,17 @@ trace_statements:
 					g.Expect(err).To(HaveOccurred())
 				}, 15*time.Second, pollingInterval).Should(Succeed())
 
+				By("verifying no Signal Control collector has been deployed")
+				Eventually(func(g Gomega) {
+					_, err := run(exec.Command(
+						"kubectl", "-n", operatorNamespace, "get", signalControlCollectorNameQualified,
+					), false)
+					g.Expect(err).To(HaveOccurred())
+				}, 15*time.Second, pollingInterval).Should(Succeed())
+
 				By("verifying the daemonset collector configmap contains none of the Signal Control components")
-				for _, snippet := range []string{
-					"dash0settingsonedgeextension",
-					"dash0sampling:",
-					"dash0redmetrics:",
-					"dash0signaltometrics:",
-					"dash0filter:",
-					"dash0resource:",
-					"dash0operation:",
-					"dash0metricrecorder:",
-					"metrics/spam-counters:",
-					"traces/sampled:",
-					"forward/traces-to-sampling",
-				} {
+				for _, snippet := range append(
+					slices.Clone(signalControlComponentSnippets), "otlp/signal-control-collector") {
 					verifyConfigMapDoesNotContainStrings(
 						operatorNamespace, collectorDaemonSetConfigMapNameQualified, snippet)
 				}

@@ -1643,6 +1643,8 @@ func startDash0Controllers(
 			KubeletStatsAutoDetectEndpoint:         envVars.kubeletStatsAutoDetectEndpoint,
 			KubeletStatsReceiverConfig:             envVars.kubeletStatsReceiverConfig,
 			PseudoClusterUid:                       clusterUid,
+			KubernetesVersion:                      kubernetesVersionInfo,
+			KubernetesVersionDetected:              kubernetesVersionDetected,
 			IsIPv6Cluster:                          isIPv6Cluster,
 			IsDocker:                               isDocker,
 			DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,

@@ -2166,8 +2166,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 		})
 
-		It("should create per-dataset SC branches and sample only the first dataset for a multi-dataset namespace [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should create per-dataset SC branches and sample only the first dataset for a multi-dataset namespace [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedMultiDatasetExporters(),
@@ -2181,7 +2181,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2223,14 +2223,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelineReceivers(pipelines, "metrics/derived/ns/"+namespace1+"/0")).
 				To(ContainElement("dash0redmetrics/ns/" + namespace1 + "/0"))
 
-			// The non-Dash0 exporter is passthrough (no Signal Control).
-			Expect(pipelines).To(HaveKey("traces/export/ns/" + namespace1 + "/passthrough"))
-			Expect(readPipelineProcessors(pipelines, "traces/export/ns/"+namespace1+"/passthrough")).
-				ToNot(ContainElement("resource/signal_control_attributes/ns/" + namespace1 + "/0"))
+			// The non-Dash0 (passthrough) exporter is never forwarded here, it is exported by the producer collectors.
+			Expect(pipelines).ToNot(HaveKey("traces/export/ns/" + namespace1 + "/passthrough"))
 		})
 
-		It("should keep Signal Control off a non-Dash0 default exporter via a default passthrough [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should keep Signal Control off a non-Dash0 default exporter via a default passthrough [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestMixedDefaultOtlpExporters(),
@@ -2243,7 +2241,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2257,25 +2255,21 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(connectors).To(HaveKey("routing/traces"))
 			routingTraces := connectors["routing/traces"].(map[string]interface{})
 			defaultPipelines := routingTraces["default_pipelines"].([]interface{})
-			Expect(defaultPipelines).To(ContainElement("traces/signal-control-pre-sampling"))
-			Expect(defaultPipelines).To(ContainElement("traces/export/default/passthrough"))
+			Expect(defaultPipelines).To(ContainElement("traces/sc/default"))
+			Expect(defaultPipelines).ToNot(ContainElement("traces/export/default/passthrough"))
 
-			// SC is no longer inline in common-processors; it exports to routing/traces.
-			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
-			Expect(readPipelineExporters(pipelines, "traces/common-processors")).To(ContainElement("routing/traces"))
+			Expect(readPipelineReceivers(pipelines, "traces/sc/default")).To(ContainElement("routing/traces"))
 
 			// The SC'd default sink exports ONLY the Dash0 default exporter.
 			Expect(readPipelineExporters(pipelines, "traces/export/default")).To(ContainElement(dash0Name))
 			Expect(readPipelineExporters(pipelines, "traces/export/default")).ToNot(ContainElement(grpcName))
 
-			// The passthrough carries the non-Dash0 default exporter with no Signal Control.
-			Expect(pipelines).To(HaveKey("traces/export/default/passthrough"))
-			Expect(readPipelineExporters(pipelines, "traces/export/default/passthrough")).To(ConsistOf(grpcName))
-			Expect(readPipelineProcessors(pipelines, "traces/export/default/passthrough")).ToNot(ContainElement("resource/signal_control_attributes"))
+			// The passthrough copy never reaches this collector, the producers export it themselves.
+			Expect(pipelines).ToNot(HaveKey("traces/export/default/passthrough"))
 		})
 
-		It("should fork the non-namespaced mixed default: SC to the Dash0 default, passthrough raw [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should fork the non-namespaced mixed default: SC to the Dash0 default, passthrough raw [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestMixedDefaultNoNamespacedExporters(),
@@ -2288,32 +2282,29 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			connectors := collectorConfig["connectors"].(map[string]interface{})
 			pipelines := readPipelines(collectorConfig)
 
-			// Without namespaced exporters there is no routing (an empty routing table would be rejected by the
-			// collector). Instead, common-processors forks via forward/traces-to-sc so SC reaches only the Dash0
-			// default exporter, while the non-Dash0 (passthrough) default exporter is attached to common-processors
-			// directly and receives raw telemetry.
+			// Without namespaced Dash0 exporters there is no routing (an empty routing table would be rejected by
+			// the collector); the OTLP entry pipelines feed the default SC branch via forward/{signal}-to-sc.
 			Expect(connectors).ToNot(HaveKey("routing/traces"))
 			Expect(connectors).ToNot(HaveKey("routing/traces-sampled"))
 			Expect(connectors).ToNot(HaveKey("routing/metrics"))
 			Expect(connectors).To(HaveKey("forward/traces-to-sc"))
 
-			// SC is no longer inline in common-processors; common-processors forks to the SC branch plus the raw
-			// passthrough exporter.
-			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
-			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
-			Expect(tracesCommonExporters).To(ContainElement("forward/traces-to-sc"))
-			Expect(tracesCommonExporters).To(ContainElement("otlp_grpc/default_1"))
+			// Only the Dash0-bound telemetry reaches this collector, so the SC branch exports to the Dash0 exporter
+			// only; the raw passthrough exporter is not referenced by any pipeline here.
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(ContainElement("resource/signal_control_attributes"))
+			Expect(readPipelineReceivers(pipelines, "traces/sc/default")).To(ContainElement("forward/traces-to-sc"))
+			Expect(readPipelineExporters(pipelines, "traces/export/default")).ToNot(ContainElement("otlp_grpc/default_1"))
 
 			// The SC branch applies Signal Control and feeds sampling + RED metrics.
-			Expect(readPipelineReceivers(pipelines, "traces/signal-control-pre-sampling")).To(ContainElement("forward/traces-to-sc"))
-			scProcessors := readPipelineProcessors(pipelines, "traces/signal-control-pre-sampling")
+			Expect(readPipelineReceivers(pipelines, "traces/sc/default")).To(ContainElement("forward/traces-to-sc"))
+			scProcessors := readPipelineProcessors(pipelines, "traces/sc/default")
 			Expect(scProcessors).To(ContainElement("resource/signal_control_attributes"))
 			Expect(scProcessors).To(ContainElement("dash0filter"))
 
@@ -2324,12 +2315,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Same fork for metrics (deployment-style k8s metrics run here too) and logs.
 			Expect(connectors).To(HaveKey("forward/metrics-to-sc"))
 			Expect(connectors).To(HaveKey("forward/logs-to-sc"))
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
-			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(ContainElement("resource/signal_control_attributes"))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(ContainElement("resource/signal_control_attributes"))
 		})
 
-		It("should route namespaced traces before sampling when Signal Control is enabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should route namespaced traces before sampling when Signal Control is enabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestMultipleNamespacedOtlpExporters(),
@@ -2341,7 +2332,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:         "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2352,19 +2343,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// routing/traces default_pipelines should point to signal-control-pre-sampling
 			routingTraces := connectors["routing/traces"].(map[string]interface{})
 			defaultPipelines := routingTraces["default_pipelines"].([]interface{})
-			Expect(defaultPipelines).To(ContainElement("traces/signal-control-pre-sampling"))
+			Expect(defaultPipelines).To(ContainElement("traces/sc/default"))
 			Expect(defaultPipelines).ToNot(ContainElement("traces/export/default"))
 
-			// traces/common-processors should export to routing/traces (not directly to sampling)
-			tracesCommonExporters := readPipelineExporters(pipelines, "traces/common-processors")
-			Expect(tracesCommonExporters).To(ContainElement("routing/traces"))
-			Expect(tracesCommonExporters).ToNot(ContainElement("forward/traces-to-sampling"))
-			Expect(tracesCommonExporters).ToNot(ContainElement("dash0redmetrics"))
+			// The entry pipeline hands everything to routing/traces, which picks the default or a namespaced branch.
+			Expect(readPipelineExporters(pipelines, "traces/otlp-to-sc")).To(ContainElement("routing/traces"))
+			Expect(readPipelineReceivers(pipelines, "traces/sc/default")).To(ContainElement("routing/traces"))
 
-			// traces/signal-control-pre-sampling should exist and forward to sampling + RED metrics
-			scPreSamplingReceivers := readPipelineReceivers(pipelines, "traces/signal-control-pre-sampling")
+			// traces/sc/default should exist and forward to sampling + RED metrics
+			scPreSamplingReceivers := readPipelineReceivers(pipelines, "traces/sc/default")
 			Expect(scPreSamplingReceivers).To(ContainElement("routing/traces"))
-			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/signal-control-pre-sampling")
+			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/sc/default")
 			Expect(scPreSamplingExporters).To(ContainElement("forward/traces-to-sampling"))
 			Expect(scPreSamplingExporters).To(ContainElement("dash0redmetrics"))
 
@@ -2378,10 +2367,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(tracesExportDefaultReceivers).To(ContainElement("routing/traces-sampled"))
 			Expect(tracesExportDefaultReceivers).ToNot(ContainElement("forward/traces-default-exporter"))
 
-			// namespace1's non-Dash0 exporters route to a passthrough pipeline (no Signal Control, no sampling).
-			tracesPassthroughNs1Receivers := readPipelineReceivers(pipelines, "traces/export/ns/"+namespace1+"/passthrough")
-			Expect(tracesPassthroughNs1Receivers).To(ContainElement("routing/traces"))
-			Expect(readPipelineProcessors(pipelines, "traces/export/ns/"+namespace1+"/passthrough")).ToNot(ContainElement("resource/signal_control_attributes"))
+			// namespace1 has only non-Dash0 exporters, so nothing from it is forwarded to this collector.
+			Expect(pipelines).ToNot(HaveKey("traces/export/ns/" + namespace1 + "/passthrough"))
+			Expect(pipelines).ToNot(HaveKey("traces/sc/ns/" + namespace1 + "/0"))
 
 			// namespace2's Dash0 exporter gets its own SC branch (branch 0), which feeds the shared sampler, and its
 			// kept traces are routed to a per-namespace sampled export.
@@ -2583,8 +2571,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).ToNot(HaveKey("filter/logs/drop_edge_proxy_otlp_selfmonitoring"))
 		})
 
-		It("should wire the dash0signaltometrics connector when Signal Control + signalToMetrics are enabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should wire the dash0signaltometrics connector when Signal Control + signalToMetrics are enabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2597,7 +2585,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2611,13 +2599,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Spans flow into the connectors from the traces SC branch (common-processors forks to it), alongside
 			// dash0redmetrics.
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineExporters(pipelines, "traces/common-processors")).To(ContainElement("forward/traces-to-sc"))
-			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/signal-control-pre-sampling")
+			Expect(readPipelineReceivers(pipelines, "traces/sc/default")).To(ContainElement("forward/traces-to-sc"))
+			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/sc/default")
 			Expect(scPreSamplingExporters).To(ContainElement("dash0redmetrics"))
 			Expect(scPreSamplingExporters).To(ContainElement("dash0signaltometrics"))
 
-			// Logs derive s2m in the logs SC branch, not in common-processors.
-			Expect(readPipelineExporters(pipelines, "logs/common-processors")).To(ContainElement("forward/logs-to-sc"))
+			// Logs derive s2m in the logs SC branch.
+			Expect(readPipelineReceivers(pipelines, "logs/sc/default")).To(ContainElement("forward/logs-to-sc"))
 			Expect(readPipelineExporters(pipelines, "logs/sc/default")).To(ContainElement("dash0signaltometrics"))
 
 			// Emitted metrics enter the metrics path via metrics/derived/default (not re-ingested through the
@@ -2627,8 +2615,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(derivedReceivers).To(ContainElement("dash0signaltometrics"))
 		})
 
-		It("should also wire the dash0signaltometrics connector in traces/signal-control-pre-sampling when namespaced exporters are configured [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should also wire the dash0signaltometrics connector in traces/sc/default when namespaced exporters are configured [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
@@ -2641,19 +2629,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
 
-			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/signal-control-pre-sampling")
+			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/sc/default")
 			Expect(scPreSamplingExporters).To(ContainElement("dash0redmetrics"))
 			Expect(scPreSamplingExporters).To(ContainElement("dash0signaltometrics"))
 		})
 
-		It("should render dash0signaltometrics tunables when set on the Signal Control config [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render dash0signaltometrics tunables when set on the Signal Control config [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2669,7 +2657,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                        "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2681,11 +2669,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(s2m["cache_expiration"]).To(Equal("45s"))
 		})
 
-		It("should not leak dash0signaltometrics into logs/common-processors with namespaced exporters, wiring it into the logs SC branch instead [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should keep the default dash0signaltometrics off namespaced logs, wiring a per-branch instance instead [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Exporters:         cmTestNamespacedOtlpExporters(),
+				Exporters:         cmTestNamespacedMultiDatasetExporters(),
 				SignalControl: SignalControlConfig{
 					Enabled:                true,
 					SamplingEnabled:        true,
@@ -2695,25 +2683,27 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
 
-			// With namespaced exporters, SC (including the s2m exporter) is moved out of common-processors,
-			// so it no longer derives metrics from namespaced-bound logs.
-			logsCommonExporters := readPipelineExporters(pipelines, "logs/common-processors")
-			Expect(logsCommonExporters).To(ContainElement("routing/logs"))
-			Expect(logsCommonExporters).ToNot(ContainElement("dash0signaltometrics"))
+			// With namespaced exporters, the default s2m instance only sees the default branch's logs; the
+			// namespaced-bound logs go through their own per-branch s2m instance.
+			Expect(readPipelineExporters(pipelines, "logs/otlp-to-sc")).To(ContainElement("routing/logs"))
 
-			// s2m is wired into the default logs SC branch instead.
-			logsScDefaultExporters := readPipelineExporters(pipelines, "logs/sc/default")
-			Expect(logsScDefaultExporters).To(ContainElement("dash0signaltometrics"))
+			// The default instance is wired into the default logs SC branch, each namespaced dataset branch gets
+			// its own instance so its derived metrics egress through that branch's exporter.
+			Expect(readPipelineExporters(pipelines, "logs/sc/default")).To(ContainElement("dash0signaltometrics"))
+			Expect(readPipelineExporters(pipelines, "logs/sc/ns/"+namespace1+"/0")).
+				To(ContainElement("dash0signaltometrics/ns/" + namespace1 + "/0"))
+			Expect(readPipelineExporters(pipelines, "logs/sc/ns/"+namespace1+"/0")).
+				ToNot(ContainElement("dash0signaltometrics"))
 		})
 
-		It("should still wire dash0signaltometrics when sampling is disabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should still wire dash0signaltometrics when sampling is disabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2726,7 +2716,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2737,16 +2727,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			// No sampling: the SC branch exports the derived-metric connectors plus the default forward directly.
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineExporters(pipelines, "traces/common-processors")).To(ContainElement("forward/traces-to-sc"))
-			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/signal-control-pre-sampling")
+			Expect(readPipelineReceivers(pipelines, "traces/sc/default")).To(ContainElement("forward/traces-to-sc"))
+			scPreSamplingExporters := readPipelineExporters(pipelines, "traces/sc/default")
 			Expect(scPreSamplingExporters).To(ContainElement("dash0signaltometrics"))
 			Expect(scPreSamplingExporters).To(ContainElement("dash0redmetrics"))
 			Expect(scPreSamplingExporters).To(ContainElement("forward/traces-default-exporter"))
 			Expect(scPreSamplingExporters).ToNot(ContainElement("forward/traces-to-sampling"))
 		})
 
-		It("should not wire the dash0signaltometrics connector when signalToMetrics is disabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should not wire the dash0signaltometrics connector when signalToMetrics is disabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2759,7 +2749,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2767,16 +2757,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(connectors).ToNot(HaveKey("dash0signaltometrics"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineExporters(pipelines, "traces/common-processors")).
+			Expect(readPipelineExporters(pipelines, "traces/sc/default")).
 				ToNot(ContainElement("dash0signaltometrics"))
-			Expect(readPipelineExporters(pipelines, "logs/common-processors")).
+			Expect(readPipelineExporters(pipelines, "logs/sc/default")).
 				ToNot(ContainElement("dash0signaltometrics"))
-			Expect(readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")).
+			Expect(readPipelineReceivers(pipelines, "metrics/otlp-to-sc")).
 				ToNot(ContainElement("dash0signaltometrics"))
 		})
 
-		It("should wire the dash0filter processor when Signal Control + spamFilter are enabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should wire the dash0filter processor when Signal Control + spamFilter are enabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2789,7 +2779,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2802,11 +2792,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 			Expect(webFilter).To(HaveLen(1), "dash0filter should carry only metric_recorder when no tunables set")
 
-			// SC always runs in the dedicated SC branch (never inline in common-processors), even without
-			// namespaced exporters (the branch is fed via forward/{signal}-to-sc).
+			// Without namespaced exporters the default SC branch is fed via forward/{signal}-to-sc.
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).ToNot(ContainElement("dash0filter"))
-			tracesScProcessors := readPipelineProcessors(pipelines, "traces/signal-control-pre-sampling")
+			tracesScProcessors := readPipelineProcessors(pipelines, "traces/sc/default")
 			Expect(tracesScProcessors).To(ContainElements("dash0resource", "dash0operation", "dash0filter"),
 				"dash0filter must run after dash0resource and dash0operation set Signal Control attributes")
 			logsScProcessors := readPipelineProcessors(pipelines, "logs/sc/default")
@@ -2817,8 +2805,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				"dash0filter must run after resource/signal_control_attributes sets Signal Control attributes")
 		})
 
-		It("should render dash0filter tunables when set on the Signal Control config [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render dash0filter tunables when set on the Signal Control config [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2833,7 +2821,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                      "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2846,8 +2834,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 		})
 
-		It("should move dash0filter out of common-processors into the SC branches with namespaced exporters [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should move dash0filter out of common-processors into the SC branches with namespaced exporters [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
@@ -2860,26 +2848,23 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
 
-			// With namespaced exporters, SC must not run in common-processors (it would leak onto the copies
-			// routed to per-namespace exporters).
-			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).ToNot(ContainElement("dash0filter"))
-			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).ToNot(ContainElement("dash0filter"))
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("dash0filter"))
+			// With namespaced exporters, each branch gets its own dash0filter instance so its spam counters egress
+			// through that branch's exporter.
 
 			// It runs in the default SC branches (downstream of routing) instead.
-			Expect(readPipelineProcessors(pipelines, "traces/signal-control-pre-sampling")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(ContainElement("dash0filter"))
 			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(ContainElement("dash0filter"))
 			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(ContainElement("dash0filter"))
 		})
 
-		It("should still wire dash0filter when sampling is disabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should still wire dash0filter when sampling is disabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2892,7 +2877,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2900,14 +2885,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).To(HaveKey("dash0filter"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).ToNot(ContainElement("dash0filter"))
-			Expect(readPipelineProcessors(pipelines, "traces/signal-control-pre-sampling")).To(ContainElement("dash0filter"))
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(ContainElement("dash0filter"))
 			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(ContainElement("dash0filter"))
 			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(ContainElement("dash0filter"))
 		})
 
-		It("should not wire the dash0filter processor when spamFilter is disabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should not wire the dash0filter processor when spamFilter is disabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2920,7 +2904,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2928,17 +2912,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).ToNot(HaveKey("dash0filter"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineProcessors(pipelines, "traces/common-processors")).
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).
 				ToNot(ContainElement("dash0filter"))
-			Expect(readPipelineProcessors(pipelines, "logs/common-processors")).
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).
 				ToNot(ContainElement("dash0filter"))
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).
 				ToNot(ContainElement("dash0filter"))
 		})
 
 		It("should wire the dash0filter processor into the metrics pipeline when Signal Control + spamFilter "+
-			"are enabled [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+			"are enabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2951,7 +2935,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -2970,17 +2954,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			serviceExtensions := (collectorConfig["service"].(map[string]interface{}))["extensions"].([]interface{})
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 
-			// SC always runs in the dedicated SC branch (fed via forward/metrics-to-sc without namespaced exporters),
-			// never inline in common-processors.
+			// Without namespaced exporters the default SC branch is fed via forward/metrics-to-sc.
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("dash0filter"))
 			metricsScProcessors := readPipelineProcessors(pipelines, "metrics/sc/default")
 			Expect(metricsScProcessors).To(ContainElements("resource/signal_control_attributes", "dash0filter"),
 				"dash0filter must run after resource/signal_control_attributes sets Signal Control attributes")
 		})
 
-		It("should render dash0filter tunables when set on the Signal Control config [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+		It("should render dash0filter tunables when set on the Signal Control config [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -2995,7 +2977,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                      "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3008,8 +2990,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(webFilter).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 		})
 
-		It("should move dash0filter out of metrics/common-processors into the SC branch with namespaced exporters [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+		It("should move dash0filter out of metrics/common-processors into the SC branch with namespaced exporters [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedOtlpExporters(),
@@ -3022,19 +3004,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
-			// With namespaced exporters, SC must not run in common-processors (it would leak onto namespaced metrics).
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("dash0filter"))
-			// It runs in the default metrics SC branch (downstream of routing) instead.
+			// The default metrics SC branch (downstream of routing) runs the shared dash0filter instance.
 			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(ContainElement("dash0filter"))
 		})
 
-		It("should keep Signal Control off a non-Dash0 default exporter via a default passthrough [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+		It("should keep Signal Control off a non-Dash0 default exporter via a default passthrough [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestMixedDefaultOtlpExporters(),
@@ -3046,7 +3026,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3059,19 +3039,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Routing is used (namespaced exporters present) and its default_pipelines split the default Dash0 vs
 			// non-Dash0 metrics.
 			Expect(connectors).To(HaveKey("routing/metrics"))
-			// SC is not inline in common-processors; it runs in the default SC branch.
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("resource/signal_control_attributes"))
+			// SC runs in the default SC branch.
 			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(ContainElement("resource/signal_control_attributes"))
 			// The SC'd default sink exports only the Dash0 exporter; the passthrough carries the non-Dash0 one with no SC.
 			Expect(readPipelineExporters(pipelines, "metrics/export/default")).To(ContainElement(dash0Name))
 			Expect(readPipelineExporters(pipelines, "metrics/export/default")).ToNot(ContainElement(grpcName))
-			Expect(pipelines).To(HaveKey("metrics/export/default/passthrough"))
-			Expect(readPipelineExporters(pipelines, "metrics/export/default/passthrough")).To(ConsistOf(grpcName))
-			Expect(readPipelineProcessors(pipelines, "metrics/export/default/passthrough")).To(BeEmpty())
+			Expect(pipelines).ToNot(HaveKey("metrics/export/default/passthrough"))
 		})
 
-		It("should still wire dash0filter into the metrics pipeline when sampling is disabled [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+		It("should still wire dash0filter into the metrics pipeline when sampling is disabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3084,7 +3061,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3095,12 +3072,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(extensions).To(HaveKey("dash0settingsonedgeextension"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).ToNot(ContainElement("dash0filter"))
 			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).To(ContainElement("dash0filter"))
 		})
 
-		It("should not wire the dash0filter processor when spamFilter is disabled [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+		It("should not wire the dash0filter processor when spamFilter is disabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3113,7 +3089,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3124,12 +3100,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors).To(HaveKey("resource/signal_control_attributes"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).
 				ToNot(ContainElement("dash0filter"))
 		})
 
-		It("should wire the dash0metricrecorder extension + receiver when Signal Control + spamFilter are enabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should wire the dash0metricrecorder extension + receiver when Signal Control + spamFilter are enabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3142,7 +3118,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3172,8 +3148,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				To(ContainElement("forward/metrics-default-exporter"))
 		})
 
-		It("should not wire the dash0metricrecorder when spamFilter is disabled [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should not wire the dash0metricrecorder when spamFilter is disabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3186,7 +3162,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3197,8 +3173,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("metrics/spam-counters"))
 		})
 
-		It("should not wire the dash0metricrecorder when there is no default Dash0 export path [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should not wire the dash0metricrecorder when there is no default Dash0 export path [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestPassthroughOnlyDefaultExporters(),
@@ -3210,7 +3186,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3225,8 +3201,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 		})
 
-		It("should wire the dash0metricrecorder extension + receiver when Signal Control + spamFilter are enabled [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+		It("should wire the dash0metricrecorder extension + receiver when Signal Control + spamFilter are enabled [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3239,7 +3215,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3263,8 +3239,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				To(ContainElement("forward/metrics-default-exporter"))
 		})
 
-		It("should not wire the dash0metricrecorder when infrastructure metrics collection is disabled [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+		It("should wire the dash0metricrecorder independently of infrastructure metrics collection [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3276,32 +3252,22 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			// Without the metrics pipelines there is nowhere to drain the recorder, so it stays unwired and
-			// dash0filter carries no metric_recorder. With infrastructure metrics disabled the deployment
-			// collector renders no metrics receivers/pipelines at all, so guard the (possibly nil) blocks.
-			Expect(collectorConfig["extensions"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
-			if receivers, ok := collectorConfig["receivers"].(map[string]interface{}); ok {
-				Expect(receivers).ToNot(HaveKey("dash0metricrecorder"))
-			}
-			if service, ok := collectorConfig["service"].(map[string]interface{}); ok {
-				if pipelines, ok := service["pipelines"].(map[string]interface{}); ok {
-					Expect(pipelines).ToNot(HaveKey("metrics/spam-counters"))
-				}
-			}
-			if processors, ok := collectorConfig["processors"].(map[string]interface{}); ok {
-				if dash0filter, ok := processors["dash0filter"].(map[string]interface{}); ok {
-					Expect(dash0filter).ToNot(HaveKey("metric_recorder"))
-				}
-			}
+			// This collector always has a metrics egress path for the spam counters, so the recorder does not
+			// depend on Kubernetes infrastructure metrics collection (unlike on the cluster-metrics collector).
+			Expect(collectorConfig["extensions"].(map[string]interface{})).To(HaveKey("dash0metricrecorder"))
+			Expect(collectorConfig["receivers"].(map[string]interface{})).To(HaveKey("dash0metricrecorder"))
+			Expect(readPipelines(collectorConfig)).To(HaveKey("metrics/spam-counters"))
+			Expect(collectorConfig["processors"].(map[string]interface{})["dash0filter"].(map[string]interface{})).
+				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 		})
 
-		It("should wire a per-branch dash0metricrecorder for each namespaced dataset, exporting to that branch's exporters [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should wire a per-branch dash0metricrecorder for each namespaced dataset, exporting to that branch's exporters [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedMultiDatasetExporters(),
@@ -3314,7 +3280,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3346,8 +3312,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 		})
 
-		It("should not wire any per-branch dash0metricrecorder when spamFilter is disabled with namespaced datasets [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should not wire any per-branch dash0metricrecorder when spamFilter is disabled with namespaced datasets [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedMultiDatasetExporters(),
@@ -3360,7 +3326,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3379,8 +3345,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "dash0filter")
 		})
 
-		It("should wire a per-branch dash0metricrecorder for each namespaced dataset [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMapForTest(&oTelColConfig{
+		It("should wire a per-branch dash0metricrecorder for each namespaced dataset [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedMultiDatasetExporters(),
@@ -3392,7 +3358,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:           "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3417,8 +3383,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 		})
 
-		It("should render dash0operation as an empty object when no operation processor tunables are set [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render dash0operation as an empty object when no operation processor tunables are set [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3429,7 +3395,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:     "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3439,8 +3405,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				To(BeEmpty(), "dash0operation should render as `{}` when no tunables set")
 		})
 
-		It("should render prefer_span_name when set on the Signal Control config [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render prefer_span_name when set on the Signal Control config [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3452,7 +3418,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                 "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3462,8 +3428,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(operation).ToNot(HaveKey("cardinality_rules"))
 		})
 
-		It("should render cardinality_rules with nested operation_matchers when set on the Signal Control config [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render cardinality_rules with nested operation_matchers when set on the Signal Control config [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3493,7 +3459,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:     "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3523,8 +3489,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(second).ToNot(HaveKey("literal"), "a false literal must be omitted")
 		})
 
-		It("should render sampling fallback ratio and debug when set on the Signal Control config [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render sampling fallback ratio and debug when set on the Signal Control config [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3538,7 +3504,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                     "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3548,8 +3514,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(sampling["debug"]).To(BeTrue())
 		})
 
-		It("should omit sampling fallback ratio and debug when unset [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should omit sampling fallback ratio and debug when unset [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3561,7 +3527,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:         "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3571,8 +3537,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(sampling).ToNot(HaveKey("debug"))
 		})
 
-		It("should render the disk trace reservoir max_disk_bytes and metric_level [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render the disk trace reservoir max_disk_bytes and metric_level [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3587,7 +3553,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                       "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3602,8 +3568,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 
 		It("should render the serialized_memory trace reservoir without disk fields or max_memory_bytes when "+
-			"unset [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+			"unset [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3617,7 +3583,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                      "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3631,8 +3597,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(reservoir).ToNot(HaveKey("max_memory_bytes"))
 		})
 
-		It("should render the serialized_memory trace reservoir max_memory_bytes when set [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render the serialized_memory trace reservoir max_memory_bytes when set [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3647,7 +3613,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                         "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3660,8 +3626,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(reservoir).ToNot(HaveKey("max_disk_bytes"))
 		})
 
-		It("should render sampling enable_batching when set [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render sampling enable_batching when set [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3674,7 +3640,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3683,8 +3649,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(sampling["enable_batching"]).To(BeTrue())
 		})
 
-		It("should omit sampling enable_batching when unset [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should omit sampling enable_batching when unset [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3696,7 +3662,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:         "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3705,8 +3671,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(sampling).ToNot(HaveKey("enable_batching"))
 		})
 
-		It("should render dash0redmetrics as an empty object when no tunables are set [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render dash0redmetrics as an empty object when no tunables are set [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3717,7 +3683,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:     "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3727,8 +3693,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				To(BeEmpty(), "dash0redmetrics should render as `{}` when no tunables set")
 		})
 
-		It("should render dash0redmetrics tunables when set on the Signal Control config [DaemonSet]", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+		It("should render dash0redmetrics tunables when set on the Signal Control config [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
@@ -3741,7 +3707,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Dataset:                            "default",
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+			}, monitoredNamespaces, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -3890,7 +3856,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(resourceDetectionProcessor).To(HaveKeyWithValue("fail_on_missing_metadata", false))
 			}, daemonSetAndDeployment)
 
-		DescribeTable("should not render fail_on_missing_metadata if Signal Control is enabled",
+		DescribeTable("should also render fail_on_missing_metadata: false if Signal Control is enabled, since Signal "+
+			"Control no longer changes which image these two collectors run",
 			func(cmTypeDef configMapTypeDefinition) {
 				configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
@@ -3910,8 +3877,30 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				resourceDetectionProcessor :=
 					ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})
 				Expect(resourceDetectionProcessor).ToNot(BeNil())
-				Expect(resourceDetectionProcessor).ToNot(HaveKey("fail_on_missing_metadata"))
+				Expect(resourceDetectionProcessor).To(HaveKeyWithValue("fail_on_missing_metadata", false))
 			}, daemonSetAndDeployment)
+
+		It("should not render the resourcedetection processor at all for the Signal Control collector, since all "+
+			"resource detection has already happened upstream", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+			}, monitoredNamespaces, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).ToNot(HaveKey("resourcedetection"))
+			Expect(processors).ToNot(HaveKey("k8s_attributes"))
+			Expect(processors).ToNot(HaveKey("resource/dash0_operator_attributes"))
+		})
 	})
 
 	Describe("should enable/disable kubernetes infrastructure metrics collection and the hostmetrics receiver", func() {
@@ -5336,7 +5325,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		)
 	})
 
-	Describe("Signal Control on the k8s-events logs pipeline [Deployment]", func() {
+	Describe("Signal Control on the logs pipeline [SignalControl]", func() {
 		fullSC := func() SignalControlConfig {
 			return SignalControlConfig{
 				Enabled:                true,
@@ -5348,14 +5337,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 		}
 
-		It("wires the SC prelude, spam filter and s2m on logs/sc/default when all gates are on [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+		It("wires the SC prelude, spam filter and s2m on logs/sc/default when all gates are on [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				SignalControl:     fullSC(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
@@ -5364,18 +5353,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(connectors).To(HaveKey("dash0signaltometrics"))
 			Expect(connectors).To(HaveKey("forward/logs-to-sc"))
 
-			// With a default Dash0 exporter the k8s-events pipeline feeds the SC branch (not the raw default
-			// exporter), and the SC prelude/spam filter run in the dedicated logs SC branch, not inline.
-			Expect(readPipelineExporters(pipelines, "logs/k8sevents")).To(ContainElement("forward/logs-to-sc"))
-			Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).ToNot(ContainElement("dash0filter"))
+			// Everything enters via the OTLP receiver; with a default Dash0 exporter it feeds the default logs SC
+			// branch, which runs the SC prelude and the spam filter.
+			Expect(readPipelineExporters(pipelines, "logs/otlp-to-sc")).To(ContainElement("forward/logs-to-sc"))
 			logsScProcessors := readPipelineProcessors(pipelines, "logs/sc/default")
 			Expect(logsScProcessors).To(ContainElements("resource/signal_control_attributes", "dash0resource", "dash0filter"),
 				"dash0filter must run after resource/signal_control_attributes, and dash0resource stamps the resource hash for s2m")
 
-			// s2m is an exporter on the logs SC branch and a receiver on the derived-metrics pipeline (it does not
-			// re-enter metrics/common-processors).
+			// s2m is an exporter on the logs SC branch and a receiver on the derived-metrics pipeline.
 			Expect(readPipelineExporters(pipelines, "logs/sc/default")).To(ContainElement("dash0signaltometrics"))
-			Expect(readPipelineReceivers(pipelines, "metrics/derived/default")).To(ConsistOf("dash0signaltometrics"))
+			Expect(readPipelineReceivers(pipelines, "metrics/derived/default")).To(ContainElement("dash0signaltometrics"))
 
 			// The shared default dash0filter records spam counts through the default metric recorder.
 			processors := collectorConfig["processors"].(map[string]interface{})
@@ -5386,18 +5373,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			assertNoDanglingPipelineComponents(collectorConfig, "deployment/all-on")
 		})
 
-		It("renders dash0signaltometrics tunables on the deployment logs path [Deployment]", func() {
+		It("renders dash0signaltometrics tunables on the deployment logs path [SignalControl]", func() {
 			sc := fullSC()
 			sc.SignalToMetricsMaxTimeSeries = ptr.To(int32(50000))
 			sc.SignalToMetricsFlushInterval = "30s"
 			sc.SignalToMetricsCacheExpiration = "45s"
-			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				SignalControl:     sc,
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			s2m := collectorConfig["connectors"].(map[string]interface{})["dash0signaltometrics"].(map[string]interface{})
@@ -5406,21 +5393,21 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(s2m["cache_expiration"]).To(Equal("45s"))
 		})
 
-		It("wires per-branch spam filter and s2m on logs/sc/ns for namespaced multi-dataset exporters [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+		It("wires per-branch spam filter and s2m on logs/sc/ns for namespaced multi-dataset exporters [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedMultiDatasetExporters(),
 				SignalControl:     fullSC(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
 			connectors := collectorConfig["connectors"].(map[string]interface{})
 
-			// k8s-events are routed per namespace/dataset branch.
-			Expect(readPipelineExporters(pipelines, "logs/k8sevents")).To(ContainElement("routing/logs"))
+			// Logs are routed per namespace/dataset branch.
+			Expect(readPipelineExporters(pipelines, "logs/otlp-to-sc")).To(ContainElement("routing/logs"))
 
 			b0 := namespace1 + "/0"
 			Expect(connectors).To(HaveKey("dash0signaltometrics/ns/" + b0))
@@ -5429,7 +5416,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readPipelineExporters(pipelines, "logs/sc/ns/"+b0)).
 				To(ContainElement("dash0signaltometrics/ns/" + b0))
 			Expect(readPipelineReceivers(pipelines, "metrics/derived/ns/"+b0)).
-				To(ConsistOf("dash0signaltometrics/ns/" + b0))
+				To(ContainElement("dash0signaltometrics/ns/" + b0))
 
 			// The per-branch dash0filter records spam counts through its own per-branch metric recorder.
 			processors := collectorConfig["processors"].(map[string]interface{})
@@ -5440,61 +5427,59 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			assertNoDanglingPipelineComponents(collectorConfig, "deployment/ns-multi-dataset")
 		})
 
-		It("keeps logs spam filtering but omits s2m and the metric recorder when infra-metrics is off [Deployment]", func() {
-			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+		It("wires s2m and the metric recorder independently of infrastructure metrics collection [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestNamespacedMultiDatasetExporters(),
 				SignalControl:     fullSC(),
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
 
-			// No metrics egress, so neither s2m nor the metric recorder can be wired.
-			connectors := topLevelComponentKeys(collectorConfig, "connectors")
+			// Unlike the cluster-metrics collector, this collector always has a metrics egress path, so the
+			// derived-metrics and spam-counter pipelines do not depend on infrastructure metrics collection.
 			b0 := namespace1 + "/0"
-			Expect(connectors).ToNot(HaveKey("dash0signaltometrics"))
-			Expect(connectors).ToNot(HaveKey("dash0signaltometrics/ns/" + b0))
-			Expect(topLevelComponentKeys(collectorConfig, "extensions")).ToNot(HaveKey("dash0metricrecorder/ns/" + b0))
-			for name := range pipelines {
-				Expect(strings.HasPrefix(name, "metrics/")).
-					To(BeFalse(), "unexpected metrics pipeline %q with infra-metrics off", name)
-			}
+			connectors := topLevelComponentKeys(collectorConfig, "connectors")
+			Expect(connectors).To(HaveKey("dash0signaltometrics/ns/" + b0))
+			Expect(topLevelComponentKeys(collectorConfig, "extensions")).To(HaveKey("dash0metricrecorder/ns/" + b0))
+			Expect(pipelines).To(HaveKey("metrics/derived/ns/" + b0))
+			Expect(pipelines).To(HaveKey("metrics/spam-counters/ns/" + b0))
 
-			// The per-branch spam filter still runs on the logs SC branch, declared without a metric_recorder.
 			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+b0)).To(ContainElement("dash0filter/ns/" + b0))
 			processors := collectorConfig["processors"].(map[string]interface{})
-			Expect(processors["dash0filter/ns/"+b0].(map[string]interface{})).To(BeEmpty())
+			Expect(processors["dash0filter/ns/"+b0].(map[string]interface{})).
+				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+b0))
 
-			assertCollectorConfigStructurallyValid(collectorConfig, "deployment/infra-off")
-			assertNoDanglingPipelineComponents(collectorConfig, "deployment/infra-off")
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/infra-off")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/infra-off")
 		})
 
-		It("keeps the logs spam filter but omits s2m when signalToMetrics is disabled [Deployment]", func() {
+		It("keeps the logs spam filter but omits s2m when signalToMetrics is disabled [SignalControl]", func() {
 			sc := fullSC()
 			sc.SignalToMetricsEnabled = false
-			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
 				Exporters:         cmTestSingleDefaultOtlpExporter(),
 				SignalControl:     sc,
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+			}, monitoredNamespaces, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
 
 			Expect(topLevelComponentKeys(collectorConfig, "connectors")).ToNot(HaveKey("dash0signaltometrics"))
-			Expect(pipelines).ToNot(HaveKey("metrics/derived/default"))
+			Expect(readPipelineReceivers(pipelines, "metrics/derived/default")).To(ConsistOf("dash0redmetrics"))
 			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(ContainElement("dash0filter"))
 			Expect(readPipelineExporters(pipelines, "logs/sc/default")).ToNot(ContainElement("dash0signaltometrics"))
 
 			assertNoDanglingPipelineComponents(collectorConfig, "deployment/s2m-off")
 		})
 
-		It("renders structurally valid configs with event collection across exporter/SC/infra combinations [Deployment]", func() {
+		It("renders structurally valid configs with event collection across exporter/SC/infra combinations [SignalControl]", func() {
 			exporterCases := map[string]otlpExporters{
 				"single-default-dash0":          cmTestSingleDefaultOtlpExporter(),
 				"mixed-default-with-namespaced": cmTestMixedDefaultOtlpExporters(),
@@ -5512,14 +5497,20 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			for exName, exporters := range exporterCases {
 				for scName, sc := range scVariants {
 					for _, infra := range []bool{true, false} {
-						desc := fmt.Sprintf("deployment/%s/%s/infra=%t", exName, scName, infra)
-						cm, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
+						config := &oTelColConfig{
 							OperatorNamespace: OperatorNamespace,
 							NamePrefix:        namePrefix,
 							Exporters:         exporters,
 							SignalControl:     sc,
 							KubernetesInfrastructureMetricsCollectionEnabled: infra,
-						}, monitoredNamespaces, defaultNamespacesWithEventCollection, nil, nil, false)
+						}
+						config.Images.SignalControlCollectorImage = "signal-control-collector:latest"
+						if !config.signalControlGatewayActive() {
+							// Without Signal Control or without any Dash0 exporter this collector is not deployed.
+							continue
+						}
+						desc := fmt.Sprintf("signal-control/%s/%s/infra=%t", exName, scName, infra)
+						cm, err := assembleSignalControlCollectorConfigMap(config, monitoredNamespaces, false)
 						Expect(err).ToNot(HaveOccurred(), desc)
 						collectorConfig := parseConfigMapContent(cm)
 						assertCollectorConfigStructurallyValid(collectorConfig, desc)

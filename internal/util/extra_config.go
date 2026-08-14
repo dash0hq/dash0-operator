@@ -74,6 +74,24 @@ type ExtraConfig struct {
 
 	DeploymentProbes CollectorProbes `json:"deploymentProbes"`
 
+	SignalControlCollectorReplicas                                int32                              `json:"signalControlCollectorReplicas,omitempty"`
+	SignalControlCollectorContainerResources                      ResourceRequirementsWithGoMemLimit `json:"signalControlCollectorContainerResources"`
+	SignalControlCollectorConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"signalControlCollectorConfigurationReloaderContainerResources"`
+
+	SignalControlCollectorLabels         map[string]string `json:"signalControlCollectorLabels,omitempty"`
+	SignalControlCollectorAnnotations    map[string]string `json:"signalControlCollectorAnnotations,omitempty"`
+	SignalControlCollectorPodLabels      map[string]string `json:"signalControlCollectorPodLabels,omitempty"`
+	SignalControlCollectorPodAnnotations map[string]string `json:"signalControlCollectorPodAnnotations,omitempty"`
+
+	SignalControlCollectorTolerations  []corev1.Toleration  `json:"signalControlCollectorTolerations,omitempty"`
+	SignalControlCollectorNodeAffinity *corev1.NodeAffinity `json:"signalControlCollectorNodeAffinity,omitempty"`
+
+	SignalControlCollectorSysctls []corev1.Sysctl `json:"signalControlCollectorSysctls,omitempty"`
+
+	SignalControlCollectorPriorityClassName string `json:"signalControlCollectorPriorityClassName,omitempty"`
+
+	SignalControlCollectorProbes CollectorProbes `json:"signalControlCollectorProbes"`
+
 	TargetAllocatorMtlsEnabled              bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
 	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
 	TargetAllocatorMtlsClientCertSecretName string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
@@ -158,6 +176,26 @@ var (
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
 		},
+		// The Signal Control collector aggregates the Dash0-bound telemetry of the whole cluster (tail-sampling
+		// reservoir, RED metrics, signal-to-metrics), so it needs considerably more memory than the per-node collector.
+		SignalControlCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+			GoMemLimit: "800MiB",
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+		},
+		SignalControlCollectorConfigurationReloaderContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("12Mi"),
+			},
+			GoMemLimit: "8MiB",
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("12Mi"),
+			},
+		},
 	}
 )
 
@@ -203,6 +241,14 @@ func readExtraConfigurationFromFile(configurationFile string) (ExtraConfig, erro
 	applyDefaults(
 		&extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
 		&ExtraConfigDefaults.CollectorDeploymentConfigurationReloaderContainerResources,
+	)
+	applyDefaults(
+		&extraConfig.SignalControlCollectorContainerResources,
+		&ExtraConfigDefaults.SignalControlCollectorContainerResources,
+	)
+	applyDefaults(
+		&extraConfig.SignalControlCollectorConfigurationReloaderContainerResources,
+		&ExtraConfigDefaults.SignalControlCollectorConfigurationReloaderContainerResources,
 	)
 
 	return *extraConfig, nil

@@ -921,6 +921,116 @@ operator:
         timeoutSeconds: 1
         failureThreshold: 45
 
+    # The number of replicas of the Signal Control collector Deployment managed by the operator. This collector only
+    # exists when Signal Control is enabled (see operator.signalControl.enabled); it receives the Dash0-bound telemetry
+    # of the other two collectors, applies Signal Control and exports to Dash0. More replicas spread the tail-sampling
+    # reservoir and the RED-metrics cardinality tracking over more processes; fewer replicas use less memory.
+    signalControlCollectorReplicas: 2
+
+    # Resource settings for the collector container of the Signal Control collector pod managed by the operator. This
+    # collector processes the Dash0-bound telemetry of the whole cluster, so it needs more memory than the per-node
+    # collector.
+    signalControlCollectorContainerResources:
+      limits:
+        # cpu: (no cpu limit by default)
+        memory: 1Gi
+        # ephemeral-storage: (no ephemeral-storage limit by default)
+      # The GOMEMLIMIT environment variable value for the collector container, the recommended value is 80% of
+      # signalControlCollectorContainerResources.limits.memory. Note that valid units are different from Kubernetes
+      # resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: 800MiB
+      requests:
+        # cpu: (no cpu request by default)
+        memory: 1Gi
+        # ephemeral-storage: (no ephemeral-storage request by default; one is derived automatically when the
+        # tail-sampling reservoir uses the disk type)
+
+    # Resource settings for the configuration reloader container of the Signal Control collector pod managed by the
+    # operator. There should usually be no reason to override this.
+    signalControlCollectorConfigurationReloaderContainerResources:
+      limits:
+        # cpu: (no cpu limit by default)
+        memory: 24Mi
+        # ephemeral-storage: (no ephemeral-storage limit by default)
+      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
+      # of signalControlCollectorConfigurationReloaderContainerResources.limits.memory. Note that valid units are
+      # different from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: 18MiB
+      requests:
+        # cpu: (no cpu request by default)
+        memory: 12Mi
+        # ephemeral-storage: (no ephemeral-storage request by default)
+
+    # An array of pod-level sysctls applied to the Signal Control collector pod, see spec.securityContext.sysctls.
+    # Disabled by default. See daemonSetSysctls above for the use case and the Kubernetes >= 1.29 / Pod Security
+    # Admission caveats.
+    # Example:
+    # signalControlCollectorSysctls:
+    #   - name: net.ipv4.tcp_keepalive_time
+    #     value: "240"
+
+    # The priority class name for the Signal Control collector pod. If set, this pod will be scheduled with the
+    # specified priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # signalControlCollectorPriorityClassName:
+
+    # Additional labels to be set on the Signal Control collector Deployment managed by the operator.
+    signalControlCollectorLabels: {}
+
+    # Additional annotations to be set on the Signal Control collector Deployment managed by the operator.
+    signalControlCollectorAnnotations: {}
+
+    # Additional labels to be set on the Signal Control collector pod managed by the operator.
+    signalControlCollectorPodLabels: {}
+
+    # Additional annotations to be set on the Signal Control collector pod managed by the operator.
+    signalControlCollectorPodAnnotations: {}
+
+    # An array of tolerations for the Signal Control collector pod managed by the operator. This can be used to make
+    # sure that the collector pod can be scheduled on nodes where it would not be scheduled otherwise due to Kubernetes
+    # taints.
+    # Example:
+    # signalControlCollectorTolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    signalControlCollectorTolerations: []
+
+    # The nodeAffinity for the Signal Control collector pod managed by the operator. This can be used to constrain
+    # which nodes the collector pod will be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    signalControlCollectorNodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]
+
+    # Parameters for the liveness, readiness and startup probes of the Signal Control collector Deployment.
+    # See https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+    signalControlCollectorProbes:
+      liveness:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 20
+      readiness:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 3
+      startup:
+        initialDelaySeconds: 0
+        periodSeconds: 2
+        timeoutSeconds: 1
+        failureThreshold: 45
+
     # Settings for the k8s_attributes processor in the Dash0 operator collectors:
     k8s_attributes:
 

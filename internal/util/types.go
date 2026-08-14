@@ -75,14 +75,19 @@ type CollectorConfig struct {
 	// KubeletStatsAutoDetectEndpoint is false and is used verbatim instead of probing the node's kubelet.
 	KubeletStatsReceiverConfig *KubeletStatsReceiverConfig
 	PseudoClusterUid           types.UID
-	IsIPv6Cluster              bool
-	IsDocker                   bool
-	DisableHostPorts           bool
-	IsGkeAutopilot             bool
-	DevelopmentMode            bool
-	DebugVerbosityDetailed     bool
-	EnableProfExtension        bool
-	CompressConfigMap          bool
+	// KubernetesVersion is the Kubernetes version detected at operator manager startup, and
+	// KubernetesVersionDetected reports whether that detection succeeded. Used to decide whether the operator's
+	// services can carry spec.trafficDistribution.
+	KubernetesVersion         cluster.KubernetesVersionInfo
+	KubernetesVersionDetected bool
+	IsIPv6Cluster             bool
+	IsDocker                  bool
+	DisableHostPorts          bool
+	IsGkeAutopilot            bool
+	DevelopmentMode           bool
+	DebugVerbosityDetailed    bool
+	EnableProfExtension       bool
+	CompressConfigMap         bool
 }
 
 // KubeletStatsReceiverConfig holds the configuration for the kubeletstats receiver in the DaemonSet collector. It is

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -36,6 +37,15 @@ type CollectorManager struct {
 	signalControlFeatureEnabled bool
 	enablementChecker           enablement.Checker
 	updateInProgress            atomic.Bool
+	// lastReportedZoneCoverage remembers the (zone count, replica count) pair the zone coverage warning was last
+	// emitted for, so that the warning is logged on transitions instead of on every reconcile.
+	lastReportedZoneCoverage atomic.Pointer[zoneCoverage]
+}
+
+// zoneCoverage is the pair the zone coverage warning is keyed on.
+type zoneCoverage struct {
+	zoneCount    int
+	replicaCount int32
 }
 
 type CollectorReconcileTrigger string
@@ -128,6 +138,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	}
 	logger.Debug("found available monitoring resources for collector reconciliation", "count", len(allMonitoringResources))
 	var signalControlResource *dash0v1alpha1.Dash0SignalControl
+	signalControlEnabled := false
 	if m.signalControlFeatureEnabled {
 		signalControlResource, err = m.findSignalControlResource(ctx, logger)
 		if err != nil {
@@ -139,7 +150,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 			logger.Debug("no Signal Control resource found for collector reconciliation")
 		}
 
-		signalControlEnabled := signalControlResource != nil &&
+		signalControlEnabled = signalControlResource != nil &&
 			(signalControlResource.Spec.Enabled == nil || *signalControlResource.Spec.Enabled)
 
 		// Gate Signal Control on a Dash0 export in the operator configuration. Signal Control requires a Dash0 export
@@ -186,6 +197,12 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, logger)
 		return err == nil, err
 	} else {
+		// Only relevant when a Signal Control collector is actually deployed: the resource may exist while being
+		// explicitly disabled, not entitled, or without a Dash0 export, in which case there is nothing to spread over
+		// availability zones.
+		if signalControlResource != nil && signalControlEnabled {
+			m.warnAboutInsufficientZoneCoverage(ctx, *extraConfig, logger)
+		}
 		err = m.createOrUpdateOpenTelemetryCollector(
 			ctx,
 			operatorConfigurationResource,
@@ -196,6 +213,72 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		)
 		return err == nil, err
 	}
+}
+
+// warnAboutInsufficientZoneCoverage warns when the cluster has more availability zones than the Signal Control
+// collector has replicas. The collector's service prefers endpoints in the sender's own zone, but kube-proxy can only
+// do that for zones that actually have a ready endpoint; senders in the remaining zones fall back to the full endpoint
+// set and their telemetry crosses zones.
+//
+// This deliberately only warns. Deriving the replica count from the zone count would mean writing spec.replicas from
+// the reconciler that also watches that very deployment, so any nondeterminism in the zone count would turn into
+// replica churn - and every restarted replica discards its tail-sampling reservoir.
+func (m *CollectorManager) warnAboutInsufficientZoneCoverage(
+	ctx context.Context,
+	extraConfig util.ExtraConfig,
+	logger logd.Logger,
+) {
+	if m.clientset == nil {
+		return
+	}
+	// The clientset bypasses the controller-runtime cache on purpose: reading nodes through the cached client would
+	// start an informer that keeps every node object in memory for the lifetime of the operator. The read is served
+	// from the API server's watch cache (ResourceVersion "0") and restricted to nodes that carry a zone label, since
+	// nodes without one contribute nothing to the zone count.
+	nodes, err := m.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
+		ResourceVersion: "0",
+		LabelSelector:   corev1.LabelTopologyZone,
+	})
+	if err != nil {
+		logger.Debug("cannot list nodes to check the Signal Control collector's availability zone coverage", "error", err)
+		return
+	}
+	zones := make(map[string]struct{})
+	for _, node := range nodes.Items {
+		if zone := node.Labels[corev1.LabelTopologyZone]; zone != "" {
+			zones[zone] = struct{}{}
+		}
+	}
+
+	replicaCount := extraConfig.SignalControlCollectorReplicas
+	if replicaCount < 1 {
+		replicaCount = otelcolresources.SignalControlCollectorDefaultReplicas
+	}
+	m.reportZoneCoverage(len(zones), replicaCount, logger)
+}
+
+// reportZoneCoverage emits the zone coverage warning when there are more availability zones than Signal Control
+// collector replicas, at most once per distinct (zone count, replica count) pair so that a steady state does not
+// produce a warning on every reconcile.
+func (m *CollectorManager) reportZoneCoverage(zoneCount int, replicaCount int32, logger logd.Logger) {
+	// With zero or one zone there is nothing to spread over, the zone preference is inert either way.
+	if zoneCount <= 1 || int32(zoneCount) <= replicaCount {
+		m.lastReportedZoneCoverage.Store(nil)
+		return
+	}
+
+	current := zoneCoverage{zoneCount: zoneCount, replicaCount: replicaCount}
+	if previous := m.lastReportedZoneCoverage.Load(); previous != nil && *previous == current {
+		return
+	}
+	m.lastReportedZoneCoverage.Store(&current)
+	logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
+		"The cluster has %d availability zones but the Signal Control collector runs with %d replicas, so at least "+
+			"one zone has no Signal Control collector pod. Telemetry from those zones is sent to a collector in "+
+			"another zone, which works but incurs cross-zone traffic cost. Set "+
+			"operator.collectors.signalControlCollectorReplicas to at least %d to avoid that.",
+		zoneCount, replicaCount, zoneCount,
+	))
 }
 
 func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(

@@ -10,6 +10,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -45,6 +46,11 @@ var (
 	ExpectedDeploymentClusterRoleBindingName = fmt.Sprintf("%s-cluster-metrics-collector-crb", NamePrefix)
 	ExpectedDeploymentCollectorConfigMapName = fmt.Sprintf("%s-cluster-metrics-collector-cm", NamePrefix)
 	ExpectedDeploymentName                   = fmt.Sprintf("%s-cluster-metrics-collector-deployment", NamePrefix)
+
+	ExpectedSignalControlCollectorConfigMapName = fmt.Sprintf("%s-signal-control-collector-cm", NamePrefix)
+	ExpectedSignalControlCollectorServiceName   = fmt.Sprintf("%s-signal-control-collector-service", NamePrefix)
+	ExpectedSignalControlCollectorName          = fmt.Sprintf("%s-signal-control-collector-deployment", NamePrefix)
+	ExpectedSignalControlCollectorPdbName       = fmt.Sprintf("%s-signal-control-collector-pdb", NamePrefix)
 
 	expectedResourceDaemonSetConfigMap = expectedResource{
 		name:     ExpectedDaemonSetCollectorConfigMapName,
@@ -87,6 +93,15 @@ var (
 		{name: ExpectedDeploymentClusterRoleBindingName, clusterScoped: true, receiver: &rbacv1.ClusterRoleBinding{}},
 		expectedResourceDeploymentConfigMap,
 		expectedResourceDeployment,
+	}
+	// AllSignalControlCollectorRelatedResources is deliberately NOT part of AllExpectedResources: the Signal Control
+	// collector only exists when Signal Control is enabled and there is at least one Dash0 exporter, which is not the
+	// case for the tests that verify the always-present collector resources.
+	AllSignalControlCollectorRelatedResources = []expectedResource{
+		{name: ExpectedSignalControlCollectorConfigMapName, receiver: &corev1.ConfigMap{}},
+		{name: ExpectedSignalControlCollectorServiceName, receiver: &corev1.Service{}},
+		{name: ExpectedSignalControlCollectorPdbName, receiver: &policyv1.PodDisruptionBudget{}},
+		{name: ExpectedSignalControlCollectorName, receiver: &appsv1.Deployment{}},
 	}
 	AllExpectedResources = append(
 		AllDaemonSetRelatedResources,
@@ -296,6 +311,31 @@ func getOTelColResource(
 		expectedNamespace,
 		expectedRes,
 	)
+}
+
+// GetSignalControlCollectorConfigMap returns the configuration config map of the Signal Control collector, which
+// only exists when Signal Control is enabled and there is at least one Dash0 exporter.
+func GetSignalControlCollectorConfigMap(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+) *corev1.ConfigMap {
+	return getOTelColResource(
+		ctx,
+		k8sClient,
+		operatorNamespace,
+		AllSignalControlCollectorRelatedResources[0],
+	).(*corev1.ConfigMap)
+}
+
+func VerifySignalControlCollectorResourcesDoNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+) {
+	for _, expectedRes := range AllSignalControlCollectorRelatedResources {
+		VerifyExpectedResourceDoesNotExist(ctx, k8sClient, operatorNamespace, expectedRes)
+	}
 }
 
 func VerifyCollectorResourcesDoNotExist(

@@ -7,6 +7,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/go-logr/logr/funcr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -445,6 +446,61 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 
+	Describe("when checking availability zone coverage of the Signal Control collector", func() {
+		var warnings []string
+		var recordingLogger logd.Logger
+
+		BeforeEach(func() {
+			warnings = nil
+			recordingLogger = logd.NewLogger(funcr.New(func(prefix string, args string) {
+				warnings = append(warnings, args)
+			}, funcr.Options{}))
+		})
+
+		It("warns once per distinct zone/replica combination, not on every reconcile", func() {
+			manager := &CollectorManager{}
+
+			manager.reportZoneCoverage(3, 2, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("3 availability zones"))
+			Expect(warnings[0]).To(ContainSubstring("2 replicas"))
+			Expect(warnings[0]).To(ContainSubstring("signalControlCollectorReplicas"))
+
+			// A steady state must not produce a warning again.
+			manager.reportZoneCoverage(3, 2, recordingLogger)
+			manager.reportZoneCoverage(3, 2, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+
+			// A changed zone count is a new situation and is reported again.
+			manager.reportZoneCoverage(4, 2, recordingLogger)
+			Expect(warnings).To(HaveLen(2))
+		})
+
+		It("does not warn when there are at least as many replicas as zones", func() {
+			manager := &CollectorManager{}
+			manager.reportZoneCoverage(3, 3, recordingLogger)
+			manager.reportZoneCoverage(3, 5, recordingLogger)
+			Expect(warnings).To(BeEmpty())
+		})
+
+		It("does not warn on clusters with no zone labels or a single zone", func() {
+			manager := &CollectorManager{}
+			manager.reportZoneCoverage(0, 1, recordingLogger)
+			manager.reportZoneCoverage(1, 1, recordingLogger)
+			Expect(warnings).To(BeEmpty())
+		})
+
+		It("warns again after the situation was resolved and then reoccurs", func() {
+			manager := &CollectorManager{}
+			manager.reportZoneCoverage(3, 2, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+			manager.reportZoneCoverage(3, 3, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+			manager.reportZoneCoverage(3, 2, recordingLogger)
+			Expect(warnings).To(HaveLen(2))
+		})
+	})
+
 	Describe("when Signal Control is gated on the organization's entitlement", func() {
 		BeforeEach(func() {
 			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
@@ -462,27 +518,34 @@ var _ = Describe("The collector manager", Ordered, func() {
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 		})
 
-		It("applies Signal Control to the collector when the organization is entitled", func() {
+		It("deploys the Signal Control collector when the organization is entitled", func() {
 			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: true})
 
 			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
-			cm := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace)
+			cm := GetSignalControlCollectorConfigMap(ctx, k8sClient, operatorNamespace)
 			Expect(cm.Data["config.yaml"]).To(ContainSubstring("dash0settingsonedgeextension"))
+
+			// The daemonset forwards to the Signal Control collector instead of applying Signal Control itself.
+			daemonSetConfig := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace).Data["config.yaml"]
+			Expect(daemonSetConfig).ToNot(ContainSubstring("dash0settingsonedgeextension"))
+			Expect(daemonSetConfig).To(ContainSubstring("otlp/signal-control-collector"))
 		})
 
-		It("renders a plain collector when the organization is not entitled", func() {
+		It("deploys no Signal Control collector when the organization is not entitled", func() {
 			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: false})
 
 			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
-			cm := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace)
-			Expect(cm.Data["config.yaml"]).ToNot(ContainSubstring("dash0settingsonedgeextension"))
+			VerifySignalControlCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			daemonSetConfig := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace).Data["config.yaml"]
+			Expect(daemonSetConfig).ToNot(ContainSubstring("dash0settingsonedgeextension"))
+			Expect(daemonSetConfig).ToNot(ContainSubstring("otlp/signal-control-collector"))
 		})
 
-		It("renders a plain collector when the operator configuration has no Dash0 export, even when entitled", func() {
+		It("deploys no Signal Control collector when the operator configuration has no Dash0 export, even when entitled", func() {
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 			CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(false)},
@@ -493,8 +556,10 @@ var _ = Describe("The collector manager", Ordered, func() {
 			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
 			Expect(err).ToNot(HaveOccurred())
 
-			cm := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace)
-			Expect(cm.Data["config.yaml"]).ToNot(ContainSubstring("dash0settingsonedgeextension"))
+			VerifySignalControlCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			daemonSetConfig := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace).Data["config.yaml"]
+			Expect(daemonSetConfig).ToNot(ContainSubstring("dash0settingsonedgeextension"))
+			Expect(daemonSetConfig).ToNot(ContainSubstring("otlp/signal-control-collector"))
 		})
 	})
 

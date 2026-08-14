@@ -87,6 +87,8 @@ jobs:
                 password = "${{ secrets.GITHUB_TOKEN }}"
           nodes:
             - role: control-plane
+              labels:
+                topology.kubernetes.io/zone: zone-a
               extraMounts:
                 - hostPath: /tmp/filelog-offsets
                   containerPath: /offset-storage
@@ -100,10 +102,13 @@ jobs:
                   protocol: TCP
               labels:
                 nginx-ingress: "true"
+                topology.kubernetes.io/zone: zone-a
               extraMounts:
                 - hostPath: /tmp/offset-storage
                   containerPath: /offset-storage
             - role: worker
+              labels:
+                topology.kubernetes.io/zone: zone-b
               extraMounts:
                 - hostPath: /tmp/offset-storage
                   containerPath: /offset-storage

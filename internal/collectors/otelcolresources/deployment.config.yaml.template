@@ -1,118 +1,44 @@
 {{- $hasEventCollectionEnabledForAtLeastOneNamespace := gt (len .NamespacesWithEventCollection) 0 -}}
 {{- $hasNamespacedExporters := gt (len .Exporters.Namespaced) 0 -}}
-{{- /* Signal Control (SC) is only applied to Dash0 exporters; non-Dash0 (passthrough) exporters always receive raw
-telemetry. SC always runs in a dedicated branch pipeline (metrics/sc/default) downstream of common-processors, fed by
-the routing connector when there are namespaced exporters and by forward/metrics-to-sc otherwise. See the daemonset
-template for the full explanation. Variables:
+{{- /* Signal Control (SC) does not run in this collector. When the Signal Control collector deployment (the "gateway")
+is deployed, this collector forwards all Dash0-bound telemetry to it via otlp/signal-control-collector and the gateway
+applies SC and exports to Dash0. See the daemonset template for the full explanation. Variables:
 - $useRouting: routing is used (only with namespaced exporters; the routing connector requires a non-empty table).
-- $scDefault: the default path applies SC (SC enabled AND the default list has >=1 Dash0 exporter).
-- $splitDefault: the default mixes Dash0 + non-Dash0 under SC, so it fans out (SC'd -> Dash0, raw -> passthrough).
-The k8s-events logs pipeline applies SC in dedicated branch pipelines (logs/sc/default, logs/sc/ns/...) mirroring the
-metrics path and the daemonset. */}}
+- $gwActive: the gateway is deployed, so Dash0-bound telemetry is forwarded instead of exported here.
+- $gwDefault: the default path forwards to the gateway (gateway active AND the default list has >=1 Dash0 exporter).
+- $splitDefault: the default mixes Dash0 + non-Dash0, so it fans out (Dash0-bound -> the gateway, raw -> passthrough).
+*/}}
 {{- $useRouting := $hasNamespacedExporters -}}
-{{- $scDefault := and .SignalControl.Enabled (gt (len .Exporters.DefaultDash0Exporters) 0) -}}
-{{- $splitDefault := and $scDefault (gt (len .Exporters.DefaultPassthrough) 0) -}}
-{{- /*
-The dash0metricrecorder (extension + receiver) carries dash0filter's spam-filter counters into a dedicated metrics
-pipeline, wired per branch so each dataset's counts egress through its own exporter (see daemonset template). dash0filter
-runs on both the metrics SC pipelines and the k8s-events logs SC pipelines, but its counters can only egress through a
-metrics pipeline, so the recorder (and the metric_recorder wiring on dash0filter) is gated on infra-metrics. Log spam
-filtering therefore still works with infra-metrics off; only the spam counters require it.
-*/ -}}
-{{- $metricRecorderActive := and .SignalControl.SpamFilterEnabled $scDefault .KubernetesInfrastructureMetricsCollectionEnabled -}}
-{{- /*
-The dash0signaltometrics connector ("s2m") derives metrics from the k8s-events logs pipeline. It must be both an
-exporter (in a logs pipeline, gated on event collection) and a receiver (in a metrics/derived pipeline, gated on
-infra-metrics). $signalToMetricsActive is the AND of both so the connector never renders on only one side (an invalid
-config that fails collector startup). The default instance additionally requires $scDefault, per-branch instances
-additionally require $hasNamespacedExporters.
-*/ -}}
-{{- $signalToMetricsActive := and .SignalControl.Enabled .SignalControl.SignalToMetricsEnabled $hasEventCollectionEnabledForAtLeastOneNamespace .KubernetesInfrastructureMetricsCollectionEnabled -}}
-
+{{- $gwActive := .SignalControlGatewayActive -}}
+{{- $gwDefault := and $gwActive (gt (len .Exporters.DefaultDash0Exporters) 0) -}}
+{{- $splitDefault := and $gwDefault (gt (len .Exporters.DefaultPassthrough) 0) -}}
 extensions:
   health_check:
     endpoint: "{{ .SelfIpReference }}:13133"
   {{- if .EnableProfExtension }}
   pprof: {}
   {{- end }}
-  {{- if .SignalControl.Enabled }}
-  dash0settingsonedgeextension:
-    endpoint: {{ .SignalControl.ApiEndpoint }}
-    auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
-  {{- end }}
-  {{- if $metricRecorderActive }}
-  dash0metricrecorder: {}
-  {{- end }}
-  {{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
-  {{- range $ns, $sc := .Exporters.NamespaceSC }}
-  {{- range $b := $sc.DatasetBranches }}
-  dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
-  {{- end }}
-  {{- end }}
-  {{- end }}
 
 connectors:
   forward/metrics-default-exporter: {}
   forward/logs-default-exporter: {}
-{{- if and (not $useRouting) $scDefault .KubernetesInfrastructureMetricsCollectionEnabled }}
-  forward/metrics-to-sc: {}
-{{- end }}
-{{- if and (not $useRouting) $scDefault $hasEventCollectionEnabledForAtLeastOneNamespace }}
-  forward/logs-to-sc: {}
-{{- end }}
-{{- if and $scDefault $signalToMetricsActive }}
-{{- if or .SignalControl.SignalToMetricsMaxTimeSeries .SignalControl.SignalToMetricsFlushInterval .SignalControl.SignalToMetricsCacheExpiration }}
-  dash0signaltometrics:
-{{- if .SignalControl.SignalToMetricsMaxTimeSeries }}
-    max_time_series: {{ .SignalControl.SignalToMetricsMaxTimeSeries }}
-{{- end }}
-{{- if .SignalControl.SignalToMetricsCacheExpiration }}
-    cache_expiration: {{ .SignalControl.SignalToMetricsCacheExpiration }}
-{{- end }}
-{{- if .SignalControl.SignalToMetricsFlushInterval }}
-    metrics_flush_interval: {{ .SignalControl.SignalToMetricsFlushInterval }}
-{{- end }}
-{{- else }}
-  dash0signaltometrics: {}
-{{- end }}
-{{- end }}
-{{- if and $hasNamespacedExporters $signalToMetricsActive }}
-{{- range $ns, $sc := .Exporters.NamespaceSC }}
-{{- range $b := $sc.DatasetBranches }}
-{{- if or $.SignalControl.SignalToMetricsMaxTimeSeries $.SignalControl.SignalToMetricsFlushInterval $.SignalControl.SignalToMetricsCacheExpiration }}
-  dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-{{- if $.SignalControl.SignalToMetricsMaxTimeSeries }}
-    max_time_series: {{ $.SignalControl.SignalToMetricsMaxTimeSeries }}
-{{- end }}
-{{- if $.SignalControl.SignalToMetricsCacheExpiration }}
-    cache_expiration: {{ $.SignalControl.SignalToMetricsCacheExpiration }}
-{{- end }}
-{{- if $.SignalControl.SignalToMetricsFlushInterval }}
-    metrics_flush_interval: {{ $.SignalControl.SignalToMetricsFlushInterval }}
-{{- end }}
-{{- else }}
-  dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
 
   {{- if and $useRouting .KubernetesInfrastructureMetricsCollectionEnabled }}
   routing/metrics:
-{{- if $scDefault }}
-    default_pipelines: [metrics/sc/default{{- if $splitDefault }}, metrics/export/default/passthrough{{- end }}]
+{{- if $gwDefault }}
+    default_pipelines: [metrics/to-signal-control{{- if $splitDefault }}, metrics/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [metrics/export/default]
 {{- end }}
     error_mode: ignore
     table:
-{{- if .SignalControl.Enabled }}
+{{- if $gwActive }}
     {{- range $ns, $sc := $.Exporters.NamespaceSC }}
       - context: resource
         condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
         pipelines:
-        {{- range $b := $sc.DatasetBranches }}
-          - metrics/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- if $sc.DatasetBranches }}
+          - metrics/to-signal-control
         {{- end }}
         {{- if $sc.Passthrough }}
           - metrics/export/ns/{{ $ns }}/passthrough
@@ -129,20 +55,20 @@ connectors:
   {{- end }}
   {{- if and $hasNamespacedExporters $hasEventCollectionEnabledForAtLeastOneNamespace }}
   routing/logs:
-{{- if $scDefault }}
-    default_pipelines: [logs/sc/default{{- if $splitDefault }}, logs/export/default/passthrough{{- end }}]
+{{- if $gwDefault }}
+    default_pipelines: [logs/to-signal-control{{- if $splitDefault }}, logs/export/default/passthrough{{- end }}]
 {{- else }}
     default_pipelines: [logs/export/default]
 {{- end }}
     error_mode: ignore
     table:
-{{- if .SignalControl.Enabled }}
+{{- if $gwActive }}
     {{- range $ns, $sc := $.Exporters.NamespaceSC }}
       - context: resource
         condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
         pipelines:
-        {{- range $b := $sc.DatasetBranches }}
-          - logs/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- if $sc.DatasetBranches }}
+          - logs/to-signal-control
         {{- end }}
         {{- if $sc.Passthrough }}
           - logs/export/ns/{{ $ns }}/passthrough
@@ -159,18 +85,6 @@ connectors:
   {{- end }}
 
 receivers:
-  {{- if $metricRecorderActive }}
-  dash0metricrecorder:
-    metric_recorder: dash0metricrecorder
-  {{- end }}
-  {{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
-  {{- range $ns, $sc := .Exporters.NamespaceSC }}
-  {{- range $b := $sc.DatasetBranches }}
-  dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-  {{- end }}
-  {{- end }}
-  {{- end }}
   {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
   k8s_cluster:
     collection_interval: 30s
@@ -210,14 +124,7 @@ processors:
   # cloud.availability_zone, GCE/Azure instance identifiers) here, since that would incorrectly include node attribtues
   # from the collector deployment's node to the telemetry.
   resourcedetection:
-    {{- /*
-      Unconditionally add fail_on_missing_metadata and remove
-      "--feature-gates=-processor.resourcedetection.propagateerrors" once the SignalControl Edge image updates to
-      collector-contrib version >= 0.158.0.
-    */}}
-    {{- if not .SignalControl.Enabled }}
     fail_on_missing_metadata: false
-    {{- end }}
     detectors:
     # Note: Later detectors do *not* overwrite attributes provided by earlier detectors, hence more specific detectors
     # must come first (e.g. eks before ec2 - both write to cloud.platform).
@@ -612,156 +519,10 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 25
 
-{{- if .SignalControl.Enabled }}
-  dash0resource: {}
-  resource/signal_control_attributes:
-    attributes:
-    - key: dash0.org.technical.id
-      value: edge
-      action: upsert
-    - key: dash0.dataset
-      value: {{ .SignalControl.Dataset }}
-      action: upsert
-{{- if $hasNamespacedExporters }}
-{{- range $ns, $sc := .Exporters.NamespaceSC }}
-{{- range $b := $sc.DatasetBranches }}
-  resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-    attributes:
-    - key: dash0.org.technical.id
-      value: edge
-      action: upsert
-    - key: dash0.dataset
-      value: {{ $b.Dataset }}
-      action: upsert
+{{ template "exporters" . }}
+{{- if $gwActive }}
+{{- template "signalControlCollectorExporter" . }}
 {{- end }}
-{{- end }}
-{{- end }}
-{{- if .SignalControl.SpamFilterEnabled }}
-{{- if or $metricRecorderActive .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
-  dash0filter:
-{{- if $metricRecorderActive }}
-    metric_recorder: dash0metricrecorder
-{{- end }}
-{{- if .SignalControl.SpamFilterCacheExpiration }}
-    cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
-{{- end }}
-{{- if .SignalControl.SpamFilterAllowNoSettingsExt }}
-    allow_no_settings_ext: {{ .SignalControl.SpamFilterAllowNoSettingsExt }}
-{{- end }}
-{{- else }}
-  dash0filter: {}
-{{- end }}
-{{- end }}
-{{- /*
-Per-branch dash0filter is referenced by both the metrics SC pipelines (require infra-metrics) and the k8s-events
-logs SC pipelines (require event collection), so it is declared whenever either signal path is active. The
-metric_recorder field is only emitted with infra-metrics on, since the per-branch dash0metricrecorder (and its
-metrics/spam-counters egress) is infra-metrics-gated.
-*/}}
-{{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled (or .KubernetesInfrastructureMetricsCollectionEnabled $hasEventCollectionEnabledForAtLeastOneNamespace) }}
-{{- range $ns, $sc := .Exporters.NamespaceSC }}
-{{- range $b := $sc.DatasetBranches }}
-{{- if or $.KubernetesInfrastructureMetricsCollectionEnabled $.SignalControl.SpamFilterCacheExpiration $.SignalControl.SpamFilterAllowNoSettingsExt }}
-  dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-{{- if $.KubernetesInfrastructureMetricsCollectionEnabled }}
-    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-{{- end }}
-{{- if $.SignalControl.SpamFilterCacheExpiration }}
-    cache_expiration: {{ $.SignalControl.SpamFilterCacheExpiration }}
-{{- end }}
-{{- if $.SignalControl.SpamFilterAllowNoSettingsExt }}
-    allow_no_settings_ext: {{ $.SignalControl.SpamFilterAllowNoSettingsExt }}
-{{- end }}
-{{- else }}
-  dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
-
-exporters:
-  {{- if .DebugVerbosityDetailed }}
-  debug:
-    verbosity: detailed
-  {{- else if .DevelopmentMode }}
-  debug: {}
-  {{- end }}
-
-  {{- range $i, $exporter := .Exporters.Default }}
-  {{ $exporter.Name }}:
-    endpoint: "{{ $exporter.Endpoint }}"
-    {{- if $exporter.Insecure }}
-    tls:
-      insecure: true
-    {{- else if $exporter.InsecureSkipVerify }}
-    tls:
-      insecure_skip_verify: true
-    {{- end }}
-    {{- if $exporter.Headers }}
-    headers:
-      {{- range $i, $header := $exporter.Headers }}
-      "{{ $header.Name }}": "{{ $header.Value }}"
-      {{- end }}
-    {{- end }}
-    {{- if $exporter.Encoding }}
-    encoding: "{{ $exporter.Encoding }}"
-    {{- end }}
-    {{- if $exporter.Keepalive }}
-    keepalive:
-      {{- if $exporter.Keepalive.Time }}
-      time: "{{ $exporter.Keepalive.Time }}"
-      {{- end }}
-      {{- if $exporter.Keepalive.Timeout }}
-      timeout: "{{ $exporter.Keepalive.Timeout }}"
-      {{- end }}
-      {{- if $exporter.Keepalive.PermitWithoutStream }}
-      permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
-      {{- end }}
-    {{- end }}
-    {{- if $exporter.BalancerName }}
-    balancer_name: "{{ $exporter.BalancerName }}"
-    {{- end }}
-  {{- end }}
-
-  {{- range $ns := .Exporters.AllNamespaceKeys }}
-  {{- $exporters := index $.Exporters.Namespaced $ns }}
-  {{- range $i, $exporter := $exporters }}
-  {{ $exporter.Name }}:
-    endpoint: "{{ $exporter.Endpoint }}"
-    {{- if $exporter.Insecure }}
-    tls:
-      insecure: true
-    {{- else if $exporter.InsecureSkipVerify }}
-    tls:
-      insecure_skip_verify: true
-    {{- end }}
-    {{- if $exporter.Headers }}
-    headers:
-      {{- range $i, $header := $exporter.Headers }}
-      "{{ $header.Name }}": "{{ $header.Value }}"
-      {{- end }}
-    {{- end }}
-    {{- if $exporter.Encoding }}
-    encoding: "{{ $exporter.Encoding }}"
-    {{- end }}
-    {{- if $exporter.Keepalive }}
-    keepalive:
-      {{- if $exporter.Keepalive.Time }}
-      time: "{{ $exporter.Keepalive.Time }}"
-      {{- end }}
-      {{- if $exporter.Keepalive.Timeout }}
-      timeout: "{{ $exporter.Keepalive.Timeout }}"
-      {{- end }}
-      {{- if $exporter.Keepalive.PermitWithoutStream }}
-      permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
-      {{- end }}
-    {{- end }}
-    {{- if $exporter.BalancerName }}
-    balancer_name: "{{ $exporter.BalancerName }}"
-    {{- end }}
-  {{- end }}
-  {{- end }}
 
 
 service:
@@ -769,19 +530,6 @@ service:
   - health_check
   {{- if .EnableProfExtension }}
   - pprof
-  {{- end }}
-  {{- if .SignalControl.Enabled }}
-  - dash0settingsonedgeextension
-  {{- end }}
-  {{- if $metricRecorderActive }}
-  - dash0metricrecorder
-  {{- end }}
-  {{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
-  {{- range $ns, $sc := .Exporters.NamespaceSC }}
-  {{- range $b := $sc.DatasetBranches }}
-  - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-  {{- end }}
-  {{- end }}
   {{- end }}
 
   pipelines:
@@ -814,8 +562,8 @@ service:
       exporters:
         {{- if $useRouting }}
         - routing/metrics
-        {{- else if $scDefault }}
-        - forward/metrics-to-sc
+        {{- else if $gwDefault }}
+        - otlp/signal-control-collector
         {{- range $exporter := .Exporters.DefaultPassthrough }}
         - {{ $exporter.Name }}
         {{- end }}
@@ -823,99 +571,35 @@ service:
         - forward/metrics-default-exporter
         {{- end }}
 
-{{- if $scDefault }}
-    metrics/sc/default:
+{{- if and $useRouting $gwActive }}
+
+    metrics/to-signal-control:
+      receivers:
+        - routing/metrics
+      exporters:
+        - otlp/signal-control-collector
+{{- end }}
+
+{{- if not $gwDefault }}
+
+    metrics/export/default:
       receivers:
         {{- if $useRouting }}
         - routing/metrics
         {{- else }}
-        - forward/metrics-to-sc
-        {{- end }}
-      processors:
-        - resource/signal_control_attributes
-        {{- if .SignalControl.SpamFilterEnabled }}
-        - dash0filter
-        {{- end }}
-      exporters:
         - forward/metrics-default-exporter
-{{- end }}
-
-{{- if and $scDefault $signalToMetricsActive }}
-    metrics/derived/default:
-      receivers:
-        - dash0signaltometrics
-      processors:
-        - batch
+        {{- end }}
       exporters:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
-        {{- if $splitDefault }}
-        {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-        {{- else }}
         {{- range $i, $exporter := .Exporters.Default }}
         - {{ $exporter.Name }}
         {{- end }}
-        {{- end }}
 {{- end }}
-
-{{- if $metricRecorderActive }}
-    metrics/spam-counters:
-      receivers:
-        - dash0metricrecorder
-      processors:
-        - batch
-      exporters:
-        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
-        - debug
-        {{- end }}
-        - forward/metrics-default-exporter
-{{- end }}
-
-{{- if and $hasNamespacedExporters .SignalControl.SpamFilterEnabled .KubernetesInfrastructureMetricsCollectionEnabled }}
-{{- range $ns, $sc := .Exporters.NamespaceSC }}
-{{- range $b := $sc.DatasetBranches }}
-    metrics/spam-counters/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-      receivers:
-        - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-      processors:
-        - batch
-      exporters:
-        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
-        - debug
-        {{- end }}
-        {{- range $exporter := $b.Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
-
-    metrics/export/default:
-      receivers:
-        {{- if and $useRouting (not $scDefault) }}
-        - routing/metrics
-        {{- end }}
-        {{- if or (not $hasNamespacedExporters) $scDefault }}
-        - forward/metrics-default-exporter
-        {{- end }}
-      exporters:
-        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
-        - debug
-        {{- end }}
-        {{- if $splitDefault }}
-        {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-        {{- else }}
-        {{- range $i, $exporter := .Exporters.Default }}
-        - {{ $exporter.Name }}
-        {{- end }}
-        {{- end }}
 
 {{- if and $hasNamespacedExporters $splitDefault }}
+
     metrics/export/default/passthrough:
       receivers:
         - routing/metrics
@@ -928,39 +612,8 @@ service:
         {{- end }}
 {{- end }}
 
-{{- if .SignalControl.Enabled }}
+{{- if $gwActive }}
     {{- range $ns, $sc := $.Exporters.NamespaceSC }}
-    {{- range $b := $sc.DatasetBranches }}
-    metrics/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-      receivers:
-        - routing/metrics
-      processors:
-        - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- if $.SignalControl.SpamFilterEnabled }}
-        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- end }}
-      exporters:
-        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
-        - debug
-        {{- end }}
-        {{- range $exporter := $b.Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-    {{- if and $hasNamespacedExporters $signalToMetricsActive }}
-    metrics/derived/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-      receivers:
-        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-      processors:
-        - batch
-      exporters:
-        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
-        - debug
-        {{- end }}
-        {{- range $exporter := $b.Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-    {{- end }}
-    {{- end }}
     {{- if $sc.Passthrough }}
     metrics/export/ns/{{ $ns }}/passthrough:
       receivers:
@@ -1010,8 +663,8 @@ service:
       exporters:
         {{- if $useRouting }}
         - routing/logs
-        {{- else if $scDefault }}
-        - forward/logs-to-sc
+        {{- else if $gwDefault }}
+        - otlp/signal-control-collector
         {{- range $exporter := .Exporters.DefaultPassthrough }}
         - {{ $exporter.Name }}
         {{- end }}
@@ -1019,50 +672,35 @@ service:
         - forward/logs-default-exporter
         {{- end }}
 
+{{- if and $useRouting $gwActive }}
+
+    logs/to-signal-control:
+      receivers:
+        - routing/logs
+      exporters:
+        - otlp/signal-control-collector
+{{- end }}
+
+{{- if not $gwDefault }}
+
     logs/export/default:
       receivers:
-        {{- if and $useRouting (not $scDefault) }}
+        {{- if $useRouting }}
         - routing/logs
-        {{- end }}
-        {{- if or (not $hasNamespacedExporters) $scDefault }}
+        {{- else }}
         - forward/logs-default-exporter
         {{- end}}
       exporters:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
-        {{- if $splitDefault }}
-        {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-        {{- else }}
         {{- range $i, $exporter := .Exporters.Default }}
         - {{ $exporter.Name }}
-        {{- end }}
-        {{- end }}
-
-{{- if $scDefault }}
-    logs/sc/default:
-      receivers:
-        {{- if $useRouting }}
-        - routing/logs
-        {{- else }}
-        - forward/logs-to-sc
-        {{- end }}
-      processors:
-        - resource/signal_control_attributes
-        - dash0resource
-        {{- if .SignalControl.SpamFilterEnabled }}
-        - dash0filter
-        {{- end }}
-      exporters:
-        - forward/logs-default-exporter
-        {{- if $signalToMetricsActive }}
-        - dash0signaltometrics
         {{- end }}
 {{- end }}
 
 {{- if and $hasNamespacedExporters $splitDefault }}
+
     logs/export/default/passthrough:
       receivers:
         - routing/logs
@@ -1075,29 +713,8 @@ service:
         {{- end }}
 {{- end }}
 
-{{- if .SignalControl.Enabled }}
+{{- if $gwActive }}
     {{- range $ns, $sc := $.Exporters.NamespaceSC }}
-    {{- range $b := $sc.DatasetBranches }}
-    logs/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-      receivers:
-        - routing/logs
-      processors:
-        - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        - dash0resource
-        {{- if $.SignalControl.SpamFilterEnabled }}
-        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- end }}
-      exporters:
-        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
-        - debug
-        {{- end }}
-        {{- range $exporter := $b.Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-        {{- if and $hasNamespacedExporters $signalToMetricsActive }}
-        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-        {{- end }}
-    {{- end }}
     {{- if $sc.Passthrough }}
     logs/export/ns/{{ $ns }}/passthrough:
       receivers:

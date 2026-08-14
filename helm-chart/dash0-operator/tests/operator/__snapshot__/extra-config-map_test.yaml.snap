@@ -95,6 +95,49 @@ extra config map should match snapshot:
             initialDelaySeconds: 0
             periodSeconds: 2
             timeoutSeconds: 1
+        signalControlCollectorReplicas: 2
+        signalControlCollectorContainerResources:
+          gomemlimit: 800MiB
+          limits:
+            memory: 1Gi
+          requests:
+            memory: 1Gi
+        signalControlCollectorConfigurationReloaderContainerResources:
+          gomemlimit: 18MiB
+          limits:
+            memory: 24Mi
+          requests:
+            memory: 12Mi
+        signalControlCollectorTolerations:
+          []
+        signalControlCollectorNodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dash0.com/enable
+                operator: NotIn
+                values:
+                - "false"
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+        signalControlCollectorProbes:
+          liveness:
+            failureThreshold: 20
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
+          readiness:
+            failureThreshold: 3
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
+          startup:
+            failureThreshold: 45
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            timeoutSeconds: 1
         targetAllocatorMtlsEnabled: false
         targetAllocatorMtlsServerCertSecretName: ""
         targetAllocatorMtlsClientCertSecretName: ""

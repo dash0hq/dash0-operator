@@ -47,8 +47,52 @@ var (
 		"configmap/%s",
 		collectorDeploymentConfigMapName,
 	)
+	signalControlCollectorName = fmt.Sprintf(
+		"%s-signal-control-collector-deployment",
+		operatorHelmReleaseName,
+	)
+	signalControlCollectorNameQualified = fmt.Sprintf(
+		"deployment/%s",
+		signalControlCollectorName,
+	)
+	signalControlCollectorConfigMapName = fmt.Sprintf(
+		"%s-signal-control-collector-cm",
+		operatorHelmReleaseName,
+	)
+	signalControlCollectorConfigMapNameQualified = fmt.Sprintf(
+		"configmap/%s",
+		signalControlCollectorConfigMapName,
+	)
+	signalControlCollectorServiceName = fmt.Sprintf(
+		"%s-signal-control-collector-service",
+		operatorHelmReleaseName,
+	)
+	signalControlCollectorServiceNameQualified = fmt.Sprintf(
+		"service/%s",
+		signalControlCollectorServiceName,
+	)
 
 	collectorReadyLogMessage = "Everything is ready. Begin running and processing data."
+
+	// signalControlCollectorExpectedReplicas mirrors the chart default
+	// operator.collectors.signalControlCollectorReplicas.
+	signalControlCollectorExpectedReplicas = 2
+
+	// signalControlComponentSnippets are the Signal Control components that must appear in the Signal Control
+	// collector's config map, and in none of the other two collectors' config maps.
+	signalControlComponentSnippets = []string{
+		"dash0settingsonedgeextension",
+		"dash0sampling:",
+		"dash0redmetrics:",
+		"dash0signaltometrics:",
+		"dash0filter:",
+		"dash0resource:",
+		"dash0operation:",
+		"dash0metricrecorder:",
+		"metrics/spam-counters:",
+		"traces/sampled:",
+		"forward/traces-to-sampling",
+	}
 )
 
 func waitForCollectorToStart(operatorNamespace string, operatorHelmChart string) {
@@ -327,6 +371,8 @@ func labelSelectorForCollector(collectorNameQualified string) string {
 		return "app.kubernetes.io/name=opentelemetry-collector,app.kubernetes.io/component=agent-collector"
 	case collectorDeploymentNameQualified:
 		return "app.kubernetes.io/name=opentelemetry-collector,app.kubernetes.io/component=cluster-metrics-collector"
+	case signalControlCollectorNameQualified:
+		return "app.kubernetes.io/name=opentelemetry-collector,app.kubernetes.io/component=signal-control-collector"
 	}
 	return ""
 }
