@@ -284,6 +284,50 @@ func TestRedactSecrets(t *testing.T) {
 	}
 }
 
+// TestRedactSecretsEscapedByTheJsonSerializer covers the credentials that a "-o json" response does not contain
+// literally: the secrets are collected from the parsed document and are therefore unescaped, while the response they
+// are redacted from is still encoded.
+func TestRedactSecretsEscapedByTheJsonSerializer(t *testing.T) {
+	tests := []struct {
+		name   string
+		secret string
+	}{
+		// The canonical shape of a Google Chat or generic webhook URL, which is a credential in itself.
+		{name: "ampersand", secret: "https://chat.example.com/v1/spaces/S/messages?key=my-key&token=my-token"},
+		{name: "angle brackets", secret: "auth_token-<with>-brackets"},
+		{name: "quote", secret: `auth_token-"with"-quotes`},
+		{name: "backslash", secret: `auth_token-\with\-backslashes`},
+		{name: "newline", secret: "auth_token-with\nnewline"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Render the value the way kubectl renders it in a "-o json" response: both use encoding/json.
+			encoded, err := json.Marshal(map[string]string{"token": tt.secret})
+			if err != nil {
+				t.Fatalf("cannot encode the fixture: %v", err)
+			}
+			response := string(encoded)
+			if strings.Contains(response, tt.secret) {
+				t.Fatalf("the fixture does not exercise escaping, the secret occurs verbatim in %q", response)
+			}
+
+			redacted := redactAllSecrets(response, sortedSecrets(map[string]struct{}{tt.secret: {}}))
+
+			escaped := jsonEscapedVariant(tt.secret)
+			if escaped == "" {
+				t.Fatalf("expected %q to be escaped by the JSON serializer", tt.secret)
+			}
+			if strings.Contains(redacted, escaped) {
+				t.Errorf("expected the escaped secret to be redacted, got %q", redacted)
+			}
+			if !strings.Contains(redacted, redactedValue) {
+				t.Errorf("expected the redaction placeholder in %q", redacted)
+			}
+		})
+	}
+}
+
 func TestTrimTruncatedSecretFragment(t *testing.T) {
 	secrets := []string{"auth_a-rather-long-token-value"}
 

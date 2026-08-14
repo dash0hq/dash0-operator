@@ -229,8 +229,8 @@ func unredactableOutputRequested(parsed parsedArguments) (string, bool) {
 	), true
 }
 
-// unredactableOutputFormat returns the first output format that is not in the safeOrRedactableOutputFormats allowlist. The
-// --template flag is reported as "go-template", the format it selects.
+// unredactableOutputFormat returns the first output format that is not in the safeOrRedactableOutputFormats allowlist.
+// The --template flag is reported as "go-template", the format it selects.
 func unredactableOutputFormat(parsed parsedArguments) (string, bool) {
 	if parsed.hasTemplateFlag() {
 		return "go-template", true

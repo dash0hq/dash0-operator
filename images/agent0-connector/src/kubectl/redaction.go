@@ -524,9 +524,42 @@ func addSecret(value any, secrets map[string]struct{}) {
 	}
 }
 
-// sortedSecrets returns the collected secrets ordered from longest to shortest, so that redactAllSecrets replaces a
+// jsonEscapedVariant returns the value as encoding/json renders it within a JSON document, without the enclosing
+// quotes, or "" when it is rendered verbatim. The secrets are collected from a parsed document (or from the parsed
+// response of the invocation that re-reads the resources) and are therefore unescaped, while the response they are
+// redacted from is still encoded: kubectl renders "&", "<" and ">" as &, < and >, and quotes,
+// backslashes and control characters with their usual escape sequences. A credential containing any of them - a
+// webhook URL with several query parameters, for instance - does not occur literally in a "-o json" response and would
+// be handed out in full.
+func jsonEscapedVariant(secret string) string {
+	encoded, err := json.Marshal(secret)
+	if err != nil {
+		return ""
+	}
+	// json.Marshal encloses a string in quotes, which are part of the response but not of the value.
+	escaped := string(encoded[1 : len(encoded)-1])
+	if escaped == secret {
+		return ""
+	}
+	return escaped
+}
+
+// sortedSecrets returns the collected secrets, plus the escaped rendering of every secret the JSON serializer does not
+// render verbatim (see jsonEscapedVariant), ordered from longest to shortest, so that redactAllSecrets replaces a
 // longer secret before a shorter one that is contained in it.
 func sortedSecrets(secrets map[string]struct{}) []string {
+	// Collected first, then added: adding to a map while ranging over it may or may not visit the new entries, which
+	// would escape an already escaped variant a second time.
+	var escapedVariants []string
+	for secret := range secrets {
+		if escaped := jsonEscapedVariant(secret); escaped != "" {
+			escapedVariants = append(escapedVariants, escaped)
+		}
+	}
+	for _, escaped := range escapedVariants {
+		secrets[escaped] = struct{}{}
+	}
+
 	sorted := make([]string, 0, len(secrets))
 	for secret := range secrets {
 		sorted = append(sorted, secret)
