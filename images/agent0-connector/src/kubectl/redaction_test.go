@@ -511,7 +511,7 @@ echo "`+monitoringToken+`"
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
 			RequestId: "req-harvest-failure",
 			Command:   "kubectl",
-			Arguments: []string{"get", "dash0monitorings", "-o", "jsonpath={.items[*].spec.export.dash0.authorization.token}"},
+			Arguments: []string{"describe", "dash0monitorings"},
 		})
 
 		if resp.GetStdout() != "" {
@@ -542,6 +542,75 @@ echo "`+monitoringToken+`"
 		}
 		if !strings.Contains(resp.GetStderr(), "withheld the response") {
 			t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+		}
+	})
+
+}
+
+// TestRedactDash0SecretsWithEmptyStdout covers the responses that carry resource content on stderr while stdout stays
+// empty: kubectl reports some errors by formatting the offending value - for a template or jsonpath error even the
+// whole object - into a message it writes to stderr.
+func TestRedactDash0SecretsWithEmptyStdout(t *testing.T) {
+	logger := discardLogger()
+
+	for _, tt := range []struct {
+		name      string
+		arguments []string
+	}{
+		{name: "describe", arguments: []string{"describe", "dash0monitorings"}},
+		// An empty stdout is a valid (empty) YAML document. It must not be mistaken for a successfully parsed
+		// response, which would yield an empty secret list and skip the redaction of stderr entirely.
+		{
+			name:      "an output format that parses an empty stdout",
+			arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
+		},
+	} {
+		t.Run("redacts a secret on stderr when stdout is empty ("+tt.name+")", func(t *testing.T) {
+			fakeKubectlOnPath(t, fakeKubectlFailingWithMessageOnStderr(
+				dash0ResourcesJson,
+				`error: the object given to the engine was map[token:`+monitoringToken+`]`,
+			))
+
+			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+				RequestId: "req-secret-on-stderr-" + tt.name,
+				Command:   "kubectl",
+				Arguments: tt.arguments,
+			})
+
+			if resp.GetStdout() != "" {
+				t.Fatalf("expected an empty stdout, got %q", resp.GetStdout())
+			}
+			if strings.Contains(resp.GetStderr(), monitoringToken) {
+				t.Errorf("expected the token to be redacted from stderr, got %q", resp.GetStderr())
+			}
+			if !strings.Contains(resp.GetStderr(), redactedValue) {
+				t.Errorf("expected stderr to contain the redaction placeholder, got %q", resp.GetStderr())
+			}
+		})
+	}
+
+	t.Run("does not re-read the Dash0 resources when the response is empty altogether", func(t *testing.T) {
+		// Nothing can be redacted from a response without any output, so the re-read must not happen at all: the fake
+		// fails it, which would withhold the response.
+		fakeKubectlOnPath(t, `#!/bin/sh
+if echo "$*" | grep -q -- dash0monitorings.operator.dash0.com; then
+  echo "the Dash0 resources must not be re-read for this request" >&2
+  exit 1
+fi
+exit 0
+`)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-empty-response",
+			Command:   "kubectl",
+			Arguments: []string{"describe", "dash0monitorings"},
+		})
+
+		if strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected the empty response to be handed out unchanged, got %q", resp.GetStderr())
+		}
+		if resp.GetExitCode() != 0 {
+			t.Errorf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
 		}
 	})
 }
@@ -589,6 +658,24 @@ fi
 cat <<'OUTPUT'
 ` + output + `
 OUTPUT
+`
+}
+
+// fakeKubectlFailingWithMessageOnStderr returns a fake kubectl that answers the invocation which re-reads the Dash0
+// custom resources for redaction with dash0Resources, and fails every other invocation with the given message on
+// stderr and nothing at all on stdout, the way kubectl reports an error that carries the offending value.
+func fakeKubectlFailingWithMessageOnStderr(dash0Resources string, stderrMessage string) string {
+	return `#!/bin/sh
+if echo "$*" | grep -q -- dash0monitorings.operator.dash0.com; then
+cat <<'DASH0_RESOURCES'
+` + dash0Resources + `
+DASH0_RESOURCES
+else
+cat >&2 <<'MESSAGE'
+` + stderrMessage + `
+MESSAGE
+exit 1
+fi
 `
 }
 

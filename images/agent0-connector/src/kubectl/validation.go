@@ -55,6 +55,26 @@ var allowedOutputFormats = map[string]struct{}{
 	"yaml":             {},
 }
 
+// safeOrRedactableOutputFormats is the allowlist of output formats a command request may use when it targets a Dash0
+// custom resource type that can contain secrets (see dash0ResourceTypesWithSecrets). It lists the formats that never
+// contain resource content with secrets (e.g. "", "name", "wide") and the formats that can be reliably redacted because
+// they do not reshape the response ("json", "yaml").
+//
+// Absent (and therefore rejected for those resource types) are the formats that let the request reshape the response:
+// "go-template" and its alias "template", "jsonpath", "jsonpath-as-json" and "custom-columns", as well as the
+// --template flag, which selects go-template output even without -o.
+//
+// "kyaml" is deliberately absent as well: it renders values verbatim and would be redacted correctly, but it is a
+// recent addition to kubectl that the redaction is not exercised against yet. It stays allowed for every other
+// resource type via allowedOutputFormats.
+var safeOrRedactableOutputFormats = map[string]struct{}{
+	"":     {}, // the default, human-readable table output
+	"json": {},
+	"name": {},
+	"wide": {},
+	"yaml": {},
+}
+
 // sensitiveResource describes how a resource type whose contents must not be exposed is guarded.
 type sensitiveResource struct {
 	// displayName names the resource in rejection messages.
@@ -121,6 +141,10 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (parsedArguments, 
 		return parsedArguments{}, errors.New(reason)
 	}
 
+	if reason, blocked := unredactableOutputRequested(arguments); blocked {
+		return parsedArguments{}, errors.New(reason)
+	}
+
 	return arguments, nil
 }
 
@@ -182,4 +206,39 @@ func targetedSensitiveResource(parsed parsedArguments) (sensitiveResource, bool)
 func lookupSensitiveResourceType(resourceType string) (sensitiveResource, bool) {
 	resource, isSensitive := sensitiveResourceTypes[normalizeResourceType(resourceType)]
 	return resource, isSensitive
+}
+
+// unredactableOutputRequested reports whether the kubectl arguments would render a Dash0 custom resource that can
+// contain secrets in an output format whose result cannot be redacted reliably, returning a human-readable reason when
+// they do. Every occurrence of -o/--output is checked, not just the effective (last) one, and --template counts as
+// go-template output even without -o, mirroring outputIsContentFree.
+func unredactableOutputRequested(parsed parsedArguments) (string, bool) {
+	if !targetsResourceTypeWithSecrets(parsed) {
+		return "", false
+	}
+	format, unredactable := unredactableOutputFormat(parsed)
+	if !unredactable {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"the output format %q cannot be redacted reliably for a Dash0 custom resource, which can contain an "+
+			"authorization token or third-party credentials; reading such a resource is supported with "+
+			"-o json/yaml/name/wide (or without an output format), but not with a format that can reshape its values "+
+			"(-o go-template/template/jsonpath/jsonpath-as-json/custom-columns or --template)",
+		format,
+	), true
+}
+
+// unredactableOutputFormat returns the first output format that is not in the safeOrRedactableOutputFormats allowlist. The
+// --template flag is reported as "go-template", the format it selects.
+func unredactableOutputFormat(parsed parsedArguments) (string, bool) {
+	if parsed.hasTemplateFlag() {
+		return "go-template", true
+	}
+	for _, format := range parsed.outputFormats() {
+		if _, redactable := safeOrRedactableOutputFormats[format]; !redactable {
+			return format, true
+		}
+	}
+	return "", false
 }

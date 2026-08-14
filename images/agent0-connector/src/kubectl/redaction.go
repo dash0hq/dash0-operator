@@ -168,9 +168,8 @@ func redactSecretsInResponse(
 	resp *pb.CommandResponse,
 	stdoutTruncated bool,
 ) error {
-	// Only stdout carries resource content; when it is empty (e.g. the command only produced an error message) there is
-	// nothing that could contain a secret and no reason to risk withholding the response over a failing extraction.
-	if resp.GetStdout() == "" {
+	// If there is no output at all, there is nothing to redact.
+	if resp.GetStdout() == "" && resp.GetStderr() == "" {
 		return nil
 	}
 	resourceTypes := extractResourceTypesThatRequireSecretRedaction(parsed)
@@ -239,6 +238,21 @@ func extractResourceTypesThatRequireSecretRedaction(parsed parsedArguments) []st
 	return resourceTypes
 }
 
+// targetsResourceTypeWithSecrets reports whether the kubectl arguments reference a Dash0 custom resource type whose
+// content can contain secrets (see dash0ResourceTypesWithSecrets). Unlike
+// extractResourceTypesThatRequireSecretRedaction it does not look at the subcommand or the output format, since it
+// answers whether a response could contain a secret at all, not whether the response has to be redacted. It is the
+// basis for rejecting the output formats whose rendering of a secret cannot be redacted reliably, see
+// unredactableOutputRequested in validation.go.
+func targetsResourceTypeWithSecrets(parsed parsedArguments) bool {
+	for _, resourceType := range parsed.resourceTypes {
+		if _, hasSecrets := dash0ResourceTypesWithSecrets[resourceType]; hasSecrets {
+			return true
+		}
+	}
+	return false
+}
+
 // secretsFromResponse returns the secret values that occur in the response itself, sorted from longest to shortest (see
 // redactAllSecrets). This is the fast-path to be used when the original response can be used to identify secrets
 // reliably.
@@ -251,6 +265,12 @@ func extractResourceTypesThatRequireSecretRedaction(parsed parsedArguments) []st
 // "kubectl get pods,dash0monitorings -o json"): a secret value of such a resource is redacted as well, which errs
 // towards redacting too much rather than too little.
 func secretsFromResponse(parsed parsedArguments, stdout string, stdoutTruncated bool) ([]string, bool) {
+	if stdout == "" {
+		// Nothing can be learned from an empty stdout, and it must not be mistaken for a document that was parsed
+		// successfully: an empty string is a valid (empty) YAML document, which would yield an empty secret list and
+		// thereby skip the redaction of a stderr that does carry resource content.
+		return nil, false
+	}
 	if stdoutTruncated {
 		// A truncated document does not parse, and trimming the fragment of a secret at the very end of the output
 		// requires the full value anyway (see trimTruncatedSecretFragment).
