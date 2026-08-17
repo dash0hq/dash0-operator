@@ -226,6 +226,52 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("a0c-pod-annotation", "a0c-pod-annotation-value"))
 		})
 
+		It("renders tolerations and node affinity from the extra config", func() {
+			extraConfig := util.ExtraConfig{
+				Agent0ConnectorTolerations: []corev1.Toleration{
+					{
+						Key:      "agent0-connector-key",
+						Operator: corev1.TolerationOpEqual,
+						Value:    "agent0-connector-value",
+						Effect:   corev1.TaintEffectNoSchedule,
+					},
+				},
+				Agent0ConnectorNodeAffinity: &corev1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+						NodeSelectorTerms: []corev1.NodeSelectorTerm{
+							{
+								MatchExpressions: []corev1.NodeSelectorRequirement{
+									{
+										Key:      "dash0.com/enable",
+										Operator: corev1.NodeSelectorOpNotIn,
+										Values:   []string{"false"},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, extraConfig)).Spec.Template.Spec
+
+			Expect(podSpec.Tolerations).To(HaveLen(1))
+			Expect(podSpec.Tolerations[0].Key).To(Equal("agent0-connector-key"))
+			Expect(podSpec.Tolerations[0].Operator).To(Equal(corev1.TolerationOpEqual))
+			Expect(podSpec.Tolerations[0].Value).To(Equal("agent0-connector-value"))
+			Expect(podSpec.Tolerations[0].Effect).To(Equal(corev1.TaintEffectNoSchedule))
+
+			Expect(podSpec.Affinity).ToNot(BeNil())
+			Expect(podSpec.Affinity.NodeAffinity).To(Equal(extraConfig.Agent0ConnectorNodeAffinity))
+		})
+
+		It("leaves tolerations and affinity unset when the extra config has neither", func() {
+			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec
+
+			Expect(podSpec.Tolerations).To(BeEmpty())
+			Expect(podSpec.Affinity).To(BeNil())
+		})
+
 		It("does not let additional labels override operator-managed labels", func() {
 			deployment := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
 				Agent0ConnectorLabels:    map[string]string{util.AppKubernetesIoNameLabel: "custom-value"},

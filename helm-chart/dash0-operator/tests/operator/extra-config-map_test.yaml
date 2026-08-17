@@ -286,6 +286,29 @@ tests:
                         operator: In
                         values:
                           - value-12
+        agent0Connector:
+          tolerations:
+            - key: key6
+              operator: Equal
+              value: value6
+              effect: NoSchedule
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-09
+                      operator: In
+                      values:
+                        - value-13
+                        - value-14
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 1
+                preference:
+                  matchExpressions:
+                    - key: node-label-key-10
+                      operator: In
+                      values:
+                        - value-15
         monitoringTemplate:
           metadata:
             name: monitoring-template-name
@@ -613,6 +636,28 @@ tests:
                     values:
                     - value-10
                     - value-11
+            agent0ConnectorTolerations:
+              - effect: NoSchedule
+                key: key6
+                operator: Equal
+                value: value6
+            agent0ConnectorNodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - preference:
+                  matchExpressions:
+                  - key: node-label-key-10
+                    operator: In
+                    values:
+                    - value-15
+                weight: 1
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-09
+                    operator: In
+                    values:
+                    - value-13
+                    - value-14
             monitoringTemplate:
               metadata:
                 annotations:
@@ -841,6 +886,26 @@ tests:
           path: data['extra.yaml']
           pattern: agent0ConnectorPodAnnotations
 
+  - it: should render the default agent0-connector tolerations and node affinity
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorTolerations:
+              \[\]
+            agent0ConnectorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
   - it: should render custom resource settings from legacy paths
@@ -1050,6 +1115,20 @@ tests:
             targetAllocatorTolerations:
               []
             targetAllocatorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+            agent0ConnectorTolerations:
+              []
+            agent0ConnectorNodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
                 nodeSelectorTerms:
                 - matchExpressions:

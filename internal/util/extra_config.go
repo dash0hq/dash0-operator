@@ -109,10 +109,12 @@ type ExtraConfig struct {
 	EdgeProxyTolerations        []corev1.Toleration                `json:"edgeProxyTolerations,omitempty"`
 	EdgeProxyNodeAffinity       *corev1.NodeAffinity               `json:"edgeProxyNodeAffinity,omitempty"`
 
-	Agent0ConnectorLabels         map[string]string `json:"agent0ConnectorLabels,omitempty"`
-	Agent0ConnectorAnnotations    map[string]string `json:"agent0ConnectorAnnotations,omitempty"`
-	Agent0ConnectorPodLabels      map[string]string `json:"agent0ConnectorPodLabels,omitempty"`
-	Agent0ConnectorPodAnnotations map[string]string `json:"agent0ConnectorPodAnnotations,omitempty"`
+	Agent0ConnectorLabels         map[string]string    `json:"agent0ConnectorLabels,omitempty"`
+	Agent0ConnectorAnnotations    map[string]string    `json:"agent0ConnectorAnnotations,omitempty"`
+	Agent0ConnectorPodLabels      map[string]string    `json:"agent0ConnectorPodLabels,omitempty"`
+	Agent0ConnectorPodAnnotations map[string]string    `json:"agent0ConnectorPodAnnotations,omitempty"`
+	Agent0ConnectorTolerations    []corev1.Toleration  `json:"agent0ConnectorTolerations,omitempty"`
+	Agent0ConnectorNodeAffinity   *corev1.NodeAffinity `json:"agent0ConnectorNodeAffinity,omitempty"`
 
 	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
 	// dependencies. We should revisit how to untangle this.

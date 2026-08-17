@@ -342,7 +342,9 @@ operator:
 In the same fashion, tolerations can also be configured for the Dash0 operator manager (Helm value
 `operator.tolerations`), the OpenTelemetry collector deployment for collecting cluster metrics
 (Helm value `operator.collectors.deploymentTolerations`), the SignalControl collector deployment
-(Helm value `operator.collectors.signalControlCollectorTolerations`) and the OpenTelemetry target-allocator deployment (Helm value `operator.targetAllocator.tolerations`).
+(Helm value `operator.collectors.signalControlCollectorTolerations`), the OpenTelemetry target-allocator deployment
+(Helm value `operator.targetAllocator.tolerations`) and the agent0-connector deployment (Helm value
+`operator.agent0Connector.tolerations`).
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
 
@@ -373,7 +375,8 @@ spec:
 
 ### Custom Node Affinity
 
-The node affinity for all pods deployed by the operator can be customized by setting the `nodeAffinity` field for the respective component.
+The node affinity for all pods deployed by the operator can be customized by setting the `nodeAffinity` field for the
+respective component.
 
 ```yaml
 operator:
@@ -391,6 +394,9 @@ operator:
     signalControlCollectorNodeAffinity: <custom_node_affinity>
 
   targetAllocator:
+    nodeAffinity: <custom_node_affinity>
+
+  agent0Connector:
     nodeAffinity: <custom_node_affinity>
 ```
 

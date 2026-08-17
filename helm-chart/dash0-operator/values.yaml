@@ -1322,3 +1322,32 @@ operator:
 
     # Additional annotations to be set on the agent0-connector deployment pods managed by the operator.
     podAnnotations: {}
+
+    # An array of tolerations for the agent0-connector deployment managed by the operator. This can be used to make sure
+    # that the agent0-connector pod can be scheduled on nodes where it would not be scheduled otherwise due to
+    # Kubernetes taints.
+    # Example:
+    # tolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    #   - key: "key2"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    tolerations: []
+
+    # The nodeAffinity for the agent0-connector deployment managed by the operator. This can be used to constrain which
+    # nodes the agent0-connector pod will be scheduled on.
+    #
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
+              - key: "kubernetes.io/os"
+                operator: "In"
+                values: ["linux"]

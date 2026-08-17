@@ -657,6 +657,7 @@ processors:
       - k8s.job.uid
       - k8s.namespace.name
       - k8s.node.name
+      - k8s.node.uid
       - k8s.pod.hostname
       - k8s.pod.ip
       - k8s.pod.name
@@ -743,6 +744,7 @@ processors:
       - k8s.job.uid
       - k8s.namespace.name
       - k8s.node.name
+      - k8s.node.uid
       - k8s.pod.hostname
       - k8s.pod.ip
       - k8s.pod.name
