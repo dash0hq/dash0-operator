@@ -74,6 +74,35 @@ kubebuilder validation annotations). Do not use opaque string fields to hold str
 against the canonical OpenAPI spec in `https://github.com/dash0hq/dash0hq/dash0/tree/main/modules/openapi-types/internal/spec/` to ensure they match the Dash0 API
 object schemas.
 
+### Adding or changing a CRD: secret redaction in the agent0-connector
+
+The agent0-connector executes read-only kubectl commands on behalf of an upstream agent and redacts the credentials of
+Dash0 custom resources from the responses before they leave the cluster. It knows which resource types and which fields
+hold credentials from hardcoded lists in `images/agent0-connector/src/kubectl/redaction.go`, which are a copy of
+knowledge that actually lives in `api/operator`. CRD changes need to be checked against them:
+
+- `dash0ResourceTypesWithSecrets` - the resource types whose content can contain a credential, in singular and plural
+  form. A new CRD with a credential field has to be added here.
+- `credentialFieldsPerConfigObject` - the fields that only hold a credential within a particular configuration object,
+  keyed by the name of that object (e.g. `slackConfig` -> `webhookURL`). Generic field names such as `url` or `key` are
+  credentials in one object and harmless in another, which is why they are keyed this way.
+- The field names that are credentials wherever they occur are handled in `redactDocumentNodeRecursively`: `token`,
+  `password`, and the header/query parameter values under `headers` and `queryParameters`.
+
+Missing that step can be silent: the new credential is simply not matched, the response is still considered fully
+redacted, and the credential is sent to the backend in plaintext. The test credential_field_coverage_test.go is a
+heuristic that protects against this drift, but there is no guarantee that it will flag every change that would require
+updating the secret redaction.
+
+The same list also drives what the connector allows at all (`targetsResourceTypeWithSecrets`, used in
+`images/agent0-connector/src/kubectl/validation.go`): for a resource type that can contain secrets, `kubectl describe`
+and the output formats that can reshape a value (`-o go-template/jsonpath/custom-columns`, `--template`) are rejected,
+because their output cannot be redacted. A credential-bearing CRD that is missing from the list therefore stays fully
+readable through those formats as well.
+
+When adding or changing a CRD, grep for `dash0ResourceTypesWithSecrets` and `credentialFieldsPerConfigObject`, and
+extend the fixtures in `images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field.
+
 ### Adding a new reconciler with self-monitoring metrics
 
 Any reconciler that implements `InitializeSelfMonitoringMetrics` (i.e. exposes counters or other OpenTelemetry

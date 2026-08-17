@@ -335,7 +335,7 @@ func renderResponseDocument(format string, document any) (string, error) {
 // redactResourceList redacts the secrets of all resources in a parsed resource document, in place. Such a document
 // usually is a list, but a document that is not a list is treated as a single resource. The whole document is walked,
 // including resources of other types that the same command rendered (as in
-// "kubectl get pods,dash0monitorings -o json"): a credential-shaped field of such a resource is redacted as well,
+// "kubectl get pods,dash0monitorings -o json"): a credential-like field of such a resource is redacted as well,
 // which errs towards redacting too much rather than too little.
 func redactResourceList(document any, redacted *redactor) error {
 	documentMap, isMap := document.(map[string]any)

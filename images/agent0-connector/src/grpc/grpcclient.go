@@ -208,7 +208,7 @@ func resolveKubectlTmpDir(logger *slog.Logger) string {
 	return tmpDir
 }
 
-// runStream opens a single SubscribeToCommandRequests stream and listens to incomming CommandRequest, until the stream
+// runStream opens a single SubscribeToCommandRequests stream and listens to incoming CommandRequest, until the stream
 // fails or the context is cancelled. For every received CommandRequest it executes the requested (read-only) kubectl
 // command and sends back the CommandResponse.
 func runStream(

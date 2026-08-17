@@ -6,7 +6,7 @@ package kubectl
 import "slices"
 
 // parsedArguments is the resolved form of the argument list of a kubectl invocation. It is produced once per command
-// request (see parser.goparseArguments) and is the basis for validating the request as well as for redacting the
+// request (see parser.go#parseArguments) and is the basis for validating the request as well as for redacting the
 // response, so that the rules for interpreting an argument list live in a single place.
 type parsedArguments struct {
 	// subcommand is the kubectl subcommand, that is, the first positional argument, which may be preceded by global
