@@ -73,7 +73,7 @@ func redactDocumentAs(t *testing.T, document string, format string) (string, []s
 	if err := json.Unmarshal([]byte(document), &parsed); err != nil {
 		t.Fatalf("cannot parse the test document: %v", err)
 	}
-	redacted := &redactor{placeholder: placeholderFor(format), values: make(map[string]struct{})}
+	redacted := &redactor{values: make(map[string]struct{})}
 	if err := redactResourceList(parsed, redacted); err != nil {
 		t.Fatalf("cannot redact the test document: %v", err)
 	}
@@ -189,8 +189,8 @@ func TestRedactDocument(t *testing.T) {
 		if !strings.Contains(rendered, `"name": "ku"`) {
 			t.Errorf("expected the unrelated occurrence to be preserved, got %q", rendered)
 		}
-		if got := tokenOfFirstExport(t, rendered); got != redactedValueJson {
-			t.Errorf("expected the token to be %q, got %q", redactedValueJson, got)
+		if got := tokenOfFirstExport(t, rendered); got != redactedValue {
+			t.Errorf("expected the token to be %q, got %q", redactedValue, got)
 		}
 		// Too short to be scrubbed from stderr, where it would match unrelated output.
 		if len(replaced) != 0 {
@@ -215,25 +215,16 @@ func TestRedactDocument(t *testing.T) {
 		}
 	})
 
-	// A placeholder is escaped like any other value, so each format gets one it renders verbatim: the angle brackets of
-	// redactedValue would show up as "\u003credacted\u003e" in a JSON response.
-	for _, tt := range []struct {
-		format      string
-		placeholder string
-	}{
-		{format: outputFormatJson, placeholder: redactedValueJson},
-		{format: outputFormatYaml, placeholder: redactedValue},
-	} {
-		t.Run("renders the "+tt.format+" placeholder verbatim", func(t *testing.T) {
+	// A placeholder is escaped and quoted like any other value, so it must be one that both formats render verbatim:
+	// angle brackets, for instance, would show up as "\u003credacted\u003e" in a JSON response.
+	for _, format := range []string{outputFormatJson, outputFormatYaml} {
+		t.Run("renders the placeholder verbatim as "+format, func(t *testing.T) {
 			rendered, _ := redactDocumentAs(t,
 				`{"items":[{"spec":{"exports":[{"dash0":{"authorization":{"token":"`+monitoringToken+`"}}}]}}]}`,
-				tt.format)
+				format)
 
-			if !strings.Contains(rendered, tt.placeholder) {
-				t.Errorf("expected the placeholder %q to be rendered verbatim, got %q", tt.placeholder, rendered)
-			}
-			if strings.Contains(rendered, `\u003credacted\u003e`) {
-				t.Errorf("expected no escaped placeholder in the %s response, got %q", tt.format, rendered)
+			if !strings.Contains(rendered, redactedValue) {
+				t.Errorf("expected the placeholder %q to be rendered verbatim, got %q", redactedValue, rendered)
 			}
 		})
 	}
@@ -290,25 +281,25 @@ func TestRedactSecrets(t *testing.T) {
 	}{
 		{name: "yaml output",
 			text:     "    authorization:\n      token: auth_token-value\n    dataset: default\n",
-			expected: "    authorization:\n      token: <redacted>\n    dataset: default\n"},
+			expected: "    authorization:\n      token: (redacted)\n    dataset: default\n"},
 		{name: "json output",
 			text:     `{"authorization":{"token":"auth_token-value"}}`,
-			expected: `{"authorization":{"token":"<redacted>"}}`},
+			expected: `{"authorization":{"token":"(redacted)"}}`},
 		{name: "describe output",
 			text:     "      Authorization:\n        Token:  auth_token-value\n",
-			expected: "      Authorization:\n        Token:  <redacted>\n"},
+			expected: "      Authorization:\n        Token:  (redacted)\n"},
 		{name: "output without keys, e.g. jsonpath or custom-columns",
 			text:     "auth_token-value\n",
-			expected: "<redacted>\n"},
+			expected: "(redacted)\n"},
 		{name: "the last-applied-configuration annotation",
 			text:     `      {"spec":{"export":{"dash0":{"authorization":{"token":"auth_token-value"}}}}}`,
-			expected: `      {"spec":{"export":{"dash0":{"authorization":{"token":"<redacted>"}}}}}`},
+			expected: `      {"spec":{"export":{"dash0":{"authorization":{"token":"(redacted)"}}}}}`},
 		{name: "header values",
 			text:     "        headers:\n        - name: Authorization\n          value: Bearer header-secret\n",
-			expected: "        headers:\n        - name: Authorization\n          value: <redacted>\n"},
+			expected: "        headers:\n        - name: Authorization\n          value: (redacted)\n"},
 		{name: "every occurrence in the response",
 			text:     "auth_token-value auth_token-value",
-			expected: "<redacted> <redacted>"},
+			expected: "(redacted) (redacted)"},
 		{name: "output without secrets is left untouched",
 			text:     "  endpoint: ingress.dash0.com:4317\n",
 			expected: "  endpoint: ingress.dash0.com:4317\n"},
@@ -316,7 +307,7 @@ func TestRedactSecrets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := redactAllSecrets(tt.text, secrets, redactedValue); got != tt.expected {
+			if got := redactAllSecrets(tt.text, secrets); got != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, got)
 			}
 		})

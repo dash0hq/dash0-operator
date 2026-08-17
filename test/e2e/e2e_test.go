@@ -2170,7 +2170,7 @@ trace_statements:
 					ContainSubstring("kind: Dash0OperatorConfiguration"),
 					"stdout should contain the operator configuration resource")
 				g.Expect(response.Stdout).To(
-					ContainSubstring("token: <redacted>"),
+					ContainSubstring("token: (redacted)"),
 					"the auth token should have been replaced with the redaction placeholder")
 				g.Expect(response.Stdout).ToNot(
 					ContainSubstring(defaultToken),

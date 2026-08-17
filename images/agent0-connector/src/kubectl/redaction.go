@@ -41,16 +41,12 @@ import (
 )
 
 const (
-	// redactedValue replaces secrets in a response rendered as YAML, which reproduces it verbatim. It is the same
-	// placeholder the operator uses when it logs a Dash0 custom resource (see api/operator/common.RedactedValue).
-	redactedValue = "<redacted>"
-
-	// redactedValueJson replaces secrets in a response rendered as JSON, and in the resource copies that tools embed as
-	// JSON in an annotation. A placeholder is subject to the escaping of the output format like any other value, and the
-	// JSON serializer renders the angle brackets of redactedValue as "\u003credacted\u003e" - the way kubectl renders
-	// them in any other value - which is needlessly hard to read. Rendering them verbatim instead is not an option: that
-	// would mean rendering every other value differently from kubectl as well.
-	redactedValueJson = "redacted"
+	// redactedValue replaces secrets in the response. A placeholder is subject to the escaping and quoting of the output
+	// format like any other value, so it deliberately uses no character that either format treats specially: both JSON
+	// and YAML render it verbatim. Angle brackets would not - the JSON serializer renders them as "\u003credacted\u003e",
+	// the way kubectl renders them in any other value - which is why this differs from the placeholder the operator uses
+	// when it logs a Dash0 custom resource (api/operator/common.RedactedValue).
+	redactedValue = "(redacted)"
 
 	// minCredentialValueLength is the length of the shortest redacted value that is also scrubbed from stderr (see
 	// valuesToScrubFromStderr). The values are removed from the document by position, so their length does not matter
@@ -192,7 +188,7 @@ func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, s
 		return fmt.Errorf("the response is not a single %s document that could be parsed for redaction", format)
 	}
 
-	redacted := &redactor{placeholder: placeholderFor(format), values: make(map[string]struct{})}
+	redacted := &redactor{values: make(map[string]struct{})}
 	if err := redactResourceList(document, redacted); err != nil {
 		return err
 	}
@@ -203,17 +199,8 @@ func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, s
 	}
 	resp.Stdout = stdout
 	// kubectl does not print resource content to stderr, but scrubbing the redacted values from it as well is cheap.
-	resp.Stderr = redactAllSecrets(resp.GetStderr(), redacted.valuesToScrubFromStderr(), redacted.placeholder)
+	resp.Stderr = redactAllSecrets(resp.GetStderr(), redacted.valuesToScrubFromStderr())
 	return nil
-}
-
-// placeholderFor returns the value that replaces a secret in a response rendered in the given format, see
-// redactedValue and redactedValueJson.
-func placeholderFor(format string) string {
-	if format == outputFormatJson {
-		return redactedValueJson
-	}
-	return redactedValue
 }
 
 // responseCanContainSecrets reports whether the response of the given invocation renders the content of a Dash0 custom
@@ -231,27 +218,17 @@ func responseCanContainSecrets(parsed parsedArguments) bool {
 	return targetsResourceTypeWithSecrets(parsed)
 }
 
-// redactor replaces the credential values of a document with a placeholder and collects the values it replaced. The
-// placeholder depends on the format the document is rendered in (see redactedValue and redactedValueJson). The count is
-// tracked separately from the set of values, so that a caller can tell whether a node changed even when it held a value
-// that had already been replaced elsewhere (see redactAnnotations).
+// redactor replaces the credential values of a document with redactedValue and collects the values it replaced. The
+// count is tracked separately from the set of values, so that a caller can tell whether a node changed even when it
+// held a value that had already been replaced elsewhere (see redactAnnotations).
 type redactor struct {
-	placeholder string
-	values      map[string]struct{}
-	count       int
+	values map[string]struct{}
+	count  int
 }
 
 func (r *redactor) add(value string) {
 	r.values[value] = struct{}{}
 	r.count++
-}
-
-// forEmbeddedJson returns a redactor for a resource copy that is embedded as JSON in an annotation, no matter which
-// format the enclosing document is rendered in. It records into the same set of values; the count of the returned
-// redactor reports what it replaced on its own, which tells redactAnnotations whether the annotation has to be
-// rendered again.
-func (r *redactor) forEmbeddedJson() *redactor {
-	return &redactor{placeholder: redactedValueJson, values: r.values}
 }
 
 // valuesToScrubFromStderr returns the redacted values that are worth replacing in stderr as well, ordered from longest
@@ -412,12 +389,11 @@ func redactAnnotations(resource any, redacted *redactor) error {
 		if err := json.Unmarshal([]byte(annotationString), &embeddedResource); err != nil {
 			continue
 		}
-		embedded := redacted.forEmbeddedJson()
-		redactDocumentNodeRecursively(embeddedResource, embedded)
-		if embedded.count == 0 {
+		countBefore := redacted.count
+		redactDocumentNodeRecursively(embeddedResource, redacted)
+		if redacted.count == countBefore {
 			continue
 		}
-		redacted.count += embedded.count
 		rendered, err := json.Marshal(embeddedResource)
 		if err != nil {
 			// The annotation still holds the credential in plaintext, so the response must not be handed out.
@@ -429,7 +405,7 @@ func redactAnnotations(resource any, redacted *redactor) error {
 }
 
 // redactDocumentNodeRecursively recursively walks the content of a resource and replaces every credential value it
-// finds with the redactor's placeholder:
+// finds with redactedValue:
 //   - the Dash0 auth token (all spec.exports.dash0.authorization.token and its legacy counterpart
 //     spec.export.dash0.authorization.token) and the basic authentication password of a synthetic check,
 //   - the literal header values of the gRPC and HTTP exports, of the webhook notification channels, and of the request
@@ -517,7 +493,7 @@ func redactCredentialFields(node any, credentialFields []string, redacted *redac
 	}
 }
 
-// redactValueOf replaces the value the given key holds in node with the redactor's placeholder and records the
+// redactValueOf replaces the value the given key holds in node with redactedValue and records the
 // replaced value, so that it can be scrubbed from stderr as well. Non-string and empty values are left alone; a
 // value sourced via valueFrom is an object rather than a string and is therefore not a credential the response
 // exposes. No length or plausibility check is applied: the value is replaced where it lives, so an unusually short
@@ -527,14 +503,14 @@ func redactValueOf(node map[string]any, key string, redacted *redactor) {
 	if !isString || value == "" {
 		return
 	}
-	node[key] = redacted.placeholder
+	node[key] = redactedValue
 	redacted.add(value)
 }
 
-// redactAllSecrets replaces every occurrence of every secret in text with the given placeholder.
-func redactAllSecrets(text string, secrets []string, placeholder string) string {
+// redactAllSecrets replaces every occurrence of every secret in text with redactedValue.
+func redactAllSecrets(text string, secrets []string) string {
 	for _, secret := range secrets {
-		text = strings.ReplaceAll(text, secret, placeholder)
+		text = strings.ReplaceAll(text, secret, redactedValue)
 	}
 	return text
 }
