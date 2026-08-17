@@ -62,16 +62,22 @@ func TestResponseCanContainSecrets(t *testing.T) {
 // does, and returns the rendered document together with the values that were replaced.
 func redactDocument(t *testing.T, document string) (string, []string) {
 	t.Helper()
+	return redactDocumentAs(t, document, outputFormatJson)
+}
+
+// redactDocumentAs is redactDocument for a given output format, which also selects the placeholder.
+func redactDocumentAs(t *testing.T, document string, format string) (string, []string) {
+	t.Helper()
 
 	var parsed any
 	if err := json.Unmarshal([]byte(document), &parsed); err != nil {
 		t.Fatalf("cannot parse the test document: %v", err)
 	}
-	redacted := &redactedValues{values: make(map[string]struct{})}
+	redacted := &redactor{placeholder: placeholderFor(format), values: make(map[string]struct{})}
 	if err := redactResourceList(parsed, redacted); err != nil {
 		t.Fatalf("cannot redact the test document: %v", err)
 	}
-	rendered, err := renderResponseDocument(outputFormatJson, parsed)
+	rendered, err := renderResponseDocument(format, parsed)
 	if err != nil {
 		t.Fatalf("cannot render the redacted test document: %v", err)
 	}
@@ -183,8 +189,8 @@ func TestRedactDocument(t *testing.T) {
 		if !strings.Contains(rendered, `"name": "ku"`) {
 			t.Errorf("expected the unrelated occurrence to be preserved, got %q", rendered)
 		}
-		if got := tokenOfFirstExport(t, rendered); got != redactedValue {
-			t.Errorf("expected the token to be %q, got %q", redactedValue, got)
+		if got := tokenOfFirstExport(t, rendered); got != redactedValueJson {
+			t.Errorf("expected the token to be %q, got %q", redactedValueJson, got)
 		}
 		// Too short to be scrubbed from stderr, where it would match unrelated output.
 		if len(replaced) != 0 {
@@ -209,19 +215,28 @@ func TestRedactDocument(t *testing.T) {
 		}
 	})
 
-	t.Run("renders the placeholder with the escaping of the output format", func(t *testing.T) {
-		// The placeholder contains angle brackets, which the JSON serializer escapes like it escapes them in any other
-		// value; a parser sees the placeholder itself.
-		rendered, _ := redactDocument(t,
-			`{"items":[{"spec":{"exports":[{"dash0":{"authorization":{"token":"`+monitoringToken+`"}}}]}}]}`)
+	// A placeholder is escaped like any other value, so each format gets one it renders verbatim: the angle brackets of
+	// redactedValue would show up as "\u003credacted\u003e" in a JSON response.
+	for _, tt := range []struct {
+		format      string
+		placeholder string
+	}{
+		{format: outputFormatJson, placeholder: redactedValueJson},
+		{format: outputFormatYaml, placeholder: redactedValue},
+	} {
+		t.Run("renders the "+tt.format+" placeholder verbatim", func(t *testing.T) {
+			rendered, _ := redactDocumentAs(t,
+				`{"items":[{"spec":{"exports":[{"dash0":{"authorization":{"token":"`+monitoringToken+`"}}}]}}]}`,
+				tt.format)
 
-		if !strings.Contains(rendered, `\u003credacted\u003e`) {
-			t.Errorf("expected the placeholder to be escaped like kubectl escapes angle brackets, got %q", rendered)
-		}
-		if got := tokenOfFirstExport(t, rendered); got != redactedValue {
-			t.Errorf("expected the parsed token to be %q, got %q", redactedValue, got)
-		}
-	})
+			if !strings.Contains(rendered, tt.placeholder) {
+				t.Errorf("expected the placeholder %q to be rendered verbatim, got %q", tt.placeholder, rendered)
+			}
+			if strings.Contains(rendered, `\u003credacted\u003e`) {
+				t.Errorf("expected no escaped placeholder in the %s response, got %q", tt.format, rendered)
+			}
+		})
+	}
 }
 
 // tokenOfFirstExport parses a rendered document and returns
@@ -301,7 +316,7 @@ func TestRedactSecrets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := redactAllSecrets(tt.text, secrets); got != tt.expected {
+			if got := redactAllSecrets(tt.text, secrets, redactedValue); got != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, got)
 			}
 		})
