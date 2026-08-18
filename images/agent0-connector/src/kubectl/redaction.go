@@ -117,11 +117,16 @@ var dash0ResourceTypesWithSecrets = map[string]struct{}{
 // generic field names ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification
 // routing filters or the URL of a synthetic check request. The webhook URLs are credentials themselves: they contain
 // an unguessable token that grants the right to post to the channel.
+//
+// A field listed here is redacted unconditionally, unlike the generic header and query parameter values, which are only
+// redacted when they do not look like a well-known non-secret value (see redactHeaderValueIfPlausible). That is why
+// incidentioConfig.headers is listed even though "headers" is redacted everywhere anyway: it is not a position that
+// happens to hold a credential, it is the Incident.io authorization header value and therefore always one.
 var credentialFieldsPerConfigObject = map[string][]string{
 	// Dash0NotificationChannel, spec.<type>Config
 	"slackConfig":             {"webhookURL"},
 	"webhookConfig":           {"url"},
-	"incidentioConfig":        {"url"},
+	"incidentioConfig":        {"url", "headers"},
 	"opsgenieConfig":          {"apiKey"},
 	"pagerdutyConfig":         {"key"},
 	"teamsWebhookConfig":      {"url"},
@@ -160,8 +165,11 @@ func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, s
 
 	format, parseable := parsed.parseableOutputFormat()
 	if !parseable {
-		// Unreachable for a validated request: the only other formats left for these resource types are the
-		// content-free ones, which responseCanContainSecrets already ruled out.
+		// Reached when the request sets the output format more than once ("-o yaml -o json"): each occurrence names a
+		// redactable format, so validation accepts it, but parseableOutputFormat does not replicate kubectl's precedence
+		// rules to decide which one was applied. A single format other than json/yaml cannot get here, since the only
+		// ones left for these resource types are the content-free ones, which responseCanContainSecrets already ruled
+		// out.
 		return fmt.Errorf("the output format of this command cannot be parsed for redaction")
 	}
 	if stdoutTruncated {
@@ -285,11 +293,10 @@ func (r *redactor) valuesToScrubFromStderr() []string {
 }
 
 // targetsResourceTypeWithSecrets reports whether the kubectl arguments reference a Dash0 custom resource type whose
-// content can contain secrets (see dash0ResourceTypesWithSecrets). Unlike
-// extractResourceTypesThatRequireSecretRedaction it does not look at the subcommand or the output format, since it
-// answers whether a response could contain a secret at all, not whether the response has to be redacted. It is the
-// basis for rejecting the output formats whose rendering of a secret cannot be redacted reliably, see
-// unredactableOutputRequested in validation.go.
+// content can contain secrets (see dash0ResourceTypesWithSecrets). Unlike responseCanContainSecrets it does not look at
+// the subcommand or the output format, since it answers whether a response could contain a secret at all, not whether
+// the response has to be redacted. It is the basis for rejecting the output formats whose rendering of a secret cannot
+// be redacted reliably, see unredactableOutputRequested in validation.go.
 func targetsResourceTypeWithSecrets(parsed parsedArguments) bool {
 	for _, resourceType := range parsed.resourceTypes {
 		if _, hasSecrets := dash0ResourceTypesWithSecrets[resourceType]; hasSecrets {
@@ -307,7 +314,10 @@ func targetsResourceTypeWithSecrets(parsed parsedArguments) bool {
 func redactResourceList(document any, redacted *redactor) error {
 	documentMap, isMap := document.(map[string]any)
 	if !isMap {
-		return nil
+		// "kubectl get -o json/yaml" renders a single resource as an object and several as a v1.List, so the root of the
+		// document is always a map. Anything else is a shape this code was not written for, and a shape it cannot redact:
+		// returning without an error here would hand the document out unredacted, so it fails closed instead.
+		return fmt.Errorf("the response is not a resource document that could be parsed for redaction")
 	}
 	items, isList := documentMap["items"].([]any)
 	if !isList {
@@ -372,9 +382,14 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 // value sourced via valueFrom is an object rather than a string and is therefore not a credential the response
 // exposes. No length or plausibility check is applied: the value is replaced where it lives, so an unusually short
 // credential cannot affect anything else in the response.
+//
+// A value that already is the placeholder is left alone as well. Two rules can cover the same field - a credential
+// field of a configuration object that is also a header, or a header whose name happens to be "token" - and replacing
+// it twice would add the placeholder itself to the recorded values and count as another replacement, which
+// redactAnnotations reads as "this annotation held a credential".
 func redactValueOf(node map[string]any, key string, redacted *redactor) {
 	value, isString := node[key].(string)
-	if !isString || value == "" {
+	if !isString || value == "" || value == redactedValue {
 		return
 	}
 	node[key] = redactedValue

@@ -146,6 +146,50 @@ func TestRedactDocument(t *testing.T) {
 		}
 	})
 
+	t.Run("redacts an always-credential field whose value looks like a non-secret", func(t *testing.T) {
+		// The Incident.io authorization header value is a credential by definition, so it must not be subject to the
+		// plausibility check that keeps a content type or an encoding in place for a generic header. Every value in
+		// wellKnownNonSecretValues would be waved through by that check.
+		for _, value := range []string{"none", "true", "gzip", "application/json"} {
+			document := `{
+  "apiVersion": "operator.dash0.com/v1beta1",
+  "kind": "Dash0NotificationChannel",
+  "metadata": { "name": "incidentio-channel" },
+  "spec": {
+    "incidentioConfig": { "url": "` + incidentioUrl + `", "headers": "` + value + `" }
+  }
+}`
+			rendered, replaced := redactDocument(t, document)
+
+			if strings.Contains(rendered, `"headers": "`+value+`"`) {
+				t.Errorf("expected the Incident.io header value %q to be redacted, got %q", value, rendered)
+			}
+			if !slices.Contains(replaced, value) {
+				t.Errorf("expected the header value %q to be reported as replaced, got %q", value, replaced)
+			}
+		}
+	})
+
+	t.Run("does not report the placeholder itself as a replaced value", func(t *testing.T) {
+		// A header named "token" is covered both by redactHeaderValues and by the "token" case, and
+		// incidentioConfig.headers both by credentialFieldsPerConfigObject and by the "headers" case. Replacing an
+		// already-redacted value again would record the placeholder as a credential and scrub it from stderr.
+		document := `{
+  "apiVersion": "operator.dash0.com/v1beta1",
+  "kind": "Dash0NotificationChannel",
+  "metadata": { "name": "webhook-channel" },
+  "spec": {
+    "incidentioConfig": { "url": "` + incidentioUrl + `", "headers": "` + incidentioHeaderValue + `" },
+    "webhookConfig": { "url": "` + webhookUrl + `", "headers": { "token": "` + webhookHeaderValue + `" } }
+  }
+}`
+		_, replaced := redactDocument(t, document)
+
+		if slices.Contains(replaced, redactedValue) {
+			t.Errorf("expected the placeholder to not be recorded as a replaced value, got %q", replaced)
+		}
+	})
+
 	t.Run("keeps the redacted last-applied-configuration annotation parseable", func(t *testing.T) {
 		rendered, _ := redactDocument(t, dash0ResourcesJson)
 
@@ -470,6 +514,30 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			name:      "the response is a multi-document yaml stream",
 			arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
 			response:  monitoringResourceYaml + "\n---\n" + monitoringResourceYaml,
+		},
+		{
+			// Both formats are redactable on their own, so validation accepts the request, but which one kubectl actually
+			// applied is not replicated here (see parseableOutputFormat).
+			name:      "the output format is set more than once",
+			arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "json"},
+			response:  monitoringResourceYaml,
+		},
+		// "kubectl get -o json/yaml" always renders an object or a v1.List, so a document whose root is not a map is a
+		// shape the redaction was not written for. It is handed out unredacted unless it fails closed.
+		{
+			name:      "the response root is a json array",
+			arguments: []string{"get", "dash0monitorings", "-o", "json"},
+			response:  `[ { "kind": "Dash0Monitoring" } ]`,
+		},
+		{
+			name:      "the response root is a json scalar",
+			arguments: []string{"get", "dash0monitorings", "-o", "json"},
+			response:  `"just a string"`,
+		},
+		{
+			name:      "the response root is a yaml scalar",
+			arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
+			response:  `null`,
 		},
 	} {
 		t.Run("withholds the response when "+tt.name, func(t *testing.T) {
