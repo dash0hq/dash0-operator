@@ -90,9 +90,12 @@ knowledge that actually lives in `api/operator`. CRD changes need to be checked 
   `password`, and the header/query parameter values under `headers` and `queryParameters`.
 
 Missing that step can be silent: the new credential is simply not matched, the response is still considered fully
-redacted, and the credential is sent to the backend in plaintext. The test credential_field_coverage_test.go is a
-heuristic that protects against this drift, but there is no guarantee that it will flag every change that would require
-updating the secret redaction.
+redacted, and the credential is sent to the backend in plaintext. The test
+`api/operator/credential_field_coverage_test.go` is a heuristic that protects against this drift, but there is no
+guarantee that it will flag every change that would require updating the secret redaction. It matches field names
+against a list of fragments (`token`, `key`, `header`, ...) and only looks at fields that hold a value directly - a
+string, or a map of strings. It does not see a credential inside a list of name/value pairs, nor one in a free-text
+field, so a new credential field whose name matches no fragment passes it unnoticed.
 
 The same list also drives what the connector allows at all (`targetsResourceTypeWithSecrets`, used in
 `images/agent0-connector/src/kubectl/validation.go`): for a resource type that can contain secrets, `kubectl describe`
@@ -100,8 +103,16 @@ and the output formats that can reshape a value (`-o go-template/jsonpath/custom
 because their output cannot be redacted. A credential-bearing CRD that is missing from the list therefore stays fully
 readable through those formats as well.
 
-When adding or changing a CRD, grep for `dash0ResourceTypesWithSecrets` and `credentialFieldsPerConfigObject`, and
-extend the fixtures in `images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field.
+When adding or changing a CRD, check all three lists above - grep for `dash0ResourceTypesWithSecrets` and
+`credentialFieldsPerConfigObject`, and read the `case` clauses of `redactDocumentNodeRecursively` for the field names
+that are credentials wherever they occur - and extend the fixtures in
+`images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
+`go test ./api/operator/... -run TestAgent0ConnectorRedactsEveryCredentialField` to check the CRDs against the lists.
+
+Note which of the three lists a field belongs in: a field listed in `credentialFieldsPerConfigObject` is redacted
+unconditionally, while a header or query parameter value is only redacted when it does not look like a well-known
+non-secret value (see `wellKnownNonSecretValues`). A field that always holds a credential belongs in the former, even
+when it is a header - which is why `incidentioConfig` lists `headers`.
 
 ### Adding a new reconciler with self-monitoring metrics
 

@@ -117,11 +117,6 @@ var dash0ResourceTypesWithSecrets = map[string]struct{}{
 // generic field names ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification
 // routing filters or the URL of a synthetic check request. The webhook URLs are credentials themselves: they contain
 // an unguessable token that grants the right to post to the channel.
-//
-// A field listed here is redacted unconditionally, unlike the generic header and query parameter values, which are only
-// redacted when they do not look like a well-known non-secret value (see redactHeaderValueIfPlausible). That is why
-// incidentioConfig.headers is listed even though "headers" is redacted everywhere anyway: it is not a position that
-// happens to hold a credential, it is the Incident.io authorization header value and therefore always one.
 var credentialFieldsPerConfigObject = map[string][]string{
 	// Dash0NotificationChannel, spec.<type>Config
 	"slackConfig":             {"webhookURL"},
@@ -165,11 +160,8 @@ func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, s
 
 	format, parseable := parsed.parseableOutputFormat()
 	if !parseable {
-		// Reached when the request sets the output format more than once ("-o yaml -o json"): each occurrence names a
-		// redactable format, so validation accepts it, but parseableOutputFormat does not replicate kubectl's precedence
-		// rules to decide which one was applied. A single format other than json/yaml cannot get here, since the only
-		// ones left for these resource types are the content-free ones, which responseCanContainSecrets already ruled
-		// out.
+		// Unreachable for a validated request: the only other formats left for these resource types are the
+		// content-free ones, which responseCanContainSecrets already ruled out. (Or requests with multiple output formats.)
 		return fmt.Errorf("the output format of this command cannot be parsed for redaction")
 	}
 	if stdoutTruncated {
