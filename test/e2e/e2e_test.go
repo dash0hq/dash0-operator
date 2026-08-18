@@ -2060,6 +2060,16 @@ trace_statements:
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
 
+			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
+			clusterUid, err := run(exec.Command(
+				"kubectl",
+				"get", "namespace", "kube-system",
+				"-o", "jsonpath={.metadata.uid}",
+			), false)
+			Expect(err).ToNot(HaveOccurred())
+			pseudoClusterUid = strings.TrimSpace(clusterUid)
+			Expect(pseudoClusterUid).ToNot(BeEmpty())
+
 			By("deploying the Dash0 operator with the agent0-connector enabled")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
@@ -2083,16 +2093,6 @@ trace_statements:
 		})
 
 		It("establishes the command request stream and executes a kubectl command", func() {
-			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
-			clusterUid, err := run(exec.Command(
-				"kubectl",
-				"get", "namespace", "kube-system",
-				"-o", "jsonpath={.metadata.uid}",
-			), false)
-			Expect(err).ToNot(HaveOccurred())
-			pseudoClusterUid = strings.TrimSpace(clusterUid)
-			Expect(pseudoClusterUid).ToNot(BeEmpty())
-
 			By("waiting for the agent0-connector deployment to become available")
 			Eventually(func(g Gomega) {
 				g.Expect(runAndIgnoreOutput(exec.Command(
@@ -2147,8 +2147,6 @@ trace_statements:
 		})
 
 		It("redacts the Dash0 auth token from a command response containing a Dash0 custom resource", func() {
-			Expect(pseudoClusterUid).ToNot(BeEmpty())
-
 			By("triggering a \"kubectl get dash0operatorconfigurations -o yaml\" command request")
 			var requestId string
 			Eventually(func(g Gomega) {
