@@ -34,17 +34,18 @@ FROM node:26.3.0-alpine3.22 AS build-node-js
 RUN mkdir -p /dash0-instrumentation/node.js
 WORKDIR /dash0-instrumentation/node.js
 COPY node.js/package* .
+# The upstream OpenTelemetry JS packages ship esm/esnext builds alongside the CJS build used by require() (see the
+# "exports" map in each package's package.json). Node.js's CJS resolver only ever matches the "default"/"require"
+# condition, so these two build trees are unused dead weight in this image; every @opentelemetry/* package on the
+# host is duplicated here for the "-1.x" compatibility line as well, further multiplying the waste. Pruning them in the
+# same layer that installs them keeps them out of the image instead of only hiding them in a later layer.
 RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   npm ci \
   --ignore-scripts \
   --omit=dev \
   --no-audit \
-  --no-fund=true
-# The upstream OpenTelemetry JS packages ship esm/esnext builds alongside the CJS build used by require() (see the
-# "exports" map in each package's package.json). Node.js's CJS resolver only ever matches the "default"/"require"
-# condition, so these two build trees are unused dead weight in this image; every @opentelemetry/* package on the
-# host is duplicated here for the "-1.x" compatibility line as well, further multiplying the waste.
-RUN find node_modules/@opentelemetry -type d \( -name esm -o -name esnext \) -path '*/build/*' -exec rm -rf {} +
+  --no-fund=true \
+  && find node_modules/@opentelemetry -type d \( -name esm -o -name esnext \) -path '*/build/*' -exec rm -rf {} +
 
 # download .NET auto instrumentation
 FROM alpine:3.24.1 AS build-dotnet
