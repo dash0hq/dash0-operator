@@ -197,6 +197,7 @@ func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, s
 // responseCanContainSecrets reports whether the response of the given invocation renders the content of a Dash0 custom
 // resource that can contain secrets, and therefore has to be redacted.
 func responseCanContainSecrets(parsed parsedArguments) bool {
+	//nolint:goconst
 	if parsed.subcommand != "get" {
 		// No other allowed subcommand renders the content of a custom resource: "describe" is rejected for these
 		// resource types (see describeOfResourceTypeWithSecrets), and "explain" only prints the schema.
