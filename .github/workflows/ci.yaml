@@ -80,7 +80,7 @@ jobs:
           # make (which we ran in the previous step) will implicitly also run the targets manifests & generate, which
           # could potentially modify code that is under version control, if changes have been comitted that would have
           # required updating manifests or generated code and these updates have not been done.
-          git diff --exit-code
+          git diff --exit-code -- . ':(exclude)*mvnw.cmd'
 
       - name: lint
         run: |
