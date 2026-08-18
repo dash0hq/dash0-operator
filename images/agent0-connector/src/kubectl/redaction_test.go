@@ -497,6 +497,117 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	}
 }
 
+func TestRedactDash0SecretsWithTruncatedStdout(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("withholds a response whose stdout was truncated", func(t *testing.T) {
+		// Output beyond maxOutputBytesPerStream is dropped, so the captured stdout is a prefix of the document kubectl
+		// rendered. That prefix cannot be parsed, and a document that cannot be parsed cannot be redacted, so the
+		// response has to be withheld even though its beginning holds the token in plaintext.
+		//
+		// The fake kubectl emits the token first and then pads past the limit, in 4 KiB chunks built by doubling a
+		// literal, so that no external tool is needed.
+		fakeKubectlOnPath(t, `#!/bin/sh
+printf '{ "token": "`+monitoringToken+`", "padding": "'
+s=0123456789012345678901234567890123456789012345678901234567890123
+s=$s$s$s$s
+s=$s$s$s$s
+s=$s$s$s$s
+i=0
+while [ $i -lt 300 ]; do
+  printf '%s' "$s"
+  i=$((i+1))
+done
+printf '" }\n'
+`)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-truncated-stdout",
+			Command:   "kubectl",
+			Arguments: []string{"get", "dash0monitorings", "-o", "json"},
+		})
+
+		if resp.GetStdout() != "" {
+			t.Errorf("expected the response to be withheld, got %d bytes of stdout", len(resp.GetStdout()))
+		}
+		if strings.Contains(resp.GetStderr(), monitoringToken) {
+			t.Errorf("expected the token to be withheld, got %q", resp.GetStderr())
+		}
+		if !strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+		}
+		// Pins that the truncation is what withheld the response, rather than the truncated prefix failing to parse
+		// afterwards: redactSecretsInResponse checks stdoutTruncated before it attempts to parse.
+		if !strings.Contains(resp.GetStderr(), "exceeds the limit") {
+			t.Errorf("expected the truncation to be given as the reason, got %q", resp.GetStderr())
+		}
+		if resp.GetExitCode() != exitCodeRejected {
+			t.Errorf("expected the rejected exit code %d, got %d", exitCodeRejected, resp.GetExitCode())
+		}
+	})
+
+	t.Run("withholds a truncated response for every redactable output format", func(t *testing.T) {
+		for _, format := range []string{outputFormatJson, outputFormatYaml} {
+			fakeKubectlOnPath(t, `#!/bin/sh
+s=0123456789012345678901234567890123456789012345678901234567890123
+s=$s$s$s$s
+s=$s$s$s$s
+s=$s$s$s$s
+i=0
+while [ $i -lt 300 ]; do
+  printf '%s' "$s"
+  i=$((i+1))
+done
+`)
+
+			resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+				RequestId: "req-truncated-" + format,
+				Command:   "kubectl",
+				Arguments: []string{"get", "dash0monitorings", "-o", format},
+			})
+
+			if resp.GetStdout() != "" {
+				t.Errorf("expected the -o %s response to be withheld, got %d bytes", format, len(resp.GetStdout()))
+			}
+			if !strings.Contains(resp.GetStderr(), "exceeds the limit") {
+				t.Errorf("expected the -o %s response to be withheld for truncation, got %q", format, resp.GetStderr())
+			}
+		}
+	})
+
+	t.Run("hands out a truncated response for a resource type without secrets", func(t *testing.T) {
+		// Truncation only withholds where redaction is required. A resource type that cannot contain a credential keeps
+		// the existing behaviour: the truncated output is returned with a notice.
+		fakeKubectlOnPath(t, `#!/bin/sh
+s=0123456789012345678901234567890123456789012345678901234567890123
+s=$s$s$s$s
+s=$s$s$s$s
+s=$s$s$s$s
+i=0
+while [ $i -lt 300 ]; do
+  printf '%s' "$s"
+  i=$((i+1))
+done
+`)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-truncated-pods",
+			Command:   "kubectl",
+			Arguments: []string{"get", "pods", "-o", "json"},
+		})
+
+		if resp.GetStdout() == "" {
+			t.Error("expected the truncated response to be handed out")
+		}
+		if !strings.Contains(resp.GetStdout(), "truncated the output") {
+			t.Error("expected a truncation notice on stdout")
+		}
+		if strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected the response to not be withheld, got %q", resp.GetStderr())
+		}
+	})
+}
+
 func TestRedactDash0SecretsWithEmptyStdout(t *testing.T) {
 	logger := discardLogger()
 
