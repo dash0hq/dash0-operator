@@ -25,6 +25,7 @@ func parseArguments(arguments []string) parsedArguments {
 				positionalIndex = 0
 				continue
 			}
+			parsed.positionalArguments = append(parsed.positionalArguments, argument)
 			parsed.resourceTypes =
 				append(parsed.resourceTypes, extractNormalizedResourceTypes(argument, positionalIndex == 0)...)
 			positionalIndex++

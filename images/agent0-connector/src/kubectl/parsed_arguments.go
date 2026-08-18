@@ -25,6 +25,10 @@ type parsedArguments struct {
 	// resourceTypes holds the normalized resource types referenced by the positional arguments that follow the
 	// subcommand, in the order they occur.
 	resourceTypes []string
+
+	// positionalArguments holds the positional arguments that follow the subcommand, verbatim and in the order they
+	// occur.
+	positionalArguments []string
 }
 
 // parsedFlag is a single flag token of an argument list, resolved against the allowedFlags allowlist.

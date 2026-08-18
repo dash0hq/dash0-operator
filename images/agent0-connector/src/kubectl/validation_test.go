@@ -30,6 +30,17 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "api-resources is allowed", command: "kubectl", arguments: []string{"api-resources"}, allowed: true},
 		{name: "api-versions is allowed", command: "kubectl", arguments: []string{"api-versions"}, allowed: true},
 		{name: "cluster-info is allowed", command: "kubectl", arguments: []string{"cluster-info"}, allowed: true},
+		// "kubectl cluster-info dump" writes the full JSON of the workloads of a namespace (or of the whole cluster)
+		// plus the raw logs of every container to stdout. Redaction does not run for a subcommand other than "get", and
+		// the response is not a document that could be parsed anyway, so the pod specs of the operator's own workloads
+		// would hand out the Dash0 auth token they carry as a literal env var value.
+		{name: "cluster-info dump is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump"}, allowed: false},
+		{name: "cluster-info dump for all namespaces is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump", "-A"}, allowed: false},
+		{name: "cluster-info dump with a leading flag is rejected", command: "kubectl", arguments: []string{"-n", "dash0-system", "cluster-info", "dump"}, allowed: false},
+		{name: "cluster-info dump with an output format is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump", "-o", "json"}, allowed: false},
+		// Any positional argument is rejected, so a sub-verb added by a future kubectl release is rejected as well.
+		{name: "an unknown cluster-info sub-verb is rejected", command: "kubectl", arguments: []string{"cluster-info", "somethingelse"}, allowed: false},
+		{name: "cluster-info with only flags stays allowed", command: "kubectl", arguments: []string{"cluster-info", "--help"}, allowed: true},
 		{name: "top is allowed", command: "kubectl", arguments: []string{"top", "pods"}, allowed: true},
 		{name: "events is allowed", command: "kubectl", arguments: []string{"events"}, allowed: true},
 
@@ -365,6 +376,74 @@ func TestValidateCommandRequest(t *testing.T) {
 				t.Errorf("expected request to be rejected, but it was allowed")
 			}
 		})
+	}
+}
+
+// subcommandRedactionRationale records, for every subcommand in readOnlyKubectlSubcommands, why its response cannot
+// hand out a credential. Only "get" is routed through redaction (see responseCanContainSecrets, which returns false for
+// every other subcommand), so every other entry has to justify itself by not rendering the content of a resource at
+// all. Adding a subcommand to the allowlist without recording a rationale here fails
+// TestEveryAllowedSubcommandHasARedactionRationale.
+var subcommandRedactionRationale = map[string]string{
+	"get": "the only subcommand whose response is redacted, see redactSecretsInResponse",
+	"describe": "renders resource content, but is rejected for the resource types that can contain secrets, see " +
+		"describeOfResourceTypeWithSecrets",
+	"cluster-info": "the bare form only prints the addresses of the control plane and of the cluster's services; its " +
+		"sub-verbs are rejected, see subcommandsRejectingPositionalArguments",
+	"api-resources": "prints the known resource types and their metadata, never the content of an instance",
+	"api-versions":  "prints the available API group/versions only",
+	"explain":       "prints the schema of a resource type, not the content of an instance",
+	"events": "renders Event objects; their messages are emitted by the kubelet and by controllers and do not " +
+		"carry the credential fields of a Dash0 custom resource",
+	"top":     "prints a CPU/memory usage table only",
+	"version": "prints the client and server version only",
+	"logs": "streams the raw log output of a container, which is not resource content; a credential a workload " +
+		"logs itself is out of reach of response redaction",
+}
+
+// TestEveryAllowedSubcommandHasARedactionRationale guards against the drift that let "kubectl cluster-info dump" hand
+// out the pod specs (and hence the Dash0 auth token in their env vars) of the whole cluster: the subcommand was on the
+// allowlist, while redaction only ever ran for "get". Whenever readOnlyKubectlSubcommands grows, the new subcommand has
+// to be classified deliberately.
+func TestEveryAllowedSubcommandHasARedactionRationale(t *testing.T) {
+	for subcommand := range readOnlyKubectlSubcommands {
+		if _, hasRationale := subcommandRedactionRationale[subcommand]; !hasRationale {
+			t.Errorf(
+				"the kubectl subcommand %q is allowed, but no rationale records why its response cannot expose a "+
+					"credential; redaction only runs for \"get\" (see responseCanContainSecrets), so either confirm that "+
+					"this subcommand cannot render resource content and add a rationale to "+
+					"subcommandRedactionRationale, or restrict it in validation.go",
+				subcommand,
+			)
+		}
+	}
+	for subcommand := range subcommandRedactionRationale {
+		if _, allowed := readOnlyKubectlSubcommands[subcommand]; !allowed {
+			t.Errorf(
+				"subcommandRedactionRationale has a stale entry for %q, which is not an allowed subcommand any more",
+				subcommand,
+			)
+		}
+	}
+}
+
+// TestOnlyGetIsRoutedThroughRedaction pins the invariant the rationales above rely on: responseCanContainSecrets
+// redacts the response of "get" only. A subcommand that starts rendering resource content therefore leaks it unless it
+// is restricted in validation.go.
+func TestOnlyGetIsRoutedThroughRedaction(t *testing.T) {
+	for subcommand := range readOnlyKubectlSubcommands {
+		parsed := parseArguments([]string{subcommand, "dash0monitorings", "-o", "yaml"})
+		canContainSecrets := responseCanContainSecrets(parsed)
+		if subcommand == "get" && !canContainSecrets {
+			t.Errorf("expected the response of %q to be routed through redaction", subcommand)
+		}
+		if subcommand != "get" && canContainSecrets {
+			t.Errorf(
+				"the response of %q is now routed through redaction; update subcommandRedactionRationale, which "+
+					"records that only \"get\" is",
+				subcommand,
+			)
+		}
 	}
 }
 
