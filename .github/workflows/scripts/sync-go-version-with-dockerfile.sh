@@ -35,6 +35,7 @@ mappings=(
   "test/e2e/dash0-api-mock/Dockerfile:test/e2e/dash0-api-mock/go.mod"
   "test/e2e/control-plane-mock/Dockerfile:test/e2e/control-plane-mock/go.mod"
   "test/e2e/decision-maker-mock/Dockerfile:test/e2e/decision-maker-mock/go.mod"
+  "test/e2e/outbound-connector-mock/Dockerfile:test/e2e/outbound-connector-mock/go.mod"
 )
 
 changed=false
