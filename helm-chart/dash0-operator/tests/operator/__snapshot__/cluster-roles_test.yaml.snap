@@ -161,6 +161,22 @@ cluster roles should match snapshot:
           - patch
           - update
       - apiGroups:
+          - openslo.com
+        resources:
+          - slos
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - openslo.com
+        resources:
+          - slos/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
           - operator.dash0.com
         resources:
           - dash0signaltometrics

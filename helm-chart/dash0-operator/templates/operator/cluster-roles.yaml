@@ -193,6 +193,26 @@ rules:
   - patch
   - update
 
+# Permissions required to watch SLO resources (openslo.com/v1):
+- apiGroups:
+  - openslo.com
+  resources:
+  - slos
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to SLO resource status:
+- apiGroups:
+  - openslo.com
+  resources:
+  - slos/status
+  verbs:
+  - get
+  - patch
+  - update
+
 # Permissions required to watch Dash0 signal-to-metrics resources:
 - apiGroups:
   - operator.dash0.com
