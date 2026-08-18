@@ -43,8 +43,13 @@ var crdBaseManifestDir = filepath.Join("..", "..", "config", "crd", "bases")
 // credentialNameFragments are the substrings that make a field name look like it holds a credential. The check is
 // deliberately broad, to increase the likelihood of flagging unredacted secrets. For a field not to be flagged it needs
 // to be either covered by agent0-connector's redaction, or listed in knownUnredactedFields.
+// "header" is included because a header value is a credential wherever a request carries one, and a field can be named
+// after the header rather than after what it holds (IncidentioConfig.Headers is the Incident.io authorization header
+// value). "signature", "hmac", "bearer" and "cookie" are the other names a credential is commonly given that none of
+// the remaining fragments match.
 var credentialNameFragments = []string{
 	"token", "pass", "key", "secret", "url", "credential", "auth",
+	"header", "signature", "hmac", "bearer", "cookie",
 }
 
 // knownUnredactedFields are the fields that credentialNameFragments flags, although they actually hold no credential.
@@ -279,7 +284,13 @@ func collectPotentialCredentialFields(
 		}
 		fieldType := elementTypeOf(field.Type)
 		fieldPath := path + "." + name
-		if fieldType.Kind() == reflect.String {
+		// A string holds a credential value directly, and a map of strings holds one per entry - the shape of the generic
+		// webhook channel's headers. Both are value-shaped, so the name of the field decides whether it might be a
+		// credential. A struct is a container instead: its own name says nothing, so its fields are inspected on their
+		// own. That is a known limit of this heuristic, since a list of name/value pairs (the shape of the export headers
+		// and of a synthetic check's headers) is only visible through its "name" and "value" fields, which match no
+		// fragment.
+		if fieldType.Kind() == reflect.String || isMapOfStrings(fieldType) {
 			if hasCredentialLikeName(name) {
 				*fields = append(*fields, potentialCredentialField{
 					kind:            kind,
@@ -292,6 +303,12 @@ func collectPotentialCredentialFields(
 		}
 		collectPotentialCredentialFields(fieldType, kind, fieldPath, name, visited, fields)
 	}
+}
+
+// isMapOfStrings reports whether the given type is a map whose values are strings, i.e. a field that holds a credential
+// value per entry rather than containing further fields.
+func isMapOfStrings(t reflect.Type) bool {
+	return t.Kind() == reflect.Map && elementTypeOf(t.Elem()).Kind() == reflect.String
 }
 
 // elementTypeOf unwraps pointers, slices and arrays, so that a field is inspected by the type it ultimately holds.
