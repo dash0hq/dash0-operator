@@ -1293,7 +1293,7 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 	)
 	collectorManager := collectors.NewCollectorManager(
 		k8sClient,
-		clientset,
+		nodeMetadataClient,
 		util.ExtraConfigDefaults,
 		false,
 		false,

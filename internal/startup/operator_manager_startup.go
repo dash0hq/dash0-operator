@@ -31,6 +31,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -1299,6 +1300,12 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
+	// Used for reads that only need object metadata, see CollectorManager.warnAboutInsufficientZoneCoverage.
+	nodeMetadataClient, err := metadata.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		return fmt.Errorf("unable to create the metadata client")
+	}
+
 	kubernetesVersionInfo, kubernetesVersionDetected := cluster.DetectKubernetesVersion(clientset, setupLog)
 	resolvedInstrumentationDelivery := cluster.ResolveInstrumentationDelivery(
 		cliArgs.operatorConfigurationInstrumentationDelivery,
@@ -1445,6 +1452,7 @@ func startOperatorManager(
 		ctx,
 		mgr,
 		clientset,
+		nodeMetadataClient,
 		cliArgs,
 		operatorConfigurationValues,
 		kubernetesVersionInfo,
@@ -1503,6 +1511,7 @@ func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
+	nodeMetadataClient metadata.Interface,
 	cliArgs *commandLineArguments,
 	operatorConfigurationValues *OperatorConfigurationValues,
 	kubernetesVersionInfo cluster.KubernetesVersionInfo,
@@ -1643,6 +1652,8 @@ func startDash0Controllers(
 			KubeletStatsAutoDetectEndpoint:         envVars.kubeletStatsAutoDetectEndpoint,
 			KubeletStatsReceiverConfig:             envVars.kubeletStatsReceiverConfig,
 			PseudoClusterUid:                       clusterUid,
+			KubernetesVersion:                      kubernetesVersionInfo,
+			KubernetesVersionDetected:              kubernetesVersionDetected,
 			IsIPv6Cluster:                          isIPv6Cluster,
 			IsDocker:                               isDocker,
 			DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
@@ -1660,7 +1671,7 @@ func startDash0Controllers(
 		)
 		collectorManager = collectors.NewCollectorManager(
 			k8sClient,
-			clientset,
+			nodeMetadataClient,
 			extraConfig,
 			developmentMode,
 			cliArgs.featureSignalControlEnabled,

@@ -150,6 +150,10 @@ kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-cl
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-manager-rolebinding
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-opentelemetry-collector-crb
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-proxy-rolebinding
+kubectl delete configmap                    --ignore-not-found dash0-operator-signal-control-collector-cm
+kubectl delete service                      --ignore-not-found dash0-operator-signal-control-collector-service
+kubectl delete poddisruptionbudget          --ignore-not-found dash0-operator-signal-control-collector-pdb
+kubectl delete deployment                   --ignore-not-found dash0-operator-signal-control-collector-deployment
 kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-injector
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-operator-configuration-validator
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-validator

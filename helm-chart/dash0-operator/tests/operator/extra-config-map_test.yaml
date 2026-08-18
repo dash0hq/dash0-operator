@@ -157,6 +157,62 @@ tests:
               initialDelaySeconds: 7
               periodSeconds: 6
               timeoutSeconds: 5
+          signalControlCollectorReplicas: 4
+          signalControlCollectorContainerResources:
+            limits:
+              memory: 3Gi
+              cpu: 800m
+            gomemlimit: 2400MiB
+            requests:
+              memory: 3Gi
+              cpu: 400m
+          signalControlCollectorConfigurationReloaderContainerResources:
+            limits:
+              memory: 40Mi
+            gomemlimit: 32MiB
+            requests:
+              memory: 40Mi
+          signalControlCollectorLabels:
+            signal-control-collector-label: signal-control-collector-label-value
+          signalControlCollectorAnnotations:
+            signal-control-collector-annotation: signal-control-collector-annotation-value
+          signalControlCollectorPodLabels:
+            signal-control-collector-pod-label: signal-control-collector-pod-label-value
+          signalControlCollectorPodAnnotations:
+            signal-control-collector-pod-annotation: signal-control-collector-pod-annotation-value
+          signalControlCollectorSysctls:
+            - name: net.ipv4.tcp_keepalive_time
+              value: "240"
+          signalControlCollectorTolerations:
+            - key: key5
+              operator: Equal
+              value: value5
+              effect: NoSchedule
+          signalControlCollectorNodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-09
+                      operator: In
+                      values:
+                        - value-13
+          signalControlCollectorPriorityClassName: signal-control-collector-priority-class
+          signalControlCollectorProbes:
+            liveness:
+              failureThreshold: 24
+              initialDelaySeconds: 23
+              periodSeconds: 22
+              timeoutSeconds: 21
+            readiness:
+              failureThreshold: 20
+              initialDelaySeconds: 19
+              periodSeconds: 18
+              timeoutSeconds: 17
+            startup:
+              failureThreshold: 16
+              initialDelaySeconds: 15
+              periodSeconds: 14
+              timeoutSeconds: 13
         targetAllocator:
           mTls:
             enabled: true
@@ -455,6 +511,62 @@ tests:
                 initialDelaySeconds: 7
                 periodSeconds: 6
                 timeoutSeconds: 5
+            signalControlCollectorReplicas: 4
+            signalControlCollectorContainerResources:
+              gomemlimit: 2400MiB
+              limits:
+                cpu: 800m
+                memory: 3Gi
+              requests:
+                cpu: 400m
+                memory: 3Gi
+            signalControlCollectorConfigurationReloaderContainerResources:
+              gomemlimit: 32MiB
+              limits:
+                memory: 40Mi
+              requests:
+                memory: 40Mi
+            signalControlCollectorLabels:
+              signal-control-collector-label: signal-control-collector-label-value
+            signalControlCollectorAnnotations:
+              signal-control-collector-annotation: signal-control-collector-annotation-value
+            signalControlCollectorPodLabels:
+              signal-control-collector-pod-label: signal-control-collector-pod-label-value
+            signalControlCollectorPodAnnotations:
+              signal-control-collector-pod-annotation: signal-control-collector-pod-annotation-value
+            signalControlCollectorTolerations:
+              - effect: NoSchedule
+                key: key5
+                operator: Equal
+                value: value5
+            signalControlCollectorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-09
+                    operator: In
+                    values:
+                    - value-13
+            signalControlCollectorPriorityClassName: signal-control-collector-priority-class
+            signalControlCollectorProbes:
+              liveness:
+                failureThreshold: 24
+                initialDelaySeconds: 23
+                periodSeconds: 22
+                timeoutSeconds: 21
+              readiness:
+                failureThreshold: 20
+                initialDelaySeconds: 19
+                periodSeconds: 18
+                timeoutSeconds: 17
+              startup:
+                failureThreshold: 16
+                initialDelaySeconds: 15
+                periodSeconds: 14
+                timeoutSeconds: 13
+            signalControlCollectorSysctls:
+              - name: net.ipv4.tcp_keepalive_time
+                value: "240"
             targetAllocatorMtlsEnabled: true
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
@@ -930,6 +1042,49 @@ tests:
                     values:
                     - linux
             deploymentProbes:
+              liveness:
+                failureThreshold: 20
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+              readiness:
+                failureThreshold: 3
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+              startup:
+                failureThreshold: 45
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+            signalControlCollectorReplicas: 2
+            signalControlCollectorContainerResources:
+              gomemlimit: 800MiB
+              limits:
+                memory: 1Gi
+              requests:
+                memory: 1Gi
+            signalControlCollectorConfigurationReloaderContainerResources:
+              gomemlimit: 18MiB
+              limits:
+                memory: 24Mi
+              requests:
+                memory: 12Mi
+            signalControlCollectorTolerations:
+              []
+            signalControlCollectorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+            signalControlCollectorProbes:
               liveness:
                 failureThreshold: 20
                 initialDelaySeconds: 0

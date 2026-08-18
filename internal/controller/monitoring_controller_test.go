@@ -107,7 +107,7 @@ var _ = Describe(
 				)
 				collectorManager := collectors.NewCollectorManager(
 					k8sClient,
-					clientset,
+					nodeMetadataClient,
 					util.ExtraConfigDefaults,
 					false,
 					false,

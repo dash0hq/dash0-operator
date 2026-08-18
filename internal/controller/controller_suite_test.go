@@ -13,6 +13,7 @@ import (
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -38,12 +39,13 @@ const (
 )
 
 var (
-	mgr       ctrl.Manager
-	cfg       *rest.Config
-	k8sClient client.Client
-	clientset *kubernetes.Clientset
-	recorder  events.EventRecorder
-	testEnv   *envtest.Environment
+	mgr                ctrl.Manager
+	cfg                *rest.Config
+	k8sClient          client.Client
+	clientset          *kubernetes.Clientset
+	nodeMetadataClient metadata.Interface
+	recorder           events.EventRecorder
+	testEnv            *envtest.Environment
 )
 
 func TestController(t *testing.T) {
@@ -81,6 +83,10 @@ var _ = BeforeSuite(func() {
 	clientset, err = kubernetes.NewForConfig(cfg)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(clientset).NotTo(BeNil())
+
+	nodeMetadataClient, err = metadata.NewForConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(nodeMetadataClient).NotTo(BeNil())
 
 	mgr, err = ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,

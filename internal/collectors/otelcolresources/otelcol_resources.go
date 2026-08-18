@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,9 +15,11 @@ import (
 	"github.com/cisco-open/k8s-objectmatcher/patch"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -24,6 +27,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
@@ -49,6 +53,7 @@ var (
 		OperatorImage:                     "ghcr.io/dash0hq/operator-controller:latest",
 		InitContainerImage:                "ghcr.io/dash0hq/instrumentation:latest",
 		CollectorImage:                    "ghcr.io/dash0hq/collector:latest",
+		SignalControlCollectorImage:       "ghcr.io/dash0hq/signal-control-collector:latest",
 		ConfigurationReloaderImage:        "ghcr.io/dash0hq/configuration-reloader:latest",
 		FilelogOffsetSyncImage:            "ghcr.io/dash0hq/filelog-offset-sync:latest",
 		FilelogOffsetVolumeOwnershipImage: "ghcr.io/dash0hq/filelog-offset-volume-ownership:latest",
@@ -189,6 +194,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Images:                 m.collectorConfig.Images,
 		IsIPv6Cluster:          m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:         m.collectorConfig.IsGkeAutopilot,
+		ServiceTrafficDistribution: cluster.ResolveServiceTrafficDistribution(
+			m.collectorConfig.KubernetesVersion,
+			m.collectorConfig.KubernetesVersionDetected,
+			logger,
+		),
 		SignalControl:          signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),
 		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
@@ -199,9 +209,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
-	if config.usesSignalControlCollectorImage() {
-		logger.Debug(fmt.Sprintf("Using the Signal Control collector image %s for the collector workloads, since "+
-			"Signal Control is enabled via the Dash0SignalControl resource.", config.collectorImage()))
+	if config.signalControlGatewayActive() {
+		logger.Debug(fmt.Sprintf("Deploying the Signal Control collector (image %s), since Signal Control is enabled "+
+			"via the Dash0SignalControl resource. The daemonset and the cluster-metrics collector export their "+
+			"Dash0-bound telemetry to it instead of exporting to Dash0 directly.",
+			config.signalControlCollectorImage()))
 	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
@@ -258,14 +270,35 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 			return false, false, err
 		}
 		return true, false, nil
-	} else {
-		// object might need to be updated
-		hasChanged, err := m.updateResource(ctx, existingResource, desiredResource, logger)
-		if err != nil {
-			return false, false, err
-		}
-		return false, hasChanged, err
 	}
+
+	// The object exists and might need to be updated. Since the update carries the resource version of the object
+	// that was read, and that read is served by the controller-runtime cache, which lags behind the API server, the
+	// update can be rejected with a conflict. That is expected rather than exceptional right after the resources have
+	// been created, while the API server and the built-in controllers are still writing status onto them. Retry with
+	// a fresh read instead of failing the whole reconcile.
+	//
+	// Every attempt starts from an untouched copy of the desired object, because updateResource modifies it (owner
+	// reference, self-reference UID environment variables, the last-applied annotation and the resource version).
+	pristineDesiredResource := desiredResource.DeepCopyObject().(client.Object)
+	hasChanged := false
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		currentResource, receiverErr := resources.CreateEmptyReceiverFor(pristineDesiredResource)
+		if receiverErr != nil {
+			return receiverErr
+		}
+		if getErr := m.Get(ctx, client.ObjectKeyFromObject(pristineDesiredResource), currentResource); getErr != nil {
+			return getErr
+		}
+		attempt := pristineDesiredResource.DeepCopyObject().(client.Object)
+		var updateErr error
+		hasChanged, updateErr = m.updateResource(ctx, currentResource, attempt, logger)
+		return updateErr
+	})
+	if err != nil {
+		return false, false, err
+	}
+	return false, hasChanged, nil
 }
 
 func (m *OTelColResourceManager) createResource(
@@ -315,7 +348,7 @@ func (m *OTelColResourceManager) updateResource(
 	if err != nil {
 		return false, err
 	}
-	hasChanged := !patchResult.IsEmpty() && !isKnownIrrelevantPatch(patchResult)
+	hasChanged := !patchResult.IsEmpty() && !isKnownIrrelevantPatch(desiredResource, patchResult)
 	if !hasChanged {
 		return false, nil
 	}
@@ -323,6 +356,13 @@ func (m *OTelColResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+
+	// Carry over the resource version of the live object. Most resource kinds accept an unconditional update (an
+	// update without a resource version), but some - PodDisruptionBudget among them - reject it with
+	// "metadata.resourceVersion: Invalid value: 0: must be specified for an update". Setting it also turns the update
+	// into an optimistic-concurrency-checked one, so a concurrent modification results in a conflict and a retry
+	// instead of silently overwriting the other change.
+	desiredResource.SetResourceVersion(existingResource.GetResourceVersion())
 
 	err = m.Update(ctx, desiredResource)
 	if err != nil {
@@ -341,9 +381,35 @@ func (m *OTelColResourceManager) updateResource(
 	return hasChanged, nil
 }
 
-func isKnownIrrelevantPatch(patchResult *patch.PatchResult) bool {
-	p := string(patchResult.Patch)
-	return slices.Contains(knownIrrelevantPatches, p)
+func isKnownIrrelevantPatch(desiredResource client.Object, patchResult *patch.PatchResult) bool {
+	if slices.Contains(knownIrrelevantPatches, string(patchResult.Patch)) {
+		return true
+	}
+	if _, isPodDisruptionBudget := desiredResource.(*policyv1.PodDisruptionBudget); isPodDisruptionBudget {
+		return isPodDisruptionBudgetSelectorOnlyPatch(patchResult.Patch)
+	}
+	return false
+}
+
+// isPodDisruptionBudgetSelectorOnlyPatch reports whether a patch for a PodDisruptionBudget consists of nothing but
+// its spec.selector. PodDisruptionBudgetSpec.Selector is declared with +patchStrategy=replace (k8s.io/api, policy/v1),
+// so the strategic merge patch always carries the selector in full, even when the live object and the desired object
+// are identical. Without this check the operator would consider the pod disruption budget out of sync on every
+// single reconcile.
+func isPodDisruptionBudgetSelectorOnlyPatch(rawPatch []byte) bool {
+	var parsedPatch map[string]any
+	if err := json.Unmarshal(rawPatch, &parsedPatch); err != nil {
+		return false
+	}
+	if len(parsedPatch) != 1 {
+		return false
+	}
+	spec, isMap := parsedPatch["spec"].(map[string]any)
+	if !isMap || len(spec) != 1 {
+		return false
+	}
+	_, hasSelector := spec["selector"]
+	return hasSelector
 }
 
 func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUIDs(
@@ -355,7 +421,8 @@ func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUID
 	if name == DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix) {
 		daemonset := desiredResource.(*appsv1.DaemonSet)
 		addSelfReferenceUidToAllContainers(&daemonset.Spec.Template.Spec.Containers, "K8S_DAEMONSET_UID", uid)
-	} else if name == DeploymentName(m.collectorConfig.OTelCollectorNamePrefix) {
+	} else if name == DeploymentName(m.collectorConfig.OTelCollectorNamePrefix) ||
+		name == SignalControlCollectorDeploymentName(m.collectorConfig.OTelCollectorNamePrefix) {
 		deployment := desiredResource.(*appsv1.Deployment)
 		addSelfReferenceUidToAllContainers(&deployment.Spec.Template.Spec.Containers, "K8S_DEPLOYMENT_UID", uid)
 	}
@@ -695,7 +762,7 @@ func signalControlConfigFromResource(
 		})
 	}
 
-	derivedEndpoint, derivedApiEndpoint, dataset := deriveDash0EndpointsAndDataset(operatorConfig)
+	derivedEndpoint, derivedApiEndpoint, dataset, dash0ExportIndex := deriveDash0EndpointsAndDataset(operatorConfig)
 	hasDash0Export := derivedEndpoint != "" || derivedApiEndpoint != ""
 	endpoint := derivedEndpoint
 	apiEndpoint := derivedApiEndpoint
@@ -747,7 +814,7 @@ func signalControlConfigFromResource(
 		OperationCardinalityRules:          operationCardinalityRules,
 		Endpoint:                           endpoint,
 		ApiEndpoint:                        apiEndpoint,
-		AuthEnvVar:                         authEnvVarNameDefaultIndexed(0),
+		AuthEnvVar:                         authEnvVarNameDefaultIndexed(dash0ExportIndex),
 		Dataset:                            dataset,
 		Insecure:                           insecure,
 		EdgeProxyEnabled:                   edgeProxyEnabled,
@@ -755,12 +822,16 @@ func signalControlConfigFromResource(
 	}
 }
 
-func deriveDash0EndpointsAndDataset(operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration) (string, string, string) {
+// deriveDash0EndpointsAndDataset returns the Decision Maker endpoint, the edge settings API endpoint, the dataset and
+// the index of the first Dash0 export in the operator configuration resource. The index is the position in the export
+// list, which is also what the auth token environment variable name is derived from (see authEnvVarNameDefaultIndexed),
+// so it must not be assumed to be zero: the first Dash0 export can be preceded by generic gRPC/HTTP exports.
+func deriveDash0EndpointsAndDataset(operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration) (string, string, string, int) {
 	if operatorConfig == nil {
-		return "", "", util.DatasetDefault
+		return "", "", util.DatasetDefault, 0
 	}
 	exports := operatorConfig.EffectiveExports()
-	for _, export := range exports {
+	for i, export := range exports {
 		if export.Dash0 != nil {
 			dmEndpoint := util.DeriveDecisionMakerEndpoint(export.Dash0.Endpoint)
 			apiEndpoint := deriveEdgeSettingsApiEndpoint(export.Dash0.ApiEndpoint)
@@ -768,10 +839,10 @@ func deriveDash0EndpointsAndDataset(operatorConfig *dash0v1alpha1.Dash0OperatorC
 			if dataset == "" {
 				dataset = util.DatasetDefault
 			}
-			return dmEndpoint, apiEndpoint, dataset
+			return dmEndpoint, apiEndpoint, dataset, i
 		}
 	}
-	return "", "", util.DatasetDefault
+	return "", "", util.DatasetDefault, 0
 }
 
 // deriveEdgeSettingsApiEndpoint returns the endpoint the dash0settingsonedgeextension queries for edge settings

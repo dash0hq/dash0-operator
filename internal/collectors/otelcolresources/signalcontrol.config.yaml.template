@@ -1,0 +1,745 @@
+{{- /*
+Note: Subtle formatting issues will cause kubectl edit (and by extension also the edit feature in tools like k9s) to
+become unusable, see the note at the top of daemonset.config.yaml.template for details. In short: for text/template
+pipelines that might result in no output, either start the pipeline with "{{-" or start it at the beginning of the
+line without leading space characters.
+*/}}
+
+{{- /* This is the configuration of the Signal Control collector, a deployment that receives the Dash0-bound telemetry
+of the daemonset collector and the cluster-metrics deployment collector via OTLP, applies Signal Control (SC) and
+exports to Dash0. It is the only collector workload that runs SC components and, whenever it exists, the only one that
+exports to Dash0; the two producer collectors keep only their non-SC components and export passthrough (non-Dash0)
+telemetry themselves.
+
+All enrichment that depends on the sending node or pod (resourcedetection, k8s_attributes,
+resource/dash0_operator_attributes, custom filters and transforms, batching) has already been applied upstream and must
+NOT be repeated here: k8s_attributes' "from: connection" pod association would resolve every record to the sending
+collector's pod, and the resourcedetection k8snode/eks detectors would report this collector's node.
+
+The producers route on k8s.namespace.name, keep the passthrough copies locally and forward one copy of the Dash0-bound
+telemetry here. This collector applies the same k8s.namespace.name routing again to pick the (namespace, dataset)
+branch, so the resulting fan-out is identical to applying Signal Control upstream. Passthrough exporters therefore
+never appear in any pipeline here. Variables:
+- $scDefault: the default path has at least one Dash0 exporter, so the default SC branch exists.
+- $hasNamespacedDash0: at least one namespace has a Dash0 exporter, hence per-namespace SC branches exist.
+- $useRouting: routing is used (only with namespaced Dash0 exporters; the routing connector requires a non-empty
+  table). Without it, everything received here belongs to the default branch.
+- $samplingActive: tail sampling is enabled and something feeds it.
+- $metricRecorderActive: the default-path spam-filter counters are collected and exported. */}}
+{{- $scDefault := gt (len .Exporters.DefaultDash0Exporters) 0 -}}
+{{- $hasNamespacedDash0 := .Exporters.HasNamespacedDash0Exporters -}}
+{{- $useRouting := $hasNamespacedDash0 -}}
+{{- $samplingActive := and .SignalControl.SamplingEnabled (or $scDefault $hasNamespacedDash0) -}}
+{{- $metricRecorderActive := and .SignalControl.SpamFilterEnabled $scDefault -}}
+
+extensions:
+  health_check:
+    endpoint: "{{ .SelfIpReference }}:13133"
+  {{- if .EnableProfExtension }}
+  pprof: {}
+  {{- end }}
+  dash0settingsonedgeextension:
+    endpoint: {{ .SignalControl.ApiEndpoint }}
+    auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
+{{- if $metricRecorderActive }}
+  dash0metricrecorder: {}
+{{- end }}
+{{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
+{{- end }}
+{{- end }}
+{{- end }}
+
+connectors:
+{{- if $scDefault }}
+  forward/traces-default-exporter: {}
+  forward/metrics-default-exporter: {}
+  forward/logs-default-exporter: {}
+{{- end }}
+{{- if not $useRouting }}
+  forward/traces-to-sc: {}
+  forward/metrics-to-sc: {}
+  forward/logs-to-sc: {}
+{{- end }}
+{{- if $samplingActive }}
+  forward/traces-to-sampling: {}
+{{- end }}
+{{- if $scDefault }}
+{{- if or .SignalControl.RedMetricsMaxTimeSeries .SignalControl.RedMetricsAdditionalSpanAttributes }}
+  dash0redmetrics:
+{{- if .SignalControl.RedMetricsMaxTimeSeries }}
+    max_time_series: {{ .SignalControl.RedMetricsMaxTimeSeries }}
+{{- end }}
+{{- if .SignalControl.RedMetricsAdditionalSpanAttributes }}
+    additional_span_attributes:
+    {{- range $attr := .SignalControl.RedMetricsAdditionalSpanAttributes }}
+    - '{{ $attr }}'
+    {{- end }}
+{{- end }}
+{{- else }}
+  dash0redmetrics: {}
+{{- end }}
+{{- if .SignalControl.SignalToMetricsEnabled }}
+{{- if or .SignalControl.SignalToMetricsMaxTimeSeries .SignalControl.SignalToMetricsFlushInterval .SignalControl.SignalToMetricsCacheExpiration }}
+  dash0signaltometrics:
+{{- if .SignalControl.SignalToMetricsMaxTimeSeries }}
+    max_time_series: {{ .SignalControl.SignalToMetricsMaxTimeSeries }}
+{{- end }}
+{{- if .SignalControl.SignalToMetricsCacheExpiration }}
+    cache_expiration: {{ .SignalControl.SignalToMetricsCacheExpiration }}
+{{- end }}
+{{- if .SignalControl.SignalToMetricsFlushInterval }}
+    metrics_flush_interval: {{ .SignalControl.SignalToMetricsFlushInterval }}
+{{- end }}
+{{- else }}
+  dash0signaltometrics: {}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $hasNamespacedDash0 }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+{{- if or $.SignalControl.RedMetricsMaxTimeSeries $.SignalControl.RedMetricsAdditionalSpanAttributes }}
+  dash0redmetrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+{{- if $.SignalControl.RedMetricsMaxTimeSeries }}
+    max_time_series: {{ $.SignalControl.RedMetricsMaxTimeSeries }}
+{{- end }}
+{{- if $.SignalControl.RedMetricsAdditionalSpanAttributes }}
+    additional_span_attributes:
+    {{- range $attr := $.SignalControl.RedMetricsAdditionalSpanAttributes }}
+    - '{{ $attr }}'
+    {{- end }}
+{{- end }}
+{{- else }}
+  dash0redmetrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
+{{- end }}
+{{- if $.SignalControl.SignalToMetricsEnabled }}
+{{- if or $.SignalControl.SignalToMetricsMaxTimeSeries $.SignalControl.SignalToMetricsFlushInterval $.SignalControl.SignalToMetricsCacheExpiration }}
+  dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+{{- if $.SignalControl.SignalToMetricsMaxTimeSeries }}
+    max_time_series: {{ $.SignalControl.SignalToMetricsMaxTimeSeries }}
+{{- end }}
+{{- if $.SignalControl.SignalToMetricsCacheExpiration }}
+    cache_expiration: {{ $.SignalControl.SignalToMetricsCacheExpiration }}
+{{- end }}
+{{- if $.SignalControl.SignalToMetricsFlushInterval }}
+    metrics_flush_interval: {{ $.SignalControl.SignalToMetricsFlushInterval }}
+{{- end }}
+{{- else }}
+  dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+  {{- if $useRouting }}
+  routing/traces:
+{{- if $scDefault }}
+    default_pipelines: [traces/sc/default]
+{{- end }}
+    error_mode: ignore
+    table:
+    {{- range $ns, $sc := $.Exporters.NamespaceSC }}
+    {{- if $sc.DatasetBranches }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+        {{- range $b := $sc.DatasetBranches }}
+          - traces/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+{{- if $samplingActive }}
+  routing/traces-sampled:
+{{- if $scDefault }}
+    default_pipelines: [traces/export/default]
+{{- end }}
+    error_mode: ignore
+    table:
+    {{- range $ns, $sc := $.Exporters.NamespaceSC }}
+    {{- if $sc.DatasetBranches }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+          - traces/export/sampled/ns/{{ $ns }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+  routing/metrics:
+{{- if $scDefault }}
+    default_pipelines: [metrics/sc/default]
+{{- end }}
+    error_mode: ignore
+    table:
+    {{- range $ns, $sc := $.Exporters.NamespaceSC }}
+    {{- if $sc.DatasetBranches }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+        {{- range $b := $sc.DatasetBranches }}
+          - metrics/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+  routing/logs:
+{{- if $scDefault }}
+    default_pipelines: [logs/sc/default]
+{{- end }}
+    error_mode: ignore
+    table:
+    {{- range $ns, $sc := $.Exporters.NamespaceSC }}
+    {{- if $sc.DatasetBranches }}
+      - context: resource
+        condition: attributes["k8s.namespace.name"] == "{{ $ns }}"
+        pipelines:
+        {{- range $b := $sc.DatasetBranches }}
+          - logs/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "{{ .SelfIpReference }}:4317"
+        {{- /*
+        The producers' OTLP exporter batches by item count, not by byte size, so batches can exceed grpc-go's 4 MiB
+        default. The limit is the same one the producers' own OTLP receivers use.
+        */}}
+        max_recv_msg_size_mib: 8388608
+        {{- /*
+        The producers reach this collector through the service's virtual IP, where kube-proxy picks a backend once per
+        connection. Their gRPC connections would otherwise live forever and pin each producer to one pod, so the
+        connections are aged out to let senders redistribute (and to pick up newly added pods).
+        */}}
+        keepalive:
+          server_parameters:
+            max_connection_age: 5m
+            max_connection_age_grace: 30s
+      http:
+        endpoint: "{{ .SelfIpReference }}:4318"
+{{- if $metricRecorderActive }}
+  dash0metricrecorder:
+    metric_recorder: dash0metricrecorder
+{{- end }}
+{{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+processors:
+  {{- if or .SendBatchSize .SendBatchMaxSize }}
+  batch:
+    {{- if .SendBatchSize }}
+    send_batch_size: {{ .SendBatchSize }}
+    {{- end }}
+    {{- if .SendBatchMaxSize }}
+    send_batch_max_size: {{ .SendBatchMaxSize }}
+    {{- end }}
+  {{- else }}
+  batch: {}
+  {{- end }}
+
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  resource/signal_control_attributes:
+    attributes:
+    - key: dash0.org.technical.id
+      value: edge
+      action: upsert
+    - key: dash0.dataset
+      value: {{ .SignalControl.Dataset }}
+      action: upsert
+{{- if $hasNamespacedDash0 }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    attributes:
+    - key: dash0.org.technical.id
+      value: edge
+      action: upsert
+    - key: dash0.dataset
+      value: {{ $b.Dataset }}
+      action: upsert
+{{- end }}
+{{- end }}
+{{- end }}
+  dash0resource: {}
+{{- if or .SignalControl.OperationPreferSpanName .SignalControl.OperationCardinalityRules }}
+  dash0operation:
+{{- if .SignalControl.OperationPreferSpanName }}
+    prefer_span_name: true
+{{- end }}
+{{- if .SignalControl.OperationCardinalityRules }}
+    cardinality_rules:
+    {{- range $rule := .SignalControl.OperationCardinalityRules }}
+    - id: '{{ $rule.Id }}'
+{{- if $rule.SourceAttribute }}
+      source_attribute: '{{ $rule.SourceAttribute }}'
+{{- end }}
+{{- if $rule.QuickFilter }}
+      quick_filter: '{{ $rule.QuickFilter }}'
+{{- end }}
+      operation_matchers:
+      {{- range $m := $rule.OperationMatchers }}
+      - regex: '{{ $m.Regex }}'
+        replacements:
+        {{- range $r := $m.Replacements }}
+        - '{{ $r }}'
+        {{- end }}
+{{- if $m.QuickFilter }}
+        quick_filter: '{{ $m.QuickFilter }}'
+{{- end }}
+{{- if $m.Literal }}
+        literal: true
+{{- end }}
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- else }}
+  dash0operation: {}
+{{- end }}
+{{- if .SignalControl.SpamFilterEnabled }}
+{{- if or $metricRecorderActive .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
+  dash0filter:
+{{- if $metricRecorderActive }}
+    metric_recorder: dash0metricrecorder
+{{- end }}
+{{- if .SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ .SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if .SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ .SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+{{- else }}
+  dash0filter: {}
+{{- end }}
+{{- end }}
+{{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- if $.SignalControl.SpamFilterCacheExpiration }}
+    cache_expiration: {{ $.SignalControl.SpamFilterCacheExpiration }}
+{{- end }}
+{{- if $.SignalControl.SpamFilterAllowNoSettingsExt }}
+    allow_no_settings_ext: {{ $.SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $samplingActive }}
+  dash0sampling:
+    decision_maker_endpoint: {{ .SignalControl.Endpoint }}
+    decision_maker_headers:
+      Authorization: Bearer ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
+      Dash0-Dataset: {{ .SignalControl.Dataset }}
+    decision_maker_insecure: {{ .SignalControl.Insecure }}
+    default_dataset: {{ .SignalControl.Dataset }}
+{{- if .SignalControl.SamplingFallbackSampleRatio }}
+    fallback_sample_ratio: {{ .SignalControl.SamplingFallbackSampleRatio }}
+{{- end }}
+{{- if .SignalControl.SamplingDebug }}
+    debug: true
+{{- end }}
+{{- if .SignalControl.SamplingEnableBatching }}
+    enable_batching: true
+{{- end }}
+    reservoir:
+      type: {{ .SignalControl.SamplingReservoirType }}
+      metric_level: {{ .SignalControl.SamplingReservoirMetricLevel }}
+{{- if eq .SignalControl.SamplingReservoirType "disk" }}
+      data_dir: /var/lib/dash0/trace-reservoir
+      max_disk_bytes: {{ .SignalControl.SamplingReservoirMaxDiskBytes }}
+{{- else if .SignalControl.SamplingReservoirMaxMemoryBytes }}
+      max_memory_bytes: {{ .SignalControl.SamplingReservoirMaxMemoryBytes }}
+{{- end }}
+{{- end }}
+
+{{ template "exporters" . }}
+
+service:
+  extensions:
+  - health_check
+  {{- if .EnableProfExtension }}
+  - pprof
+  {{- end }}
+  - dash0settingsonedgeextension
+  {{- if $metricRecorderActive }}
+  - dash0metricrecorder
+  {{- end }}
+  {{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+  {{- range $ns, $sc := .Exporters.NamespaceSC }}
+  {{- range $b := $sc.DatasetBranches }}
+  - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+
+  pipelines:
+    traces/otlp-to-sc:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+      exporters:
+        {{- if $useRouting }}
+        - routing/traces
+        {{- else }}
+        - forward/traces-to-sc
+        {{- end }}
+
+{{- if $scDefault }}
+
+    traces/sc/default:
+      receivers:
+        {{- if $useRouting }}
+        - routing/traces
+        {{- else }}
+        - forward/traces-to-sc
+        {{- end }}
+      processors:
+        - resource/signal_control_attributes
+        - dash0resource
+        - dash0operation
+        {{- if .SignalControl.SpamFilterEnabled }}
+        - dash0filter
+        {{- end }}
+      exporters:
+        {{- if $samplingActive }}
+        - forward/traces-to-sampling
+        {{- end }}
+        - dash0redmetrics
+        {{- if .SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics
+        {{- end }}
+        {{- if not $samplingActive }}
+        - forward/traces-default-exporter
+        {{- end }}
+
+    metrics/derived/default:
+      receivers:
+        - dash0redmetrics
+        {{- if .SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics
+        {{- end }}
+      processors:
+        - batch
+      exporters:
+      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+      {{- end }}
+      {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
+        - {{ $exporter.Name }}
+      {{- end }}
+{{- end }}
+
+{{- if $samplingActive }}
+
+    traces/sampled:
+      receivers:
+        - forward/traces-to-sampling
+      processors:
+        - dash0sampling
+      exporters:
+        {{- if $hasNamespacedDash0 }}
+        - routing/traces-sampled
+        {{- else }}
+        - forward/traces-default-exporter
+        {{- end }}
+{{- end }}
+
+{{- if $scDefault }}
+
+    traces/export/default:
+      receivers:
+        {{- if and $samplingActive $hasNamespacedDash0 }}
+        - routing/traces-sampled
+        {{- end }}
+        {{- if or (not $samplingActive) (not $hasNamespacedDash0) }}
+        - forward/traces-default-exporter
+        {{- end }}
+      exporters:
+      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+      {{- end }}
+      {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
+        - {{ $exporter.Name }}
+      {{- end }}
+{{- end }}
+
+{{- range $ns, $sc := $.Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+
+    traces/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - routing/traces
+      processors:
+        - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        - dash0resource
+        - dash0operation
+        {{- if $.SignalControl.SpamFilterEnabled }}
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+      exporters:
+      {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+      {{- end }}
+        {{- if and $samplingActive (eq $b.DatasetIndex 0) }}
+        - forward/traces-to-sampling
+        {{- else }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+        {{- end }}
+        - dash0redmetrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- if $.SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+
+    metrics/derived/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - dash0redmetrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- if $.SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+      processors:
+        - batch
+      exporters:
+      {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+      {{- end }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
+{{- if and $samplingActive $sc.DatasetBranches }}
+
+    traces/export/sampled/ns/{{ $ns }}:
+      receivers:
+        - routing/traces-sampled
+      exporters:
+      {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+      {{- end }}
+        {{- range $exporter := (index $sc.DatasetBranches 0).Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
+{{- end }}
+
+    metrics/otlp-to-sc:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+      exporters:
+        {{- if $useRouting }}
+        - routing/metrics
+        {{- else }}
+        - forward/metrics-to-sc
+        {{- end }}
+
+{{- if $scDefault }}
+
+    metrics/sc/default:
+      receivers:
+        {{- if $useRouting }}
+        - routing/metrics
+        {{- else }}
+        - forward/metrics-to-sc
+        {{- end }}
+      processors:
+        - resource/signal_control_attributes
+        {{- if .SignalControl.SpamFilterEnabled }}
+        - dash0filter
+        {{- end }}
+      exporters:
+        - forward/metrics-default-exporter
+{{- end }}
+
+{{- if $metricRecorderActive }}
+
+    metrics/spam-counters:
+      receivers:
+        - dash0metricrecorder
+      processors:
+        - batch
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        - forward/metrics-default-exporter
+{{- end }}
+
+{{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+
+    metrics/spam-counters/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+      processors:
+        - batch
+      exporters:
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- if $scDefault }}
+
+    metrics/export/default:
+      receivers:
+        - forward/metrics-default-exporter
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
+
+{{- range $ns, $sc := $.Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+
+    metrics/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - routing/metrics
+      processors:
+        - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- if $.SignalControl.SpamFilterEnabled }}
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+      exporters:
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
+{{- end }}
+
+    logs/otlp-to-sc:
+      receivers:
+        - otlp
+      processors:
+        - memory_limiter
+      exporters:
+        {{- if $useRouting }}
+        - routing/logs
+        {{- else }}
+        - forward/logs-to-sc
+        {{- end }}
+
+{{- if $scDefault }}
+
+    logs/sc/default:
+      receivers:
+        {{- if $useRouting }}
+        - routing/logs
+        {{- else }}
+        - forward/logs-to-sc
+        {{- end }}
+      processors:
+        - resource/signal_control_attributes
+        - dash0resource
+        {{- if .SignalControl.SpamFilterEnabled }}
+        - dash0filter
+        {{- end }}
+      exporters:
+        - forward/logs-default-exporter
+        {{- if .SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics
+        {{- end }}
+
+    logs/export/default:
+      receivers:
+        - forward/logs-default-exporter
+      exporters:
+        {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $i, $exporter := .Exporters.DefaultDash0Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+{{- end }}
+
+{{- range $ns, $sc := $.Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+
+    logs/sc/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - routing/logs
+      processors:
+        - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        - dash0resource
+        {{- if $.SignalControl.SpamFilterEnabled }}
+        - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+      exporters:
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        {{- range $exporter := $b.Exporters }}
+        - {{ $exporter.Name }}
+        {{- end }}
+        {{- if $.SignalControl.SignalToMetricsEnabled }}
+        - dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+{{- end }}
+{{- end }}
+
+{{- if .InternalTelemetryEnabled }}
+
+  telemetry:
+    resource:
+      attributes:
+        - name: k8s.cluster.uid
+          value: "{{ .PseudoClusterUid }}"
+        {{- if .ClusterName }}
+        - name: k8s.cluster.name
+          value: "{{ .ClusterName }}"
+        {{- end }}
+        - name: k8s.node.name
+          value: ${env:K8S_NODE_NAME}
+        - name: k8s.namespace.name
+          value: ${env:DASH0_OPERATOR_NAMESPACE}
+        - name: k8s.deployment.uid
+          value: ${env:K8S_DEPLOYMENT_UID}
+        - name: k8s.deployment.name
+          value: ${env:K8S_DEPLOYMENT_NAME}
+        - name: k8s.pod.uid
+          value: ${env:K8S_POD_UID}
+        - name: k8s.pod.name
+          value: ${env:K8S_POD_NAME}
+        - name: k8s.container.name
+          value: "opentelemetry-collector"
+
+{{- if .SelfMonitoringMetricsConfig }}
+{{- .SelfMonitoringMetricsConfig }}
+{{- end }}
+{{- if .SelfMonitoringLogsConfig }}
+{{- .SelfMonitoringLogsConfig }}
+{{- end }}
+{{- end }}

@@ -5,13 +5,17 @@ package otelcolresources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -102,6 +106,36 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeFalse())
 			Expect(isChanged).To(BeTrue())
+			verifyObject(ctx, updated)
+		})
+
+		It("should retry an update that conflicts with a concurrent modification", func() {
+			err := oTelColResourceManager.createResource(ctx, testResource.DeepCopy(), logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			// The operator reads the object it is about to update through the controller-runtime cache, which lags
+			// behind the API server, so the resource version it sends can already be stale. This simulates that: the
+			// first update is rejected with a conflict, the retry has to re-read and succeed.
+			conflictingClient := &conflictOnFirstUpdateClient{Client: k8sClient}
+			managerWithConflicts := NewOTelColResourceManager(
+				conflictingClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                  TestImages,
+					OperatorNamespace:       OperatorNamespace,
+					OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+				},
+			)
+
+			updated := testResource.DeepCopy()
+			updated.Data["key"] = "value after a conflict"
+			isNew, isChanged, err := managerWithConflicts.createOrUpdateResource(ctx, updated, logger)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isNew).To(BeFalse())
+			Expect(isChanged).To(BeTrue())
+			Expect(conflictingClient.updateCalls).To(Equal(2), "expected exactly one retry after the conflict")
 			verifyObject(ctx, updated)
 		})
 
@@ -482,6 +516,45 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
 
 			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
+		})
+
+		It("should report that nothing has changed when the Signal Control collector is deployed", func() {
+			operatorConfiguration := DefaultOperatorConfigurationResource()
+			signalControlResource := &dash0v1alpha1.Dash0SignalControl{
+				Spec: dash0v1alpha1.Dash0SignalControlSpec{Enabled: ptr.To(true)},
+			}
+
+			// create the resources, then let the run that injects K8S_DAEMONSET_UID/K8S_DEPLOYMENT_UID settle
+			for range 2 {
+				_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					util.ExtraConfigDefaults,
+					operatorConfiguration,
+					nil,
+					signalControlResource,
+					logger,
+				)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			// From here on every reconcile must be a no-op. The pod disruption budget in particular needs both the
+			// resource version to be carried over (it rejects unconditional updates) and its always-present
+			// spec.selector patch to be recognized as irrelevant; otherwise it is rewritten on every reconcile, and
+			// since it is watched, that would keep the reconcile loop spinning.
+			for range 3 {
+				resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+					oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+						ctx,
+						util.ExtraConfigDefaults,
+						operatorConfiguration,
+						nil,
+						signalControlResource,
+						logger,
+					)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(resourcesHaveBeenCreated).To(BeFalse())
+				Expect(resourcesHaveBeenUpdated).To(BeFalse())
+			}
 		})
 	})
 
@@ -1213,4 +1286,27 @@ func verifyObject(ctx context.Context, testObject *corev1.ConfigMap) {
 	Expect(object.Namespace).To(Equal(testObject.Namespace))
 	Expect(object.Labels).To(Equal(testObject.Labels))
 	Expect(object.Data).To(Equal(testObject.Data))
+}
+
+// conflictOnFirstUpdateClient rejects the first Update with a conflict error and delegates everything else, to
+// exercise the retry in createOrUpdateResource.
+type conflictOnFirstUpdateClient struct {
+	client.Client
+	updateCalls int
+}
+
+func (c *conflictOnFirstUpdateClient) Update(
+	ctx context.Context,
+	obj client.Object,
+	opts ...client.UpdateOption,
+) error {
+	c.updateCalls++
+	if c.updateCalls == 1 {
+		return apierrors.NewConflict(
+			schema.GroupResource{Resource: "configmaps"},
+			obj.GetName(),
+			errors.New("the object has been modified; please apply your changes to the latest version and try again"),
+		)
+	}
+	return c.Client.Update(ctx, obj, opts...)
 }

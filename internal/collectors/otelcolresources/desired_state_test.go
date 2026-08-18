@@ -14,8 +14,10 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -23,6 +25,8 @@ import (
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -403,19 +407,24 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
-		daemonSet := getDaemonSet(desiredState)
-		Expect(daemonSet).NotTo(BeNil())
-		daemonSetPodSpec := daemonSet.Spec.Template.Spec
+		signalControlCollector := getSignalControlCollector(desiredState)
+		Expect(signalControlCollector).NotTo(BeNil())
+		signalControlPodSpec := signalControlCollector.Spec.Template.Spec
 
-		reservoirVolume := FindVolumeByName(daemonSetPodSpec.Volumes, "trace-reservoir")
+		reservoirVolume := FindVolumeByName(signalControlPodSpec.Volumes, "trace-reservoir")
 		Expect(reservoirVolume).NotTo(BeNil())
 		Expect(reservoirVolume.VolumeSource.EmptyDir).NotTo(BeNil())
 		Expect(reservoirVolume.VolumeSource.EmptyDir.SizeLimit).NotTo(BeNil())
 		Expect(reservoirVolume.VolumeSource.EmptyDir.SizeLimit.String()).To(Equal("1280Mi"))
 
-		collectorContainer := daemonSetPodSpec.Containers[0]
+		collectorContainer := signalControlPodSpec.Containers[0]
 		Expect(collectorContainer.Name).To(Equal("opentelemetry-collector"))
 		Expect(collectorContainer.Resources.Requests.StorageEphemeral().String()).To(Equal("1280Mi"))
+
+		// The daemonset no longer runs the sampling processor, so it needs neither the volume nor the request.
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(FindVolumeByName(daemonSetPodSpec.Volumes, "trace-reservoir")).To(BeNil())
+		Expect(daemonSetPodSpec.Containers[0].Resources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 	})
 
 	It("should not override an explicit ephemeral-storage request", func() {
@@ -639,7 +648,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(findObjectByName(desiredState, ExpectedDeploymentCollectorConfigMapName)).ToNot(BeNil())
 	})
 
-	It("should use the Signal Control collector image when Signal Control is enabled via the resource", func() {
+	It("should use the Signal Control collector image only for the Signal Control collector", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -655,16 +664,111 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
+		signalControlCollectorContainer := getSignalControlCollector(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(signalControlCollectorContainer.Image).To(Equal(SignalControlCollectorImageTest))
+		Expect(signalControlCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+
+		// The two producer collectors no longer run any Signal Control component, so they keep the regular image.
 		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
-		Expect(daemonSetCollectorContainer.Image).To(Equal(SignalControlCollectorImageTest))
-		Expect(daemonSetCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(daemonSetCollectorContainer.Image).To(Equal(CollectorImageTest))
 
 		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
-		Expect(deploymentCollectorContainer.Image).To(Equal(SignalControlCollectorImageTest))
-		Expect(deploymentCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(deploymentCollectorContainer.Image).To(Equal(CollectorImageTest))
 	})
 
-	It("should fall back to the regular collector image when Signal Control is enabled but no Signal Control collector image is provided", func() {
+	It("should spread the Signal Control collector over the availability zones without ever blocking scheduling, "+
+		"and guard it with a pod disruption budget", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			SignalControl: SignalControlConfig{
+				Enabled:     true,
+				Endpoint:    "decision-maker.example.com:443",
+				ApiEndpoint: "https://control-plane-api.dash0.com",
+				Dataset:     "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		constraints := getSignalControlCollector(desiredState).Spec.Template.Spec.TopologySpreadConstraints
+		Expect(constraints).To(HaveLen(2))
+
+		// Replicas are distributed as evenly as the number of zones allows. Both constraints must stay advisory and
+		// carry no minDomains: with DoNotSchedule the scheduler rejects every node that does not carry the topology
+		// key, so no replica could be scheduled at all on a cluster whose nodes are not labelled with a zone.
+		Expect(constraints[0].TopologyKey).To(Equal("topology.kubernetes.io/zone"))
+		Expect(constraints[0].MaxSkew).To(Equal(int32(1)))
+		Expect(constraints[0].WhenUnsatisfiable).To(Equal(corev1.ScheduleAnyway))
+		Expect(constraints[0].MinDomains).To(BeNil())
+		Expect(constraints[0].MatchLabelKeys).To(ConsistOf("pod-template-hash"))
+		Expect(constraints[0].LabelSelector.MatchLabels).
+			To(HaveKeyWithValue("app.kubernetes.io/component", "signal-control-collector"))
+
+		Expect(constraints[1].TopologyKey).To(Equal("kubernetes.io/hostname"))
+		Expect(constraints[1].MaxSkew).To(Equal(int32(1)))
+		Expect(constraints[1].WhenUnsatisfiable).To(Equal(corev1.ScheduleAnyway))
+		Expect(constraints[1].MinDomains).To(BeNil())
+		Expect(constraints[1].MatchLabelKeys).To(ConsistOf("pod-template-hash"))
+
+		// Never drop below the configured replica count while rolling, and add at most one pod at a time.
+		strategy := getSignalControlCollector(desiredState).Spec.Strategy
+		Expect(strategy.Type).To(Equal(appsv1.RollingUpdateDeploymentStrategyType))
+		Expect(strategy.RollingUpdate.MaxUnavailable.IntValue()).To(Equal(0))
+		Expect(strategy.RollingUpdate.MaxSurge.IntValue()).To(Equal(1))
+
+		pdb := findObjectByName(desiredState, ExpectedSignalControlCollectorPdbName)
+		Expect(pdb).ToNot(BeNil())
+		pdbSpec := pdb.(*policyv1.PodDisruptionBudget).Spec
+		Expect(pdbSpec.MinAvailable).To(BeNil())
+		Expect(pdbSpec.MaxUnavailable.IntValue()).To(Equal(1))
+		Expect(pdbSpec.Selector.MatchLabels).
+			To(HaveKeyWithValue("app.kubernetes.io/component", "signal-control-collector"))
+	})
+
+	DescribeTable("should set spec.trafficDistribution on the Signal Control collector service depending on the "+
+		"Kubernetes version",
+		func(versionInfo cluster.KubernetesVersionInfo, versionDetected bool, expectedValue *string) {
+			config := &oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				Images:            TestImages,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}
+			config.ServiceTrafficDistribution =
+				cluster.ResolveServiceTrafficDistribution(versionInfo, versionDetected, logd.Discard())
+
+			service := assembleSignalControlCollectorService(config)
+			if expectedValue == nil {
+				Expect(service.Spec.TrafficDistribution).To(BeNil())
+			} else {
+				Expect(service.Spec.TrafficDistribution).ToNot(BeNil())
+				Expect(*service.Spec.TrafficDistribution).To(Equal(*expectedValue))
+			}
+
+			// The daemonset service routes node-locally and must never carry the field: kube-proxy gives
+			// internalTrafficPolicy Local precedence, so the zone hints would have no effect there anyway.
+			daemonSetService := assembleService(config)
+			Expect(daemonSetService.Spec.TrafficDistribution).To(BeNil())
+			Expect(*daemonSetService.Spec.InternalTrafficPolicy).To(Equal(corev1.ServiceInternalTrafficPolicyLocal))
+		},
+		Entry("omitted on 1.29", cluster.KubernetesVersionInfo{Major: 1, Minor: 29}, true, nil),
+		Entry("omitted on 1.30", cluster.KubernetesVersionInfo{Major: 1, Minor: 30}, true, nil),
+		Entry("set on 1.31", cluster.KubernetesVersionInfo{Major: 1, Minor: 31}, true, ptr.To("PreferClose")),
+		Entry("set on 1.34", cluster.KubernetesVersionInfo{Major: 1, Minor: 34}, true, ptr.To("PreferClose")),
+		Entry("omitted when the version is unknown", cluster.KubernetesVersionInfo{}, false, nil),
+	)
+
+	It("should not deploy a Signal Control collector when Signal Control is enabled but no Signal Control collector image is provided", func() {
 		images := TestImages
 		images.SignalControlCollectorImage = ""
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
@@ -682,8 +786,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
+		Expect(getSignalControlCollector(desiredState)).To(BeNil())
+
 		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
 		Expect(daemonSetCollectorContainer.Image).To(Equal(CollectorImageTest))
+		Expect(daemonSetCollectorContainer.Env).ToNot(ContainElement(HaveField("Name", "DASH0_SIGNAL_CONTROL_AUTH_TOKEN")))
 	})
 
 	It("should add the profilesSupport feature gate to the daemonset collector args when profiling is enabled", func() {
@@ -730,7 +837,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			ToNot(ContainElement("--feature-gates=-processor.resourcedetection.propagateerrors"))
 	})
 
-	It("should add the -processor.resourcedetection.propagateerrors feature gate to the collector args when Signal Control is enabled", func() {
+	It("should not add the -processor.resourcedetection.propagateerrors feature gate to any collector, since none of "+
+		"them runs the resourcedetection processor on the Signal Control image", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -747,17 +855,14 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(err).ToNot(HaveOccurred())
 
+		signalControlCollectorContainer := getSignalControlCollector(desiredState).Spec.Template.Spec.Containers[0]
+		Expect(signalControlCollectorContainer.Args).To(ConsistOf("--config=file:/etc/otelcol/conf/config.yaml"))
+
 		daemonSetCollectorContainer := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
-		Expect(daemonSetCollectorContainer.Args).To(HaveLen(2))
-		Expect(daemonSetCollectorContainer.Args[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(daemonSetCollectorContainer.Args[1]).
-			To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
+		Expect(daemonSetCollectorContainer.Args).To(ConsistOf("--config=file:/etc/otelcol/conf/config.yaml"))
 
 		deploymentCollectorContainer := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
-		Expect(deploymentCollectorContainer.Args).To(HaveLen(2))
-		Expect(deploymentCollectorContainer.Args[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(deploymentCollectorContainer.Args[1]).
-			To(Equal("--feature-gates=-processor.resourcedetection.propagateerrors"))
+		Expect(deploymentCollectorContainer.Args).To(ConsistOf("--config=file:/etc/otelcol/conf/config.yaml"))
 	})
 
 	It("should omit all resources related to the collector deployment if collecting cluster metrics is disabled", func() {
@@ -2560,6 +2665,13 @@ func getDaemonSet(desiredState []clientObject) *appsv1.DaemonSet {
 
 func getDeployment(desiredState []clientObject) *appsv1.Deployment {
 	if deployment := findObjectByName(desiredState, ExpectedDeploymentName); deployment != nil {
+		return deployment.(*appsv1.Deployment)
+	}
+	return nil
+}
+
+func getSignalControlCollector(desiredState []clientObject) *appsv1.Deployment {
+	if deployment := findObjectByName(desiredState, ExpectedSignalControlCollectorName); deployment != nil {
 		return deployment.(*appsv1.Deployment)
 	}
 	return nil

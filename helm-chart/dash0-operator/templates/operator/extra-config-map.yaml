@@ -121,6 +121,40 @@ data:
     deploymentSysctls:
       {{- toYaml .Values.operator.collectors.deploymentSysctls | nindent 6 }}
 {{- end }}
+    signalControlCollectorReplicas: {{ .Values.operator.collectors.signalControlCollectorReplicas }}
+    signalControlCollectorContainerResources:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorContainerResources | nindent 6 }}
+    signalControlCollectorConfigurationReloaderContainerResources:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorConfigurationReloaderContainerResources | nindent 6 }}
+{{- if .Values.operator.collectors.signalControlCollectorLabels }}
+    signalControlCollectorLabels:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.signalControlCollectorAnnotations }}
+    signalControlCollectorAnnotations:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorAnnotations | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.signalControlCollectorPodLabels }}
+    signalControlCollectorPodLabels:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorPodLabels | nindent 6 }}
+{{- end }}
+{{- if .Values.operator.collectors.signalControlCollectorPodAnnotations }}
+    signalControlCollectorPodAnnotations:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorPodAnnotations | nindent 6 }}
+{{- end }}
+    signalControlCollectorTolerations:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorTolerations | nindent 6 }}
+    signalControlCollectorNodeAffinity:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorNodeAffinity | nindent 6 }}
+{{- if .Values.operator.collectors.signalControlCollectorPriorityClassName }}
+    signalControlCollectorPriorityClassName: {{ .Values.operator.collectors.signalControlCollectorPriorityClassName }}
+{{- end }}
+    signalControlCollectorProbes:
+      {{- .Values.operator.collectors.signalControlCollectorProbes | toYaml | nindent 6 }}
+{{- if .Values.operator.collectors.signalControlCollectorSysctls }}
+    signalControlCollectorSysctls:
+      {{- toYaml .Values.operator.collectors.signalControlCollectorSysctls | nindent 6 }}
+{{- end }}
 {{- if and .Values.operator.targetAllocator.mTls.enabled (or (not .Values.operator.targetAllocator.mTls.serverCertSecretName) (not .Values.operator.targetAllocator.mTls.clientCertSecretName)) }}
   {{- fail "targetAllocatorMtlsEnabled is set to 'true' but one or both certificate secret names are not provided. Please set both operator.targetAllocator.mTls.serverCertSecretName and operator.targetAllocator.mTls.clientCertSecretName." }}
 {{- end }}

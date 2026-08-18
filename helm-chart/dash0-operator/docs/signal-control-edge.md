@@ -27,9 +27,9 @@ not applied and the standard collector is used, even when the Helm flag and the 
 Enabling SignalControl Edge takes two steps: turning the feature flag on in the Helm chart, and creating a
 `Dash0SignalControl` resource to configure it.
 
-The Helm flag controls which collector image will be used (the one with SCE components or without them) and whether the
-`Dash0SignalControl` and `Dash0SamplingRule` CRDs will be installed in the cluster. It is set to `false` by default to
-ensure that without explicitly enabling it, there are zero changes to clusters of customers not using SCE.
+The Helm flag controls whether the operator is given the SCE collector image, and whether the `Dash0SignalControl` and
+`Dash0SamplingRule` CRDs will be installed in the cluster. It is set to `false` by default to ensure that without
+explicitly enabling it, there are zero changes to clusters of customers not using SCE.
 
 The `Dash0SignalControl` resource configures the individual SCE components. Please refer to
 [dash0signalcontrol_types.go](https://github.com/dash0hq/dash0-operator/blob/main/api/operator/v1alpha1/dash0signalcontrol_types.go)
@@ -49,10 +49,15 @@ trace are routed to the same dataset. When the spans of a trace are split across
 applied to some of them, it might result in orphaned spans in Dash0.
 
 To enable SignalControl Edge, the only additional required Helm setting is `operator.signalControl.enabled` which can be
-either supplied in the values file or via `--set operator.signalControl.enabled=true`. Because the SCE components add
-extra processing and buffering — tail-sampling in particular buffers traces in memory while decisions are pending —
-plan to increase the collector's memory when enabling SignalControl Edge; at least 500Mi of additional memory is a
-reasonable starting point.
+either supplied in the values file or via `--set operator.signalControl.enabled=true`.
+
+The SCE components do not run in the per-node collector. Instead, the operator deploys a dedicated **SignalControl
+collector** (a Deployment plus a Service in the operator namespace) that receives the Dash0-bound telemetry of the other
+two collectors, applies SignalControl Edge and exports to Dash0. Sizing therefore applies to that workload rather than
+to every node: it defaults to two replicas with 1Gi of memory each
+(`operator.collectors.signalControlCollectorReplicas` and
+`operator.collectors.signalControlCollectorContainerResources`). Because tail-sampling buffers traces in memory while
+decisions are pending, raise the memory limit for clusters with high trace volume.
 
 Once the helm install or upgrade has completed, the next step is to create a `Dash0SignalControl` resource.
 Note that this resource is a singleton: only one instance may exist per cluster.
@@ -68,8 +73,9 @@ metadata:
 spec: {}
 ```
 
-After creating this resource, you should now see a new component (edge proxy) in the operator namespace and if you inspect
-the collector config, you will see the inserted SCE components.
+After creating this resource, you should now see two new components in the operator namespace — the SignalControl
+collector and the edge proxy — and if you inspect the SignalControl collector's config map, you will see the SCE
+components. The per-node collector's config map instead contains an `otlp/signal-control-collector` exporter.
 
 As a test, you can define a cluster-scoped `Dash0SamplingRule` resource. The probabilistic rule below keeps 10% of all
 traces and is evaluated locally in the collector, without involving the Decision Maker:
@@ -92,15 +98,53 @@ spec:
 ## How it works
 
 SignalControl Edge does not replace the collector's normal processing — it runs after it. Telemetry first passes
-through the standard collector processors (resource detection, Kubernetes attributes, batching, and so on), and only
-then is handed to the SignalControl Edge components, right before it is exported to Dash0. The regular collection behavior
-stays unchanged; the egress-reduction logic is layered on top.
+through the standard collector processors (resource detection, Kubernetes attributes, batching, and so on) in the
+per-node collector, which then forwards everything destined for Dash0 to the SignalControl collector over OTLP. That
+collector applies the SignalControl Edge components and exports to Dash0. Telemetry destined for a non-Dash0 exporter
+never leaves the per-node collector and is unaffected. The regular collection behavior stays unchanged; the
+egress-reduction logic is layered on top.
+
+Concentrating the SCE components in one workload means the tail-sampling reservoir, the RED-metrics pre-aggregation and
+the settings polling happen once per cluster rather than once per node.
+
+### Zone-aware routing
+
+The hop from the per-node collector to the SignalControl collector carries the cluster's entire Dash0-bound telemetry
+volume, so on multi-zone clusters it is worth keeping inside the sending pod's availability zone. The operator sets
+`spec.trafficDistribution: PreferClose` on the SignalControl collector's service, which makes Kubernetes prefer
+endpoints in the sender's own zone. The field is only set on Kubernetes 1.31 or newer, the first version that enables it
+by default; on older clusters, and on clusters whose Kubernetes version the operator could not determine, it is omitted
+and routing stays zone-agnostic.
+
+A few things to be aware of:
+
+- **Sizing is per zone.** Kubernetes can only route within a zone that has a ready SignalControl collector pod. Set
+  `operator.collectors.signalControlCollectorReplicas` to at least the number of zones that run monitored workloads;
+  the operator logs a warning when there are fewer replicas than zones.
+- **Uncovered zones fall back, they do not fail.** A zone without a ready endpoint simply sends to a collector in
+  another zone. This costs cross-zone traffic, it never drops telemetry.
+- **All nodes need the `topology.kubernetes.io/zone` label.** Kubernetes ignores the zone hints entirely for a service
+  as soon as a ready endpoint sits on a node without that label. Managed cloud providers set it automatically.
+- **Cilium users** need `loadBalancer.serviceTopology=true`, otherwise the hints are ignored by the data plane.
+- **Do not add the `service.kubernetes.io/topology-mode` annotation** to the service. That annotation takes precedence
+  over `spec.trafficDistribution` and would replace the behavior described here with the older, heuristic mode.
+
+To check that it is working, confirm that every ready endpoint is hinted for its own zone:
+
+```console
+kubectl get endpointslice \
+  -n dash0-system \
+  -l kubernetes.io/service-name=dash0-operator-signal-control-collector-service \
+  -o yaml
+```
 
 The rules that drive these components (sampling rules, spam filters, signal-to-metrics rules) are authored as Kubernetes
 custom resources. The operator reconciles each resource and syncs it to the Dash0 backend via the Dash0 API. Independently, the
 collector pulls the effective, merged settings back down at runtime and feeds them to the SignalControl Edge components, so
 rule changes take effect without redeploying the collector.
 
-Most rules are evaluated locally in the collector. Tail-sampling decisions that require coordination across collector
-instances are instead delegated to the Dash0 Decision Maker on the SaaS side; when the Edge Proxy is enabled, collectors
-reach the Decision Maker through it rather than connecting individually.
+Most rules are evaluated locally in the SignalControl collector. Tail-sampling decisions that require coordination
+across collector instances are instead delegated to the Dash0 Decision Maker on the SaaS side; when the Edge Proxy is
+enabled, collectors reach the Decision Maker through it rather than connecting individually. A trace whose spans are
+spread over several SignalControl collector replicas is still sampled correctly: the Decision Maker broadcasts each
+decision to every connected collector.

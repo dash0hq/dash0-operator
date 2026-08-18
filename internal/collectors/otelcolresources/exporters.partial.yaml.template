@@ -1,0 +1,102 @@
+{{- /*
+The exporters section is identical for all collector workloads: every workload declares every configured exporter
+(default and per-namespace). Which of them a workload actually references depends on its pipelines. This partial is
+parsed into all three collector configuration templates, see collector_config_maps.go.
+*/ -}}
+{{- define "exporters" -}}
+exporters:
+  {{- if .DebugVerbosityDetailed }}
+  debug:
+    verbosity: detailed
+  {{- else if .DevelopmentMode }}
+  debug: {}
+  {{- end }}
+
+  {{- range $i, $exporter := .Exporters.Default }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+    {{- if $exporter.Insecure }}
+    tls:
+      insecure: true
+    {{- else if $exporter.InsecureSkipVerify }}
+    tls:
+      insecure_skip_verify: true
+    {{- end }}
+    {{- if $exporter.Headers }}
+    headers:
+      {{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
+      {{- end }}
+    {{- end }}
+    {{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
+    {{- end }}
+    {{- if $exporter.Keepalive }}
+    keepalive:
+      {{- if $exporter.Keepalive.Time }}
+      time: "{{ $exporter.Keepalive.Time }}"
+      {{- end }}
+      {{- if $exporter.Keepalive.Timeout }}
+      timeout: "{{ $exporter.Keepalive.Timeout }}"
+      {{- end }}
+      {{- if $exporter.Keepalive.PermitWithoutStream }}
+      permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
+      {{- end }}
+    {{- end }}
+    {{- if $exporter.BalancerName }}
+    balancer_name: "{{ $exporter.BalancerName }}"
+    {{- end }}
+  {{- end }}
+
+  {{- range $ns := .Exporters.AllNamespaceKeys }}
+  {{- $exporters := index $.Exporters.Namespaced $ns }}
+  {{- range $i, $exporter := $exporters }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+    {{- if $exporter.Insecure }}
+    tls:
+      insecure: true
+    {{- else if $exporter.InsecureSkipVerify }}
+    tls:
+      insecure_skip_verify: true
+    {{- end }}
+    {{- if $exporter.Headers }}
+    headers:
+      {{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
+      {{- end }}
+    {{- end }}
+    {{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
+    {{- end }}
+    {{- if $exporter.Keepalive }}
+    keepalive:
+      {{- if $exporter.Keepalive.Time }}
+      time: "{{ $exporter.Keepalive.Time }}"
+      {{- end }}
+      {{- if $exporter.Keepalive.Timeout }}
+      timeout: "{{ $exporter.Keepalive.Timeout }}"
+      {{- end }}
+      {{- if $exporter.Keepalive.PermitWithoutStream }}
+      permit_without_stream: {{ $exporter.Keepalive.PermitWithoutStream }}
+      {{- end }}
+    {{- end }}
+    {{- if $exporter.BalancerName }}
+    balancer_name: "{{ $exporter.BalancerName }}"
+    {{- end }}
+  {{- end }}
+  {{- end }}
+{{- end -}}
+{{- /*
+signalControlCollectorExporter renders the OTLP exporter that the daemonset and the cluster-metrics deployment use to
+forward their Dash0-bound telemetry to the Signal Control collector. The endpoint is deliberately the plain cluster-DNS
+name of the (non-headless) service, with no dns:/// prefix and no balancer_name: the connection must terminate on the
+service's virtual IP so that kube-proxy selects the backend, which is what makes zone-aware routing via EndpointSlice
+hints possible. A client-side balancer would resolve pod IPs directly and bypass kube-proxy entirely.
+*/ -}}
+{{- define "signalControlCollectorExporter" }}
+  otlp/signal-control-collector:
+    endpoint: "{{ .SignalControlCollectorServiceName }}.{{ .OperatorNamespace }}.svc.cluster.local:4317"
+    tls:
+      insecure: true
+{{- end -}}

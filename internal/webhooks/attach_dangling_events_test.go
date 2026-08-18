@@ -69,7 +69,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 		)
 		collectorManager := collectors.NewCollectorManager(
 			k8sClient,
-			clientset,
+			nodeMetadataClient,
 			util.ExtraConfigDefaults,
 			false,
 			false,

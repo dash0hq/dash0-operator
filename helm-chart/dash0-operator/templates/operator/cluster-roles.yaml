@@ -106,7 +106,8 @@ rules:
   - patch
   - update
 
-# Permissions required to detect the container runtime:
+# Permissions required to detect the container runtime, and to count the cluster's availability zones when checking
+# whether the Signal Control collector has a replica in every zone:
 - apiGroups:
   - ""
   resources:
@@ -401,6 +402,20 @@ rules:
   # manages.
   - daemonsets
   - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - policy
+  resources:
+  # The pod disruption budget of the Signal Control collector, which keeps voluntary disruptions from taking down more
+  # than one of its replicas at a time.
+  - poddisruptionbudgets
   verbs:
   - create
   - delete

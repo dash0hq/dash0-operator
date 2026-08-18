@@ -11,6 +11,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -27,10 +28,11 @@ import (
 )
 
 var (
-	cfg       *rest.Config
-	k8sClient client.Client
-	clientset *kubernetes.Clientset
-	testEnv   *envtest.Environment
+	cfg                *rest.Config
+	k8sClient          client.Client
+	clientset          *kubernetes.Clientset
+	nodeMetadataClient metadata.Interface
+	testEnv            *envtest.Environment
 )
 
 func TestCollectorManager(t *testing.T) {
@@ -66,6 +68,10 @@ var _ = BeforeSuite(func() {
 	clientset, err = kubernetes.NewForConfig(cfg)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(clientset).NotTo(BeNil())
+
+	nodeMetadataClient, err = metadata.NewForConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(nodeMetadataClient).NotTo(BeNil())
 })
 
 var _ = AfterSuite(func() {
