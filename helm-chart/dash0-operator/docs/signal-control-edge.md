@@ -112,8 +112,9 @@ the settings polling happen once per cluster rather than once per node.
 The hop from the per-node collector to the SignalControl collector carries the cluster's entire Dash0-bound telemetry
 volume, so on multi-zone clusters it is worth keeping inside the sending pod's availability zone. The operator sets
 `spec.trafficDistribution: PreferClose` on the SignalControl collector's service, which makes Kubernetes prefer
-endpoints in the sender's own zone. The field requires Kubernetes 1.30 or newer; on older clusters, and on clusters
-whose Kubernetes version the operator could not determine, it is omitted and routing stays zone-agnostic.
+endpoints in the sender's own zone. The field is only set on Kubernetes 1.31 or newer, the first version that enables it
+by default; on older clusters, and on clusters whose Kubernetes version the operator could not determine, it is omitted
+and routing stays zone-agnostic.
 
 A few things to be aware of:
 

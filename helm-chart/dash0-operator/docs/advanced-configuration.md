@@ -468,7 +468,7 @@ Pod-level [sysctls](https://kubernetes.io/docs/tasks/administer-cluster/sysctl-c
 collector pods via `operator.collectors.daemonSetSysctls` (for the daemonset collector),
 `operator.collectors.deploymentSysctls` (for the cluster-metrics-collector deployment) and
 `operator.collectors.signalControlCollectorSysctls` (for the SignalControl collector deployment).
-Both default to being unset, so no sysctls are applied unless you configure them.
+All three default to being unset, so no sysctls are applied unless you configure them.
 
 The primary use case is forcing TCP keepalive on the collector's network namespace.
 On some environments the connection-tracking layer reaps idle established TCP connections after a relatively short

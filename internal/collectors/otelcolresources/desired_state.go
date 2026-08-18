@@ -115,7 +115,7 @@ type oTelColConfig struct {
 	IsIPv6Cluster                                    bool
 	IsGkeAutopilot                                   bool
 	// ServiceTrafficDistribution is the value for spec.trafficDistribution on the operator's services, or nil when the
-	// Kubernetes version does not know the field. See cluster.ResolveServiceTrafficDistribution.
+	// Kubernetes version does not enable the field by default. See cluster.ResolveServiceTrafficDistribution.
 	ServiceTrafficDistribution     *string
 	OffsetStorageVolume            *corev1.Volume
 	SignalControl                  SignalControlConfig
@@ -2130,7 +2130,7 @@ func assembleSignalControlCollectorContainer(
 		return corev1.Container{}, err
 	}
 
-	// (8) No --feature-gates argument: this collector runs no resourcedetection processor, all resource detection has
+	// No --feature-gates argument: this collector runs no resourcedetection processor, all resource detection has
 	// already happened in the producer collectors.
 	collectorArgs := []string{
 		"--config=file:" + collectorConfigurationFilePath,

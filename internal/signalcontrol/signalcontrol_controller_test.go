@@ -71,7 +71,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 		)
 		collectorManager := collectors.NewCollectorManager(
 			k8sClient,
-			clientset,
+			nodeMetadataClient,
 			util.ExtraConfigDefaults,
 			false,
 			true,

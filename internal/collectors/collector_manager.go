@@ -14,7 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -30,7 +30,7 @@ import (
 
 type CollectorManager struct {
 	client.Client
-	clientset                   *kubernetes.Clientset
+	nodeMetadataClient          metadata.Interface
 	oTelColResourceManager      *otelcolresources.OTelColResourceManager
 	extraConfig                 atomic.Pointer[util.ExtraConfig]
 	developmentMode             bool
@@ -63,7 +63,7 @@ const (
 
 func NewCollectorManager(
 	k8sClient client.Client,
-	clientset *kubernetes.Clientset,
+	nodeMetadataClient metadata.Interface,
 	extraConfig util.ExtraConfig,
 	developmentMode bool,
 	signalControlFeatureEnabled bool,
@@ -72,7 +72,7 @@ func NewCollectorManager(
 ) *CollectorManager {
 	m := &CollectorManager{
 		Client:                      k8sClient,
-		clientset:                   clientset,
+		nodeMetadataClient:          nodeMetadataClient,
 		developmentMode:             developmentMode,
 		signalControlFeatureEnabled: signalControlFeatureEnabled,
 		enablementChecker:           enablementChecker,
@@ -228,17 +228,20 @@ func (m *CollectorManager) warnAboutInsufficientZoneCoverage(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) {
-	if m.clientset == nil {
+	if m.nodeMetadataClient == nil {
 		return
 	}
-	// The clientset bypasses the controller-runtime cache on purpose: reading nodes through the cached client would
-	// start an informer that keeps every node object in memory for the lifetime of the operator. The read is served
-	// from the API server's watch cache (ResourceVersion "0") and restricted to nodes that carry a zone label, since
-	// nodes without one contribute nothing to the zone count.
-	nodes, err := m.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
-		ResourceVersion: "0",
-		LabelSelector:   corev1.LabelTopologyZone,
-	})
+	// The metadata client bypasses the controller-runtime cache on purpose: reading nodes through the cached client
+	// would start an informer that keeps every node object in memory for the lifetime of the operator. Only object
+	// metadata is requested, since the zone label is all that is read, which keeps the node status (in particular the
+	// image list) off the wire. The read is served from the API server's watch cache (ResourceVersion "0") and
+	// restricted to nodes that carry a zone label, since nodes without one contribute nothing to the zone count.
+	nodes, err := m.nodeMetadataClient.
+		Resource(corev1.SchemeGroupVersion.WithResource("nodes")).
+		List(ctx, metav1.ListOptions{
+			ResourceVersion: "0",
+			LabelSelector:   corev1.LabelTopologyZone,
+		})
 	if err != nil {
 		logger.Debug("cannot list nodes to check the Signal Control collector's availability zone coverage", "error", err)
 		return

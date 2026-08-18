@@ -1817,10 +1817,10 @@ trace_statements:
 				))).To(Succeed())
 
 				By("verifying zone-aware routing is configured on the Signal Control collector service")
-				if kubernetesMajor == 1 && kubernetesMinor < 30 {
+				if kubernetesMajor == 1 && kubernetesMinor < 31 {
 					GinkgoWriter.Printf(
-						"skipping the spec.trafficDistribution assertions, the field requires Kubernetes 1.30+, "+
-							"server is %d.%d\n", kubernetesMajor, kubernetesMinor)
+						"skipping the spec.trafficDistribution assertions, the field is only enabled by default from "+
+							"Kubernetes 1.31 on, server is %d.%d\n", kubernetesMajor, kubernetesMinor)
 				} else {
 					Eventually(func(g Gomega) {
 						trafficDistribution, err := run(exec.Command(

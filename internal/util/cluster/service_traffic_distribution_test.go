@@ -39,8 +39,15 @@ var _ = Describe("ResolveServiceTrafficDistribution", func() {
 			versionDetected: true,
 			expectOmitted:   true,
 		}),
-		Entry("sets the field on Kubernetes 1.30, where it was introduced", resolveTrafficDistributionTest{
+		// 1.30 has the field, but its ServiceTrafficDistribution feature gate defaults to false there, so the API
+		// server would prune the value and the service would never converge.
+		Entry("omits the field on Kubernetes 1.30", resolveTrafficDistributionTest{
 			versionInfo:     KubernetesVersionInfo{Major: 1, Minor: 30, VersionString: "1.30"},
+			versionDetected: true,
+			expectOmitted:   true,
+		}),
+		Entry("sets the field on Kubernetes 1.31, where the feature gate defaults to true", resolveTrafficDistributionTest{
+			versionInfo:     KubernetesVersionInfo{Major: 1, Minor: 31, VersionString: "1.31"},
 			versionDetected: true,
 		}),
 		Entry("sets the field on Kubernetes 1.33", resolveTrafficDistributionTest{

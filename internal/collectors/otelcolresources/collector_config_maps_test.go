@@ -2147,6 +2147,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						OperatorNamespace: OperatorNamespace,
 						NamePrefix:        namePrefix,
 						Exporters:         exporters,
+						Images:            TestImages,
 						SignalControl:     sc,
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
 					}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
@@ -2157,6 +2158,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						OperatorNamespace: OperatorNamespace,
 						NamePrefix:        namePrefix,
 						Exporters:         exporters,
+						Images:            TestImages,
 						SignalControl:     sc,
 						KubernetesInfrastructureMetricsCollectionEnabled: true,
 					}, monitoredNamespaces, nil, nil, false)

@@ -762,7 +762,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Expect(*daemonSetService.Spec.InternalTrafficPolicy).To(Equal(corev1.ServiceInternalTrafficPolicyLocal))
 		},
 		Entry("omitted on 1.29", cluster.KubernetesVersionInfo{Major: 1, Minor: 29}, true, nil),
-		Entry("set on 1.30", cluster.KubernetesVersionInfo{Major: 1, Minor: 30}, true, ptr.To("PreferClose")),
+		Entry("omitted on 1.30", cluster.KubernetesVersionInfo{Major: 1, Minor: 30}, true, nil),
+		Entry("set on 1.31", cluster.KubernetesVersionInfo{Major: 1, Minor: 31}, true, ptr.To("PreferClose")),
 		Entry("set on 1.34", cluster.KubernetesVersionInfo{Major: 1, Minor: 34}, true, ptr.To("PreferClose")),
 		Entry("omitted when the version is unknown", cluster.KubernetesVersionInfo{}, false, nil),
 	)

@@ -62,7 +62,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 		)
 		collectorManager = NewCollectorManager(
 			k8sClient,
-			clientset,
+			nodeMetadataClient,
 			util.ExtraConfigDefaults,
 			false,
 			false,
@@ -499,6 +499,36 @@ var _ = Describe("The collector manager", Ordered, func() {
 			manager.reportZoneCoverage(3, 2, recordingLogger)
 			Expect(warnings).To(HaveLen(2))
 		})
+
+		It("derives the zone count from the node labels reported by the API server", func() {
+			for _, zone := range []string{"zone-a", "zone-b", "zone-c"} {
+				node := &corev1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "zone-coverage-test-" + zone,
+						Labels: map[string]string{corev1.LabelTopologyZone: zone},
+					},
+				}
+				Expect(k8sClient.Create(ctx, node)).To(Succeed())
+				DeferCleanup(func() {
+					Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, node))).To(Succeed())
+				})
+			}
+
+			manager := &CollectorManager{nodeMetadataClient: nodeMetadataClient}
+			// The node list is served from the API server's watch cache, which may not have caught up with the nodes
+			// created above yet.
+			Eventually(func(g Gomega) {
+				warnings = nil
+				manager.warnAboutInsufficientZoneCoverage(
+					ctx,
+					util.ExtraConfig{SignalControlCollectorReplicas: 2},
+					recordingLogger,
+				)
+				g.Expect(warnings).To(HaveLen(1))
+				g.Expect(warnings[0]).To(ContainSubstring("3 availability zones"))
+				g.Expect(warnings[0]).To(ContainSubstring("2 replicas"))
+			}).Should(Succeed())
+		})
 	})
 
 	Describe("when Signal Control is gated on the organization's entitlement", func() {
@@ -713,7 +743,7 @@ func newCollectorManagerWithEnablementChecker(checker enablement.Checker) *Colle
 	)
 	return NewCollectorManager(
 		k8sClient,
-		clientset,
+		nodeMetadataClient,
 		util.ExtraConfigDefaults,
 		false,
 		true,
