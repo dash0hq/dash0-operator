@@ -120,6 +120,11 @@ func TestRedactDocument(t *testing.T) {
 			opsgenieApiKey,
 			lastAppliedOpsgenieApiKey,
 			pagerdutyIntegrationKey,
+			teamsWebhookUrl,
+			discordWebhookUrl,
+			googleChatWebhookUrl,
+			ilertUrl,
+			allQuietUrl,
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
@@ -405,6 +410,11 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			opsgenieApiKey,
 			lastAppliedOpsgenieApiKey,
 			pagerdutyIntegrationKey,
+			teamsWebhookUrl,
+			discordWebhookUrl,
+			googleChatWebhookUrl,
+			ilertUrl,
+			allQuietUrl,
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
@@ -581,6 +591,15 @@ const (
 	lastAppliedOpsgenieApiKey = "my-previous-opsgenie-api-key"
 	pagerdutyIntegrationKey   = "my-pagerduty-integration-key"
 	pagerdutyEventsUrl        = "https://events.pagerduty.com/v2/enqueue"
+	teamsWebhookUrl           = "https://example.webhook.office.com/webhookb2/my-teams-webhook-secret"
+	discordWebhookUrl         = "https://discord.com/api/webhooks/1234567890/my-discord-webhook-secret"
+	ilertUrl                  = "https://api.ilert.com/api/v1/events/dash0/my-ilert-secret"
+	allQuietUrl               = "https://events.allquiet.app/api/webhook/my-all-quiet-secret"
+
+	// The canonical shape of a Google Chat webhook URL: its credentials are query parameters, so the value contains an
+	// ampersand, which the JSON serializer escapes. Redacting the parsed document rather than the rendered text is what
+	// makes this work.
+	googleChatWebhookUrl = "https://chat.googleapis.com/v1/spaces/S/messages?key=my-chat-key&token=my-chat-token"
 
 	syntheticCheckHeaderValue         = "Bearer my-synthetic-check-header-secret"
 	syntheticCheckQueryParameterValue = "my-synthetic-check-api-key"
@@ -732,6 +751,56 @@ const dash0ApiResourcesJson = `{
         "display": { "name": "PagerDuty" },
         "type": "pagerduty",
         "pagerdutyConfig": { "key": "` + pagerdutyIntegrationKey + `", "url": "` + pagerdutyEventsUrl + `" }
+      }
+    },
+    {
+      "apiVersion": "operator.dash0.com/v1beta1",
+      "kind": "Dash0NotificationChannel",
+      "metadata": { "name": "teams-channel", "namespace": "my-namespace" },
+      "spec": {
+        "display": { "name": "Teams" },
+        "type": "teams_webhook",
+        "teamsWebhookConfig": { "url": "` + teamsWebhookUrl + `" }
+      }
+    },
+    {
+      "apiVersion": "operator.dash0.com/v1beta1",
+      "kind": "Dash0NotificationChannel",
+      "metadata": { "name": "discord-channel", "namespace": "my-namespace" },
+      "spec": {
+        "display": { "name": "Discord" },
+        "type": "discord_webhook",
+        "discordWebhookConfig": { "url": "` + discordWebhookUrl + `" }
+      }
+    },
+    {
+      "apiVersion": "operator.dash0.com/v1beta1",
+      "kind": "Dash0NotificationChannel",
+      "metadata": { "name": "google-chat-channel", "namespace": "my-namespace" },
+      "spec": {
+        "display": { "name": "Google Chat" },
+        "type": "google_chat_webhook",
+        "googleChatWebhookConfig": { "url": "` + googleChatWebhookUrl + `" }
+      }
+    },
+    {
+      "apiVersion": "operator.dash0.com/v1beta1",
+      "kind": "Dash0NotificationChannel",
+      "metadata": { "name": "ilert-channel", "namespace": "my-namespace" },
+      "spec": {
+        "display": { "name": "iLert" },
+        "type": "ilert",
+        "ilertConfig": { "url": "` + ilertUrl + `" }
+      }
+    },
+    {
+      "apiVersion": "operator.dash0.com/v1beta1",
+      "kind": "Dash0NotificationChannel",
+      "metadata": { "name": "all-quiet-channel", "namespace": "my-namespace" },
+      "spec": {
+        "display": { "name": "All Quiet" },
+        "type": "all_quiet",
+        "allQuietConfig": { "url": "` + allQuietUrl + `" }
       }
     },
     {
