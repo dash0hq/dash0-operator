@@ -3,13 +3,12 @@
 
 // Handles secret redaction for the output of kubectl commands.
 //
-// Secrets are redacted where they live: the response is parsed into a document, the credential values are replaced
-// within that document, and the document is rendered again. Nothing is matched against the rendered text, so how the
-// serializer escaped or wrapped a value is irrelevant, and a credential that happens to be a common string cannot
-// garble unrelated parts of the response.
+// The stdout response of the kubectl invocation is parsed into a document, the credential values are replaced
+// within that document, and the document is rendered again.
 //
-// This is only possible because a request that targets a Dash0 custom resource which can contain secrets is restricted
-// to output formats the connector can parse and render itself (see safeOrRedactableOutputFormats in validation.go):
+// This is only possible for formats the connector can parse, reliably interprete, and render itself. Requests that
+// targets a Dash0 custom resource which can contain secrets are restricted to output formats that satisfy these
+// constraints (see safeOrRedactableOutputFormats in validation.go):
 //
 //   - "-o json" and "-o yaml" render the resources as a document. kubectl serializes a custom resource from its
 //     unstructured (map) form, so re-rendering the parsed document reproduces kubectl's output byte for byte, apart
@@ -17,8 +16,12 @@
 //   - the content-free formats ("-o name", "-o wide", the default table) do not expose the content of a resource at
 //     all and are passed through untouched.
 //   - "-o go-template", "-o jsonpath", "-o custom-columns" and "kubectl describe" are rejected for these resource
-//     types. The template formats can reshape a value beyond recognition, and the describer renders a text format
-//     that is not meant to be parsed; in neither case can the credentials be located in the output.
+//     types. The template formats can reshape the response and make it impossible to find the secret. kubectl describe
+//     renders a text format that is not meant to be parsed; in neither case can the credentials be located in the
+//     output. Furthermore, with go-template, individual secret characters could be exfiltrated via expresssions like
+//     {{printf "%.6s" .token}}' and similar, enabling exfiltrating a secret over multiple requests, piece by piece.
+//   - file-related output formats (go-template-file etc.) and --raw are disallowed outright for all resource types, so
+//     they do not require specific treatment with respect to secret redaction
 //
 // A response that cannot be parsed after all - output truncated at maxOutputBytesPerStream, a multi-document YAML
 // stream, or an error message on stderr with nothing on stdout - is withheld rather than handed out, see
@@ -41,11 +44,8 @@ import (
 )
 
 const (
-	// redactedValue replaces secrets in the response. A placeholder is subject to the escaping and quoting of the output
-	// format like any other value, so it deliberately uses no character that either format treats specially: both JSON
-	// and YAML render it verbatim. Angle brackets would not - the JSON serializer renders them as "\u003credacted\u003e",
-	// the way kubectl renders them in any other value - which is why this differs from the placeholder the operator uses
-	// when it logs a Dash0 custom resource (api/operator/common.RedactedValue).
+	// redactedValue replaces secrets in the response. Deliberately differs from api/operator/common.RedactedValue
+	// ("<redacted>"), since angle brackets would render as "\u003credacted\u003e" in JSON.
 	redactedValue = "(redacted)"
 
 	// minCredentialValueLength is the length of the shortest redacted value that is also scrubbed from stderr (see
@@ -59,26 +59,15 @@ const (
 	outputFormatJson = "json"
 	outputFormatYaml = "yaml"
 
-	// jsonIndent is the indentation kubectl uses for "-o json", so that a re-rendered document matches its output.
+	// jsonIndent is the indentation kubectl uses for "-o json", so that a re-rendered document matches the original
+	// output.
 	jsonIndent = "    "
 )
 
-// contentFreeOutputFormats are the output formats that do not require secret redaction, i.e. that allow listing
-// resources or checking for the presence of a particular one without exposing their content. Any other output format
-// (yaml, json, jsonpath, go-template, custom-columns, ...) can serialize the content.
-// Such a request
-// * is outright rejected in validation.go when it targets a sensitive resource (e.g. a Kubernetes secret)
-// * might get parts of its response (secrets, auth tokens, credentials etc.) redacted
-var contentFreeOutputFormats = map[string]struct{}{
-	"":     {}, // the default, human-readable table output
-	"name": {},
-	"wide": {},
-}
-
-// wellKnownNonSecretValues lists values which are very unlikely to be secrets/credentials. They are only consulted for
-// the header and query parameter values (see redactHeaderValuesIfPlausible), the one position that legitimately holds
-// non-credentials such as a content type next to the credentials it is meant to protect. Values are matched
-// case-insensitively.
+// wellKnownNonSecretValues lists values which are very unlikely to be secrets/credentials. They are used as a
+// best-effort to not remove innocuous values from header and query parameter values (see
+// redactHeaderValuesIfPlausible). Values are matched case-insensitively. Fields that always hold secrets (e.g. an
+// export token) are always redacted, independent of the value.
 var wellKnownNonSecretValues = map[string]struct{}{
 	"true":                   {},
 	"false":                  {},
@@ -164,6 +153,8 @@ func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, s
 		return nil
 	}
 	if !responseCanContainSecrets(parsed) {
+		// The response either does not target a resource type that can contain secrets, or it uses an output format that
+		// does not render details (e.g. default table, name, wide). No redaction is required.
 		return nil
 	}
 
@@ -218,6 +209,47 @@ func responseCanContainSecrets(parsed parsedArguments) bool {
 	return targetsResourceTypeWithSecrets(parsed)
 }
 
+// parseResponseDocument parses a kubectl response that renders resources in the given output format. It reports false
+// when the response cannot be parsed, or when it cannot be guaranteed that the parsed result covers the whole response.
+// YAML is converted to JSON before it is unmarshalled, so that both formats yield the same types and are walked by
+// exactly the same code (see redactDocumentNodeRecursively).
+func parseResponseDocument(format string, stdout string) (any, bool) {
+	var document any
+	switch format {
+	case outputFormatJson:
+		if err := json.Unmarshal([]byte(stdout), &document); err != nil {
+			return nil, false
+		}
+	case outputFormatYaml:
+		if hasYamlDocumentSeparator(stdout) {
+			// "kubectl get -o yaml" can render a list of requested resources as one multi-document stream separated by ---.
+			// Unmarshalling only covers the first document, so anything that looks like a multi-document response is not
+			// parsed here. Removing that guard would not leak secrets, but return a partial response (only the first doc
+			// would be returned), without any indication what has gone wrong. This is defense in depth, it is practically
+			// unreachable for validated requests. kubectl's prints multiple objects into one v1.List for -o yaml/-o json.
+			return nil, false
+		}
+		if err := yaml.Unmarshal([]byte(stdout), &document); err != nil {
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
+	return document, true
+}
+
+// hasYamlDocumentSeparator reports whether the output contains a line that starts a new YAML document. A separator
+// within a block scalar is reported as well; that is a false positive in the safe direction.
+func hasYamlDocumentSeparator(stdout string) bool {
+	for line := range strings.SplitSeq(stdout, "\n") {
+		trimmed := strings.TrimRight(line, " \t\r")
+		if trimmed == "---" || strings.HasPrefix(trimmed, "--- ") {
+			return true
+		}
+	}
+	return false
+}
+
 // redactor replaces the credential values of a document with redactedValue and collects the values it replaced. The
 // count is tracked separately from the set of values, so that a caller can tell whether a node changed even when it
 // held a value that had already been replaced elsewhere (see redactAnnotations).
@@ -267,71 +299,6 @@ func targetsResourceTypeWithSecrets(parsed parsedArguments) bool {
 	return false
 }
 
-// parseResponseDocument parses a kubectl response that renders resources in the given output format. It reports false
-// when the response cannot be parsed, or when it cannot be guaranteed that the parsed result covers the whole response.
-// YAML is converted to JSON before it is unmarshalled, so that both formats yield the same types and are walked by
-// exactly the same code (see redactDocumentNodeRecursively).
-func parseResponseDocument(format string, stdout string) (any, bool) {
-	var document any
-	switch format {
-	case outputFormatJson:
-		if err := json.Unmarshal([]byte(stdout), &document); err != nil {
-			return nil, false
-		}
-	case outputFormatYaml:
-		if hasYamlDocumentSeparator(stdout) {
-			// "kubectl get -o yaml" renders even a list of resources as a single document, and unmarshalling only covers
-			// the first document of a stream, so anything that looks like a multi-document response is not parsed here.
-			return nil, false
-		}
-		if err := yaml.Unmarshal([]byte(stdout), &document); err != nil {
-			return nil, false
-		}
-	default:
-		return nil, false
-	}
-	return document, true
-}
-
-// hasYamlDocumentSeparator reports whether the output contains a line that starts a new YAML document. A separator
-// within a block scalar is reported as well; that is a false positive in the safe direction, since it only means that
-// the values are read from the cluster instead of from the response.
-func hasYamlDocumentSeparator(stdout string) bool {
-	for line := range strings.SplitSeq(stdout, "\n") {
-		trimmed := strings.TrimRight(line, " \t\r")
-		if trimmed == "---" || strings.HasPrefix(trimmed, "--- ") {
-			return true
-		}
-	}
-	return false
-}
-
-// renderResponseDocument renders the redacted document in the output format the request asked for. kubectl serializes
-// a custom resource from its unstructured (map) form, with alphabetically ordered keys, four-space indentation and a
-// trailing newline for JSON - exactly what encoding/json and sigs.k8s.io/yaml produce for the same document - so the
-// rendered response matches kubectl's output byte for byte, apart from the redacted values. Built-in resource types
-// that the same command rendered (as in "kubectl get pods,dash0monitorings -o json") are serialized from a Go struct
-// by kubectl and therefore come back with their fields ordered alphabetically rather than in the order kubectl used;
-// the document is equivalent, only its field order differs.
-func renderResponseDocument(format string, document any) (string, error) {
-	switch format {
-	case outputFormatJson:
-		rendered, err := json.MarshalIndent(document, "", jsonIndent)
-		if err != nil {
-			return "", err
-		}
-		return string(rendered) + "\n", nil
-	case outputFormatYaml:
-		rendered, err := yaml.Marshal(document)
-		if err != nil {
-			return "", err
-		}
-		return string(rendered), nil
-	default:
-		return "", fmt.Errorf("unsupported output format %q", format)
-	}
-}
-
 // redactResourceList redacts the secrets of all resources in a parsed resource document, in place. Such a document
 // usually is a list, but a document that is not a list is treated as a single resource. The whole document is walked,
 // including resources of other types that the same command rendered (as in
@@ -359,49 +326,6 @@ func redactResourceList(document any, redacted *redactor) error {
 func redactResourceItem(resource any, redacted *redactor) error {
 	redactDocumentNodeRecursively(resource, redacted)
 	return redactAnnotations(resource, redacted)
-}
-
-// redactAnnotations redacts the secrets in the resource copies that tools embed in the metadata.annotations of a
-// resource. kubectl apply stores a verbatim copy of the applied manifest - including the plaintext auth token,
-// potentially an older one than the one in the current spec - in the
-// "kubectl.kubernetes.io/last-applied-configuration" annotation. Every annotation value that parses as JSON is walked,
-// so that equivalent annotations of other tools are covered as well, and is rendered again only when the walk actually
-// replaced something, so that an unrelated annotation is handed out exactly as kubectl rendered it.
-func redactAnnotations(resource any, redacted *redactor) error {
-	resourceMap, isMap := resource.(map[string]any)
-	if !isMap {
-		return nil
-	}
-	metadata, isMap := resourceMap["metadata"].(map[string]any)
-	if !isMap {
-		return nil
-	}
-	annotations, isMap := metadata["annotations"].(map[string]any)
-	if !isMap {
-		return nil
-	}
-	for name, annotationValue := range annotations {
-		annotationString, isString := annotationValue.(string)
-		if !isString {
-			continue
-		}
-		var embeddedResource any
-		if err := json.Unmarshal([]byte(annotationString), &embeddedResource); err != nil {
-			continue
-		}
-		countBefore := redacted.count
-		redactDocumentNodeRecursively(embeddedResource, redacted)
-		if redacted.count == countBefore {
-			continue
-		}
-		rendered, err := json.Marshal(embeddedResource)
-		if err != nil {
-			// The annotation still holds the credential in plaintext, so the response must not be handed out.
-			return fmt.Errorf("the redacted %q annotation could not be rendered: %w", name, err)
-		}
-		annotations[name] = string(rendered)
-	}
-	return nil
 }
 
 // redactDocumentNodeRecursively recursively walks the content of a resource and replaces every credential value it
@@ -441,6 +365,20 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 			redactDocumentNodeRecursively(item, redacted)
 		}
 	}
+}
+
+// redactValueOf replaces the value the given key holds in node with redactedValue and records the
+// replaced value, so that it can be scrubbed from stderr as well. Non-string and empty values are left alone; a
+// value sourced via valueFrom is an object rather than a string and is therefore not a credential the response
+// exposes. No length or plausibility check is applied: the value is replaced where it lives, so an unusually short
+// credential cannot affect anything else in the response.
+func redactValueOf(node map[string]any, key string, redacted *redactor) {
+	value, isString := node[key].(string)
+	if !isString || value == "" {
+		return
+	}
+	node[key] = redactedValue
+	redacted.add(value)
 }
 
 // redactHeaderValues redacts the literal header or query parameter values held by the given key of node. Three shapes
@@ -493,18 +431,47 @@ func redactCredentialFields(node any, credentialFields []string, redacted *redac
 	}
 }
 
-// redactValueOf replaces the value the given key holds in node with redactedValue and records the
-// replaced value, so that it can be scrubbed from stderr as well. Non-string and empty values are left alone; a
-// value sourced via valueFrom is an object rather than a string and is therefore not a credential the response
-// exposes. No length or plausibility check is applied: the value is replaced where it lives, so an unusually short
-// credential cannot affect anything else in the response.
-func redactValueOf(node map[string]any, key string, redacted *redactor) {
-	value, isString := node[key].(string)
-	if !isString || value == "" {
-		return
+// redactAnnotations redacts the secrets in the resource copies that tools embed in the metadata.annotations of a
+// resource. kubectl apply stores a verbatim copy of the applied manifest - including the plaintext auth token,
+// potentially an older one than the one in the current spec - in the
+// "kubectl.kubernetes.io/last-applied-configuration" annotation. Every annotation value that parses as JSON is walked,
+// so that equivalent annotations of other tools are covered as well, and is rendered again only when the walk actually
+// replaced something, so that an unrelated annotation is handed out exactly as kubectl rendered it.
+func redactAnnotations(resource any, redacted *redactor) error {
+	resourceMap, isMap := resource.(map[string]any)
+	if !isMap {
+		return nil
 	}
-	node[key] = redactedValue
-	redacted.add(value)
+	metadata, isMap := resourceMap["metadata"].(map[string]any)
+	if !isMap {
+		return nil
+	}
+	annotations, isMap := metadata["annotations"].(map[string]any)
+	if !isMap {
+		return nil
+	}
+	for name, annotationValue := range annotations {
+		annotationString, isString := annotationValue.(string)
+		if !isString {
+			continue
+		}
+		var embeddedResource any
+		if err := json.Unmarshal([]byte(annotationString), &embeddedResource); err != nil {
+			continue
+		}
+		countBefore := redacted.count
+		redactDocumentNodeRecursively(embeddedResource, redacted)
+		if redacted.count == countBefore {
+			continue
+		}
+		rendered, err := json.Marshal(embeddedResource)
+		if err != nil {
+			// The annotation still holds the credential in plaintext, so the response must not be handed out.
+			return fmt.Errorf("the redacted %q annotation could not be rendered: %w", name, err)
+		}
+		annotations[name] = string(rendered)
+	}
+	return nil
 }
 
 // redactAllSecrets replaces every occurrence of every secret in text with redactedValue.
@@ -513,6 +480,33 @@ func redactAllSecrets(text string, secrets []string) string {
 		text = strings.ReplaceAll(text, secret, redactedValue)
 	}
 	return text
+}
+
+// renderResponseDocument renders the redacted document in the output format the request asked for. It tries to emulate
+// the output format of kubectl as best as possible. kubectl serializes a custom resource from its unstructured map
+// form, with alphabetically ordered keys, four-space indentation and a trailing newline for JSON - exactly what
+// encoding/json and sigs.k8s.io/yaml produce for the same document. So the rendered response should match kubectl's
+// output byte for byte, apart from the redacted values. Built-in resource types that the same command rendered
+// (as in "kubectl get pods,dash0monitorings -o json") are serialized from a Go struct
+// by kubectl and therefore come back with their fields ordered alphabetically rather than in the order kubectl used;
+// the document is equivalent, only its field order differs.
+func renderResponseDocument(format string, document any) (string, error) {
+	switch format {
+	case outputFormatJson:
+		rendered, err := json.MarshalIndent(document, "", jsonIndent)
+		if err != nil {
+			return "", err
+		}
+		return string(rendered) + "\n", nil
+	case outputFormatYaml:
+		rendered, err := yaml.Marshal(document)
+		if err != nil {
+			return "", err
+		}
+		return string(rendered), nil
+	default:
+		return "", fmt.Errorf("unsupported output format %q", format)
+	}
 }
 
 // withholdResponse discards the output of a command whose response could not be redacted and replaces it with the

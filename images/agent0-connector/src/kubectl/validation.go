@@ -9,6 +9,7 @@ package kubectl
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
@@ -55,10 +56,21 @@ var allowedOutputFormats = map[string]struct{}{
 	"yaml":             {},
 }
 
-// safeOrRedactableOutputFormats is the allowlist of output formats a command request may use when it targets a Dash0
-// custom resource type that can contain secrets (see dash0ResourceTypesWithSecrets). It lists the formats that never
-// contain resource content with secrets (e.g. "", "name", "wide") and the formats that can be reliably redacted because
-// they do not reshape the response ("json", "yaml").
+// contentFreeOutputFormats are the output formats that do not require secret redaction, i.e. that allow listing
+// resources or checking for the presence of a particular one without exposing their content. Any other output format
+// (yaml, json, jsonpath, go-template, custom-columns, ...) can serialize the content.
+// Such a request
+// * is outright rejected in validation.go when it targets a sensitive resource (e.g. a Kubernetes secret)
+// * might get parts of its response (secrets, auth tokens, credentials etc.) redacted
+var contentFreeOutputFormats = map[string]struct{}{
+	"":     {}, // the default, human-readable table output
+	"name": {},
+	"wide": {},
+}
+
+// redactableOutputFormats is the allowlist of output formats that
+// * can be parsed and rendered
+// * can be reliably redacted because they do not reshape the response
 //
 // Absent (and therefore rejected for those resource types) are the formats that let the request reshape the response:
 // "go-template" and its alias "template", "jsonpath", "jsonpath-as-json" and "custom-columns", as well as the
@@ -67,13 +79,20 @@ var allowedOutputFormats = map[string]struct{}{
 // "kyaml" is deliberately absent as well: it renders values verbatim and would be redacted correctly, but it is a
 // recent addition to kubectl that the redaction is not exercised against yet. It stays allowed for every other
 // resource type via allowedOutputFormats.
-var safeOrRedactableOutputFormats = map[string]struct{}{
-	"":     {}, // the default, human-readable table output
+var redactableOutputFormats = map[string]struct{}{
 	"json": {},
-	"name": {},
-	"wide": {},
 	"yaml": {},
 }
+
+// safeOrRedactableOutputFormats is the allowlist of output formats a command request may use when it targets a Dash0
+// custom resource type that can contain secrets (see dash0ResourceTypesWithSecrets). It lists the formats that never
+// contain resource content with secrets (e.g. "", "name", "wide") and the formats that can be reliably redacted because
+// they do not reshape the response ("json", "yaml").
+var safeOrRedactableOutputFormats = func() map[string]struct{} {
+	formats := maps.Clone(contentFreeOutputFormats)
+	maps.Copy(formats, redactableOutputFormats)
+	return formats
+}()
 
 // sensitiveResource describes how a resource type whose contents must not be exposed is guarded.
 type sensitiveResource struct {
