@@ -40,6 +40,11 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --omit=dev \
   --no-audit \
   --no-fund=true
+# The upstream OpenTelemetry JS packages ship esm/esnext builds alongside the CJS build used by require() (see the
+# "exports" map in each package's package.json). Node.js's CJS resolver only ever matches the "default"/"require"
+# condition, so these two build trees are unused dead weight in this image; every @opentelemetry/* package on the
+# host is duplicated here for the "-1.x" compatibility line as well, further multiplying the waste.
+RUN find node_modules/@opentelemetry -type d \( -name esm -o -name esnext \) -path '*/build/*' -exec rm -rf {} +
 
 # download .NET auto instrumentation
 FROM alpine:3.24.1 AS build-dotnet
