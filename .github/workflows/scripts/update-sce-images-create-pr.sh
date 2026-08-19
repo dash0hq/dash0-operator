@@ -14,6 +14,7 @@ done
 
 branch_name="update-sce-images"
 values_file="helm-chart/dash0-operator/values.yaml"
+test_file="helm-chart/dash0-operator/tests/operator/deployment-and-webhooks_test.yaml"
 
 # image (ghcr repository name) -> Helm chart values key under .operator
 image_specs=(
@@ -66,6 +67,32 @@ update_tag() {
   sed -i "/^  ${yaml_key}:/,/pullPolicy:/ s|^\(\s*tag:\s*\).*|\1\"${new_tag}\"|" "$values_file"
 }
 
+# Rewrite the expected image references in the Helm chart unit tests, which assert the pinned tags from values.yaml.
+# The whole quoted value is replaced, so a tag that does not look like vMAJOR.MINOR.PATCH cannot end up half-rewritten.
+# Aborts if the test file does not reference the image at all, otherwise values.yaml would be bumped while the tests
+# keep asserting the previous tag.
+update_expected_tag_in_tests() {
+  local img="$1" new_tag="$2"
+  if ! grep -q "ghcr\.io/dash0hq/${img}:" "$test_file"; then
+    echo "Error: no expected image reference for ${img} found in ${test_file}." >&2
+    exit 1
+  fi
+  sed -i "s|\"ghcr\.io/dash0hq/${img}:[^\"]*\"|\"ghcr.io/dash0hq/${img}:${new_tag}\"|g" "$test_file"
+}
+
+# Aborts if any file other than values.yaml and the Helm chart unit tests pins one of the image tags, since this script
+# would leave such a reference behind and the bump would break the build.
+assert_no_other_pinned_references() {
+  local img="$1"
+  local other_files
+  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v[0-9]+" -- . ":!${values_file}" ":!${test_file}" || true)
+  if [[ -n "$other_files" ]]; then
+    echo "Error: ${img} is pinned to a tag in unexpected files, update this script to rewrite them, too:" >&2
+    echo "$other_files" >&2
+    exit 1
+  fi
+}
+
 # Base commit that the new branch will be based on.
 base_sha=$(git rev-parse HEAD)
 
@@ -79,24 +106,34 @@ for spec in "${image_specs[@]}"; do
   current_tag="${current_tag%\"}"
   current_tag="${current_tag#\"}"
   echo "${img}: current=${current_tag}, latest=${new_tag}"
+  assert_no_other_pinned_references "$img"
+  # Both files are always rewritten to the latest tag, so that an earlier manual edit which touched only one of them
+  # cannot leave the two out of sync.
+  update_tag "$key" "$new_tag"
+  update_expected_tag_in_tests "$img" "$new_tag"
   if [[ "$current_tag" != "$new_tag" ]]; then
-    update_tag "$key" "$new_tag"
     changes+=("\`${img}\` to \`${new_tag}\`")
   fi
 done
 
 # git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
-if git diff-files --quiet "$values_file"; then
+if git diff-files --quiet -- "$values_file" "$test_file"; then
   echo "There are no changes, everything up to date."
   exit 0
 fi
 
 echo "There are changes, creating a pull request."
 commit_message="chore(deps): update Signal Control and Edge Proxy images"
-pr_body="Updates the following image tags in ${values_file}:"
-for change in "${changes[@]}"; do
-  pr_body+=$'\n'"- ${change}"
-done
+if [[ ${#changes[@]} -gt 0 ]]; then
+  pr_body="Updates the following image tags in ${values_file}:"
+  for change in "${changes[@]}"; do
+    pr_body+=$'\n'"- ${change}"
+  done
+else
+  # The commit message is a fixed string, .github/workflows/scripts/update-sce-images-check-if-pr-exists.sh matches on
+  # it, so the body has to spell out that only the tests changed.
+  pr_body="The image tags in ${values_file} are already up to date, this only realigns the expected image tags in ${test_file}."
+fi
 
 # Remove any branch lingering from a previous failed run (no-op if it does not exist). Note: We abort early if an open
 # PR still exists, see .github/workflows/scripts/update-sce-images-check-if-pr-exists.sh.
@@ -110,14 +147,17 @@ gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
 # Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
 # commits are automatically signed.
 # Note: expectedHeadOid is an optimistic lock: the branch tip must still be at base_sha (it is, we just created it).
+# Note: both files are always sent; the git diff-files check above guarantees that at least one of them differs.
 jq -n \
   --arg repo "$GITHUB_REPOSITORY" \
   --arg branch "$branch_name" \
   --arg headline "$commit_message" \
   --arg body "$pr_body" \
   --arg oid "$base_sha" \
-  --arg path "$values_file" \
-  --arg contents "$(base64 -w0 "$values_file")" \
+  --arg valuesPath "$values_file" \
+  --arg valuesContents "$(base64 -w0 "$values_file")" \
+  --arg testPath "$test_file" \
+  --arg testContents "$(base64 -w0 "$test_file")" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {
@@ -125,7 +165,10 @@ jq -n \
         branch:          { repositoryNameWithOwner: $repo, branchName: $branch },
         message:         { headline: $headline, body: $body },
         expectedHeadOid: $oid,
-        fileChanges:     { additions: [ { path: $path, contents: $contents } ] }
+        fileChanges:     { additions: [
+                             { path: $valuesPath, contents: $valuesContents },
+                             { path: $testPath,   contents: $testContents }
+                           ] }
       }
     }
   }' | gh api graphql --input - >/dev/null
