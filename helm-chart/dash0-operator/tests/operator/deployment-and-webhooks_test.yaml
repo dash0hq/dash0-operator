@@ -1211,21 +1211,21 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[12].value
           value: "ghcr.io/dash0hq/collector:1.2.3"
-      # Expected tag matches the pinned tag in helm-chart/dash0-operator/values.yaml
-      # (operator.signalControlCollectorImage.tag and operator.edgeProxyImage.tag). Signal Control
-      # images are sourced as external dependencies; bump these alongside values.yaml.
+      # The expected tags match the pinned tags in helm-chart/dash0-operator/values.yaml
+      # (operator.signalControlCollectorImage.tag and operator.edgeProxyImage.tag). Both files are kept in sync by
+      # .github/workflows/scripts/update-sce-images-create-pr.sh.
       - equal:
           path: spec.template.spec.containers[0].env[13].name
           value: DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "ghcr.io/dash0hq/signal-control-collector:v2.0.2756"
+          value: "ghcr.io/dash0hq/signal-control-collector:v2.0.3005"
       - equal:
           path: spec.template.spec.containers[0].env[18].name
           value: DASH0_EDGE_PROXY_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[18].value
-          value: "ghcr.io/dash0hq/edge-proxy:v2.0.2756"
+          value: "ghcr.io/dash0hq/edge-proxy:v2.0.3005"
       - equal:
           path: spec.template.spec.containers[0].env[20].name
           value: K8S_POD_UID
