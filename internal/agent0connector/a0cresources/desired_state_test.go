@@ -4,12 +4,15 @@
 package a0cresources
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -26,10 +29,13 @@ const (
 	testPseudoClusterUid  = "test-cluster-uid"
 )
 
-// readOnlyVerbs is the set of verbs that are acceptable for a strictly read-only role. kubectl get/describe/logs only
-// require these verbs.
+const selfSubjectReviewApiGroup = "authorization.k8s.io"
+
 var (
-	readOnlyVerbs = []string{"get", "list"}
+	expectedVerbs = []string{"get", "list"}
+
+	expectedSelfSubjectReviewResources = []string{"selfsubjectaccessreviews", "selfsubjectrulesreviews"}
+	expectedSelfSubjectReviewVerbs     = []string{"create"}
 
 	authTokenEnvVar = &corev1.EnvVar{
 		Name:  authTokenEnvVarName,
@@ -85,28 +91,50 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 
 			Expect(clusterRole.Rules).ToNot(BeEmpty())
 			for _, rule := range clusterRole.Rules {
+				expectedVerbsForRule := expectedVerbs
+				if slices.Contains(rule.APIGroups, selfSubjectReviewApiGroup) {
+					expectedVerbsForRule = expectedSelfSubjectReviewVerbs
+				}
 				for _, verb := range rule.Verbs {
-					// The only verbs that may appear in a strictly read-only role are get/list/watch. The presence
-					// of any other verb (create, update, patch, delete, deletecollection, ...) would allow writes via
-					// kubectl and must never happen. The watch verb is also disallowed, streaming commands are not supported.
-					Expect(slices.Contains(readOnlyVerbs, verb)).To(
+					Expect(slices.Contains(expectedVerbsForRule, verb)).To(
 						BeTrue(),
-						"cluster role contains non-read-only verb %q",
+						"cluster role contains unexpected verb %q for API groups %v",
 						verb,
+						rule.APIGroups,
 					)
 				}
 			}
 		})
 
-		It("covers all resources in all API groups plus non-resource URLs", func() {
+		It("grants the create verb exclusively for the self subject review API", func() {
+			// "kubectl auth can-i" requires creating a SelfSubjectAccessReview/SelfSubjectRulesReview, which does not
+			// persist an object. Every other occurrence of a write verb would allow modifying cluster state.
 			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
-			hasResourceWildcard := false
+			selfSubjectReviewRules := 0
+			for _, rule := range clusterRole.Rules {
+				if !slices.Contains(rule.Verbs, "create") {
+					continue
+				}
+				selfSubjectReviewRules++
+				Expect(rule.APIGroups).To(ConsistOf(selfSubjectReviewApiGroup))
+				Expect(rule.Resources).To(ConsistOf(expectedSelfSubjectReviewResources))
+				Expect(rule.Verbs).To(ConsistOf("create"))
+			}
+			Expect(selfSubjectReviewRules).To(
+				Equal(1),
+				"exactly one rule may grant the create verb, for the self subject review API",
+			)
+		})
+
+		It("grants read access to well-known resource types and to non-resource URLs", func() {
+			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+
+			resourcesPerApiGroup := make(map[string][]string)
 			hasNonResourceURLs := false
 			for _, rule := range clusterRole.Rules {
-				if slices.Contains(rule.APIGroups, "*") && slices.Contains(rule.Resources, "*") {
-					hasResourceWildcard = true
-					Expect(rule.Verbs).To(ConsistOf("get", "list"))
+				for _, apiGroup := range rule.APIGroups {
+					resourcesPerApiGroup[apiGroup] = append(resourcesPerApiGroup[apiGroup], rule.Resources...)
 				}
 				if len(rule.NonResourceURLs) > 0 {
 					hasNonResourceURLs = true
@@ -114,8 +142,88 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 					Expect(rule.Verbs).To(ConsistOf("get"))
 				}
 			}
-			Expect(hasResourceWildcard).To(BeTrue(), "cluster role must grant get/list on */*")
+
+			Expect(resourcesPerApiGroup[""]).To(ContainElements(
+				"endpoints",
+				"events",
+				"namespaces",
+				"nodes",
+				"persistentvolumeclaims",
+				"persistentvolumes",
+				"pods",
+				"pods/log",
+				"services",
+			))
+			Expect(resourcesPerApiGroup["apps"]).To(ContainElements("daemonsets", "deployments", "replicasets", "statefulsets"))
+			Expect(resourcesPerApiGroup["batch"]).To(ContainElements("cronjobs", "jobs"))
+			Expect(resourcesPerApiGroup["metrics.k8s.io"]).To(ContainElements("nodes", "pods"))
+			Expect(resourcesPerApiGroup["apiextensions.k8s.io"]).To(ContainElement("customresourcedefinitions"))
+			Expect(resourcesPerApiGroup["rbac.authorization.k8s.io"]).To(ContainElements("clusterroles", "roles"))
+			Expect(resourcesPerApiGroup["certificates.k8s.io"]).To(ContainElement("certificatesigningrequests"))
+			Expect(resourcesPerApiGroup["flowcontrol.apiserver.k8s.io"]).To(ContainElements("flowschemas"))
+			Expect(resourcesPerApiGroup["resource.k8s.io"]).To(ContainElements("deviceclasses", "resourceclaims"))
+			Expect(resourcesPerApiGroup["monitoring.coreos.com"]).To(ContainElements("prometheusrules", "scrapeconfigs"))
+			Expect(resourcesPerApiGroup["perses.dev"]).To(ContainElement("persesdashboards"))
 			Expect(hasNonResourceURLs).To(BeTrue(), "cluster role must grant read access to non-resource URLs")
+		})
+
+		It("grants read access to every Dash0 custom resource type", func() {
+			// The expected resource types are read from the generated custom resource definitions instead of being
+			// listed here, so that a new Dash0 CRD which has not been added to agent0ConnectorRbacRules fails this
+			// test. Without the rule the agent0-connector cannot read the new resource type at all.
+			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+
+			for _, crd := range readDash0CustomResourceDefinitions() {
+				Expect(slices.ContainsFunc(clusterRole.Rules, func(rule rbacv1.PolicyRule) bool {
+					return slices.Contains(rule.APIGroups, crd.apiGroup) &&
+						slices.Contains(rule.Resources, crd.plural) &&
+						slices.Contains(rule.Verbs, "get") &&
+						slices.Contains(rule.Verbs, "list")
+				})).To(
+					BeTrue(),
+					"cluster role must grant get & list on %s.%s; add the resource type to "+
+						"agent0ConnectorRbacRules and to the -manager-agent0-connector-ro cluster role of the Helm chart",
+					crd.plural,
+					crd.apiGroup,
+				)
+			}
+		})
+
+		It("does not grant access to secrets, config maps, or to any wildcard", func() {
+			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+
+			for _, rule := range clusterRole.Rules {
+				Expect(rule.APIGroups).ToNot(
+					ContainElement("*"),
+					"cluster role must not grant access to all API groups",
+				)
+				Expect(rule.Resources).ToNot(
+					ContainElement("*"),
+					"cluster role must not grant access to all resource types of API group(s) %v",
+					rule.APIGroups,
+				)
+				if slices.Contains(rule.APIGroups, "") {
+					Expect(rule.Resources).ToNot(ContainElement("secrets"))
+					Expect(rule.Resources).ToNot(ContainElement("configmaps"))
+				}
+			}
+		})
+
+		It("does not share the rules with other cluster role instances", func() {
+			// The Kubernetes client decodes the API server's response into the object it was given, and the JSON
+			// decoder reuses the existing backing arrays. Sharing the package-level rules would let such a response
+			// corrupt the desired state of every subsequent reconcile.
+			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			clusterRole.Rules[0].APIGroups[0] = "modified"
+			clusterRole.Rules[0].Resources[0] = "modified"
+			clusterRole.Rules[0].Verbs[0] = "modified"
+
+			secondClusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			Expect(secondClusterRole.Rules[0].APIGroups).ToNot(ContainElement("modified"))
+			Expect(secondClusterRole.Rules[0].Resources).ToNot(ContainElement("modified"))
+			for _, rule := range secondClusterRole.Rules {
+				Expect(rule.Verbs).ToNot(ContainElement("modified"))
+			}
 		})
 	})
 
@@ -284,6 +392,42 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 	})
 })
+
+// readDash0CustomResourceDefinitions returns the API group and the plural name of every Dash0 custom resource type,
+// read from the custom resource definitions generated from the Go types in api (via "make manifests").
+func readDash0CustomResourceDefinitions() []dash0CustomResourceType {
+	GinkgoHelper()
+	manifests, err := filepath.Glob(filepath.Join("..", "..", "..", "config", "crd", "bases", "*.yaml"))
+	Expect(err).ToNot(HaveOccurred())
+	Expect(manifests).ToNot(BeEmpty(), "found no custom resource definition manifests")
+
+	crds := make([]dash0CustomResourceType, 0, len(manifests))
+	for _, manifest := range manifests {
+		content, err := os.ReadFile(manifest)
+		Expect(err).ToNot(HaveOccurred())
+		var crd customResourceDefinition
+		Expect(yaml.Unmarshal(content, &crd)).To(Succeed())
+		Expect(crd.Spec.Group).ToNot(BeEmpty(), "%s declares no API group", manifest)
+		Expect(crd.Spec.Names.Plural).ToNot(BeEmpty(), "%s declares no plural name", manifest)
+		crds = append(crds, dash0CustomResourceType{apiGroup: crd.Spec.Group, plural: crd.Spec.Names.Plural})
+	}
+	return crds
+}
+
+type dash0CustomResourceType struct {
+	apiGroup string
+	plural   string
+}
+
+// customResourceDefinition covers the attributes of a CustomResourceDefinition manifest this test needs.
+type customResourceDefinition struct {
+	Spec struct {
+		Group string `json:"group"`
+		Names struct {
+			Plural string `json:"plural"`
+		} `json:"names"`
+	} `json:"spec"`
+}
 
 func findObject[T client.Object](desiredState []clientObject) T {
 	GinkgoHelper()

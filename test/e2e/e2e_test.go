@@ -2210,6 +2210,55 @@ trace_statements:
 					"the auth token should not occur anywhere in the response")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 		})
+
+		DescribeTable("denies/allows access to resource types depending on agent0-connector's cluster role",
+			// A non-empty forbiddenResourceType means the request must be rejected by RBAC, and names the resource type
+			// the rejection has to refer to.
+			func(arguments []string, forbiddenResourceType string) {
+				expectAllowed := forbiddenResourceType == ""
+				commandLine := "kubectl " + strings.Join(arguments, " ")
+				By(fmt.Sprintf("triggering a command request with \"%s\"", commandLine))
+				var requestId string
+				Eventually(func(g Gomega) {
+					requestId = triggerOutboundConnectorMockCommandRequest(
+						g,
+						pseudoClusterUid,
+						"kubectl",
+						arguments,
+					)
+				}, 30*time.Second, pollingInterval).Should(Succeed())
+
+				if expectAllowed {
+					By("verifying the Kubernetes API server accepted the request")
+					Eventually(func(g Gomega) {
+						response := findOutboundConnectorMockCommandResponse(g, requestId)
+						g.Expect(response.ExitCode).To(
+							BeEquivalentTo(0),
+							"\"%s\" should have succeeded; stderr was: %s", commandLine, response.Stderr)
+						g.Expect(response.Stderr).ToNot(ContainSubstring("is forbidden"))
+					}, 90*time.Second, pollingInterval).Should(Succeed())
+				} else {
+					By("verifying the Kubernetes API server rejected the request")
+					Eventually(func(g Gomega) {
+						response := findOutboundConnectorMockCommandResponse(g, requestId)
+						g.Expect(response.ExitCode).ToNot(
+							BeEquivalentTo(0),
+							"\"%s\" should have failed; stdout was: %s", commandLine, response.Stdout)
+						g.Expect(response.Stderr).To(
+							ContainSubstring("%s is forbidden", forbiddenResourceType),
+							"the request for %s should have been rejected by RBAC; stderr was: %s",
+							forbiddenResourceType,
+							response.Stderr)
+					}, 90*time.Second, pollingInterval).Should(Succeed())
+				}
+			},
+			Entry("denies secrets", []string{"get", "secrets", "--all-namespaces"}, "secrets"),
+			Entry("denies config maps", []string{"get", "configmaps", "--all-namespaces"}, "configmaps"),
+			Entry("allows pods", []string{"get", "pods", "--all-namespaces"}, ""),
+			Entry("allows deployments", []string{"get", "deployments", "--all-namespaces"}, ""),
+			Entry("allows auth can-i", []string{"auth", "can-i", "get", "pods"}, ""),
+			Entry("allows auth can-i --list", []string{"auth", "can-i", "--list"}, ""),
+		)
 	})
 
 	Context("with an existing operator deployment without an operation configuration resource", func() {

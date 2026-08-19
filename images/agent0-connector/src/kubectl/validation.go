@@ -11,16 +11,20 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
-// readOnlyKubectlSubcommands is the allowlist of kubectl subcommands the executor is allowed to run. Everything else
+// allowedKubectlSubcommands is the allowlist of kubectl subcommands the executor is allowed to run. Everything else
 // is rejected. The list deliberately contains only subcommands that read cluster state and never mutate it. This is
-// additional defense-in-depth on top of the strictly read-only RBAC (get & list only) granted to the agent0-connector
-// service account.
-var readOnlyKubectlSubcommands = map[string]struct{}{
+// additional defense-in-depth on top of the read-only RBAC (get & list only) granted to the agent0-connector service
+// account.
+//
+// Allowed subcommands can be further restricted via allowedSubVerbsPerSubCommand.
+var allowedKubectlSubcommands = map[string]struct{}{
 	"api-resources": {},
+	"auth":          {},
 	"api-versions":  {},
 	"cluster-info":  {},
 	"describe":      {},
@@ -32,15 +36,21 @@ var readOnlyKubectlSubcommands = map[string]struct{}{
 	"version":       {},
 }
 
-// subcommandsRejectingPositionalArguments lists the allowed subcommands that may be invoked in their bare form,
-// but not with a sub-verb.
+// allowedSubVerbsPerSubCommand lists the allowed subcommands that may only be invoked with one of the listed sub-verbs.
+// Every other sub-verb is rejected, so that a sub-verb added by a future kubectl release does not widen what the
+// connector accepts. The empty string stands for the bare subcommand, that is, an invocation without any positional
+// argument. A subcommand that may only be invoked bare must list the empty string as its only entry.
 //
-// Example: "cluster-info" is read-only and harmless on its own, but its only sub-verb, "kubectl cluster-info dump",
-// writes the full JSON of the nodes, events, replication controllers, services, daemon sets, deployments, replica sets
-// and pods of a namespace or the whole cluster to stdout. This response cannot be redacted reliably, hence it is
-// disallowed.
-var subcommandsRejectingPositionalArguments = map[string]struct{}{
-	"cluster-info": {},
+// Examples:
+// - "auth can-i" only reports what the agent0-connector's service account is allowed to do, but its sibling sub-verb
+// "auth reconcile" creates and updates roles and role bindings, hence "auth" is only allowed with the sub-verb "can-i".
+// - "cluster-info" is read-only and harmless on its own, but its only sub-verb, "kubectl cluster-info dump", writes the
+// full JSON of the nodes, events, replication controllers, services, daemon sets, deployments, replica sets and pods of
+// a namespace or the whole cluster to stdout. This response cannot be redacted reliably, hence "cluster-info" is only
+// allowed in its bare form.
+var allowedSubVerbsPerSubCommand = map[string][]string{
+	"auth":         {"can-i"},
+	"cluster-info": {""},
 }
 
 // allowedOutputFormats is the allowlist of output formats command requests may use via -o/--output, keyed by the
@@ -155,7 +165,7 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (parsedArguments, 
 	// Invoking kubectl with no subcommand at all - bare `kubectl`, or only global flags such as `kubectl --help` - is
 	// allowed: kubectl then prints its usage/help, which is read-only and harmless.
 	if arguments.subcommand != "" {
-		if _, allowed := readOnlyKubectlSubcommands[arguments.subcommand]; !allowed {
+		if _, allowed := allowedKubectlSubcommands[arguments.subcommand]; !allowed {
 			return parsedArguments{}, fmt.Errorf(
 				"the kubectl subcommand %q is not an allowed read-only command",
 				arguments.subcommand,
@@ -163,7 +173,7 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (parsedArguments, 
 		}
 	}
 
-	if reason, blocked := subVerbOfBareOnlySubcommandRequested(arguments); blocked {
+	if reason, blocked := disallowedSubVerbRequested(arguments); blocked {
 		return parsedArguments{}, errors.New(reason)
 	}
 
@@ -186,22 +196,34 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (parsedArguments, 
 	return arguments, nil
 }
 
-// subVerbOfBareOnlySubcommandRequested reports whether the kubectl arguments invoke a subcommand that may only be used
-// in its bare form with a positional argument, returning a human-readable reason when they do. Any positional argument
-// is rejected, not just the sub-verbs that exist today, so that a sub-verb added by a future kubectl release does not
-// widen what the connector accepts. See subcommandsRejectingPositionalArguments.
-func subVerbOfBareOnlySubcommandRequested(parsed parsedArguments) (string, bool) {
-	if _, bareOnly := subcommandsRejectingPositionalArguments[parsed.subcommand]; !bareOnly {
+// disallowedSubVerbRequested reports whether the kubectl arguments invoke a subcommand that is only allowed with a
+// fixed set of sub-verbs, and the invocation uses a disallowed subverb. It returns a human-readable reason if that is
+// the case. See allowedSubVerbsPerSubCommand.
+func disallowedSubVerbRequested(parsed parsedArguments) (string, bool) {
+	allowedSubVerbs, restricted := allowedSubVerbsPerSubCommand[parsed.subcommand]
+	if !restricted {
 		return "", false
 	}
-	if len(parsed.positionalArguments) == 0 {
+	requestedSubVerb := ""
+	if len(parsed.positionalArguments) > 0 {
+		requestedSubVerb = parsed.positionalArguments[0]
+	}
+	if slices.Contains(allowedSubVerbs, requestedSubVerb) {
 		return "", false
+	}
+	if slices.Equal(allowedSubVerbs, []string{""}) {
+		return fmt.Sprintf(
+			"the kubectl subcommand %q must be used without additional arguments, but got %q; its sub-commands render "+
+				"content in a format whose secrets cannot be redacted",
+			parsed.subcommand,
+			requestedSubVerb,
+		), true
 	}
 	return fmt.Sprintf(
-		"the kubectl subcommand %q must be used without additional arguments, but got %q; its sub-commands render "+
-			"resource content and container logs in a format whose secrets cannot be redacted",
+		"the kubectl subcommand %q is only allowed with the sub-command %q, but got %q instead",
 		parsed.subcommand,
-		parsed.positionalArguments[0],
+		strings.Join(allowedSubVerbs, "\" or \""),
+		requestedSubVerb,
 	), true
 }
 
@@ -232,12 +254,17 @@ func disallowedOutputFormat(parsed parsedArguments) (string, bool) {
 }
 
 // sensitiveContentRequested reports whether the kubectl arguments would read the contents of a sensitive resource,
-// returning a human-readable reason when they do. Listing them (`kubectl get secrets`) and checking for the presence of
-// a particular one (`kubectl get secret <name>`) are allowed; serializing the data via an output format such as
-// -o yaml/json/jsonpath/go-template/custom-columns (or --template), or via a subcommand that prints the data anyway, is
-// not. This is a fail-closed check: output formats that could expose the data are rejected even if a particular
-// invocation would only read metadata, and a repeated output flag is rejected if any of its occurrences would expose
-// the data.
+// returning a human-readable reason when they do. The default RBAC permissions disallow any access to secrets
+// outright, even checking for the presence of a secret is not possible. However, overriding the default RBAC
+// permissions with a custom cluster role is possible, and sensitiveContentRequested adds defense in-depth for those
+// setups.
+//
+// Listing secrets (e.g. `kubectl get secrets`) and checking for the presence of a particular one
+// (`kubectl get secret <name>`) are allowed (if the corresponding RBAC permissions are granted); serializing the data
+// via an output format such as -o yaml/json/jsonpath/go-template/custom-columns (or --template), or via a subcommand
+// that prints the data, is not. This is a fail-closed check: output formats that could expose the data are rejected
+// even if a particular invocation would only read metadata, and a repeated output flag is rejected if any of its
+// occurrences would expose the data.
 func sensitiveContentRequested(parsed parsedArguments) (string, bool) {
 	resource, targeted := targetedSensitiveResource(parsed)
 	if !targeted {

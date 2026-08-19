@@ -126,6 +126,9 @@ var allowedFlags = map[string]bool{
 
 	// version
 	"client": false,
+
+	// auth can-i
+	"list": false,
 }
 
 // ExecuteCommandRequest validates and executes a CommandRequest and returns the corresponding CommandResponse.

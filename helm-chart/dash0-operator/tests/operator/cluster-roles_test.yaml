@@ -72,8 +72,145 @@ tests:
           kind: ClusterRole
           apiVersion: rbac.authorization.k8s.io/v1
           name: dash0-operator-manager-agent0-connector-ro
-        documentIndex: 4
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
       - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - componentstatuses
+              - endpoints
+              - events
+              - limitranges
+              - namespaces
+              - nodes
+              - persistentvolumeclaims
+              - persistentvolumes
+              - podtemplates
+              - pods
+              - pods/log
+              - replicationcontrollers
+              - resourcequotas
+              - serviceaccounts
+              - services
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - controllerrevisions
+              - daemonsets
+              - deployments
+              - replicasets
+              - statefulsets
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - metrics.k8s.io
+            resources:
+              - nodes
+              - pods
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - authorization.k8s.io
+            resources:
+              - selfsubjectaccessreviews
+              - selfsubjectrulesreviews
+            verbs:
+              - create
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - monitoring.coreos.com
+            resources:
+              - podmonitors
+              - probes
+              - prometheusrules
+              - scrapeconfigs
+              - servicemonitors
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - perses.dev
+            resources:
+              - persesdashboards
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - dash0.com
+            resources:
+              - dash0teams
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - operator.dash0.com
+            resources:
+              - dash0monitorings
+              - dash0notificationchannels
+              - dash0operatorconfigurations
+              - dash0samplingrules
+              - dash0signalcontrols
+              - dash0signaltometrics
+              - dash0spamfilters
+              - dash0syntheticchecks
+              - dash0views
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
           path: rules
           content:
             apiGroups:
@@ -83,7 +220,21 @@ tests:
             verbs:
               - get
               - list
-        documentIndex: 4
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
+          path: rules[*].resources
+          content: secrets
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
+          path: rules[*].resources
+          content: configmaps
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
       - contains:
           path: rules
           content:
@@ -91,12 +242,16 @@ tests:
               - '*'
             verbs:
               - get
-        documentIndex: 4
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
       - containsDocument:
           kind: ClusterRole
           apiVersion: rbac.authorization.k8s.io/v1
           name: dash0-operator-manager-agent0-connector
-        documentIndex: 5
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector
       - contains:
           path: rules
           content:
@@ -112,7 +267,9 @@ tests:
               - patch
               - update
               - watch
-        documentIndex: 5
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector
       - contains:
           path: rules
           content:
@@ -129,7 +286,9 @@ tests:
               - patch
               - update
               - watch
-        documentIndex: 5
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector
       - contains:
           path: rules
           content:
@@ -145,7 +304,9 @@ tests:
               - patch
               - update
               - watch
-        documentIndex: 5
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector
 
   - it: should grant agent0-connector management permissions independently of telemetry collection
     set:
