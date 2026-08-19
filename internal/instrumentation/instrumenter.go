@@ -26,6 +26,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/retry"
 	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
@@ -439,7 +440,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 
 	logger.Debug("determined required action for immutable job", "required action", requiredAction, "modifyLabels", modifyLabels)
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
-	retryErr := util.Retry("handling immutable job", func() error {
+	retryErr := retry.Retry("handling immutable job", func() error {
 		if !modifyLabels {
 			return nil
 		}
@@ -629,7 +630,7 @@ func (i *Instrumenter) instrumentWorkload(
 
 	logger.Debug("determined required action for workload", "required action", requiredAction)
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
-	retryErr := util.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
+	retryErr := retry.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
 		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: workloadMeta.GetNamespace(),
 			Name:      workloadMeta.GetName(),
@@ -952,7 +953,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 
 	createImmutableWorkloadsError := false
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
-	retryErr := util.Retry("removing labels from immutable job", func() error {
+	retryErr := retry.Retry("removing labels from immutable job", func() error {
 		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
@@ -1119,7 +1120,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 
 	logger.Debug("reverting instrumentation for workload")
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
-	retryErr := util.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {
+	retryErr := retry.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {
 		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: objectMeta.GetNamespace(),
 			Name:      objectMeta.GetName(),

@@ -24,7 +24,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
@@ -230,7 +229,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 
 	r.applyApiAccessSettings(ctx, operatorConfigurationResource, logger)
 
-	r.applyInstrumentationDelivery(operatorConfigurationResource, logger)
+	r.updateRequestedInstrumentationDelivery(operatorConfigurationResource, logger)
 
 	if err = r.reconcileOpenTelemetryCollector(ctx, logger); err != nil {
 		return ctrl.Result{}, err
@@ -362,31 +361,32 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 	}
 }
 
-// applyInstrumentationDelivery resolves spec.instrumentWorkloads.instrumentationDelivery against the detected
-// Kubernetes version and stores the result into the clusterInstrumentationConfig.
-func (r *OperatorConfigurationReconciler) applyInstrumentationDelivery(
+// updateRequestedInstrumentationDelivery resolves spec.instrumentWorkloads.instrumentationDelivery against the detected
+// Kubernetes version knowledge (the Kubernetes API server version and the minimum kubelet version) and stores the
+// result into the clusterInstrumentationConfig. Subsequent workload instrumentation actions then use the new resolved delivery
+// mechanism. Existing instrumented workloads are not re-instrumented, even if the delivery mechanism changes.
+func (r *OperatorConfigurationReconciler) updateRequestedInstrumentationDelivery(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) {
 	if r.clusterInstrumentationConfig == nil {
 		return
 	}
-	originalDeliverySetting := string(operatorConfigurationResource.Spec.InstrumentWorkloads.InstrumentationDelivery)
-	resolvedDelivery := cluster.ResolveInstrumentationDelivery(
-		originalDeliverySetting,
-		r.clusterInstrumentationConfig.KubernetesVersion,
-		r.clusterInstrumentationConfig.KubernetesVersionDetected,
-		true,
-		logger,
-	)
-	previous := r.clusterInstrumentationConfig.SetInstrumentationDelivery(resolvedDelivery)
-	if previous != resolvedDelivery {
+	originalDeliverySetting := operatorConfigurationResource.Spec.InstrumentWorkloads.InstrumentationDelivery
+	previousResolvedDelivery, newResolvedDelivery :=
+		r.clusterInstrumentationConfig.UpdateRequestedInstrumentationDelivery(
+			originalDeliverySetting,
+			true,
+			logger,
+		)
+	if previousResolvedDelivery != newResolvedDelivery {
 		logger.Info(
-			"Changed spec.instrumentWorkloads.instrumentationDelivery detected. The new setting will become effective for "+
-				"subsequent workload instrumentations. (Existing instrumented workloads will not be re-instrumented.)",
+			"The instrumentation delivery mechanism resolved from spec.instrumentWorkloads.instrumentationDelivery has "+
+				"changed. The new setting will become effective for subsequent workload instrumentations. (Existing "+
+				"instrumented workloads will not be re-instrumented.)",
 			"instrumentation delivery setting in operator configuration", originalDeliverySetting,
-			"previous instrumentation delivery setting", previous,
-			"updated instrumentation delivery setting", resolvedDelivery,
+			"previous resolved instrumentation delivery setting", previousResolvedDelivery,
+			"updated resolved instrumentation delivery setting", newResolvedDelivery,
 		)
 	}
 }

@@ -4,6 +4,7 @@
 package util
 
 import (
+	"context"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -13,7 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util/cluster"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
 type Action string
@@ -75,19 +78,18 @@ type CollectorConfig struct {
 	// KubeletStatsAutoDetectEndpoint is false and is used verbatim instead of probing the node's kubelet.
 	KubeletStatsReceiverConfig *KubeletStatsReceiverConfig
 	PseudoClusterUid           types.UID
-	// KubernetesVersion is the Kubernetes version detected at operator manager startup, and
-	// KubernetesVersionDetected reports whether that detection succeeded. Used to decide whether the operator's
-	// services can carry spec.trafficDistribution.
-	KubernetesVersion         cluster.KubernetesVersionInfo
-	KubernetesVersionDetected bool
-	IsIPv6Cluster             bool
-	IsDocker                  bool
-	DisableHostPorts          bool
-	IsGkeAutopilot            bool
-	DevelopmentMode           bool
-	DebugVerbosityDetailed    bool
-	EnableProfExtension       bool
-	CompressConfigMap         bool
+	// KubernetesApiServerVersion is the Kubernetes API server version, detected at operator manager startup; its
+	// Detected flag reports whether that detection succeeded. Used to decide whether the operator's services can carry
+	// spec.trafficDistribution.
+	KubernetesApiServerVersion cluster.KubernetesVersionInfo
+	IsIPv6Cluster              bool
+	IsDocker                   bool
+	DisableHostPorts           bool
+	IsGkeAutopilot             bool
+	DevelopmentMode            bool
+	DebugVerbosityDetailed     bool
+	EnableProfExtension        bool
+	CompressConfigMap          bool
 }
 
 // KubeletStatsReceiverConfig holds the configuration for the kubeletstats receiver in the DaemonSet collector. It is
@@ -197,18 +199,21 @@ type ClusterInstrumentationConfig struct {
 	OTelCollectorBaseUrl  string
 	ExtraConfig           atomic.Pointer[ExtraConfig]
 
-	// KubernetesVersion holds the Kubernetes version of the cluster detected at operator manager startup.
-	// KubernetesVersionDetected indicates whether detection succeeded; if false, KubernetesVersion is the zero value.
-	KubernetesVersion         cluster.KubernetesVersionInfo
-	KubernetesVersionDetected bool
+	// kubernetesApiServerVersion holds the Kubernetes API server version, detected at operator manager startup. Its
+	// Detected flag indicates whether that detection succeeded.
+	kubernetesApiServerVersion cluster.KubernetesVersionInfo
 
-	// ResolvedDelivery is the resolved decision (based on the operator configuration's
-	// spec.instrumentWorkloads.instrumentationDelivery and the Kubernetes version) on whether Kubernetes image volumes
-	// or the legacy init container plus emptyDir volume approach is used for instrumentation delivery. The value is
-	// initialized at operator manager startup from the --operator-configuration-instrumentation-delivery flag (if
-	// available) and may be updated at runtime by the operator configuration reconciler when
-	// spec.instrumentWorkloads.instrumentationDelivery is changed.
-	ResolvedDelivery atomic.Pointer[cluster.ResolvedInstrumentationDelivery]
+	// minimumKubeletVersionDetector provides the minimum kubelet version among the cluster's nodes, which is determined
+	// asynchronously after the operator manager has started.
+	minimumKubeletVersionDetector *cluster.MinimumKubeletVersionDetector
+
+	// requestedInstrumentationDelivery is the unresolved value of the operator configuration's
+	// spec.instrumentWorkloads.instrumentationDelivery setting. It is initialized at operator manager startup from the
+	// --operator-configuration-instrumentation-delivery flag (if available) and may be updated at runtime by the
+	// operator configuration reconciler when spec.instrumentWorkloads.instrumentationDelivery is changed. The decision
+	// whether Kubernetes image volumes or the legacy init container plus emptyDir volume approach is used is derived
+	// from this value on demand, see ResolveInstrumentationDelivery.
+	requestedInstrumentationDelivery atomic.Pointer[dash0v1alpha1.InstrumentationDelivery]
 
 	InstrumentationDelays           *DelayConfig
 	InstrumentationDebug            bool
@@ -221,7 +226,7 @@ func NewClusterInstrumentationConfig(
 	possibleCollectorUrls PossibleCollectorUrls,
 	oTelCollectorBaseUrl string,
 	extraConfig ExtraConfig,
-	instrumentationDelivery cluster.ResolvedInstrumentationDelivery,
+	requestedInstrumentationDelivery dash0v1alpha1.InstrumentationDelivery,
 	instrumentationDelays *DelayConfig,
 	instrumentationDebug bool,
 	enablePythonAutoInstrumentation bool,
@@ -237,42 +242,80 @@ func NewClusterInstrumentationConfig(
 		EnableRubyAutoInstrumentation:   enableRubyAutoInstrumentation,
 	}
 	c.ExtraConfig.Store(&extraConfig)
-	c.ResolvedDelivery.Store(&instrumentationDelivery)
+	c.requestedInstrumentationDelivery.Store(&requestedInstrumentationDelivery)
 	return c
 }
 
-// SetKubernetesVersion records the detected Kubernetes version on the config. Intended to be called once at
-// operator manager startup, before the config is shared with reconcilers and webhooks.
-func (c *ClusterInstrumentationConfig) SetKubernetesVersion(info cluster.KubernetesVersionInfo, detected bool) {
-	c.KubernetesVersion = info
-	c.KubernetesVersionDetected = detected
+// SetKubernetesVersions stores the detected Kubernetes API server version and the detector for the minimum kubelet
+// version in the ClusterInstrumentationConfig. Intended to be called once at operator manager startup, before the
+// config is shared with reconcilers and webhooks.
+func (c *ClusterInstrumentationConfig) SetKubernetesVersions(
+	apiServerVersion cluster.KubernetesVersionInfo,
+	minimumKubeletVersionDetector *cluster.MinimumKubeletVersionDetector,
+) {
+	c.kubernetesApiServerVersion = apiServerVersion
+	c.minimumKubeletVersionDetector = minimumKubeletVersionDetector
 }
 
-// SetInstrumentationDelivery sets the resolved instrumentation delivery mechanism. The previously stored value is
-// returned for logging purposes.
-func (c *ClusterInstrumentationConfig) SetInstrumentationDelivery(instrumentationDelivery cluster.ResolvedInstrumentationDelivery) cluster.ResolvedInstrumentationDelivery {
-	previous := c.ResolvedDelivery.Swap(&instrumentationDelivery)
-	if previous == nil {
-		return ""
+// WaitForInstrumentationDeliveryAutoToBeResolved returns the instrumentation delivery mechanism to use, waiting for the
+// minimum kubelet version detection first if the outcome depends on it, e.g. if the requested mode is "auto". Use it
+// before instrumenting workloads in bulk: while the detection is still in progress, "auto" resolves to the
+// init-container fallback, and workloads that have been instrumented already are not re-instrumented when the resolved
+// mechanism changes later. It gives up waiting after the given timeout and then returns the mechanism that is effective
+// at that point.
+//
+// If the requested delivery is not "auto", the method will not wait.
+func (c *ClusterInstrumentationConfig) WaitForInstrumentationDeliveryAutoToBeResolved(
+	ctx context.Context,
+	timeout time.Duration,
+) cluster.ResolvedInstrumentationDelivery {
+	requestedInstrumentationDelivery := c.requestedInstrumentationDelivery.Load()
+	if requestedInstrumentationDelivery != nil &&
+		*requestedInstrumentationDelivery == dash0v1alpha1.InstrumentationDeliveryAuto {
+		c.minimumKubeletVersionDetector.WaitForDetection(ctx, timeout)
 	}
-	return *previous
+	return c.ResolveInstrumentationDelivery()
 }
 
-func (c *ClusterInstrumentationConfig) IsInstrumentationDeliveryInitContainer() bool {
-	return !c.IsInstrumentationDeliveryImageVolume()
+// UpdateRequestedInstrumentationDelivery stores the requested (unresolved) instrumentation delivery setting that has
+// been read from the Dash0OperatorConfiguration resource. It returns the resolved delivery mechanism that has been
+// effective before the update and the new resolved mechanism that is effective now, after updating it.
+func (c *ClusterInstrumentationConfig) UpdateRequestedInstrumentationDelivery(
+	requestedInstrumentationDelivery dash0v1alpha1.InstrumentationDelivery,
+	logWarningForEmptyValue bool,
+	logger logd.Logger,
+) (cluster.ResolvedInstrumentationDelivery, cluster.ResolvedInstrumentationDelivery) {
+	previous := c.ResolveInstrumentationDelivery()
+	c.requestedInstrumentationDelivery.Store(&requestedInstrumentationDelivery)
+	return previous, c.resolveInstrumentationDelivery(logWarningForEmptyValue, logger)
 }
 
-func (c *ClusterInstrumentationConfig) IsInstrumentationDeliveryImageVolume() bool {
-	delivery := c.ResolvedDelivery.Load()
-	return delivery != nil && *delivery == cluster.ResolvedInstrumentationDeliveryImageVolume
+// ResolveInstrumentationDelivery resolves the stored requested instrumentation delivery setting to the effective
+// delivery mechanism depending on the current knowledge about the Kubernetes API server version and the minimum kubelet
+// version among all nodes of the cluster.
+//
+// This is derived on demand, because the minimum kubelet version is detected asynchronously after the operator manager
+// has started. The mode "auto" resolves to init-container until all nodes have been inspected, and potentially to
+// image-volumes afterwards (if all kubelets are recent enough).
+func (c *ClusterInstrumentationConfig) ResolveInstrumentationDelivery() cluster.ResolvedInstrumentationDelivery {
+	return c.resolveInstrumentationDelivery(false, logd.Discard())
 }
 
-func (c *ClusterInstrumentationConfig) GetInstrumentationDelivery() cluster.ResolvedInstrumentationDelivery {
-	delivery := c.ResolvedDelivery.Load()
-	if delivery == nil {
-		return ""
+func (c *ClusterInstrumentationConfig) resolveInstrumentationDelivery(
+	logWarningForEmptyValue bool,
+	logger logd.Logger,
+) cluster.ResolvedInstrumentationDelivery {
+	requestedInstrumentationDelivery := c.requestedInstrumentationDelivery.Load()
+	if requestedInstrumentationDelivery == nil {
+		return cluster.ResolvedInstrumentationDeliveryInitContainer
 	}
-	return *delivery
+	return cluster.ResolveInstrumentationDelivery(
+		*requestedInstrumentationDelivery,
+		c.kubernetesApiServerVersion,
+		c.minimumKubeletVersionDetector.Get(),
+		logWarningForEmptyValue,
+		logger,
+	)
 }
 
 type DelayConfig struct {

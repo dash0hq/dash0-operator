@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -40,7 +41,7 @@ var (
 		PossibleCollectorUrlsTest,
 		OTelCollectorNodeLocalBaseUrlTest,
 		util.ExtraConfigDefaults,
-		cluster.ResolvedInstrumentationDeliveryInitContainer,
+		dash0v1alpha1.InstrumentationDeliveryInitContainer,
 		nil,
 		false,
 		false,
@@ -52,7 +53,7 @@ var (
 		PossibleCollectorUrlsTest,
 		OTelCollectorNodeLocalBaseUrlTest,
 		util.ExtraConfigDefaults,
-		cluster.ResolvedInstrumentationDeliveryImageVolume,
+		dash0v1alpha1.InstrumentationDeliveryImageVolume,
 		nil,
 		false,
 		false,
@@ -64,7 +65,7 @@ var (
 		PossibleCollectorUrlsTest,
 		OTelCollectorServiceBaseUrlTest,
 		util.ExtraConfigDefaults,
-		cluster.ResolvedInstrumentationDeliveryInitContainer,
+		dash0v1alpha1.InstrumentationDeliveryInitContainer,
 		nil,
 		false,
 		false,
@@ -83,7 +84,7 @@ func clusterInstrumentationConfigWithOptIns(
 		PossibleCollectorUrlsTest,
 		OTelCollectorNodeLocalBaseUrlTest,
 		util.ExtraConfigDefaults,
-		cluster.ResolvedInstrumentationDeliveryInitContainer,
+		dash0v1alpha1.InstrumentationDeliveryInitContainer,
 		nil,
 		false,
 		enablePythonAutoInstrumentation,
@@ -155,7 +156,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						PossibleCollectorUrlsTest,
 						OTelCollectorServiceBaseUrlTest,
 						util.ExtraConfigDefaults,
-						cluster.ResolvedInstrumentationDeliveryInitContainer,
+						dash0v1alpha1.InstrumentationDeliveryInitContainer,
 						nil,
 						false,
 						false,

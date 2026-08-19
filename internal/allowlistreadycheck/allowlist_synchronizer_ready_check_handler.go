@@ -21,8 +21,8 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/retry"
 )
 
 const (
@@ -134,7 +134,7 @@ func (h *OperatorPreInstallHandler) WaitForAllowlistSynchronizerToBecomeReady() 
 		dash0AllowlistSynchronizerName,
 	)
 	h.logger.Info(message)
-	if err := util.RetryWithCustomBackoff(
+	if err := retry.RetryWithCustomBackoff(
 		message,
 		func() error {
 			return h.checkAllowlistSynchronizerReadiness(ctx)

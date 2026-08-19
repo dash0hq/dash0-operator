@@ -125,3 +125,25 @@ instruments) must be added to the `selfMonitoringClients` slice in `internal/sta
 Missing that step is silent: the metric handle stays `nil`, `Reconcile` skips the counter update via its nil-guard,
 and the reconciler emits nothing for the entire process lifetime — no build error, no test failure, no runtime
 warning. When wiring a new reconciler, grep for `selfMonitoringClients` and add the new entry before opening the PR.
+
+### Listing Kubernetes resources with pagination
+
+The `Limit` and `Continue` fields of controller-runtime's `client.ListOptions` compile with every client, but they only
+work with an uncached client (created via `client.New`, for example `startupTasksK8sClient`). The cache-backed client
+(`mgr.GetClient()`) fails at runtime: it rejects a non-empty `Continue` with "continue list option is not supported by
+the cache", and it sets the continue token of every list result to the literal string "continue-not-supported". A
+hand-written loop that feeds the returned token back into the next call therefore breaks on the second iteration, on
+every cluster, no matter how many objects there are.
+
+Do not paginate resources that the controller-runtime cache holds anyway. The informer keeps every object of a watched
+resource in memory for the lifetime of the operator, so paging the reads saves nothing.
+
+When pagination is actually needed - an uncached read of a resource the operator does not watch, with potentially many
+or large objects - use client-go's pager together with the clientset instead of a controller-runtime client:
+`pager.New(pager.SimplePageFunc(...))` plus `pgr.PageSize`, see `internal/instrumentation/instrumenter.go` and
+`internal/util/cluster/kubernetes_version.go`. The pager owns the continue token and falls back to a full relist when
+the API server expires it (410 Gone).
+
+Note for unit tests: the controller-runtime fake client ignores `Limit` and never sets a continue token, so it always
+returns a single page and a broken pagination implementation passes unnoticed. Use `k8s.io/client-go/kubernetes/fake`
+with a `PrependReactor` that hands out more than one chunk to cover the paging behaviour.

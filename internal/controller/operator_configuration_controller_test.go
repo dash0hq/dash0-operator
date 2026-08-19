@@ -25,7 +25,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 
@@ -1333,7 +1332,7 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 			PossibleCollectorUrlsTest,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
-			cluster.ResolvedInstrumentationDeliveryInitContainer,
+			dash0v1alpha1.InstrumentationDeliveryInitContainer,
 			nil,
 			false,
 			false,

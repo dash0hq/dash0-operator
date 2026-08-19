@@ -19,6 +19,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/retry"
 )
 
 type SecretRef struct {
@@ -37,7 +38,7 @@ type OperatorConfigurationValues struct {
 	KeepalivePermitWithoutStream                     bool
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
-	InstrumentationDelivery                          string
+	InstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
@@ -237,7 +238,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) error {
-	return util.RetryWithCustomBackoff(
+	return retry.RetryWithCustomBackoff(
 		"create/update operator configuration resource",
 		func() error {
 			return r.createOrUpdateOperatorConfigurationResourceOnce(ctx, operatorConfigurationResource, logger)
@@ -270,7 +271,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 		// If this is a manually created operator configuration resource, we refuse to overwrite it.
 		if existingOperatorConfigurationResource.Name != util.OperatorConfigurationAutoResourceName {
 			//nolint:staticcheck
-			return util.NewRetryableErrorWithFlag(
+			return retry.NewRetryableError(
 				fmt.Errorf(
 					"The configuration provided via Helm instructs the operator manager to create an operator "+
 						"configuration resource at startup, that is, operator.dash0Export.enabled is true and "+
@@ -394,7 +395,7 @@ func convertValuesToResource(
 	}
 	if operatorConfigurationValues.InstrumentationDelivery != "" {
 		spec.InstrumentWorkloads = dash0v1alpha1.InstrumentWorkloads{
-			InstrumentationDelivery: dash0v1alpha1.InstrumentationDelivery(operatorConfigurationValues.InstrumentationDelivery),
+			InstrumentationDelivery: operatorConfigurationValues.InstrumentationDelivery,
 		}
 	}
 

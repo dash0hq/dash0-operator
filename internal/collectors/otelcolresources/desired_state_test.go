@@ -730,7 +730,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	DescribeTable("should set spec.trafficDistribution on the Signal Control collector service depending on the "+
 		"Kubernetes version",
-		func(versionInfo cluster.KubernetesVersionInfo, versionDetected bool, expectedValue *string) {
+		func(version cluster.KubernetesVersion, versionDetected bool, expectedValue *string) {
 			config := &oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -744,8 +744,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}
-			config.ServiceTrafficDistribution =
-				cluster.ResolveServiceTrafficDistribution(versionInfo, versionDetected, logd.Discard())
+			config.ServiceTrafficDistribution = cluster.ResolveServiceTrafficDistribution(
+				cluster.KubernetesVersionInfo{Version: version, Detected: versionDetected},
+				logd.Discard(),
+			)
 
 			service := assembleSignalControlCollectorService(config)
 			if expectedValue == nil {
@@ -761,11 +763,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Expect(daemonSetService.Spec.TrafficDistribution).To(BeNil())
 			Expect(*daemonSetService.Spec.InternalTrafficPolicy).To(Equal(corev1.ServiceInternalTrafficPolicyLocal))
 		},
-		Entry("omitted on 1.29", cluster.KubernetesVersionInfo{Major: 1, Minor: 29}, true, nil),
-		Entry("omitted on 1.30", cluster.KubernetesVersionInfo{Major: 1, Minor: 30}, true, nil),
-		Entry("set on 1.31", cluster.KubernetesVersionInfo{Major: 1, Minor: 31}, true, ptr.To("PreferClose")),
-		Entry("set on 1.34", cluster.KubernetesVersionInfo{Major: 1, Minor: 34}, true, ptr.To("PreferClose")),
-		Entry("omitted when the version is unknown", cluster.KubernetesVersionInfo{}, false, nil),
+		Entry("omitted on 1.29", cluster.KubernetesVersion{Major: 1, Minor: 29}, true, nil),
+		Entry("omitted on 1.30", cluster.KubernetesVersion{Major: 1, Minor: 30}, true, nil),
+		Entry("set on 1.31", cluster.KubernetesVersion{Major: 1, Minor: 31}, true, ptr.To("PreferClose")),
+		Entry("set on 1.34", cluster.KubernetesVersion{Major: 1, Minor: 34}, true, ptr.To("PreferClose")),
+		Entry("omitted when the version is unknown", cluster.KubernetesVersion{}, false, nil),
 	)
 
 	It("should not deploy a Signal Control collector when Signal Control is enabled but no Signal Control collector image is provided", func() {
