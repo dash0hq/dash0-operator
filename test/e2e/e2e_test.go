@@ -2054,10 +2054,21 @@ trace_statements:
 
 	Context("with the agent0-connector enabled", Ordered, func() {
 		agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
+		var pseudoClusterUid string
 
 		BeforeAll(func() {
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
+
+			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
+			clusterUid, err := run(exec.Command(
+				"kubectl",
+				"get", "namespace", "kube-system",
+				"-o", "jsonpath={.metadata.uid}",
+			), false)
+			Expect(err).ToNot(HaveOccurred())
+			pseudoClusterUid = strings.TrimSpace(clusterUid)
+			Expect(pseudoClusterUid).ToNot(BeEmpty())
 
 			By("deploying the Dash0 operator with the agent0-connector enabled")
 			deployOperatorWithDefaultAutoOperationConfiguration(
@@ -2082,16 +2093,6 @@ trace_statements:
 		})
 
 		It("establishes the command request stream and executes a kubectl command", func() {
-			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
-			pseudoClusterUid, err := run(exec.Command(
-				"kubectl",
-				"get", "namespace", "kube-system",
-				"-o", "jsonpath={.metadata.uid}",
-			), false)
-			Expect(err).ToNot(HaveOccurred())
-			pseudoClusterUid = strings.TrimSpace(pseudoClusterUid)
-			Expect(pseudoClusterUid).ToNot(BeEmpty())
-
 			By("waiting for the agent0-connector deployment to become available")
 			Eventually(func(g Gomega) {
 				g.Expect(runAndIgnoreOutput(exec.Command(
@@ -2128,16 +2129,7 @@ trace_statements:
 
 			By("verifying the expected command response is received by the outbound-connector mock")
 			Eventually(func(g Gomega) {
-				responses := fetchOutboundConnectorMockCommandResponses(g)
-				var response *outboundConnectorMockCommandResponse
-				for i := range responses {
-					if responses[i].RequestID == requestId {
-						response = &responses[i]
-						break
-					}
-				}
-				g.Expect(response).ToNot(BeNil(),
-					"expected a command response for request ID %s, got %v", requestId, responses)
+				response := findOutboundConnectorMockCommandResponse(g, requestId)
 				g.Expect(response.Timeout).To(BeFalse())
 				g.Expect(response.ExitCode).To(
 					BeEquivalentTo(0),
@@ -2151,6 +2143,36 @@ trace_statements:
 				g.Expect(response.Stdout).To(
 					ContainSubstring(operatorNamespace),
 					"stdout should list the operator namespace")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+		})
+
+		It("redacts the Dash0 auth token from a command response containing a Dash0 custom resource", func() {
+			By("triggering a \"kubectl get dash0operatorconfigurations -o yaml\" command request")
+			var requestId string
+			Eventually(func(g Gomega) {
+				requestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"get", "dash0operatorconfigurations", "-o", "yaml"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the auth token has been redacted from the command response")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, requestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"kubectl get dash0operatorconfigurations should succeed; stderr was: %s", response.Stderr)
+				g.Expect(response.Stdout).To(
+					ContainSubstring("kind: Dash0OperatorConfiguration"),
+					"stdout should contain the operator configuration resource")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("token: (redacted)"),
+					"the auth token should have been replaced with the redaction placeholder")
+				g.Expect(response.Stdout).ToNot(
+					ContainSubstring(defaultToken),
+					"the auth token should not occur anywhere in the response")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 		})
 	})
