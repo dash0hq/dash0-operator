@@ -86,6 +86,9 @@ knowledge that actually lives in `api/operator`. CRD changes need to be checked 
 - `credentialFieldsPerConfigObject` - the fields that only hold a credential within a particular configuration object,
   keyed by the name of that object (e.g. `slackConfig` -> `webhookURL`). Generic field names such as `url` or `key` are
   credentials in one object and harmless in another, which is why they are keyed this way.
+- `urlFieldsPerConfigObject` - the fields that hold a URL which is not a credential itself, but can contain one. Only
+  sensitive parts of the URL are redacted. A URL that is a credential as a whole, such as a webhook URL, belongs in
+  `credentialFieldsPerConfigObject` instead.
 - The field names that are credentials wherever they occur are handled in `redactDocumentNodeRecursively`: `token`,
   `password`, and the header/query parameter values under `headers` and `queryParameters`.
 
@@ -103,16 +106,17 @@ and the output formats that can reshape a value (`-o go-template/jsonpath/custom
 because their output cannot be redacted. A credential-bearing CRD that is missing from the list therefore stays fully
 readable through those formats as well.
 
-When adding or changing a CRD, check all three lists above - grep for `dash0ResourceTypesWithSecrets` and
-`credentialFieldsPerConfigObject`, and read the `case` clauses of `redactDocumentNodeRecursively` for the field names
-that are credentials wherever they occur - and extend the fixtures in
-`images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
+When adding or changing a CRD, check all four lists above - grep for `dash0ResourceTypesWithSecrets`,
+`credentialFieldsPerConfigObject` and `urlFieldsPerConfigObject`, and read the `case` clauses of
+`redactDocumentNodeRecursively` for the field names that are credentials wherever they occur - and extend the fixtures
+in `images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
 `go test ./api/operator/... -run TestAgent0ConnectorRedactsEveryCredentialField` to check the CRDs against the lists.
 
-Note which of the three lists a field belongs in: a field listed in `credentialFieldsPerConfigObject` is redacted
-unconditionally, while a header or query parameter value is only redacted when it does not look like a well-known
-non-secret value (see `wellKnownNonSecretValues`). A field that always holds a credential belongs in the former, even
-when it is a header - which is why `incidentioConfig` lists `headers`.
+Note which of the lists a field belongs in: a field listed in `credentialFieldsPerConfigObject` is redacted
+unconditionally, while a header or query parameter value - including a query parameter of a URL listed in
+`urlFieldsPerConfigObject` - is only redacted when it does not look like a well-known non-secret value (see
+`wellKnownNonSecretValues`). A field that always holds a credential belongs in the former, even when it is a header -
+which is why `incidentioConfig` lists `headers`.
 
 ### Adding a new reconciler with self-monitoring metrics
 

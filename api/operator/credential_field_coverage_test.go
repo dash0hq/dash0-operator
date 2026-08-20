@@ -58,9 +58,6 @@ var knownUnredactedFields = map[string]string{
 	// The endpoint a PagerDuty integration posts to. Unlike the webhook URLs of the other channel types it carries no
 	// token; the credential of this channel is pagerdutyConfig.key, which is redacted.
 	"pagerdutyConfig.url": "the public PagerDuty events endpoint, not an unguessable URL",
-	// The URL a synthetic check requests. It is the subject of the check, not a credential; the credentials it sends
-	// are its headers, query parameters and basic authentication password.
-	"request.url": "the target of the synthetic check, not a credential",
 	// The name of the entry within a Kubernetes secret, not its value. The value never reaches the response: the
 	// operator resolves it into the workload, and the custom resource only ever holds the reference.
 	"secretKeyRef.key": "the name of an entry in a Kubernetes secret, not its value",
@@ -79,7 +76,7 @@ var knownUnredactedFields = map[string]string{
 // copy of implicit knowledge about the custom resource types of this package. This test is a best-effort attempt to
 // bind the CRDs to the redaction lists.
 func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
-	resourceTypesWithSecrets, credentialFieldsPerConfigObject, fieldsThatAreRedactedEverywhere :=
+	resourceTypesWithSecrets, coveredFieldsPerConfigObject, fieldsThatAreRedactedEverywhere :=
 		parseRedactionLists(t)
 
 	var uncovered []string
@@ -91,7 +88,7 @@ func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
 		}
 
 		_, handledAnywhere := fieldsThatAreRedactedEverywhere[field.name]
-		handledInObject := slices.Contains(credentialFieldsPerConfigObject[field.enclosingObject], field.name)
+		handledInObject := slices.Contains(coveredFieldsPerConfigObject[field.enclosingObject], field.name)
 		if !handledAnywhere && !handledInObject {
 			uncovered = append(uncovered, field.path+" (field "+field.name+" in "+field.enclosingObject+")")
 			continue
@@ -104,9 +101,10 @@ func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
 		t.Errorf(
 			"%d credential-like field(s) of the custom resources are not redacted by the agent0-connector:\n  %s\n\n"+
 				"Either add them to %s - to credentialFieldsPerConfigObject when the field only holds a credential "+
-				"within that configuration object, or to the field names handled in redactDocumentNodeRecursively when "+
-				"it does so wherever it occurs. Or, if the value is not a credential, add it to "+
-				"knownUnredactedFields in this test with the reason why it is not needs redaction.",
+				"within that configuration object, to urlFieldsPerConfigObject when it holds a URL that is not itself "+
+				"a credential but can carry one, or to the field names handled in redactDocumentNodeRecursively when "+
+				"it holds a credential wherever it occurs. Or, if the value is not a credential, add it to "+
+				"knownUnredactedFields in this test with the reason why it does not need redaction.",
 			len(uncovered),
 			strings.Join(uncovered, "\n  "),
 			redactionSourceFile,
@@ -340,9 +338,9 @@ func hasCredentialLikeName(name string) bool {
 }
 
 // parseRedactionLists reads the credential lists of the agent0-connector from its source: the field names that are
-// redacted wherever they occur (the case clauses of redactDocumentNodeRecursively), the fields that only hold a
-// credential within a particular configuration object (credentialFieldsPerConfigObject), and the resource types whose
-// content can contain a credential (dash0ResourceTypesWithSecrets).
+// redacted wherever they occur (the case clauses of redactDocumentNodeRecursively), the fields that are only redacted
+// within a particular configuration object (credentialFieldsPerConfigObject and urlFieldsPerConfigObject, merged into
+// one map), and the resource types whose content can contain a credential (dash0ResourceTypesWithSecrets).
 func parseRedactionLists(t *testing.T) (map[string]struct{}, map[string][]string, map[string]struct{}) {
 	t.Helper()
 
@@ -352,8 +350,9 @@ func parseRedactionLists(t *testing.T) (map[string]struct{}, map[string][]string
 	}
 
 	resourceTypesWithSecrets := map[string]struct{}{}
-	credentialFieldsPerConfigObject := map[string][]string{}
+	coveredFieldsPerConfigObject := map[string][]string{}
 	fieldsThatAreRedactedEverywhere := map[string]struct{}{}
+	var credentialFieldListsFound []string
 
 	ast.Inspect(file, func(node ast.Node) bool {
 		switch typedNode := node.(type) {
@@ -373,9 +372,11 @@ func parseRedactionLists(t *testing.T) (map[string]struct{}, map[string][]string
 					continue
 				}
 				switch name.Name {
-				case "credentialFieldsPerConfigObject":
+				case "credentialFieldsPerConfigObject", "urlFieldsPerConfigObject":
+					credentialFieldListsFound = append(credentialFieldListsFound, name.Name)
 					for key, element := range mapLiteralEntries(literal) {
-						credentialFieldsPerConfigObject[key] = compositeLitStrings(element)
+						coveredFieldsPerConfigObject[key] = append(
+							coveredFieldsPerConfigObject[key], compositeLitStrings(element)...)
 					}
 				case "dash0ResourceTypesWithSecrets":
 					for key := range mapLiteralEntries(literal) {
@@ -392,13 +393,15 @@ func parseRedactionLists(t *testing.T) (map[string]struct{}, map[string][]string
 	if len(fieldsThatAreRedactedEverywhere) == 0 {
 		t.Fatalf("no field names found in redactDocumentNodeRecursively in %s", redactionSourceFile)
 	}
-	if len(credentialFieldsPerConfigObject) == 0 {
-		t.Fatalf("credentialFieldsPerConfigObject not found in %s", redactionSourceFile)
+	for _, listName := range []string{"credentialFieldsPerConfigObject", "urlFieldsPerConfigObject"} {
+		if !slices.Contains(credentialFieldListsFound, listName) {
+			t.Fatalf("%s not found in %s", listName, redactionSourceFile)
+		}
 	}
 	if len(resourceTypesWithSecrets) == 0 {
 		t.Fatalf("dash0ResourceTypesWithSecrets not found in %s", redactionSourceFile)
 	}
-	return resourceTypesWithSecrets, credentialFieldsPerConfigObject, fieldsThatAreRedactedEverywhere
+	return resourceTypesWithSecrets, coveredFieldsPerConfigObject, fieldsThatAreRedactedEverywhere
 }
 
 // caseClauseStrings returns the string literals of every case clause in the given function.

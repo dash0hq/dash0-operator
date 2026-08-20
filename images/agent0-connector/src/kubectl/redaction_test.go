@@ -128,6 +128,9 @@ func TestRedactDocument(t *testing.T) {
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
+			syntheticCheckUrlPassword,
+			syntheticCheckUrlApiKey,
+			syntheticCheckBodyContent,
 		} {
 			if strings.Contains(rendered, secret) {
 				t.Errorf("expected the credential %q to be redacted, got %q", secret, rendered)
@@ -137,7 +140,7 @@ func TestRedactDocument(t *testing.T) {
 		for _, preserved := range []string{
 			pagerdutyEventsUrl,
 			syntheticCheckUsername,
-			syntheticCheckUrl,
+			syntheticCheckUrlEndpoint,
 			routingFilterAttributeKey,
 		} {
 			if !strings.Contains(rendered, preserved) {
@@ -320,6 +323,20 @@ func annotationsOf(resource any) (map[string]any, bool) {
 	return annotations, isMap
 }
 
+// nestedObject walks the given path of keys through a parsed document and returns the object it points to.
+func nestedObject(t *testing.T, node map[string]any, path ...string) map[string]any {
+	t.Helper()
+
+	for _, key := range path {
+		child, isObject := node[key].(map[string]any)
+		if !isObject {
+			t.Fatalf("expected an object at %q, got %v", key, node[key])
+		}
+		node = child
+	}
+	return node
+}
+
 func TestRedactSecrets(t *testing.T) {
 	secrets := []string{"auth_token-value", "Bearer header-secret"}
 
@@ -358,6 +375,177 @@ func TestRedactSecrets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := redactAllSecrets(tt.text, secrets); got != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+// TestRedactSyntheticCheckRequest covers the two parts of a synthetic check request whose redaction is not driven by
+// a field name alone: the request body, which is nested in a generically named object, and the URL, of which only the
+// credential-bearing parts are replaced.
+func TestRedactSyntheticCheckRequest(t *testing.T) {
+	t.Run("redacts the credentials in the URL and the whole request body of a synthetic check", func(t *testing.T) {
+		document := `{
+  "apiVersion": "operator.dash0.com/v1alpha1",
+  "kind": "Dash0SyntheticCheck",
+  "metadata": { "name": "synthetic-check" },
+  "spec": {
+    "plugin": {
+      "kind": "http",
+      "spec": {
+        "request": {
+          "method": "post",
+          "url": "` + syntheticCheckUrl + `",
+          "body": { "kind": "form", "spec": { "content": "` + syntheticCheckBodyContent + `" } }
+        }
+      }
+    }
+  }
+}`
+		rendered, replaced := redactDocument(t, document)
+
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(rendered), &parsed); err != nil {
+			t.Fatalf("the redacted document does not parse: %v", err)
+		}
+		request := nestedObject(t, parsed, "spec", "plugin", "spec", "request")
+		expectedUrl := "https://" + syntheticCheckUsername + ":" + redactedValue + "@" + syntheticCheckUrlEndpoint +
+			"?apiKey=" + redactedValue + "&format=application/json"
+		if request["url"] != expectedUrl {
+			t.Errorf("expected the URL to be redacted to %q, got %q", expectedUrl, request["url"])
+		}
+		if content := nestedObject(t, request, "body", "spec")["content"]; content != redactedValue {
+			t.Errorf("expected the request body to be redacted, got %q", content)
+		}
+		for _, secret := range []string{syntheticCheckUrlPassword, syntheticCheckUrlApiKey, syntheticCheckBodyContent} {
+			if !slices.Contains(replaced, secret) {
+				t.Errorf("expected the secret %q to be reported as replaced, got %q", secret, replaced)
+			}
+		}
+	})
+
+	t.Run("leaves a request whose URL and body hold no credential untouched", func(t *testing.T) {
+		// The body is a container in the custom resource, but a response can render anything: a shape the redaction
+		// does not expect must be passed through rather than crash the walk.
+		document := `{
+  "apiVersion": "operator.dash0.com/v1alpha1",
+  "kind": "Dash0SyntheticCheck",
+  "metadata": { "name": "synthetic-check" },
+  "spec": {
+    "plugin": {
+      "kind": "http",
+      "spec": {
+        "request": { "method": "get", "url": "https://api.example.com/health", "body": "not an object" }
+      }
+    }
+  }
+}`
+		rendered, replaced := redactDocument(t, document)
+
+		if !strings.Contains(rendered, `"url": "https://api.example.com/health"`) {
+			t.Errorf("expected the URL to be preserved, got %q", rendered)
+		}
+		if !strings.Contains(rendered, `"body": "not an object"`) {
+			t.Errorf("expected the unexpected body shape to be preserved, got %q", rendered)
+		}
+		if len(replaced) > 0 {
+			t.Errorf("expected nothing to be replaced, got %q", replaced)
+		}
+	})
+}
+
+func TestRedactCredentialsInUrl(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		expected string
+		replaced []string
+	}{
+		{
+			name: "leaves a URL that carries no credential untouched, including its escaping",
+			// A space in the path and a redundant escape would both be normalized by rendering the URL through
+			// net/url, which is why the redaction works on the original string.
+			url:      "https://api.example.com/health%20check/%61?format=application/json&debug",
+			expected: "https://api.example.com/health%20check/%61?format=application/json&debug",
+		},
+		{
+			name:     "replaces the password of the user information and keeps the user name",
+			url:      "https://my-user:my-url-password@api.example.com:8443/health",
+			expected: "https://my-user:" + redactedValue + "@api.example.com:8443/health",
+			replaced: []string{"my-url-password"},
+		},
+		{
+			name:     "replaces user information that has no password",
+			url:      "https://my-url-token@api.example.com/health",
+			expected: "https://" + redactedValue + "@api.example.com/health",
+			replaced: []string{"my-url-token"},
+		},
+		{
+			name:     "leaves an empty password alone",
+			url:      "https://my-user:@api.example.com/health",
+			expected: "https://my-user:@api.example.com/health",
+		},
+		{
+			name:     "replaces the query parameter values that are not well-known non-secrets",
+			url:      "https://api.example.com/health?apiKey=my-url-api-key&format=application/json&debug",
+			expected: "https://api.example.com/health?apiKey=" + redactedValue + "&format=application/json&debug",
+			replaced: []string{"my-url-api-key"},
+		},
+		{
+			name:     "records the encoded and the decoded form of a query parameter value",
+			url:      "https://api.example.com/health?apiKey=my%2Durl%2Dapi%2Dkey",
+			expected: "https://api.example.com/health?apiKey=" + redactedValue,
+			replaced: []string{"my%2Durl%2Dapi%2Dkey", "my-url-api-key"},
+		},
+		{
+			name:     "keeps the fragment and redacts the query of the same URL",
+			url:      "https://api.example.com/health?apiKey=my-url-api-key#my-fragment",
+			expected: "https://api.example.com/health?apiKey=" + redactedValue + "#my-fragment",
+			replaced: []string{"my-url-api-key"},
+		},
+		{
+			name:     "does not mistake an at sign in the path for user information",
+			url:      "https://api.example.com/users/me@example.com?format=application/json",
+			expected: "https://api.example.com/users/me@example.com?format=application/json",
+		},
+		{
+			name:     "redacts the query of a URL without a scheme",
+			url:      "api.example.com/health?apiKey=my-url-api-key",
+			expected: "api.example.com/health?apiKey=" + redactedValue,
+			replaced: []string{"my-url-api-key"},
+		},
+		{
+			name: "replaces a URL that cannot be parsed as a whole",
+			// The parts of a URL that net/url rejects cannot be located, so it fails closed rather than handing out
+			// something it did not understand.
+			url:      "https://my-user:my-url-password@api.example.com/%zz",
+			expected: redactedValue,
+			replaced: []string{"https://my-user:my-url-password@api.example.com/%zz"},
+		},
+		{
+			name:     "leaves a value that already is the placeholder alone",
+			url:      redactedValue,
+			expected: redactedValue,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			node := map[string]any{"url": test.url}
+			redacted := &redactor{values: make(map[string]struct{})}
+
+			redactUrlParts(node, "url", redacted)
+
+			if node["url"] != test.expected {
+				t.Errorf("expected %q, got %q", test.expected, node["url"])
+			}
+			for _, value := range test.replaced {
+				if _, wasReplaced := redacted.values[value]; !wasReplaced {
+					t.Errorf("expected %q to be recorded as replaced, got %v", value, redacted.values)
+				}
+			}
+			if len(redacted.values) != len(test.replaced) {
+				t.Errorf("expected exactly %d replaced value(s), got %v", len(test.replaced), redacted.values)
 			}
 		})
 	}
@@ -462,6 +650,9 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			syntheticCheckHeaderValue,
 			syntheticCheckQueryParameterValue,
 			syntheticCheckPassword,
+			syntheticCheckUrlPassword,
+			syntheticCheckUrlApiKey,
+			syntheticCheckBodyContent,
 		} {
 			if strings.Contains(resp.GetStdout(), secret) {
 				t.Errorf("expected the credential %q to be redacted, got %q", secret, resp.GetStdout())
@@ -784,8 +975,17 @@ const (
 	syntheticCheckQueryParameterValue = "my-synthetic-check-api-key"
 	syntheticCheckUsername            = "my-synthetic-check-user"
 	syntheticCheckPassword            = "my-synthetic-check-password"
-	syntheticCheckUrl                 = "https://api.example.com/health"
+	syntheticCheckBodyContent         = "client_secret=my-synthetic-check-body-secret"
 	routingFilterAttributeKey         = "service.namespace"
+
+	// The URL a synthetic check requests is not a credential itself, but it carries two: the password of its user
+	// information and the value of its "apiKey" query parameter. Everything else keeps its place, including the
+	// user name and the query parameter whose value is a well-known non-secret.
+	syntheticCheckUrlPassword = "my-synthetic-check-url-password"
+	syntheticCheckUrlApiKey   = "my-synthetic-check-url-api-key"
+	syntheticCheckUrlEndpoint = "api.example.com/health"
+	syntheticCheckUrl         = "https://" + syntheticCheckUsername + ":" + syntheticCheckUrlPassword + "@" +
+		syntheticCheckUrlEndpoint + "?apiKey=" + syntheticCheckUrlApiKey + "&format=application/json"
 )
 
 // dash0ResourcesJson is a "kubectl get dash0operatorconfigurations,dash0monitorings -o json" response: an
@@ -862,8 +1062,8 @@ const dash0ResourcesJson = `{
 // all three shapes: a list of name/value pairs, a map, and a single value), the credentials that a synthetic check
 // sends with its request, and the copy of the spec that kubectl apply leaves behind in the last-applied-configuration
 // annotation. It also contains values that are no credentials and must not be redacted: the attribute key and value of
-// a routing filter, the PagerDuty events API URL, the URL, the user name and the assertions of the synthetic check
-// request, and header and query parameter values that are too short or too well-known to be secrets.
+// a routing filter, the PagerDuty events API URL, the endpoint and the user name of the synthetic check request, its
+// assertions, and header and query parameter values that are too short or too well-known to be secrets.
 const dash0ApiResourcesJson = `{
   "apiVersion": "v1",
   "kind": "List",
@@ -1009,6 +1209,10 @@ const dash0ApiResourcesJson = `{
               "basicAuthentication": {
                 "username": "` + syntheticCheckUsername + `",
                 "password": "` + syntheticCheckPassword + `"
+              },
+              "body": {
+                "kind": "form",
+                "spec": { "content": "` + syntheticCheckBodyContent + `" }
               }
             },
             "assertions": {

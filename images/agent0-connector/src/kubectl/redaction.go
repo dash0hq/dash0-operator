@@ -35,6 +35,7 @@ package kubectl
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -115,8 +116,11 @@ var dash0ResourceTypesWithSecrets = map[string]struct{}{
 // credentialFieldsPerConfigObject maps the name of a configuration object in a Dash0 custom resource to the fields
 // within it that hold a credential. Keying on the enclosing object rather than on the field name alone keeps the
 // generic field names ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification
-// routing filters or the URL of a synthetic check request. The webhook URLs are credentials themselves: they contain
-// an unguessable token that grants the right to post to the channel.
+// routing filters. The webhook URLs are credentials themselves: they contain an unguessable token that grants the
+// right to post to the channel.
+//
+// A field may be given as a path of keys separated by ".", for a credential that sits in a nested object whose own
+// name is too generic to key on.
 var credentialFieldsPerConfigObject = map[string][]string{
 	// Dash0NotificationChannel, spec.<type>Config
 	"slackConfig":             {"webhookURL"},
@@ -129,6 +133,18 @@ var credentialFieldsPerConfigObject = map[string][]string{
 	"googleChatWebhookConfig": {"url"},
 	"ilertConfig":             {"url"},
 	"allQuietConfig":          {"url"},
+	"body":                    {"spec.content"},
+}
+
+// urlFieldsPerConfigObject maps the name of a configuration object in a Dash0 custom resource to the fields within it
+// that hold a URL whose credential-bearing parts have to be redacted, while the rest of the URL stays readable, see
+// redactUrlParts. This is the treatment for a URL that is not a credential itself: the URL of a synthetic
+// check is the target of the check and is what makes the resource comprehensible, but it can carry a password in its
+// user information and an API key in its query. The webhook URLs of the notification channels are the opposite case -
+// the URL as a whole is the credential - and are listed in credentialFieldsPerConfigObject instead.
+var urlFieldsPerConfigObject = map[string][]string{
+	// Dash0SyntheticCheck, spec.plugin.spec.request
+	"request": {"url"},
 }
 
 // parseableOutputFormats are the output formats whose response the connector can parse itself.
@@ -337,7 +353,9 @@ func redactResourceItem(resource any, redacted *redactor) error {
 //     spec.export.dash0.authorization.token) and the basic authentication password of a synthetic check,
 //   - the literal header values of the gRPC and HTTP exports, of the webhook notification channels, and of the request
 //     of a synthetic check, as well as its query parameter values,
-//   - the credentials of the third-party integration of a notification channel (see credentialFieldsPerConfigObject).
+//   - the credentials of the third-party integration of a notification channel and the request body of a synthetic
+//     check (see credentialFieldsPerConfigObject),
+//   - the credential-bearing parts of the URL a synthetic check requests (see urlFieldsPerConfigObject).
 //
 // The user name of the basic authentication of a synthetic check is not a credential and is left in place. Values
 // sourced via valueFrom are ignored. Apart from the fields that are only credentials within a particular
@@ -358,6 +376,9 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 			default:
 				if credentialFields, hasCredentials := credentialFieldsPerConfigObject[key]; hasCredentials {
 					redactCredentialFields(value, credentialFields, redacted)
+				}
+				if urlFields, hasUrls := urlFieldsPerConfigObject[key]; hasUrls {
+					redactUrlFields(value, urlFields, redacted)
 				}
 			}
 			redactDocumentNodeRecursively(value, redacted)
@@ -428,15 +449,158 @@ func redactHeaderValueIfPlausible(node map[string]any, key string, redacted *red
 	redactValueOf(node, key, redacted)
 }
 
-// redactCredentialFields redacts the given fields of a configuration object, see credentialFieldsPerConfigObject.
+// redactCredentialFields redacts the given fields of a configuration object, see credentialFieldsPerConfigObject. A
+// field given as a path of keys separated by "." is resolved through the nested objects it names; a path that does not
+// resolve to an object is skipped.
 func redactCredentialFields(node any, credentialFields []string, redacted *redactor) {
+	for _, field := range credentialFields {
+		path := strings.Split(field, ".")
+		enclosingObject, isMap := node.(map[string]any)
+		for _, key := range path[:len(path)-1] {
+			if !isMap {
+				break
+			}
+			enclosingObject, isMap = enclosingObject[key].(map[string]any)
+		}
+		if !isMap {
+			continue
+		}
+		redactValueOf(enclosingObject, path[len(path)-1], redacted)
+	}
+}
+
+// redactUrlFields redacts the credential-bearing parts of the URLs held by the given fields of a configuration object,
+// see urlFieldsPerConfigObject.
+func redactUrlFields(node any, urlFields []string, redacted *redactor) {
 	configObject, isMap := node.(map[string]any)
 	if !isMap {
 		return
 	}
-	for _, field := range credentialFields {
-		redactValueOf(configObject, field, redacted)
+	for _, field := range urlFields {
+		redactUrlParts(configObject, field, redacted)
 	}
+}
+
+// redactUrlParts redacts the potential credential-bearing parts of the URL the given key holds in node (user
+// information, values of query parameters). Scheme, host, port, path etc. stay readable.
+func redactUrlParts(node map[string]any, key string, redacted *redactor) {
+	rawUrl, isString := node[key].(string)
+	if !isString || rawUrl == "" || rawUrl == redactedValue {
+		return
+	}
+	parsedUrl, err := url.Parse(rawUrl)
+	if err != nil {
+		redactValueOf(node, key, redacted)
+		return
+	}
+
+	redactedUrl := rawUrl
+	if parsedUrl.User != nil {
+		if start, end, hasUserinfo := userinfoSpan(redactedUrl); hasUserinfo {
+			redactedUrl = redactedUrl[:start] +
+				redactUserinfo(parsedUrl.User, redactedUrl[start:end], redacted) +
+				redactedUrl[end:]
+		}
+	}
+	// The span is computed again, since redacting the user information has shifted it.
+	if start, end, hasQuery := querySpan(redactedUrl); hasQuery {
+		redactedUrl = redactedUrl[:start] +
+			redactQueryParameterValues(redactedUrl[start:end], redacted) +
+			redactedUrl[end:]
+	}
+	if redactedUrl != rawUrl {
+		node[key] = redactedUrl
+	}
+}
+
+// userinfoSpan returns the span of the user information within a URL that url.Parse accepted and reported to have one:
+// everything between the "//" that starts the authority and the last "@" within that authority (RFC 3986, section
+// 3.2). The scheme cannot contain a slash, so the first "//" is always the one that starts the authority.
+func userinfoSpan(rawUrl string) (int, int, bool) {
+	authorityStart := strings.Index(rawUrl, "//")
+	if authorityStart < 0 {
+		return 0, 0, false
+	}
+	authorityStart += 2
+	authorityEnd := len(rawUrl)
+	if offset := strings.IndexAny(rawUrl[authorityStart:], "/?#"); offset >= 0 {
+		authorityEnd = authorityStart + offset
+	}
+	offset := strings.LastIndex(rawUrl[authorityStart:authorityEnd], "@")
+	if offset < 0 {
+		return 0, 0, false
+	}
+	return authorityStart, authorityStart + offset, true
+}
+
+// querySpan returns the span of the query of a URL, without the leading "?": from the first "?" up to the "#" that
+// starts the fragment, or up to the end of the URL. Authority and path end at the first "?", so that one always starts
+// the query.
+func querySpan(rawUrl string) (int, int, bool) {
+	start := strings.Index(rawUrl, "?")
+	if start < 0 {
+		return 0, 0, false
+	}
+	start++
+	end := len(rawUrl)
+	if offset := strings.Index(rawUrl[start:], "#"); offset >= 0 {
+		end = start + offset
+	}
+	return start, end, true
+}
+
+// redactUserinfo replaces the password within the raw user information of a URL and keeps the user name, which is not
+// a credential - the same way the user name of the basic authentication of a synthetic check keeps its place. User
+// information that consists of a single component has no user name to keep: it is a token that authenticates on its
+// own, and is replaced as a whole.
+func redactUserinfo(userinfo *url.Userinfo, rawUserinfo string, redacted *redactor) string {
+	password, hasPassword := userinfo.Password()
+	if !hasPassword {
+		return redactUrlPart(rawUserinfo, userinfo.Username(), redacted)
+	}
+	// url.Parse only reports a password when the user information contains a colon.
+	separator := strings.Index(rawUserinfo, ":")
+	return rawUserinfo[:separator+1] + redactUrlPart(rawUserinfo[separator+1:], password, redacted)
+}
+
+// redactQueryParameterValues replaces the values of the query parameters within the raw query of a URL. A query
+// parameter of a URL is the same kind of position as a query parameter of a synthetic check that is spelled out in its
+// own field, so the same plausibility check applies: a value that is well-known to not be a secret keeps its place,
+// see redactHeaderValueIfPlausible. A parameter without a value is left alone. Only the values are replaced and the
+// raw segments are joined again, so the percent-encoding of everything else is preserved.
+func redactQueryParameterValues(rawQuery string, redacted *redactor) string {
+	parameters := strings.Split(rawQuery, "&")
+	for i, parameter := range parameters {
+		separator := strings.Index(parameter, "=")
+		if separator < 0 {
+			continue
+		}
+		rawValue := parameter[separator+1:]
+		decodedValue, err := url.QueryUnescape(rawValue)
+		if err != nil {
+			decodedValue = rawValue
+		}
+		if _, isWellKnown := wellKnownNonSecretValues[strings.ToLower(decodedValue)]; isWellKnown {
+			continue
+		}
+		parameters[i] = parameter[:separator+1] + redactUrlPart(rawValue, decodedValue, redacted)
+	}
+	return strings.Join(parameters, "&")
+}
+
+// redactUrlPart replaces one credential-bearing part of a URL with redactedValue and records the value it replaced, so
+// that it can be scrubbed from stderr as well. Both the raw and the decoded form are recorded when they differ, since
+// an error message can quote either the URL or the value kubectl decoded from it. An empty part and a part that
+// already is the placeholder are left alone, see redactValueOf.
+func redactUrlPart(rawPart string, decodedPart string, redacted *redactor) string {
+	if rawPart == "" || rawPart == redactedValue {
+		return rawPart
+	}
+	redacted.add(rawPart)
+	if decodedPart != "" && decodedPart != rawPart {
+		redacted.add(decodedPart)
+	}
+	return redactedValue
 }
 
 // redactAnnotations redacts the secrets in the resource copies that tools embed in the metadata.annotations of a
