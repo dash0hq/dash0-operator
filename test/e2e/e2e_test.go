@@ -1929,6 +1929,52 @@ trace_statements:
 						)
 					}, 180*time.Second, pollingInterval).Should(Succeed())
 				})
+
+				It("meters the Signal Control pipelines and marks everything the capabilities see", func() {
+					// The two halves of metering, which no rendered-config test can cover: that the recorder resolves
+					// and its drain pipeline actually exports (the counters below), and that every gated component
+					// received marked resources (the gate's skip counter staying absent). Neither is sufficient
+					// alone - a misplaced metering processor still counts and still emits, and a pipeline that never
+					// ran produces no skips either - so both are asserted against the same traffic.
+					timestampLowerBound := time.Now()
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+
+					By("driving trace activity through the test app")
+					verifyThatWorkloadHasBeenInstrumented(
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testId,
+						images,
+						"webhook",
+					)
+
+					By("verifying the metering counters and the liveness metric reach the exporter")
+					// The recorder holds counters until its flush interval elapses, so this needs a budget
+					// comparable to the RED metrics connector's.
+					Eventually(func(g Gomega) {
+						askTelemetryMatcherForMetricNames(
+							g,
+							shared.ExpectAtLeastOne,
+							[]string{
+								"dash0.metering.signal_control.spans",
+								"dash0.metering.signal_control.evaluations",
+							},
+							timestampLowerBound,
+						)
+					}, 180*time.Second, pollingInterval).Should(Succeed())
+
+					By("verifying no Signal Control component acted on an unmarked resource")
+					// The gate publishes this counter only once it has skipped something, so its absence is the
+					// pass condition. It is only meaningful next to the assertion above, which proves the
+					// pipelines ran at all.
+					askTelemetryMatcherForMetricNames(
+						Default,
+						shared.ExpectNoMatches,
+						[]string{"otelcol_dash0_edge_gate_skipped_resources"},
+						timestampLowerBound,
+					)
+				})
 			})
 
 			It("tears down the Edge Proxy and reverts the collector when the resource is deleted", func() {
