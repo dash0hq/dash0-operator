@@ -109,6 +109,11 @@ type ExtraConfig struct {
 	EdgeProxyTolerations        []corev1.Toleration                `json:"edgeProxyTolerations,omitempty"`
 	EdgeProxyNodeAffinity       *corev1.NodeAffinity               `json:"edgeProxyNodeAffinity,omitempty"`
 
+	EdgeProxyLabels         map[string]string `json:"edgeProxyLabels,omitempty"`
+	EdgeProxyAnnotations    map[string]string `json:"edgeProxyAnnotations,omitempty"`
+	EdgeProxyPodLabels      map[string]string `json:"edgeProxyPodLabels,omitempty"`
+	EdgeProxyPodAnnotations map[string]string `json:"edgeProxyPodAnnotations,omitempty"`
+
 	Agent0ConnectorLabels         map[string]string    `json:"agent0ConnectorLabels,omitempty"`
 	Agent0ConnectorAnnotations    map[string]string    `json:"agent0ConnectorAnnotations,omitempty"`
 	Agent0ConnectorPodLabels      map[string]string    `json:"agent0ConnectorPodLabels,omitempty"`

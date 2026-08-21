@@ -209,6 +209,93 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 	})
 })
 
+var _ = Describe("Edge Proxy tail-sampling gating", func() {
+	envNames := func(container corev1.Container) map[string]corev1.EnvVar {
+		m := map[string]corev1.EnvVar{}
+		for _, e := range container.Env {
+			m[e.Name] = e
+		}
+		return m
+	}
+
+	It("runs the proxy settings-only when sampling is disabled and an API endpoint is available", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.Export.Dash0.ApiEndpoint = "https://api.dash0.com"
+		sc := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Sampling: dash0v1alpha1.SamplingConfig{Enabled: ptr(false)},
+			},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", sc, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_TAILSAMPLING_ENABLED"))
+		Expect(env["UPSTREAM_TAILSAMPLING_ENABLED"].Value).To(Equal("false"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_ADDRESS"))
+		Expect(env).To(HaveKey("UPSTREAM_EDGESETTINGS_ENABLED"))
+	})
+
+	It("keeps tail sampling on when sampling is enabled", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.Export.Dash0.ApiEndpoint = "https://api.dash0.com"
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_ADDRESS"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_TAILSAMPLING_ENABLED"))
+	})
+
+	It("keeps tail sampling on when sampling is disabled but no API endpoint is available", func() {
+		sc := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Sampling: dash0v1alpha1.SamplingConfig{Enabled: ptr(false)},
+			},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", sc, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_ADDRESS"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_TAILSAMPLING_ENABLED"))
+	})
+})
+
+var _ = Describe("Edge Proxy deployment labels and annotations", func() {
+	It("merges labels, annotations, pod labels, and pod annotations from extraConfig", func() {
+		extraConfig := util.ExtraConfig{
+			EdgeProxyLabels:         map[string]string{"team": "obs"},
+			EdgeProxyAnnotations:    map[string]string{"ann/key": "v1"},
+			EdgeProxyPodLabels:      map[string]string{"pod-label": "pv"},
+			EdgeProxyPodAnnotations: map[string]string{"pod-ann/key": "pa"},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, extraConfig, logd.Discard(),
+		)
+
+		Expect(dep.Labels).To(HaveKeyWithValue("team", "obs"))
+		Expect(dep.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, edgeProxyComponentName))
+		Expect(dep.Annotations).To(HaveKeyWithValue("ann/key", "v1"))
+
+		tmpl := dep.Spec.Template.ObjectMeta
+		Expect(tmpl.Labels).To(HaveKeyWithValue("pod-label", "pv"))
+		Expect(tmpl.Labels).To(HaveKeyWithValue(util.AppKubernetesIoComponentLabel, edgeProxyComponentName))
+		Expect(tmpl.Annotations).To(HaveKeyWithValue("pod-ann/key", "pa"))
+	})
+})
+
 func expectSelfMonitoringEnvVarsAbsent(container corev1.Container) {
 	envByName := map[string]corev1.EnvVar{}
 	for _, e := range container.Env {

@@ -286,6 +286,14 @@ tests:
                         operator: In
                         values:
                           - value-12
+            labels:
+              edge-proxy-label: edge-proxy-label-value
+            annotations:
+              edge-proxy-annotation: edge-proxy-annotation-value
+            podLabels:
+              edge-proxy-pod-label: edge-proxy-pod-label-value
+            podAnnotations:
+              edge-proxy-pod-annotation: edge-proxy-pod-annotation-value
         agent0Connector:
           tolerations:
             - key: key6
@@ -636,6 +644,14 @@ tests:
                     values:
                     - value-10
                     - value-11
+            edgeProxyLabels:
+              edge-proxy-label: edge-proxy-label-value
+            edgeProxyAnnotations:
+              edge-proxy-annotation: edge-proxy-annotation-value
+            edgeProxyPodLabels:
+              edge-proxy-pod-label: edge-proxy-pod-label-value
+            edgeProxyPodAnnotations:
+              edge-proxy-pod-annotation: edge-proxy-pod-annotation-value
             agent0ConnectorTolerations:
               - effect: NoSchedule
                 key: key6

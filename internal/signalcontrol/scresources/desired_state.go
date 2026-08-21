@@ -120,9 +120,13 @@ func assembleEdgeProxyDeployment(
 	if signalControlResource.Spec.ControlPlaneApiEndpoint != "" {
 		apiEndpoint = strings.TrimSuffix(signalControlResource.Spec.ControlPlaneApiEndpoint, "/")
 	}
-	if dmEndpoint == "" {
+	samplingEnabled := pointers.ReadBoolPointerWithDefault(signalControlResource.Spec.Sampling.Enabled, true)
+	// Run the proxy settings-only (no decision-maker upstream) when tail sampling is off and the settings feed can
+	// carry the proxy on its own; otherwise keep tail sampling on so the proxy is never left with both pipelines off.
+	tailSamplingEnabled := samplingEnabled || apiEndpoint == ""
+	if tailSamplingEnabled && dmEndpoint == "" {
 		logger.Warn("No Decision Maker endpoint could be derived for the Edge Proxy. The Edge Proxy " +
-			"will not be able to forward sampling decisions to the Decision Maker.")
+			"will not be able to relay sampling decisions from the Decision Maker to the collectors.")
 	}
 	if apiEndpoint == "" {
 		logger.Warn("No Dash0 API endpoint could be derived for the Edge Proxy. The Edge Proxy will not be able " +
@@ -167,14 +171,6 @@ func assembleEdgeProxyDeployment(
 				Value: extraConfig.EdgeProxyContainerResources.GoMemLimit,
 			},
 			authTokenEnvVar,
-			{
-				Name:  "UPSTREAM_ADDRESS",
-				Value: dmEndpoint,
-			},
-			{
-				Name:  "UPSTREAM_HEADERS",
-				Value: fmt.Sprintf("authorization=Bearer $(%s),Dash0-Dataset=%s", edgeProxyAuthTokenEnvVarName, dataset),
-			},
 			{
 				// Ratio of upstream Decision Maker connections that must stay up before collectors enter fallback.
 				// The CRD default 1.0 fails loud on any loss; see EdgeProxyConfig.FallbackMinConnectedRatio.
@@ -224,6 +220,27 @@ func assembleEdgeProxyDeployment(
 
 	if edgeProxyImagePullPolicy != "" {
 		edgeProxyContainer.ImagePullPolicy = edgeProxyImagePullPolicy
+	}
+
+	if tailSamplingEnabled {
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env,
+			corev1.EnvVar{
+				Name:  "UPSTREAM_ADDRESS",
+				Value: dmEndpoint,
+			},
+			corev1.EnvVar{
+				Name:  "UPSTREAM_HEADERS",
+				Value: fmt.Sprintf("authorization=Bearer $(%s),Dash0-Dataset=%s", edgeProxyAuthTokenEnvVarName, dataset),
+			},
+		)
+	} else {
+		// Settings-only proxy: no decision-maker upstream. Reached only when tail sampling is disabled and the
+		// settings feed keeps the proxy useful; UPSTREAM_ADDRESS is omitted (the component requires it only when
+		// tail sampling is enabled).
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+			Name:  "UPSTREAM_TAILSAMPLING_ENABLED",
+			Value: "false",
+		})
 	}
 
 	spec := signalControlResource.Spec
@@ -295,6 +312,8 @@ func assembleEdgeProxyDeployment(
 	}
 
 	deployment := assembleEdgeProxyDeploymentForDeletion(operatorNamespace, namePrefix)
+	deployment.Labels = util.MergeMaps(edgeProxyLabels(), extraConfig.EdgeProxyLabels)
+	deployment.Annotations = util.MergeMaps(nil, extraConfig.EdgeProxyAnnotations)
 	deployment.Spec = appsv1.DeploymentSpec{
 		Replicas:             &replicas,
 		RevisionHistoryLimit: new(int32(3)),
@@ -312,7 +331,8 @@ func assembleEdgeProxyDeployment(
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: edgeProxyLabels(),
+				Labels:      util.MergeMaps(edgeProxyLabels(), extraConfig.EdgeProxyPodLabels),
+				Annotations: util.MergeMaps(nil, extraConfig.EdgeProxyPodAnnotations),
 			},
 			Spec: podSpec,
 		},

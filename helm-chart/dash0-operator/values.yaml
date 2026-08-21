@@ -484,7 +484,8 @@ operator:
   # the container image to use for the Signal Control collector (there should usually be no reason to override this)
   signalControlCollectorImage:
     repository: "ghcr.io/dash0hq/signal-control-collector"
-    # overrides the image tag, which defaults to the chart appVersion.
+    # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
+    # version; it does not track the chart appVersion.
     tag: "v2.0.3005"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
@@ -494,7 +495,8 @@ operator:
   # the container image to use for the Edge Proxy component (there should usually be no reason to override this)
   edgeProxyImage:
     repository: "ghcr.io/dash0hq/edge-proxy"
-    # overrides the image tag, which defaults to the chart appVersion.
+    # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
+    # does not track the chart appVersion.
     tag: "v2.0.3005"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
@@ -1220,8 +1222,7 @@ operator:
   #    synchronizePersesDashboards: true
   #    synchronizePrometheusRules: true
 
-  # Settings related to Signal Control. This feature is currently under development and should
-  # not be enabled.
+  # Settings related to Signal Control.
   signalControl:
     # Whether to enable Signal Control features for this operator install.
     enabled: false
@@ -1274,6 +1275,18 @@ operator:
                 - key: "kubernetes.io/os"
                   operator: "In"
                   values: ["linux"]
+
+      # Additional labels for the Edge Proxy deployment managed by the operator.
+      labels: {}
+
+      # Additional annotations for the Edge Proxy deployment managed by the operator.
+      annotations: {}
+
+      # Additional labels for the pods of the Edge Proxy deployment managed by the operator.
+      podLabels: {}
+
+      # Additional annotations for the pods of the Edge Proxy deployment managed by the operator.
+      podAnnotations: {}
 
   # Settings related to the Agent0 connector (experimental/beta).
   agent0Connector:
