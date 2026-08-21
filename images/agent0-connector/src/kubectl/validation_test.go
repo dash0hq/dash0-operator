@@ -1,18 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package kubectl
 
 import (
-	"context"
-	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"slices"
-	"strings"
 	"testing"
-	"time"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
@@ -38,6 +30,17 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "api-resources is allowed", command: "kubectl", arguments: []string{"api-resources"}, allowed: true},
 		{name: "api-versions is allowed", command: "kubectl", arguments: []string{"api-versions"}, allowed: true},
 		{name: "cluster-info is allowed", command: "kubectl", arguments: []string{"cluster-info"}, allowed: true},
+		// "kubectl cluster-info dump" writes the full JSON of the workloads of a namespace (or of the whole cluster)
+		// plus the raw logs of every container to stdout. Redaction does not run for a subcommand other than "get", and
+		// the response is not a document that could be parsed anyway, so the pod specs of the operator's own workloads
+		// would hand out the Dash0 auth token they carry as a literal env var value.
+		{name: "cluster-info dump is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump"}, allowed: false},
+		{name: "cluster-info dump for all namespaces is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump", "-A"}, allowed: false},
+		{name: "cluster-info dump with a leading flag is rejected", command: "kubectl", arguments: []string{"-n", "dash0-system", "cluster-info", "dump"}, allowed: false},
+		{name: "cluster-info dump with an output format is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump", "-o", "json"}, allowed: false},
+		// Any positional argument is rejected, so a sub-verb added by a future kubectl release is rejected as well.
+		{name: "an unknown cluster-info sub-verb is rejected", command: "kubectl", arguments: []string{"cluster-info", "somethingelse"}, allowed: false},
+		{name: "cluster-info with only flags stays allowed", command: "kubectl", arguments: []string{"cluster-info", "--help"}, allowed: true},
 		{name: "top is allowed", command: "kubectl", arguments: []string{"top", "pods"}, allowed: true},
 		{name: "events is allowed", command: "kubectl", arguments: []string{"events"}, allowed: true},
 
@@ -64,6 +67,7 @@ func TestValidateCommandRequest(t *testing.T) {
 		// Flags outside the allowlist are rejected, whatever they are for; --raw would otherwise turn "get" into an
 		// arbitrary API request, bypassing the resource-based secret check below.
 		{name: "--raw is rejected", command: "kubectl", arguments: []string{"get", "--raw", "/api/v1/namespaces/default/secrets/my-secret"}, allowed: false},
+		{name: "--raw is rejected for any type", command: "kubectl", arguments: []string{"get", "--raw", "/api/v1/namespaces/default/pods/my-pod"}, allowed: false},
 		{name: "--raw=value is rejected", command: "kubectl", arguments: []string{"get", "--raw=/api/v1/namespaces/default/secrets/my-secret"}, allowed: false},
 		{name: "--raw for a cluster-wide collection is rejected", command: "kubectl", arguments: []string{"get", "--raw", "/api/v1/secrets"}, allowed: false},
 		{name: "--raw for a configmap is rejected", command: "kubectl", arguments: []string{"get", "--raw", "/api/v1/namespaces/default/configmaps/my-cm"}, allowed: false},
@@ -87,6 +91,142 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "--context=value is rejected", command: "kubectl", arguments: []string{"get", "pods", "--context=other"}, allowed: false},
 		{name: "--token is rejected", command: "kubectl", arguments: []string{"get", "pods", "--token", "abc"}, allowed: false},
 		{name: "--insecure-skip-tls-verify is rejected", command: "kubectl", arguments: []string{"get", "pods", "--insecure-skip-tls-verify"}, allowed: false},
+
+		// Output formats: the value of -o/--output is checked against an allowlist. The formats that take their
+		// template from a file render that file, so they would read an arbitrary file from the connector's own
+		// container; they are rejected for every resource type, sensitive or not.
+		{name: "-o go-template-file is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "go-template-file=/etc/passwd"}, allowed: false},
+		{name: "-o go-template-file with an attached value is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-ogo-template-file=/etc/passwd"}, allowed: false},
+		{name: "-o go-template-file taking its path from --template is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "go-template-file", "--template", "/etc/passwd"}, allowed: false},
+		{name: "-o templatefile is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "templatefile", "--template=/etc/passwd"}, allowed: false},
+		{name: "-o jsonpath-file is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "jsonpath-file=/etc/passwd"}, allowed: false},
+		{name: "--output=jsonpath-file is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "--output=jsonpath-file=/etc/passwd"}, allowed: false},
+		{name: "-o custom-columns-file is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "custom-columns-file=/etc/passwd"}, allowed: false},
+		{name: "a file output format in a grouped shorthand is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-Aocustom-columns-file=/etc/passwd"}, allowed: false},
+		{name: "a file output format reading the service account token is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "go-template-file=/var/run/secrets/kubernetes.io/serviceaccount/token"}, allowed: false},
+		{name: "a file output format is rejected even when overridden by an allowed one",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "jsonpath-file=/etc/passwd", "-o", "name"}, allowed: false},
+		{name: "a file output format is rejected even when it overrides an allowed one",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "name", "-o", "jsonpath-file=/etc/passwd"}, allowed: false},
+		{name: "an unknown output format is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "bogusformat"}, allowed: false},
+
+		{name: "-o json is allowed", command: "kubectl", arguments: []string{"get", "pods", "-o", "json"}, allowed: true},
+		{name: "-o yaml is allowed", command: "kubectl", arguments: []string{"get", "pods", "-o", "yaml"}, allowed: true},
+		{name: "-o kyaml is allowed", command: "kubectl", arguments: []string{"get", "pods", "-o", "kyaml"}, allowed: true},
+		{name: "-o name is allowed", command: "kubectl", arguments: []string{"get", "pods", "-o", "name"}, allowed: true},
+		{name: "-o wide is allowed", command: "kubectl", arguments: []string{"get", "pods", "-o", "wide"}, allowed: true},
+		{name: "-o jsonpath is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "jsonpath={.items[*].metadata.name}"}, allowed: true},
+		{name: "-o jsonpath-as-json is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "jsonpath-as-json={.items[*].metadata.name}"}, allowed: true},
+		{name: "-o go-template is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "go-template={{.metadata.name}}"}, allowed: true},
+		{name: "-o template is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "template", "--template={{.metadata.name}}"}, allowed: true},
+		{name: "-o custom-columns is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "custom-columns=NAME:.metadata.name"}, allowed: true},
+		{name: "an output format is matched case-insensitively",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "YAML"}, allowed: true},
+		{name: "a file output format is rejected case-insensitively",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "JSONPath-File=/etc/passwd"}, allowed: false},
+
+		// Dash0 custom resources that can contain secrets: the formats that can reshape a value are rejected, because a
+		// reshaped secret no longer contains its literal value and can therefore not be redacted.
+		{name: "a Dash0 resource with -o go-template is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "go-template={{.spec}}"}, allowed: false},
+		{name: "a Dash0 resource with -o template is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "template", "--template={{.spec}}"}, allowed: false},
+		{name: "a Dash0 resource with -o jsonpath is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "jsonpath={.items[*].spec}"}, allowed: false},
+		{name: "a Dash0 resource with -o jsonpath-as-json is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "jsonpath-as-json={.items[*].spec}"}, allowed: false},
+		{name: "a Dash0 resource with -o custom-columns is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "custom-columns=T:.spec"}, allowed: false},
+		{name: "a Dash0 resource with --template but no output format is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "--template={{.spec}}"}, allowed: false},
+		{name: "a Dash0 resource with a truncating go-template is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", `go-template={{printf "%.6s" .spec.export.dash0.authorization.token}}`}, allowed: false},
+		{name: "a Dash0 resource with a comparing go-template is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", `go-template={{if lt .spec.export.dash0.authorization.token "m"}}A{{else}}B{{end}}`}, allowed: false},
+		{name: "a Dash0 resource with kyaml is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "kyaml"}, allowed: false},
+		{name: "a Dash0 resource with an attached reshaping format is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-ojsonpath={.items}"}, allowed: false},
+		{name: "a Dash0 resource with a reshaping format in a grouped shorthand is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-Aojsonpath={.items}"}, allowed: false},
+		{name: "a Dash0 resource with a reshaping format overridden by an allowed one is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "jsonpath={.items}", "-o", "yaml"}, allowed: false},
+		{name: "a Dash0 resource with an allowed format overridden by a reshaping one is rejected",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "jsonpath={.items}"}, allowed: false},
+
+		// Every spelling of the resource type is covered, in every positional slot.
+		{name: "the singular Dash0 resource type is covered",
+			command: "kubectl", arguments: []string{"get", "dash0monitoring", "my-resource", "-o", "jsonpath={.spec}"}, allowed: false},
+		{name: "the kind of a Dash0 resource type is covered",
+			command: "kubectl", arguments: []string{"get", "Dash0Monitoring", "-o", "jsonpath={.spec}"}, allowed: false},
+		{name: "the fully qualified Dash0 resource type is covered",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings.operator.dash0.com", "-o", "jsonpath={.spec}"}, allowed: false},
+		{name: "a Dash0 resource type in a comma-separated list is covered",
+			command: "kubectl", arguments: []string{"get", "pods,dash0monitorings", "-o", "jsonpath={.items}"}, allowed: false},
+		{name: "a Dash0 resource type in a type/name pair in a later slot is covered",
+			command: "kubectl", arguments: []string{"get", "pod/a", "dash0monitoring/b", "-o", "jsonpath={.spec}"}, allowed: false},
+		{name: "the operator configuration is covered",
+			command: "kubectl", arguments: []string{"get", "dash0operatorconfigurations", "-o", "jsonpath={.items}"}, allowed: false},
+		{name: "notification channels are covered",
+			command: "kubectl", arguments: []string{"get", "dash0notificationchannels", "-o", "go-template={{.items}}"}, allowed: false},
+		{name: "synthetic checks are covered",
+			command: "kubectl", arguments: []string{"get", "dash0syntheticchecks", "-o", "custom-columns=T:.spec"}, allowed: false},
+		{name: "describe of a Dash0 resource with --template is rejected",
+			command: "kubectl", arguments: []string{"describe", "dash0monitorings", "--template={{.spec}}"}, allowed: false},
+
+		// The formats the connector can redact stay available for Dash0 resources.
+		{name: "a Dash0 resource with -o yaml is allowed",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "yaml"}, allowed: true},
+		{name: "a Dash0 resource with -o json is allowed",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-A", "-o", "json"}, allowed: true},
+		{name: "a Dash0 resource with -o name is allowed",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "name"}, allowed: true},
+		{name: "a Dash0 resource with -o wide is allowed",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "wide"}, allowed: true},
+		{name: "a Dash0 resource without an output format is allowed",
+			command: "kubectl", arguments: []string{"get", "dash0monitorings"}, allowed: true},
+		// describe renders a text format that cannot be parsed, so the credentials cannot be located in its output.
+		{name: "describe of a Dash0 resource is rejected",
+			command: "kubectl", arguments: []string{"describe", "dash0monitoring", "my-resource"}, allowed: false},
+		{name: "describe of Dash0 resources in all namespaces is rejected",
+			command: "kubectl", arguments: []string{"describe", "dash0monitorings", "-A"}, allowed: false},
+		{name: "describe of a Dash0 resource via type/name is rejected",
+			command: "kubectl", arguments: []string{"describe", "dash0notificationchannel/my-channel"}, allowed: false},
+		{name: "describe of a Dash0 resource type without secrets is allowed",
+			command: "kubectl", arguments: []string{"describe", "dash0views"}, allowed: true},
+		{name: "describe of a non-Dash0 resource is allowed",
+			command: "kubectl", arguments: []string{"describe", "pod", "my-pod"}, allowed: true},
+		{name: "events of a Dash0 resource are allowed",
+			command: "kubectl", arguments: []string{"events", "--for", "dash0monitoring/my-resource"}, allowed: true},
+		{name: "explain for a Dash0 resource is allowed",
+			command: "kubectl", arguments: []string{"explain", "dash0monitorings"}, allowed: true},
+
+		// Resource types without secrets keep every generally allowed output format.
+		{name: "a reshaping format for a non-Dash0 resource is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "jsonpath={.items[*].metadata.name}"}, allowed: true},
+		{name: "a go-template for a non-Dash0 resource is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "go-template={{.items}}"}, allowed: true},
+		{name: "--template for a non-Dash0 resource is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "--template={{.items}}"}, allowed: true},
+		{name: "kyaml for a non-Dash0 resource is allowed",
+			command: "kubectl", arguments: []string{"get", "pods", "-o", "kyaml"}, allowed: true},
+		{name: "a Dash0 resource type without secrets keeps the reshaping formats",
+			command: "kubectl", arguments: []string{"get", "dash0views", "-o", "jsonpath={.items}"}, allowed: true},
 
 		// Secrets: listing and presence checks are allowed, reading their contents is not.
 		{name: "listing secrets is allowed",
@@ -228,7 +368,7 @@ func TestValidateCommandRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := &pb.CommandRequest{Command: tt.command, Arguments: tt.arguments}
-			err := validateCommandRequest(req)
+			_, err := validateCommandAndParseArguments(req)
 			if tt.allowed && err != nil {
 				t.Errorf("expected request to be allowed, but it was rejected: %v", err)
 			}
@@ -239,330 +379,104 @@ func TestValidateCommandRequest(t *testing.T) {
 	}
 }
 
-func TestInspectFlagToken(t *testing.T) {
-	tests := []struct {
-		token           string
-		allowed         bool
-		valueFlag       string
-		inlineValue     string
-		consumesNextArg bool
-	}{
-		{token: "--namespace", allowed: true, valueFlag: "namespace", consumesNextArg: true},
-		{token: "--namespace=x", allowed: true, valueFlag: "namespace", inlineValue: "x"},
-		{token: "--all-namespaces", allowed: true},
-		{token: "--namespaced=false", allowed: true},
-		{token: "-n", allowed: true, valueFlag: "n", consumesNextArg: true},
-		{token: "-nx", allowed: true, valueFlag: "n", inlineValue: "x"},
-		{token: "-n=x", allowed: true, valueFlag: "n", inlineValue: "x"},
-		{token: "-A", allowed: true},
-		{token: "-Ao", allowed: true, valueFlag: "o", consumesNextArg: true},
-		{token: "-Aoyaml", allowed: true, valueFlag: "o", inlineValue: "yaml"},
-		{token: "-oyaml", allowed: true, valueFlag: "o", inlineValue: "yaml"},
-		{token: "--raw"},
-		{token: "--raw=/api/v1/secrets"},
-		{token: "-w"},
-		{token: "-Az"},
-		{token: "--"},
-		{token: "-"},
-	}
+// subcommandRedactionRationale records, for every subcommand in readOnlyKubectlSubcommands, why its response cannot
+// hand out a credential. Only "get" is routed through redaction (see responseCanContainSecrets, which returns false for
+// every other subcommand), so every other entry has to justify itself by not rendering the content of a resource at
+// all. Adding a subcommand to the allowlist without recording a rationale here fails
+// TestEveryAllowedSubcommandHasARedactionRationale.
+var subcommandRedactionRationale = map[string]string{
+	"get": "the only subcommand whose response is redacted, see redactSecretsInResponse",
+	"describe": "renders resource content, but is rejected for the resource types that can contain secrets, see " +
+		"describeOfResourceTypeWithSecrets",
+	"cluster-info": "the bare form only prints the addresses of the control plane and of the cluster's services; its " +
+		"sub-verbs are rejected, see subcommandsRejectingPositionalArguments",
+	"api-resources": "prints the known resource types and their metadata, never the content of an instance",
+	"api-versions":  "prints the available API group/versions only",
+	"explain":       "prints the schema of a resource type, not the content of an instance",
+	"events": "renders Event objects; their messages are emitted by the kubelet and by controllers and do not " +
+		"carry the credential fields of a Dash0 custom resource",
+	"top":     "prints a CPU/memory usage table only",
+	"version": "prints the client and server version only",
+	"logs": "streams the raw log output of a container, which is not resource content; a credential a workload " +
+		"logs itself is out of reach of response redaction",
+}
 
-	for _, tt := range tests {
-		t.Run(tt.token, func(t *testing.T) {
-			info := inspectFlagToken(tt.token)
-			if info.allowed != tt.allowed {
-				t.Fatalf("expected allowed=%t, got %t", tt.allowed, info.allowed)
-			}
-			if info.valueFlag != tt.valueFlag {
-				t.Errorf("expected valueFlag %q, got %q", tt.valueFlag, info.valueFlag)
-			}
-			if info.hasInlineValue && info.inlineValue != tt.inlineValue {
-				t.Errorf("expected inline value %q, got %q", tt.inlineValue, info.inlineValue)
-			}
-			if info.hasInlineValue == (tt.inlineValue == "") {
-				t.Errorf("expected hasInlineValue=%t, got %t", tt.inlineValue != "", info.hasInlineValue)
-			}
-			if info.consumesNextArg != tt.consumesNextArg {
-				t.Errorf("expected consumesNextArg=%t, got %t", tt.consumesNextArg, info.consumesNextArg)
-			}
-		})
+// TestEveryAllowedSubcommandHasARedactionRationale guards against the drift that let "kubectl cluster-info dump" hand
+// out the pod specs (and hence the Dash0 auth token in their env vars) of the whole cluster: the subcommand was on the
+// allowlist, while redaction only ever ran for "get". Whenever readOnlyKubectlSubcommands grows, the new subcommand has
+// to be classified deliberately.
+func TestEveryAllowedSubcommandHasARedactionRationale(t *testing.T) {
+	for subcommand := range readOnlyKubectlSubcommands {
+		if _, hasRationale := subcommandRedactionRationale[subcommand]; !hasRationale {
+			t.Errorf(
+				"the kubectl subcommand %q is allowed, but no rationale records why its response cannot expose a "+
+					"credential; redaction only runs for \"get\" (see responseCanContainSecrets), so either confirm that "+
+					"this subcommand cannot render resource content and add a rationale to "+
+					"subcommandRedactionRationale, or restrict it in validation.go",
+				subcommand,
+			)
+		}
+	}
+	for subcommand := range subcommandRedactionRationale {
+		if _, allowed := readOnlyKubectlSubcommands[subcommand]; !allowed {
+			t.Errorf(
+				"subcommandRedactionRationale has a stale entry for %q, which is not an allowed subcommand any more",
+				subcommand,
+			)
+		}
+	}
+}
+
+// TestOnlyGetIsRoutedThroughRedaction pins the invariant the rationales above rely on: responseCanContainSecrets
+// redacts the response of "get" only. A subcommand that starts rendering resource content therefore leaks it unless it
+// is restricted in validation.go.
+func TestOnlyGetIsRoutedThroughRedaction(t *testing.T) {
+	for subcommand := range readOnlyKubectlSubcommands {
+		parsed := parseArguments([]string{subcommand, "dash0monitorings", "-o", "yaml"})
+		canContainSecrets := responseCanContainSecrets(parsed)
+		if subcommand == "get" && !canContainSecrets {
+			t.Errorf("expected the response of %q to be routed through redaction", subcommand)
+		}
+		if subcommand != "get" && canContainSecrets {
+			t.Errorf(
+				"the response of %q is now routed through redaction; update subcommandRedactionRationale, which "+
+					"records that only \"get\" is",
+				subcommand,
+			)
+		}
 	}
 }
 
 func TestLookupSensitiveResourceType(t *testing.T) {
 	tests := []struct {
 		resourceType string
+		isSensitive  bool
 		displayName  string
 	}{
-		{resourceType: "secret", displayName: "secret"},
-		{resourceType: "secrets", displayName: "secret"},
-		{resourceType: "Secrets", displayName: "secret"},
-		{resourceType: "secrets.v1.", displayName: "secret"},
-		{resourceType: "configmap", displayName: "config map"},
-		{resourceType: "configmaps", displayName: "config map"},
-		{resourceType: "cm", displayName: "config map"},
-		{resourceType: "CM", displayName: "config map"},
-		{resourceType: "configmaps.v1.", displayName: "config map"},
-		{resourceType: "cm.v1.", displayName: "config map"},
-		{resourceType: "pods"},
-		{resourceType: "sealedsecrets"},
-		{resourceType: ""},
+		{resourceType: "secret", isSensitive: true, displayName: "secret"},
+		{resourceType: "secrets", isSensitive: true, displayName: "secret"},
+		{resourceType: "Secrets", isSensitive: true, displayName: "secret"},
+		{resourceType: "secrets.v1.", isSensitive: true, displayName: "secret"},
+		{resourceType: "configmap", isSensitive: true, displayName: "config map"},
+		{resourceType: "configmaps", isSensitive: true, displayName: "config map"},
+		{resourceType: "cm", isSensitive: true, displayName: "config map"},
+		{resourceType: "CM", isSensitive: true, displayName: "config map"},
+		{resourceType: "configmaps.v1.", isSensitive: true, displayName: "config map"},
+		{resourceType: "cm.v1.", isSensitive: true, displayName: "config map"},
+		{resourceType: "pods", isSensitive: false},
+		{resourceType: "sealedsecrets", isSensitive: false},
+		{resourceType: "", isSensitive: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.resourceType, func(t *testing.T) {
 			resource, isSensitive := lookupSensitiveResourceType(tt.resourceType)
-			if isSensitive != (tt.displayName != "") {
-				t.Fatalf("expected isSensitive=%t, got %t", tt.displayName != "", isSensitive)
+			if isSensitive != tt.isSensitive {
+				t.Fatalf("expected isSensitive=%t, got %t", tt.isSensitive, isSensitive)
 			}
 			if resource.displayName != tt.displayName {
 				t.Errorf("expected display name %q, got %q", tt.displayName, resource.displayName)
 			}
 		})
 	}
-}
-
-func TestOutputFormats(t *testing.T) {
-	tests := []struct {
-		name      string
-		arguments []string
-		expected  []string
-	}{
-		{name: "no output flag", arguments: []string{"get", "pods"}, expected: nil},
-		{name: "separate value", arguments: []string{"get", "pods", "-o", "YAML"}, expected: []string{"yaml"}},
-		{name: "inline value", arguments: []string{"get", "pods", "-o=json"}, expected: []string{"json"}},
-		{name: "attached value", arguments: []string{"get", "pods", "-oyaml"}, expected: []string{"yaml"}},
-		{name: "grouped shorthand", arguments: []string{"get", "pods", "-Aoyaml"}, expected: []string{"yaml"}},
-		{name: "long form", arguments: []string{"get", "pods", "--output=wide"}, expected: []string{"wide"}},
-		{name: "composite format",
-			arguments: []string{"get", "pods", "-o", "jsonpath={.items}"}, expected: []string{"jsonpath"}},
-		{name: "every occurrence of a repeated flag is reported",
-			arguments: []string{"get", "pods", "-o", "name", "--output=yaml"}, expected: []string{"name", "yaml"}},
-		{name: "value of another flag is not read as the format",
-			arguments: []string{"get", "pods", "-l", "o=yaml"}, expected: nil},
-		{name: "output flag without a value", arguments: []string{"get", "pods", "-o"}, expected: []string{""}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := outputFormats(tt.arguments); !slices.Equal(got, tt.expected) {
-				t.Errorf("expected output formats %q, got %q", tt.expected, got)
-			}
-		})
-	}
-}
-
-func TestKubectlEnv(t *testing.T) {
-	t.Run("redirects HOME to the configured writable directory", func(t *testing.T) {
-		if home := effectiveHome(kubectlEnv("/tmp")); home != "/tmp" {
-			t.Errorf("expected HOME to be redirected to /tmp, got %q", home)
-		}
-	})
-
-	t.Run("preserves the ambient environment", func(t *testing.T) {
-		t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
-		if !slices.Contains(kubectlEnv("/tmp"), "KUBERNETES_SERVICE_HOST=10.0.0.1") {
-			t.Error("expected the ambient KUBERNETES_SERVICE_HOST variable to be preserved")
-		}
-	})
-}
-
-// effectiveHome returns the value of the last HOME entry in env (the one exec uses), or "" if none is present.
-func effectiveHome(env []string) string {
-	home := ""
-	for _, e := range env {
-		if rest, ok := strings.CutPrefix(e, "HOME="); ok {
-			home = rest
-		}
-	}
-	return home
-}
-
-func TestCappedBuffer(t *testing.T) {
-	t.Run("captures everything below the limit without truncating", func(t *testing.T) {
-		b := &cappedBuffer{limit: 10}
-		n, err := b.Write([]byte("hello"))
-		if err != nil || n != 5 {
-			t.Fatalf("expected Write to report 5 bytes and no error, got n=%d err=%v", n, err)
-		}
-		if b.String() != "hello" {
-			t.Errorf("expected captured output %q, got %q", "hello", b.String())
-		}
-		if b.truncated {
-			t.Error("expected truncated to be false")
-		}
-	})
-
-	t.Run("caps captured output at the limit and reports truncation across writes", func(t *testing.T) {
-		b := &cappedBuffer{limit: 4}
-		// A single write past the limit keeps only the first limit bytes.
-		if n, _ := b.Write([]byte("abcdef")); n != 6 {
-			t.Fatalf("expected Write to report the full length 6, got %d", n)
-		}
-		// A subsequent write once full is fully discarded but still reported as written.
-		if n, _ := b.Write([]byte("ghij")); n != 4 {
-			t.Fatalf("expected Write to report the full length 4, got %d", n)
-		}
-		if b.String() != "abcd" {
-			t.Errorf("expected captured output to be capped to %q, got %q", "abcd", b.String())
-		}
-		if !b.truncated {
-			t.Error("expected truncated to be true after exceeding the limit")
-		}
-	})
-}
-
-func TestExecuteCommandRequest(t *testing.T) {
-	logger := discardLogger()
-
-	t.Run("rejects an invalid command without executing it", func(t *testing.T) {
-		resp := executeCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-1",
-			Command:   "helm",
-			Arguments: []string{"list"},
-		})
-
-		if resp.GetRequestId() != "req-1" {
-			t.Errorf("expected the response to echo the request ID, got %q", resp.GetRequestId())
-		}
-		if resp.GetExitCode() != exitCodeRejected {
-			t.Errorf("expected the rejected exit code %d, got %d", exitCodeRejected, resp.GetExitCode())
-		}
-		if !strings.Contains(resp.GetStderr(), "rejected the command") {
-			t.Errorf("expected a rejection message on stderr, got %q", resp.GetStderr())
-		}
-		if resp.GetStdout() != "" {
-			t.Errorf("expected no stdout for a rejected command, got %q", resp.GetStdout())
-		}
-		if resp.GetTimeout() {
-			t.Error("expected timeout to be false for a rejected command")
-		}
-	})
-
-	t.Run("executes an allowed command and reports its output and a zero exit code", func(t *testing.T) {
-		// A fake "kubectl" that writes to stdout and stderr and exits successfully stands in for the real binary.
-		fakeKubectlOnPath(t, "#!/bin/sh\necho stdout-line\necho stderr-line >&2\nexit 0\n")
-
-		resp := executeCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-ok",
-			Command:   "kubectl",
-			Arguments: []string{"get", "pods"},
-		})
-
-		if resp.GetRequestId() != "req-ok" {
-			t.Errorf("expected the response to echo the request ID, got %q", resp.GetRequestId())
-		}
-		if resp.GetExitCode() != 0 {
-			t.Errorf("expected exit code 0, got %d", resp.GetExitCode())
-		}
-		if resp.GetTimeout() {
-			t.Error("expected timeout to be false for a successful command")
-		}
-		if strings.TrimSpace(resp.GetStdout()) != "stdout-line" {
-			t.Errorf("expected stdout %q, got %q", "stdout-line", resp.GetStdout())
-		}
-		if strings.TrimSpace(resp.GetStderr()) != "stderr-line" {
-			t.Errorf("expected stderr %q, got %q", "stderr-line", resp.GetStderr())
-		}
-	})
-
-	t.Run("aborts a command that exceeds the timeout and reports the timeout response", func(t *testing.T) {
-		// Put a fake "kubectl" that sleeps for 1s on PATH, then shorten the timeout to 10ms, so the invocation is
-		// guaranteed to exceed the deadline and be killed.
-		fakeKubectlOnPath(t, "#!/bin/sh\nsleep 1\n")
-		setCommandTimeout(t, 10*time.Millisecond)
-
-		resp := executeCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-timeout",
-			Command:   "kubectl",
-			Arguments: []string{"get", "pods"},
-		})
-
-		if resp.GetRequestId() != "req-timeout" {
-			t.Errorf("expected the response to echo the request ID, got %q", resp.GetRequestId())
-		}
-		if !resp.GetTimeout() {
-			t.Error("expected the timeout flag to be set")
-		}
-		if resp.GetExitCode() != exitCodeTimedOut {
-			t.Errorf("expected the timeout exit code %d, got %d", exitCodeTimedOut, resp.GetExitCode())
-		}
-		if !strings.Contains(resp.GetStderr(), "aborted kubectl after the 10ms timeout") {
-			t.Errorf("expected a timeout message mentioning the 10ms timeout on stderr, got %q", resp.GetStderr())
-		}
-	})
-}
-
-func TestPostProcessRunResult(t *testing.T) {
-	t.Run("maps a nil error to exit code 0 with no message", func(t *testing.T) {
-		code, msg := postProcessRunResult(nil, false)
-		if code != 0 || msg != "" {
-			t.Errorf("expected (0, \"\"), got (%d, %q)", code, msg)
-		}
-	})
-
-	t.Run("maps a timed-out command to the timeout exit code with a message", func(t *testing.T) {
-		// A timed-out command is killed by signal, so the error is an ExitError with code -1; the timedOut flag takes
-		// precedence over the generic exit-error mapping.
-		err := exec.Command("sh", "-c", "exit 7").Run()
-		code, msg := postProcessRunResult(err, true)
-		if code != exitCodeTimedOut {
-			t.Errorf("expected the timeout exit code %d, got %d", exitCodeTimedOut, code)
-		}
-		if !strings.Contains(msg, "timeout") {
-			t.Errorf("expected a timeout message, got %q", msg)
-		}
-	})
-
-	t.Run("maps a process exit error to its exit code", func(t *testing.T) {
-		err := exec.Command("sh", "-c", "exit 7").Run()
-		if err == nil {
-			t.Fatal("expected the subprocess to exit non-zero")
-		}
-		code, msg := postProcessRunResult(err, false)
-		if code != 7 {
-			t.Errorf("expected exit code 7, got %d", code)
-		}
-		if msg != "" {
-			t.Errorf("expected no execution-failure message for a process that ran, got %q", msg)
-		}
-	})
-
-	t.Run("maps a non-exit error to the not-executable code with a message", func(t *testing.T) {
-		code, msg := postProcessRunResult(errors.New("boom"), false)
-		if code != exitCodeNotExecutable {
-			t.Errorf("expected the not-executable exit code %d, got %d", exitCodeNotExecutable, code)
-		}
-		if !strings.Contains(msg, "failed to execute kubectl") {
-			t.Errorf("expected an execution-failure message, got %q", msg)
-		}
-	})
-}
-
-func TestAppendLine(t *testing.T) {
-	if got := appendLine("", "line"); got != "line" {
-		t.Errorf("expected %q, got %q", "line", got)
-	}
-	if got := appendLine("first", "second"); got != "first\nsecond" {
-		t.Errorf("expected %q, got %q", "first\nsecond", got)
-	}
-}
-
-// setCommandTimeout overrides the package-level commandTimeout for the duration of the test and restores it afterwards.
-func setCommandTimeout(t *testing.T, d time.Duration) {
-	t.Helper()
-	original := commandTimeout
-	commandTimeout = d
-	t.Cleanup(func() { commandTimeout = original })
-}
-
-// fakeKubectlOnPath installs a "kubectl" executable running the given shell script into a fresh temporary directory and
-// prepends that directory to PATH, so that executeCommandRequest's "kubectl" lookup resolves to the fake. t.Setenv
-// restores PATH after the test.
-func fakeKubectlOnPath(t *testing.T, script string) {
-	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "kubectl"), []byte(script), 0o755); err != nil {
-		t.Fatalf("failed to write fake kubectl: %v", err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

@@ -550,6 +550,31 @@ func assertNoDanglingPipelineComponents(collectorConfig map[string]interface{}, 
 		Expect(declaredExtensions[key]).
 			To(BeTrue(), "%s: service.extensions references undeclared extension %q", desc, key)
 	}
+
+	// A metric_recorder naming an extension that is not started resolves to nothing at runtime: the producer records
+	// no counters, and a counting dash0metering instance additionally stops marking, which stops every Signal Control
+	// capability behind it. The collector does not reject this at load, so nothing but an assertion catches it.
+	enabledExtensions := map[string]bool{}
+	for _, ext := range readServiceExtensions(collectorConfig) {
+		enabledExtensions[fmt.Sprintf("%v", ext)] = true
+	}
+	// Both sections: the producers declare metric_recorder on processors, the drain side declares it on the receiver
+	// paired with the extension, and either one naming a recorder that is not started is the same mistake.
+	for _, section := range []string{"processors", "receivers"} {
+		components, _ := collectorConfig[section].(map[string]interface{})
+		for name, component := range components {
+			settings, ok := component.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			recorder, ok := settings["metric_recorder"].(string)
+			if !ok {
+				continue
+			}
+			Expect(enabledExtensions[recorder]).To(BeTrue(),
+				"%s: %s %q names metric_recorder %q, which is not in service.extensions", desc, section, name, recorder)
+		}
+	}
 }
 
 // cmTestMultipleDefaultDash0Exporters creates two Dash0 default exporters (simulating two Exports entries
@@ -3204,14 +3229,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(processors["dash0filter"].(map[string]interface{})["metric_recorder"]).
 				To(Equal("dash0metricrecorder"))
 
-			// The dedicated pipeline drains the receiver into the default Dash0 export path.
+			// The counters get their own pipeline and exactly one exporter, so a datapoint reaches Dash0 once. The
+			// exporter is asserted by name rather than against another pipeline, which renders from the same
+			// template fragment and would agree with it even if both lost the exporter.
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineReceivers(pipelines, "metrics/spam-counters")).To(ConsistOf("dash0metricrecorder"))
-			Expect(readPipelineExporters(pipelines, "metrics/spam-counters")).
-				To(ContainElement("forward/metrics-default-exporter"))
+			Expect(readPipelineReceivers(pipelines, "metrics/signal-control-counters")).
+				To(ConsistOf("dash0metricrecorder"))
+			Expect(readPipelineExporters(pipelines, "metrics/signal-control-counters")).
+				To(ConsistOf("otlp_grpc/dash0/default"))
+			Expect(readPipelineReceivers(pipelines, "metrics/derived/default")).
+				ToNot(ContainElement("dash0metricrecorder"))
 		})
 
-		It("should not wire the dash0metricrecorder when spamFilter is disabled [SignalControl]", func() {
+		It("should still wire the dash0metricrecorder when spamFilter is disabled, for the metering counters [SignalControl]", func() {
 			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -3230,10 +3260,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			Expect(collectorConfig["extensions"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
-			Expect(collectorConfig["receivers"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
-			Expect(readServiceExtensions(collectorConfig)).ToNot(ContainElement("dash0metricrecorder"))
-			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("metrics/spam-counters"))
+			// dash0redmetrics is a Signal Control capability and is wired unconditionally, so metering - and hence
+			// a recorder to count into - is required even with the spam filter off.
+			Expect(collectorConfig["extensions"].(map[string]interface{})).To(HaveKey("dash0metricrecorder"))
+			Expect(collectorConfig["receivers"].(map[string]interface{})).To(HaveKey("dash0metricrecorder"))
+			Expect(readServiceExtensions(collectorConfig)).To(ContainElement("dash0metricrecorder"))
+			Expect(readPipelineReceivers(readPipelines(collectorConfig), "metrics/signal-control-counters")).
+				To(ConsistOf("dash0metricrecorder"))
+			Expect(collectorConfig["processors"].(map[string]interface{})).ToNot(HaveKey("dash0filter"))
 		})
 
 		It("should not wire the dash0metricrecorder when there is no default Dash0 export path [SignalControl]", func() {
@@ -3258,7 +3292,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// no metric_recorder.
 			Expect(collectorConfig["extensions"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
 			Expect(collectorConfig["receivers"].(map[string]interface{})).ToNot(HaveKey("dash0metricrecorder"))
-			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("metrics/spam-counters"))
+			Expect(readPipelines(collectorConfig)).ToNot(HaveKey("metrics/signal-control-counters"))
 			if dash0filter, ok := collectorConfig["processors"].(map[string]interface{})["dash0filter"].(map[string]interface{}); ok {
 				Expect(dash0filter).ToNot(HaveKey("metric_recorder"))
 			}
@@ -3297,9 +3331,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				To(Equal("dash0metricrecorder"))
 
 			pipelines := readPipelines(collectorConfig)
-			Expect(readPipelineReceivers(pipelines, "metrics/spam-counters")).To(ConsistOf("dash0metricrecorder"))
-			Expect(readPipelineExporters(pipelines, "metrics/spam-counters")).
-				To(ContainElement("forward/metrics-default-exporter"))
+			Expect(readPipelineReceivers(pipelines, "metrics/signal-control-counters")).
+				To(ConsistOf("dash0metricrecorder"))
+			Expect(readPipelineExporters(pipelines, "metrics/signal-control-counters")).
+				To(ConsistOf("otlp_grpc/dash0/default"))
 		})
 
 		It("should wire the dash0metricrecorder independently of infrastructure metrics collection [SignalControl]", func() {
@@ -3320,11 +3355,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			// This collector always has a metrics egress path for the spam counters, so the recorder does not
-			// depend on Kubernetes infrastructure metrics collection (unlike on the cluster-metrics collector).
+			// This collector always has a metrics egress path for the Signal Control counters, so the recorder does
+			// not depend on Kubernetes infrastructure metrics collection (unlike on the cluster-metrics collector).
 			Expect(collectorConfig["extensions"].(map[string]interface{})).To(HaveKey("dash0metricrecorder"))
 			Expect(collectorConfig["receivers"].(map[string]interface{})).To(HaveKey("dash0metricrecorder"))
-			Expect(readPipelines(collectorConfig)).To(HaveKey("metrics/spam-counters"))
+			Expect(readPipelineReceivers(readPipelines(collectorConfig), "metrics/signal-control-counters")).
+				To(ConsistOf("dash0metricrecorder"))
 			Expect(collectorConfig["processors"].(map[string]interface{})["dash0filter"].(map[string]interface{})).
 				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 		})
@@ -3366,16 +3402,22 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(readPipelineProcessors(pipelines, "metrics/sc/ns/"+namespace1+"/"+idx)).To(ContainElement(filterID))
 				Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+namespace1+"/"+idx)).To(ContainElement(filterID))
 
-				// The branch's spam-counters pipeline drains its recorder to the SAME exporters the branch's
-				// telemetry uses, so the counts carry that branch's dataset (via the exporter's Dash0-Dataset header).
-				spamPipeline := "metrics/spam-counters/ns/" + namespace1 + "/" + idx
-				Expect(readPipelineReceivers(pipelines, spamPipeline)).To(ConsistOf(id))
-				Expect(readPipelineExporters(pipelines, spamPipeline)).
-					To(ConsistOf(readPipelineExporters(pipelines, "metrics/sc/ns/"+namespace1+"/"+idx)))
+				// The branch drains its recorder through the branch's own single exporter, so the counts carry the
+				// branch's dataset (via that exporter's Dash0-Dataset header) and reach Dash0 exactly once. Both
+				// lists are pinned in full, so an extra receiver or a second exporter fails here.
+				counterPipeline := "metrics/signal-control-counters/ns/" + namespace1 + "/" + idx
+				Expect(readPipelineReceivers(pipelines, counterPipeline)).To(ConsistOf(id))
+				Expect(readPipelineExporters(pipelines, counterPipeline)).
+					To(ConsistOf("otlp_grpc/dash0/ns/" + namespace1 + "/" + idx))
+
+				// signalToMetrics is off in this config, so RED metrics are the only receiver of the derived
+				// pipeline; the recorder must not ride it, since it fans out to every exporter of the branch.
+				Expect(readPipelineReceivers(pipelines, "metrics/derived/ns/"+namespace1+"/"+idx)).
+					To(ConsistOf("dash0redmetrics/ns/" + namespace1 + "/" + idx))
 			}
 		})
 
-		It("should not wire any per-branch dash0metricrecorder when spamFilter is disabled with namespaced datasets [SignalControl]", func() {
+		It("should still wire the per-branch dash0metricrecorder when spamFilter is disabled with namespaced datasets [SignalControl]", func() {
 			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -3395,15 +3437,20 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			collectorConfig := parseConfigMapContent(configMap)
 			pipelines := readPipelines(collectorConfig)
 
-			// With the spam filter off, neither the shared nor any per-branch recorder/filter is wired.
+			// With the spam filter off no filter is wired, but every branch still has a metering instance recording
+			// into its recorder - the first one counts, the rest report only that they are metering - so the
+			// per-branch recorders and their drains remain.
 			Expect(collectorConfig["processors"].(map[string]interface{})).ToNot(HaveKey("dash0filter"))
 			for _, idx := range []string{"0", "1"} {
 				id := "dash0metricrecorder/ns/" + namespace1 + "/" + idx
-				Expect(collectorConfig["extensions"].(map[string]interface{})).ToNot(HaveKey(id))
-				Expect(collectorConfig["receivers"].(map[string]interface{})).ToNot(HaveKey(id))
+				Expect(collectorConfig["extensions"].(map[string]interface{})).To(HaveKey(id))
+				Expect(collectorConfig["receivers"].(map[string]interface{})).To(HaveKey(id))
 				Expect(collectorConfig["processors"].(map[string]interface{})).ToNot(HaveKey("dash0filter/ns/" + namespace1 + "/" + idx))
-				Expect(pipelines).ToNot(HaveKey("metrics/spam-counters/ns/" + namespace1 + "/" + idx))
-				Expect(readServiceExtensions(collectorConfig)).ToNot(ContainElement(id))
+				Expect(collectorConfig["processors"].(map[string]interface{})["dash0metering/ns/"+namespace1+"/"+idx].(map[string]interface{})).
+					To(HaveKeyWithValue("metric_recorder", id))
+				Expect(readPipelineReceivers(pipelines, "metrics/signal-control-counters/ns/"+namespace1+"/"+idx)).
+					To(ConsistOf(id))
+				Expect(readServiceExtensions(collectorConfig)).To(ContainElement(id))
 			}
 			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "dash0filter")
 		})
@@ -3439,10 +3486,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					To(Equal(id))
 				Expect(readPipelineProcessors(pipelines, "metrics/sc/ns/"+namespace1+"/"+idx)).To(ContainElement(filterID))
 
-				spamPipeline := "metrics/spam-counters/ns/" + namespace1 + "/" + idx
-				Expect(readPipelineReceivers(pipelines, spamPipeline)).To(ConsistOf(id))
-				Expect(readPipelineExporters(pipelines, spamPipeline)).
-					To(ConsistOf(readPipelineExporters(pipelines, "metrics/sc/ns/"+namespace1+"/"+idx)))
+				counterPipeline := "metrics/signal-control-counters/ns/" + namespace1 + "/" + idx
+				Expect(readPipelineReceivers(pipelines, counterPipeline)).To(ConsistOf(id))
+				Expect(readPipelineExporters(pipelines, counterPipeline)).
+					To(ConsistOf("otlp_grpc/dash0/ns/" + namespace1 + "/" + idx))
 			}
 		})
 
@@ -5388,6 +5435,248 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		)
 	})
 
+	Describe("Signal Control metering [SignalControl]", func() {
+		meteringSC := func() SignalControlConfig {
+			return SignalControlConfig{
+				Enabled:                true,
+				SamplingEnabled:        true,
+				SpamFilterEnabled:      true,
+				SignalToMetricsEnabled: true,
+				Endpoint:               "decision-maker.example.com:443",
+				ApiEndpoint:            "https://control-plane-api.dash0.com",
+				Dataset:                "default",
+			}
+		}
+
+		assembleWith := func(sc SignalControlConfig, exporters otlpExporters) map[string]interface{} {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exporters,
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
+
+		It("declares the default metering processor as the counting instance of the default recorder [SignalControl]", func() {
+			collectorConfig := assembleWith(meteringSC(), cmTestSingleDefaultOtlpExporter())
+
+			metering := collectorConfig["processors"].(map[string]interface{})["dash0metering"].(map[string]interface{})
+			Expect(metering).To(HaveKeyWithValue("mode", "count_and_mark"))
+			Expect(metering).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
+		})
+
+		It("puts metering before every capability on the default SC pipelines [SignalControl]", func() {
+			pipelines := readPipelines(assembleWith(meteringSC(), cmTestSingleDefaultOtlpExporter()))
+
+			// Metering runs after resource/signal_control_attributes, which stamps the dataset the counts are
+			// attributed to, and after dash0resource, whose edge-origin marker has to travel with metering's mark for
+			// Dash0 to recognize the usage as already settled. It runs before the first capability in each chain.
+			for _, pipelineName := range []string{"metrics/sc/default", "logs/sc/default"} {
+				Expect(readPipelineProcessors(pipelines, pipelineName)).To(Equal([]any{
+					"resource/signal_control_attributes",
+					"dash0resource",
+					"dash0metering",
+					"dash0filter",
+				}), pipelineName)
+			}
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+				"dash0filter",
+			}))
+		})
+
+		It("marks without counting on the sampled traces pipeline, which is fed by the SC pipelines [SignalControl]", func() {
+			collectorConfig := assembleWith(meteringSC(), cmTestSingleDefaultOtlpExporter())
+
+			// The spans arrive already marked and counted, so this instance must not count them again. It keeps a
+			// recorder anyway: mark_only records no volume, but that is what lets it report the evaluations metric
+			// that tells Dash0 this pipeline is metered.
+			metering := collectorConfig["processors"].(map[string]interface{})["dash0metering/sampling"].(map[string]interface{})
+			Expect(metering).To(HaveKeyWithValue("mode", "mark_only"))
+			Expect(metering).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
+
+			Expect(readPipelineProcessors(readPipelines(collectorConfig), "traces/sampled")).
+				To(Equal([]any{"dash0metering/sampling", "dash0sampling"}))
+		})
+
+		It("does not declare the sampling metering instance when sampling is disabled [SignalControl]", func() {
+			sc := meteringSC()
+			sc.SamplingEnabled = false
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+
+			Expect(collectorConfig["processors"].(map[string]interface{})).ToNot(HaveKey("dash0metering/sampling"))
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "dash0metering/sampling")
+		})
+
+		It("keeps metering on the traces pipeline but drops it from metrics and logs when no capability is left there [SignalControl]", func() {
+			sc := meteringSC()
+			sc.SpamFilterEnabled = false
+			sc.SignalToMetricsEnabled = false
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			// dash0redmetrics is unconditional, so the traces pipeline always carries a capability. The list is
+			// pinned in full: metering moving to the head of the chain would count telemetry the collector's own
+			// processors go on to drop, which is the placement the metering rules exist to prevent.
+			Expect(readPipelineProcessors(pipelines, "traces/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0operation",
+			}))
+			// ...while the metrics and logs pipelines now run no capability, hence no metering. dash0resource goes
+			// with it on the metrics path: it is there only to pair the edge-origin marker with metering's mark.
+			Expect(readPipelineProcessors(pipelines, "metrics/sc/default")).
+				To(Equal([]any{"resource/signal_control_attributes"}))
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).
+				To(Equal([]any{"resource/signal_control_attributes", "dash0resource"}))
+		})
+
+		It("keeps metering on the logs pipeline when only signalToMetrics remains [SignalControl]", func() {
+			sc := meteringSC()
+			sc.SpamFilterEnabled = false
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			// dash0signaltometrics is an exporter on this pipeline, so metering goes at the end of the chain.
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+			}))
+			Expect(readPipelineExporters(pipelines, "logs/sc/default")).To(ContainElement("dash0signaltometrics"))
+		})
+
+		It("counts in the first dataset branch only and marks in its clones [SignalControl]", func() {
+			collectorConfig := assembleWith(meteringSC(), cmTestNamespacedMultiDatasetExporters())
+			processors := collectorConfig["processors"].(map[string]interface{})
+			pipelines := readPipelines(collectorConfig)
+
+			// The routing connector clones each resource to every dataset branch of the matched namespace, so only
+			// the first branch may count; the others would bill the same signal again.
+			b0 := "dash0metering/ns/" + namespace1 + "/0"
+			Expect(processors[b0].(map[string]interface{})).To(HaveKeyWithValue("mode", "count_and_mark"))
+			Expect(processors[b0].(map[string]interface{})).
+				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+namespace1+"/0"))
+
+			// The clone branch records no volume but keeps its own recorder, so it still reports that it is metering.
+			b1 := "dash0metering/ns/" + namespace1 + "/1"
+			Expect(processors[b1].(map[string]interface{})).To(HaveKeyWithValue("mode", "mark_only"))
+			Expect(processors[b1].(map[string]interface{})).
+				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+namespace1+"/1"))
+
+			for _, idx := range []string{"0", "1"} {
+				branch := namespace1 + "/" + idx
+				metering := "dash0metering/ns/" + branch
+				Expect(readPipelineProcessors(pipelines, "traces/sc/ns/"+branch)).To(Equal([]any{
+					"resource/signal_control_attributes/ns/" + branch,
+					"dash0resource",
+					metering,
+					"dash0operation",
+					"dash0filter/ns/" + branch,
+				}))
+				for _, pipelineName := range []string{"metrics/sc/ns/" + branch, "logs/sc/ns/" + branch} {
+					Expect(readPipelineProcessors(pipelines, pipelineName)).To(Equal([]any{
+						"resource/signal_control_attributes/ns/" + branch,
+						"dash0resource",
+						metering,
+						"dash0filter/ns/" + branch,
+					}), pipelineName)
+				}
+			}
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/metering-ns-multi-dataset")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/metering-ns-multi-dataset")
+		})
+
+		It("does not declare any metering processor without a Dash0 export path [SignalControl]", func() {
+			collectorConfig := assembleWith(meteringSC(), cmTestPassthroughOnlyDefaultExporters())
+
+			// Without a Dash0 exporter there is no SC branch, hence no capability and nothing to meter. Anchored on a
+			// processor that is always declared, so a missing processors section fails rather than satisfying the
+			// loop with no iterations.
+			processorNames := topLevelComponentKeys(collectorConfig, "processors")
+			Expect(processorNames).To(HaveKey("dash0resource"))
+			for name := range processorNames {
+				Expect(name).ToNot(HavePrefix("dash0metering"))
+			}
+		})
+
+		It("drains the counters through one exporter only, while the telemetry fans out to all of them [SignalControl]", func() {
+			// Two default Dash0 exports. The telemetry legitimately goes to both; a counter datapoint must not, since
+			// the accountant sums what arrives and would charge the same usage once per export.
+			collectorConfig := assembleWith(meteringSC(), cmTestMultipleDefaultDash0Exporters())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineExporters(pipelines, "metrics/export/default")).
+				To(ConsistOf("otlp_grpc/dash0/default_0", "otlp_grpc/dash0/default_1"))
+			Expect(readPipelineExporters(pipelines, "metrics/signal-control-counters")).
+				To(ConsistOf("otlp_grpc/dash0/default_0"))
+		})
+
+		It("drains a branch's counters through one exporter only when the branch has several [SignalControl]", func() {
+			// Two Dash0 exports of one namespace targeting the SAME dataset land in one branch, so the branch has two
+			// exporters and the same single-delivery rule applies.
+			export := Dash0ExportWithEndpointAndToken()
+			auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+			first, err := convertDash0ExporterToOtlpExporter(export.Dash0, "ns/"+namespace1+"/0", auth)
+			Expect(err).ToNot(HaveOccurred())
+			second, err := convertDash0ExporterToOtlpExporter(export.Dash0, "ns/"+namespace1+"/0b", auth)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := assembleWith(meteringSC(), otlpExporters{
+				Default:    cmTestSingleDefaultOtlpExporter().Default,
+				Namespaced: map[string][]otlpExporter{namespace1: {*first, *second}},
+			})
+			pipelines := readPipelines(collectorConfig)
+			branch := namespace1 + "/0"
+
+			Expect(readPipelineExporters(pipelines, "metrics/sc/ns/"+branch)).To(ConsistOf(
+				"otlp_grpc/dash0/ns/"+branch, "otlp_grpc/dash0/ns/"+namespace1+"/0b"))
+			Expect(readPipelineExporters(pipelines, "metrics/signal-control-counters/ns/"+branch)).
+				To(ConsistOf("otlp_grpc/dash0/ns/" + branch))
+
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/metering-branch-two-exporters")
+		})
+
+		It("wires only the per-namespace metering when the default export is not a Dash0 export [SignalControl]", func() {
+			// A passthrough-only default export plus one namespaced Dash0 export: the only combination in which the
+			// default metering instance and the default recorder must be absent while the per-namespace ones must not.
+			grpcExporterDefault, err := convertGrpcExporterToOtlpExporter(GrpcExportTest().Grpc, "default")
+			Expect(err).ToNot(HaveOccurred())
+			export := Dash0ExportWithEndpointAndToken()
+			auth, _ := dash0ExporterAuthorizationForExport(*export, 0, true, nil)
+			dash0ExporterNs1, err := convertDash0ExporterToOtlpExporter(export.Dash0, "ns/"+namespace1+"/0", auth)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := assembleWith(meteringSC(), otlpExporters{
+				Default:    []otlpExporter{*grpcExporterDefault},
+				Namespaced: map[string][]otlpExporter{namespace1: {*dash0ExporterNs1}},
+			})
+
+			branch := namespace1 + "/0"
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors).ToNot(HaveKey("dash0metering"))
+			// Paired with a key that is always present, so a missing extensions section fails here rather than
+			// satisfying the negative assertion with an empty map.
+			Expect(topLevelComponentKeys(collectorConfig, "extensions")).To(HaveKey("dash0settingsonedgeextension"))
+			Expect(topLevelComponentKeys(collectorConfig, "extensions")).ToNot(HaveKey("dash0metricrecorder"))
+			Expect(processors).To(HaveKey("dash0metering/ns/" + branch))
+			Expect(processors["dash0metering/ns/"+branch].(map[string]interface{})).
+				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+branch))
+			Expect(readPipelineProcessors(readPipelines(collectorConfig), "traces/sc/ns/"+branch)).
+				To(ContainElement("dash0metering/ns/" + branch))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/metering-ns-only")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/metering-ns-only")
+		})
+
+	})
+
 	Describe("Signal Control on the logs pipeline [SignalControl]", func() {
 		fullSC := func() SignalControlConfig {
 			return SignalControlConfig{
@@ -5503,13 +5792,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			pipelines := readPipelines(collectorConfig)
 
 			// Unlike the cluster-metrics collector, this collector always has a metrics egress path, so the
-			// derived-metrics and spam-counter pipelines do not depend on infrastructure metrics collection.
+			// derived-metrics pipeline and the counter drain do not depend on infrastructure metrics collection.
 			b0 := namespace1 + "/0"
 			connectors := topLevelComponentKeys(collectorConfig, "connectors")
 			Expect(connectors).To(HaveKey("dash0signaltometrics/ns/" + b0))
 			Expect(topLevelComponentKeys(collectorConfig, "extensions")).To(HaveKey("dash0metricrecorder/ns/" + b0))
 			Expect(pipelines).To(HaveKey("metrics/derived/ns/" + b0))
-			Expect(pipelines).To(HaveKey("metrics/spam-counters/ns/" + b0))
+			Expect(readPipelineReceivers(pipelines, "metrics/signal-control-counters/ns/"+b0)).
+				To(ConsistOf("dash0metricrecorder/ns/" + b0))
 
 			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+b0)).To(ContainElement("dash0filter/ns/" + b0))
 			processors := collectorConfig["processors"].(map[string]interface{})

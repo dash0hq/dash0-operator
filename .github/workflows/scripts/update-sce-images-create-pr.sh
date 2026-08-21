@@ -116,8 +116,11 @@ for spec in "${image_specs[@]}"; do
   fi
 done
 
-# git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
-if git diff-files --quiet -- "$values_file" "$test_file"; then
+# Both files are rewritten unconditionally above, so their stat information always differs from the index. The porcelain
+# "git diff" is used on purpose: it ignores stat-only changes (diff.autoRefreshIndex, on by default), while the plumbing
+# "git diff-files" would report a change and produce an empty commit.
+# git diff --quiet exits with 1 if there were differences, exit code 0 means no differences.
+if git diff --quiet -- "$values_file" "$test_file"; then
   echo "There are no changes, everything up to date."
   exit 0
 fi
@@ -147,7 +150,7 @@ gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
 # Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
 # commits are automatically signed.
 # Note: expectedHeadOid is an optimistic lock: the branch tip must still be at base_sha (it is, we just created it).
-# Note: both files are always sent; the git diff-files check above guarantees that at least one of them differs.
+# Note: both files are always sent; the git diff check above guarantees that at least one of them differs.
 jq -n \
   --arg repo "$GITHUB_REPOSITORY" \
   --arg branch "$branch_name" \

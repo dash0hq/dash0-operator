@@ -89,7 +89,8 @@ var (
 		"dash0resource:",
 		"dash0operation:",
 		"dash0metricrecorder:",
-		"metrics/spam-counters:",
+		"dash0metering:",
+		"metrics/signal-control-counters:",
 		"traces/sampled:",
 		"forward/traces-to-sampling",
 	}

@@ -8,8 +8,9 @@ based on custom criteria via OTTL
 - signal-to-metrics derives metrics from logs and traces - like RED metrics, this happens before sampling to keep
 metrics accurate
 - spam filters that are evaluated in-cluster to reduce egress costs
-- the metric recorder emits operational counters from in-cluster components (currently the volume dropped by the spam
-filter) so you keep visibility into filtered data without shipping the raw signals
+- the metric recorder emits operational counters from in-cluster components - currently the volume dropped by the spam
+filter - so you keep visibility into filtered data without shipping the raw signals. It also carries the SignalControl
+metering counters, which are classified internal: they are not billed at ingest and do not appear in your telemetry
 - the operation processor derives useful attributes and normalizes high-cardinality attributes
 
 Tail-sampling decisions that require cross-collector coordination are made by the Dash0 Decision Maker (SaaS-side).
@@ -106,6 +107,33 @@ egress-reduction logic is layered on top.
 
 Concentrating the SCE components in one workload means the tail-sampling reservoir, the RED-metrics pre-aggregation and
 the settings polling happen once per cluster rather than once per node.
+
+### Metering
+
+SignalControl usage is metered inside your cluster. The operator wires a `dash0metering` processor into every
+SignalControl collector pipeline that runs a SignalControl component, ahead of that component, and drains the counters to
+Dash0 on their own pipeline. There is nothing to configure.
+
+Two consequences are worth knowing:
+
+- **Once Dash0 enables enforcement for your organization, a SignalControl component only acts on telemetry that metering
+  marked.** Until then the components act on unmarked telemetry too. Enforcement governs the components, not the
+  counting — metering counts in both states.
+- **The usage of a namespace that exports to several Dash0 datasets is attributed to its first dataset.** The collector
+  duplicates that namespace's telemetry across the dataset branches but counts it in one of them only, which is what
+  keeps the same telemetry from being billed twice.
+
+The collector checks its own metering configuration at startup and logs a warning per problem it finds, each naming a
+rule such as `capability-without-metering`. If you are using namespaced exporters, one of them is expected here
+and can be ignored: `duplicate-counting-instance`, naming the counting pipelines that share a routing connector — the
+default branch and the first dataset branch of each namespace. It appears once per signal whose SignalControl pipelines
+carry metering: traces always, metrics with the spam filter on, logs with the spam filter or signal-to-metrics on.
+
+It is a false positive. The rule groups pipelines by the receiver they share and assumes each of them receives a copy of
+everything that receiver emits. The pipelines it names here sit on *different routes* of that connector, and the routes
+are mutually exclusive: a resource is routed by its namespace, or to the default branch when no namespace matches, never
+both. Nothing is counted twice. (Within a single route the connector does deliver to every pipeline of that route, which
+is how a namespace with several datasets gets a copy per dataset — and why only the first of those branches counts.)
 
 ### Zone-aware routing
 
