@@ -533,7 +533,7 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 	legacyEventApi := r.clientset.CoreV1().Events(namespace)
 	backoff := r.danglingEventsTimeouts.Backoff
 	for _, eventType := range util.AllEvents {
-		retryErr := retry.RetryWithCustomBackoff(
+		retryErr := retry.Retry(
 			"attaching dangling event to involved object",
 			func() error {
 				danglingEvents, listErr := legacyEventApi.List(
@@ -580,9 +580,7 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 				return nil
 			},
 			backoff,
-			false,
-			false,
-			logger,
+			nil,
 		)
 
 		if retryErr != nil {

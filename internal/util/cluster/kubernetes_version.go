@@ -195,7 +195,7 @@ func (d *MinimumKubeletVersionDetector) StartDetection(
 ) {
 	go func() {
 		defer d.settledOnce.Do(func() { close(d.settled) })
-		if err := retry.RetryWithCustomBackoff(
+		if err := retry.Retry(
 			"determining the minimum kubelet version of the cluster's nodes",
 			func() error {
 				if ctx.Err() != nil {
@@ -210,9 +210,7 @@ func (d *MinimumKubeletVersionDetector) StartDetection(
 				return nil
 			},
 			minimumKubeletVersionDetectionBackoff,
-			true,
-			false,
-			logger,
+			&logger,
 		); err != nil {
 			if ctx.Err() == nil {
 				logger.ErrorAsWarnTelemetryCollectionIssue(err,

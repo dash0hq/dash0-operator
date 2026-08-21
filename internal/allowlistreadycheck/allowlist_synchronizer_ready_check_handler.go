@@ -134,15 +134,13 @@ func (h *OperatorPreInstallHandler) WaitForAllowlistSynchronizerToBecomeReady() 
 		dash0AllowlistSynchronizerName,
 	)
 	h.logger.Info(message)
-	if err := retry.RetryWithCustomBackoff(
+	if err := retry.Retry(
 		message,
 		func() error {
 			return h.checkAllowlistSynchronizerReadiness(ctx)
 		},
 		h.retryBackoff,
-		true,
-		true,
-		h.logger,
+		&h.logger,
 	); err != nil {
 		return fmt.Errorf(
 			"waiting for AllowlistSynchronizer %s to become ready has timed out (no more retries left): %v",

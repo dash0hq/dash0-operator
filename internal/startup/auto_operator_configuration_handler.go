@@ -238,7 +238,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) error {
-	return retry.RetryWithCustomBackoff(
+	return retry.Retry(
 		"create/update operator configuration resource",
 		func() error {
 			return r.createOrUpdateOperatorConfigurationResourceOnce(ctx, operatorConfigurationResource, logger)
@@ -248,9 +248,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 			Factor:   1.5,
 			Steps:    6,
 		},
-		true,
-		true,
-		logger,
+		&logger,
 	)
 }
 

@@ -77,15 +77,13 @@ func (h *OperatorPostInstallHandler) WaitForOperatorConfigurationResourceToBecom
 			util.OperatorConfigurationAutoResourceName,
 		)
 	h.logger.Info(message)
-	if err := retry.RetryWithCustomBackoff(
+	if err := retry.Retry(
 		message,
 		func() error {
 			return h.checkOperatorConfigurationResourceAvailability(ctx)
 		},
 		h.retryBackoff,
-		false,
-		true,
-		h.logger,
+		nil,
 	); err != nil {
 		return fmt.Errorf(
 			"waiting for %s to become available has timed out (no more retries left): %v",

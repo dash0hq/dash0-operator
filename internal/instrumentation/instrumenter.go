@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/pager"
@@ -56,6 +57,13 @@ const (
 
 var (
 	timeoutForListingPods int64 = 2
+
+	instrumentationRetryBackoff = wait.Backoff{
+		Duration: 10 * time.Millisecond,
+		Factor:   1.0,
+		Steps:    5,
+		Jitter:   0.1,
+	}
 )
 
 func (e ImmutableWorkloadError) Error() string {
@@ -476,7 +484,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 		} else {
 			return nil
 		}
-	}, logger)
+	}, instrumentationRetryBackoff, &logger)
 
 	postProcess := i.postProcessInstrumentation
 	if requiredAction == util.ModificationModeUninstrumentation {
@@ -667,7 +675,7 @@ func (i *Instrumenter) instrumentWorkload(
 		} else {
 			return nil
 		}
-	}, logger)
+	}, instrumentationRetryBackoff, &logger)
 
 	switch requiredAction {
 	case util.ModificationModeInstrumentation:
@@ -988,7 +996,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 			modificationResult = workloads.NewNotModifiedNoChangesResult()
 			return nil
 		}
-	}, logger)
+	}, instrumentationRetryBackoff, &logger)
 
 	if retryErr != nil {
 		// For the case that the job was instrumented, and we could not uninstrument it, we create a
@@ -1147,7 +1155,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 		} else {
 			return nil
 		}
-	}, logger)
+	}, instrumentationRetryBackoff, &logger)
 
 	return i.postProcessUninstrumentation(workload.asRuntimeObject(), modificationResult, retryErr, logger)
 }
