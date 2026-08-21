@@ -151,7 +151,7 @@ type commandLineArguments struct {
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
-	operatorConfigurationInstrumentationDelivery                          string
+	operatorConfigurationInstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	telemetryCollectionEnabled                                            bool
 	featureSignalControlEnabled                                           bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
@@ -642,13 +642,15 @@ func defineCommandLineArguments() *commandLineArguments {
 		"The value for autoMonitorNamespaces.labelSelector on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.StringVar(
-		&cliArgs.operatorConfigurationInstrumentationDelivery,
+	flag.Func(
 		"operator-configuration-instrumentation-delivery",
-		"",
 		"The value for spec.instrumentWorkloads.instrumentationDelivery on the operator configuration resource. "+
 			"Allowed values are \"auto\", \"image-volume\" and \"init-container\". Will be ignored if "+
 			"operator-configuration-endpoint is not set.",
+		func(value string) error {
+			cliArgs.operatorConfigurationInstrumentationDelivery = dash0v1alpha1.InstrumentationDelivery(value)
+			return nil
+		},
 	)
 	flag.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
@@ -1306,14 +1308,7 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the metadata client")
 	}
 
-	kubernetesVersionInfo, kubernetesVersionDetected := cluster.DetectKubernetesVersion(clientset, setupLog)
-	resolvedInstrumentationDelivery := cluster.ResolveInstrumentationDelivery(
-		cliArgs.operatorConfigurationInstrumentationDelivery,
-		kubernetesVersionInfo,
-		kubernetesVersionDetected,
-		operatorConfigurationIsManagedViaHelm(cliArgs),
-		setupLog,
-	)
+	kubernetesApiServerVersionInfo := cluster.DetectKubernetesApiServerVersion(clientset, setupLog)
 
 	operatorConfigurationTokenRedacted := ""
 	if cliArgs.operatorConfigurationToken != "" {
@@ -1422,8 +1417,6 @@ func startOperatorManager(
 
 		"requested instrumentation delivery",
 		cliArgs.operatorConfigurationInstrumentationDelivery,
-		"resolved instrumentation delivery",
-		resolvedInstrumentationDelivery,
 		"instrumentation delays",
 		cliArgs.instrumentationDelays,
 		"development mode",
@@ -1442,10 +1435,8 @@ func startOperatorManager(
 		envVars.enableRubyAutoInstrumentation,
 		"watch collector resources",
 		!envVars.disableCollectorResourceWatches,
-		"Kubernetes version",
-		kubernetesVersionInfo.VersionString,
-		"Kubernetes version detected",
-		kubernetesVersionDetected,
+		"Kubernetes API server version",
+		kubernetesApiServerVersionInfo,
 	)
 
 	err = startDash0Controllers(
@@ -1455,9 +1446,7 @@ func startOperatorManager(
 		nodeMetadataClient,
 		cliArgs,
 		operatorConfigurationValues,
-		kubernetesVersionInfo,
-		kubernetesVersionDetected,
-		resolvedInstrumentationDelivery,
+		kubernetesApiServerVersionInfo,
 		delegatingZapCoreWrapper,
 		developmentMode,
 	)
@@ -1514,9 +1503,7 @@ func startDash0Controllers(
 	nodeMetadataClient metadata.Interface,
 	cliArgs *commandLineArguments,
 	operatorConfigurationValues *OperatorConfigurationValues,
-	kubernetesVersionInfo cluster.KubernetesVersionInfo,
-	kubernetesVersionDetected bool,
-	instrumentationDelivery cluster.ResolvedInstrumentationDelivery,
+	kubernetesApiServerVersionInfo cluster.KubernetesVersionInfo,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	developmentMode bool,
 ) error {
@@ -1591,13 +1578,21 @@ func startDash0Controllers(
 		possibleCollectorUrls,
 		oTelCollectorBaseUrl,
 		extraConfig,
-		instrumentationDelivery,
+		cliArgs.operatorConfigurationInstrumentationDelivery,
 		cliArgs.instrumentationDelays,
 		envVars.instrumentationDebug,
 		envVars.enablePythonAutoInstrumentation,
 		envVars.enableRubyAutoInstrumentation,
 	)
-	clusterInstrumentationConfig.SetKubernetesVersion(kubernetesVersionInfo, kubernetesVersionDetected)
+
+	startMinimumKubeletVersionDetection(
+		ctx,
+		clientset,
+		clusterInstrumentationConfig,
+		kubernetesApiServerVersionInfo,
+		cliArgs.operatorConfigurationInstrumentationDelivery,
+	)
+
 	clusterUid, err := cluster.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, setupLog)
 	if err != nil {
 		return err
@@ -1652,8 +1647,7 @@ func startDash0Controllers(
 			KubeletStatsAutoDetectEndpoint:         envVars.kubeletStatsAutoDetectEndpoint,
 			KubeletStatsReceiverConfig:             envVars.kubeletStatsReceiverConfig,
 			PseudoClusterUid:                       clusterUid,
-			KubernetesVersion:                      kubernetesVersionInfo,
-			KubernetesVersionDetected:              kubernetesVersionDetected,
+			KubernetesApiServerVersion:             kubernetesApiServerVersionInfo,
 			IsIPv6Cluster:                          isIPv6Cluster,
 			IsDocker:                               isDocker,
 			DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
@@ -2126,6 +2120,35 @@ func createOrUpdateAutoOperatorConfigurationResource(
 		extraConfigMapWatcher.AddClient(autoOperatorConfigurationResourceHandler)
 		return operatorConfigurationResource
 	}
+}
+
+func startMinimumKubeletVersionDetection(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	kubernetesApiServerVersionInfo cluster.KubernetesVersionInfo,
+	requestedInstrumentationDelivery dash0v1alpha1.InstrumentationDelivery,
+) {
+	minimumKubeletVersionDetector := cluster.NewMinimumKubeletVersionDetector()
+	clusterInstrumentationConfig.SetKubernetesVersions(
+		kubernetesApiServerVersionInfo,
+		minimumKubeletVersionDetector,
+	)
+	minimumKubeletVersionDetector.StartDetection(
+		ctx,
+		clientset,
+		func() {
+			setupLog.Info(
+				"the instrumentation delivery mechanism has been re-evaluated after determining the minimum "+
+					"kubelet version among the cluster's nodes",
+				"requested instrumentation delivery",
+				requestedInstrumentationDelivery,
+				"resolved instrumentation delivery",
+				clusterInstrumentationConfig.ResolveInstrumentationDelivery(),
+			)
+		},
+		setupLog,
+	)
 }
 
 // setupCollectorReconciler sets up the reconciler that watches the OpenTelemetry collector resources managed by the

@@ -16,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
-	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/retry"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -123,7 +123,7 @@ func deployRenderedMonitoringResourceWithRetry(
 		"deploying the Dash0 monitoring resource to namespace %s with values %v from file %s, operator namespace is %s",
 		namespace, dash0MonitoringValues, renderedResourceFileName, operatorNamespace))
 	retryLogger := logd.NewLogger(zap.New())
-	err := util.RetryWithCustomBackoff("deploying the Dash0 monitoring resource to namespace", func() error {
+	err := retry.Retry("deploying the Dash0 monitoring resource to namespace", func() error {
 		return runAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"apply",
@@ -137,9 +137,7 @@ func deployRenderedMonitoringResourceWithRetry(
 			Duration: 10 * time.Second,
 			Steps:    3,
 		},
-		true,
-		true,
-		retryLogger,
+		new(retryLogger),
 	)
 	Expect(err).ToNot(HaveOccurred())
 

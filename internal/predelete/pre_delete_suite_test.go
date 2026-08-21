@@ -29,7 +29,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -110,7 +109,7 @@ var _ = BeforeSuite(func() {
 			PossibleCollectorUrlsTest,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
-			cluster.ResolvedInstrumentationDeliveryInitContainer,
+			dash0v1alpha1.InstrumentationDeliveryInitContainer,
 			nil,
 			false,
 			false,

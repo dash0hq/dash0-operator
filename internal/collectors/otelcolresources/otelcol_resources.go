@@ -195,8 +195,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		IsIPv6Cluster:          m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:         m.collectorConfig.IsGkeAutopilot,
 		ServiceTrafficDistribution: cluster.ResolveServiceTrafficDistribution(
-			m.collectorConfig.KubernetesVersion,
-			m.collectorConfig.KubernetesVersionDetected,
+			m.collectorConfig.KubernetesApiServerVersion,
 			logger,
 		),
 		SignalControl:          signalControlConfigFromResource(signalControlResource, operatorConfigurationResource, m.collectorConfig.OperatorNamespace, m.collectorConfig.OTelCollectorNamePrefix, logger),

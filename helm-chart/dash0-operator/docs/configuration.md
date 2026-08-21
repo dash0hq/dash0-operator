@@ -148,13 +148,18 @@ Here is a list of configuration options for this resource:
   workloads when applying auto-instrumentation.
   See [Using Image Volumes for Auto-Instrumentation Files](#using-image-volumes-for-auto-instrumentation-files).
   Allowed values:
-  - `auto`: use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
-    approach.
-  - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
-    version is older than 1.31, the operator manager will log a warning and fall back to the init container
-    approach, since image volumes are not supported in that version. Note that if you are using
-    Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
-    your cluster, since image volumes are disabled by default in versions older than 1.35.
+  - `auto`: use image volumes if the Kubernetes API server version and the kubelet version of all nodes of the cluster
+    is 1.36 or later, otherwise use the init container approach.
+    The operator manager determines the minimum kubelet version by inspecting all nodes of the cluster once, shortly
+    after it has started; until that has finished, it uses the init container approach.
+    Nodes that join the cluster later on are not taken into account.
+  - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
+    already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it
+    will log a warning and fall back to the init container approach, since image volumes are not supported in that
+    version. That fallback is best-effort: it does not cover workloads instrumented before the operator manager has
+    inspected the cluster's nodes, nor nodes that join the cluster later on. Note that if you are using Kubernetes 1.34
+    or earlier, and you want to use this setting, you need to enable image volumes when configuring your cluster, since
+    image volumes are disabled by default in versions older than 1.35.
   - `init-container`: always use the init container approach, regardless of the Kubernetes version.
     This is the default.
 
@@ -790,13 +795,18 @@ When using the operator manager to create and manage the operator configuration 
 `operator.dash0Export.enabled=true`), set `operator.instrumentation.delivery` in Helm to configure image volumes.
 
 Allowed values for the instrumentation delivery setting:
-- `auto`: use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
-  approach.
-- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
-  version is older than 1.31, the operator manager will log a warning and fall back to the init container
-  approach, since image volumes are not supported in that version. Note that if you are using
-  Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
-  your cluster, since image volumes are disabled by default in versions older than 1.35.
+- `auto`: use image volumes if the Kubernetes API server version and the kubelet version of all nodes of the cluster is
+  1.36 or later, otherwise use the init container approach.
+  The operator manager determines the minimum kubelet version by inspecting all nodes of the cluster once, shortly after
+  it has started; until that has finished, it uses the init container approach.
+  Nodes that join the cluster later on are not taken into account.
+- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
+  already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it will
+  log a warning and fall back to the init container approach, since image volumes are not supported in that version.
+  That fallback is best-effort: it does not cover workloads instrumented before the operator manager has inspected the
+  cluster's nodes, nor nodes that join the cluster later on. Note that if you are using Kubernetes 1.34 or earlier, and
+  you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are
+  disabled by default in versions older than 1.35.
 - `init-container`: always use the init container approach, regardless of the Kubernetes version.
   This is the default.
 

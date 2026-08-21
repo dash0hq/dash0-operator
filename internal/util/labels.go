@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 )
 
 const (
@@ -43,6 +44,7 @@ func AddInstrumentationLabelsAndAnnotations(
 	objectMeta *metav1.ObjectMeta,
 	instrumentationSuccess bool,
 	clusterInstrumentationConfig *ClusterInstrumentationConfig,
+	resolvedInstrumentationDelivery cluster.ResolvedInstrumentationDelivery,
 	actor WorkloadModifierActor,
 ) {
 	if instrumentationSuccess {
@@ -56,7 +58,7 @@ func AddInstrumentationLabelsAndAnnotations(
 	addAnnotation(
 		objectMeta,
 		instrumentationDeliveryAnnotationKey,
-		string(clusterInstrumentationConfig.GetInstrumentationDelivery()),
+		string(resolvedInstrumentationDelivery),
 	)
 	removeLabel(objectMeta, legacyInitContainerImageLabelKey)
 }

@@ -30,25 +30,20 @@ import (
 // later.
 func ResolveServiceTrafficDistribution(
 	versionInfo KubernetesVersionInfo,
-	versionDetected bool,
 	logger logd.Logger,
 ) *string {
 	preferClose := corev1.ServiceTrafficDistributionPreferClose
-	if !versionDetected {
-		logger.Debug("the Kubernetes version could not be detected, omitting spec.trafficDistribution on the " +
-			"operator's services; zone-aware routing is not available")
+	if !versionInfo.Detected {
+		logger.Debug("the Kubernetes API server version could not be detected, omitting spec.trafficDistribution on " +
+			"the operator's services; zone-aware routing is not available")
 		return nil
 	}
-	if versionInfo.Major > trafficDistributionMinimumMajorVersion {
-		return &preferClose
-	}
-	if versionInfo.Major == trafficDistributionMinimumMajorVersion &&
-		versionInfo.Minor >= trafficDistributionMinimumMinorVersion {
+	if versionInfo.IsAtLeast(trafficDistributionMinimumVersion) {
 		return &preferClose
 	}
 	logger.Debug(fmt.Sprintf(
-		"the Kubernetes version is %s, which does not enable spec.trafficDistribution by default (requires 1.%d or "+
-			"later); zone-aware routing is not available",
-		versionInfo.VersionString, trafficDistributionMinimumMinorVersion))
+		"the Kubernetes API server version is %s, which does not enable spec.trafficDistribution by default (requires "+
+			"1.%d or later); zone-aware routing is not available",
+		versionInfo, trafficDistributionMinimumVersion.Minor))
 	return nil
 }
