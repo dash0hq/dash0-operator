@@ -603,7 +603,7 @@ tests:
                     values:
                     - value-07
                     - value-08
-            edgeProxyReplicas: 1
+            edgeProxyReplicas: 2
             edgeProxyContainerResources:
               gomemlimit: 200MiB
               limits:

@@ -124,6 +124,25 @@ type EdgeProxyConfig struct {
 	//
 	// +kubebuilder:validation:Optional
 	Insecure *bool `json:"insecure,omitempty"`
+
+	// The minimum ratio of connected upstream Decision Maker instances the Edge Proxy tolerates before it
+	// signals collectors to enter fallback. "1.0" enters fallback as soon as any upstream connection is lost
+	// (fail loud); lower values tolerate partial upstream outages at the risk of silently dropping the sampling
+	// decisions routed to a missing upstream. This setting is optional, it defaults to "1.0". Must be a string
+	// representation of a float between 0.0 and 1.0.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Pattern=`^(0(\.\d+)?|1(\.0+)?)$`
+	// +kubebuilder:default="1.0"
+	FallbackMinConnectedRatio *string `json:"fallbackMinConnectedRatio,omitempty"`
+
+	// How often the Edge Proxy refreshes the organization settings feed (spam filters, signal-to-metrics and
+	// sampling rules) from the Dash0 API. Go duration syntax (e.g. "60s", "5m"). Must be between 10s and 1h; a
+	// value outside this range is rejected by the Edge Proxy. This setting is optional; the Edge Proxy default
+	// (60s) applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	SettingsRefreshInterval *metav1.Duration `json:"settingsRefreshInterval,omitempty"`
 }
 
 // EdgeProxyLogLevel describes the log level for the Edge Proxy.
