@@ -163,7 +163,7 @@ var parseableOutputFormats = map[string]struct{}{
 // safeOrRedactableOutputFormats).
 //
 // A non-nil error means the response could not be redacted and must not be sent to the backend, see withholdResponse.
-func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, stdoutTruncated bool) error {
+func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, stdoutTruncated bool) error {
 	// If there is no output at all, there is nothing to redact.
 	if resp.GetStdout() == "" && resp.GetStderr() == "" {
 		return nil
@@ -212,10 +212,10 @@ func redactSecretsInResponse(parsed parsedArguments, resp *pb.CommandResponse, s
 
 // responseCanContainSecrets reports whether the response of the given invocation renders the content of a Dash0 custom
 // resource that can contain secrets, and therefore has to be redacted.
-func responseCanContainSecrets(parsed parsedArguments) bool {
+func responseCanContainSecrets(parsed kubectlArguments) bool {
 	//nolint:goconst
-	if parsed.subcommand != "get" {
-		// No other allowed subcommand renders the content of a custom resource: "describe" is rejected for these
+	if parsed.kubectlCommand != "get" {
+		// No other allowed kubectl command renders the content of a custom resource: "describe" is rejected for these
 		// resource types (see describeOfResourceTypeWithSecrets), and "explain" only prints the schema.
 		return false
 	}
@@ -303,10 +303,10 @@ func (r *redactor) valuesToScrubFromStderr() []string {
 
 // targetsResourceTypeWithSecrets reports whether the kubectl arguments reference a Dash0 custom resource type whose
 // content can contain secrets (see dash0ResourceTypesWithSecrets). Unlike responseCanContainSecrets it does not look at
-// the subcommand or the output format, since it answers whether a response could contain a secret at all, not whether
-// the response has to be redacted. It is the basis for rejecting the output formats whose rendering of a secret cannot
-// be redacted reliably, see unredactableOutputRequested in validation.go.
-func targetsResourceTypeWithSecrets(parsed parsedArguments) bool {
+// the kubectl command or the output format, since it answers whether a response could contain a secret at all, not
+// whether the response has to be redacted. It is the basis for rejecting the output formats whose rendering of a secret
+// cannot be redacted reliably, see unredactableOutputRequested in validation.go.
+func targetsResourceTypeWithSecrets(parsed kubectlArguments) bool {
 	for _, resourceType := range parsed.resourceTypes {
 		if _, hasSecrets := dash0ResourceTypesWithSecrets[resourceType]; hasSecrets {
 			return true

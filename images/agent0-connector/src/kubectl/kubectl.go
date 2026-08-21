@@ -27,7 +27,7 @@ const (
 	defaultCommandTimeout = 30 * time.Second
 
 	// exitCodeRejected is reported for command requests that are rejected before execution (wrong command, not a
-	// read-only kubectl subcommand, ...).
+	// read-only kubectl command, ...).
 	exitCodeRejected int32 = 1
 
 	// exitCodeNotExecutable is reported when kubectl could not be executed at all (e.g. the binary is missing),
@@ -71,7 +71,7 @@ var allowedFlags = map[string]bool{
 	"request-timeout": true,
 	"help":            false, "h": false,
 
-	// resource selection and output shaping, shared by several subcommands
+	// resource selection and output shaping, shared by several kubectl commands
 	"output": true, "o": true,
 	"selector": true, "l": true,
 	"field-selector":              true,
@@ -126,10 +126,13 @@ var allowedFlags = map[string]bool{
 
 	// version
 	"client": false,
+
+	// auth can-i
+	"list": false,
 }
 
 // ExecuteCommandRequest validates and executes a CommandRequest and returns the corresponding CommandResponse.
-// Requests that do not pass validation (not kubectl, not a read-only subcommand, ...) are rejected without being
+// Requests that do not pass validation (not kubectl, not a read-only command, ...) are rejected without being
 // executed and the rejection reason is reported on stderr with a non-zero exit code.
 func ExecuteCommandRequest(
 	ctx context.Context,

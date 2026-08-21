@@ -73,11 +73,260 @@ func assembleServiceAccount(c *util.Agent0ConnectorConfig) *corev1.ServiceAccoun
 	}
 }
 
-// assembleClusterRole creates a cluster-wide, strictly read-only role. It grants get & list on every resource in
-// every API group (including custom resources installed now or in the future) plus read access to non-resource URLs,
-// which is exactly what read-only kubectl commands (kubectl get, kubectl describe, kubectl logs, ...) require. It
-// deliberately contains no write verbs (create, update, patch, delete, deletecollection), so it cannot be used to
-// modify any cluster state via kubectl.
+// allowedVerbs are the only verbs the agent0-connector's cluster role grants. The role is restricted to read-only
+// verbs. The verb "watch" would be read-only as well, but streaming commands are not supported.
+var allowedVerbs = []string{"get", "list"}
+
+// selfSubjectReviewVerbs are the verbs granted for the self subject review API, the only exception from allowedVerbs.
+// Creating a SelfSubjectAccessReview or a SelfSubjectRulesReview does not persist an object: the API server evaluates
+// the request and answers it, so this "create" reads the agent0-connector's own permissions and cannot modify any
+// cluster state. Both reviews always report on the caller's own service account, they cannot be used to inspect the
+// permissions of another identity.
+var selfSubjectReviewVerbs = []string{"create"}
+
+// agent0ConnectorRbacRules is the allowlist of resource types the agent0-connector's cluster role grants read
+// access to.
+//
+// The -manager-agent0-connector-ro cluster role in helm-chart/dash0-operator/templates/operator/cluster-roles.yaml
+// needs to match the rules listed here; Kubernetes' privilege escalation prevention only allows the operator to grant
+// permissions it holds itself, so both lists always need to be changed together.
+var agent0ConnectorRbacRules = []rbacv1.PolicyRule{
+	{
+		APIGroups: []string{""},
+		Resources: []string{
+			"componentstatuses",
+			"endpoints",
+			"events",
+			"limitranges",
+			"namespaces",
+			"nodes",
+			"persistentvolumeclaims",
+			"persistentvolumes",
+			"podtemplates",
+			"pods",
+			// required by "kubectl logs"
+			"pods/log",
+			"replicationcontrollers",
+			"resourcequotas",
+			"serviceaccounts",
+			"services",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"apps"},
+		Resources: []string{
+			"controllerrevisions",
+			"daemonsets",
+			"deployments",
+			"replicasets",
+			"statefulsets",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"batch"},
+		Resources: []string{
+			"cronjobs",
+			"jobs",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"autoscaling"},
+		Resources: []string{"horizontalpodautoscalers"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"policy"},
+		Resources: []string{"poddisruptionbudgets"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"networking.k8s.io"},
+		Resources: []string{
+			"ingressclasses",
+			"ingresses",
+			"ipaddresses",
+			"networkpolicies",
+			"servicecidrs",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"discovery.k8s.io"},
+		Resources: []string{"endpointslices"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"storage.k8s.io"},
+		Resources: []string{
+			"csidrivers",
+			"csinodes",
+			"csistoragecapacities",
+			"storageclasses",
+			"volumeattachments",
+			"volumeattributesclasses",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"scheduling.k8s.io"},
+		Resources: []string{"priorityclasses"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"node.k8s.io"},
+		Resources: []string{"runtimeclasses"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"coordination.k8s.io"},
+		Resources: []string{"leases"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"certificates.k8s.io"},
+		Resources: []string{"certificatesigningrequests"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"flowcontrol.apiserver.k8s.io"},
+		Resources: []string{
+			"flowschemas",
+			"prioritylevelconfigurations",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		// the dynamic resource allocation types
+		APIGroups: []string{"resource.k8s.io"},
+		Resources: []string{
+			"deviceclasses",
+			"resourceclaims",
+			"resourceclaimtemplates",
+			"resourceslices",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"events.k8s.io"},
+		Resources: []string{"events"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		// required by "kubectl top"
+		APIGroups: []string{"metrics.k8s.io"},
+		Resources: []string{
+			"nodes",
+			"pods",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"apiextensions.k8s.io"},
+		Resources: []string{"customresourcedefinitions"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"apiregistration.k8s.io"},
+		Resources: []string{"apiservices"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		APIGroups: []string{"admissionregistration.k8s.io"},
+		Resources: []string{
+			"mutatingadmissionpolicies",
+			"mutatingadmissionpolicybindings",
+			"mutatingwebhookconfigurations",
+			"validatingadmissionpolicies",
+			"validatingadmissionpolicybindings",
+			"validatingwebhookconfigurations",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		// Reading the RBAC objects contains no credentials, but it allows to explain why a request has been rejected
+		// with a "forbidden" error.
+		APIGroups: []string{"rbac.authorization.k8s.io"},
+		Resources: []string{
+			"clusterrolebindings",
+			"clusterroles",
+			"rolebindings",
+			"roles",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		// required by "kubectl auth can-i" and "kubectl auth can-i --list", which let the agent0-connector report its
+		// own permissions.
+		APIGroups: []string{"authorization.k8s.io"},
+		Resources: []string{
+			"selfsubjectaccessreviews",
+			"selfsubjectrulesreviews",
+		},
+		Verbs: selfSubjectReviewVerbs,
+	},
+	{
+		// The third-party resource types the operator itself reconciles, so that the agent0-connector can diagnose the
+		// corresponding operator features.
+		APIGroups: []string{"monitoring.coreos.com"},
+		Resources: []string{
+			"podmonitors",
+			"probes",
+			"prometheusrules",
+			"scrapeconfigs",
+			"servicemonitors",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"perses.dev"},
+		Resources: []string{"persesdashboards"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		// Dash0 CRDs
+		APIGroups: []string{"dash0.com"},
+		Resources: []string{"dash0teams"},
+		Verbs:     allowedVerbs,
+	},
+	{
+		// Dash0 CRDs
+		APIGroups: []string{"operator.dash0.com"},
+		Resources: []string{
+			"dash0monitorings",
+			"dash0notificationchannels",
+			"dash0operatorconfigurations",
+			"dash0samplingrules",
+			"dash0signalcontrols",
+			"dash0signaltometrics",
+			"dash0spamfilters",
+			"dash0syntheticchecks",
+			"dash0views",
+		},
+		Verbs: allowedVerbs,
+	},
+
+	// Read access to non-resource URLs is required as well, like the following:
+	//  - /api, /apis, /apis/<group> - API discovery
+	//  - /openapi/v2, /openapi/v3 - the OpenAPI schema describing every resource type
+	//  - /version - server version info
+	//  - /healthz, /livez, /readyz - health endpoints
+	//
+	// kubectl performs API discovery on essentially every command. Before kubectl converts "get pods" into an HTTP
+	// GET to /api/v1/.../pods, the client hits /api, /apis, /openapi/v3, ...
+	{
+		NonResourceURLs: []string{"*"},
+		Verbs:           []string{"get"},
+	},
+}
+
+// assembleClusterRole creates a cluster-wide, strictly read-only role. It grants get & list on the well-known resource
+// types listed in agent0ConnectorRbacRules plus read access to non-resource URLs, which is what read-only kubectl
+// commands (kubectl get, kubectl describe, kubectl logs, ...) require for those resource types. It deliberately
+// contains no write verbs (create, update, patch, delete, deletecollection), so it cannot be used to modify any cluster
+// state via kubectl.
 func assembleClusterRole(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
@@ -88,30 +337,20 @@ func assembleClusterRole(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRole {
 			Name:   ClusterRoleName(c.NamePrefix),
 			Labels: labels(),
 		},
-		Rules: []rbacv1.PolicyRule{
-			// Allow non-streaming read access to all CRD types.
-			{
-				APIGroups: []string{"*"},
-				Resources: []string{"*"},
-				// "watch" would be read-only as well, but we deliberately do not support any streaming commands, hence "watch"
-				// is not needed.
-				Verbs: []string{"get", "list"},
-			},
-
-			// We also need to allow read access to NonResourceURLs, like the following:
-			//  - /api, /apis, /apis/<group> — API discovery
-			//  - /openapi/v2, /openapi/v3 — the OpenAPI schema describing every resource type
-			//  - /version — server version info
-			//  - /healthz, /livez, /readyz — health endpoints
-			//
-			// kubectl performs API discovery on essentially every command. Before kubectl converts "get pods" into an HTTP
-			// GET to /api/v1/.../pods, the client hits /api, /apis, /openapi/v3, ...
-			{
-				NonResourceURLs: []string{"*"},
-				Verbs:           []string{"get"},
-			},
-		},
+		Rules: cloneAgent0ConnectorRbacRules(),
 	}
+}
+
+// cloneAgent0ConnectorRbacRules returns a deep copy of agent0ConnectorRbacRules. The rules must not be shared with the
+// package-level slice: the Kubernetes client decodes the API server's response into the object it was given, and the
+// JSON decoder writes into the existing backing arrays instead of allocating new ones. A shared rule would therefore be
+// overwritten by whatever the API server returns, for every subsequent reconcile of the process.
+func cloneAgent0ConnectorRbacRules() []rbacv1.PolicyRule {
+	rules := make([]rbacv1.PolicyRule, 0, len(agent0ConnectorRbacRules))
+	for _, rule := range agent0ConnectorRbacRules {
+		rules = append(rules, *rule.DeepCopy())
+	}
+	return rules
 }
 
 func assembleClusterRoleBinding(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRoleBinding {

@@ -13,47 +13,47 @@ func TestParseArguments(t *testing.T) {
 	tests := []struct {
 		name            string
 		arguments       []string
-		subcommand      string
+		kubectlCommand  string
 		flags           []parsedFlag
 		disallowedFlags []string
 		resourceTypes   []string
 	}{
 		{name: "no arguments"},
-		{name: "subcommand only", arguments: []string{"get"}, subcommand: "get"},
-		{name: "subcommand and resource type", arguments: []string{"get", "pods"}, subcommand: "get", resourceTypes: []string{"pods"}},
+		{name: "kubectl command only", arguments: []string{"get"}, kubectlCommand: "get"},
+		{name: "kubecl command and resource type", arguments: []string{"get", "pods"}, kubectlCommand: "get", resourceTypes: []string{"pods"}},
 
-		// The value of a value-taking flag is neither the subcommand nor a resource type, in every spelling.
-		{name: "flag value before the subcommand", arguments: []string{"-n", "foo", "get", "pods"},
-			subcommand: "get", flags: []parsedFlag{{token: "-n", valueTakingName: "n", value: "foo"}}, resourceTypes: []string{"pods"}},
-		{name: "flag value after the subcommand", arguments: []string{"get", "-n", "foo", "pods"},
-			subcommand: "get", flags: []parsedFlag{{token: "-n", valueTakingName: "n", value: "foo"}}, resourceTypes: []string{"pods"}},
+		// The value of a value-taking flag is neither the kubectl command nor a resource type, in every spelling.
+		{name: "flag value before the kubectl command", arguments: []string{"-n", "foo", "get", "pods"},
+			kubectlCommand: "get", flags: []parsedFlag{{token: "-n", valueTakingName: "n", value: "foo"}}, resourceTypes: []string{"pods"}},
+		{name: "flag value after the kubectl command", arguments: []string{"get", "-n", "foo", "pods"},
+			kubectlCommand: "get", flags: []parsedFlag{{token: "-n", valueTakingName: "n", value: "foo"}}, resourceTypes: []string{"pods"}},
 		{name: "flag value looking like a flag", arguments: []string{"logs", "my-pod", "--tail", "-1"},
-			// The first positional argument after the subcommand is always taken as the resource type slot, which for
+			// The first positional argument after the kubectl command is always taken as the resource type slot, which for
 			// "logs" is a pod name. That is harmless: resource types are only ever used for lookups.
-			subcommand: "logs", flags: []parsedFlag{{token: "--tail", valueTakingName: "tail", value: "-1"}}, resourceTypes: []string{"my-pod"}},
+			kubectlCommand: "logs", flags: []parsedFlag{{token: "--tail", valueTakingName: "tail", value: "-1"}}, resourceTypes: []string{"my-pod"}},
 		{name: "inline value in the long form", arguments: []string{"get", "pods", "--output=yaml"},
-			subcommand: "get", flags: []parsedFlag{{token: "--output=yaml", valueTakingName: "output", value: "yaml"}}, resourceTypes: []string{"pods"}},
+			kubectlCommand: "get", flags: []parsedFlag{{token: "--output=yaml", valueTakingName: "output", value: "yaml"}}, resourceTypes: []string{"pods"}},
 		{name: "value attached to a shorthand", arguments: []string{"get", "pods", "-oyaml"},
-			subcommand: "get", flags: []parsedFlag{{token: "-oyaml", valueTakingName: "o", value: "yaml"}}, resourceTypes: []string{"pods"}},
+			kubectlCommand: "get", flags: []parsedFlag{{token: "-oyaml", valueTakingName: "o", value: "yaml"}}, resourceTypes: []string{"pods"}},
 		{name: "value-taking shorthand in a group", arguments: []string{"get", "pods", "-Aoyaml"},
-			subcommand:    "get",
-			flags:         []parsedFlag{{token: "-Aoyaml", valueTakingName: "o", value: "yaml", booleanNames: []string{"A"}}},
-			resourceTypes: []string{"pods"}},
+			kubectlCommand: "get",
+			flags:          []parsedFlag{{token: "-Aoyaml", valueTakingName: "o", value: "yaml", booleanNames: []string{"A"}}},
+			resourceTypes:  []string{"pods"}},
 		{name: "value-taking flag without a value at the end", arguments: []string{"get", "pods", "-o"},
-			subcommand: "get", flags: []parsedFlag{{token: "-o", valueTakingName: "o", value: ""}}, resourceTypes: []string{"pods"}},
+			kubectlCommand: "get", flags: []parsedFlag{{token: "-o", valueTakingName: "o", value: ""}}, resourceTypes: []string{"pods"}},
 		{name: "boolean flags hold no value", arguments: []string{"get", "pods", "-A", "--show-labels"},
-			subcommand: "get",
+			kubectlCommand: "get",
 			flags: []parsedFlag{
 				{token: "-A", booleanNames: []string{"A"}},
 				{token: "--show-labels", booleanNames: []string{"show-labels"}},
 			},
 			resourceTypes: []string{"pods"}},
 		{name: "grouped boolean shorthands", arguments: []string{"logs", "my-pod", "-pA"},
-			subcommand:    "logs",
-			flags:         []parsedFlag{{token: "-pA", booleanNames: []string{"p", "A"}}},
-			resourceTypes: []string{"my-pod"}},
+			kubectlCommand: "logs",
+			flags:          []parsedFlag{{token: "-pA", booleanNames: []string{"p", "A"}}},
+			resourceTypes:  []string{"my-pod"}},
 		{name: "repeated flags are kept in order", arguments: []string{"get", "pods", "-o", "name", "--output=yaml"},
-			subcommand: "get",
+			kubectlCommand: "get",
 			flags: []parsedFlag{
 				{token: "-o", valueTakingName: "o", value: "name"},
 				{token: "--output=yaml", valueTakingName: "output", value: "yaml"},
@@ -62,29 +62,29 @@ func TestParseArguments(t *testing.T) {
 
 		// Resource references: a bare type only counts in the resource type slot, a type/name pair in any slot.
 		{name: "a bare type in a later slot is a resource name", arguments: []string{"get", "pods", "cm"},
-			subcommand: "get", resourceTypes: []string{"pods"}},
+			kubectlCommand: "get", resourceTypes: []string{"pods"}},
 		{name: "type/name pairs in every slot", arguments: []string{"get", "pod/a", "cm/b"},
-			subcommand: "get", resourceTypes: []string{"pod", "cm"}},
+			kubectlCommand: "get", resourceTypes: []string{"pod", "cm"}},
 		{name: "comma-separated resource list", arguments: []string{"get", "pods,cm"},
-			subcommand: "get", resourceTypes: []string{"pods", "cm"}},
+			kubectlCommand: "get", resourceTypes: []string{"pods", "cm"}},
 		{name: "resource types are normalized", arguments: []string{"get", "Secrets.v1."},
-			subcommand: "get", resourceTypes: []string{"secrets"}},
+			kubectlCommand: "get", resourceTypes: []string{"secrets"}},
 
 		// Flags outside the allowlist are collected; the remaining fields are not to be trusted then, because whether
-		// such a flag consumes the following argument as its value is unknown ("/x" below is not really a subcommand).
+		// such a flag consumes the following argument as its value is unknown ("/x" below is not really a kubectl command).
 		{name: "disallowed flag with an inline value", arguments: []string{"get", "pods", "--kubeconfig=/x"},
-			subcommand: "get", disallowedFlags: []string{"--kubeconfig=/x"}, resourceTypes: []string{"pods"}},
+			kubectlCommand: "get", disallowedFlags: []string{"--kubeconfig=/x"}, resourceTypes: []string{"pods"}},
 		{name: "disallowed flag with a separate value", arguments: []string{"--kubeconfig", "/x", "get", "pods"},
-			subcommand: "/x", disallowedFlags: []string{"--kubeconfig"}, resourceTypes: []string{"get"}},
+			kubectlCommand: "/x", disallowedFlags: []string{"--kubeconfig"}, resourceTypes: []string{"get"}},
 		{name: "the end-of-flags separator references no flag", arguments: []string{"get", "pods", "--"},
-			subcommand: "get", disallowedFlags: []string{"--"}, resourceTypes: []string{"pods"}},
+			kubectlCommand: "get", disallowedFlags: []string{"--"}, resourceTypes: []string{"pods"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parsed := parseArguments(tt.arguments)
-			if parsed.subcommand != tt.subcommand {
-				t.Errorf("expected subcommand %q, got %q", tt.subcommand, parsed.subcommand)
+			parsed := parseKubectlArguments(tt.arguments)
+			if parsed.kubectlCommand != tt.kubectlCommand {
+				t.Errorf("expected kubectl command %q, got %q", tt.kubectlCommand, parsed.kubectlCommand)
 			}
 			if !slices.EqualFunc(parsed.flags, tt.flags, parsedFlagsAreEqual) {
 				t.Errorf("expected flags %+v, got %+v", tt.flags, parsed.flags)
@@ -233,7 +233,7 @@ func TestOutputFormats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := parseArguments(tt.arguments).outputFormats(); !slices.Equal(got, tt.expected) {
+			if got := parseKubectlArguments(tt.arguments).outputFormats(); !slices.Equal(got, tt.expected) {
 				t.Errorf("expected output formats %q, got %q", tt.expected, got)
 			}
 		})
