@@ -5,15 +5,12 @@ package kubectl
 
 import "strings"
 
-// parseArguments resolves the argument list of a kubectl invocation into its subcommand, its flags and the resource
-// types it references. This is the only place that walks an argument list, so that the value of a value-taking flag is
-// consistently recognized as such: it is neither a positional argument (the "foo" in `kubectl -n foo get pods` is
-// neither the subcommand nor a resource type) nor a flag of its own when it starts with a dash (the "-1" in
-// `kubectl logs my-pod --tail -1`).
-func parseArguments(arguments []string) parsedArguments {
-	parsed := parsedArguments{}
-	// positionalIndex counts the positional arguments that follow the subcommand; it stays negative until the subcommand
-	// itself has been found.
+// parseKubectlArguments resolves the argument list of a kubectl invocation into its kubectl command, subcommand, flags
+// and the resource types it references. This is the only place that walks the raw argument list.
+func parseKubectlArguments(arguments []string) kubectlArguments {
+	parsed := kubectlArguments{}
+	// positionalIndex counts the positional arguments that follow the kubectl command (get, describe, ...); it stays
+	// negative until the kubectl command itself has been found.
 	positionalIndex := -1
 
 	for i := 0; i < len(arguments); i++ {
@@ -21,7 +18,7 @@ func parseArguments(arguments []string) parsedArguments {
 
 		if !strings.HasPrefix(argument, "-") {
 			if positionalIndex < 0 {
-				parsed.subcommand = argument
+				parsed.kubectlCommand = argument
 				positionalIndex = 0
 				continue
 			}
@@ -50,8 +47,8 @@ func parseArguments(arguments []string) parsedArguments {
 // extractNormalizedResourceTypes returns the normalized resource types a single positional argument references. The
 // argument may be a comma-separated list of resources (e.g. "secret,configmap"), and each entry either a bare resource
 // type or a type/name pair (e.g. "secret/my-secret"). A bare resource type only denotes a resource type in the first
-// positional argument after the subcommand (the resource type slot, isResourceTypeSlot), while a type/name pair does so
-// in any slot, since `kubectl get secret/a pod/b` lists multiple pairs.
+// positional argument after the kubectl command (the resource type slot, isResourceTypeSlot), while a type/name pair
+// does so in any slot, since `kubectl get secret/a pod/b` lists multiple pairs.
 func extractNormalizedResourceTypes(argument string, isResourceTypeSlot bool) []string {
 	var resourceTypes []string
 	for _, part := range strings.Split(argument, ",") {

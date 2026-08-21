@@ -18,36 +18,49 @@ import (
 // a failing test and has to be confirmed deliberately.
 
 func commandNotAllowed(command string) string {
-	return fmt.Sprintf("only the \"kubectl\" command is allowed, but got %q", command)
+	return fmt.Sprintf("only the command \"kubectl\" is allowed, but got %q", command)
+}
+
+func emptyCommandNotAllowed() string {
+	return fmt.Sprint("invalid command request without command, only the \"kubectl\" command is allowed")
 }
 
 func flagNotAllowed(flag string) string {
 	return fmt.Sprintf("the kubectl flag %q is not allowed", flag)
 }
 
-func subcommandNotAllowed(subcommand string) string {
-	return fmt.Sprintf("the kubectl subcommand %q is not an allowed read-only command", subcommand)
-}
-
-// The subcommand is spelled out by the caller like in every other builder, even though "cluster-info" happens to be
-// the only bare-only subcommand today.
-//
-//nolint:unparam
-func subcommandAllowedBareOnly(subcommand string, requestedSubVerb string) string {
+func kubectlCommandNotAllowed(kubectlCommand string) string {
 	return fmt.Sprintf(
-		"the kubectl subcommand %q must be used without additional arguments, but got %q; its sub-commands render "+
-			"content in a format whose secrets cannot be redacted",
-		subcommand,
-		requestedSubVerb,
+		"the kubectl command %q is not an allowed read-only command, the only allowed kubectl commands are "+
+			"\"api-resources\", \"api-versions\", \"auth\", \"cluster-info\", \"describe\", \"events\", \"explain\", "+
+			"\"get\", \"logs\", \"top\" and \"version\"",
+		kubectlCommand,
 	)
 }
 
-func subVerbNotAllowed(subcommand string, allowedSubVerbs string, requestedSubVerb string) string {
+//nolint:unparam
+func kubectlCommandAllowedBareOnly(kubectlCommand string, requestedSubcommand string) string {
 	return fmt.Sprintf(
-		"the kubectl subcommand %q is only allowed with the sub-command %q, but got %q instead",
-		subcommand,
-		allowedSubVerbs,
-		requestedSubVerb,
+		"the kubectl command %q may only be used without additional subcommands, but got %q",
+		kubectlCommand,
+		requestedSubcommand,
+	)
+}
+
+func subcommandNotAllowed(kubectlCommand string, allowedSubcommands string, requestedSubcommand string) string {
+	return fmt.Sprintf(
+		"the kubectl command %q is only allowed with the subcommand %q, but the subcommand was %q",
+		kubectlCommand,
+		allowedSubcommands,
+		requestedSubcommand,
+	)
+}
+
+func kubctlCommandOnlyAllowedWithoutSubcommand(kubectlCommand string, requestedSubcommand string) string {
+	return fmt.Sprintf(
+		"the kubectl command %q is only allowed without a subcommand, but the subcommand was %q",
+		kubectlCommand,
+		requestedSubcommand,
 	)
 }
 
@@ -55,8 +68,12 @@ func outputFormatNotAllowed(format string) string {
 	return fmt.Sprintf("the kubectl output format %q is not allowed", format)
 }
 
-func contentExposingSubcommand(subcommand string, resource string) string {
-	return fmt.Sprintf("the kubectl subcommand %q prints the contents of a %s, which is not allowed", subcommand, resource)
+func contentExposingKubectlCommand(kubectlCommand string, resource string) string {
+	return fmt.Sprintf(
+		"the kubectl command %q prints the contents of a %s, which is not allowed",
+		kubectlCommand,
+		resource,
+	)
 }
 
 func contentsNotReadable(resource string) string {
@@ -96,9 +113,9 @@ func TestValidateCommandRequest(t *testing.T) {
 		// allowed: false, and must be empty otherwise.
 		rejectionReason string
 	}{
-		{name: "no subcommand (bare kubectl) is allowed", command: "kubectl", arguments: nil, allowed: true},
-		{name: "no subcommand (empty arguments) is allowed", command: "kubectl", arguments: []string{}, allowed: true},
-		{name: "global help flag without subcommand is allowed", command: "kubectl", arguments: []string{"--help"}, allowed: true},
+		{name: "bare kubectl without command is allowed", command: "kubectl", arguments: nil, allowed: true},
+		{name: "bare kubectl without command (empty arguments) is allowed", command: "kubectl", arguments: []string{}, allowed: true},
+		{name: "global help flag without kubectl command is allowed", command: "kubectl", arguments: []string{"--help"}, allowed: true},
 
 		{name: "read-only get is allowed", command: "kubectl", arguments: []string{"get", "pods"}, allowed: true},
 		{name: "get with -n flag is allowed", command: "kubectl", arguments: []string{"get", "po", "-n", "x"}, allowed: true},
@@ -110,20 +127,20 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "api-versions is allowed", command: "kubectl", arguments: []string{"api-versions"}, allowed: true},
 		{name: "cluster-info is allowed", command: "kubectl", arguments: []string{"cluster-info"}, allowed: true},
 		// "kubectl cluster-info dump" writes the full JSON of the workloads of a namespace (or of the whole cluster)
-		// plus the raw logs of every container to stdout. Redaction does not run for a subcommand other than "get", and
-		// the response is not a document that could be parsed anyway, so the pod specs of the operator's own workloads
+		// plus the raw logs of every container to stdout. Redaction does not run for a kubectl command other than "get",
+		// and the response is not a document that could be parsed anyway, so the pod specs of the operator's own workloads
 		// would hand out the Dash0 auth token they carry as a literal env var value.
 		{name: "cluster-info dump is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump"}, allowed: false,
-			rejectionReason: subcommandAllowedBareOnly("cluster-info", "dump")},
+			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "dump")},
 		{name: "cluster-info dump for all namespaces is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump", "-A"}, allowed: false,
-			rejectionReason: subcommandAllowedBareOnly("cluster-info", "dump")},
+			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "dump")},
 		{name: "cluster-info dump with a leading flag is rejected", command: "kubectl", arguments: []string{"-n", "dash0-system", "cluster-info", "dump"}, allowed: false,
-			rejectionReason: subcommandAllowedBareOnly("cluster-info", "dump")},
+			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "dump")},
 		{name: "cluster-info dump with an output format is rejected", command: "kubectl", arguments: []string{"cluster-info", "dump", "-o", "json"}, allowed: false,
-			rejectionReason: subcommandAllowedBareOnly("cluster-info", "dump")},
-		// Any positional argument is rejected, so a sub-verb added by a future kubectl release is rejected as well.
-		{name: "an unknown cluster-info sub-verb is rejected", command: "kubectl", arguments: []string{"cluster-info", "somethingelse"}, allowed: false,
-			rejectionReason: subcommandAllowedBareOnly("cluster-info", "somethingelse")},
+			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "dump")},
+		// Any positional argument is rejected, so a subcommand added by a future kubectl release is rejected as well.
+		{name: "an unknown cluster-info subcommand is rejected", command: "kubectl", arguments: []string{"cluster-info", "somethingelse"}, allowed: false,
+			rejectionReason: kubectlCommandAllowedBareOnly("cluster-info", "somethingelse")},
 		{name: "cluster-info with only flags stays allowed", command: "kubectl", arguments: []string{"cluster-info", "--help"}, allowed: true},
 		{name: "top is allowed", command: "kubectl", arguments: []string{"top", "pods"}, allowed: true},
 		{name: "auth can-i is allowed", command: "kubectl", arguments: []string{"auth", "can-i", "get", "pods"},
@@ -132,31 +149,34 @@ func TestValidateCommandRequest(t *testing.T) {
 			allowed: true},
 		{name: "auth reconcile is rejected",
 			command: "kubectl", arguments: []string{"auth", "reconcile"}, allowed: false,
-			rejectionReason: subVerbNotAllowed("auth", "can-i", "reconcile")},
+			rejectionReason: subcommandNotAllowed("auth", "can-i", "reconcile")},
 		{name: "auth whoami is rejected", command: "kubectl", arguments: []string{"auth", "whoami"}, allowed: false,
-			rejectionReason: subVerbNotAllowed("auth", "can-i", "whoami")},
+			rejectionReason: subcommandNotAllowed("auth", "can-i", "whoami")},
 		{name: "bare auth is rejected", command: "kubectl", arguments: []string{"auth"}, allowed: false,
-			rejectionReason: subVerbNotAllowed("auth", "can-i", "")},
+			rejectionReason: kubctlCommandOnlyAllowedWithoutSubcommand("auth", "can-i")},
 		{name: "events is allowed", command: "kubectl", arguments: []string{"events"}, allowed: true},
 
 		{name: "non-kubectl command is rejected", command: "helm", arguments: []string{"list"}, allowed: false,
 			rejectionReason: commandNotAllowed("helm")},
 		{name: "empty command is rejected", command: "", arguments: []string{"get", "pods"}, allowed: false,
-			rejectionReason: commandNotAllowed("")},
+			rejectionReason: emptyCommandNotAllowed()},
 		{name: "mutating delete is rejected", command: "kubectl", arguments: []string{"delete", "pod", "x"}, allowed: false,
-			rejectionReason: subcommandNotAllowed("delete")},
+			rejectionReason: kubectlCommandNotAllowed("delete")},
 		{name: "mutating apply is rejected", command: "kubectl", arguments: []string{"apply"}, allowed: false,
-			rejectionReason: subcommandNotAllowed("apply")},
-		{name: "the file flag of a mutating subcommand is rejected as well", command: "kubectl", arguments: []string{"apply", "-f", "x"}, allowed: false,
+			rejectionReason: kubectlCommandNotAllowed("apply")},
+		// Rejecting this for using "apply" instead of for the "-f" flag would probably be better, but the flags needs to
+		// be checked first. Which token is the kubctl command and which tokens reference resources depends on knowing which
+		// flags consume the following argument as their value, which is only known for flags from the allowlist.
+		{name: "the file flag of a mutating kubectl command is rejected as well", command: "kubectl", arguments: []string{"apply", "-f", "x"}, allowed: false,
 			rejectionReason: flagNotAllowed("-f")},
 		{name: "mutating edit is rejected", command: "kubectl", arguments: []string{"edit", "deploy", "x"}, allowed: false,
-			rejectionReason: subcommandNotAllowed("edit")},
-		{name: "leading value-taking flag before subcommand is allowed", command: "kubectl", arguments: []string{"-n", "x", "get", "po"}, allowed: true},
-		{name: "leading flag in --flag=value form before subcommand is allowed", command: "kubectl", arguments: []string{"--namespace=x", "get", "po"}, allowed: true},
-		{name: "leading boolean flag before subcommand is allowed", command: "kubectl", arguments: []string{"--no-headers=true", "get", "po"}, allowed: true},
-		{name: "leading flags before a mutating subcommand are still rejected", command: "kubectl", arguments: []string{"-n", "x", "delete", "pod", "y"}, allowed: false,
-			rejectionReason: subcommandNotAllowed("delete")},
-		{name: "sensitive flag before subcommand is still rejected", command: "kubectl", arguments: []string{"--kubeconfig=/x", "get", "po"}, allowed: false,
+			rejectionReason: kubectlCommandNotAllowed("edit")},
+		{name: "leading value-taking flag before the kubectl command is allowed", command: "kubectl", arguments: []string{"-n", "x", "get", "po"}, allowed: true},
+		{name: "leading flag in --flag=value form before the kubectl command is allowed", command: "kubectl", arguments: []string{"--namespace=x", "get", "po"}, allowed: true},
+		{name: "leading boolean flag before the kubectl command is allowed", command: "kubectl", arguments: []string{"--no-headers=true", "get", "po"}, allowed: true},
+		{name: "leading flags before a mutating the kubectl command are still rejected", command: "kubectl", arguments: []string{"-n", "x", "delete", "pod", "y"}, allowed: false,
+			rejectionReason: kubectlCommandNotAllowed("delete")},
+		{name: "sensitive flag before the kubectl command is still rejected", command: "kubectl", arguments: []string{"--kubeconfig=/x", "get", "po"}, allowed: false,
 			rejectionReason: flagNotAllowed("--kubeconfig=/x")},
 		{name: "watch flag (-w) is rejected", command: "kubectl", arguments: []string{"get", "pods", "-w"}, allowed: false,
 			rejectionReason: flagNotAllowed("-w")},
@@ -525,13 +545,13 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: contentsNotReadable("config map")},
 		{name: "describe configmap is rejected",
 			command: "kubectl", arguments: []string{"describe", "configmap", "my-cm"}, allowed: false,
-			rejectionReason: contentExposingSubcommand("describe", "config map")},
+			rejectionReason: contentExposingKubectlCommand("describe", "config map")},
 		{name: "describe cm is rejected",
 			command: "kubectl", arguments: []string{"describe", "cm"}, allowed: false,
-			rejectionReason: contentExposingSubcommand("describe", "config map")},
+			rejectionReason: contentExposingKubectlCommand("describe", "config map")},
 		{name: "describe config map via type/name is rejected",
 			command: "kubectl", arguments: []string{"describe", "cm/my-cm"}, allowed: false,
-			rejectionReason: contentExposingSubcommand("describe", "config map")},
+			rejectionReason: contentExposingKubectlCommand("describe", "config map")},
 
 		// Non-sensitive resources are unaffected by the content check.
 		{name: "non-secret resource as yaml is allowed",
@@ -577,7 +597,7 @@ func TestValidateCommandRequest(t *testing.T) {
 
 			if tt.allowed {
 				if tt.rejectionReason != "" {
-					t.Fatalf("invalid test case \"%s\": expects allowed, but also declares a rejection reason (\"%s\")", tt.name, tt.rejectionReason)
+					t.Fatalf("invalid test case %q: expects allowed, but also declares a rejection reason (%q)", tt.name, tt.rejectionReason)
 				}
 				if err != nil {
 					t.Errorf("expected request to be allowed, but it was rejected: %v", err)
@@ -587,7 +607,7 @@ func TestValidateCommandRequest(t *testing.T) {
 
 			if tt.rejectionReason == "" {
 				t.Fatalf(
-					"invalid test case \"%s\": expects the request to be rejected, but it does not declare the expected reason",
+					"invalid test case %q: expects the request to be rejected, but it does not declare the expected reason",
 					tt.name,
 				)
 			}
@@ -607,71 +627,70 @@ func TestValidateCommandRequest(t *testing.T) {
 	}
 }
 
-// subcommandRedactionRationale records, for every subcommand in allowedKubectlSubcommands, why its response cannot
-// hand out a credential. Only "get" is routed through redaction (see responseCanContainSecrets, which returns false for
-// every other subcommand), so every other entry has to justify itself by not rendering the content of a resource at
-// all. Adding a subcommand to the allowlist without recording a rationale here fails
-// TestEveryAllowedSubcommandHasARedactionRationale.
-var subcommandRedactionRationale = map[string]string{
-	"get": "the only subcommand whose response is redacted, see redactSecretsInResponse",
+// kubectlCommandRedactionRationale records, for every kubectl command in allowedKubectlCommands, why its response
+// cannot be used to exfiltrate secrets. Only "get" is routed through redaction (see responseCanContainSecrets, which
+// returns false for every other kubectl command). Therefor every other entry has to justify itself by not rendering the
+// content of a resource at all. Adding a kubectl command to the allowlist without recording a rationale here fails
+// TestEveryAllowedKubectlCommandHasARedactionRationale.
+var kubectlCommandRedactionRationale = map[string]string{
+	"get": "the only kubectl command whose response is redacted, see redactSecretsInResponse",
 	"describe": "renders resource content, but is rejected for the resource types that can contain secrets, see " +
 		"describeOfResourceTypeWithSecrets",
 	"cluster-info": "the bare form only prints the addresses of the control plane and of the cluster's services; its " +
-		"sub-verbs are rejected, see allowedSubVerbsPerSubCommand",
+		"subcommands are rejected, see allowedSubcommandsPerKubectlCommand",
 	"api-resources": "prints the known resource types and their metadata, never the content of an instance",
 	"api-versions":  "prints the available API group/versions only",
 	"explain":       "prints the schema of a resource type, not the content of an instance",
 	"events": "renders Event objects; their messages are emitted by the kubelet and by controllers and do not " +
 		"carry the credential fields of a Dash0 custom resource",
 	"top": "prints a CPU/memory usage table only",
-	"auth": "restricted to \"can-i\", see allowedSubVerbsPerSubCommand; it answers with yes/no or with the rule " +
+	"auth": "restricted to \"can-i\", see allowedSubcommandsPerKubectlCommand; it answers with yes/no or with the rule " +
 		"list of the agent0-connector's own service account, never with the content of a resource",
 	"version": "prints the client and server version only",
 	"logs": "streams the raw log output of a container, which is not resource content; a credential a workload " +
 		"logs itself is out of reach of response redaction",
 }
 
-// TestEveryAllowedSubcommandHasARedactionRationale guards against the drift that let "kubectl cluster-info dump" hand
-// out the pod specs (and hence the Dash0 auth token in their env vars) of the whole cluster: the subcommand was on the
-// allowlist, while redaction only ever ran for "get". Whenever allowedKubectlSubcommands grows, the new subcommand has
-// to be classified deliberately.
-func TestEveryAllowedSubcommandHasARedactionRationale(t *testing.T) {
-	for subcommand := range allowedKubectlSubcommands {
-		if _, hasRationale := subcommandRedactionRationale[subcommand]; !hasRationale {
+// TestEveryAllowedKubectlCommandHasARedactionRationale guards against the drift that would for example let
+// "kubectl cluster-info dump" hand out pod specs etc. unredacted. This checks for the kubectl command that are on the
+// allowlist without their response being redacted. Whenever allowedKubectlCommands grows, the new command has to be
+// classified deliberately.
+func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
+	for kubectlCmd := range allowedKubectlCommands {
+		if _, hasRationale := kubectlCommandRedactionRationale[kubectlCmd]; !hasRationale {
 			t.Errorf(
-				"the kubectl subcommand %q is allowed, but no rationale records why its response cannot expose a "+
-					"credential; redaction only runs for \"get\" (see responseCanContainSecrets), so either confirm that "+
-					"this subcommand cannot render resource content and add a rationale to "+
-					"subcommandRedactionRationale, or restrict it in validation.go",
-				subcommand,
+				"the kubectl command %q is allowed, but no rationale records why its response cannot expose a credential; "+
+					"redaction only runs for \"get\" (see responseCanContainSecrets), so either confirm that this command "+
+					"cannot render resource content and add a rationale to kubectlCommandRedactionRationale, or restrict it in "+
+					"validation.go",
+				kubectlCmd,
 			)
 		}
 	}
-	for subcommand := range subcommandRedactionRationale {
-		if _, allowed := allowedKubectlSubcommands[subcommand]; !allowed {
+	for kubectlCmd := range kubectlCommandRedactionRationale {
+		if _, allowed := allowedKubectlCommands[kubectlCmd]; !allowed {
 			t.Errorf(
-				"subcommandRedactionRationale has a stale entry for %q, which is not an allowed subcommand any more",
-				subcommand,
+				"kubectlCommandRedactionRationale has a stale entry for %q, which is not an allowed kubectl command any more",
+				kubectlCmd,
 			)
 		}
 	}
 }
 
 // TestOnlyGetIsRoutedThroughRedaction pins the invariant the rationales above rely on: responseCanContainSecrets
-// redacts the response of "get" only. A subcommand that starts rendering resource content therefore leaks it unless it
-// is restricted in validation.go.
+// redacts the response of "get" only.
 func TestOnlyGetIsRoutedThroughRedaction(t *testing.T) {
-	for subcommand := range allowedKubectlSubcommands {
-		parsed := parseArguments([]string{subcommand, "dash0monitorings", "-o", "yaml"})
+	for kubectlCmd := range allowedKubectlCommands {
+		parsed := parseKubectlArguments([]string{kubectlCmd, "dash0monitorings", "-o", "yaml"})
 		canContainSecrets := responseCanContainSecrets(parsed)
-		if subcommand == "get" && !canContainSecrets {
-			t.Errorf("expected the response of %q to be routed through redaction", subcommand)
+		if kubectlCmd == "get" && !canContainSecrets {
+			t.Errorf("expected the response of %q to be routed through redaction", kubectlCmd)
 		}
-		if subcommand != "get" && canContainSecrets {
+		if kubectlCmd != "get" && canContainSecrets {
 			t.Errorf(
-				"the response of %q is now routed through redaction; update subcommandRedactionRationale, which "+
+				"the response of %q is now routed through redaction; update kubectlCommandRedactionRationale, which "+
 					"records that only \"get\" is",
-				subcommand,
+				kubectlCmd,
 			)
 		}
 	}
