@@ -2416,6 +2416,67 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(serviceExtensions).To(ContainElement("dash0settingsonedgeextension"))
 		})
 
+		It("should subscribe the settings extension to the Edge Proxy when the Edge Proxy is enabled [SignalControl]", func() {
+			edgeProxyEndpoint := namePrefix + "-edge-proxy." + OperatorNamespace + ".svc.cluster.local:8011"
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:          true,
+					SamplingEnabled:  true,
+					Endpoint:         edgeProxyEndpoint,
+					ApiEndpoint:      "https://control-plane-api.dash0.com",
+					Dataset:          "default",
+					Insecure:         true,
+					EdgeProxyEnabled: true,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+
+			// Edge Proxy mode: the extension subscribes to the in-cluster proxy, not the Dash0 API directly.
+			proxy := settingsOnEdge["proxy"].(map[string]interface{})
+			Expect(proxy["address"]).To(Equal(edgeProxyEndpoint))
+			Expect(proxy["insecure"]).To(BeTrue())
+			Expect(settingsOnEdge).ToNot(HaveKey("endpoint"))
+			Expect(settingsOnEdge).ToNot(HaveKey("auth_token"))
+		})
+
+		It("should keep the settings extension in direct mode when the Edge Proxy is enabled but no API endpoint is known [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:          true,
+					SamplingEnabled:  true,
+					Endpoint:         namePrefix + "-edge-proxy." + OperatorNamespace + ".svc.cluster.local:8011",
+					ApiEndpoint:      "",
+					Dataset:          "default",
+					Insecure:         true,
+					EdgeProxyEnabled: true,
+					EdgeProxyName:    namePrefix + "-edge-proxy",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+
+			// Without an API endpoint the proxy serves no settings feed, so the extension must NOT subscribe to it
+			// (which would loop silently); it stays in direct mode with an empty endpoint that fails loud at startup.
+			Expect(settingsOnEdge).ToNot(HaveKey("proxy"))
+			Expect(settingsOnEdge).To(HaveKey("endpoint"))
+		})
+
 		It("should collect Edge Proxy logs via file_log/selfmonitoring when Signal Control + Edge Proxy + self-monitoring enabled [DaemonSet]", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,

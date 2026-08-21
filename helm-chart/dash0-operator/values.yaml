@@ -484,7 +484,8 @@ operator:
   # the container image to use for the Signal Control collector (there should usually be no reason to override this)
   signalControlCollectorImage:
     repository: "ghcr.io/dash0hq/signal-control-collector"
-    # overrides the image tag, which defaults to the chart appVersion.
+    # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
+    # version; it does not track the chart appVersion.
     tag: "v2.0.3005"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
@@ -494,7 +495,8 @@ operator:
   # the container image to use for the Edge Proxy component (there should usually be no reason to override this)
   edgeProxyImage:
     repository: "ghcr.io/dash0hq/edge-proxy"
-    # overrides the image tag, which defaults to the chart appVersion.
+    # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
+    # does not track the chart appVersion.
     tag: "v2.0.3005"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
@@ -1220,8 +1222,7 @@ operator:
   #    synchronizePersesDashboards: true
   #    synchronizePrometheusRules: true
 
-  # Settings related to Signal Control. This feature is currently under development and should
-  # not be enabled.
+  # Settings related to Signal Control.
   signalControl:
     # Whether to enable Signal Control features for this operator install.
     enabled: false
@@ -1230,19 +1231,22 @@ operator:
     edgeProxy:
       # The number of Edge Proxy pods to run. The Edge Proxy is stateless, so it can be scaled horizontally to
       # handle higher collector-to-Decision-Maker traffic. Collectors connect via the Edge Proxy service,
-      # which distributes gRPC connections across the available pods. Defaults to 1.
-      replicas: 1
+      # which distributes gRPC connections across the available pods. Defaults to 2, the availability floor: with the
+      # pod disruption budget a single pod restart, rollout or node drain always leaves one pod serving the fleet.
+      replicas: 2
 
       # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.
       containerResources:
         limits:
-          memory: 128Mi
+          cpu: 500m
+          memory: 512Mi
         # The GOMEMLIMIT environment variable value for the Edge Proxy container, the recommended value is 80% of
         # containerResources.limits.memory. Note that valid units are different from Kubernetes resource settings, use
         # MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-        gomemlimit: 100MiB
+        gomemlimit: 400MiB
         requests:
-          memory: 64Mi
+          cpu: 50m
+          memory: 128Mi
 
       # An array of tolerations for the Edge Proxy deployment managed by the operator. This can be used to make sure that
       # the Edge Proxy pod can be scheduled on nodes where it would not be scheduled otherwise due to Kubernetes taints.
@@ -1271,6 +1275,18 @@ operator:
                 - key: "kubernetes.io/os"
                   operator: "In"
                   values: ["linux"]
+
+      # Additional labels for the Edge Proxy deployment managed by the operator.
+      labels: {}
+
+      # Additional annotations for the Edge Proxy deployment managed by the operator.
+      annotations: {}
+
+      # Additional labels for the pods of the Edge Proxy deployment managed by the operator.
+      podLabels: {}
+
+      # Additional annotations for the pods of the Edge Proxy deployment managed by the operator.
+      podAnnotations: {}
 
   # Settings related to the Agent0 connector (experimental/beta).
   agent0Connector:

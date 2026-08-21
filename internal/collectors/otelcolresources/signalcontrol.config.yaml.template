@@ -41,8 +41,19 @@ extensions:
   pprof: {}
   {{- end }}
   dash0settingsonedgeextension:
+{{- if and .SignalControl.EdgeProxyEnabled .SignalControl.ApiEndpoint }}
+    {{- /* Edge Proxy mode: subscribe to the in-cluster Edge Proxy, which performs a single settings poll per site
+    and fans the snapshot out to every collector. The Endpoint/auth_token HTTP fields are ignored in this mode. */}}
+    proxy:
+      address: {{ .SignalControl.Endpoint }}
+      insecure: {{ .SignalControl.Insecure }}
+{{- else }}
+    {{- /* Direct mode: poll the region-bound Dash0 API directly (one poll per collector replica). Also the fail-loud
+    fallback when the Edge Proxy is enabled but no API endpoint is known: the proxy then serves no settings feed, so
+    subscribing to it would loop silently, whereas an empty endpoint here is rejected by the extension at startup. */}}
     endpoint: {{ .SignalControl.ApiEndpoint }}
     auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
+{{- end }}
 {{- if $scDefault }}
   dash0metricrecorder: {}
 {{- end }}

@@ -91,6 +91,16 @@ spec:
                       to the cloud Decision Maker. This consolidates N collector connections into 1-2 upstream connections.
                       This setting is optional, it defaults to true.
                     type: boolean
+                  fallbackMinConnectedRatio:
+                    default: "1.0"
+                    description: |-
+                      The minimum ratio of connected upstream Decision Maker instances the Edge Proxy tolerates before it
+                      signals collectors to enter fallback. "1.0" enters fallback as soon as any upstream connection is lost
+                      (fail loud); lower values tolerate partial upstream outages at the risk of silently dropping the sampling
+                      decisions routed to a missing upstream. This setting is optional, it defaults to "1.0". Must be a string
+                      representation of a float between 0.0 and 1.0.
+                    pattern: ^(0(\.\d+)?|1(\.0+)?)$
+                    type: string
                   insecure:
                     description: |-
                       Disables TLS for the Edge Proxy's upstream gRPC connection to the Decision Maker. Intended for local
@@ -115,6 +125,13 @@ spec:
                     default: info
                     description: The log level for the Edge Proxy. This setting is
                       optional, it defaults to "info".
+                    type: string
+                  settingsRefreshInterval:
+                    description: |-
+                      How often the Edge Proxy refreshes the organization settings feed (spam filters, signal-to-metrics and
+                      sampling rules) from the Dash0 API. Go duration syntax (e.g. "60s", "5m"). Must be between 10s and 1h; a
+                      value outside this range is rejected by the Edge Proxy. This setting is optional; the Edge Proxy default
+                      (60s) applies when unset.
                     type: string
                 required:
                 - enabled
