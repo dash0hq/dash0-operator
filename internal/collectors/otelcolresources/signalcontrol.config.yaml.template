@@ -25,12 +25,14 @@ never appear in any pipeline here. Variables:
 - $useRouting: routing is used (only with namespaced Dash0 exporters; the routing connector requires a non-empty
   table). Without it, everything received here belongs to the default branch.
 - $samplingActive: tail sampling is enabled and something feeds it.
-- $metricRecorderActive: the default-path spam-filter counters are collected and exported. */}}
+
+Metering: the mark a dash0metering processor stamps is what settles Signal Control usage for billing. Once Dash0 turns
+enforcement on for an organization it is also what every Signal Control component requires before it acts.
+*/}}
 {{- $scDefault := gt (len .Exporters.DefaultDash0Exporters) 0 -}}
 {{- $hasNamespacedDash0 := .Exporters.HasNamespacedDash0Exporters -}}
 {{- $useRouting := $hasNamespacedDash0 -}}
 {{- $samplingActive := and .SignalControl.SamplingEnabled (or $scDefault $hasNamespacedDash0) -}}
-{{- $metricRecorderActive := and .SignalControl.SpamFilterEnabled $scDefault -}}
 
 extensions:
   health_check:
@@ -41,10 +43,10 @@ extensions:
   dash0settingsonedgeextension:
     endpoint: {{ .SignalControl.ApiEndpoint }}
     auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
-{{- if $metricRecorderActive }}
+{{- if $scDefault }}
   dash0metricrecorder: {}
 {{- end }}
-{{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+{{- if $hasNamespacedDash0 }}
 {{- range $ns, $sc := .Exporters.NamespaceSC }}
 {{- range $b := $sc.DatasetBranches }}
   dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
@@ -223,11 +225,11 @@ receivers:
             max_connection_age_grace: 30s
       http:
         endpoint: "{{ .SelfIpReference }}:4318"
-{{- if $metricRecorderActive }}
+{{- if $scDefault }}
   dash0metricrecorder:
     metric_recorder: dash0metricrecorder
 {{- end }}
-{{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+{{- if $hasNamespacedDash0 }}
 {{- range $ns, $sc := .Exporters.NamespaceSC }}
 {{- range $b := $sc.DatasetBranches }}
   dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
@@ -277,6 +279,40 @@ processors:
 {{- end }}
 {{- end }}
   dash0resource: {}
+{{- if $scDefault }}
+  dash0metering:
+    mode: count_and_mark
+    metric_recorder: dash0metricrecorder
+{{- end }}
+{{- if $samplingActive }}
+  {{- /* The sampled pipeline is fed by the SC pipelines, so its spans arrive already marked and counting them
+  again would double the bill. The instance exists so that dash0sampling is behind a metering processor. It keeps a
+  metric_recorder even though it records no volume: that is what lets it report the
+  dash0.metering.signal_control.evaluations liveness metric, the only signal that says this pipeline is metered. */}}
+  dash0metering/sampling:
+    mode: mark_only
+{{- if $scDefault }}
+    {{- /* Only the default recorder can serve this instance: traces/sampled is shared by all branches, so no
+    per-branch recorder fits it. Without a default Dash0 export there is none, and mark_only needs none. */}}
+    metric_recorder: dash0metricrecorder
+{{- end }}
+{{- end }}
+{{- if $hasNamespacedDash0 }}
+{{- range $ns, $sc := .Exporters.NamespaceSC }}
+{{- range $b := $sc.DatasetBranches }}
+  dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+{{- if eq $b.DatasetIndex 0 }}
+    mode: count_and_mark
+{{- else }}
+    {{- /* A clone of what branch 0 already counted, so this branch only marks. Its usage is therefore attributed to
+    the dataset of branch 0. It keeps a metric_recorder to report dash0.metering.signal_control.evaluations, which is
+    what distinguishes "metered, deliberately not counting" from "not metered" on this branch. */}}
+    mode: mark_only
+{{- end }}
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if or .SignalControl.OperationPreferSpanName .SignalControl.OperationCardinalityRules }}
   dash0operation:
 {{- if .SignalControl.OperationPreferSpanName }}
@@ -312,9 +348,9 @@ processors:
   dash0operation: {}
 {{- end }}
 {{- if .SignalControl.SpamFilterEnabled }}
-{{- if or $metricRecorderActive .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
+{{- if or $scDefault .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
   dash0filter:
-{{- if $metricRecorderActive }}
+{{- if $scDefault }}
     metric_recorder: dash0metricrecorder
 {{- end }}
 {{- if .SignalControl.SpamFilterCacheExpiration }}
@@ -378,10 +414,10 @@ service:
   - pprof
   {{- end }}
   - dash0settingsonedgeextension
-  {{- if $metricRecorderActive }}
+  {{- if $scDefault }}
   - dash0metricrecorder
   {{- end }}
-  {{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
+  {{- if $hasNamespacedDash0 }}
   {{- range $ns, $sc := .Exporters.NamespaceSC }}
   {{- range $b := $sc.DatasetBranches }}
   - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
@@ -414,6 +450,7 @@ service:
       processors:
         - resource/signal_control_attributes
         - dash0resource
+        - dash0metering
         - dash0operation
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
@@ -453,6 +490,7 @@ service:
       receivers:
         - forward/traces-to-sampling
       processors:
+        - dash0metering/sampling
         - dash0sampling
       exporters:
         {{- if $hasNamespacedDash0 }}
@@ -490,6 +528,7 @@ service:
       processors:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         - dash0resource
+        - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         - dash0operation
         {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
@@ -565,15 +604,20 @@ service:
       processors:
         - resource/signal_control_attributes
         {{- if .SignalControl.SpamFilterEnabled }}
+        {{- /* dash0resource is what stamps the edge-origin marker. Dash0 only recognizes metering's mark as settled
+        usage when both travel together, so wherever metering runs, dash0resource runs before it. */}}
+        - dash0resource
+        - dash0metering
         - dash0filter
         {{- end }}
       exporters:
         - forward/metrics-default-exporter
-{{- end }}
+{{- /* The Signal Control counters (metering and spam filter) get their own pipeline rather than riding
+metrics/derived, which has to reach every Dash0 exporter because the derived metrics belong in every dataset the
+telemetry reaches. A counter datapoint must reach Dash0 exactly once - the dataset comes from the export's
+Dash0-Dataset header and the accountant sums what arrives, so a second delivery charges the same usage twice. */}}
 
-{{- if $metricRecorderActive }}
-
-    metrics/spam-counters:
+    metrics/signal-control-counters:
       receivers:
         - dash0metricrecorder
       processors:
@@ -582,30 +626,7 @@ service:
         {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
         - debug
         {{- end }}
-        - forward/metrics-default-exporter
-{{- end }}
-
-{{- if and $hasNamespacedDash0 .SignalControl.SpamFilterEnabled }}
-{{- range $ns, $sc := .Exporters.NamespaceSC }}
-{{- range $b := $sc.DatasetBranches }}
-
-    metrics/spam-counters/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
-      receivers:
-        - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
-      processors:
-        - batch
-      exporters:
-        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
-        - debug
-        {{- end }}
-        {{- range $exporter := $b.Exporters }}
-        - {{ $exporter.Name }}
-        {{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
-
-{{- if $scDefault }}
+        - {{ .Exporters.DefaultCounterExporter.Name }}
 
     metrics/export/default:
       receivers:
@@ -628,6 +649,8 @@ service:
       processors:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- if $.SignalControl.SpamFilterEnabled }}
+        - dash0resource
+        - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}
       exporters:
@@ -637,6 +660,17 @@ service:
         {{- range $exporter := $b.Exporters }}
         - {{ $exporter.Name }}
         {{- end }}
+
+    metrics/signal-control-counters/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+      receivers:
+        - dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+      processors:
+        - batch
+      exporters:
+        {{- if (or $.DevelopmentMode $.DebugVerbosityDetailed) }}
+        - debug
+        {{- end }}
+        - {{ $b.CounterExporter.Name }}
 {{- end }}
 {{- end }}
 
@@ -664,6 +698,9 @@ service:
       processors:
         - resource/signal_control_attributes
         - dash0resource
+        {{- if or .SignalControl.SpamFilterEnabled .SignalControl.SignalToMetricsEnabled }}
+        - dash0metering
+        {{- end }}
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
         {{- end }}
@@ -694,6 +731,9 @@ service:
       processors:
         - resource/signal_control_attributes/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         - dash0resource
+        {{- if or $.SignalControl.SpamFilterEnabled $.SignalControl.SignalToMetricsEnabled }}
+        - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
         {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
         {{- end }}

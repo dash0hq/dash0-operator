@@ -116,6 +116,28 @@ func (e *otlpExporters) DefaultDash0Exporters() []otlpExporter {
 	return out
 }
 
+// DefaultCounterExporter returns the single default-path exporter that must carry the Signal Control counters, or
+// nil when there is no default Dash0 exporter.
+func (e *otlpExporters) DefaultCounterExporter() *otlpExporter {
+	for _, exp := range e.Default {
+		if exp.IsDash0() {
+			return &exp
+		}
+	}
+	return nil
+}
+
+// CounterExporter returns the single exporter of this dataset branch that carries the branch's Signal Control
+// counters, or nil when the branch has none. All of a branch's exporters target the branch's dataset, so any one
+// of them carries the correct Dash0-Dataset header; exactly one is used for the same reason as on the default
+// path, see DefaultCounterExporter.
+func (b datasetBranch) CounterExporter() *otlpExporter {
+	if len(b.Exporters) == 0 {
+		return nil
+	}
+	return &b.Exporters[0]
+}
+
 // DefaultPassthrough returns the default-path non-Dash0 exporters (generic gRPC/HTTP). They receive the raw
 // telemetry without any Signal Control, mirroring the per-namespace passthrough behavior.
 func (e *otlpExporters) DefaultPassthrough() []otlpExporter {
