@@ -64,7 +64,8 @@ resolve_latest_tag() {
 # The block spans from the key line to its trailing "pullPolicy:" line.
 update_tag() {
   local yaml_key="$1" new_tag="$2"
-  sed -i "/^  ${yaml_key}:/,/pullPolicy:/ s|^\(\s*tag:\s*\).*|\1\"${new_tag}\"|" "$values_file"
+  sed -i.bak "/^  ${yaml_key}:/,/pullPolicy:/ s|^\([[:space:]]*tag:[[:space:]]*\).*|\1\"${new_tag}\"|" "$values_file"
+  rm -f "${values_file}.bak"
 }
 
 # Rewrite the expected image references in the Helm chart unit tests, which assert the pinned tags from values.yaml.
@@ -77,7 +78,8 @@ update_expected_tag_in_tests() {
     echo "Error: no expected image reference for ${img} found in ${test_file}." >&2
     exit 1
   fi
-  sed -i "s|\"ghcr\.io/dash0hq/${img}:[^\"]*\"|\"ghcr.io/dash0hq/${img}:${new_tag}\"|g" "$test_file"
+  sed -i.bak "s|\"ghcr\.io/dash0hq/${img}:[^\"]*\"|\"ghcr.io/dash0hq/${img}:${new_tag}\"|g" "$test_file"
+  rm -f "${test_file}.bak"
 }
 
 # Aborts if any file other than values.yaml and the Helm chart unit tests pins one of the image tags, since this script
@@ -158,9 +160,9 @@ jq -n \
   --arg body "$pr_body" \
   --arg oid "$base_sha" \
   --arg valuesPath "$values_file" \
-  --arg valuesContents "$(base64 -w0 "$values_file")" \
+  --arg valuesContents "$(base64 < "$values_file" | tr -d '\n')" \
   --arg testPath "$test_file" \
-  --arg testContents "$(base64 -w0 "$test_file")" \
+  --arg testContents "$(base64 < "$test_file" | tr -d '\n')" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {

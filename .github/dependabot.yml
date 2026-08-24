@@ -90,9 +90,10 @@ updates:
     # that update dependencies to pre-release versions.
     # The rules need to be manually disabled when a new stable minor version is available.
     ignore:
-      # enable the following `ignore` to prevent upgrades to golang pre-releases
+      # Go updates are handled by .github/workflows/update-go-versions.yaml, which updates the golang base images
+      # and the `go` directive of all go.mod files together. Dependabot would update them in separate pull requests,
+      # which breaks `make go-version-check`.
       - dependency-name: "golang"
-        update-types: ["version-update:semver-minor"]
       # enable the following `ignore` to prevent upgrades to python pre-releases
       - dependency-name: "python"
         update-types: ["version-update:semver-minor"]
@@ -120,8 +121,8 @@ updates:
     commit-message:
       prefix: "test"
     ignore:
+      # Go updates are handled by .github/workflows/update-go-versions.yaml, see above.
       - dependency-name: "golang"
-        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "helm"
     directories:
@@ -160,10 +161,9 @@ updates:
           - "*"
     commit-message:
       prefix: "test"
-    # enable the following `ignore` to prevent upgrades to RCs
     ignore:
+      # Go updates are handled by .github/workflows/update-go-versions.yaml, see above.
       - dependency-name: "golang"
-        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "maven"
     directory: "test-resources/jvm/spring-boot"
