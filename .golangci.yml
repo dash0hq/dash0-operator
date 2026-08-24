@@ -48,3 +48,7 @@ linters:
     errcheck:
       exclude-functions:
         - fmt.Fprintf
+    goconst:
+      exclude-types:
+        - CompositeLit
+        - Call

@@ -311,7 +311,7 @@ func isMapOfStrings(t reflect.Type) bool {
 
 // elementTypeOf unwraps pointers, slices and arrays, so that a field is inspected by the type it ultimately holds.
 func elementTypeOf(t reflect.Type) reflect.Type {
-	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
 		t = t.Elem()
 	}
 	return t
