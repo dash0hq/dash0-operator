@@ -429,7 +429,7 @@ func assembleDeployment(
 				corev1.ResourceMemory: resource.MustParse("32Mi"),
 			},
 			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("128Mi"),
+				corev1.ResourceMemory: resource.MustParse("256Mi"),
 			},
 		},
 	}

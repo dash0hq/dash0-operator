@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"net/http"
@@ -15,6 +16,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/yaml"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/startup"
@@ -2209,6 +2213,140 @@ trace_statements:
 					ContainSubstring(defaultToken),
 					"the auth token should not occur anywhere in the response")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
+		})
+
+		It("redacts the environment variable values from a command response containing a workload resource", func() {
+			deploymentName := "env-var-redaction-test"
+			literalValues := []string{
+				"a-plain-value",
+				"super-secret-token-value",
+				"https://example.com/webhook?auth=secret",
+			}
+
+			By("deploying a deployment with environment variables")
+			deploymentYaml := fmt.Sprintf(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: %s
+  template:
+    metadata:
+      labels:
+        app: %s
+    spec:
+      containers:
+      - name: test-container
+        image: does-not-need-to-start:latest
+        env:
+        - name: PLAIN_VALUE
+          value: "%s"
+        - name: SECRET_TOKEN
+          value: "%s"
+        - name: WEBHOOK_URL
+          value: "%s"
+        - name: EMPTY_VALUE
+          value: ""
+        - name: FROM_FIELD_REF
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+`,
+				deploymentName,
+				applicationUnderTestNamespace,
+				deploymentName,
+				deploymentName,
+				literalValues[0],
+				literalValues[1],
+				literalValues[2],
+			)
+			applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+			applyCmd.Stdin = strings.NewReader(deploymentYaml)
+			Expect(runAndIgnoreOutput(applyCmd)).To(Succeed())
+			DeferCleanup(func() {
+				_ = runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", applicationUnderTestNamespace,
+					"delete", "deployment", deploymentName,
+					"--ignore-not-found",
+				))
+			})
+
+			By("triggering a \"kubectl get deployments -o yaml\" command request")
+			var requestId string
+			Eventually(func(g Gomega) {
+				requestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"get", "deployments", "-n", applicationUnderTestNamespace, "-o", "yaml"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			var response *outboundConnectorMockCommandResponse
+			By("verifying the environment variable values have been redacted from the command response")
+			Eventually(func(g Gomega) {
+				response = findOutboundConnectorMockCommandResponse(g, requestId)
+				g.Expect(response).ToNot(BeNil())
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"kubectl get deployments should succeed; stderr was: %s", response.Stderr)
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			expectedRedactedEnvVars := func(fieldRefApiVersion string) []corev1.EnvVar {
+				return []corev1.EnvVar{
+					{Name: "PLAIN_VALUE", Value: "(redacted)"},
+					{Name: "SECRET_TOKEN", Value: "(redacted)"},
+					{Name: "WEBHOOK_URL", Value: "(redacted)"},
+					// an empty value holds no credential and is left as it is
+					{Name: "EMPTY_VALUE", Value: ""},
+					// a value sourced via valueFrom is left untouched
+					{Name: "FROM_FIELD_REF", ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							APIVersion: fieldRefApiVersion,
+							FieldPath:  "metadata.name",
+						},
+					}},
+				}
+			}
+
+			var deploymentList appsv1.DeploymentList
+			Expect(yaml.Unmarshal([]byte(response.Stdout), &deploymentList)).To(
+				Succeed(),
+				"the response should be parsable as a deployment list; stdout was: %s", response.Stdout)
+			deploymentIdx := slices.IndexFunc(deploymentList.Items, func(deployment appsv1.Deployment) bool {
+				return deployment.Name == deploymentName
+			})
+			Expect(deploymentIdx).ToNot(
+				BeNumerically("<", 0),
+				"the response should contain the deployment %s", deploymentName)
+			deployment := deploymentList.Items[deploymentIdx]
+			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+			Expect(deployment.Spec.Template.Spec.Containers[0].Env).To(Equal(expectedRedactedEnvVars("v1")))
+
+			// kubectl apply stores a full copy of the resource in this annotation, which carries the environment
+			// variable values a second time.
+			lastAppliedConfiguration, hasAnnotation :=
+				deployment.Annotations["kubectl.kubernetes.io/last-applied-configuration"]
+			Expect(hasAnnotation).To(
+				BeTrue(),
+				"the embedded copy of the resource should be part of the response")
+			var embeddedDeployment appsv1.Deployment
+			Expect(json.Unmarshal([]byte(lastAppliedConfiguration), &embeddedDeployment)).To(
+				Succeed(),
+				"the embedded copy should be parsable as a deployment; it was: %s", lastAppliedConfiguration)
+			Expect(embeddedDeployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+			Expect(embeddedDeployment.Spec.Template.Spec.Containers[0].Env).To(Equal(expectedRedactedEnvVars("")))
+
+			for _, literalValue := range literalValues {
+				Expect(response.Stdout).ToNot(
+					ContainSubstring(literalValue),
+					"the value %s should not occur anywhere in the response", literalValue)
+			}
 		})
 
 		DescribeTable("denies/allows access to resource types depending on agent0-connector's cluster role",
