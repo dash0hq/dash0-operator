@@ -224,7 +224,7 @@ GOLANGCI_LINT_VERSION ?= v2.9.0
 golangci-lint-install:
 	@[ -f $(GOLANGCI_LINT) ] || { \
 	set -e ;\
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell dirname $(GOLANGCI_LINT)) $(GOLANGCI_LINT_VERSION) ;\
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b $(shell dirname $(GOLANGCI_LINT)) $(GOLANGCI_LINT_VERSION) ;\
 	}
 
 .PHONY: golangci-lint
@@ -321,6 +321,7 @@ instrumentation-test-lint: npm-installed
 # Pairs of go.mod and Dockerfile whose Go versions must be in sync, encoded as "dockerfile:<go.mod>:<Dockerfile>".
 GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:go.mod:Dockerfile \
+  dockerfile:images/agent0-connector/src/go.mod:images/agent0-connector/Dockerfile \
   dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
   dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \

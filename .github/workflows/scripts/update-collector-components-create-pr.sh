@@ -61,7 +61,7 @@ jq -n \
   --arg body "$pr_body" \
   --arg oid "$base_sha" \
   --arg path "$config_file" \
-  --arg contents "$(base64 -w0 "$config_file")" \
+  --arg contents "$(base64 < "$config_file" | tr -d '\n')" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {

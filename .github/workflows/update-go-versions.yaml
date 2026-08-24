@@ -1,0 +1,29 @@
+name: Check for Go Updates
+
+# Checks for a new stable Go release and updates every Go version reference in the repository in one pull request: the
+# `go` directive of all go.mod files and the golang base image tag of all Dockerfiles.
+#
+# Dependabot's gomod and docker ecosystem updaters are independent of each other and would update the two halves in
+# separate pull requests, which breaks `make go-version-check`. Go updates are therefore excluded from Dependabot (see
+# .github/dependabot.yml) and handled here instead.
+
+on:
+  schedule:
+    - cron: "00 10 * * MON-FRI"
+
+  workflow_dispatch:
+
+jobs:
+  check-and-update:
+    name: check for a new Go release and update all Go versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: update all Go versions and create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: .github/workflows/scripts/update-go-versions.sh

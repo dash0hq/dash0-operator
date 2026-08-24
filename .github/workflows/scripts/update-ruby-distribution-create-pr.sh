@@ -38,7 +38,7 @@ jq -n \
   --arg headline "$commit_message" \
   --arg oid "$base_sha" \
   --arg path "$version_file" \
-  --arg contents "$(base64 -w0 "$version_file")" \
+  --arg contents "$(base64 < "$version_file" | tr -d '\n')" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {
