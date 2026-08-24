@@ -18,6 +18,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/retry"
 )
 
 // OperatorPostInstallHandler handle the post-install Helm hook that is responsible for waiting until the operator
@@ -76,15 +77,13 @@ func (h *OperatorPostInstallHandler) WaitForOperatorConfigurationResourceToBecom
 			util.OperatorConfigurationAutoResourceName,
 		)
 	h.logger.Info(message)
-	if err := util.RetryWithCustomBackoff(
+	if err := retry.Retry(
 		message,
 		func() error {
 			return h.checkOperatorConfigurationResourceAvailability(ctx)
 		},
 		h.retryBackoff,
-		false,
-		true,
-		h.logger,
+		nil,
 	); err != nil {
 		return fmt.Errorf(
 			"waiting for %s to become available has timed out (no more retries left): %v",

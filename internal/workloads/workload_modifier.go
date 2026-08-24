@@ -21,6 +21,7 @@ import (
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
@@ -291,6 +292,9 @@ type ResourceModifier struct {
 	// monitoring resource.
 	namespaceInstrumentationConfig dash0v1beta1.NamespaceInstrumentationConfig
 
+	// the instrumentation delivery mechanism to use for all modifications this modifier applies.
+	resolvedInstrumentationDelivery cluster.ResolvedInstrumentationDelivery
+
 	// the name of the component that applies the resource modifications, this will be written to the
 	// dash0.com/instrumented-by label
 	actor util.WorkloadModifierActor
@@ -306,11 +310,23 @@ func NewResourceModifier(
 	logger logd.Logger,
 ) *ResourceModifier {
 	return &ResourceModifier{
-		clusterInstrumentationConfig:   clusterInstrumentationConfig,
-		namespaceInstrumentationConfig: namespaceInstrumentationConfig,
-		actor:                          actor,
-		logger:                         logger,
+		clusterInstrumentationConfig:    clusterInstrumentationConfig,
+		namespaceInstrumentationConfig:  namespaceInstrumentationConfig,
+		resolvedInstrumentationDelivery: clusterInstrumentationConfig.ResolveInstrumentationDelivery(),
+		actor:                           actor,
+		logger:                          logger,
 	}
+}
+
+// isInstrumentationDeliveryImageVolume reports whether this modifier delivers the instrumentation via an image volume.
+func (m *ResourceModifier) isInstrumentationDeliveryImageVolume() bool {
+	return m.resolvedInstrumentationDelivery == cluster.ResolvedInstrumentationDeliveryImageVolume
+}
+
+// isInstrumentationDeliveryInitContainer reports whether this modifier delivers the instrumentation via an init
+// container.
+func (m *ResourceModifier) isInstrumentationDeliveryInitContainer() bool {
+	return !m.isInstrumentationDeliveryImageVolume()
 }
 
 func (m *ResourceModifier) ModifyCronJob(cronJob *batchv1.CronJob) ModificationResult {
@@ -346,7 +362,7 @@ func (m *ResourceModifier) ModifyJob(job *batchv1.Job) ModificationResult {
 }
 
 func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) ModificationResult {
-	util.AddInstrumentationLabelsAndAnnotations(&job.ObjectMeta, false, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabelsAndAnnotations(&job.ObjectMeta, false, m.clusterInstrumentationConfig, m.resolvedInstrumentationDelivery, m.actor)
 	// adding labels always works and is a modification that requires an update
 	return NewHasBeenModifiedResult(len(job.Spec.Template.Spec.Containers), nil)
 }
@@ -368,7 +384,7 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabelsAndAnnotations(&pod.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabelsAndAnnotations(&pod.ObjectMeta, true, m.clusterInstrumentationConfig, m.resolvedInstrumentationDelivery, m.actor)
 	return NewHasBeenModifiedResult(len(pod.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
 }
 
@@ -395,8 +411,8 @@ func (m *ResourceModifier) modifyResource(
 	if !podSpecResult.hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabelsAndAnnotations(workloadMeta, true, m.clusterInstrumentationConfig, m.actor)
-	util.AddInstrumentationLabelsAndAnnotations(&podTemplateSpec.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabelsAndAnnotations(workloadMeta, true, m.clusterInstrumentationConfig, m.resolvedInstrumentationDelivery, m.actor)
+	util.AddInstrumentationLabelsAndAnnotations(&podTemplateSpec.ObjectMeta, true, m.clusterInstrumentationConfig, m.resolvedInstrumentationDelivery, m.actor)
 	return NewHasBeenModifiedResult(len(podTemplateSpec.Spec.Containers), podSpecResult.instrumentationIssuesPerContainer)
 }
 
@@ -407,7 +423,7 @@ func (m *ResourceModifier) modifyPodSpec(
 ) modifyPodSpecResult {
 	originalSpec := podSpec.DeepCopy()
 	m.addInstrumentationVolume(podSpec)
-	if m.clusterInstrumentationConfig.IsInstrumentationDeliveryInitContainer() {
+	if m.isInstrumentationDeliveryInitContainer() {
 		// The safe-to-evict-local-volumes annotation only matters for emptyDir local volumes; image volumes are
 		// sourced from container images and managed by the kubelet, so they do not prevent eviction.
 		m.addSafeToEvictLocalVolumesAnnotation(podMeta)
@@ -455,7 +471,7 @@ func (m *ResourceModifier) addInstrumentationVolume(podSpec *corev1.PodSpec) {
 }
 
 func (m *ResourceModifier) dash0VolumeSource() corev1.VolumeSource {
-	if m.clusterInstrumentationConfig.IsInstrumentationDeliveryImageVolume() {
+	if m.isInstrumentationDeliveryImageVolume() {
 		imageVolume := &corev1.ImageVolumeSource{
 			Reference: m.clusterInstrumentationConfig.InitContainerImage,
 		}
@@ -614,7 +630,7 @@ func (m *ResourceModifier) addMount(container *corev1.Container) {
 		Name:      dash0VolumeName,
 		MountPath: otelAutoInstrumentationBaseDirectory,
 	}
-	if m.clusterInstrumentationConfig.IsInstrumentationDeliveryImageVolume() {
+	if m.isInstrumentationDeliveryImageVolume() {
 		// Selecting the directory inside the init container image whose contents the legacy init container approach
 		// would have copied into the emptyDir volume via copy-instrumentation.sh.
 		volume.SubPath = imageVolumeSubPath
@@ -1901,7 +1917,7 @@ func (m *ResourceModifier) checkEligibleForModification(podSpec *corev1.PodSpec)
 			}
 		}
 	}
-	if m.clusterInstrumentationConfig.IsInstrumentationDeliveryInitContainer() {
+	if m.isInstrumentationDeliveryInitContainer() {
 		if notModifiedResult := m.checkEphemeralStorageLimit(podSpec); notModifiedResult != nil {
 			return notModifiedResult
 		}

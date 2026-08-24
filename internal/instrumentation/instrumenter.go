@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/pager"
@@ -26,6 +27,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/retry"
 	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
@@ -55,6 +57,13 @@ const (
 
 var (
 	timeoutForListingPods int64 = 2
+
+	instrumentationRetryBackoff = wait.Backoff{
+		Duration: 10 * time.Millisecond,
+		Factor:   1.0,
+		Steps:    5,
+		Jitter:   0.1,
+	}
 )
 
 func (e ImmutableWorkloadError) Error() string {
@@ -439,7 +448,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 
 	logger.Debug("determined required action for immutable job", "required action", requiredAction, "modifyLabels", modifyLabels)
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
-	retryErr := util.Retry("handling immutable job", func() error {
+	retryErr := retry.Retry("handling immutable job", func() error {
 		if !modifyLabels {
 			return nil
 		}
@@ -475,7 +484,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 		} else {
 			return nil
 		}
-	}, logger)
+	}, instrumentationRetryBackoff, &logger)
 
 	postProcess := i.postProcessInstrumentation
 	if requiredAction == util.ModificationModeUninstrumentation {
@@ -629,7 +638,7 @@ func (i *Instrumenter) instrumentWorkload(
 
 	logger.Debug("determined required action for workload", "required action", requiredAction)
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
-	retryErr := util.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
+	retryErr := retry.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
 		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: workloadMeta.GetNamespace(),
 			Name:      workloadMeta.GetName(),
@@ -666,7 +675,7 @@ func (i *Instrumenter) instrumentWorkload(
 		} else {
 			return nil
 		}
-	}, logger)
+	}, instrumentationRetryBackoff, &logger)
 
 	switch requiredAction {
 	case util.ModificationModeInstrumentation:
@@ -952,7 +961,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 
 	createImmutableWorkloadsError := false
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
-	retryErr := util.Retry("removing labels from immutable job", func() error {
+	retryErr := retry.Retry("removing labels from immutable job", func() error {
 		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
@@ -987,7 +996,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 			modificationResult = workloads.NewNotModifiedNoChangesResult()
 			return nil
 		}
-	}, logger)
+	}, instrumentationRetryBackoff, &logger)
 
 	if retryErr != nil {
 		// For the case that the job was instrumented, and we could not uninstrument it, we create a
@@ -1119,7 +1128,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 
 	logger.Debug("reverting instrumentation for workload")
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
-	retryErr := util.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {
+	retryErr := retry.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {
 		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: objectMeta.GetNamespace(),
 			Name:      objectMeta.GetName(),
@@ -1146,7 +1155,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 		} else {
 			return nil
 		}
-	}, logger)
+	}, instrumentationRetryBackoff, &logger)
 
 	return i.postProcessUninstrumentation(workload.asRuntimeObject(), modificationResult, retryErr, logger)
 }

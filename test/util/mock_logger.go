@@ -58,6 +58,10 @@ func (s *CapturingLogSink) HasLogMessage(g Gomega, message string) {
 	g.Expect(s.messages).To(ContainElement(message))
 }
 
+func (s *CapturingLogSink) HasNoLogMessage(g Gomega, message string) {
+	g.Expect(s.messages).ToNot(ContainElement(message))
+}
+
 func (s *CapturingLogSink) HasNoLogMessages(g Gomega) {
 	g.Expect(s.messages).To(BeEmpty())
 }

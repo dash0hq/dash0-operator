@@ -203,12 +203,13 @@ type InstrumentationDelivery string
 
 const (
 	// InstrumentationDeliveryAuto lets the operator decide which delivery mechanism to use, based on the Kubernetes
-	// version. If the cluster runs Kubernetes 1.36 or later, the operator uses image volumes; otherwise it falls back to
-	// the init container approach.
+	// version. If the Kubernetes API server version and the kubelet version of every node are 1.36 or later, the
+	// operator uses image volumes; otherwise it falls back to the init container approach.
 	InstrumentationDeliveryAuto InstrumentationDelivery = "auto"
 
 	// InstrumentationDeliveryImageVolume forces the operator to use the image volume delivery mechanisms on Kubernetes
-	// versions 1.31 - 1.35. The setting is ignored on Kubernetes versions older than 1.31.
+	// versions 1.31 - 1.35. The setting is ignored if the Kubernetes API server version or the kubelet version of any
+	// node is older than 1.31.
 	InstrumentationDeliveryImageVolume InstrumentationDelivery = "image-volume"
 
 	// InstrumentationDeliveryInitContainer forces the operator to use the init container plus emptyDir volume delivery
@@ -220,11 +221,16 @@ const (
 type InstrumentWorkloads struct {
 	// InstrumentationDelivery controls how the Dash0 instrumentation files are made available to instrumented
 	// workload containers. Allowed values:
-	//   - "auto": use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container approach.
+	//   - "auto": use image volumes if the Kubernetes API server version and the kubelet version of all nodes is 1.36 or
+	//     later, otherwise use the init container approach. The operator determines the minimum kubelet version by
+	//     inspecting the cluster's nodes once at startup, until that has finished it uses the init container approach.
+	//     Nodes joining the cluster later are not taken into account.
 	//   - "image-volume": always use a Kubernetes image volume sourced from the Dash0 instrumentation image. If the
-	//     Kubernetes version is older than 1.31, the operator logs a warning and falls back to the init container
-	//     approach. Note that on Kubernetes 1.34 and earlier, image volumes need to be enabled at cluster
-	//     creation time, since the feature gate is disabled by default in versions older than 1.35.
+	//     operator has already detected that the Kubernetes API server version or the kubelet version of a node is
+	//     older than 1.31, it logs a warning and falls back to the init container approach. That fallback is
+	//     best-effort: it does not cover workloads instrumented before the operator has inspected the cluster's nodes,
+	//     nor nodes that join the cluster later. Note that on Kubernetes 1.34 and earlier, image volumes need to be
+	//     enabled at cluster creation time, since the feature gate is disabled by default in versions older than 1.35.
 	//   - "init-container" (default): always use the traditional init container plus emptyDir volume approach, regardless
 	//     of the Kubernetes version.
 	//

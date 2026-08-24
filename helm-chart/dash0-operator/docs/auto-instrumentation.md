@@ -54,11 +54,24 @@ They were introduced in Kubernetes 1.31 as an alpha feature behind a feature gat
 Set the `instrumentationDelivery` setting in the operator configuration resource to determine under which circumstances image volumes will be used instead of the init container approach. When using the operator manager to create and manage the operator configuration resource (i.e. with `operator.dash0Export.enabled=true`), set `operator.instrumentation.delivery` in Helm to configure image volumes.
 
 Allowed values for the instrumentation delivery setting:
-- `auto`: use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container approach.
-- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes version is older than 1.31, the operator manager will log a warning and fall back to the init container approach, since image volumes are not supported in that version. Note that if you are using Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are disabled by default in versions older than 1.35.
+- `auto`: use image volumes if the Kubernetes API server version and the kubelet version of all nodes of the cluster is
+   1.36 or later, otherwise use the init container approach. The operator manager determines the minimum kubelet version
+   by inspecting all nodes of the cluster once, shortly after it has started; until that has finished, it uses the init
+   container approach. Nodes that join the cluster later on are not taken into account.
+- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
+   already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it will
+   log a warning and fall back to the init container approach, since image volumes are not supported in that version.
+   That fallback is best-effort: it does not cover workloads instrumented before the operator manager has inspected the
+   cluster's nodes, nor nodes that join the cluster later on. Note that if you are using Kubernetes 1.34 or earlier, and
+   you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are
+   disabled by default in versions older than 1.35.
 - `init-container`: always use the init container approach, regardless of the Kubernetes version. This is the default.
 
-Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`. Once a workload has been successfully instrumented, there is no benefit in re-instrumenting it with a different delivery mechanism. The new setting will be applied when instrumenting newly deployed workloads, or when a workload is updated/re-deployed.
+Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk
+re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`.
+Once a workload has been successfully instrumented, there is no benefit in re-instrumenting it with a different delivery
+mechanism.
+The new setting will be applied when instrumenting newly deployed workloads, or when a workload is updated/re-deployed.
 
 ## Python Auto-Instrumentation
 

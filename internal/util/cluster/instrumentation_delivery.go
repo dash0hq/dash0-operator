@@ -18,66 +18,78 @@ const (
 )
 
 // ResolveInstrumentationDelivery converts the operator configuration's spec.instrumentWorkloads.instrumentationDelivery
-// value into the final decision which delivery mechanism is used by the workload modifier), taking the detected
-// Kubernetes version into account.
+// value into the actual delivery mechanism used by the workload modifier, taking the detected Kubernetes versions into
+// account.
 //
-// If delivery is "image-volume" and the Kubernetes version is older than 1.31, the function logs a warning and
-// returns init container anyway. If the Kubernetes version could not be detected, the function trusts the explicit
-// choice. For "auto" without a detected version, the function falls back to init container, since image volumes need a
-// sufficiently recent Kubernetes version.
+// Image volumes need support from the kubelet, so the decision depends on the minimum kubelet version among the
+// cluster's nodes (see MinimumKubeletVersionDetector) as well as on the Kubernetes API server version.
+//
+// If delivery is "image-volume", the function honors the explicit choice unless one of the two versions is known to be
+// older than 1.31; in that case it logs a warning and returns init container. For "auto", the function returns image
+// volume only if both the Kubernetes API server version and the minimum kubelet version are known to be at least 1.36;
+// in particular it returns init container while the minimum kubelet version detection is still running.
 func ResolveInstrumentationDelivery(
-	delivery string,
-	versionInfo KubernetesVersionInfo,
-	versionDetected bool,
+	delivery dash0v1alpha1.InstrumentationDelivery,
+	apiServerVersionInfo KubernetesVersionInfo,
+	minimumKubeletVersionInfo KubernetesVersionInfo,
 	logWarningForEmptyValue bool,
 	logger logd.Logger,
 ) ResolvedInstrumentationDelivery {
 	// maintenance note: this switch statement needs to be updated once we move to the default being "auto"
 	switch delivery {
 
-	case string(dash0v1alpha1.InstrumentationDeliveryImageVolume):
-		if !versionDetected {
-			// no K8s version detected, use the requested delivery mechanism without further checks
-			return ResolvedInstrumentationDeliveryImageVolume
+	case dash0v1alpha1.InstrumentationDeliveryImageVolume:
+		// Versions that have not been detected (yet) do not veto the explicit choice, only versions that are known to
+		// be too old do.
+		if apiServerVersionInfo.Detected &&
+			!apiServerVersionInfo.IsAtLeast(imageVolumesHardMinimumVersion) {
+			logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
+				"spec.instrumentWorkloads.instrumentationDelivery is set to %q, but the Kubernetes API server version is %s, "+
+					"which does not support image volumes. The setting will be ignored, the operator will use the "+
+					"init container approach for instrumenting workloads.",
+				ResolvedInstrumentationDeliveryImageVolume, apiServerVersionInfo,
+			))
+			return ResolvedInstrumentationDeliveryInitContainer
 		}
-		if versionInfo.Major > imageVolumesAutoMinimumMajorVersion {
-			// K8s version >= 2.x, image-volume has been requested, use image volume
-			return ResolvedInstrumentationDeliveryImageVolume
+		if minimumKubeletVersionInfo.Detected &&
+			!minimumKubeletVersionInfo.IsAtLeast(imageVolumesHardMinimumVersion) {
+			logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
+				"spec.instrumentWorkloads.instrumentationDelivery is set to %q, but the cluster has nodes with "+
+					"kubelet version %s, which does not support image volumes. The setting will be ignored, the "+
+					"operator will use the init container approach for instrumenting workloads.",
+				ResolvedInstrumentationDeliveryImageVolume, minimumKubeletVersionInfo,
+			))
+			return ResolvedInstrumentationDeliveryInitContainer
 		}
-		if versionInfo.Major == imageVolumesAutoMinimumMajorVersion && versionInfo.Minor >= imageVolumesAlwaysMinimumMinorVersion {
-			// K8s version >= 1.31, image-volume has been requested, use image volume
-			return ResolvedInstrumentationDeliveryImageVolume
-		}
-		// K8s version < 1.31, reject using image volume
-		logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
-			"spec.instrumentWorkloads.instrumentationDelivery is set to %q, but the Kubernetes version is %s, "+
-				"which does not support image volumes. The setting will be ignored, the operator will use the init "+
-				"container approach for instrumenting workloads.",
-			ResolvedInstrumentationDeliveryImageVolume, versionInfo.VersionString,
-		))
-		return ResolvedInstrumentationDeliveryInitContainer
+		return ResolvedInstrumentationDeliveryImageVolume
 
-	case string(dash0v1alpha1.InstrumentationDeliveryAuto):
-		if !versionDetected {
+	case dash0v1alpha1.InstrumentationDeliveryAuto:
+		if !apiServerVersionInfo.Detected {
 			// no K8s version detected, and no explicit delivery mechanism requested, fall back to init container
 			logger.WarnTelemetryCollectionIssue(
 				"spec.instrumentWorkloads.instrumentationDelivery is set to \"auto\", but the operator has not been able to " +
-					"detect the Kubernetes version. Falling back to the init container approach for instrumenting workloads.",
+					"detect the Kubernetes API server version. Falling back to the init container approach for instrumenting " +
+					"workloads.",
 			)
 			return ResolvedInstrumentationDeliveryInitContainer
 		}
-		if versionInfo.Major > imageVolumesAutoMinimumMajorVersion {
-			// K8s version >= 2.x, use image volume
+		if !minimumKubeletVersionInfo.Detected {
+			// The nodes have not been inspected (successfully) yet, we cannot rule out that some of them are too old
+			// for image volumes.
+			logger.Debug("spec.instrumentWorkloads.instrumentationDelivery is set to \"auto\", but the minimum " +
+				"kubelet version among the cluster's nodes is not known (yet). Using the init container approach " +
+				"for instrumenting workloads until all nodes have been inspected for their kubelet version.")
+			return ResolvedInstrumentationDeliveryInitContainer
+		}
+		if apiServerVersionInfo.IsAtLeast(imageVolumesAutoMinimumVersion) &&
+			minimumKubeletVersionInfo.IsAtLeast(imageVolumesAutoMinimumVersion) {
+			// API server and all kubelets are on version >= 1.36, use image volume
 			return ResolvedInstrumentationDeliveryImageVolume
 		}
-		if versionInfo.Major == imageVolumesAutoMinimumMajorVersion && versionInfo.Minor >= imageVolumesAutoMinimumMinorVersion {
-			// K8s version >= 1.36, use image volume
-			return ResolvedInstrumentationDeliveryImageVolume
-		}
-		// K8s version < 1.36, use init container
+		// API server or at least one kubelet is on version < 1.36, use init container
 		return ResolvedInstrumentationDeliveryInitContainer
 
-	case string(dash0v1alpha1.InstrumentationDeliveryInitContainer):
+	case dash0v1alpha1.InstrumentationDeliveryInitContainer:
 		// init container has been requested explicitly, no further checks necessary
 		return ResolvedInstrumentationDeliveryInitContainer
 
