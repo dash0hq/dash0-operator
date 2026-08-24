@@ -32,7 +32,7 @@ func TestResponseCanContainSecrets(t *testing.T) {
 		{name: "multi-resource list", arguments: []string{"get", "pods,dash0monitorings,dash0operatorconfiguration", "-o", "yaml"}, expected: true},
 		{name: "attached output format", arguments: []string{"get", "dash0monitorings", "-oyaml"}, expected: true},
 		{name: "grouped shorthand output format", arguments: []string{"get", "dash0monitorings", "-Aoyaml"}, expected: true},
-		{name: "leading global flag before the subcommand", arguments: []string{"-n", "my-namespace", "get", "dash0monitorings", "-o", "yaml"}, expected: true},
+		{name: "leading global flag before the kubectl command", arguments: []string{"-n", "my-namespace", "get", "dash0monitorings", "-o", "yaml"}, expected: true},
 
 		{name: "table output has no resource content", arguments: []string{"get", "dash0monitorings"}, expected: false},
 		{name: "wide output has no resource content", arguments: []string{"get", "dash0monitorings", "-A", "-o", "wide"}, expected: false},
@@ -46,12 +46,12 @@ func TestResponseCanContainSecrets(t *testing.T) {
 		{name: "Dash0 resource types without secrets are unaffected", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: false},
 		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "pods", "dash0monitorings", "-o", "yaml"}, expected: false},
 		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "pods", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "no subcommand", arguments: []string{"--help"}, expected: false},
+		{name: "no kubectl command", arguments: []string{"--help"}, expected: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := responseCanContainSecrets(parseArguments(tt.arguments)); got != tt.expected {
+			if got := responseCanContainSecrets(parseKubectlArguments(tt.arguments)); got != tt.expected {
 				t.Errorf("expected responseCanContainSecrets=%t, got %t", tt.expected, got)
 			}
 		})

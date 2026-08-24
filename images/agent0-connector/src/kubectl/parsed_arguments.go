@@ -5,14 +5,17 @@ package kubectl
 
 import "slices"
 
-// parsedArguments is the resolved form of the argument list of a kubectl invocation. It is produced once per command
+// kubectlArguments is the resolved form of the argument list of a kubectl invocation. It is produced once per command
 // request (see parser.go#parseArguments) and is the basis for validating the request as well as for redacting the
 // response, so that the rules for interpreting an argument list live in a single place.
-type parsedArguments struct {
-	// subcommand is the kubectl subcommand, that is, the first positional argument, which may be preceded by global
-	// flags ("get" in `kubectl -n foo get pods`), mirroring how kubectl/Cobra resolves it. It is empty when the
-	// invocation has no positional argument at all (bare `kubectl`, or only flags such as `kubectl --help`).
-	subcommand string
+type kubectlArguments struct {
+	// kubectlCommand is the kubectl command, that is, the first positional argument. It may be preceded by global
+	// flags. Example: In `kubectl -n foo get pods`, the kubectlCommand is "get". This mirrors how kubectl/Cobra resolves
+	// it. It is empty when the invocation has no positional argument at all, e.g. a bare `kubectl`, or only flags such as
+	// `kubectl --help`. The term used throughout the images/agent0-connector is "kubectl command" to distinguish it from
+	// the actual executable or shell command of a command request (e.g. the string "kubectl" itself); and to also
+	// distinguish it from kubectl subcommands, e.g. the "can-i" in `kubectl auth can-i`.
+	kubectlCommand string
 
 	// flags holds the flag tokens of the argument list, in the order they occur.
 	flags []parsedFlag
@@ -23,10 +26,10 @@ type parsedArguments struct {
 	disallowedFlags []string
 
 	// resourceTypes holds the normalized resource types referenced by the positional arguments that follow the
-	// subcommand, in the order they occur.
+	// kubectlCommand, in the order they occur.
 	resourceTypes []string
 
-	// positionalArguments holds the positional arguments that follow the subcommand, verbatim and in the order they
+	// positionalArguments holds the positional arguments that follow the kubectlCommand, verbatim and in the order they
 	// occur.
 	positionalArguments []string
 }
@@ -53,7 +56,7 @@ type parsedFlag struct {
 // valuesOf returns the values assigned to the given flag names (long names or shorthands, without leading dashes), in
 // the order the flags occur. Every occurrence is reported, not just the effective (last) one, so that callers can
 // reject an argument list in which any occurrence is problematic.
-func (p parsedArguments) valuesOf(names ...string) []string {
+func (p kubectlArguments) valuesOf(names ...string) []string {
 	var values []string
 	for _, flag := range p.flags {
 		if flag.valueTakingName != "" && slices.Contains(names, flag.valueTakingName) {
@@ -67,7 +70,7 @@ func (p parsedArguments) valuesOf(names ...string) []string {
 // "-oyaml", "-Aoyaml" and "--output=yaml" forms), or an empty slice if none is set. For composite formats it returns
 // the base type, e.g. "jsonpath" for "jsonpath={.data}". Repeating the flag yields one entry per occurrence: kubectl
 // applies the last one, but each occurrence is reported so callers do not have to replicate that precedence.
-func (p parsedArguments) outputFormats() []string {
+func (p kubectlArguments) outputFormats() []string {
 	values := p.valuesOf("o", "output")
 	formats := make([]string, 0, len(values))
 	for _, value := range values {
@@ -78,7 +81,7 @@ func (p parsedArguments) outputFormats() []string {
 
 // hasTemplateFlag reports whether the --template flag is set, which selects go-template output and can therefore expose
 // a resource's content.
-func (p parsedArguments) hasTemplateFlag() bool {
+func (p kubectlArguments) hasTemplateFlag() bool {
 	return len(p.valuesOf("template")) > 0
 }
 
@@ -87,7 +90,7 @@ func (p parsedArguments) hasTemplateFlag() bool {
 // output format, and also for an invocation that sets the output format more than once or combines it with --template,
 // so that kubectl's precedence rules do not have to be replicated here. Composite formats such as jsonpath are excluded
 // as well: their output can happen to parse as JSON or YAML while holding none of the structure of a resource document.
-func (p parsedArguments) parseableOutputFormat() (string, bool) {
+func (p kubectlArguments) parseableOutputFormat() (string, bool) {
 	if p.hasTemplateFlag() {
 		return "", false
 	}
@@ -103,7 +106,7 @@ func (p parsedArguments) parseableOutputFormat() (string, bool) {
 
 // outputIsContentFree reports whether every requested output format is one that does not expose a resource's content.
 // The --template flag selects go-template output and is therefore never content-free.
-func (p parsedArguments) outputIsContentFree() bool {
+func (p kubectlArguments) outputIsContentFree() bool {
 	if p.hasTemplateFlag() {
 		return false
 	}

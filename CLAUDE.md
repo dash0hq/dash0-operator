@@ -118,6 +118,10 @@ unconditionally, while a header or query parameter value - including a query par
 `wellKnownNonSecretValues`). A field that always holds a credential belongs in the former, even when it is a header -
 which is why `incidentioConfig` lists `headers`.
 
+When adding a new Dash0 CRD, it also needs to be added to the ClusterRole in
+helm-chart/dash0-operator/templates/operator/cluster-roles.yaml (-manager-agent0-connector-ro role), and correspondingly
+in internal/agent0connector/a0cresources/desired_state.go (agent0ConnectorRbacRules).
+
 ### Adding a new reconciler with self-monitoring metrics
 
 Any reconciler that implements `InitializeSelfMonitoringMetrics` (i.e. exposes counters or other OpenTelemetry

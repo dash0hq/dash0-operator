@@ -11,16 +11,20 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
-// readOnlyKubectlSubcommands is the allowlist of kubectl subcommands the executor is allowed to run. Everything else
-// is rejected. The list deliberately contains only subcommands that read cluster state and never mutate it. This is
-// additional defense-in-depth on top of the strictly read-only RBAC (get & list only) granted to the agent0-connector
-// service account.
-var readOnlyKubectlSubcommands = map[string]struct{}{
+// allowedKubectlCommands is the allowlist of kubectl commands the executor is allowed to run. Everything else
+// is rejected. The list deliberately contains only kubectl commands that read cluster state and never mutate it. This
+// is additional defense-in-depth on top of the read-only RBAC (get & list only) granted to the agent0-connector service
+// account.
+//
+// Allowed kubectl commands can be further restricted via allowedSubcommandsPerKubectlCommand.
+var allowedKubectlCommands = map[string]struct{}{
 	"api-resources": {},
+	"auth":          {},
 	"api-versions":  {},
 	"cluster-info":  {},
 	"describe":      {},
@@ -32,15 +36,35 @@ var readOnlyKubectlSubcommands = map[string]struct{}{
 	"version":       {},
 }
 
-// subcommandsRejectingPositionalArguments lists the allowed subcommands that may be invoked in their bare form,
-// but not with a sub-verb.
-//
-// Example: "cluster-info" is read-only and harmless on its own, but its only sub-verb, "kubectl cluster-info dump",
-// writes the full JSON of the nodes, events, replication controllers, services, daemon sets, deployments, replica sets
-// and pods of a namespace or the whole cluster to stdout. This response cannot be redacted reliably, hence it is
-// disallowed.
-var subcommandsRejectingPositionalArguments = map[string]struct{}{
-	"cluster-info": {},
+var allowedKubectlCommandsHumanReadable = func() string {
+	allCmds := slices.Sorted(maps.Keys(allowedKubectlCommands))
+	allowedCmdsString := fmt.Sprintf("%q", allCmds[0])
+	for idx, kubectlCmd := range allCmds {
+		if idx > 0 && idx < len(allCmds)-1 {
+			allowedCmdsString += fmt.Sprintf(", %q", kubectlCmd)
+		} else if idx == len(allCmds)-1 {
+			allowedCmdsString += fmt.Sprintf(" and %q", kubectlCmd)
+		}
+	}
+	return allowedCmdsString
+}()
+
+// allowedSubcommandsPerKubectlCommand lists the allowed kubectl commands that may only be invoked with one of the
+// listed subcommands. Every other subcommand is rejected for that kubectl command. This way a future kubectl release
+// adding a new subcommand does not widen what the connector accepts. The empty string stands for the bare subcommand,
+// that is, an invocation of that particular kubectl command without any positional argument. A kubctl command that may
+// only be invoked bare must list the empty string as its only entry.
+var allowedSubcommandsPerKubectlCommand = map[string][]string{
+	// "auth can-i" only reports what the agent0-connector's service account is allowed to do, but its sibling
+	// subcommand "auth reconcile" creates and updates roles and role bindings, hence "auth" is only allowed with the
+	// subcommand "can-i".
+	"auth": {"can-i"},
+
+	// "cluster-info" is read-only and harmless on its own, but its only subcommand, "kubectl cluster-info dump", writes
+	// the full JSON of the nodes, events, replication controllers, services, daemon sets, deployments, replica sets and
+	// pods of a namespace or the whole cluster to stdout. This response cannot be redacted reliably, hence
+	// "cluster-info" is only allowed in its bare form.
+	"cluster-info": {""},
 }
 
 // allowedOutputFormats is the allowlist of output formats command requests may use via -o/--output, keyed by the
@@ -109,15 +133,15 @@ var safeOrRedactableOutputFormats = func() map[string]struct{} {
 type sensitiveResource struct {
 	// displayName names the resource in rejection messages.
 	displayName string
-	// contentExposingSubcommands are subcommands that print the resource's data regardless of the output format:
-	// kubectl's describer for secrets prints only key names and byte counts, but the one for config maps prints every
-	// value.
-	contentExposingSubcommands []string
+	// contentExposingKubectlCommands are kubectl commands that print the resource's data regardless of the output format:
+	// "kubectl describe" for secrets prints only key names and byte counts, but the one for config maps prints the full
+	// config map.
+	contentExposingKubectlCommands []string
 }
 
 var (
 	secretResource    = sensitiveResource{displayName: "secret"}
-	configMapResource = sensitiveResource{displayName: "config map", contentExposingSubcommands: []string{"describe"}}
+	configMapResource = sensitiveResource{displayName: "config map", contentExposingKubectlCommands: []string{"describe"}}
 )
 
 // sensitiveResourceTypes maps the resource type names whose contents must not be exposed to their guard, in singular
@@ -135,73 +159,109 @@ var sensitiveResourceTypes = map[string]sensitiveResource{
 // reuse for further processing (e.g. redacting the response). If the request is allowed, the returned error is nil.
 // If an error is returned, the error describes why the request is rejected. The returned argument list must not be
 // used when the error is non-nil.
-func validateCommandAndParseArguments(req *pb.CommandRequest) (parsedArguments, error) {
-	if req.GetCommand() != kubectlCommand {
-		return parsedArguments{}, fmt.Errorf(
-			"only the %q command is allowed, but got %q",
-			kubectlCommand,
-			req.GetCommand(),
-		)
+func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments, error) {
+	if reason, blocked := disallowedExecutableRequested(req); blocked {
+		return kubectlArguments{}, errors.New(reason)
 	}
 
-	arguments := parseArguments(req.GetArguments())
+	arguments := parseKubectlArguments(req.GetArguments())
 
-	// The flags are checked first: which token is the subcommand and which tokens reference resources depends on knowing
-	// which flags consume the following argument as their value, which is only known for flags from the allowlist.
+	// The flags are checked first: which token is the kubctl command and which tokens reference resources depends on
+	// knowing which flags consume the following argument as their value, which is only known for flags from the
+	// allowlist.
 	if len(arguments.disallowedFlags) > 0 {
-		return parsedArguments{}, fmt.Errorf("the kubectl flag %q is not allowed", arguments.disallowedFlags[0])
+		return kubectlArguments{}, fmt.Errorf("the kubectl flag %q is not allowed", arguments.disallowedFlags[0])
 	}
 
-	// Invoking kubectl with no subcommand at all - bare `kubectl`, or only global flags such as `kubectl --help` - is
-	// allowed: kubectl then prints its usage/help, which is read-only and harmless.
-	if arguments.subcommand != "" {
-		if _, allowed := readOnlyKubectlSubcommands[arguments.subcommand]; !allowed {
-			return parsedArguments{}, fmt.Errorf(
-				"the kubectl subcommand %q is not an allowed read-only command",
-				arguments.subcommand,
-			)
-		}
+	// Check the kubectl command first, reject any kubectl command that is not on the allowlist (allowedKubectlCommands).
+	if reason, blocked := disallowedKubectlCommandRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
 	}
-
-	if reason, blocked := subVerbOfBareOnlySubcommandRequested(arguments); blocked {
-		return parsedArguments{}, errors.New(reason)
+	if reason, blocked := disallowedSubcommandRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
 	}
-
 	if format, disallowed := disallowedOutputFormat(arguments); disallowed {
-		return parsedArguments{}, fmt.Errorf("the kubectl output format %q is not allowed", format)
+		return kubectlArguments{}, fmt.Errorf("the kubectl output format %q is not allowed", format)
 	}
-
 	if reason, blocked := sensitiveContentRequested(arguments); blocked {
-		return parsedArguments{}, errors.New(reason)
+		return kubectlArguments{}, errors.New(reason)
 	}
-
 	if reason, blocked := unredactableOutputRequested(arguments); blocked {
-		return parsedArguments{}, errors.New(reason)
+		return kubectlArguments{}, errors.New(reason)
 	}
-
 	if reason, blocked := describeOfResourceTypeWithSecrets(arguments); blocked {
-		return parsedArguments{}, errors.New(reason)
+		return kubectlArguments{}, errors.New(reason)
 	}
-
 	return arguments, nil
 }
 
-// subVerbOfBareOnlySubcommandRequested reports whether the kubectl arguments invoke a subcommand that may only be used
-// in its bare form with a positional argument, returning a human-readable reason when they do. Any positional argument
-// is rejected, not just the sub-verbs that exist today, so that a sub-verb added by a future kubectl release does not
-// widen what the connector accepts. See subcommandsRejectingPositionalArguments.
-func subVerbOfBareOnlySubcommandRequested(parsed parsedArguments) (string, bool) {
-	if _, bareOnly := subcommandsRejectingPositionalArguments[parsed.subcommand]; !bareOnly {
+func disallowedExecutableRequested(req *pb.CommandRequest) (string, bool) {
+	if req.GetCommand() == "" {
+		return fmt.Sprintf(
+			"invalid command request without command, only the %q command is allowed",
+			kubectlCommand,
+		), true
+	}
+	if req.GetCommand() != kubectlCommand {
+		return fmt.Sprintf(
+			"only the command %q is allowed, but got %q",
+			kubectlCommand,
+			req.GetCommand(),
+		), true
+	}
+	return "", false
+}
+
+func disallowedKubectlCommandRequested(parsed kubectlArguments) (string, bool) {
+	if parsed.kubectlCommand == "" {
+		// Invoking kubectl with no command at all - bare `kubectl`, or only global flags such as `kubectl --help` - is
+		// allowed.
 		return "", false
 	}
-	if len(parsed.positionalArguments) == 0 {
+	if _, allowed := allowedKubectlCommands[parsed.kubectlCommand]; !allowed {
+		return fmt.Sprintf(
+			"the kubectl command %q is not an allowed read-only command, the only allowed kubectl commands are %s",
+			parsed.kubectlCommand,
+			allowedKubectlCommandsHumanReadable,
+		), true
+	}
+	return "", false
+}
+
+// disallowedSubcommandRequested reports whether the kubectl arguments invoke a kubectl command that is only allowed
+// with a fixed set of subcommands, and the invocation uses a disallowed subcommand. It returns a human-readable reason
+// if that is the case. See allowedSubcommandsPerKubectlCommand.
+func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
+	allowedSubcommands, restricted := allowedSubcommandsPerKubectlCommand[parsed.kubectlCommand]
+	if !restricted {
 		return "", false
+	}
+	requestedSubcommand := ""
+	if len(parsed.positionalArguments) > 0 {
+		requestedSubcommand = parsed.positionalArguments[0]
+	}
+	if slices.Contains(allowedSubcommands, requestedSubcommand) {
+		return "", false
+	}
+	if slices.Equal(allowedSubcommands, []string{""}) {
+		return fmt.Sprintf(
+			"the kubectl command %q may only be used without additional subcommands, but got %q",
+			parsed.kubectlCommand,
+			requestedSubcommand,
+		), true
+	}
+	if requestedSubcommand == "" {
+		return fmt.Sprintf(
+			"the kubectl command %q is only allowed without a subcommand, but the subcommand was %q",
+			parsed.kubectlCommand,
+			strings.Join(allowedSubcommands, "\" or \""),
+		), true
 	}
 	return fmt.Sprintf(
-		"the kubectl subcommand %q must be used without additional arguments, but got %q; its sub-commands render "+
-			"resource content and container logs in a format whose secrets cannot be redacted",
-		parsed.subcommand,
-		parsed.positionalArguments[0],
+		"the kubectl command %q is only allowed with the subcommand %q, but the subcommand was %q",
+		parsed.kubectlCommand,
+		strings.Join(allowedSubcommands, "\" or \""),
+		requestedSubcommand,
 	), true
 }
 
@@ -209,8 +269,8 @@ func subVerbOfBareOnlySubcommandRequested(parsed parsedArguments) (string, bool)
 // contain secrets, returning a human-readable reason when they do. The describer renders a resource in a text format
 // that is not meant to be parsed and for which no parser is available, so the connector cannot locate the credentials
 // in its output in order to redact them.
-func describeOfResourceTypeWithSecrets(parsed parsedArguments) (string, bool) {
-	if parsed.subcommand != "describe" || !targetsResourceTypeWithSecrets(parsed) {
+func describeOfResourceTypeWithSecrets(parsed kubectlArguments) (string, bool) {
+	if parsed.kubectlCommand != "describe" || !targetsResourceTypeWithSecrets(parsed) {
 		return "", false
 	}
 	return "describing a Dash0 custom resource is not supported, because it can contain an authorization token or " +
@@ -222,7 +282,7 @@ func describeOfResourceTypeWithSecrets(parsed parsedArguments) (string, bool) {
 // disallowedOutputFormat returns the first output format requested via -o/--output that is not in the
 // allowedOutputFormats allowlist. Every occurrence of the flag is checked, not just the effective (last) one, so that
 // an argument list in which any occurrence is disallowed is rejected without replicating kubectl's precedence rules.
-func disallowedOutputFormat(parsed parsedArguments) (string, bool) {
+func disallowedOutputFormat(parsed kubectlArguments) (string, bool) {
 	for _, format := range parsed.outputFormats() {
 		if _, allowed := allowedOutputFormats[format]; !allowed {
 			return format, true
@@ -232,21 +292,26 @@ func disallowedOutputFormat(parsed parsedArguments) (string, bool) {
 }
 
 // sensitiveContentRequested reports whether the kubectl arguments would read the contents of a sensitive resource,
-// returning a human-readable reason when they do. Listing them (`kubectl get secrets`) and checking for the presence of
-// a particular one (`kubectl get secret <name>`) are allowed; serializing the data via an output format such as
-// -o yaml/json/jsonpath/go-template/custom-columns (or --template), or via a subcommand that prints the data anyway, is
-// not. This is a fail-closed check: output formats that could expose the data are rejected even if a particular
-// invocation would only read metadata, and a repeated output flag is rejected if any of its occurrences would expose
-// the data.
-func sensitiveContentRequested(parsed parsedArguments) (string, bool) {
+// returning a human-readable reason when they do. The default RBAC permissions disallow any access to secrets
+// outright, even checking for the presence of a secret is not possible. However, overriding the default RBAC
+// permissions with a custom cluster role is possible, and sensitiveContentRequested adds defense in-depth for those
+// setups.
+//
+// Listing secrets (e.g. `kubectl get secrets`) and checking for the presence of a particular one
+// (`kubectl get secret <name>`) are allowed (if the corresponding RBAC permissions are granted); serializing the data
+// via an output format such as -o yaml/json/jsonpath/go-template/custom-columns (or --template), or via a kubectl
+// command that prints the data, is not. This is a fail-closed check: output formats that could expose the data are
+// rejected even if a particular invocation would only read metadata, and a repeated output flag is rejected if any of
+// its occurrences would expose the data.
+func sensitiveContentRequested(parsed kubectlArguments) (string, bool) {
 	resource, targeted := targetedSensitiveResource(parsed)
 	if !targeted {
 		return "", false
 	}
-	if slices.Contains(resource.contentExposingSubcommands, parsed.subcommand) {
+	if slices.Contains(resource.contentExposingKubectlCommands, parsed.kubectlCommand) {
 		return fmt.Sprintf(
-			"the kubectl subcommand %q prints the contents of a %s, which is not allowed",
-			parsed.subcommand,
+			"the kubectl command %q prints the contents of a %s, which is not allowed",
+			parsed.kubectlCommand,
 			resource.displayName,
 		), true
 	}
@@ -263,7 +328,7 @@ func sensitiveContentRequested(parsed parsedArguments) (string, bool) {
 }
 
 // targetedSensitiveResource returns the guard for the first sensitive resource the kubectl arguments reference.
-func targetedSensitiveResource(parsed parsedArguments) (sensitiveResource, bool) {
+func targetedSensitiveResource(parsed kubectlArguments) (sensitiveResource, bool) {
 	for _, resourceType := range parsed.resourceTypes {
 		if resource, isSensitive := lookupSensitiveResourceType(resourceType); isSensitive {
 			return resource, true
@@ -283,7 +348,7 @@ func lookupSensitiveResourceType(resourceType string) (sensitiveResource, bool) 
 // contain secrets in an output format whose result cannot be redacted reliably, returning a human-readable reason when
 // they do. Every occurrence of -o/--output is checked, not just the effective (last) one, and --template counts as
 // go-template output even without -o, mirroring outputIsContentFree.
-func unredactableOutputRequested(parsed parsedArguments) (string, bool) {
+func unredactableOutputRequested(parsed kubectlArguments) (string, bool) {
 	if !targetsResourceTypeWithSecrets(parsed) {
 		return "", false
 	}
@@ -302,7 +367,7 @@ func unredactableOutputRequested(parsed parsedArguments) (string, bool) {
 
 // unredactableOutputFormat returns the first output format that is not in the safeOrRedactableOutputFormats allowlist.
 // The --template flag is reported as "go-template", the format it selects.
-func unredactableOutputFormat(parsed parsedArguments) (string, bool) {
+func unredactableOutputFormat(parsed kubectlArguments) (string, bool) {
 	if parsed.hasTemplateFlag() {
 		return "go-template", true
 	}
