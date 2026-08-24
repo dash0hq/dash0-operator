@@ -220,7 +220,7 @@ else
 endif
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.9.0
+GOLANGCI_LINT_VERSION ?= v2.13.1
 golangci-lint-install:
 	@[ -f $(GOLANGCI_LINT) ] || { \
 	set -e ;\

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM --platform=${BUILDPLATFORM} golang:1.26.6-alpine3.23 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.0-alpine3.23 AS builder
 
 WORKDIR /usr/local/go/outbound_connector_mock
 
