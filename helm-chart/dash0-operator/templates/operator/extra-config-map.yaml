@@ -209,6 +209,8 @@ data:
       {{- toYaml .Values.operator.signalControl.edgeProxy.podAnnotations | nindent 6 }}
 {{- end }}
 {{- end }}
+    agent0ConnectorContainerResources:
+      {{- toYaml .Values.operator.agent0Connector.containerResources | nindent 6 }}
 {{- if .Values.operator.agent0Connector.labels }}
     agent0ConnectorLabels:
       {{- toYaml .Values.operator.agent0Connector.labels | nindent 6 }}

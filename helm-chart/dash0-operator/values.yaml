@@ -1327,6 +1327,20 @@ operator:
     # instead. This is only intended for local development.
     insecure: false
 
+    # Resource settings for the agent0-connector container of the agent0-connector deployment managed by the operator.
+    containerResources:
+      limits:
+        memory: 256Mi
+      # The GOMEMLIMIT environment variable value for the agent0-connector container. Note that valid units are
+      # different from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      # The value is deliberately set to about 60% of containerResources.limits.memory, and not to the 80% recommended
+      # for other containers: the agent0-connector container also runs kubectl as a child process, whose memory is not
+      # governed by GOMEMLIMIT but counts towards the container's memory limit.
+      gomemlimit: 150MiB
+      requests:
+        memory: 32Mi
+
     # Additional labels to be set on the agent0-connector deployment managed by the operator.
     labels: {}
 

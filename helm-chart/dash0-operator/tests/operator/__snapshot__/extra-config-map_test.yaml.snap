@@ -164,6 +164,12 @@ extra config map should match snapshot:
                 operator: In
                 values:
                 - linux
+        agent0ConnectorContainerResources:
+          gomemlimit: 150MiB
+          limits:
+            memory: 256Mi
+          requests:
+            memory: 32Mi
         agent0ConnectorTolerations:
           []
         agent0ConnectorNodeAffinity:

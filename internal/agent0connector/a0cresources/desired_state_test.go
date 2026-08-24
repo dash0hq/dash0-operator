@@ -12,7 +12,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
@@ -298,14 +297,6 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			}))
 		})
 
-		It("requests and limits memory", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
-			Expect(container.Resources.Requests.Memory()).To(Equal(ptr.To(resource.MustParse("32Mi"))))
-			// The limit has to cover the peak of parsing and re-rendering a response of up to maxStdoutBytes, see
-			// images/agent0-connector/src/kubectl/kubectl.go.
-			Expect(container.Resources.Limits.Memory()).To(Equal(ptr.To(resource.MustParse("256Mi"))))
-		})
-
 		It("applies a restrictive container security context", func() {
 			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
 			sc := container.SecurityContext
@@ -342,6 +333,30 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("a0c-pod-label", "a0c-pod-label-value"))
 			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
 			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("a0c-pod-annotation", "a0c-pod-annotation-value"))
+		})
+
+		It("renders the container resources and GOMEMLIMIT from the extra config", func() {
+			extraConfig := util.ExtraConfig{
+				Agent0ConnectorContainerResources: util.ResourceRequirementsWithGoMemLimit{
+					Requests: corev1.ResourceList{
+						corev1.ResourceMemory: resource.MustParse("32Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("500m"),
+						corev1.ResourceMemory: resource.MustParse("256Mi"),
+					},
+					GoMemLimit: "128MiB",
+				},
+			}
+
+			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, extraConfig)).Spec.Template.Spec.Containers[0]
+
+			Expect(container.Resources.Requests).To(HaveLen(1))
+			Expect(container.Resources.Requests.Memory().String()).To(Equal("32Mi"))
+			Expect(container.Resources.Limits).To(HaveLen(2))
+			Expect(container.Resources.Limits.Cpu().String()).To(Equal("500m"))
+			Expect(container.Resources.Limits.Memory().String()).To(Equal("256Mi"))
+			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "GOMEMLIMIT", Value: "128MiB"}))
 		})
 
 		It("renders tolerations and node affinity from the extra config", func() {
