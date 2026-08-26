@@ -1128,6 +1128,63 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.SpamFilterCacheExpiration).To(BeEmpty())
 	})
 
+	It("should have log enrichment disabled by default", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.LogEnrichmentEnabled).To(BeFalse())
+		Expect(config.LogPatternRefreshInterval).To(BeEmpty())
+		Expect(config.LogParserCacheExpiration).To(BeEmpty())
+		Expect(config.LogParserMaxPatterns).To(BeNil())
+		Expect(config.LogGroupingCacheExpiration).To(BeEmpty())
+	})
+
+	It("should enable log enrichment and pass tunables through when set", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+					Enabled:                 boolPtr(true),
+					PatternRefreshInterval:  &metav1.Duration{Duration: 30 * time.Second},
+					ParserCacheExpiration:   &metav1.Duration{Duration: 45 * time.Second},
+					ParserMaxPatterns:       ptr.To(int32(15)),
+					GroupingCacheExpiration: &metav1.Duration{Duration: 90 * time.Second},
+				},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.LogEnrichmentEnabled).To(BeTrue())
+		Expect(config.LogPatternRefreshInterval).To(Equal("30s"))
+		Expect(config.LogParserCacheExpiration).To(Equal("45s"))
+		Expect(config.LogParserMaxPatterns).To(Equal(ptr.To(int32(15))))
+		Expect(config.LogGroupingCacheExpiration).To(Equal("1m30s"))
+	})
+
+	It("should drop non-positive log enrichment duration knobs rather than forward them", func() {
+		resource := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+					Enabled:                 boolPtr(true),
+					PatternRefreshInterval:  &metav1.Duration{Duration: 0},
+					ParserCacheExpiration:   &metav1.Duration{Duration: 0},
+					GroupingCacheExpiration: &metav1.Duration{Duration: 0},
+				},
+			},
+		}
+		config := signalControlConfigFromResource(resource, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.LogEnrichmentEnabled).To(BeTrue())
+		Expect(config.LogPatternRefreshInterval).To(BeEmpty())
+		Expect(config.LogParserCacheExpiration).To(BeEmpty())
+		Expect(config.LogGroupingCacheExpiration).To(BeEmpty())
+	})
+
 	It("should default sampling tunables to empty fallback ratio and debug off", func() {
 		resource := &dash0v1alpha1.Dash0SignalControl{
 			Spec: dash0v1alpha1.Dash0SignalControlSpec{

@@ -726,20 +726,16 @@ func signalControlConfigFromResource(
 		}
 	}
 	signalToMetricsEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SignalToMetrics.Enabled, true)
-	var signalToMetricsFlushInterval string
-	if d := resource.Spec.SignalToMetrics.FlushInterval; d != nil && d.Duration > 0 {
-		signalToMetricsFlushInterval = d.Duration.String()
-	}
-	var signalToMetricsCacheExpiration string
-	if d := resource.Spec.SignalToMetrics.CacheExpiration; d != nil && d.Duration > 0 {
-		signalToMetricsCacheExpiration = d.Duration.String()
-	}
+	signalToMetricsFlushInterval := durationStringOrEmpty(resource.Spec.SignalToMetrics.FlushInterval)
+	signalToMetricsCacheExpiration := durationStringOrEmpty(resource.Spec.SignalToMetrics.CacheExpiration)
 	spamFilterEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.Enabled, true)
-	var spamFilterCacheExpiration string
-	if d := resource.Spec.SpamFilter.CacheExpiration; d != nil && d.Duration > 0 {
-		spamFilterCacheExpiration = d.Duration.String()
-	}
+	spamFilterCacheExpiration := durationStringOrEmpty(resource.Spec.SpamFilter.CacheExpiration)
 	spamFilterAllowNoSettingsExt := pointers.ReadBoolPointerWithDefault(resource.Spec.SpamFilter.AllowNoSettingsExt, false)
+
+	logEnrichmentEnabled := pointers.ReadBoolPointerWithDefault(resource.Spec.LogEnrichment.Enabled, false)
+	logPatternRefreshInterval := durationStringOrEmpty(resource.Spec.LogEnrichment.PatternRefreshInterval)
+	logParserCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.ParserCacheExpiration)
+	logGroupingCacheExpiration := durationStringOrEmpty(resource.Spec.LogEnrichment.GroupingCacheExpiration)
 
 	operationPreferSpanName := pointers.ReadBoolPointerWithDefault(resource.Spec.OperationProcessor.PreferSpanName, false)
 	var operationCardinalityRules []SignalControlCardinalityRule
@@ -809,6 +805,11 @@ func signalControlConfigFromResource(
 		SpamFilterEnabled:                  spamFilterEnabled,
 		SpamFilterCacheExpiration:          spamFilterCacheExpiration,
 		SpamFilterAllowNoSettingsExt:       spamFilterAllowNoSettingsExt,
+		LogEnrichmentEnabled:               logEnrichmentEnabled,
+		LogPatternRefreshInterval:          logPatternRefreshInterval,
+		LogParserCacheExpiration:           logParserCacheExpiration,
+		LogParserMaxPatterns:               resource.Spec.LogEnrichment.ParserMaxPatterns,
+		LogGroupingCacheExpiration:         logGroupingCacheExpiration,
 		OperationPreferSpanName:            operationPreferSpanName,
 		OperationCardinalityRules:          operationCardinalityRules,
 		Endpoint:                           endpoint,

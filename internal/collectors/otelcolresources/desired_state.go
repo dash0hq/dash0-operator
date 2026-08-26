@@ -48,6 +48,11 @@ type SignalControlConfig struct {
 	SpamFilterEnabled                  bool
 	SpamFilterCacheExpiration          string
 	SpamFilterAllowNoSettingsExt       bool
+	LogEnrichmentEnabled               bool
+	LogPatternRefreshInterval          string
+	LogParserCacheExpiration           string
+	LogParserMaxPatterns               *int32
+	LogGroupingCacheExpiration         string
 	OperationPreferSpanName            bool
 	OperationCardinalityRules          []SignalControlCardinalityRule
 	Endpoint                           string
@@ -64,6 +69,15 @@ type SignalControlConfig struct {
 // Signal Control and tail-sampling are enabled and the reservoir type is "disk".
 func (c SignalControlConfig) UsesDiskReservoir() bool {
 	return c.Enabled && c.SamplingEnabled && c.SamplingReservoirType == "disk"
+}
+
+// durationStringOrEmpty renders a positive duration as a Go duration string, or "" for a nil or
+// non-positive value so the collector config omits it and the component keeps its own default.
+func durationStringOrEmpty(d *metav1.Duration) string {
+	if d == nil || d.Duration <= 0 {
+		return ""
+	}
+	return d.Duration.String()
 }
 
 type SignalControlCardinalityRule struct {
