@@ -335,8 +335,8 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 }
 
 // assembleClusterRole creates a cluster-wide, strictly read-only role. By default, it grants get & list on the
-// well-known resource types listed in defaultAgent0ConnectorRbacRules plus read access to non-resource URLs, which is what
-// read-only kubectl commands (kubectl get, kubectl describe, kubectl logs, ...) require for those resource types.
+// well-known resource types listed in defaultAgent0ConnectorRbacRules plus read access to non-resource URLs, which is
+// what read-only kubectl commands (kubectl get, kubectl describe, kubectl logs, ...) require for those resource types.
 // The default RBAC rules can be overridden with custom rules via the Helm chart to replace the default rules. Either
 // way, the role contains no verbs (update, patch, delete, deletecollection, and create only for self subject review
 // API), that would allow modifying cluster state.
@@ -364,12 +364,27 @@ func clusterRoleRules(extraConfig util.ExtraConfig) []rbacv1.PolicyRule {
 	return cloneRbacRules(defaultAgent0ConnectorRbacRules)
 }
 
-// validateClusterRoleRules verifies that the given custom cluster role rules grant only read access. It returns an
-// error describing every violation otherwise. The Helm chart rejects a rule with a write verb as well, before it
-// ever reaches the cluster.
+// validateClusterRoleRules verifies that the given custom cluster role rules grant only read access and that they
+// grant read access to the non-resource URLs. It returns an error describing every violation otherwise. The Helm chart
+// applies the same two checks, before the rules ever reach the cluster; the checks here also cover an extra config map
+// that has been edited directly.
+//
+// The allowed verbs and the self subject review carve-out are duplicated in the named template
+// dash0-operator.agent0ConnectorCustomClusterRoleRules in helm-chart/dash0-operator/templates/_helpers.tpl. Both need
+// to be changed together: a verb that only the Helm chart rejects fails the installation, while a verb that only this
+// function rejects makes the operator skip the agent0-connector without surfacing an error, see ErrMisconfigured.
 func validateClusterRoleRules(rules []rbacv1.PolicyRule) error {
+	if len(rules) == 0 {
+		// No custom rules, the default rules apply.
+		return nil
+	}
+
 	var allErrors []error
+	nonResourceUrlReadAccessGranted := false
 	for ruleIdx, rule := range rules {
+		if len(rule.NonResourceURLs) > 0 && slices.Contains(rule.Verbs, "get") {
+			nonResourceUrlReadAccessGranted = true
+		}
 		allowedVerbsForRule := allowedVerbs
 		if grantsSelfSubjectReviewsOnly(rule) {
 			allowedVerbsForRule = append(slices.Clone(allowedVerbs), selfSubjectReviewVerbs...)
@@ -389,6 +404,15 @@ func validateClusterRoleRules(rules []rbacv1.PolicyRule) error {
 			}
 		}
 	}
+
+	if !nonResourceUrlReadAccessGranted {
+		allErrors = append(allErrors, errors.New(
+			"none of the rules grants the verb \"get\" for nonResourceURLs: kubectl performs API discovery (/api, "+
+				"/apis, /openapi/v3, ...) on virtually every command, so without read access to the non-resource URLs "+
+				"no kubectl command would work at all",
+		))
+	}
+
 	return errors.Join(allErrors...)
 }
 

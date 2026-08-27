@@ -143,8 +143,11 @@ the rule file stay in the file and out of the rendered manifests.
 {{- include "dash0-operator.agent0ConnectorCustomClusterRoleRules" . }}
 {{- else }}
 {{- $defaultRulesFile := "files/agent0-connector-default-cluster-role-rules.yaml" }}
-{{- $defaultRules := .Files.Get $defaultRulesFile | fromYamlArray }}
-{{- if not $defaultRules }}
+{{- $defaultRulesRaw := .Files.Get $defaultRulesFile }}
+{{- $defaultRules := $defaultRulesRaw | fromYamlArray }}
+{{- /* fromYamlArray reports a parse error as a single-element list holding the error message, which is truthy, hence
+       the additional check that the first element actually is a rule. */}}
+{{- if or (not $defaultRulesRaw) (not $defaultRules) (not (kindIs "map" (first $defaultRules))) }}
 {{- fail (printf "Error: the default cluster role rules for the agent0-connector could not be read from %s. This is a bug in the Dash0 operator Helm chart, please report it." $defaultRulesFile) }}
 {{- end }}
 {{- toYaml $defaultRules }}
@@ -158,6 +161,10 @@ They are validated to grant read-only access only: the verbs "get" and "list" fo
 "create" for the self subject review API. Creating a SelfSubjectAccessReview or a SelfSubjectRulesReview does not
 persist an object, the API server evaluates the request and answers it, which is what "kubectl auth can-i" needs. Any
 other verb fails the installation.
+
+The allowed verbs and the self subject review carve-out are duplicated in validateClusterRoleRules in
+internal/agent0connector/a0cresources/desired_state.go, which applies the same checks to the rules the operator reads
+from the extra config map. Both need to be changed together.
 */}}
 {{- define "dash0-operator.agent0ConnectorCustomClusterRoleRules" -}}
 {{- $selfSubjectReviewApiGroup := "authorization.k8s.io" }}

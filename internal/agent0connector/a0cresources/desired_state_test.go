@@ -298,7 +298,36 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 						Resources: expectedSelfSubjectReviewResources,
 						Verbs:     []string{"create"},
 					},
+					{
+						NonResourceURLs: []string{"*"},
+						Verbs:           []string{"get"},
+					},
 				})).To(Succeed())
+			})
+
+			It("rejects rules which do not grant read access to the non-resource URLs", func() {
+				err := validateClusterRoleRules([]rbacv1.PolicyRule{
+					{
+						APIGroups: []string{""},
+						Resources: []string{"pods"},
+						Verbs:     []string{"get", "list"},
+					},
+				})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(`none of the rules grants the verb "get" for nonResourceURLs`))
+			})
+
+			It("rejects rules which only grant list for the non-resource URLs", func() {
+				err := validateClusterRoleRules([]rbacv1.PolicyRule{
+					{
+						NonResourceURLs: []string{"*"},
+						Verbs:           []string{"list"},
+					},
+				})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(`none of the rules grants the verb "get" for nonResourceURLs`))
 			})
 
 			DescribeTable(

@@ -51,7 +51,7 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 	logger logd.Logger,
 ) (bool, bool, error) {
 	if err := validateClusterRoleRules(extraConfig.Agent0ConnectorClusterRoleRules); err != nil {
-		logger.Error(err, "the custom cluster role rules for the agent0-connector "+
+		logger.ErrorTelemetryCollectionIssue(err, "the custom cluster role rules for the agent0-connector "+
 			"(Helm value operator.agent0Connector.clusterRole.rules) are invalid, not creating or updating the "+
 			"agent0-connector resources")
 		// The rules only change when the extra config map changes, and that triggers a new reconciliation via
@@ -64,8 +64,8 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 		authTokenEnvVarName,
 	)
 	if err != nil {
-		logger.Error(err, "no Dash0 authorization token is available for the agent0-connector workload, "+
-			"not creating the agent0-connector resources")
+		logger.ErrorTelemetryCollectionIssue(err, "no Dash0 authorization token is available for the "+
+			"agent0-connector workload, not creating the agent0-connector resources")
 		// The authorization is read from the operator manager's environment variables once at startup, so it cannot
 		// change while the process runs.
 		return false, false, fmt.Errorf("%w: %w", ErrMisconfigured, err)

@@ -142,6 +142,11 @@ rules of the Helm chart are in sync with desired_state.go" in
 internal/agent0connector/a0cresources/desired_state_test.go compares both lists and fails when they diverge, so this
 drift cannot go unnoticed.
 
+Both lists are only the *default* rules. The Helm value operator.agent0Connector.clusterRole.rules replaces them
+entirely rather than extending them, so an installation with custom rules does not pick up a grant that is added to the
+default lists. The drift-protection test only compares the two default lists with each other and says nothing about
+that case.
+
 ### Adding a new reconciler with self-monitoring metrics
 
 Any reconciler that implements `InitializeSelfMonitoringMetrics` (i.e. exposes counters or other OpenTelemetry
