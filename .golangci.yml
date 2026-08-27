@@ -42,8 +42,6 @@ linters:
       - path: "_test\\.go"
         linters:
           - goconst
-    paths:
-      - "internal/webhooks/vendored/*"
   settings:
     errcheck:
       exclude-functions:
