@@ -295,6 +295,14 @@ tests:
             podAnnotations:
               edge-proxy-pod-annotation: edge-proxy-pod-annotation-value
         agent0Connector:
+          containerResources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            gomemlimit: 256MiB
+            requests:
+              cpu: 20m
+              memory: 64Mi
           tolerations:
             - key: key6
               operator: Equal
@@ -652,6 +660,14 @@ tests:
               edge-proxy-pod-label: edge-proxy-pod-label-value
             edgeProxyPodAnnotations:
               edge-proxy-pod-annotation: edge-proxy-pod-annotation-value
+            agent0ConnectorContainerResources:
+              gomemlimit: 256MiB
+              limits:
+                cpu: 300m
+                memory: 512Mi
+              requests:
+                cpu: 20m
+                memory: 64Mi
             agent0ConnectorTolerations:
               - effect: NoSchedule
                 key: key6
@@ -902,6 +918,43 @@ tests:
           path: data['extra.yaml']
           pattern: agent0ConnectorPodAnnotations
 
+  - it: should render the default agent0-connector container resources
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorContainerResources:
+              gomemlimit: 150MiB
+              limits:
+                memory: 256Mi
+              requests:
+                memory: 32Mi
+
+  - it: should render custom agent0-connector container resources
+    set:
+      operator:
+        agent0Connector:
+          containerResources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            gomemlimit: 256MiB
+            requests:
+              cpu: 20m
+              memory: 64Mi
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorContainerResources:
+              gomemlimit: 256MiB
+              limits:
+                cpu: 300m
+                memory: 512Mi
+              requests:
+                cpu: 20m
+                memory: 64Mi
+
   - it: should render the default agent0-connector tolerations and node affinity
     asserts:
       - matchRegex:
@@ -1142,6 +1195,12 @@ tests:
                     operator: In
                     values:
                     - linux
+            agent0ConnectorContainerResources:
+              gomemlimit: 150MiB
+              limits:
+                memory: 256Mi
+              requests:
+                memory: 32Mi
             agent0ConnectorTolerations:
               []
             agent0ConnectorNodeAffinity:

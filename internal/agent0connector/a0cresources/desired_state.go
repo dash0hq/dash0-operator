@@ -7,7 +7,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -390,6 +389,10 @@ func assembleDeployment(
 		Image: c.Images.Agent0ConnectorImage,
 		Env: []corev1.EnvVar{
 			{
+				Name:  util.EnvVarGoMemLimit,
+				Value: extraConfig.Agent0ConnectorContainerResources.GoMemLimit,
+			},
+			{
 				// The agent0-connector workload uses the pseudo cluster UID as its client ID when connecting to the
 				// Dash0 backend.
 				Name:  "K8S_CLUSTER_UID",
@@ -424,14 +427,7 @@ func assembleDeployment(
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Resources: corev1.ResourceRequirements{
-			Requests: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("32Mi"),
-			},
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("256Mi"),
-			},
-		},
+		Resources: extraConfig.Agent0ConnectorContainerResources.ToResourceRequirements(),
 	}
 
 	if authTokenEnvVar != nil {
