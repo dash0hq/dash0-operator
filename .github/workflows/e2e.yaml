@@ -69,7 +69,6 @@ jobs:
       - name: Create volume directories and kind config
         run: |
           # Create directories in /tmp for the kind cluster volumes
-          mkdir -p /tmp/filelog-offsets
           mkdir -p /tmp/offset-storage
           mkdir -p /tmp/kind-registry
 
@@ -90,7 +89,7 @@ jobs:
               labels:
                 topology.kubernetes.io/zone: zone-a
               extraMounts:
-                - hostPath: /tmp/filelog-offsets
+                - hostPath: /tmp/offset-storage
                   containerPath: /offset-storage
             - role: worker
               extraPortMappings:

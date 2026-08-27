@@ -435,8 +435,41 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.Agent0ConnectorContainerResources.GoMemLimit).To(Equal("150MiB"))
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
+					Expect(extraConfig.Agent0ConnectorClusterRoleRules).To(BeNil())
 
 					Expect(extraConfig.MonitoringTemplateRaw).To(BeNil())
+				})
+
+				It("should parse the custom cluster role rules for the agent0-connector", func() {
+					_, err := tmpFile.WriteString(`
+agent0ConnectorClusterRoleRules:
+- apiGroups:
+  - ""
+  - apps
+  resources:
+  - pods
+  - deployments
+  verbs:
+  - get
+  - list
+- nonResourceURLs:
+  - '*'
+  verbs:
+  - get
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.Agent0ConnectorClusterRoleRules).To(HaveLen(2))
+					firstRule := extraConfig.Agent0ConnectorClusterRoleRules[0]
+					Expect(firstRule.APIGroups).To(ConsistOf("", "apps"))
+					Expect(firstRule.Resources).To(ConsistOf("pods", "deployments"))
+					Expect(firstRule.Verbs).To(ConsistOf("get", "list"))
+					secondRule := extraConfig.Agent0ConnectorClusterRoleRules[1]
+					Expect(secondRule.NonResourceURLs).To(ConsistOf("*"))
+					Expect(secondRule.Verbs).To(ConsistOf("get"))
 				})
 
 				It("should parse the config map content with all values set", func() {

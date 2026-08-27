@@ -955,6 +955,79 @@ tests:
                 cpu: 20m
                 memory: 64Mi
 
+  - it: should not render custom agent0-connector cluster role rules by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorClusterRoleRules
+
+  - it: should render custom agent0-connector cluster role rules when set
+    set:
+      operator:
+        agent0Connector:
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["configmaps", "pods"]
+                verbs: ["get", "list"]
+              - apiGroups: ["authorization.k8s.io"]
+                resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+                verbs: ["create"]
+              - nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorClusterRoleRules:
+              - apiGroups:
+                - ""
+                resources:
+                - configmaps
+                - pods
+                verbs:
+                - get
+                - list
+              - apiGroups:
+                - authorization.k8s.io
+                resources:
+                - selfsubjectaccessreviews
+                - selfsubjectrulesreviews
+                verbs:
+                - create
+              - nonResourceURLs:
+                - '\*'
+                verbs:
+                - get
+
+  - it: should reject custom agent0-connector cluster role rules with a write verb
+    set:
+      operator:
+        agent0Connector:
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list", "patch"]
+              - nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "patch" is not allowed'
+
+  - it: should reject custom agent0-connector cluster role rules which do not grant read access to the non-resource URLs
+    set:
+      operator:
+        agent0Connector:
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'none of the rules grants the verb "get" for nonResourceURLs'
+
   - it: should render the default agent0-connector tolerations and node affinity
     asserts:
       - matchRegex:

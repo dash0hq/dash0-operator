@@ -1341,6 +1341,45 @@ operator:
       requests:
         memory: 32Mi
 
+    # Settings for the cluster role the operator creates for the agent0-connector.
+    clusterRole:
+
+      # Custom RBAC rules for the cluster role of the agent0-connector. By default this list is empty and the operator
+      # grants read-only access to a fixed set of well-known resource types.
+      #
+      # The rules configured here REPLACE the operator's default rules, they are not merged with them. That is, the
+      # rules can be used to widen the agent0-connector's access, for example to a resource type the default rules do
+      # not cover, as well as to restrict it further. To start from the current default rules, read them from the
+      # cluster and edit the copy:
+      #   kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
+      #
+      # Only read-only rules are accepted: the verbs "get" and "list" for any resource, plus "create" for the resources
+      # "selfsubjectaccessreviews" and "selfsubjectrulesreviews" in the API group "authorization.k8s.io", which
+      # "kubectl auth can-i" requires and which cannot modify cluster state. Any other verb, in particular a write verb
+      # like "create", "update", "patch" or "delete", as well as the wildcard "*", makes the Helm installation fail.
+      #
+      # At least one rule has to grant the verb "get" for nonResourceURLs, otherwise the Helm installation fails as
+      # well: kubectl performs API discovery on virtually every command, so without that rule no kubectl command would
+      # work at all.
+      #
+      # Note that reading the content of Kubernetes secrets is rejected by the agent0-connector itself, independent of
+      # the rules configured here.
+      #
+      # Example:
+      # rules:
+      #   - apiGroups: [""]
+      #     resources: ["pods", "pods/log", "namespaces", "nodes", "services"]
+      #     verbs: ["get", "list"]
+      #   - apiGroups: ["apps"]
+      #     resources: ["daemonsets", "deployments", "replicasets", "statefulsets"]
+      #     verbs: ["get", "list"]
+      #   - apiGroups: ["authorization.k8s.io"]
+      #     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+      #     verbs: ["create"]
+      #   - nonResourceURLs: ["*"]
+      #     verbs: ["get"]
+      rules: []
+
     # Additional labels to be set on the agent0-connector deployment managed by the operator.
     labels: {}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/bep/debounce"
 	"github.com/fsnotify/fsnotify"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 
@@ -115,6 +116,7 @@ type ExtraConfig struct {
 	EdgeProxyPodAnnotations map[string]string `json:"edgeProxyPodAnnotations,omitempty"`
 
 	Agent0ConnectorContainerResources ResourceRequirementsWithGoMemLimit `json:"agent0ConnectorContainerResources"`
+	Agent0ConnectorClusterRoleRules   []rbacv1.PolicyRule                `json:"agent0ConnectorClusterRoleRules,omitempty"`
 	Agent0ConnectorLabels             map[string]string                  `json:"agent0ConnectorLabels,omitempty"`
 	Agent0ConnectorAnnotations        map[string]string                  `json:"agent0ConnectorAnnotations,omitempty"`
 	Agent0ConnectorPodLabels          map[string]string                  `json:"agent0ConnectorPodLabels,omitempty"`

@@ -19,6 +19,11 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
+// ErrMisconfigured is wrapped into every error that CreateOrUpdateAgent0ConnectorResources returns for an invalid
+// Helm level agent0-connector configuration. Such an error is permanent, reconciling again with the same configuration
+// fails identically. Callers must not requeue a reconcile request for it.
+var ErrMisconfigured = errors.New("the agent0-connector is misconfigured")
+
 type Agent0ConnectorResourceManager struct {
 	client.Client
 	scheme                    *runtime.Scheme
@@ -45,6 +50,15 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
+	if err := validateClusterRoleRules(extraConfig.Agent0ConnectorClusterRoleRules); err != nil {
+		logger.Error(err, "the custom cluster role rules for the agent0-connector "+
+			"(Helm value operator.agent0Connector.clusterRole.rules) are invalid, not creating or updating the "+
+			"agent0-connector resources")
+		// The rules only change when the extra config map changes, and that triggers a new reconciliation via
+		// UpdateExtraConfig.
+		return false, false, fmt.Errorf("%w: %w", ErrMisconfigured, err)
+	}
+
 	authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
 		m.agent0ConnectorConfig.Authorization,
 		authTokenEnvVarName,
@@ -52,7 +66,9 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 	if err != nil {
 		logger.Error(err, "no Dash0 authorization token is available for the agent0-connector workload, "+
 			"not creating the agent0-connector resources")
-		return false, false, err
+		// The authorization is read from the operator manager's environment variables once at startup, so it cannot
+		// change while the process runs.
+		return false, false, fmt.Errorf("%w: %w", ErrMisconfigured, err)
 	}
 
 	desiredState := assembleDesiredState(&m.agent0ConnectorConfig, &authTokenEnvVar, extraConfig)

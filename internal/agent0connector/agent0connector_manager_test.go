@@ -124,6 +124,32 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		Expect(deployment.Spec.Template.Spec.Tolerations[0].Key).To(Equal("agent0-connector-key"))
 	})
 
+	It("does not report an error when the agent0-connector is misconfigured", func() {
+		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+		// A write verb in the custom cluster role rules is a misconfiguration that no retry can fix.
+		extraConfig := util.ExtraConfig{
+			Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{
+				{
+					APIGroups: []string{""},
+					Resources: []string{"pods"},
+					Verbs:     []string{"get", "list", "delete"},
+				},
+			},
+		}
+		manager := NewAgent0ConnectorManager(k8sClient, true, extraConfig, false, newResourceManager())
+
+		hasBeenReconciled, err := manager.ReconcileAgent0Connector(
+			ctx,
+			TriggeredByDash0OperatorConfigurationResourceReconcile,
+		)
+
+		// Reporting an error would make the caller requeue the reconcile request, and it would abort the caller's
+		// remaining reconciliation steps.
+		Expect(err).ToNot(HaveOccurred())
+		Expect(hasBeenReconciled).To(BeFalse())
+		expectAgent0ConnectorResourcesToNotExist(ctx)
+	})
+
 	It("does not reconcile when an update is already in progress", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 		manager := newManager(true)

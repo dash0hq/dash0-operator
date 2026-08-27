@@ -1,0 +1,8 @@
+# An instance of the dummy resource type defined in agent0connectore2edummy-crd.yaml, so that the agent0-connector has
+# something to read when the e2e test verifies that a custom cluster role grants access to this resource type.
+apiVersion: e2e.dash0.com/v1alpha1
+kind: Agent0ConnectorE2eDummy
+metadata:
+  name: agent0-connector-e2e-dummy
+spec:
+  value: dummy-value

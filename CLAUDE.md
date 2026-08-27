@@ -132,9 +132,15 @@ unconditionally, while a header or query parameter value - including a query par
 `wellKnownNonSecretValues`). A field that always holds a credential belongs in the former, even when it is a header -
 which is why `incidentioConfig` lists `headers`.
 
-When adding a new Dash0 CRD, it also needs to be added to the ClusterRole in
-helm-chart/dash0-operator/templates/operator/cluster-roles.yaml (-manager-agent0-connector-ro role), and correspondingly
-in internal/agent0connector/a0cresources/desired_state.go (agent0ConnectorRbacRules).
+When adding a new Dash0 CRD, it also needs to be added to the two copies of the default RBAC rules of the
+agent0-connector's ClusterRole: helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml, from
+which the Helm chart renders the -manager-agent0-connector-ro ClusterRole, and `defaultAgent0ConnectorRbacRules` in
+internal/agent0connector/a0cresources/desired_state.go, which is what the operator grants to the agent0-connector
+service account. Kubernetes' privilege escalation prevention only allows the operator to grant permissions it holds
+itself, so a rule that is missing from either list does not take effect. The Go test "drift protection: the default
+rules of the Helm chart are in sync with desired_state.go" in
+internal/agent0connector/a0cresources/desired_state_test.go compares both lists and fails when they diverge, so this
+drift cannot go unnoticed.
 
 ### Adding a new reconciler with self-monitoring metrics
 

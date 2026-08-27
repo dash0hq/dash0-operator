@@ -5,6 +5,7 @@ package agent0connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync/atomic"
@@ -78,9 +79,13 @@ func (m *Agent0ConnectorManager) agent0ConnectorEnabled() bool {
 // 2. a change event on one of the agent0-connector related resources that the operator manages.
 //
 // Returns a boolean flag indicating whether the reconciliation has been performed (true) or has been cancelled, due to
-// another reconciliation already being in progress. A return value of (true, nil) does not necessarily indicate that
-// any agent0-connector resource has been created, updated, or deleted; it only indicates that the reconciliation has
-// been performed.
+// another reconciliation already being in progress or due to the agent0-connector being misconfigured. A return value
+// of (true, nil) does not necessarily indicate that any agent0-connector resource has been created, updated, or
+// deleted; it only indicates that the reconciliation has been performed.
+//
+// A misconfiguration of the agent0-connector is reported as (false, nil): the error is logged, but it is not passed on
+// to the caller, since requeuing the reconcile request cannot fix it, and since this optional feature must not block
+// the caller's remaining reconciliation steps.
 func (m *Agent0ConnectorManager) ReconcileAgent0Connector(
 	ctx context.Context,
 	trigger Agent0ConnectorReconcileTrigger,
@@ -123,20 +128,26 @@ func (m *Agent0ConnectorManager) ReconcileAgent0Connector(
 		return err == nil, err
 	}
 
-	err = m.createOrUpdateAgent0Connector(ctx, *extraConfig, logger)
-	return err == nil, err
+	return m.createOrUpdateAgent0Connector(ctx, *extraConfig, logger)
 }
 
+// createOrUpdateAgent0Connector creates or updates the agent0-connector resources. The returned flag reports whether
+// the resources have been reconciled. It is false for a misconfigured agent0-connector, which the function reports with
+// a nil error, see ReconcileAgent0Connector.
 func (m *Agent0ConnectorManager) createOrUpdateAgent0Connector(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
-) error {
+) (bool, error) {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.agent0ConnectorResourceManager.CreateOrUpdateAgent0ConnectorResources(ctx, extraConfig, logger)
 	if err != nil {
+		if errors.Is(err, a0cresources.ErrMisconfigured) {
+			// The resource manager has already logged the details of the misconfiguration.
+			return false, nil
+		}
 		logger.Error(err, "failed to create one or more of the agent0-connector resources")
-		return err
+		return false, err
 	}
 
 	if resourcesHaveBeenCreated && resourcesHaveBeenUpdated {
@@ -149,7 +160,7 @@ func (m *Agent0ConnectorManager) createOrUpdateAgent0Connector(
 		logger.Debug("agent0-connector Kubernetes resources are already up to date, no changes required")
 	}
 
-	return nil
+	return true, nil
 }
 
 func (m *Agent0ConnectorManager) removeAgent0Connector(
