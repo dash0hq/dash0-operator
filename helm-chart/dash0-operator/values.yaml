@@ -1358,12 +1358,14 @@ operator:
       # "kubectl auth can-i" requires and which cannot modify cluster state. Any other verb, in particular a write verb
       # like "create", "update", "patch" or "delete", as well as the wildcard "*", makes the Helm installation fail.
       #
-      # At least one rule has to grant the verb "get" for nonResourceURLs, otherwise the Helm installation fails as
-      # well: kubectl performs API discovery on virtually every command, so without that rule no kubectl command would
-      # work at all.
-      #
       # Note that reading the content of Kubernetes secrets is rejected by the agent0-connector itself, independent of
       # the rules configured here.
+      #
+      # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
+      # which are required for this component) to the group system:authenticated via the system:discovery cluster role
+      # binding. On a cluster where system:authenticated has been removed from that binding (e.g. for hardening etc.),
+      # add a rule with nonResourceURLs: ["*"] and verbs: ["get"], otherwise kubectl's API discovery fails and no
+      # kubectl command works.
       #
       # Example:
       # rules:
@@ -1376,8 +1378,6 @@ operator:
       #   - apiGroups: ["authorization.k8s.io"]
       #     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
       #     verbs: ["create"]
-      #   - nonResourceURLs: ["*"]
-      #     verbs: ["get"]
       rules: []
 
     # Additional labels to be set on the agent0-connector deployment managed by the operator.

@@ -275,8 +275,10 @@
   - get
   - list
 
-# Read access to all non-resource URLs (API discovery, OpenAPI schema, health endpoints, ...), mirroring what the
-# operator grants to the agent0-connector service account:
+# Read access to the non-resource URLs kubectl uses (API discovery, OpenAPI schema, server version, health endpoints).
+# On a stock cluster this rule grants nothing new: Kubernetes binds the system:discovery cluster role, which covers
+# exactly these URLs, to the group system:authenticated, and every service account is a member of that group. The rule
+# keeps the agent0-connector working on a cluster that has revoked that default binding.
 - nonResourceURLs:
   - '*'
   verbs:

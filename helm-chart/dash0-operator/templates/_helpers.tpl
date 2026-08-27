@@ -170,7 +170,6 @@ from the extra config map. Both need to be changed together.
 {{- $selfSubjectReviewApiGroup := "authorization.k8s.io" }}
 {{- $selfSubjectReviewResources := list "selfsubjectaccessreviews" "selfsubjectrulesreviews" }}
 {{- $rules := .Values.operator.agent0Connector.clusterRole.rules }}
-{{- $nonResourceUrlReadAccessGranted := false }}
 {{- range $ruleIndex, $rule := $rules }}
 {{- $apiGroups := $rule.apiGroups | default (list) }}
 {{- $resources := $rule.resources | default (list) }}
@@ -198,12 +197,6 @@ from the extra config map. Both need to be changed together.
 {{- fail (printf "Error: operator.agent0Connector.clusterRole.rules[%d]: the verb \"%s\" is not allowed. The custom cluster role for the agent0-connector must be read-only: only the verbs \"get\" and \"list\" are allowed, plus \"create\" for the resources \"selfsubjectaccessreviews\" and \"selfsubjectrulesreviews\" in the API group \"authorization.k8s.io\"." $ruleIndex $verb) }}
 {{- end }}
 {{- end }}
-{{- if and (gt (len $nonResourceUrls) 0) (has "get" $verbs) }}
-{{- $nonResourceUrlReadAccessGranted = true }}
-{{- end }}
-{{- end }}
-{{- if not $nonResourceUrlReadAccessGranted }}
-{{- fail "Error: operator.agent0Connector.clusterRole.rules: none of the rules grants the verb \"get\" for nonResourceURLs. The custom rules replace the operator's default rules entirely, and kubectl performs API discovery (/api, /apis, /openapi/v3, ...) on virtually every command, so without read access to the non-resource URLs no kubectl command would work at all. Add a rule with nonResourceURLs: [\"*\"] and verbs: [\"get\"]." }}
 {{- end }}
 {{- toYaml $rules }}
 {{- end }}

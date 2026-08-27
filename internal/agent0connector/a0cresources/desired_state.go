@@ -320,14 +320,15 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		Verbs:     allowedVerbs,
 	},
 
-	// Read access to non-resource URLs is required as well, like the following:
-	//  - /api, /apis, /apis/<group> - API discovery
-	//  - /openapi/v2, /openapi/v3 - the OpenAPI schema describing every resource type
+	// Read access to the non-resource URLs kubectl uses:
+	//  - /api, /apis, /apis/<group> - API discovery, which kubectl performs on essentially every command
+	//  - /openapi/v2, /openapi/v3 - the OpenAPI schema describing every resource type, used by "kubectl explain"
 	//  - /version - server version info
 	//  - /healthz, /livez, /readyz - health endpoints
 	//
-	// kubectl performs API discovery on essentially every command. Before kubectl converts "get pods" into an HTTP
-	// GET to /api/v1/.../pods, the client hits /api, /apis, /openapi/v3, ...
+	// On a stock cluster this rule grants nothing new: Kubernetes binds the system:discovery cluster role, which covers
+	// exactly these URLs, to the group system:authenticated, and every service account is a member of that group. The
+	// rule keeps the agent0-connector working on a cluster that has revoked that default binding.
 	{
 		NonResourceURLs: []string{"*"},
 		Verbs:           []string{"get"},
@@ -335,8 +336,9 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 }
 
 // assembleClusterRole creates a cluster-wide, strictly read-only role. By default, it grants get & list on the
-// well-known resource types listed in defaultAgent0ConnectorRbacRules plus read access to non-resource URLs, which is
-// what read-only kubectl commands (kubectl get, kubectl describe, kubectl logs, ...) require for those resource types.
+// well-known resource types listed in defaultAgent0ConnectorRbacRules, which is what read-only kubectl commands
+// (kubectl get, kubectl describe, kubectl logs, ...) require for those resource types, plus read access to the
+// non-resource URLs kubectl uses.
 // The default RBAC rules can be overridden with custom rules via the Helm chart to replace the default rules. Either
 // way, the role contains no verbs (update, patch, delete, deletecollection, and create only for self subject review
 // API), that would allow modifying cluster state.
@@ -364,10 +366,9 @@ func clusterRoleRules(extraConfig util.ExtraConfig) []rbacv1.PolicyRule {
 	return cloneRbacRules(defaultAgent0ConnectorRbacRules)
 }
 
-// validateClusterRoleRules verifies that the given custom cluster role rules grant only read access and that they
-// grant read access to the non-resource URLs. It returns an error describing every violation otherwise. The Helm chart
-// applies the same two checks, before the rules ever reach the cluster; the checks here also cover an extra config map
-// that has been edited directly.
+// validateClusterRoleRules verifies that the given custom cluster role rules grant only read access. It returns an
+// error describing every violation otherwise. The Helm chart applies the same check, before the rules ever reach the
+// cluster; the check here also covers an extra config map that has been edited directly.
 //
 // The allowed verbs and the self subject review carve-out are duplicated in the named template
 // dash0-operator.agent0ConnectorCustomClusterRoleRules in helm-chart/dash0-operator/templates/_helpers.tpl. Both need
@@ -380,11 +381,7 @@ func validateClusterRoleRules(rules []rbacv1.PolicyRule) error {
 	}
 
 	var allErrors []error
-	nonResourceUrlReadAccessGranted := false
 	for ruleIdx, rule := range rules {
-		if len(rule.NonResourceURLs) > 0 && slices.Contains(rule.Verbs, "get") {
-			nonResourceUrlReadAccessGranted = true
-		}
 		allowedVerbsForRule := allowedVerbs
 		if grantsSelfSubjectReviewsOnly(rule) {
 			allowedVerbsForRule = append(slices.Clone(allowedVerbs), selfSubjectReviewVerbs...)
@@ -403,14 +400,6 @@ func validateClusterRoleRules(rules []rbacv1.PolicyRule) error {
 				))
 			}
 		}
-	}
-
-	if !nonResourceUrlReadAccessGranted {
-		allErrors = append(allErrors, errors.New(
-			"none of the rules grants the verb \"get\" for nonResourceURLs: kubectl performs API discovery (/api, "+
-				"/apis, /openapi/v3, ...) on virtually every command, so without read access to the non-resource URLs "+
-				"no kubectl command would work at all",
-		))
 	}
 
 	return errors.Join(allErrors...)

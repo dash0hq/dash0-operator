@@ -2572,8 +2572,9 @@ spec:
 					"operator.agent0Connector.clusterRole.rules[0].resources": fmt.Sprintf(
 						"{%s}", agent0ConnectorDummyResourceType),
 					"operator.agent0Connector.clusterRole.rules[0].verbs": "{get,list}",
-					// Without read access to the non-resource URLs, kubectl's API discovery fails and no command works
-					// at all.
+					// "get" for the required API discovery URLs (/api, /apis, /openapi/v3, ...) is usually granted automatically
+					// via the group system:authenticated/cluster role binding system:discovery cluster, so this is not necessary
+					// in most clusters.
 					"operator.agent0Connector.clusterRole.rules[1].nonResourceURLs": "{*}",
 					"operator.agent0Connector.clusterRole.rules[1].verbs":           "{get}",
 				},

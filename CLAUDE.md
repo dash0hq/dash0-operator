@@ -136,16 +136,9 @@ When adding a new Dash0 CRD, it also needs to be added to the two copies of the 
 agent0-connector's ClusterRole: helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml, from
 which the Helm chart renders the -manager-agent0-connector-ro ClusterRole, and `defaultAgent0ConnectorRbacRules` in
 internal/agent0connector/a0cresources/desired_state.go, which is what the operator grants to the agent0-connector
-service account. Kubernetes' privilege escalation prevention only allows the operator to grant permissions it holds
-itself, so a rule that is missing from either list does not take effect. The Go test "drift protection: the default
-rules of the Helm chart are in sync with desired_state.go" in
-internal/agent0connector/a0cresources/desired_state_test.go compares both lists and fails when they diverge, so this
+service account. The Go test "drift protection: the default rules of the Helm chart are in sync with desired_state.go"
+in internal/agent0connector/a0cresources/desired_state_test.go compares both lists and fails when they diverge, so this
 drift cannot go unnoticed.
-
-Both lists are only the *default* rules. The Helm value operator.agent0Connector.clusterRole.rules replaces them
-entirely rather than extending them, so an installation with custom rules does not pick up a grant that is added to the
-default lists. The drift-protection test only compares the two default lists with each other and says nothing about
-that case.
 
 ### Adding a new reconciler with self-monitoring metrics
 

@@ -408,8 +408,6 @@ tests:
               - apiGroups: [""]
                 resources: ["pods"]
                 verbs: ["get", "list", "delete"]
-              - nonResourceURLs: ["*"]
-                verbs: ["get"]
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "delete" is not allowed'
@@ -424,8 +422,6 @@ tests:
               - apiGroups: ["*"]
                 resources: ["*"]
                 verbs: ["*"]
-              - nonResourceURLs: ["*"]
-                verbs: ["get"]
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "\*" is not allowed'
@@ -440,22 +436,6 @@ tests:
               - apiGroups: ["authorization.k8s.io", ""]
                 resources: ["selfsubjectaccessreviews", "pods"]
                 verbs: ["create"]
-              - nonResourceURLs: ["*"]
-                verbs: ["get"]
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "create" is not allowed'
-
-  - it: should reject custom cluster role rules which do not grant read access to the non-resource URLs
-    set:
-      operator:
-        agent0Connector:
-          enabled: true
-          clusterRole:
-            rules:
-              - apiGroups: [""]
-                resources: ["pods"]
-                verbs: ["get", "list"]
-    asserts:
-      - failedTemplate:
-          errorPattern: 'none of the rules grants the verb "get" for nonResourceURLs'
