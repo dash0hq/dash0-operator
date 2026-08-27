@@ -11,6 +11,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
@@ -294,6 +296,14 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 				Name:         "tmp",
 				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 			}))
+		})
+
+		It("requests and limits memory", func() {
+			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
+			Expect(container.Resources.Requests.Memory()).To(Equal(ptr.To(resource.MustParse("32Mi"))))
+			// The limit has to cover the peak of parsing and re-rendering a response of up to maxStdoutBytes, see
+			// images/agent0-connector/src/kubectl/kubectl.go.
+			Expect(container.Resources.Limits.Memory()).To(Equal(ptr.To(resource.MustParse("256Mi"))))
 		})
 
 		It("applies a restrictive container security context", func() {

@@ -81,6 +81,50 @@ func TestCappedBuffer(t *testing.T) {
 			t.Error("expected truncated to be true after exceeding the limit")
 		}
 	})
+
+	t.Run("does not report output of exactly the limit as truncated", func(t *testing.T) {
+		b := &cappedBuffer{limit: 4}
+		if _, err := b.Write([]byte("abcd")); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if b.truncated {
+			t.Error("expected truncated to be false for output of exactly the limit")
+		}
+	})
+
+	t.Run("caps stdout and stderr independently", func(t *testing.T) {
+		// stderr gets a much smaller limit than stdout, so the two streams must not share one limit.
+		if maxStderrBytes >= maxStdoutBytes {
+			t.Fatalf("expected maxStderrBytes (%d) to be smaller than maxStdoutBytes (%d)",
+				maxStderrBytes, maxStdoutBytes)
+		}
+		stdout := &cappedBuffer{limit: maxStdoutBytes}
+		stderr := &cappedBuffer{limit: maxStderrBytes}
+		payload := make([]byte, maxStderrBytes+1)
+		if _, err := stdout.Write(payload); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if _, err := stderr.Write(payload); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if stdout.truncated {
+			t.Error("expected stdout not to be truncated by an amount that only exceeds the stderr limit")
+		}
+		if !stderr.truncated {
+			t.Error("expected stderr to be truncated at its own, smaller limit")
+		}
+	})
+}
+
+func TestWithTruncationNotice(t *testing.T) {
+	// The notice names the limit of the stream it belongs to, so that stdout and stderr do not both report the stdout
+	// limit.
+	if notice := withTruncationNotice("out", maxStdoutBytes); !strings.Contains(notice, "3145728 bytes") {
+		t.Errorf("expected the stdout notice to name maxStdoutBytes, got %q", notice)
+	}
+	if notice := withTruncationNotice("err", maxStderrBytes); !strings.Contains(notice, "262144 bytes") {
+		t.Errorf("expected the stderr notice to name maxStderrBytes, got %q", notice)
+	}
 }
 
 func TestExecuteCommandRequest(t *testing.T) {

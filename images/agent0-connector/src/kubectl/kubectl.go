@@ -46,11 +46,23 @@ const (
 	// kubectl subprocess then runs with HOME set to this directory (see kubectlEnv).
 	KubectlTmpEnvVarName = "DASH0_KUBECTL_TMP"
 
-	// maxOutputBytesPerStream caps how many bytes of stdout and stderr (each) are captured from a kubectl invocation.
-	// The output is buffered in memory and sent back in a single gRPC message, so unbounded output (e.g. "kubectl get
-	// -A -o yaml" on a large cluster, or a noisy "kubectl logs") could exhaust the pod's memory limit or exceed gRPC's
-	// default maximum message size. Output beyond this limit is discarded and a truncation notice is appended.
-	maxOutputBytesPerStream = 1024 * 1024 // 1 MiB
+	// maxStdoutBytes caps how many bytes of stdout are captured from a kubectl invocation. The output is buffered in
+	// memory and sent back in a single gRPC message, so unbounded output (e.g. "kubectl get -A -o yaml" on a large
+	// cluster, or a noisy "kubectl logs") could exhaust the pod's memory limit or exceed gRPC's default maximum message
+	// size of 4 MiB. Output beyond this limit is discarded and a truncation notice is appended.
+	//
+	// A response that has to be redacted is withheld entirely once it is truncated, because a truncated document cannot
+	// be parsed (see redactSecretsInResponse). Redaction covers every workload resource type, so this limit decides how
+	// large a workload listing may be before it becomes unreadable rather than merely incomplete, which is why it is
+	// well above the size of a single resource. It is paired with the pod's memory limit in
+	// internal/agent0connector/a0cresources/desired_state.go: parsing a document of this size into Go maps and
+	// rendering it again needs a multiple of it.
+	maxStdoutBytes = 3 * 1024 * 1024 // 3 MiB
+
+	// maxStderrBytes caps how many bytes of stderr are captured from a kubectl invocation. kubectl writes error
+	// messages and warnings to stderr, never resource content, so it needs far less room than stdout. Keeping it small
+	// holds the whole response below gRPC's default maximum message size of 4 MiB even when both streams are full.
+	maxStderrBytes = 256 * 1024 // 256 KiB
 )
 
 // commandTimeout bounds the execution time of a single kubectl invocation.
@@ -158,7 +170,7 @@ func ExecuteCommandRequest(
 	execCtx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 
-	stdout, stderr, err := runKubectl(execCtx, kubectlTmpDir, req.GetArguments(), maxOutputBytesPerStream)
+	stdout, stderr, err := runKubectl(execCtx, kubectlTmpDir, req.GetArguments(), maxStdoutBytes, maxStderrBytes)
 
 	resp := &pb.CommandResponse{
 		RequestId: req.GetRequestId(),
@@ -184,14 +196,22 @@ func ExecuteCommandRequest(
 			"reason", redactionErr.Error(),
 		)
 		withholdResponse(resp, redactionErr)
+		if additionalStdErrMsg != "" {
+			resp.Stderr = appendLine(resp.Stderr, additionalStdErrMsg)
+		}
+		if timedOut {
+			// The timeout is why the response could not be parsed, so it stays the reported exit code and keeps the
+			// exit code consistent with resp.Timeout.
+			resp.ExitCode = exitCodeTimedOut
+		}
 		return resp
 	}
 
 	if stdout.truncated {
-		resp.Stdout = withTruncationNotice(resp.Stdout)
+		resp.Stdout = withTruncationNotice(resp.Stdout, maxStdoutBytes)
 	}
 	if stderr.truncated {
-		resp.Stderr = withTruncationNotice(resp.Stderr)
+		resp.Stderr = withTruncationNotice(resp.Stderr, maxStderrBytes)
 	}
 	if additionalStdErrMsg != "" {
 		resp.Stderr = appendLine(resp.Stderr, additionalStdErrMsg)
@@ -200,16 +220,18 @@ func ExecuteCommandRequest(
 	return resp
 }
 
-// runKubectl runs kubectl with the given arguments, capturing at most limit bytes of stdout and of stderr, and returns
-// the two capped buffers together with the error reported by exec (nil if kubectl exited with code zero).
+// runKubectl runs kubectl with the given arguments, capturing at most stdoutLimit bytes of stdout and stderrLimit
+// bytes of stderr, and returns the two capped buffers together with the error reported by exec (nil if kubectl exited
+// with code zero).
 func runKubectl(
 	ctx context.Context,
 	kubectlTmpDir string,
 	arguments []string,
-	limit int,
+	stdoutLimit int,
+	stderrLimit int,
 ) (*cappedBuffer, *cappedBuffer, error) {
-	stdout := &cappedBuffer{limit: limit}
-	stderr := &cappedBuffer{limit: limit}
+	stdout := &cappedBuffer{limit: stdoutLimit}
+	stderr := &cappedBuffer{limit: stderrLimit}
 	cmd := exec.CommandContext(ctx, kubectlCommand, arguments...)
 	cmd.Env = kubectlEnv(kubectlTmpDir)
 	cmd.Stdout = stdout
@@ -266,11 +288,11 @@ func appendLine(existing, line string) string {
 	return existing + "\n" + line
 }
 
-// withTruncationNotice appends a notice that the output was truncated at maxOutputBytesPerStream bytes.
-func withTruncationNotice(output string) string {
+// withTruncationNotice appends a notice that the output was truncated at the given limit.
+func withTruncationNotice(output string, limit int) string {
 	return appendLine(
 		output,
-		fmt.Sprintf("[dash0 agent0-connector truncated the output at %d bytes]", maxOutputBytesPerStream),
+		fmt.Sprintf("[dash0 agent0-connector truncated the output at %d bytes]", limit),
 	)
 }
 
