@@ -771,6 +771,70 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					},
 				},
 			}),
+			Entry("should reject monitoring resource with an unknown transform context", ottlValidationTestConfig{
+				transform: &dash0common.Transform{
+					Logs: []json.RawMessage{
+						[]byte(`{
+					        "context": "no_such_context",
+					        "statements": [ "truncate_all(log.attributes, 1024)" ]
+					    }`),
+					},
+				},
+				expectErrorSubstrings: []string{
+					`unknown context no_such_context`,
+				},
+			}),
+			Entry("should reject monitoring resource with invalid syntax in transform conditions", ottlValidationTestConfig{
+				transform: &dash0common.Transform{
+					Metrics: []json.RawMessage{
+						[]byte(`{
+					        "conditions": [ "invalid_syntax(..." ],
+					        "statements": [ "truncate_all(datapoint.attributes, 1024)" ]
+					    }`),
+					},
+				},
+				expectErrorSubstrings: []string{
+					`condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
+				},
+			}),
+			Entry("should reject monitoring resource with an undefined transform function", ottlValidationTestConfig{
+				transform: &dash0common.Transform{
+					Traces: []json.RawMessage{
+						[]byte(`"no_such_function(span.attributes)"`),
+					},
+				},
+				expectErrorSubstrings: []string{
+					`inferred context "span" does not support the function "no_such_function"`,
+				},
+			}),
+			Entry("should reject monitoring resource with an undefined filter function", ottlValidationTestConfig{
+				filter: &dash0common.Filter{
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter: []string{`NoSuchFunction(body)`},
+					},
+				},
+				expectErrorSubstrings: []string{
+					`undefined function "NoSuchFunction"`,
+				},
+			}),
+			Entry("should allow all error modes in filter and transform", ottlValidationTestConfig{
+				filter: &dash0common.Filter{
+					ErrorMode: dash0common.FilterTransformErrorModeSilent,
+					Logs: &dash0common.LogFilter{
+						LogRecordFilter: []string{`IsMatch(body, ".*password.*")`},
+					},
+				},
+				transform: &dash0common.Transform{
+					ErrorMode: new(dash0common.FilterTransformErrorModePropagate),
+					Logs: []json.RawMessage{
+						[]byte(`{
+					        "context": "log",
+					        "error_mode": "ignore",
+					        "statements": [ "truncate_all(log.attributes, 1024)" ]
+					    }`),
+					},
+				},
+			}),
 		)
 
 		type autoMonitoringNamespaceValidationTestConfig struct {

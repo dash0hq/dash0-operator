@@ -1556,6 +1556,46 @@ traces:
 						"",
 					)
 				})
+
+				It("rejects a monitoring resource with a syntactically invalid span filter", func() {
+					filter :=
+						`
+traces:
+  span:
+  - 'invalid_syntax(...'
+`
+					deployDash0MonitoringResourceExpectingRejection(
+						applicationUnderTestNamespace,
+						dash0MonitoringValues{
+							InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							Filter:                  filter,
+						},
+						`unable to parse OTTL condition "invalid_syntax(..."`,
+						"condition has invalid syntax",
+					)
+				})
+
+				It("rejects a monitoring resource with an undefined function in a log record filter", func() {
+					filter :=
+						`
+logs:
+  log_records:
+  - 'NoSuchFunction(body)'
+`
+					deployDash0MonitoringResourceExpectingRejection(
+						applicationUnderTestNamespace,
+						dash0MonitoringValues{
+							InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							Filter:                  filter,
+						},
+						`unable to parse OTTL condition "NoSuchFunction(body)"`,
+						`undefined function "NoSuchFunction"`,
+					)
+				})
 			})
 
 			Describe("telemetry transformation", func() {
@@ -1625,6 +1665,96 @@ trace_statements:
 							truncatedRoute,
 						)
 					}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+				})
+
+				It("rejects a monitoring resource with an invalid transform in the basic configuration style", func() {
+					transform :=
+						`
+trace_statements:
+- 'invalid_syntax(...'
+`
+					deployDash0MonitoringResourceExpectingRejection(
+						applicationUnderTestNamespace,
+						dash0MonitoringValues{
+							InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							Transform:               transform,
+						},
+						`from statements ["invalid_syntax(..."]`,
+						"statement has invalid syntax",
+					)
+				})
+
+				It("rejects a monitoring resource with an invalid transform in the advanced configuration style", func() {
+					transform :=
+						`
+metric_statements:
+- context: datapoint
+  conditions:
+  - 'invalid_syntax(...'
+  statements:
+  - 'truncate_all(datapoint.attributes, 10)'
+`
+					deployDash0MonitoringResourceExpectingRejection(
+						applicationUnderTestNamespace,
+						dash0MonitoringValues{
+							InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							Transform:               transform,
+						},
+						`unable to parse OTTL condition "invalid_syntax(..."`,
+						"condition has invalid syntax",
+					)
+				})
+
+				It("accepts a transform that mixes the basic and the advanced configuration style", func() {
+					// The transform processor rejects a signal that mixes a bare statement with a statement group. The
+					// operator normalizes every bare statement into its own group before validation, so the mix stays
+					// valid here and ends up as two separate groups in the collector configuration.
+					transform :=
+						`
+log_statements:
+- 'truncate_all(log.attributes, 128)'
+- context: log
+  conditions:
+  - 'log.severity_number >= SEVERITY_NUMBER_WARN'
+  statements:
+  - 'set(log.attributes["mixed_style"], "yes")'
+`
+					deployDash0MonitoringResourceWithRetry(
+						applicationUnderTestNamespace,
+						dash0MonitoringValues{
+							InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							Transform:               transform,
+						},
+						operatorNamespace,
+					)
+
+					By("verifying that the bare statement became its own group, scoped to the namespace")
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'truncate_all(log.attributes, 128)'`,
+					)
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns"'`,
+					)
+
+					By("verifying that the statement group kept its context and condition")
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						`- 'set(log.attributes["mixed_style"], "yes")'`,
+					)
+					verifyDaemonSetCollectorConfigMapContainsString(
+						operatorNamespace,
+						// nolint:lll
+						`- 'resource.attributes["k8s.namespace.name"] == "e2e-test-ns" and (log.severity_number >= SEVERITY_NUMBER_WARN)'`,
+					)
+					verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, "context: log")
 				})
 			})
 
