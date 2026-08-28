@@ -1432,6 +1432,7 @@ func newAgent0ConnectorManagerWithInvalidClusterRoleRules() *agent0connector.Age
 		extraConfig,
 		false,
 		agent0ConnectorResourceManager,
+		recorder,
 	)
 }
 

@@ -1092,6 +1092,9 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						operatorNamespace,
 						agent0ConnectorDeployment,
 					), false, false, false)).ToNot(Succeed())
+
+				// A disabled agent0-connector is reported nowhere: neither the status entry nor an event exists.
+				verifyNoAgent0ConnectorStatusOrEvent(dash0OperatorConfigurationResourceName)
 			})
 
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
@@ -2273,6 +2276,8 @@ log_statements:
 				))).To(Succeed())
 			}, 120*time.Second, 2*time.Second).Should(Succeed())
 
+			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceName)
+
 			By("verifying the agent0-connector subscribes with the expected client ID and authorization token")
 			Eventually(func(g Gomega) {
 				clients := fetchOutboundConnectorMockClients(g)
@@ -2606,6 +2611,8 @@ spec:
 					"--timeout=30s",
 				))).To(Succeed())
 			}, 120*time.Second, 2*time.Second).Should(Succeed())
+
+			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceName)
 
 			By("verifying the agent0-connector has connected to the outbound-connector mock")
 			Eventually(func(g Gomega) {

@@ -24,6 +24,13 @@ import (
 // fails identically. Callers must not requeue a reconcile request for it.
 var ErrMisconfigured = errors.New("the agent0-connector is misconfigured")
 
+// ErrInvalidClusterRoleRules and ErrNoAuthorizationToken are the individual misconfigurations, so that a caller can
+// report which one occurred. Both wrap ErrMisconfigured, hence errors.Is(err, ErrMisconfigured) matches either.
+var (
+	ErrInvalidClusterRoleRules = fmt.Errorf("%w: the custom cluster role rules are invalid", ErrMisconfigured)
+	ErrNoAuthorizationToken    = fmt.Errorf("%w: no Dash0 authorization token is available", ErrMisconfigured)
+)
+
 type Agent0ConnectorResourceManager struct {
 	client.Client
 	scheme                    *runtime.Scheme
@@ -56,7 +63,7 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 			"agent0-connector resources")
 		// The rules only change when the extra config map changes, and that triggers a new reconciliation via
 		// UpdateExtraConfig.
-		return false, false, fmt.Errorf("%w: %w", ErrMisconfigured, err)
+		return false, false, fmt.Errorf("%w: %w", ErrInvalidClusterRoleRules, err)
 	}
 
 	authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
@@ -68,7 +75,7 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 			"agent0-connector workload, not creating the agent0-connector resources")
 		// The authorization is read from the operator manager's environment variables once at startup, so it cannot
 		// change while the process runs.
-		return false, false, fmt.Errorf("%w: %w", ErrMisconfigured, err)
+		return false, false, fmt.Errorf("%w: %w", ErrNoAuthorizationToken, err)
 	}
 
 	desiredState := assembleDesiredState(&m.agent0ConnectorConfig, &authTokenEnvVar, extraConfig)
