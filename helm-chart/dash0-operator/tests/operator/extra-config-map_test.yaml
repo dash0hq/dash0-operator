@@ -295,6 +295,7 @@ tests:
             podAnnotations:
               edge-proxy-pod-annotation: edge-proxy-pod-annotation-value
         agent0Connector:
+          enabled: true
           containerResources:
             limits:
               cpu: 300m
@@ -882,6 +883,7 @@ tests:
     set:
       operator:
         agent0Connector:
+          enabled: true
           labels:
             a0c-label: a0c-label-value
           annotations:
@@ -919,6 +921,10 @@ tests:
           pattern: agent0ConnectorPodAnnotations
 
   - it: should render the default agent0-connector container resources
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
     asserts:
       - matchRegex:
           path: data['extra.yaml']
@@ -934,6 +940,7 @@ tests:
     set:
       operator:
         agent0Connector:
+          enabled: true
           containerResources:
             limits:
               cpu: 300m
@@ -955,7 +962,88 @@ tests:
                 cpu: 20m
                 memory: 64Mi
 
+  - it: should not render custom agent0-connector cluster role rules by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorClusterRoleRules
+
+  - it: should not render custom agent0-connector cluster role rules when the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list"]
+    asserts:
+      # The operator does not read the rules when it does not manage the agent0-connector, and the
+      # -manager-agent0-connector-ro cluster role which would have to hold them is not rendered either.
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorClusterRoleRules
+
+  - it: should render custom agent0-connector cluster role rules when set
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["configmaps", "pods"]
+                verbs: ["get", "list"]
+              - apiGroups: ["authorization.k8s.io"]
+                resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+                verbs: ["create"]
+              - nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorClusterRoleRules:
+              - apiGroups:
+                - ""
+                resources:
+                - configmaps
+                - pods
+                verbs:
+                - get
+                - list
+              - apiGroups:
+                - authorization.k8s.io
+                resources:
+                - selfsubjectaccessreviews
+                - selfsubjectrulesreviews
+                verbs:
+                - create
+              - nonResourceURLs:
+                - '\*'
+                verbs:
+                - get
+
+  - it: should reject custom agent0-connector cluster role rules with a write verb
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list", "patch"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "patch" is not allowed'
+
   - it: should render the default agent0-connector tolerations and node affinity
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
     asserts:
       - matchRegex:
           path: data['extra.yaml']
@@ -974,6 +1062,25 @@ tests:
                     operator: In
                     values:
                     - linux
+
+  - it: should not render any agent0-connector settings while the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+          containerResources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+          tolerations:
+            - key: key6
+              operator: Equal
+              value: value6
+              effect: NoSchedule
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0Connector
 
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
@@ -1184,26 +1291,6 @@ tests:
             targetAllocatorTolerations:
               []
             targetAllocatorNodeAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                nodeSelectorTerms:
-                - matchExpressions:
-                  - key: dash0.com/enable
-                    operator: NotIn
-                    values:
-                    - "false"
-                  - key: kubernetes.io/os
-                    operator: In
-                    values:
-                    - linux
-            agent0ConnectorContainerResources:
-              gomemlimit: 150MiB
-              limits:
-                memory: 256Mi
-              requests:
-                memory: 32Mi
-            agent0ConnectorTolerations:
-              []
-            agent0ConnectorNodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
                 nodeSelectorTerms:
                 - matchExpressions:

@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"text/template"
 	"time"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/agent0connector"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,7 +33,8 @@ type dash0OperatorConfigurationValues struct {
 }
 
 const (
-	dash0OperatorConfigurationResourceName = "dash0-operator-configuration-resource-e2e"
+	dash0OperatorConfigurationResourceManuallyManagedName      = "dash0-operator-configuration-resource-e2e"
+	dash0OperatorConfigurationResourceAutomaticallyManagedName = "dash0-operator-configuration-auto-resource"
 
 	// We are using the Dash0 exporter which uses a gRPC exporter under the hood, so actually omitting the http://
 	// scheme would be fine, but for self-monitoring we would prepend https:// to URLs without scheme, see comment in
@@ -108,7 +112,7 @@ func deployRenderedOperatorConfigurationResource(
 }
 
 func waitForOperatorConfigurationResourceToBecomeAvailable() {
-	waitForOperatorConfigurationResourceWithNameToBecomeAvailable(dash0OperatorConfigurationResourceName)
+	waitForOperatorConfigurationResourceWithNameToBecomeAvailable(dash0OperatorConfigurationResourceManuallyManagedName)
 }
 
 func waitForAutoOperatorConfigurationResourceToBecomeAvailable() {
@@ -235,7 +239,7 @@ func updateDash0OperatorConfigurationResource(
 			"kubectl",
 			"patch",
 			"Dash0OperatorConfiguration",
-			dash0OperatorConfigurationResourceName,
+			dash0OperatorConfigurationResourceManuallyManagedName,
 			"--type",
 			"json",
 			"-p",
@@ -250,7 +254,78 @@ func undeployDash0OperatorConfigurationResource() {
 			"kubectl",
 			"delete",
 			"dash0operatorconfiguration",
-			dash0OperatorConfigurationResourceName,
+			dash0OperatorConfigurationResourceManuallyManagedName,
 			"--ignore-not-found",
 		))).To(Succeed())
+}
+
+// verifyAgent0ConnectorIsReportedAsDeployed verifies that the operator reports the agent0-connector as deployed, both
+// in the status of the operator configuration resource and via a Kubernetes event. The status is written on every
+// reconciliation, the event only when the outcome changes.
+func verifyAgent0ConnectorIsReportedAsDeployed(operatorConfigurationResourceName string) {
+	By("verifying that the operator configuration resource reports the agent0-connector as deployed")
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		agent0ConnectorStatus := operatorConfiguration.Status.Agent0Connector
+		g.Expect(agent0ConnectorStatus).ToNot(BeNil(),
+			"the operator configuration resource has no status.agent0Connector entry")
+		g.Expect(agent0ConnectorStatus.Deployed).To(BeTrue(),
+			"the agent0-connector is reported as not deployed: %s", agent0ConnectorStatus.Message)
+		g.Expect(agent0ConnectorStatus.Reason).To(Equal(agent0connector.StatusReasonDeployed))
+
+		// An issue with the agent0-connector must not affect the availability of the operator configuration resource,
+		// and neither must the absence of one.
+		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
+		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+
+	By("verifying that the operator has written the agent0-connector deployed event")
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		g.Expect(agent0ConnectorEventReasons(g, string(operatorConfiguration.UID))).To(
+			ContainElement(string(util.ReasonAgent0ConnectorDeployed)))
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+}
+
+// verifyNoAgent0ConnectorStatusOrEvent verifies that the operator reports nothing about the agent0-connector, which is
+// what it does when the agent0-connector is disabled.
+func verifyNoAgent0ConnectorStatusOrEvent(operatorConfigurationResourceName string) {
+	By("verifying that the operator configuration resource has no agent0-connector status entry and no event")
+	Consistently(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		g.Expect(operatorConfiguration.Status.Agent0Connector).To(BeNil())
+		g.Expect(agent0ConnectorEventReasons(g, string(operatorConfiguration.UID))).To(BeEmpty())
+	}, 10*time.Second, pollingInterval).Should(Succeed())
+}
+
+// agent0ConnectorEventReasons returns the reasons of the agent0-connector events the operator has written for the
+// operator configuration resource with the given UID. The events are matched by UID rather than by name, so that
+// events left behind by an earlier test which used an equally named resource are ignored. The events are attached to
+// the cluster-scoped operator configuration resource, hence they are not confined to a single namespace.
+func agent0ConnectorEventReasons(g Gomega, operatorConfigurationResourceUid string) []string {
+	output, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"events.events.k8s.io",
+		"--all-namespaces",
+		"-o",
+		"jsonpath={range .items[*]}{.regarding.uid}{\" \"}{.reason}{\"\\n\"}{end}",
+	), false)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	agent0ConnectorReasons := []string{
+		string(util.ReasonAgent0ConnectorDeployed),
+		string(util.ReasonAgent0ConnectorNotDeployed),
+	}
+	var reasons []string
+	for _, line := range strings.Split(output, "\n") {
+		uid, reason, found := strings.Cut(strings.TrimSpace(line), " ")
+		if !found || uid != operatorConfigurationResourceUid {
+			continue
+		}
+		if slices.Contains(agent0ConnectorReasons, reason) {
+			reasons = append(reasons, reason)
+		}
+	}
+	return reasons
 }

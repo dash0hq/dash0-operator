@@ -2214,6 +2214,7 @@ func setupAgent0ConnectorManager(
 		extraConfig,
 		developmentMode,
 		agent0ConnectorResourceManager,
+		mgr.GetEventRecorder("dash0-agent0-connector"),
 	)
 	extraConfigMapWatcher.AddClient(agent0ConnectorManager)
 	agent0ConnectorReconciler := agent0connector.NewAgent0ConnectorReconciler(

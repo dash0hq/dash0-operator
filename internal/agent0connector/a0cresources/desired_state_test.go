@@ -30,7 +30,7 @@ const (
 	testPseudoClusterUid  = "test-cluster-uid"
 )
 
-const selfSubjectReviewApiGroup = "authorization.k8s.io"
+const expectedSelfSubjectReviewApiGroup = "authorization.k8s.io"
 
 var (
 	expectedVerbs = []string{"get", "list"}
@@ -93,7 +93,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(clusterRole.Rules).ToNot(BeEmpty())
 			for _, rule := range clusterRole.Rules {
 				expectedVerbsForRule := expectedVerbs
-				if slices.Contains(rule.APIGroups, selfSubjectReviewApiGroup) {
+				if slices.Contains(rule.APIGroups, expectedSelfSubjectReviewApiGroup) {
 					expectedVerbsForRule = expectedSelfSubjectReviewVerbs
 				}
 				for _, verb := range rule.Verbs {
@@ -118,7 +118,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 					continue
 				}
 				selfSubjectReviewRules++
-				Expect(rule.APIGroups).To(ConsistOf(selfSubjectReviewApiGroup))
+				Expect(rule.APIGroups).To(ConsistOf(expectedSelfSubjectReviewApiGroup))
 				Expect(rule.Resources).To(ConsistOf(expectedSelfSubjectReviewResources))
 				Expect(rule.Verbs).To(ConsistOf("create"))
 			}
@@ -170,7 +170,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 
 		It("grants read access to every Dash0 custom resource type", func() {
 			// The expected resource types are read from the generated custom resource definitions instead of being
-			// listed here, so that a new Dash0 CRD which has not been added to agent0ConnectorRbacRules fails this
+			// listed here, so that a new Dash0 CRD which has not been added to defaultAgent0ConnectorRbacRules fails this
 			// test. Without the rule the agent0-connector cannot read the new resource type at all.
 			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
@@ -183,7 +183,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 				})).To(
 					BeTrue(),
 					"cluster role must grant get & list on %s.%s; add the resource type to "+
-						"agent0ConnectorRbacRules and to the -manager-agent0-connector-ro cluster role of the Helm chart",
+						"defaultAgent0ConnectorRbacRules and to the -manager-agent0-connector-ro cluster role of the Helm chart",
 					crd.plural,
 					crd.apiGroup,
 				)
@@ -208,6 +208,222 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 					Expect(rule.Resources).ToNot(ContainElement("configmaps"))
 				}
 			}
+		})
+
+		Describe("with custom rules from the Helm chart", func() {
+			It("replaces the default rules instead of extending them", func() {
+				customRules := []rbacv1.PolicyRule{
+					{
+						APIGroups: []string{""},
+						Resources: []string{"configmaps", "pods"},
+						Verbs:     []string{"get", "list"},
+					},
+					{
+						NonResourceURLs: []string{"*"},
+						Verbs:           []string{"get"},
+					},
+				}
+
+				clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
+					Agent0ConnectorClusterRoleRules: customRules,
+				}))
+
+				Expect(clusterRole.Rules).To(HaveLen(len(customRules)))
+				Expect(clusterRole.Rules[0].Resources).To(ConsistOf("configmaps", "pods"))
+				// A resource type of the default rules which the custom rules do not list must not be granted.
+				for _, rule := range clusterRole.Rules {
+					Expect(rule.Resources).ToNot(ContainElement("nodes"))
+				}
+			})
+
+			It("falls back to the default rules when the custom rule list is empty", func() {
+				clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
+					Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{},
+				}))
+
+				Expect(clusterRole.Rules).To(HaveLen(len(defaultAgent0ConnectorRbacRules)))
+			})
+
+			It("does not share the custom rules with the extra config", func() {
+				// The extra config outlives the reconcile that reads it, so the assembled cluster role must not alias its
+				// rules; see cloneRbacRules.
+				extraConfig := util.ExtraConfig{
+					Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{
+						{
+							APIGroups: []string{""},
+							Resources: []string{"pods"},
+							Verbs:     []string{"get", "list"},
+						},
+					},
+				}
+
+				clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, extraConfig))
+				clusterRole.Rules[0].APIGroups[0] = "modified"
+				clusterRole.Rules[0].Resources[0] = "modified"
+				clusterRole.Rules[0].Verbs[0] = "modified"
+
+				Expect(extraConfig.Agent0ConnectorClusterRoleRules[0].APIGroups).To(ConsistOf(""))
+				Expect(extraConfig.Agent0ConnectorClusterRoleRules[0].Resources).To(ConsistOf("pods"))
+				Expect(extraConfig.Agent0ConnectorClusterRoleRules[0].Verbs).To(ConsistOf("get", "list"))
+			})
+		})
+
+		Describe("validating custom rules", func() {
+			It("accepts an empty rule list", func() {
+				Expect(validateClusterRoleRules(nil)).To(Succeed())
+			})
+
+			It("accepts read-only rules", func() {
+				Expect(validateClusterRoleRules([]rbacv1.PolicyRule{
+					{
+						APIGroups: []string{"", "apps"},
+						Resources: []string{"pods", "deployments"},
+						Verbs:     []string{"get", "list"},
+					},
+					{
+						NonResourceURLs: []string{"*"},
+						Verbs:           []string{"get"},
+					},
+				})).To(Succeed())
+			})
+
+			It("accepts the default rules of the operator", func() {
+				Expect(validateClusterRoleRules(defaultAgent0ConnectorRbacRules)).To(Succeed())
+			})
+
+			It("accepts create for the self subject review API", func() {
+				Expect(validateClusterRoleRules([]rbacv1.PolicyRule{
+					{
+						APIGroups: []string{expectedSelfSubjectReviewApiGroup},
+						Resources: expectedSelfSubjectReviewResources,
+						Verbs:     []string{"create"},
+					},
+				})).To(Succeed())
+			})
+
+			DescribeTable(
+				"rejects a rule which grants more than read-only access",
+				func(rule rbacv1.PolicyRule, expectedVerbInMessage string) {
+					err := validateClusterRoleRules([]rbacv1.PolicyRule{rule})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("rules[0]"))
+					Expect(err.Error()).To(ContainSubstring(expectedVerbInMessage))
+				},
+				Entry("a write verb", rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Resources: []string{"pods"},
+					Verbs:     []string{"get", "list", "delete"},
+				}, `the verb "delete" is not allowed`),
+				Entry("the wildcard verb", rbacv1.PolicyRule{
+					APIGroups: []string{"*"},
+					Resources: []string{"*"},
+					Verbs:     []string{"*"},
+				}, `the verb "*" is not allowed`),
+				Entry("the escalate verb", rbacv1.PolicyRule{
+					APIGroups: []string{"rbac.authorization.k8s.io"},
+					Resources: []string{"clusterroles"},
+					Verbs:     []string{"escalate"},
+				}, `the verb "escalate" is not allowed`),
+				Entry("the watch verb, since streaming commands are not supported", rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Resources: []string{"pods"},
+					Verbs:     []string{"get", "list", "watch"},
+				}, `the verb "watch" is not allowed`),
+				Entry("create for a resource type which is not a self subject review", rbacv1.PolicyRule{
+					APIGroups: []string{expectedSelfSubjectReviewApiGroup},
+					Resources: []string{"subjectaccessreviews"},
+					Verbs:     []string{"create"},
+				}, `the verb "create" is not allowed`),
+				Entry("create for a rule which also addresses another API group", rbacv1.PolicyRule{
+					APIGroups: []string{expectedSelfSubjectReviewApiGroup, ""},
+					Resources: []string{"selfsubjectaccessreviews", "selfsubjectrulesreviews", "pods"},
+					Verbs:     []string{"create"},
+				}, `the verb "create" is not allowed`),
+				Entry("create for non-resource URLs", rbacv1.PolicyRule{
+					NonResourceURLs: []string{"*"},
+					Verbs:           []string{"create"},
+				}, `the verb "create" is not allowed`),
+			)
+
+			DescribeTable(
+				"rejects a rule which is not a well-formed RBAC policy rule",
+				func(rule rbacv1.PolicyRule, expectedMessage string) {
+					err := validateClusterRoleRules([]rbacv1.PolicyRule{rule})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("rules[0]"))
+					Expect(err.Error()).To(ContainSubstring(expectedMessage))
+				},
+				Entry("a rule without verbs", rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Resources: []string{"pods"},
+				}, "verbs must contain at least one value"),
+				Entry("a rule with resources and non-resource URLs", rbacv1.PolicyRule{
+					APIGroups:       []string{""},
+					Resources:       []string{"pods"},
+					NonResourceURLs: []string{"*"},
+					Verbs:           []string{"get"},
+				}, "cannot apply to both regular resources and non-resource URLs"),
+				Entry("a rule with resource names and non-resource URLs", rbacv1.PolicyRule{
+					ResourceNames:   []string{"some-pod"},
+					NonResourceURLs: []string{"*"},
+					Verbs:           []string{"get"},
+				}, "cannot apply to both regular resources and non-resource URLs"),
+				Entry("a rule without API groups", rbacv1.PolicyRule{
+					Resources: []string{"pods"},
+					Verbs:     []string{"get"},
+				}, "must supply at least one apiGroup"),
+				Entry("a rule without resources", rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Verbs:     []string{"get"},
+				}, "must supply at least one resource"),
+			)
+
+			It("accepts a rule which only addresses non-resource URLs", func() {
+				Expect(validateClusterRoleRules([]rbacv1.PolicyRule{
+					{
+						NonResourceURLs: []string{"*"},
+						Verbs:           []string{"get"},
+					},
+				})).To(Succeed())
+			})
+
+			It("reports every violation instead of only the first one", func() {
+				err := validateClusterRoleRules([]rbacv1.PolicyRule{
+					{
+						APIGroups: []string{""},
+						Resources: []string{"pods"},
+						Verbs:     []string{"get", "patch"},
+					},
+					{
+						APIGroups: []string{"apps"},
+						Resources: []string{"deployments"},
+						Verbs:     []string{"get", "list"},
+					},
+					{
+						APIGroups: []string{"apps"},
+						Resources: []string{"daemonsets"},
+						Verbs:     []string{"deletecollection"},
+					},
+				})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(`rules[0]: the verb "patch"`))
+				Expect(err.Error()).To(ContainSubstring(`rules[2]: the verb "deletecollection"`))
+				Expect(err.Error()).ToNot(ContainSubstring("rules[1]"))
+			})
+		})
+
+		It("drift protection: the default rules of the Helm chart are in sync with desired_state.go", func() {
+			// The Helm chart has its own copy of the default rules for the -manager-agent0-connector-ro cluster
+			// role.
+			Expect(clusterRoleRules(util.ExtraConfig{})).To(
+				ConsistOf(readDefaultClusterRoleRulesOfHelmChart()),
+				"the default rules of the operator and of the Helm chart have diverged; reconcile "+
+					"defaultAgent0ConnectorRbacRules with %s",
+				defaultClusterRoleRulesOfHelmChart,
+			)
 		})
 
 		It("does not share the rules with other cluster role instances", func() {
@@ -417,6 +633,29 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 	})
 })
+
+// defaultClusterRoleRulesOfHelmChart is the file from which the Helm chart renders the default rules of the
+// agent0-connector's cluster role, relative to the directory of this package.
+var defaultClusterRoleRulesOfHelmChart = filepath.Join(
+	"..",
+	"..",
+	"..",
+	"helm-chart",
+	"dash0-operator",
+	"files",
+	"agent0-connector-default-cluster-role-rules.yaml",
+)
+
+// readDefaultClusterRoleRulesOfHelmChart parses the default cluster role rules of the Helm chart.
+func readDefaultClusterRoleRulesOfHelmChart() []rbacv1.PolicyRule {
+	GinkgoHelper()
+	content, err := os.ReadFile(defaultClusterRoleRulesOfHelmChart)
+	Expect(err).ToNot(HaveOccurred())
+	var rules []rbacv1.PolicyRule
+	Expect(yaml.UnmarshalStrict(content, &rules)).To(Succeed())
+	Expect(rules).ToNot(BeEmpty(), "%s contains no rules", defaultClusterRoleRulesOfHelmChart)
+	return rules
+}
 
 // readDash0CustomResourceDefinitions returns the API group and the plural name of every Dash0 custom resource type,
 // read from the custom resource definitions generated from the Go types in api (via "make manifests").

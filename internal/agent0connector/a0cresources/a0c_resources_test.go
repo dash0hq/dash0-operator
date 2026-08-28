@@ -5,6 +5,7 @@ package a0cresources
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -114,6 +115,100 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 		})
 	})
 
+	Context("when custom cluster role rules are configured", func() {
+		It("grants the custom rules instead of the default rules", func() {
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{
+				Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{
+					{
+						APIGroups: []string{""},
+						Resources: []string{"configmaps", "pods"},
+						Verbs:     []string{"get", "list"},
+					},
+					{
+						NonResourceURLs: []string{"*"},
+						Verbs:           []string{"get"},
+					},
+				},
+			}, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(created).To(BeTrue())
+
+			clusterRole := &rbacv1.ClusterRole{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: ClusterRoleName(testNamePrefix)}, clusterRole)).To(Succeed())
+			Expect(clusterRole.Rules).To(HaveLen(2))
+			Expect(clusterRole.Rules[0].Resources).To(ConsistOf("configmaps", "pods"))
+			Expect(clusterRole.Rules[1].NonResourceURLs).To(ConsistOf("*"))
+		})
+
+		It("falls back to the default rules when the custom rules are removed again", func() {
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{
+				Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{
+					{
+						APIGroups: []string{""},
+						Resources: []string{"pods"},
+						Verbs:     []string{"get", "list"},
+					},
+				},
+			}, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(created).To(BeTrue())
+
+			// The user removes operator.agent0Connector.clusterRole.rules again, so the Helm chart stops rendering the
+			// key and the extra config map arrives without it. The existing cluster role has to be updated back to the
+			// default rules rather than keeping the custom ones.
+			_, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updated).To(BeTrue())
+
+			clusterRole := &rbacv1.ClusterRole{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: ClusterRoleName(testNamePrefix)}, clusterRole)).To(Succeed())
+			Expect(clusterRole.Rules).To(ConsistOf(defaultAgent0ConnectorRbacRules))
+		})
+
+		It("aborts and creates nothing when the custom rules are not read-only", func() {
+			// The Helm chart rejects such a rule already; this covers an extra config map that has been edited directly.
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{
+				Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{
+					{
+						APIGroups: []string{""},
+						Resources: []string{"pods"},
+						Verbs:     []string{"get", "list", "delete"},
+					},
+				},
+			}, logger)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(`rules[0]: the verb "delete" is not allowed`))
+			Expect(errors.Is(err, ErrMisconfigured)).To(BeTrue())
+			Expect(created).To(BeFalse())
+			Expect(updated).To(BeFalse())
+			verifyAgent0ConnectorResourcesDoNotExist(ctx, Default)
+		})
+
+		It("leaves the rules of an existing cluster role untouched when the custom rules are not read-only", func() {
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(created).To(BeTrue())
+
+			_, _, err = manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{
+				Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{
+					{
+						APIGroups: []string{"*"},
+						Resources: []string{"*"},
+						Verbs:     []string{"*"},
+					},
+				},
+			}, logger)
+			Expect(err).To(HaveOccurred())
+
+			clusterRole := &rbacv1.ClusterRole{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: ClusterRoleName(testNamePrefix)}, clusterRole)).To(Succeed())
+			for _, rule := range clusterRole.Rules {
+				Expect(rule.Verbs).ToNot(ContainElement("*"))
+			}
+		})
+	})
+
 	Context("when resolving the authorization for the agent0-connector workload", func() {
 		It("passes a literal token as the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN environment variable", func() {
 			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
@@ -153,6 +248,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
 
 			Expect(err).To(HaveOccurred())
+			Expect(errors.Is(err, ErrMisconfigured)).To(BeTrue())
 			Expect(created).To(BeFalse())
 			Expect(updated).To(BeFalse())
 			verifyAgent0ConnectorResourcesDoNotExist(ctx, Default)

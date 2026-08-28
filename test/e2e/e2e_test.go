@@ -1092,6 +1092,9 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 						operatorNamespace,
 						agent0ConnectorDeployment,
 					), false, false, false)).ToNot(Succeed())
+
+				// A disabled agent0-connector is reported nowhere: neither the status entry nor an event exists.
+				verifyNoAgent0ConnectorStatusOrEvent(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 			})
 
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
@@ -2273,6 +2276,8 @@ log_statements:
 				))).To(Succeed())
 			}, 120*time.Second, 2*time.Second).Should(Succeed())
 
+			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
+
 			By("verifying the agent0-connector subscribes with the expected client ID and authorization token")
 			Eventually(func(g Gomega) {
 				clients := fetchOutboundConnectorMockClients(g)
@@ -2527,7 +2532,144 @@ spec:
 			Entry("allows auth can-i", []string{"auth", "can-i", "get", "pods"}, ""),
 			Entry("allows auth can-i --list", []string{"auth", "can-i", "--list"}, ""),
 		)
-	})
+	}) // end of suite "with the agent0-connector enabled"
+
+	Context("with the agent0-connector and a custom cluster role", Ordered, func() {
+		var pseudoClusterUid string
+
+		BeforeAll(func() {
+			By("installing the outbound-connector mock")
+			installOutboundConnectorMock()
+
+			// The dummy resource type has to exist before the agent0-connector pod starts, otherwise kubectl's discovery
+			// cache in the container would not know it yet.
+			deployAgent0ConnectorDummyResource()
+
+			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
+			clusterUid, err := run(exec.Command(
+				"kubectl",
+				"get", "namespace", "kube-system",
+				"-o", "jsonpath={.metadata.uid}",
+			), false)
+			Expect(err).ToNot(HaveOccurred())
+			pseudoClusterUid = strings.TrimSpace(clusterUid)
+			Expect(pseudoClusterUid).ToNot(BeEmpty())
+
+			By("deploying the Dash0 operator with a custom cluster role for the agent0-connector")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				false,
+				map[string]string{
+					"operator.agent0Connector.enabled":       "true",
+					"operator.agent0Connector.serverAddress": outboundConnectorMockGrpcEndpoint,
+					"operator.agent0Connector.token":         agent0ConnectorDummyToken,
+					"operator.agent0Connector.insecure":      "true",
+
+					// The custom rules replace the operator's default rules entirely: they grant read access to the
+					// dummy resource type, which the default rules do not cover, and they do not grant access to pods,
+					// which the default rules do cover.
+					"operator.agent0Connector.clusterRole.rules[0].apiGroups": fmt.Sprintf(
+						"{%s}", agent0ConnectorDummyApiGroup),
+					"operator.agent0Connector.clusterRole.rules[0].resources": fmt.Sprintf(
+						"{%s}", agent0ConnectorDummyResourceType),
+					"operator.agent0Connector.clusterRole.rules[0].verbs": "{get,list}",
+					// "get" for the required API discovery URLs (/api, /apis, /openapi/v3, ...) is usually granted automatically
+					// via the group system:authenticated/cluster role binding system:discovery cluster, so this is not necessary
+					// in most clusters.
+					"operator.agent0Connector.clusterRole.rules[1].nonResourceURLs": "{*}",
+					"operator.agent0Connector.clusterRole.rules[1].verbs":           "{get}",
+				},
+			)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+			removeAgent0ConnectorDummyResource()
+			uninstallOutboundConnectorMock()
+		})
+
+		// TODO Once OPE-509 (remove the in-code restriction for config maps) is implemented, replace the dummy CRD in
+		// this test with config maps: config maps are a resource type that the operator's default cluster role
+		// deliberately excludes, so a custom cluster role granting access to them demonstrates the same widening
+		// without needing a dedicated CRD. Drop agent0connectore2edummy-crd.yaml,
+		// agent0connectore2edummy-resource.yaml and agent0_connector_dummy_resource.go with it. Note that reading the
+		// *content* of a config map stays rejected by the agent0-connector itself, so the assertion has to stick to
+		// listing them ("kubectl get configmaps"), not to "-o yaml".
+		It("grants the custom rules and not the default rules", func() {
+			By("waiting for the agent0-connector deployment to become available")
+			agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
+			Eventually(func(g Gomega) {
+				g.Expect(runAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"-n", operatorNamespace,
+					"wait", "--for=condition=Available",
+					"deployment/"+agent0ConnectorDeployment,
+					"--timeout=30s",
+				))).To(Succeed())
+			}, 120*time.Second, 2*time.Second).Should(Succeed())
+
+			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
+
+			By("verifying the agent0-connector has connected to the outbound-connector mock")
+			Eventually(func(g Gomega) {
+				clients := fetchOutboundConnectorMockClients(g)
+				g.Expect(clients).To(HaveLen(1), "expected exactly one connected client, got %v", clients)
+				g.Expect(clients[0].ClientID).To(Equal(pseudoClusterUid))
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("triggering a command request for the resource type the custom cluster role grants access to")
+			var allowedRequestId string
+			Eventually(func(g Gomega) {
+				allowedRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"get", agent0ConnectorDummyResourceType},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the custom cluster role widened the agent0-connector's access to that resource type")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, allowedRequestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"\"kubectl get %s\" should have succeeded; stderr was: %s",
+					agent0ConnectorDummyResourceType,
+					response.Stderr,
+				)
+				g.Expect(response.Stderr).ToNot(ContainSubstring("is forbidden"))
+				g.Expect(response.Stdout).To(
+					ContainSubstring(agent0ConnectorDummyResourceName),
+					"stdout should list the dummy resource instance")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("triggering a command request for pods, which only the replaced default rules would allow")
+			var forbiddenRequestId string
+			Eventually(func(g Gomega) {
+				forbiddenRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"get", "pods", "--all-namespaces"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the custom cluster role replaced the default rules instead of extending them")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, forbiddenRequestId)
+				g.Expect(response.ExitCode).ToNot(
+					BeEquivalentTo(0),
+					"\"kubectl get pods\" should have failed; stdout was: %s", response.Stdout)
+				g.Expect(response.Stderr).To(
+					ContainSubstring("pods is forbidden"),
+					"the request for pods should have been rejected by RBAC; stderr was: %s", response.Stderr)
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+		})
+	}) // end of suite "with the agent0-connector and a custom cluster role"
 
 	Context("with an existing operator deployment without an operation configuration resource", func() {
 		BeforeAll(func() {

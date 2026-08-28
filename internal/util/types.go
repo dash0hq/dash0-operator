@@ -22,12 +22,14 @@ import (
 type Action string
 
 const (
-	ActionInstrumentation   Action = "Instrumentation"
-	ActionUninstrumentation Action = "Uninstrumentation"
+	ActionInstrumentation       Action = "Instrumentation"
+	ActionUninstrumentation     Action = "Uninstrumentation"
+	ActionAgent0ConnectorDeploy Action = "Agent0ConnectorDeployment"
 )
 
 type Reason string
 
+// Instrumentation-related event reasons:
 const (
 	ReasonSuccessfulInstrumentation              Reason = "SuccessfulInstrumentation"
 	ReasonPartiallyUnsuccessfulInstrumentation   Reason = "PartiallyUnsuccessfulInstrumentation"
@@ -39,7 +41,16 @@ const (
 	ReasonFailedUninstrumentation                Reason = "FailedUninstrumentation"
 )
 
-var AllEvents = []Reason{
+// Event reasons unrelated to workload instrumentation:
+const (
+	ReasonAgent0ConnectorDeployed    Reason = "Agent0ConnectorDeployed"
+	ReasonAgent0ConnectorNotDeployed Reason = "Agent0ConnectorNotDeployed"
+)
+
+// AllInstrumentationEvents lists the events the instrumentation webhook queues for a workload. The webhook cannot set
+// the involved object's UID, so MonitoringReconciler#attachDanglingEvents looks them up by reason and attaches them
+// afterwards.
+var AllInstrumentationEvents = []Reason{
 	ReasonSuccessfulInstrumentation,
 	ReasonPartiallyUnsuccessfulInstrumentation,
 	ReasonNoInstrumentationNecessary,

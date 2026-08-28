@@ -1939,6 +1939,32 @@ spec:
             description: Dash0OperatorConfigurationStatus defines the observed state
               of the Dash0 operator configuration resource.
             properties:
+              agent0Connector:
+                description: |-
+                  Agent0Connector reports whether the operator has deployed the agent0-connector. It is only present when the
+                  agent0-connector is enabled (Helm value operator.agent0Connector.enabled).
+                properties:
+                  deployed:
+                    description: |-
+                      Deployed reports whether the operator has successfully created or updated the agent0-connector resources the
+                      last time it tried.
+                    type: boolean
+                  lastTransitionTime:
+                    description: LastTransitionTime is the time at which Deployed
+                      last changed.
+                    format: date-time
+                    type: string
+                  message:
+                    description: Message describes the last outcome in a human-readable
+                      form.
+                    type: string
+                  reason:
+                    description: Reason is a programmatic identifier for the last
+                      outcome, e.g. "InvalidClusterRoleRules".
+                    type: string
+                required:
+                - deployed
+                type: object
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current

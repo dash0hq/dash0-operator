@@ -4,6 +4,11 @@
 package a0cresources
 
 import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -52,7 +57,7 @@ func assembleDesiredState(
 ) []clientObject {
 	desiredState := make([]clientObject, 0, 4)
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccount(config)))
-	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config, extraConfig)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBinding(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleDeployment(config, authTokenEnvVar, extraConfig)))
 	return desiredState
@@ -83,13 +88,19 @@ var allowedVerbs = []string{"get", "list"}
 // permissions of another identity.
 var selfSubjectReviewVerbs = []string{"create"}
 
-// agent0ConnectorRbacRules is the allowlist of resource types the agent0-connector's cluster role grants read
-// access to.
+// selfSubjectReviewApiGroup and selfSubjectReviewResources identify the self subject review API, the only place where
+// selfSubjectReviewVerbs may be granted.
+const selfSubjectReviewApiGroup = "authorization.k8s.io"
+
+var selfSubjectReviewResources = []string{"selfsubjectaccessreviews", "selfsubjectrulesreviews"}
+
+// defaultAgent0ConnectorRbacRules is the default list of RBAC policy rules the agent0-connector's cluster role grants.
 //
-// The -manager-agent0-connector-ro cluster role in helm-chart/dash0-operator/templates/operator/cluster-roles.yaml
-// needs to match the rules listed here; Kubernetes' privilege escalation prevention only allows the operator to grant
-// permissions it holds itself, so both lists always need to be changed together.
-var agent0ConnectorRbacRules = []rbacv1.PolicyRule{
+// The Helm chart keeps its own copy of these rules in
+// helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml, from which it renders the
+// -manager-agent0-connector-ro cluster role. Kubernetes' privilege escalation prevention only allows the operator to
+// grant permissions it holds itself, so both lists always need to be changed together.
+var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 	{
 		APIGroups: []string{""},
 		Resources: []string{
@@ -267,24 +278,6 @@ var agent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		Verbs: selfSubjectReviewVerbs,
 	},
 	{
-		// The third-party resource types the operator itself reconciles, so that the agent0-connector can diagnose the
-		// corresponding operator features.
-		APIGroups: []string{"monitoring.coreos.com"},
-		Resources: []string{
-			"podmonitors",
-			"probes",
-			"prometheusrules",
-			"scrapeconfigs",
-			"servicemonitors",
-		},
-		Verbs: allowedVerbs,
-	},
-	{
-		APIGroups: []string{"perses.dev"},
-		Resources: []string{"persesdashboards"},
-		Verbs:     allowedVerbs,
-	},
-	{
 		// Dash0 CRDs
 		APIGroups: []string{"dash0.com"},
 		Resources: []string{"dash0teams"},
@@ -306,27 +299,48 @@ var agent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		},
 		Verbs: allowedVerbs,
 	},
+	{
+		// The third-party resource types the operator itself reconciles, so that the agent0-connector can diagnose the
+		// corresponding operator features.
+		APIGroups: []string{"monitoring.coreos.com"},
+		Resources: []string{
+			"podmonitors",
+			"probes",
+			"prometheusrules",
+			"scrapeconfigs",
+			"servicemonitors",
+		},
+		Verbs: allowedVerbs,
+	},
+	{
+		APIGroups: []string{"perses.dev"},
+		Resources: []string{"persesdashboards"},
+		Verbs:     allowedVerbs,
+	},
 
-	// Read access to non-resource URLs is required as well, like the following:
-	//  - /api, /apis, /apis/<group> - API discovery
-	//  - /openapi/v2, /openapi/v3 - the OpenAPI schema describing every resource type
+	// Read access to the non-resource URLs kubectl uses:
+	//  - /api, /apis, /apis/<group> - API discovery, which kubectl performs on essentially every command
+	//  - /openapi/v2, /openapi/v3 - the OpenAPI schema describing every resource type, used by "kubectl explain"
 	//  - /version - server version info
 	//  - /healthz, /livez, /readyz - health endpoints
 	//
-	// kubectl performs API discovery on essentially every command. Before kubectl converts "get pods" into an HTTP
-	// GET to /api/v1/.../pods, the client hits /api, /apis, /openapi/v3, ...
+	// On a stock cluster this rule grants nothing new: Kubernetes binds the system:discovery cluster role, which covers
+	// exactly these URLs, to the group system:authenticated, and every service account is a member of that group. The
+	// rule keeps the agent0-connector working on a cluster that has revoked that default binding.
 	{
 		NonResourceURLs: []string{"*"},
 		Verbs:           []string{"get"},
 	},
 }
 
-// assembleClusterRole creates a cluster-wide, strictly read-only role. It grants get & list on the well-known resource
-// types listed in agent0ConnectorRbacRules plus read access to non-resource URLs, which is what read-only kubectl
-// commands (kubectl get, kubectl describe, kubectl logs, ...) require for those resource types. It deliberately
-// contains no write verbs (create, update, patch, delete, deletecollection), so it cannot be used to modify any cluster
-// state via kubectl.
-func assembleClusterRole(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRole {
+// assembleClusterRole creates a cluster-wide, strictly read-only role. By default, it grants get & list on the
+// well-known resource types listed in defaultAgent0ConnectorRbacRules, which is what read-only kubectl commands
+// (kubectl get, kubectl describe, kubectl logs, ...) require for those resource types, plus read access to the
+// non-resource URLs kubectl uses.
+// The default RBAC rules can be overridden with custom rules via the Helm chart to replace the default rules. Either
+// way, the role contains no verbs (update, patch, delete, deletecollection, and create only for self subject review
+// API), that would allow modifying cluster state.
+func assembleClusterRole(c *util.Agent0ConnectorConfig, extraConfig util.ExtraConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "rbac.authorization.k8s.io/v1",
@@ -336,17 +350,130 @@ func assembleClusterRole(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRole {
 			Name:   ClusterRoleName(c.NamePrefix),
 			Labels: labels(),
 		},
-		Rules: cloneAgent0ConnectorRbacRules(),
+		Rules: clusterRoleRules(extraConfig),
 	}
 }
 
-// cloneAgent0ConnectorRbacRules returns a deep copy of agent0ConnectorRbacRules. The rules must not be shared with the
-// package-level slice: the Kubernetes client decodes the API server's response into the object it was given, and the
+// clusterRoleRules returns the rules for the agent0-connector's cluster role: the custom rules configured via the Helm
+// chart value operator.agent0Connector.clusterRole.rules if there are any, the default RBAC rules
+// (defaultAgent0ConnectorRbacRules) otherwise.
+func clusterRoleRules(extraConfig util.ExtraConfig) []rbacv1.PolicyRule {
+	if len(extraConfig.Agent0ConnectorClusterRoleRules) > 0 {
+		return cloneRbacRules(extraConfig.Agent0ConnectorClusterRoleRules)
+	}
+	return cloneRbacRules(defaultAgent0ConnectorRbacRules)
+}
+
+// validateClusterRoleRules verifies that the given custom cluster role rules grant only read access. It returns an
+// error describing every violation otherwise. The Helm chart applies the same check, before the rules ever reach the
+// cluster; the check here also covers an extra config map that has been edited directly.
+//
+// The allowed verbs and the self subject review carve-out are duplicated in the named template
+// dash0-operator.agent0ConnectorCustomClusterRoleRules in helm-chart/dash0-operator/templates/_helpers.tpl. Both need
+// to be changed together: a verb that only the Helm chart rejects fails the installation, while a verb that only this
+// function rejects makes the operator skip the agent0-connector without surfacing an error, see ErrMisconfigured.
+func validateClusterRoleRules(rules []rbacv1.PolicyRule) error {
+	if len(rules) == 0 {
+		// No custom rules, the default rules apply.
+		return nil
+	}
+
+	var allErrors []error
+	for ruleIdx, rule := range rules {
+		allErrors = append(allErrors, validateRuleShape(ruleIdx, rule)...)
+
+		allowedVerbsForRule := allowedVerbs
+		if grantsSelfSubjectReviewsOnly(rule) {
+			allowedVerbsForRule = append(slices.Clone(allowedVerbs), selfSubjectReviewVerbs...)
+		}
+		for _, verb := range rule.Verbs {
+			if !slices.Contains(allowedVerbsForRule, verb) {
+				allErrors = append(allErrors, fmt.Errorf(
+					"rules[%d]: the verb %q is not allowed, the agent0-connector's cluster role must be read-only: only "+
+						"the verbs %s are allowed, plus %s for the resources %s in the API group %q",
+					ruleIdx,
+					verb,
+					quoteAndJoin(allowedVerbs),
+					quoteAndJoin(selfSubjectReviewVerbs),
+					quoteAndJoin(selfSubjectReviewResources),
+					selfSubjectReviewApiGroup,
+				))
+			}
+		}
+	}
+
+	return errors.Join(allErrors...)
+}
+
+// validateRuleShape verifies that a rule is a well-formed RBAC policy rule, mirroring the API server's own
+// ValidatePolicyRule. Without this check a malformed rule passes the operator's validation, and the API server rejects
+// the cluster role when the operator applies it. That error is not a misconfiguration the operator recognizes, so it
+// requeues the reconcile request and retries forever.
+func validateRuleShape(ruleIdx int, rule rbacv1.PolicyRule) []error {
+	var ruleErrors []error
+	if len(rule.Verbs) == 0 {
+		ruleErrors = append(ruleErrors, fmt.Errorf("rules[%d]: verbs must contain at least one value", ruleIdx))
+	}
+	if len(rule.NonResourceURLs) > 0 {
+		if len(rule.APIGroups) > 0 || len(rule.Resources) > 0 || len(rule.ResourceNames) > 0 {
+			ruleErrors = append(ruleErrors, fmt.Errorf(
+				"rules[%d]: a rule cannot apply to both regular resources and non-resource URLs, use one rule for "+
+					"nonResourceURLs and another one for apiGroups & resources",
+				ruleIdx,
+			))
+		}
+		return ruleErrors
+	}
+	if len(rule.APIGroups) == 0 {
+		ruleErrors = append(ruleErrors, fmt.Errorf(
+			"rules[%d]: a rule for regular resources must supply at least one apiGroup, use \"\" for the core API group",
+			ruleIdx,
+		))
+	}
+	if len(rule.Resources) == 0 {
+		ruleErrors = append(ruleErrors, fmt.Errorf(
+			"rules[%d]: a rule for regular resources must supply at least one resource",
+			ruleIdx,
+		))
+	}
+	return ruleErrors
+}
+
+// grantsSelfSubjectReviewsOnly reports whether a rule addresses nothing but the self subject review API, which is the
+// only API for which selfSubjectReviewVerbs may be granted. A rule that also addresses another API group or another
+// resource type is not eligible, otherwise it could smuggle a "create" for that resource type.
+func grantsSelfSubjectReviewsOnly(rule rbacv1.PolicyRule) bool {
+	if len(rule.APIGroups) == 0 || len(rule.Resources) == 0 || len(rule.NonResourceURLs) > 0 {
+		return false
+	}
+	for _, apiGroup := range rule.APIGroups {
+		if apiGroup != selfSubjectReviewApiGroup {
+			return false
+		}
+	}
+	for _, resource := range rule.Resources {
+		if !slices.Contains(selfSubjectReviewResources, resource) {
+			return false
+		}
+	}
+	return true
+}
+
+func quoteAndJoin(values []string) string {
+	quoted := make([]string, 0, len(values))
+	for _, value := range values {
+		quoted = append(quoted, fmt.Sprintf("%q", value))
+	}
+	return strings.Join(quoted, ", ")
+}
+
+// cloneRbacRules returns a deep copy of the given rules. The rules must not be shared with the package-level slice or
+// with the extra config: the Kubernetes client decodes the API server's response into the object it was given, and the
 // JSON decoder writes into the existing backing arrays instead of allocating new ones. A shared rule would therefore be
 // overwritten by whatever the API server returns, for every subsequent reconcile of the process.
-func cloneAgent0ConnectorRbacRules() []rbacv1.PolicyRule {
-	rules := make([]rbacv1.PolicyRule, 0, len(agent0ConnectorRbacRules))
-	for _, rule := range agent0ConnectorRbacRules {
+func cloneRbacRules(source []rbacv1.PolicyRule) []rbacv1.PolicyRule {
+	rules := make([]rbacv1.PolicyRule, 0, len(source))
+	for _, rule := range source {
 		rules = append(rules, *rule.DeepCopy())
 	}
 	return rules

@@ -127,8 +127,9 @@ var unredactableOutputFormatReasons = map[string]string{
 }
 
 // safeSortByPathPrefixes are the top-level fields a --sort-by expression may address when the request targets a
-// resource type that can contain secrets. Neither the metadata nor the status of such a resource holds a credential,
-// while its spec holds every field the response redacts.
+// resource type that can contain secrets, or a sensitive resource type. Neither the metadata nor the status of such a
+// resource holds a credential, while its spec holds every field the response redacts, and the data of a secret sits
+// outside both prefixes.
 var safeSortByPathPrefixes = []string{"metadata", "status"}
 
 var safeSortByPathPrefixesHumanReadable = func() string {
@@ -215,6 +216,9 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments,
 		return kubectlArguments{}, errors.New(reason)
 	}
 	if reason, blocked := unsafeSortByRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
+	}
+	if reason, blocked := unsafeSortByOfSensitiveResourceRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	if reason, blocked := describeOfResourceTypeWithSecrets(arguments); blocked {
@@ -436,6 +440,37 @@ func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
 			expression,
 			category.description,
 			category.secrets,
+			safeSortByPathPrefixesHumanReadable,
+			unsafeSortByPathPrefix,
+		), true
+	}
+	return "", false
+}
+
+// unsafeSortByOfSensitiveResourceRequested reports whether the kubectl arguments sort a sensitive resource by a field
+// that can expose its content, returning a human-readable reason when they do. Listing secrets or config maps is
+// allowed while reading their content is not (see sensitiveContentRequested), but kubectl evaluates a --sort-by
+// expression against the resources before the connector ever sees the response: sorting by a field of "data" leaks its
+// order, and a filter expression such as {.data[?(@>"S")]} turns the presence of a match into a comparison oracle that
+// reveals the value over several requests. Every occurrence of the flag is checked, not just the effective (last) one,
+// mirroring unsafeSortByRequested.
+func unsafeSortByOfSensitiveResourceRequested(parsed kubectlArguments) (string, bool) {
+	resource, targeted := targetedSensitiveResource(parsed)
+	if !targeted {
+		return "", false
+	}
+	for _, expression := range parsed.valuesOf("sort-by") {
+		if sortByExpressionIsSafe(expression) {
+			continue
+		}
+		return fmt.Sprintf(
+			"the --sort-by expression %q is not allowed for a %s; kubectl evaluates the expression against the "+
+				"resources before the connector sees them, so an expression that addresses the contents of the %s "+
+				"would expose them; only a plain path below %s may be sorted by, except %q "+
+				"(e.g. --sort-by=.metadata.name or --sort-by=.metadata.creationTimestamp)",
+			expression,
+			resource.displayName,
+			resource.displayName,
 			safeSortByPathPrefixesHumanReadable,
 			unsafeSortByPathPrefix,
 		), true
