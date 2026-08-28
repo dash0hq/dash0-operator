@@ -89,10 +89,9 @@ func (m *Agent0ConnectorManager) agent0ConnectorEnabled() bool {
 // of (true, nil) does not necessarily indicate that any agent0-connector resource has been created, updated, or
 // deleted; it only indicates that the reconciliation has been performed.
 //
-// A request that arrives while a reconciliation is in progress is not executed, but it is not lost either: the
-// reconciliation which is in progress repeats itself once it is done, see util.ReconcileGuard. Without that, a
-// corrected extra config map arriving mid-reconciliation would be stored but never applied, since neither controller
-// requeues periodically.
+// A request that arrives while a reconciliation is in progress is not executed. The reconciliation which is in progress
+// repeats itself once it is done, see util.ReconcileGuard. Without that, a corrected extra config map arriving
+// mid-reconciliation would be stored but never applied, since neither controller requeues periodically.
 //
 // A misconfiguration of the agent0-connector is reported as (false, nil): the error is not passed on to the caller,
 // since requeuing the reconcile request cannot fix it, and since reconciling agent0-connector must not block the

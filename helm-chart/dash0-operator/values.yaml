@@ -1357,6 +1357,8 @@ operator:
       # To start from the current default rules, read them from the cluster and edit the copy:
       #   kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
       #
+      # Prefer naming the resource types explicitly over granting a wildcard.
+      #
       # Only read-only rules are accepted: the verbs "get" and "list" for any resource, plus "create" for the resources
       # "selfsubjectaccessreviews" and "selfsubjectrulesreviews" in the API group "authorization.k8s.io", which
       # "kubectl auth can-i" requires and which cannot modify cluster state. Any other verb, in particular a write verb
@@ -1364,6 +1366,12 @@ operator:
       #
       # Note that reading the content of Kubernetes secrets is rejected by the agent0-connector itself, independent of
       # the rules configured here.
+      #
+      # For every other resource type, the agent0-connector redacts the credentials it knows about from a response
+      # before it leaves the cluster. Secret redaction is applied to Dash0 custom resources and the Kubernetes resource
+      # types which carry a pod spec (environment variable values are redacted). Granting access to a resource type
+      # outside that set, for example a third-party custom resource which holds a credential, returns its content
+      # unredacted.
       #
       # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
       # which are required for this component) to the group system:authenticated via the system:discovery cluster role

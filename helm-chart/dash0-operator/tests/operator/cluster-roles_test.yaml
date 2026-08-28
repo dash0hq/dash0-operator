@@ -6,6 +6,14 @@ tests:
     asserts:
       - matchSnapshot: {}
 
+  - it: cluster roles should match snapshot with agent0-connector enabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchSnapshot: {}
+
   - it: should grant permissions for telemetry collection if telemetry collection is enabled
     asserts:
       - hasDocuments:
@@ -531,3 +539,17 @@ tests:
         documentSelector:
           path: metadata.name
           value: dash0-operator-manager-agent0-connector-ro
+
+  - it: should reject a malformed custom cluster role rule
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: "get"
+    asserts:
+      - failedTemplate:
+          errorPattern: "range can't iterate over get"

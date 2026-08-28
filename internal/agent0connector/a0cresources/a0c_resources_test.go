@@ -140,6 +140,31 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			Expect(clusterRole.Rules[1].NonResourceURLs).To(ConsistOf("*"))
 		})
 
+		It("falls back to the default rules when the custom rules are removed again", func() {
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{
+				Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{
+					{
+						APIGroups: []string{""},
+						Resources: []string{"pods"},
+						Verbs:     []string{"get", "list"},
+					},
+				},
+			}, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(created).To(BeTrue())
+
+			// The user removes operator.agent0Connector.clusterRole.rules again, so the Helm chart stops rendering the
+			// key and the extra config map arrives without it. The existing cluster role has to be updated back to the
+			// default rules rather than keeping the custom ones.
+			_, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updated).To(BeTrue())
+
+			clusterRole := &rbacv1.ClusterRole{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: ClusterRoleName(testNamePrefix)}, clusterRole)).To(Succeed())
+			Expect(clusterRole.Rules).To(ConsistOf(defaultAgent0ConnectorRbacRules))
+		})
+
 		It("aborts and creates nothing when the custom rules are not read-only", func() {
 			// The Helm chart rejects such a rule already; this covers an extra config map that has been edited directly.
 			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{
