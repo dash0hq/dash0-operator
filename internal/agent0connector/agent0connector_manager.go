@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"sync/atomic"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/events"
 	k8sretry "k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -172,7 +173,7 @@ func (m *Agent0ConnectorManager) reportAgent0ConnectorStatus(
 	message := "The operator has deployed the agent0-connector."
 	if !deployed {
 		reason = agent0ConnectorFailureReason(reconcileErr)
-		message = reconcileErr.Error()
+		message = agent0ConnectorFailureMessage(reason, reconcileErr)
 	}
 
 	changed, err := m.updateAgent0ConnectorStatus(
@@ -246,10 +247,11 @@ func (m *Agent0ConnectorManager) updateAgent0ConnectorStatus(
 // distinguishes deployed from not deployed. A new failure mode needs an entry here and in
 // agent0ConnectorFailureReason, otherwise it is reported as StatusReasonReconcileFailed.
 const (
-	StatusReasonDeployed                = "Deployed"
-	StatusReasonInvalidClusterRoleRules = "InvalidClusterRoleRules"
-	StatusReasonNoAuthorizationToken    = "NoAuthorizationToken"
-	StatusReasonReconcileFailed         = "ReconcileFailed"
+	StatusReasonDeployed                   = "Deployed"
+	StatusReasonInvalidClusterRoleRules    = "InvalidClusterRoleRules"
+	StatusReasonNoAuthorizationToken       = "NoAuthorizationToken"
+	StatusReasonOperatorMissingPermissions = "OperatorMissingPermissions"
+	StatusReasonReconcileFailed            = "ReconcileFailed"
 )
 
 // agent0ConnectorFailureReason maps a reconcile error to the programmatic identifier reported in the status.
@@ -259,9 +261,24 @@ func agent0ConnectorFailureReason(err error) string {
 		return StatusReasonInvalidClusterRoleRules
 	case errors.Is(err, a0cresources.ErrNoAuthorizationToken):
 		return StatusReasonNoAuthorizationToken
+	case apierrors.IsForbidden(err):
+		return StatusReasonOperatorMissingPermissions
 	default:
 		return StatusReasonReconcileFailed
 	}
+}
+
+// agent0ConnectorFailureMessage describes a reconcile failure for the status and for the Kubernetes event.
+func agent0ConnectorFailureMessage(reason string, err error) string {
+	if reason != StatusReasonOperatorMissingPermissions {
+		return err.Error()
+	}
+	return fmt.Sprintf(
+		"The API server rejected an agent0-connector resource as forbidden. One possible cause is Kubernetes' "+
+			"privilege escalation prevention (the operator can only grant permissions it holds itself). The API "+
+			"server reported: %s",
+		err.Error(),
+	)
 }
 
 // createOrUpdateAgent0Connector creates or updates the agent0-connector resources. The returned flag reports whether

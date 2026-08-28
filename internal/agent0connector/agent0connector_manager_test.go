@@ -5,11 +5,14 @@ package agent0connector
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -75,6 +78,44 @@ func expectAgent0ConnectorStatus(ctx context.Context) *dash0v1alpha1.Agent0Conne
 	Expect(operatorConfigurationResource.Status.Agent0Connector).ToNot(BeNil())
 	return operatorConfigurationResource.Status.Agent0Connector
 }
+
+var _ = Describe("The agent0-connector failure reason", func() {
+	forbidden := apierrors.NewForbidden(
+		schema.GroupResource{Group: "rbac.authorization.k8s.io", Resource: "clusterroles"},
+		"dash0-operator-agent0-connector-cr",
+		errors.New("user \"system:serviceaccount:dash0-system:dash0-operator-sa\" (groups=[]) is attempting to grant "+
+			"RBAC permissions not currently held"),
+	)
+
+	DescribeTable(
+		"maps a reconcile error to the identifier reported in the status",
+		func(err error, expectedReason string) {
+			Expect(agent0ConnectorFailureReason(err)).To(Equal(expectedReason))
+		},
+		Entry("invalid cluster role rules", a0cresources.ErrInvalidClusterRoleRules,
+			StatusReasonInvalidClusterRoleRules),
+		Entry("missing authorization token", a0cresources.ErrNoAuthorizationToken,
+			StatusReasonNoAuthorizationToken),
+		Entry("the API server rejecting the cluster role", forbidden,
+			StatusReasonOperatorMissingPermissions),
+		// The error travels through the resource manager, so the check has to survive wrapping.
+		Entry("a wrapped rejection", fmt.Errorf("cannot create the cluster role: %w", forbidden),
+			StatusReasonOperatorMissingPermissions),
+		Entry("any other error", errors.New("connection refused"), StatusReasonReconcileFailed),
+	)
+
+	It("maps forbidden", func() {
+		message := agent0ConnectorFailureMessage(StatusReasonOperatorMissingPermissions, forbidden)
+		Expect(message).To(ContainSubstring("privilege escalation prevention"))
+		Expect(message).To(ContainSubstring(forbidden.Error()))
+		Expect(message).ToNot(Equal(forbidden.Error()))
+	})
+
+	It("reports any other failure with the error itself", func() {
+		err := errors.New("connection refused")
+		Expect(agent0ConnectorFailureMessage(StatusReasonReconcileFailed, err)).To(Equal("connection refused"))
+	})
+})
 
 var _ = Describe("The agent0-connector manager", Ordered, func() {
 	ctx := context.Background()
