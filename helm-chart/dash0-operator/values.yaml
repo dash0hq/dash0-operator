@@ -1344,13 +1344,17 @@ operator:
     # Settings for the cluster role the operator creates for the agent0-connector.
     clusterRole:
 
-      # Custom RBAC rules for the cluster role of the agent0-connector. By default this list is empty and the operator
+      # Custom RBAC rules for the cluster role of the agent0-connector. By default, this list is empty and the operator
       # grants read-only access to a fixed set of well-known resource types.
       #
-      # The rules configured here REPLACE the operator's default rules, they are not merged with them. That is, the
-      # rules can be used to widen the agent0-connector's access, for example to a resource type the default rules do
-      # not cover, as well as to restrict it further. To start from the current default rules, read them from the
-      # cluster and edit the copy:
+      # The rules configured here replace the default rules for the agent0-connector cluster role, they are not merged
+      # with the defaults. Configuring custom rules can also be used to restrict agent0-connector's access in the
+      # cluster, by granting access to fewer resource types. Configuring custom rules can also be used to widen
+      # agent0-connector's access, for example to a resource type the default rules do not cover. All rules configured
+      # here will also be granted to the operator manager, as it can only grant permissions to agent0-connector it holds
+      # itself.
+      #
+      # To start from the current default rules, read them from the cluster and edit the copy:
       #   kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
       #
       # Only read-only rules are accepted: the verbs "get" and "list" for any resource, plus "create" for the resources

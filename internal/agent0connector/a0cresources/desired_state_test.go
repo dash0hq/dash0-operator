@@ -346,6 +346,49 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 				}, `the verb "create" is not allowed`),
 			)
 
+			DescribeTable(
+				"rejects a rule which is not a well-formed RBAC policy rule",
+				func(rule rbacv1.PolicyRule, expectedMessage string) {
+					err := validateClusterRoleRules([]rbacv1.PolicyRule{rule})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("rules[0]"))
+					Expect(err.Error()).To(ContainSubstring(expectedMessage))
+				},
+				Entry("a rule without verbs", rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Resources: []string{"pods"},
+				}, "verbs must contain at least one value"),
+				Entry("a rule with resources and non-resource URLs", rbacv1.PolicyRule{
+					APIGroups:       []string{""},
+					Resources:       []string{"pods"},
+					NonResourceURLs: []string{"*"},
+					Verbs:           []string{"get"},
+				}, "cannot apply to both regular resources and non-resource URLs"),
+				Entry("a rule with resource names and non-resource URLs", rbacv1.PolicyRule{
+					ResourceNames:   []string{"some-pod"},
+					NonResourceURLs: []string{"*"},
+					Verbs:           []string{"get"},
+				}, "cannot apply to both regular resources and non-resource URLs"),
+				Entry("a rule without API groups", rbacv1.PolicyRule{
+					Resources: []string{"pods"},
+					Verbs:     []string{"get"},
+				}, "must supply at least one apiGroup"),
+				Entry("a rule without resources", rbacv1.PolicyRule{
+					APIGroups: []string{""},
+					Verbs:     []string{"get"},
+				}, "must supply at least one resource"),
+			)
+
+			It("accepts a rule which only addresses non-resource URLs", func() {
+				Expect(validateClusterRoleRules([]rbacv1.PolicyRule{
+					{
+						NonResourceURLs: []string{"*"},
+						Verbs:           []string{"get"},
+					},
+				})).To(Succeed())
+			})
+
 			It("reports every violation instead of only the first one", func() {
 				err := validateClusterRoleRules([]rbacv1.PolicyRule{
 					{

@@ -439,3 +439,95 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "create" is not allowed'
+
+  # The API server rejects a malformed rule when the manifest is applied, which would leave the installation half
+  # applied. These rules have to fail at template time instead.
+
+  - it: should reject a custom cluster role rule without verbs
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: verbs must contain at least one value'
+
+  - it: should reject a custom cluster role rule which mixes resources and non-resource URLs
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: a rule cannot apply to both regular resources and non-resource URLs'
+
+  - it: should reject a custom cluster role rule which mixes resource names and non-resource URLs
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - resourceNames: ["some-pod"]
+                nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: a rule cannot apply to both regular resources and non-resource URLs'
+
+  - it: should reject a custom cluster role rule without apiGroups
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - resources: ["pods"]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: a rule for regular resources must supply at least one apiGroup'
+
+  - it: should reject a custom cluster role rule without resources
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: a rule for regular resources must supply at least one resource'
+
+  - it: should accept a custom cluster role rule which only addresses non-resource URLs
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - nonResourceURLs:
+                - '*'
+              verbs:
+                - get
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro

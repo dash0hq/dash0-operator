@@ -162,9 +162,12 @@ They are validated to grant read-only access only: the verbs "get" and "list" fo
 persist an object, the API server evaluates the request and answers it, which is what "kubectl auth can-i" needs. Any
 other verb fails the installation.
 
-The allowed verbs and the self subject review carve-out are duplicated in validateClusterRoleRules in
-internal/agent0connector/a0cresources/desired_state.go, which applies the same checks to the rules the operator reads
-from the extra config map. Both need to be changed together.
+A rule also has to be a well-formed RBAC policy rule, which is checked here as well, so that a malformed rule fails the
+installation instead of being rejected by the API server when the manifest is applied.
+
+The allowed verbs, the self subject review carve-out and the shape checks are duplicated in validateClusterRoleRules
+and validateRuleShape in internal/agent0connector/a0cresources/desired_state.go, which apply the same checks to the
+rules the operator reads from the extra config map. Both need to be changed together.
 */}}
 {{- define "dash0-operator.agent0ConnectorCustomClusterRoleRules" -}}
 {{- $selfSubjectReviewApiGroup := "authorization.k8s.io" }}
@@ -175,6 +178,24 @@ from the extra config map. Both need to be changed together.
 {{- $resources := $rule.resources | default (list) }}
 {{- $verbs := $rule.verbs | default (list) }}
 {{- $nonResourceUrls := $rule.nonResourceURLs | default (list) }}
+{{- $resourceNames := $rule.resourceNames | default (list) }}
+{{- /* The shape checks the API server's own ValidatePolicyRule applies. Without them a malformed rule renders fine and
+       the API server rejects the whole cluster role when the manifest is applied. */}}
+{{- if eq (len $verbs) 0 }}
+{{- fail (printf "Error: operator.agent0Connector.clusterRole.rules[%d]: verbs must contain at least one value." $ruleIndex) }}
+{{- end }}
+{{- if gt (len $nonResourceUrls) 0 }}
+{{- if or (gt (len $apiGroups) 0) (gt (len $resources) 0) (gt (len $resourceNames) 0) }}
+{{- fail (printf "Error: operator.agent0Connector.clusterRole.rules[%d]: a rule cannot apply to both regular resources and non-resource URLs. Use one rule for nonResourceURLs and another one for apiGroups & resources." $ruleIndex) }}
+{{- end }}
+{{- else }}
+{{- if eq (len $apiGroups) 0 }}
+{{- fail (printf "Error: operator.agent0Connector.clusterRole.rules[%d]: a rule for regular resources must supply at least one apiGroup, use \"\" for the core API group." $ruleIndex) }}
+{{- end }}
+{{- if eq (len $resources) 0 }}
+{{- fail (printf "Error: operator.agent0Connector.clusterRole.rules[%d]: a rule for regular resources must supply at least one resource." $ruleIndex) }}
+{{- end }}
+{{- end }}
 {{- /* A rule may only grant "create" if it addresses nothing but the self subject review API; otherwise it could
        smuggle in a "create" for another resource type. */}}
 {{- $selfSubjectReviewsOnly := and (gt (len $apiGroups) 0) (gt (len $resources) 0) (eq (len $nonResourceUrls) 0) }}

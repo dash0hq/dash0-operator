@@ -100,8 +100,6 @@ var selfSubjectReviewResources = []string{"selfsubjectaccessreviews", "selfsubje
 // helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml, from which it renders the
 // -manager-agent0-connector-ro cluster role. Kubernetes' privilege escalation prevention only allows the operator to
 // grant permissions it holds itself, so both lists always need to be changed together.
-//
-// Both lists are kept in the same order, so that they can be diffed side by side. The order itself carries no meaning.
 var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 	{
 		APIGroups: []string{""},
@@ -382,6 +380,8 @@ func validateClusterRoleRules(rules []rbacv1.PolicyRule) error {
 
 	var allErrors []error
 	for ruleIdx, rule := range rules {
+		allErrors = append(allErrors, validateRuleShape(ruleIdx, rule)...)
+
 		allowedVerbsForRule := allowedVerbs
 		if grantsSelfSubjectReviewsOnly(rule) {
 			allowedVerbsForRule = append(slices.Clone(allowedVerbs), selfSubjectReviewVerbs...)
@@ -403,6 +403,40 @@ func validateClusterRoleRules(rules []rbacv1.PolicyRule) error {
 	}
 
 	return errors.Join(allErrors...)
+}
+
+// validateRuleShape verifies that a rule is a well-formed RBAC policy rule, mirroring the API server's own
+// ValidatePolicyRule. Without this check a malformed rule passes the operator's validation, and the API server rejects
+// the cluster role when the operator applies it. That error is not a misconfiguration the operator recognizes, so it
+// requeues the reconcile request and retries forever.
+func validateRuleShape(ruleIdx int, rule rbacv1.PolicyRule) []error {
+	var ruleErrors []error
+	if len(rule.Verbs) == 0 {
+		ruleErrors = append(ruleErrors, fmt.Errorf("rules[%d]: verbs must contain at least one value", ruleIdx))
+	}
+	if len(rule.NonResourceURLs) > 0 {
+		if len(rule.APIGroups) > 0 || len(rule.Resources) > 0 || len(rule.ResourceNames) > 0 {
+			ruleErrors = append(ruleErrors, fmt.Errorf(
+				"rules[%d]: a rule cannot apply to both regular resources and non-resource URLs, use one rule for "+
+					"nonResourceURLs and another one for apiGroups & resources",
+				ruleIdx,
+			))
+		}
+		return ruleErrors
+	}
+	if len(rule.APIGroups) == 0 {
+		ruleErrors = append(ruleErrors, fmt.Errorf(
+			"rules[%d]: a rule for regular resources must supply at least one apiGroup, use \"\" for the core API group",
+			ruleIdx,
+		))
+	}
+	if len(rule.Resources) == 0 {
+		ruleErrors = append(ruleErrors, fmt.Errorf(
+			"rules[%d]: a rule for regular resources must supply at least one resource",
+			ruleIdx,
+		))
+	}
+	return ruleErrors
 }
 
 // grantsSelfSubjectReviewsOnly reports whether a rule addresses nothing but the self subject review API, which is the
