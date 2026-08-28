@@ -330,11 +330,9 @@ func disallowedOutputFormat(parsed kubectlArguments) (string, bool) {
 //
 // Listing secrets (e.g. `kubectl get secrets`) and checking for the presence of a particular one
 // (`kubectl get secret <name>`) are allowed (if the corresponding RBAC permissions are granted); serializing the data
-// via an output format such as -o yaml/json/jsonpath/go-template/custom-columns (or --template) is not. Only the output
-// format is checked, no kubectl command prints the data of a sensitive resource on its own: `kubectl describe secret`
-// renders the key names and the byte counts of the values, not the values themselves. This is a fail-closed check:
-// output formats that could expose the data are rejected even if a particular invocation would only read metadata, and
-// a repeated output flag is rejected if any of its occurrences would expose the data.
+// via an output format such as -o yaml/json/jsonpath/go-template/custom-columns (or --template) is not. This is a
+// fail-closed check: output formats that could expose the data are rejected even if a particular invocation would only
+// read metadata, and a repeated output flag is rejected if any of its occurrences would expose the data.
 func sensitiveContentRequested(parsed kubectlArguments) (string, bool) {
 	resource, targeted := targetedSensitiveResource(parsed)
 	if !targeted {
