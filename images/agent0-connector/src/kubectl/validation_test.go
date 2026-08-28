@@ -112,6 +112,26 @@ func sortByNotAllowedForWorkload(expression string) string {
 	)
 }
 
+func outputFormatNotRedactableForConfigMap(format string) string {
+	return fmt.Sprintf(
+		"the output format %q cannot be redacted reliably for a config map, which can contain credentials in the "+
+			"values of its data; reading such a resource is supported with -o json/yaml/name/wide (or without an "+
+			"output format), but not with a format that can reshape its values "+
+			"(-o go-template/template/jsonpath/jsonpath-as-json/custom-columns or --template)",
+		format,
+	)
+}
+
+func sortByNotAllowedForConfigMap(expression string) string {
+	return fmt.Sprintf(
+		"the --sort-by expression %q is not allowed for a config map, which can contain credentials in the values of "+
+			"its data; kubectl evaluates the expression against the resources before the connector redacts them, so "+
+			"only a plain path below \"metadata\" or \"status\" may be sorted by, except \"metadata.annotations\" "+
+			"(e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
+		expression,
+	)
+}
+
 func sortByNotAllowedForSensitiveResource(expression string) string {
 	return fmt.Sprintf(
 		"the --sort-by expression %q is not allowed for a secret; kubectl evaluates the expression against the "+
@@ -143,6 +163,15 @@ const describeOfWorkloadNotSupported = "describing a workload resource is not su
 	"\"kubectl describe\"; read the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns " +
 	"the same content with the values of its environment variables redacted, and its events with " +
 	"\"kubectl events --for <resource-type>/<name>\""
+
+const kyamlNotRedactableForConfigMap = "the output format \"kyaml\" cannot be redacted reliably for a config map, " +
+	"which can contain credentials in the values of its data, because the connector does not redact this output " +
+	"format yet; reading such a resource is supported with -o json/yaml/name/wide (or without an output format)"
+
+const describeOfConfigMapNotSupported = "describing a config map is not supported, because it can contain " +
+	"credentials in the values of its data which cannot be redacted from the output of \"kubectl describe\"; read " +
+	"the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns the same content with the " +
+	"credentials in its data redacted, and its events with \"kubectl events --for <resource-type>/<name>\""
 
 //nolint:lll
 func TestValidateCommandRequest(t *testing.T) {
@@ -621,24 +650,45 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "--template", "{{.data}}", "secret"}, allowed: false,
 			rejectionReason: contentsNotReadable},
 
+		// Config maps: whether they can be read at all is decided by RBAC alone, but the connector walks their content
+		// for credentials (see redactConfigMapData), so they are restricted to the output formats it can redact,
+		// exactly like a Dash0 custom resource or a workload.
 		{name: "config map with -o yaml is allowed",
 			command: "kubectl", arguments: []string{"get", "configmap", "my-cm", "-o", "yaml"}, allowed: true},
 		{name: "config map shortname with -o json is allowed",
 			command: "kubectl", arguments: []string{"get", "cm/my-cm", "-o", "json"}, allowed: true},
-		{name: "config map with -o jsonpath is allowed",
-			command: "kubectl", arguments: []string{"get", "cm", "my-cm", "-o", "jsonpath={.data}"}, allowed: true},
-		{name: "config map with -o custom-columns is allowed",
-			command: "kubectl", arguments: []string{"get", "cm", "-o", "custom-columns=D:.data"}, allowed: true},
-		{name: "config map with --template is allowed",
-			command: "kubectl", arguments: []string{"get", "cm", "--template={{.data}}"}, allowed: true},
 		{name: "fully qualified config map as yaml is allowed",
 			command: "kubectl", arguments: []string{"get", "configmaps.v1.", "-o", "yaml"}, allowed: true},
-		{name: "describe configmap is allowed",
-			command: "kubectl", arguments: []string{"describe", "configmap", "my-cm"}, allowed: true},
+		{name: "listing config maps is allowed",
+			command: "kubectl", arguments: []string{"get", "configmaps"}, allowed: true},
+		{name: "config map with -o name is allowed",
+			command: "kubectl", arguments: []string{"get", "cm", "-o", "name"}, allowed: true},
+		{name: "sort-by a metadata field of config maps is allowed",
+			command: "kubectl", arguments: []string{"get", "configmaps", "--sort-by", ".metadata.name"}, allowed: true},
 		{name: "multi-resource list including config maps as yaml is allowed",
 			command: "kubectl", arguments: []string{"get", "pods,cm", "-o", "yaml"}, allowed: true},
-		{name: "sort-by a data field of config maps is allowed",
-			command: "kubectl", arguments: []string{"get", "cm", "--sort-by", ".data.config"}, allowed: true},
+
+		{name: "config map with -o jsonpath is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "my-cm", "-o", "jsonpath={.data}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactableForConfigMap("jsonpath")},
+		{name: "config map with -o custom-columns is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "-o", "custom-columns=D:.data"}, allowed: false,
+			rejectionReason: outputFormatNotRedactableForConfigMap("custom-columns")},
+		{name: "config map with --template is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "--template={{.data}}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactableForConfigMap("go-template")},
+		{name: "config map with -o kyaml is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "-o", "kyaml"}, allowed: false,
+			rejectionReason: kyamlNotRedactableForConfigMap},
+		{name: "describe configmap is rejected",
+			command: "kubectl", arguments: []string{"describe", "configmap", "my-cm"}, allowed: false,
+			rejectionReason: describeOfConfigMapNotSupported},
+		{name: "describe config map via type/name is rejected",
+			command: "kubectl", arguments: []string{"describe", "cm/my-cm"}, allowed: false,
+			rejectionReason: describeOfConfigMapNotSupported},
+		{name: "sort-by a data field of config maps is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "--sort-by", ".data.config"}, allowed: false,
+			rejectionReason: sortByNotAllowedForConfigMap(".data.config")},
 
 		// Non-sensitive resources are unaffected by the content check.
 		{name: "non-secret resource as yaml is allowed",

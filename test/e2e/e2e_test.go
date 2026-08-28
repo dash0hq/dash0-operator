@@ -35,6 +35,25 @@ import (
 const (
 	dotEnvFile          = "test-resources/.env"
 	rootCaConfigMapName = "kube-root-ca.crt"
+
+	// The config map the agent0-connector custom cluster role test reads to verify that the connector redacts the
+	// credentials it finds in the content of a config map. Its content has the shape of an operator-rendered collector
+	// configuration, where the export header value is the credential.
+	credentialConfigMapName         = "agent0-connector-e2e-credentials"
+	configMapCredentialValue        = "e2e-config-map-credential"
+	configMapWithCredentialManifest = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ` + credentialConfigMapName + `
+  namespace: default
+data:
+  config.yaml: |
+    exporters:
+      otlp/example:
+        endpoint: example.com:4317
+        headers:
+          Authorization: Bearer ` + configMapCredentialValue + `
+`
 )
 
 var (
@@ -2552,6 +2571,11 @@ spec:
 			pseudoClusterUid = strings.TrimSpace(clusterUid)
 			Expect(pseudoClusterUid).ToNot(BeEmpty())
 
+			By("deploying a config map holding a credential")
+			applyConfigMapCmd := exec.Command("kubectl", "apply", "-f", "-")
+			applyConfigMapCmd.Stdin = strings.NewReader(configMapWithCredentialManifest)
+			Expect(runAndIgnoreOutput(applyConfigMapCmd)).To(Succeed())
+
 			By("deploying the Dash0 operator with a custom cluster role for the agent0-connector")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
@@ -2585,6 +2609,12 @@ spec:
 		AfterAll(func() {
 			undeployOperator(operatorNamespace)
 			uninstallOutboundConnectorMock()
+			Expect(runAndIgnoreOutput(exec.Command(
+				"kubectl",
+				"delete", "configmap", credentialConfigMapName,
+				"-n", "default",
+				"--ignore-not-found",
+			))).To(Succeed())
 		})
 
 		It("grants the custom rules and not the default rules", func() {
@@ -2634,8 +2664,6 @@ spec:
 					"stdout should list the root CA config map, which the API server creates in every namespace")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 
-			// The agent0-connector applies no restriction of its own to config maps, so the granted access covers their
-			// content as well.
 			By("triggering a command request for the content of a config map")
 			var contentRequestId string
 			Eventually(func(g Gomega) {
@@ -2659,6 +2687,44 @@ spec:
 				g.Expect(response.Stdout).To(
 					ContainSubstring("BEGIN CERTIFICATE"),
 					"stdout should contain the content of the config map, not only its metadata")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("triggering a command request for the content of a config map holding a credential")
+			var credentialRequestId string
+			Eventually(func(g Gomega) {
+				credentialRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"get", "configmap", credentialConfigMapName, "-n", "default", "-o", "yaml"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the agent0-connector redacted the credential from the config map")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, credentialRequestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"\"kubectl get configmap %s -o yaml\" should have succeeded; stderr was: %s",
+					credentialConfigMapName,
+					response.Stderr,
+				)
+				// The config map was applied, so the response carries the credential twice: in the data and in the
+				// copy of the config map that kubectl leaves in the last-applied-configuration annotation. Neither may
+				// survive.
+				g.Expect(response.Stdout).ToNot(
+					ContainSubstring(configMapCredentialValue),
+					"the export header value of the config map should have been redacted, in its data as well as in "+
+						"the copy of it in the last-applied-configuration annotation")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("last-applied-configuration"),
+					"stdout should carry the annotation, otherwise the assertion above proves nothing about it")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("(redacted)"),
+					"stdout should carry the redaction placeholder in place of the header value")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("example.com:4317"),
+					"the rest of the config map should stay readable")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 
 			By("triggering a command request for pods, which only the replaced default rules would allow")

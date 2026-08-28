@@ -1288,10 +1288,12 @@ operator:
       # Additional annotations for the pods of the Edge Proxy deployment managed by the operator.
       podAnnotations: {}
 
-  # Settings related to the Agent0 connector (experimental/beta).
+  # Settings related to the Agent0 connector (experimental).
   agent0Connector:
 
-    # The agent0-connector feature is currently experimental, do not enable it (yet).
+    # The agent0-connector feature is currently experimental, do not enable it.
+    #
+    # All other settings in operator.agent0Connector will be ignored if operator.agent0Connector.enabled is false.
     enabled: false
 
     # The address (host:port) of the Dash0 backend service the agent0-connector pod connects to. This value is mandatory
@@ -1323,8 +1325,8 @@ operator:
       # secret with the command above (see property "name"), you would set the property to "token".
       key:
 
-    # Disables TLS for the agent0-connector workload's connection to the Dash0 backend, connecting via plaintext
-    # instead. This is only intended for local development.
+    # Disables TLS for the agent0-connector's connection to the Dash0 backend, connecting via plaintext instead. This
+    # is only intended for local development.
     insecure: false
 
     # Resource settings for the agent0-connector container of the agent0-connector deployment managed by the operator.
@@ -1340,57 +1342,6 @@ operator:
       gomemlimit: 150MiB
       requests:
         memory: 32Mi
-
-    # Settings for the cluster role the operator creates for the agent0-connector.
-    clusterRole:
-
-      # Custom RBAC rules for the cluster role of the agent0-connector. By default, this list is empty and the operator
-      # grants read-only access to a fixed set of well-known resource types.
-      #
-      # The rules configured here replace the default rules for the agent0-connector cluster role, they are not merged
-      # with the defaults. Configuring custom rules can also be used to restrict agent0-connector's access in the
-      # cluster, by granting access to fewer resource types. Configuring custom rules can also be used to widen
-      # agent0-connector's access, for example to a resource type the default rules do not cover. All rules configured
-      # here will also be granted to the operator manager, as it can only grant permissions to agent0-connector it holds
-      # itself.
-      #
-      # To start from the current default rules, read them from the cluster and edit the copy:
-      #   kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
-      #
-      # Prefer naming the resource types explicitly over granting a wildcard.
-      #
-      # Only read-only rules are accepted: the verbs "get" and "list" for any resource, plus "create" for the resources
-      # "selfsubjectaccessreviews" and "selfsubjectrulesreviews" in the API group "authorization.k8s.io", which
-      # "kubectl auth can-i" requires and which cannot modify cluster state. Any other verb, in particular a write verb
-      # like "create", "update", "patch" or "delete", as well as the wildcard "*", makes the Helm installation fail.
-      #
-      # Note that reading the content of Kubernetes secrets is rejected by the agent0-connector itself, independent of
-      # the rules configured here.
-      #
-      # For every other resource type, the agent0-connector redacts the credentials it knows about from a response
-      # before it leaves the cluster. Secret redaction is applied to Dash0 custom resources and the Kubernetes resource
-      # types which carry a pod spec (environment variable values are redacted). Granting access to a resource type
-      # outside that set, for example ConfigMaps, a third-party custom resource which holds a credential, etc. returns
-      # its content unredacted.
-      #
-      # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
-      # which are required for this component) to the group system:authenticated via the system:discovery cluster role
-      # binding. On a cluster where system:authenticated has been removed from that binding (e.g. for hardening etc.),
-      # add a rule with nonResourceURLs: ["*"] and verbs: ["get"], otherwise kubectl's API discovery fails and no
-      # kubectl command works.
-      #
-      # Example:
-      # rules:
-      #   - apiGroups: [""]
-      #     resources: ["pods", "pods/log", "namespaces", "nodes", "services"]
-      #     verbs: ["get", "list"]
-      #   - apiGroups: ["apps"]
-      #     resources: ["daemonsets", "deployments", "replicasets", "statefulsets"]
-      #     verbs: ["get", "list"]
-      #   - apiGroups: ["authorization.k8s.io"]
-      #     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
-      #     verbs: ["create"]
-      rules: []
 
     # Additional labels to be set on the agent0-connector deployment managed by the operator.
     labels: {}
@@ -1432,3 +1383,73 @@ operator:
               - key: "kubernetes.io/os"
                 operator: "In"
                 values: ["linux"]
+
+    # Settings for the cluster role the operator creates for the agent0-connector.
+    clusterRole:
+
+      # Custom RBAC rules for the cluster role of the agent0-connector. By default, this list is empty and the operator
+      # grants read-only access to a fixed set of well-known resource types.
+      #
+      # The rules configured here replace the default rules for the agent0-connector cluster role, they are not merged
+      # with the defaults. Configuring custom rules can also be used to restrict agent0-connector's access in the
+      # cluster, by granting access to fewer resource types. Configuring custom rules can also be used to widen
+      # agent0-connector's access, for example to a resource type the default rules do not cover. All rules configured
+      # here will also be granted to the operator manager, as it can only grant permissions to agent0-connector it holds
+      # itself.
+      #
+      # To start from the current default rules, read them from the cluster and edit the copy:
+      #   kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
+      #
+      # Prefer naming the resource types explicitly over granting a wildcard.
+      #
+      # Only read-only rules are accepted: the verbs "get" and "list" for any resource, plus "create" for the resources
+      # "selfsubjectaccessreviews" and "selfsubjectrulesreviews" in the API group "authorization.k8s.io", which
+      # "kubectl auth can-i" requires and which cannot modify cluster state. Any other verb, in particular a write verb
+      # like "create", "update", "patch" or "delete", as well as the wildcard "*", makes the Helm installation fail.
+      #
+      # Allowing access to additional resources can have security implications. Only grant access to additional
+      # resources types when you are confident that it cannot be used to exfiltrate sensitive data (auth tokens,
+      # credentials, API secrets etc.) from the cluster. Failure to do so makes these secrets accessible to anyone who
+      # has access to your Dash0 organization. The agent0-connector component uses a set of restrictions and redaction
+      # mechanisms to prevent leaking secrets. The following are redacted:
+      # * the environment variable values and probe headers of any workload,
+      # * all credential fields in any of the Dash0 custom resources.
+      # Automatic redaction is also applied to the JSON or YAML content of ConfigMaps, if access to ConfigMaps is
+      # granted via custom RBAC rules. (ConfigMaps are inaccessible under the default RBAC rules.) The redaction of
+      # ConfigMap content is best-effort: the connector parses every value of data and binaryData that is a JSON or
+      # YAML object or list, including a YAML value that holds several documents, and replaces the values of certain
+      # key names (token, password, headers, queryParameters, httpHeaders). The values of binaryData are base64 and are
+      # decoded before they are inspected and encoded again afterwards. A credential in a format the connector cannot
+      # parse (a properties file, a shell script), or under a key name it does not know, is returned unredacted. That
+      # is to say, only allow access to ConfigMaps if they do not contain secrets, or if the redaction described here
+      # is sufficient.
+      #
+      # Note that a ConfigMap value the connector did redact something in is re-rendered as a whole, which drops its
+      # comments and normalizes its key order and scalar notation. A value nothing was redacted from is returned byte
+      # for byte.
+      #
+      # The content of every resource type outside the set mentioned above (standard Kubernetes workload resources,
+      # Dash0 custom resources, and JSON/YAML ConfigMap content) is returned verbatim, i.e. unredacted.
+      #
+      # Reading the *content* of Kubernetes secrets is rejected by the agent0-connector itself, independent of
+      # the rules configured here. (Listing secrets and checking for their presence is allowed, if the rules list the
+      # secrets resource type - the default rules do not include access to secrets).
+      #
+      # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
+      # which are required for this component) to the group system:authenticated via the system:discovery cluster role
+      # binding. On a cluster where system:authenticated has been removed from that binding (e.g. for hardening etc.),
+      # add a rule with nonResourceURLs: ["*"] and verbs: ["get"], otherwise kubectl's API discovery fails and no
+      # kubectl command works.
+      #
+      # Example:
+      # rules:
+      #   - apiGroups: [""]
+      #     resources: ["pods", "pods/log", "namespaces", "nodes", "services"]
+      #     verbs: ["get", "list"]
+      #   - apiGroups: ["apps"]
+      #     resources: ["daemonsets", "deployments", "replicasets", "statefulsets"]
+      #     verbs: ["get", "list"]
+      #   - apiGroups: ["authorization.k8s.io"]
+      #     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+      #     verbs: ["create"]
+      rules: []
