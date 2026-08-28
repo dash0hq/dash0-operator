@@ -33,7 +33,8 @@ type dash0OperatorConfigurationValues struct {
 }
 
 const (
-	dash0OperatorConfigurationResourceName = "dash0-operator-configuration-resource-e2e"
+	dash0OperatorConfigurationResourceManuallyManagedName      = "dash0-operator-configuration-resource-e2e"
+	dash0OperatorConfigurationResourceAutomaticallyManagedName = "dash0-operator-configuration-auto-resource"
 
 	// We are using the Dash0 exporter which uses a gRPC exporter under the hood, so actually omitting the http://
 	// scheme would be fine, but for self-monitoring we would prepend https:// to URLs without scheme, see comment in
@@ -111,7 +112,7 @@ func deployRenderedOperatorConfigurationResource(
 }
 
 func waitForOperatorConfigurationResourceToBecomeAvailable() {
-	waitForOperatorConfigurationResourceWithNameToBecomeAvailable(dash0OperatorConfigurationResourceName)
+	waitForOperatorConfigurationResourceWithNameToBecomeAvailable(dash0OperatorConfigurationResourceManuallyManagedName)
 }
 
 func waitForAutoOperatorConfigurationResourceToBecomeAvailable() {
@@ -238,7 +239,7 @@ func updateDash0OperatorConfigurationResource(
 			"kubectl",
 			"patch",
 			"Dash0OperatorConfiguration",
-			dash0OperatorConfigurationResourceName,
+			dash0OperatorConfigurationResourceManuallyManagedName,
 			"--type",
 			"json",
 			"-p",
@@ -253,7 +254,7 @@ func undeployDash0OperatorConfigurationResource() {
 			"kubectl",
 			"delete",
 			"dash0operatorconfiguration",
-			dash0OperatorConfigurationResourceName,
+			dash0OperatorConfigurationResourceManuallyManagedName,
 			"--ignore-not-found",
 		))).To(Succeed())
 }
