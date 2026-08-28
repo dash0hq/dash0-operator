@@ -253,17 +253,31 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		Expect(recordedEvents()).To(BeEmpty())
 	})
 
-	It("does not reconcile when an update is already in progress", func() {
+	It("does not reconcile when a reconciliation is already in progress, but does not lose the trigger", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 		manager := newManager(true)
-		manager.updateInProgress.Store(true)
 
-		hasBeenReconciled, err := manager.ReconcileAgent0Connector(ctx, TriggeredByWatchEvent)
+		// Occupy the manager's reconcile guard and trigger a reconciliation from within it, the way a watch event or
+		// an extra config map update would arrive while a reconciliation is running.
+		executions := 0
+		var skippedHasBeenReconciled bool
+		var skippedErr error
+		_, err := manager.reconcileGuard.Run(func() (bool, error) {
+			executions++
+			if executions == 1 {
+				skippedHasBeenReconciled, skippedErr =
+					manager.ReconcileAgent0Connector(ctx, TriggeredByWatchEvent)
+			}
+			return true, nil
+		}, nil)
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(hasBeenReconciled).To(BeFalse())
-		// The reconcile was skipped, so no resources were created.
+		Expect(skippedErr).ToNot(HaveOccurred())
+		Expect(skippedHasBeenReconciled).To(BeFalse())
+		// The reconciliation was not executed, so no resources were created ...
 		expectAgent0ConnectorResourcesToNotExist(ctx)
+		// ... but the trigger was recorded and the guard repeated the reconciliation once, instead of dropping it.
+		Expect(executions).To(Equal(2))
 	})
 })
 

@@ -28,7 +28,7 @@ type Agent0ConnectorManager struct {
 	extraConfig                    atomic.Pointer[util.ExtraConfig]
 	enabled                        bool
 	developmentMode                bool
-	updateInProgress               atomic.Bool
+	reconcileGuard                 util.ReconcileGuard
 }
 
 type Agent0ConnectorReconcileTrigger string
@@ -89,6 +89,11 @@ func (m *Agent0ConnectorManager) agent0ConnectorEnabled() bool {
 // of (true, nil) does not necessarily indicate that any agent0-connector resource has been created, updated, or
 // deleted; it only indicates that the reconciliation has been performed.
 //
+// A request that arrives while a reconciliation is in progress is not executed, but it is not lost either: the
+// reconciliation which is in progress repeats itself once it is done, see util.ReconcileGuard. Without that, a
+// corrected extra config map arriving mid-reconciliation would be stored but never applied, since neither controller
+// requeues periodically.
+//
 // A misconfiguration of the agent0-connector is reported as (false, nil): the error is not passed on to the caller,
 // since requeuing the reconcile request cannot fix it, and since reconciling agent0-connector must not block the
 // caller's remaining reconciliation steps. It is reported in the status of the Dash0OperatorConfiguration resource
@@ -100,18 +105,23 @@ func (m *Agent0ConnectorManager) ReconcileAgent0Connector(
 	logger := logd.FromContext(ctx)
 	logger.Debug("ReconcileAgent0Connector", "trigger", trigger)
 
-	if m.updateInProgress.Load() {
-		if m.developmentMode {
-			logger.Info("creation/update of the agent0-connector resources is already in progress, skipping " +
-				"additional reconciliation request.")
-		}
-		return false, nil
-	}
-	m.updateInProgress.Store(true)
-	defer func() {
-		m.updateInProgress.Store(false)
-	}()
+	return m.reconcileGuard.Run(
+		func() (bool, error) {
+			return m.reconcileAgent0Connector(ctx, logger)
+		},
+		func() {
+			if m.developmentMode {
+				logger.Info("creation/update of the agent0-connector resources is already in progress, the " +
+					"additional reconciliation request will be served by the reconciliation which is in progress.")
+			}
+		},
+	)
+}
 
+// reconcileAgent0Connector is the body of ReconcileAgent0Connector, executed under the manager's reconcile guard. It
+// reads the operator configuration resource and the extra config itself, which is what allows the guard to repeat it
+// for a trigger that arrived while it was running.
+func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, logger logd.Logger) (bool, error) {
 	operatorConfigurationResource, err := resources.FindOperatorConfigurationResource(ctx, m.Client, logger)
 	if err != nil {
 		return false, err
