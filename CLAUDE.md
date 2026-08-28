@@ -114,11 +114,12 @@ restricted to the same output formats as the Dash0 custom resources. An environm
 `valueFrom` is left untouched, and so are the header values of the HTTP probes and lifecycle hooks of a pod spec, which
 are redacted via the same `httpHeaders` case as the header values of an export.
 
-For every resource type that can contain secrets, `--sort-by` is restricted as well (`unsafeSortByRequested`): kubectl
-evaluates the expression against the resources before the connector sees them, so sorting by a redacted field leaks its
-order, and a filter expression such as `{.spec.containers[0].env[?(@.value>"S")].name}` turns a match into a comparison
-oracle that reveals the value over several requests. Only a plain path below `metadata` or `status` is accepted, except
-`metadata.annotations`, which holds the verbatim copy of the spec that `kubectl apply` leaves behind.
+For every resource type that can contain secrets, `--sort-by` is restricted as well (`unsafeSortByRequested`,
+`unsafeSortByOfSensitiveResourceRequested`): kubectl evaluates the expression against the resources before the
+connector sees them, so sorting by a redacted field leaks its order, and a filter expression such as
+`{.spec.containers[0].env[?(@.value>"S")].name}` turns a match into a comparison oracle that reveals the value over
+ several requests. Only a plain path below `metadata` or `status` is accepted, except `metadata.annotations`, which
+holds the verbatim copy of the spec that `kubectl apply` leaves behind.
 
 When adding or changing a CRD, check all four lists above - grep for `dash0ResourceTypesWithSecrets`,
 `credentialFieldsPerConfigObject` and `urlFieldsPerConfigObject`, and read the `case` clauses of

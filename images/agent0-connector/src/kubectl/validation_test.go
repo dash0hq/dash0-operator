@@ -126,6 +126,18 @@ func sortByNotAllowedForWorkload(expression string) string {
 	)
 }
 
+func sortByNotAllowedForSensitiveResource(expression string, displayName string) string {
+	return fmt.Sprintf(
+		"the --sort-by expression %q is not allowed for a %s; kubectl evaluates the expression against the resources "+
+			"before the connector sees them, so an expression that addresses the contents of the %s would expose "+
+			"them; only a plain path below \"metadata\" or \"status\" may be sorted by, except "+
+			"\"metadata.annotations\" (e.g. --sort-by=.metadata.name or --sort-by=.metadata.creationTimestamp)",
+		expression,
+		displayName,
+		displayName,
+	)
+}
+
 const kyamlNotRedactableForDash0Resource = "the output format \"kyaml\" cannot be redacted reliably for a Dash0 " +
 	"custom resource, which can contain an authorization token or third-party credentials, because the connector " +
 	"does not redact this output format yet; reading such a resource is supported with -o json/yaml/name/wide " +
@@ -732,6 +744,27 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: sortByNotAllowedForDash0Resource(".spec.export.dash0.authorization.token")},
 		{name: "sort-by a spec field of a resource type without secrets is allowed",
 			command: "kubectl", arguments: []string{"get", "services", "--sort-by", ".spec.clusterIP"}, allowed: true},
+		// kubectl evaluates --sort-by before the connector sees the response, so for secrets and config maps, whose
+		// content the connector never serializes, the expression must not be able to address that content either.
+		{name: "sort-by a metadata field of secrets is allowed",
+			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".metadata.creationTimestamp"}, allowed: true},
+		{name: "sort-by a data field of secrets is rejected",
+			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".data.password"}, allowed: false,
+			rejectionReason: sortByNotAllowedForSensitiveResource(".data.password", "secret")},
+		{name: "sort-by a filter expression over secrets is rejected",
+			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", "{.data[?(@>\"S\")]}"}, allowed: false,
+			rejectionReason: sortByNotAllowedForSensitiveResource("{.data[?(@>\"S\")]}", "secret")},
+		{name: "sort-by the last-applied-configuration annotation of secrets is rejected",
+			command: "kubectl", arguments: []string{"get", "secret", "my-secret", "--sort-by", ".metadata.annotations"}, allowed: false,
+			rejectionReason: sortByNotAllowedForSensitiveResource(".metadata.annotations", "secret")},
+		{name: "sort-by a wildcard over secrets is rejected",
+			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".data[*]"}, allowed: false,
+			rejectionReason: sortByNotAllowedForSensitiveResource(".data[*]", "secret")},
+		{name: "sort-by a data field of config maps is rejected",
+			command: "kubectl", arguments: []string{"get", "cm", "--sort-by", ".data.config"}, allowed: false,
+			rejectionReason: sortByNotAllowedForSensitiveResource(".data.config", "config map")},
+		{name: "sort-by a metadata field of config maps is allowed",
+			command: "kubectl", arguments: []string{"get", "configmaps", "--sort-by", ".metadata.name"}, allowed: true},
 		{name: "a value starting with a dash is not mistaken for a flag",
 			command: "kubectl", arguments: []string{"logs", "my-pod", "--tail", "-1"}, allowed: true},
 		{name: "logs flags are allowed",
