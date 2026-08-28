@@ -15,9 +15,9 @@
 #
 # Users can replace these rules entirely via the Helm value operator.agent0Connector.clusterRole.rules.
 
-# Read-only access to core API group resource types. Resources which can hold sensitive user data (secrets, config maps)
-# are deliberately absent, so that they cannot be read at all, independent of the validation & redaction the
-# agent0-connector applies to a command request.
+# Read-only access to core API group resource types. Configmaps are absent as a defensive default value, since
+# configmaps can hold sensitive values in some setups. Users that want to allow access to configmaps can do so by
+# providing custom RBAC rules for agent0-connector.
 - apiGroups:
   - ""
   resources:

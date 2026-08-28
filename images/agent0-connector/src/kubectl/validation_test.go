@@ -68,23 +68,9 @@ func outputFormatNotAllowed(format string) string {
 	return fmt.Sprintf("the kubectl output format %q is not allowed", format)
 }
 
-func contentExposingKubectlCommand(kubectlCommand string, resource string) string {
-	return fmt.Sprintf(
-		"the kubectl command %q prints the contents of a %s, which is not allowed",
-		kubectlCommand,
-		resource,
-	)
-}
-
-func contentsNotReadable(resource string) string {
-	return fmt.Sprintf(
-		"reading the contents of a %s is not allowed; listing %ss or checking for the presence of a particular %s is "+
-			"supported, but serializing its data (e.g. via -o yaml/json/jsonpath/go-template/custom-columns) is not",
-		resource,
-		resource,
-		resource,
-	)
-}
+const contentsNotReadable = "reading the contents of a secret is not allowed; listing secrets or checking for the " +
+	"presence of a particular secret is supported, but serializing its data (e.g. via " +
+	"-o yaml/json/jsonpath/go-template/custom-columns) is not"
 
 func outputFormatNotRedactable(format string) string {
 	return fmt.Sprintf(
@@ -126,15 +112,13 @@ func sortByNotAllowedForWorkload(expression string) string {
 	)
 }
 
-func sortByNotAllowedForSensitiveResource(expression string, displayName string) string {
+func sortByNotAllowedForSensitiveResource(expression string) string {
 	return fmt.Sprintf(
-		"the --sort-by expression %q is not allowed for a %s; kubectl evaluates the expression against the resources "+
-			"before the connector sees them, so an expression that addresses the contents of the %s would expose "+
-			"them; only a plain path below \"metadata\" or \"status\" may be sorted by, except "+
+		"the --sort-by expression %q is not allowed for a secret; kubectl evaluates the expression against the "+
+			"resources before the connector sees them, so an expression that addresses the contents of the secret "+
+			"would expose them; only a plain path below \"metadata\" or \"status\" may be sorted by, except "+
 			"\"metadata.annotations\" (e.g. --sort-by=.metadata.name or --sort-by=.metadata.creationTimestamp)",
 		expression,
-		displayName,
-		displayName,
 	)
 }
 
@@ -581,119 +565,61 @@ func TestValidateCommandRequest(t *testing.T) {
 
 		{name: "secret with -o yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "my-secret", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with -o json is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "-o", "json"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with -ojson (combined) is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "-ojson"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with --output=yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "--output=yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with -o jsonpath is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "my-secret", "-o", "jsonpath={.data}"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with -o go-template is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "-o", "go-template={{.data}}"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with -o custom-columns is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "-o", "custom-columns=D:.data"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with --template is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "--template={{.data}}"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "listing secrets as yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret via type/name as yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secret/my-secret", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "fully qualified secret as yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets.v1.", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "output flag before resource is rejected",
 			command: "kubectl", arguments: []string{"get", "-o", "yaml", "secret", "my-secret"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "multi-resource list including secrets as yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secret,pods", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret as yaml with a leading flag is rejected",
 			command: "kubectl", arguments: []string{"-n", "x", "get", "secret", "my-secret", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "presence check of a secret with a leading flag is allowed",
 			command: "kubectl", arguments: []string{"-n", "x", "get", "secret", "my-secret"}, allowed: true},
 
 		{name: "secret with the output format in a grouped shorthand is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "-Aoyaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with an allowed output format overridden by yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "-o", "name", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with yaml overridden by an allowed output format is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "-o", "yaml", "-o", "name"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
+			rejectionReason: contentsNotReadable},
 		{name: "secret with --template in front of the resource is rejected",
 			command: "kubectl", arguments: []string{"get", "--template", "{{.data}}", "secret"}, allowed: false,
-			rejectionReason: contentsNotReadable("secret")},
-
-		// Config maps: listing and presence checks are allowed, reading their contents is not. Unlike `describe secret`,
-		// `describe configmap` prints every value and is therefore rejected.
-		{name: "listing config maps is allowed",
-			command: "kubectl", arguments: []string{"get", "configmaps"}, allowed: true},
-		{name: "listing config maps via the shortname is allowed",
-			command: "kubectl", arguments: []string{"get", "cm", "-n", "x"}, allowed: true},
-		{name: "presence check of a config map is allowed",
-			command: "kubectl", arguments: []string{"get", "configmap", "my-cm"}, allowed: true},
-		{name: "config map with -o name is allowed",
-			command: "kubectl", arguments: []string{"get", "cm", "-o", "name"}, allowed: true},
-		{name: "config map with -o wide is allowed",
-			command: "kubectl", arguments: []string{"get", "cm", "-o", "wide"}, allowed: true},
-		{name: "explain for config maps is allowed",
-			command: "kubectl", arguments: []string{"explain", "cm"}, allowed: true},
-
-		{name: "config map with -o yaml is rejected",
-			command: "kubectl", arguments: []string{"get", "configmap", "my-cm", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "config map shortname with -o yaml is rejected",
-			command: "kubectl", arguments: []string{"get", "cm", "my-cm", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "config map via type/name as json is rejected",
-			command: "kubectl", arguments: []string{"get", "cm/my-cm", "-o", "json"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "config map with -o jsonpath is rejected",
-			command: "kubectl", arguments: []string{"get", "cm", "my-cm", "-o", "jsonpath={.data}"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "config map with -o custom-columns is rejected",
-			command: "kubectl", arguments: []string{"get", "cm", "-o", "custom-columns=D:.data"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "config map with --template is rejected",
-			command: "kubectl", arguments: []string{"get", "cm", "--template={{.data}}"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "config map with an attached output format is rejected",
-			command: "kubectl", arguments: []string{"get", "cm", "-oyaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "fully qualified config map as yaml is rejected",
-			command: "kubectl", arguments: []string{"get", "configmaps.v1.", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "config maps in all namespaces as yaml is rejected",
-			command: "kubectl", arguments: []string{"get", "cm", "-A", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "multi-resource list including config maps as yaml is rejected",
-			command: "kubectl", arguments: []string{"get", "pods,cm", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "type/name pair for a config map in a later positional slot as yaml is rejected",
-			command: "kubectl", arguments: []string{"get", "pod/a", "cm/b", "-o", "yaml"}, allowed: false,
-			rejectionReason: contentsNotReadable("config map")},
-		{name: "describe configmap is rejected",
-			command: "kubectl", arguments: []string{"describe", "configmap", "my-cm"}, allowed: false,
-			rejectionReason: contentExposingKubectlCommand("describe", "config map")},
-		{name: "describe cm is rejected",
-			command: "kubectl", arguments: []string{"describe", "cm"}, allowed: false,
-			rejectionReason: contentExposingKubectlCommand("describe", "config map")},
-		{name: "describe config map via type/name is rejected",
-			command: "kubectl", arguments: []string{"describe", "cm/my-cm"}, allowed: false,
-			rejectionReason: contentExposingKubectlCommand("describe", "config map")},
+			rejectionReason: contentsNotReadable},
 
 		// Non-sensitive resources are unaffected by the content check.
 		{name: "non-secret resource as yaml is allowed",
@@ -744,27 +670,22 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: sortByNotAllowedForDash0Resource(".spec.export.dash0.authorization.token")},
 		{name: "sort-by a spec field of a resource type without secrets is allowed",
 			command: "kubectl", arguments: []string{"get", "services", "--sort-by", ".spec.clusterIP"}, allowed: true},
-		// kubectl evaluates --sort-by before the connector sees the response, so for secrets and config maps, whose
-		// content the connector never serializes, the expression must not be able to address that content either.
+		// kubectl evaluates --sort-by before the connector sees the response, so for secrets, whose content the
+		// connector never serializes, the expression must not be able to address that content either.
 		{name: "sort-by a metadata field of secrets is allowed",
 			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".metadata.creationTimestamp"}, allowed: true},
 		{name: "sort-by a data field of secrets is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".data.password"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource(".data.password", "secret")},
+			rejectionReason: sortByNotAllowedForSensitiveResource(".data.password")},
 		{name: "sort-by a filter expression over secrets is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", "{.data[?(@>\"S\")]}"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource("{.data[?(@>\"S\")]}", "secret")},
+			rejectionReason: sortByNotAllowedForSensitiveResource("{.data[?(@>\"S\")]}")},
 		{name: "sort-by the last-applied-configuration annotation of secrets is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "my-secret", "--sort-by", ".metadata.annotations"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource(".metadata.annotations", "secret")},
+			rejectionReason: sortByNotAllowedForSensitiveResource(".metadata.annotations")},
 		{name: "sort-by a wildcard over secrets is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".data[*]"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource(".data[*]", "secret")},
-		{name: "sort-by a data field of config maps is rejected",
-			command: "kubectl", arguments: []string{"get", "cm", "--sort-by", ".data.config"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource(".data.config", "config map")},
-		{name: "sort-by a metadata field of config maps is allowed",
-			command: "kubectl", arguments: []string{"get", "configmaps", "--sort-by", ".metadata.name"}, allowed: true},
+			rejectionReason: sortByNotAllowedForSensitiveResource(".data[*]")},
 		{name: "a value starting with a dash is not mistaken for a flag",
 			command: "kubectl", arguments: []string{"logs", "my-pod", "--tail", "-1"}, allowed: true},
 		{name: "logs flags are allowed",
@@ -897,12 +818,9 @@ func TestLookupSensitiveResourceType(t *testing.T) {
 		{resourceType: "secrets", isSensitive: true, displayName: "secret"},
 		{resourceType: "Secrets", isSensitive: true, displayName: "secret"},
 		{resourceType: "secrets.v1.", isSensitive: true, displayName: "secret"},
-		{resourceType: "configmap", isSensitive: true, displayName: "config map"},
-		{resourceType: "configmaps", isSensitive: true, displayName: "config map"},
-		{resourceType: "cm", isSensitive: true, displayName: "config map"},
-		{resourceType: "CM", isSensitive: true, displayName: "config map"},
-		{resourceType: "configmaps.v1.", isSensitive: true, displayName: "config map"},
-		{resourceType: "cm.v1.", isSensitive: true, displayName: "config map"},
+		{resourceType: "configmap", isSensitive: false},
+		{resourceType: "configmaps", isSensitive: false},
+		{resourceType: "cm", isSensitive: false},
 		{resourceType: "pods", isSensitive: false},
 		{resourceType: "sealedsecrets", isSensitive: false},
 		{resourceType: "", isSensitive: false},

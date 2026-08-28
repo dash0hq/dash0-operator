@@ -1370,8 +1370,8 @@ operator:
       # For every other resource type, the agent0-connector redacts the credentials it knows about from a response
       # before it leaves the cluster. Secret redaction is applied to Dash0 custom resources and the Kubernetes resource
       # types which carry a pod spec (environment variable values are redacted). Granting access to a resource type
-      # outside that set, for example a third-party custom resource which holds a credential, returns its content
-      # unredacted.
+      # outside that set, for example ConfigMaps, a third-party custom resource which holds a credential, etc. returns
+      # its content unredacted.
       #
       # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
       # which are required for this component) to the group system:authenticated via the system:discovery cluster role
