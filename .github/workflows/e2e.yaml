@@ -136,11 +136,6 @@ jobs:
           echo "Testing registry connectivity..."
           curl -s http://localhost:5001/v2/_catalog || echo "Registry catalog endpoint responded"
 
-      - name: Probe the cloud instance metadata endpoints
-        continue-on-error: true
-        run: |
-          ./test-resources/bin/probe-instance-metadata-endpoints.sh
-
       - name: Run e2e tests
         env:
           GINKGO_FOCUS: ${{ inputs.focus }}
