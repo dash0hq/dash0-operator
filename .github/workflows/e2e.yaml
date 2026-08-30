@@ -1,14 +1,10 @@
 # SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-name: E2E tests on kind
+name: E2E Failure Probes
 
 on:
   workflow_dispatch:
-    inputs:
-      ready_timeout:
-        required: false
-        description: Seconds to wait for the collector to become ready per detector. Defaults to 90.
 
 env:
   DASH0_KIND_CLUSTER: dash0-operator-ci
@@ -21,7 +17,7 @@ env:
   IMAGE_REPOSITORY_PREFIX: "localhost:5001/"
 
 jobs:
-  probe-resource-detectors-on-kind:
+  probe-gcp-resource-detector-steps:
     name: Set up cluster and probe the resource detectors
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 90
@@ -95,20 +91,16 @@ jobs:
           echo "All pods:"
           kubectl get pods -A
 
-      - name: Build and push the collector image
+      - name: Probe the steps of the gcp detector
+        if: always()
         run: |
-          make image-collector push-image-collector
-
-      - name: Probe the resource detectors
-        env:
-          DASH0_PROBE_READY_TIMEOUT: ${{ inputs.ready_timeout }}
-        run: |
-          ./test-resources/bin/probe-resource-detectors.sh | tee /tmp/probe-resource-detectors.txt
+          ./test-resources/bin/probe-gcp-detector.sh | tee /tmp/probe-gcp-detector.txt
 
       - name: Upload the probe results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: probe-resource-detectors
-          path: /tmp/probe-resource-detectors.txt
+          path: |
+            /tmp/probe-gcp-detector.txt
           if-no-files-found: ignore
