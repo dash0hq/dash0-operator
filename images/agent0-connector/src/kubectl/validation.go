@@ -159,25 +159,15 @@ var safeOrRedactableOutputFormats = func() map[string]struct{} {
 type sensitiveResource struct {
 	// displayName names the resource in rejection messages.
 	displayName string
-	// contentExposingKubectlCommands are kubectl commands that print the resource's data regardless of the output format:
-	// "kubectl describe" for secrets prints only key names and byte counts, but the one for config maps prints the full
-	// config map.
-	contentExposingKubectlCommands []string
 }
 
-var (
-	secretResource    = sensitiveResource{displayName: "secret"}
-	configMapResource = sensitiveResource{displayName: "config map", contentExposingKubectlCommands: []string{"describe"}}
-)
+var secretResource = sensitiveResource{displayName: "secret"}
 
 // sensitiveResourceTypes maps the resource type names whose contents must not be exposed to their guard, in singular
-// and plural form. Config maps additionally have the kubectl shortname "cm"; secrets have no shortname.
+// and plural form.
 var sensitiveResourceTypes = map[string]sensitiveResource{
-	"secret":     secretResource,
-	"secrets":    secretResource,
-	"configmap":  configMapResource,
-	"configmaps": configMapResource,
-	"cm":         configMapResource,
+	"secret":  secretResource,
+	"secrets": secretResource,
 }
 
 // validateCommandAndParseArguments parses the request's argument list and ensures the request invokes an allowed
@@ -340,21 +330,13 @@ func disallowedOutputFormat(parsed kubectlArguments) (string, bool) {
 //
 // Listing secrets (e.g. `kubectl get secrets`) and checking for the presence of a particular one
 // (`kubectl get secret <name>`) are allowed (if the corresponding RBAC permissions are granted); serializing the data
-// via an output format such as -o yaml/json/jsonpath/go-template/custom-columns (or --template), or via a kubectl
-// command that prints the data, is not. This is a fail-closed check: output formats that could expose the data are
-// rejected even if a particular invocation would only read metadata, and a repeated output flag is rejected if any of
-// its occurrences would expose the data.
+// via an output format such as -o yaml/json/jsonpath/go-template/custom-columns (or --template) is not. This is a
+// fail-closed check: output formats that could expose the data are rejected even if a particular invocation would only
+// read metadata, and a repeated output flag is rejected if any of its occurrences would expose the data.
 func sensitiveContentRequested(parsed kubectlArguments) (string, bool) {
 	resource, targeted := targetedSensitiveResource(parsed)
 	if !targeted {
 		return "", false
-	}
-	if slices.Contains(resource.contentExposingKubectlCommands, parsed.kubectlCommand) {
-		return fmt.Sprintf(
-			"the kubectl command %q prints the contents of a %s, which is not allowed",
-			parsed.kubectlCommand,
-			resource.displayName,
-		), true
 	}
 	if parsed.outputIsContentFree() {
 		return "", false
@@ -448,12 +430,12 @@ func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
 }
 
 // unsafeSortByOfSensitiveResourceRequested reports whether the kubectl arguments sort a sensitive resource by a field
-// that can expose its content, returning a human-readable reason when they do. Listing secrets or config maps is
-// allowed while reading their content is not (see sensitiveContentRequested), but kubectl evaluates a --sort-by
-// expression against the resources before the connector ever sees the response: sorting by a field of "data" leaks its
-// order, and a filter expression such as {.data[?(@>"S")]} turns the presence of a match into a comparison oracle that
-// reveals the value over several requests. Every occurrence of the flag is checked, not just the effective (last) one,
-// mirroring unsafeSortByRequested.
+// that can expose its content, returning a human-readable reason when they do. Listing secrets is allowed while reading
+// their content is not (see sensitiveContentRequested), but kubectl evaluates a --sort-by expression against the
+// resources before the connector ever sees the response: sorting by a field of "data" leaks its order, and a filter
+// expression such as {.data[?(@>"S")]} turns the presence of a match into a comparison oracle that reveals the value
+// over several requests. Every occurrence of the flag is checked, not just the effective (last) one, mirroring
+// unsafeSortByRequested.
 func unsafeSortByOfSensitiveResourceRequested(parsed kubectlArguments) (string, bool) {
 	resource, targeted := targetedSensitiveResource(parsed)
 	if !targeted {

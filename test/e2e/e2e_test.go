@@ -33,7 +33,27 @@ import (
 )
 
 const (
-	dotEnvFile = "test-resources/.env"
+	dotEnvFile          = "test-resources/.env"
+	rootCaConfigMapName = "kube-root-ca.crt"
+
+	// The config map the agent0-connector custom cluster role test reads to verify that the connector redacts the
+	// credentials it finds in the content of a config map. Its content has the shape of an operator-rendered collector
+	// configuration, where the export header value is the credential.
+	credentialConfigMapName         = "agent0-connector-e2e-credentials"
+	configMapCredentialValue        = "e2e-config-map-credential"
+	configMapWithCredentialManifest = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ` + credentialConfigMapName + `
+  namespace: default
+data:
+  config.yaml: |
+    exporters:
+      otlp/example:
+        endpoint: example.com:4317
+        headers:
+          Authorization: Bearer ` + configMapCredentialValue + `
+`
 )
 
 var (
@@ -2541,10 +2561,6 @@ spec:
 			By("installing the outbound-connector mock")
 			installOutboundConnectorMock()
 
-			// The dummy resource type has to exist before the agent0-connector pod starts, otherwise kubectl's discovery
-			// cache in the container would not know it yet.
-			deployAgent0ConnectorDummyResource()
-
 			By("determining the pseudo cluster UID (the UID of the kube-system namespace)")
 			clusterUid, err := run(exec.Command(
 				"kubectl",
@@ -2554,6 +2570,11 @@ spec:
 			Expect(err).ToNot(HaveOccurred())
 			pseudoClusterUid = strings.TrimSpace(clusterUid)
 			Expect(pseudoClusterUid).ToNot(BeEmpty())
+
+			By("deploying a config map holding a credential")
+			applyConfigMapCmd := exec.Command("kubectl", "apply", "-f", "-")
+			applyConfigMapCmd.Stdin = strings.NewReader(configMapWithCredentialManifest)
+			Expect(runAndIgnoreOutput(applyConfigMapCmd)).To(Succeed())
 
 			By("deploying the Dash0 operator with a custom cluster role for the agent0-connector")
 			deployOperatorWithDefaultAutoOperationConfiguration(
@@ -2569,14 +2590,13 @@ spec:
 					"operator.agent0Connector.token":         agent0ConnectorDummyToken,
 					"operator.agent0Connector.insecure":      "true",
 
-					// The custom rules replace the operator's default rules entirely: they grant read access to the
-					// dummy resource type, which the default rules do not cover, and they do not grant access to pods,
-					// which the default rules do cover.
-					"operator.agent0Connector.clusterRole.rules[0].apiGroups": fmt.Sprintf(
-						"{%s}", agent0ConnectorDummyApiGroup),
-					"operator.agent0Connector.clusterRole.rules[0].resources": fmt.Sprintf(
-						"{%s}", agent0ConnectorDummyResourceType),
-					"operator.agent0Connector.clusterRole.rules[0].verbs": "{get,list}",
+					// The custom rules replace the operator's default rules entirely: they grant read access to config
+					// maps, which the default rules deliberately exclude, and they do not grant access to pods, which
+					// the default rules do cover. The empty API group of the core resource types has to be set via the
+					// index syntax; "{\"\"}" would render as a list holding the two quote characters.
+					"operator.agent0Connector.clusterRole.rules[0].apiGroups[0]": "",
+					"operator.agent0Connector.clusterRole.rules[0].resources":    "{configmaps}",
+					"operator.agent0Connector.clusterRole.rules[0].verbs":        "{get,list}",
 					// "get" for the required API discovery URLs (/api, /apis, /openapi/v3, ...) is usually granted automatically
 					// via the group system:authenticated/cluster role binding system:discovery cluster, so this is not necessary
 					// in most clusters.
@@ -2588,17 +2608,15 @@ spec:
 
 		AfterAll(func() {
 			undeployOperator(operatorNamespace)
-			removeAgent0ConnectorDummyResource()
 			uninstallOutboundConnectorMock()
+			Expect(runAndIgnoreOutput(exec.Command(
+				"kubectl",
+				"delete", "configmap", credentialConfigMapName,
+				"-n", "default",
+				"--ignore-not-found",
+			))).To(Succeed())
 		})
 
-		// TODO Once OPE-509 (remove the in-code restriction for config maps) is implemented, replace the dummy CRD in
-		// this test with config maps: config maps are a resource type that the operator's default cluster role
-		// deliberately excludes, so a custom cluster role granting access to them demonstrates the same widening
-		// without needing a dedicated CRD. Drop agent0connectore2edummy-crd.yaml,
-		// agent0connectore2edummy-resource.yaml and agent0_connector_dummy_resource.go with it. Note that reading the
-		// *content* of a config map stays rejected by the agent0-connector itself, so the assertion has to stick to
-		// listing them ("kubectl get configmaps"), not to "-o yaml".
 		It("grants the custom rules and not the default rules", func() {
 			By("waiting for the agent0-connector deployment to become available")
 			agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
@@ -2628,7 +2646,7 @@ spec:
 					g,
 					pseudoClusterUid,
 					"kubectl",
-					[]string{"get", agent0ConnectorDummyResourceType},
+					[]string{"get", "configmaps", "--all-namespaces"},
 				)
 			}, 30*time.Second, pollingInterval).Should(Succeed())
 
@@ -2637,14 +2655,76 @@ spec:
 				response := findOutboundConnectorMockCommandResponse(g, allowedRequestId)
 				g.Expect(response.ExitCode).To(
 					BeEquivalentTo(0),
-					"\"kubectl get %s\" should have succeeded; stderr was: %s",
-					agent0ConnectorDummyResourceType,
+					"\"kubectl get configmaps\" should have succeeded; stderr was: %s",
 					response.Stderr,
 				)
 				g.Expect(response.Stderr).ToNot(ContainSubstring("is forbidden"))
 				g.Expect(response.Stdout).To(
-					ContainSubstring(agent0ConnectorDummyResourceName),
-					"stdout should list the dummy resource instance")
+					ContainSubstring(rootCaConfigMapName),
+					"stdout should list the root CA config map, which the API server creates in every namespace")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("triggering a command request for the content of a config map")
+			var contentRequestId string
+			Eventually(func(g Gomega) {
+				contentRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"get", "configmap", rootCaConfigMapName, "-n", "kube-system", "-o", "yaml"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the agent0-connector returned the content of the config map")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, contentRequestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"\"kubectl get configmap %s -o yaml\" should have succeeded; stderr was: %s",
+					rootCaConfigMapName,
+					response.Stderr,
+				)
+				g.Expect(response.Stdout).To(
+					ContainSubstring("BEGIN CERTIFICATE"),
+					"stdout should contain the content of the config map, not only its metadata")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("triggering a command request for the content of a config map holding a credential")
+			var credentialRequestId string
+			Eventually(func(g Gomega) {
+				credentialRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"get", "configmap", credentialConfigMapName, "-n", "default", "-o", "yaml"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the agent0-connector redacted the credential from the config map")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, credentialRequestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"\"kubectl get configmap %s -o yaml\" should have succeeded; stderr was: %s",
+					credentialConfigMapName,
+					response.Stderr,
+				)
+				// The config map was applied, so the response carries the credential twice: in the data and in the
+				// copy of the config map that kubectl leaves in the last-applied-configuration annotation. Neither may
+				// survive.
+				g.Expect(response.Stdout).ToNot(
+					ContainSubstring(configMapCredentialValue),
+					"the export header value of the config map should have been redacted, in its data as well as in "+
+						"the copy of it in the last-applied-configuration annotation")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("last-applied-configuration"),
+					"stdout should carry the annotation, otherwise the assertion above proves nothing about it")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("(redacted)"),
+					"stdout should carry the redaction placeholder in place of the header value")
+				g.Expect(response.Stdout).To(
+					ContainSubstring("example.com:4317"),
+					"the rest of the config map should stay readable")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 
 			By("triggering a command request for pods, which only the replaced default rules would allow")
