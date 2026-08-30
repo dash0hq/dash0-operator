@@ -16,6 +16,12 @@
 # An unreachable route makes connect() fail at once with EHOSTUNREACH. The metadata client neither retries that error
 # nor treats it as temporary, so the detector gives up immediately.
 #
+# The route on its own is not enough, though. Linux throttles the generation of ICMP errors per destination via
+# net.ipv4.icmp_ratelimit, one message per second by default. The first connections get their ICMP host unreachable at
+# once, the ones after that get nothing and fall back to the retransmission of the SYN, which is why a measurement of
+# the route alone showed the first two calls at 0s but the detector as a whole still at 18s, down from 28s. The rate
+# limit is therefore disabled as well, which is what makes every call fail immediately rather than only the first few.
+#
 # Note: an iptables REJECT rule is the worse choice here. Both --reject-with tcp-reset and the default
 # icmp-port-unreachable produce ECONNREFUSED, and syscallRetryable in retry_linux.go of
 # cloud.google.com/go/compute/metadata retries exactly ECONNRESET and ECONNREFUSED. The five retries would still run,
@@ -34,18 +40,30 @@ add_route() {
   docker exec "$node" ip route replace unreachable "$metadata_ip/32"
 }
 
-# An endpoint that is unreachable fails in milliseconds. A drop, which is what this works around, would keep curl busy
-# until it runs into the timeout.
+# Without this, only the first ICMP error per second reaches the caller and every connection after that waits for the
+# retransmission of its SYN instead of failing at once.
+disable_icmp_rate_limit() {
+  local node=$1
+  docker exec "$node" sysctl --quiet --write net.ipv4.icmp_ratelimit=0
+}
+
+# An endpoint that is unreachable fails in milliseconds. A single request would not tell the whole story, because the
+# first one succeeds in failing fast even while the ICMP rate limit is in place, so the check makes five in a row. All
+# five have to come back at once.
 verify_route() {
   local node=$1
-  docker exec "$node" \
-    curl \
-    --silent \
-    --show-error \
-    --max-time 5 \
-    --output /dev/null \
-    --write-out 'elapsed=%{time_total}s' \
-    "http://$metadata_ip/" 2>&1 || true
+  local elapsed=""
+  local remaining=5
+  while ((remaining-- > 0)); do
+    elapsed+="$(docker exec "$node" \
+      curl \
+      --silent \
+      --max-time 5 \
+      --output /dev/null \
+      --write-out '%{time_total}s ' \
+      "http://$metadata_ip/" 2>/dev/null || true)"
+  done
+  echo "$elapsed"
 }
 
 main() {
@@ -61,7 +79,8 @@ main() {
   local node
   for node in $nodes; do
     add_route "$node"
-    printf '  %-34s unreachable route added, %s\n' "$node" "$(verify_route "$node")"
+    disable_icmp_rate_limit "$node"
+    printf '  %-34s five requests: %s\n' "$node" "$(verify_route "$node")"
   done
 }
 
