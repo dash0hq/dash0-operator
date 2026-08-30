@@ -125,11 +125,7 @@ func waitForCollectorToStart(operatorNamespace string, operatorHelmChart string)
 			))).To(Succeed())
 	}
 
-	// The collector's resourcedetection processor queries the cloud instance metadata endpoints once per pipeline on
-	// startup. On a machine where these endpoints neither answer nor refuse the connection, each of these runs takes
-	// about 25 seconds instead of the configured two seconds, so the daemonset collector needs about 80 seconds to
-	// become ready. See also the startup probe that executeOperatorHelmChart grants it.
-	Eventually(verifyCollectorIsUp, 150*time.Second, time.Second).Should(Succeed())
+	Eventually(verifyCollectorIsUp, 60*time.Second, time.Second).Should(Succeed())
 
 	verifyCollectorHasOwnerReference(operatorNamespace, operatorHelmChart)
 }

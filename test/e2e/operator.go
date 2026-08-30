@@ -254,11 +254,6 @@ func executeOperatorHelmChart(
 		arguments = append(arguments, "--create-namespace")
 	}
 	arguments = append(arguments, "--set", "operator.developmentMode=true")
-	// The collector's resourcedetection processor queries the cloud instance metadata endpoints once per pipeline on
-	// startup. On a machine where these endpoints neither answer nor refuse the connection, each of these runs takes
-	// about 25 seconds instead of the configured two seconds, which exceeds the 90 seconds that the default startup
-	// probe grants the daemonset collector. 60 failures at a period of two seconds grant it 120 seconds.
-	arguments = append(arguments, "--set", "operator.collectors.daemonSetProbes.startup.failureThreshold=60")
 	if images != nil {
 		arguments = addHelmParametersForImages(arguments, *images)
 	}
