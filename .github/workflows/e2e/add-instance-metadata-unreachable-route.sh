@@ -47,23 +47,30 @@ disable_icmp_rate_limit() {
   docker exec "$node" sysctl --quiet --write net.ipv4.icmp_ratelimit=0
 }
 
-# An endpoint that is unreachable fails in milliseconds. A single request would not tell the whole story, because the
-# first one succeeds in failing fast even while the ICMP rate limit is in place, so the check makes five in a row. All
-# five have to come back at once.
-verify_route() {
+# Verifies the two settings rather than the latency they produce. Measuring the latency from the node would prove
+# nothing: a request that starts on the node runs into the unreachable route during the route lookup and fails locally
+# in microseconds, without an ICMP packet ever being generated, whether the rate limit is in place or not. Only traffic
+# that the node forwards, which means traffic from a pod, makes the node generate the ICMP error that the rate limit
+# applies to. The latency that matters is therefore only measurable from a pod, and it is what the gcp detector probe
+# measures.
+verify_settings() {
   local node=$1
-  local elapsed=""
-  local remaining=5
-  while ((remaining-- > 0)); do
-    elapsed+="$(docker exec "$node" \
-      curl \
-      --silent \
-      --max-time 5 \
-      --output /dev/null \
-      --write-out '%{time_total}s ' \
-      "http://$metadata_ip/" 2>/dev/null || true)"
-  done
-  echo "$elapsed"
+
+  local route
+  route=$(docker exec "$node" ip route show | grep -F "unreachable $metadata_ip" || true)
+  if [[ -z $route ]]; then
+    echo "error: node $node has no unreachable route for $metadata_ip."
+    exit 1
+  fi
+
+  local rate_limit
+  rate_limit=$(docker exec "$node" sysctl --values net.ipv4.icmp_ratelimit)
+  if [[ $rate_limit != 0 ]]; then
+    echo "error: node $node still limits the rate of ICMP errors, net.ipv4.icmp_ratelimit=$rate_limit."
+    exit 1
+  fi
+
+  printf '  %-34s %s, net.ipv4.icmp_ratelimit=%s\n' "$node" "$route" "$rate_limit"
 }
 
 main() {
@@ -80,7 +87,7 @@ main() {
   for node in $nodes; do
     add_route "$node"
     disable_icmp_rate_limit "$node"
-    printf '  %-34s five requests: %s\n' "$node" "$(verify_route "$node")"
+    verify_settings "$node"
   done
 }
 
