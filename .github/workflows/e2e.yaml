@@ -91,10 +91,24 @@ jobs:
           echo "All pods:"
           kubectl get pods -A
 
-      - name: Probe the steps of the gcp detector
+      # The probe runs twice, before and after the workaround, so that both numbers come from the same runner and the
+      # comparison does not depend on anything staying equal between two workflow runs.
+      - name: Probe the steps of the gcp detector, before the workaround
         if: always()
         run: |
-          ./test-resources/bin/probe-gcp-detector.sh | tee /tmp/probe-gcp-detector.txt
+          ./test-resources/bin/probe-gcp-detector.sh | tee /tmp/probe-gcp-detector-before.txt
+
+      # Workaround for resourcedetection bug in the gcp detector that makes the collector slow to become ready.
+      # https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/issues/1026
+      - name: Make the instance metadata endpoint unreachable
+        if: always()
+        run: |
+          ./.github/workflows/e2e/add-instance-metadata-unreachable-route.sh
+
+      - name: Probe the steps of the gcp detector, after the workaround
+        if: always()
+        run: |
+          ./test-resources/bin/probe-gcp-detector.sh | tee /tmp/probe-gcp-detector-after.txt
 
       - name: Upload the probe results
         if: always()
@@ -102,5 +116,6 @@ jobs:
         with:
           name: probe-resource-detectors
           path: |
-            /tmp/probe-gcp-detector.txt
+            /tmp/probe-gcp-detector-before.txt
+            /tmp/probe-gcp-detector-after.txt
           if-no-files-found: ignore

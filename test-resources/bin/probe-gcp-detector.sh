@@ -37,8 +37,10 @@ probe_image="${DASH0_GCP_PROBE_IMAGE:-gcp-detector-probe:latest}"
 probe_timeout_seconds="${DASH0_GCP_PROBE_TIMEOUT:-300}"
 
 # shellcheck disable=SC2329  # invoked indirectly, via the EXIT trap in main
+# Waits for the namespace to be gone, so that the probe can run twice in a row, for example to compare the timings
+# before and after a change to the network.
 delete_probe_namespace() {
-  kubectl delete namespace "$probe_namespace" --ignore-not-found --wait=false >/dev/null 2>&1
+  kubectl delete namespace "$probe_namespace" --ignore-not-found --wait --timeout=60s >/dev/null 2>&1
 }
 
 build_image() {
