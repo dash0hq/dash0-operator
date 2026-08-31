@@ -61,10 +61,12 @@ func extractNormalizedResourceTypes(argument string, isResourceTypeSlot bool) []
 	return resourceTypes
 }
 
-// normalizeResourceType lower-cases a resource type and strips the API group/version suffix of fully qualified forms:
-// "secrets.v1." -> "secrets", "Dash0Monitorings.operator.dash0.com" -> "dash0monitorings".
+// normalizeResourceType trims surrounding whitespace, lower-cases a resource type and strips the API group/version
+// suffix of fully qualified forms: "secrets.v1." -> "secrets", "Dash0Monitorings.operator.dash0.com" ->
+// "dash0monitorings". Whitespace is trimmed so that a padded form such as " secret" is matched by the resource type
+// lists of validation.go rather than being left to the API server to reject.
 func normalizeResourceType(resourceType string) string {
-	resourceType = strings.ToLower(resourceType)
+	resourceType = strings.ToLower(strings.TrimSpace(resourceType))
 	if idx := strings.Index(resourceType, "."); idx >= 0 {
 		resourceType = resourceType[:idx]
 	}

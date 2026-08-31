@@ -633,6 +633,9 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "multi-resource list including secrets as yaml is rejected",
 			command: "kubectl", arguments: []string{"get", "secret,pods", "-o", "yaml"}, allowed: false,
 			rejectionReason: contentsNotReadable},
+		{name: "padded secret resource type as yaml is rejected",
+			command: "kubectl", arguments: []string{"get", " secret", "-o", "yaml"}, allowed: false,
+			rejectionReason: contentsNotReadable},
 		{name: "secret as yaml with a leading flag is rejected",
 			command: "kubectl", arguments: []string{"-n", "x", "get", "secret", "my-secret", "-o", "yaml"}, allowed: false,
 			rejectionReason: contentsNotReadable},
@@ -679,6 +682,9 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: describeOfSecretNotSupported},
 		{name: "describe of a multi-resource list including secrets is rejected as a secret",
 			command: "kubectl", arguments: []string{"describe", "configmap,secret"}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
+		{name: "describe of a padded secret resource type is rejected",
+			command: "kubectl", arguments: []string{"describe", " secret ", "my-secret"}, allowed: false,
 			rejectionReason: describeOfSecretNotSupported},
 
 		// Config maps: whether they can be read at all is decided by RBAC alone, but the connector walks their content
