@@ -444,6 +444,11 @@ func assembleResource(
 
 	if nodeName := os.Getenv("K8S_NODE_NAME"); nodeName != "" {
 		attributes = append(attributes, semconv.K8SNodeName(nodeName))
+		// The node UID, unlike the node name, is not available via the downward API and has to be resolved via the
+		// Kubernetes API.
+		if nodeUid := resolveNodeUid(ctx, nodeName); nodeUid != "" {
+			attributes = append(attributes, semconv.K8SNodeUID(nodeUid))
+		}
 	}
 
 	if namespace := os.Getenv("DASH0_OPERATOR_NAMESPACE"); namespace != "" {
