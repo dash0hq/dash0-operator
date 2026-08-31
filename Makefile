@@ -326,6 +326,7 @@ instrumentation-test-lint: npm-installed
 GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:go.mod:Dockerfile \
   dockerfile:images/agent0-connector/src/go.mod:images/agent0-connector/Dockerfile \
+  dockerfile:images/collector/src/telemetry/go.mod:images/collector/Dockerfile \
   dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
   dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \

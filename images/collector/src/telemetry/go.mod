@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/collector/src/telemetry
 
-go 1.25.0
+go 1.27.0
 
 require (
 	go.opentelemetry.io/collector/component v1.65.0

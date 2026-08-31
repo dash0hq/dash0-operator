@@ -41,6 +41,43 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
+  # Custom internal-telemetry factory of the OpenTelemetry collector image. This module has a block of its own because
+  # the collector modules it requires must not be updated on their own, see the ignore rules below.
+  - package-ecosystem: "gomod"
+    directory: "/images/collector/src/telemetry"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:10"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
+    commit-message:
+      prefix: "chore(deps)"
+    allow:
+      # Only direct requirements: an indirect version bumped here would become the minimum for the whole collector
+      # binary. images/collector/src/telemetry/go.mod is referenced in the collector build, and for dependencies that
+      # are in telemetry/go.mod as well as in the go.mod derived from images/collector/src/builder/config.yaml, the
+      # build picks the highest version that is mentioned in either file. For that reason, we should not bump indirect
+      # dependencies here too eagerly. (They will be bumped by updating direct dependencies and running go mod tidy
+      # eventually.)
+      - dependency-type: "direct"
+    ignore:
+      # The collector modules are updated by
+      # .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh, together with the component
+      # versions in images/collector/src/builder/config.yaml. The factory is compiled into the collector from those
+      # versions, so a Dependabot bump would only take the module out of sync with the collector it ends up in. The
+      # pattern covers the direct requirements as well as the indirect ones (config/configtelemetry, confmap,
+      # featuregate, internal/telemetry).
+      - dependency-name: "go.opentelemetry.io/collector/*"
+      # Go updates are handled by .github/workflows/update-go-versions.yaml, see the docker block below.
+      - dependency-name: "golang"
+
   # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
     directory: "images/instrumentation/node.js/"
