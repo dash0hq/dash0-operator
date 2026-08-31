@@ -677,6 +677,9 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "describe of a secret in a later slot is rejected as a secret",
 			command: "kubectl", arguments: []string{"describe", "pod/a", "secret/b"}, allowed: false,
 			rejectionReason: describeOfSecretNotSupported},
+		{name: "describe of a multi-resource list including secrets is rejected as a secret",
+			command: "kubectl", arguments: []string{"describe", "configmap,secret"}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
 
 		// Config maps: whether they can be read at all is decided by RBAC alone, but the connector walks their content
 		// for credentials (see redactConfigMapData), so they are restricted to the output formats it can redact,
@@ -844,7 +847,7 @@ func TestValidateCommandRequest(t *testing.T) {
 var kubectlCommandRedactionRationale = map[string]string{
 	"get": "the only kubectl command whose response is redacted, see redactSecretsInResponse",
 	"describe": "renders resource content, but is rejected for the resource types that can contain secrets, see " +
-		"describeOfResourceTypeWithSecrets, and for the sensitive resource types, see " +
+		"describeOfResourceTypeWithSecretsRequested, and for the sensitive resource types, see " +
 		"describeOfSensitiveResourceRequested",
 	"cluster-info": "the bare form only prints the addresses of the control plane and of the cluster's services; its " +
 		"subcommands are rejected, see allowedSubcommandsPerKubectlCommand",

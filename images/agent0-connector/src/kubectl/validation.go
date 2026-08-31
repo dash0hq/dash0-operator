@@ -214,7 +214,7 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments,
 	if reason, blocked := describeOfSensitiveResourceRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
-	if reason, blocked := describeOfResourceTypeWithSecrets(arguments); blocked {
+	if reason, blocked := describeOfResourceTypeWithSecretsRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	return arguments, nil
@@ -290,11 +290,11 @@ func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
 	), true
 }
 
-// describeOfResourceTypeWithSecrets reports whether the kubectl arguments describe a resource that can contain
-// secrets, returning a human-readable reason when they do. The describer renders a resource in a text format that is
-// not meant to be parsed and for which no parser is available, so the connector cannot locate the credentials in its
-// output in order to redact them.
-func describeOfResourceTypeWithSecrets(parsed kubectlArguments) (string, bool) {
+// describeOfResourceTypeWithSecretsRequested reports whether the kubectl arguments describe a resource that can
+// contain secrets, returning a human-readable reason when they do. The describer renders a resource in a text format
+// that is not meant to be parsed and for which no parser is available, so the connector cannot locate the credentials
+// in its output in order to redact them.
+func describeOfResourceTypeWithSecretsRequested(parsed kubectlArguments) (string, bool) {
 	if parsed.kubectlCommand != "describe" {
 		return "", false
 	}
