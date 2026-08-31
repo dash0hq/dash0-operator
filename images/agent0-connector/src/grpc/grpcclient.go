@@ -12,7 +12,9 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/kubectl"
@@ -53,6 +55,26 @@ const (
 	// client ID when subscribing to command requests.
 	clusterUidEnvVarName = "K8S_CLUSTER_UID"
 
+	// maxConcurrentCommandsEnvVarName is the environment variable through which the operator passes how many command
+	// requests may be executed at the same time (set from the Helm value
+	// operator.agent0Connector.maxConcurrentCommands).
+	maxConcurrentCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS"
+
+	// defaultMaxConcurrentCommands is the number of command requests executed at the same time when the environment
+	// variable is absent or does not hold a positive integer. It mirrors defaultMaxConcurrentCommands in
+	// internal/agent0connector/a0cresources/desired_state.go, which is where the value comes from when the operator
+	// deploys this workload; the connector is a separate Go module, so the two cannot share a constant.
+	//
+	// The value is bounded by memory, not by CPU: a request that returns the full maxStdoutBytes of output costs about
+	// 90 MiB, roughly 50 MiB for the kubectl child process (which GOMEMLIMIT does not govern) and roughly 40 MiB in this
+	// process, most of it for parsing the output in order to redact credentials from it. Two of those fit into the
+	// default memory limit of the pod.
+	defaultMaxConcurrentCommands = 2
+
+	// commandQueueCapacity is how many received command requests wait for a free worker. (A queued request holds only
+	// the command and its arguments, so items in the queue are cheap with regard to memory consumption.)
+	commandQueueCapacity = 16
+
 	// initialReconnectDelay is the delay before the first reconnect attempt after a stream drops. Subsequent attempts
 	// back off exponentially up to maxReconnectDelay.
 	initialReconnectDelay = 1 * time.Second
@@ -74,12 +96,27 @@ func RunSubscriber(ctx context.Context, logger *slog.Logger) {
 	clientID := resolveClientID(logger)
 	authToken := resolveAuthToken(logger)
 	kubectlTmpDir := resolveKubectlTmpDir(logger)
-	logger.Info("connecting to the Dash0 backend", "address", serverAddress, "clientId", clientID)
+	maxConcurrentCommands := resolveMaxConcurrentCommands(logger)
+	logger.Info(
+		"connecting to the Dash0 backend",
+		"address", serverAddress,
+		"clientId", clientID,
+		"maxConcurrentCommands", maxConcurrentCommands,
+	)
 
 	reconnectDelay := initialReconnectDelay
 	for ctx.Err() == nil {
 		streamStart := time.Now()
-		err := runStream(ctx, logger, serverAddress, transportCredentials, clientID, authToken, kubectlTmpDir)
+		err := runStream(
+			ctx,
+			logger,
+			serverAddress,
+			transportCredentials,
+			clientID,
+			authToken,
+			kubectlTmpDir,
+			maxConcurrentCommands,
+		)
 		if ctx.Err() != nil {
 			return
 		}
@@ -208,6 +245,27 @@ func resolveKubectlTmpDir(logger *slog.Logger) string {
 	return tmpDir
 }
 
+// resolveMaxConcurrentCommands returns how many command requests are executed at the same time, read from the
+// DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS environment variable. An absent variable, or a value that is not a
+// positive integer, falls back to defaultMaxConcurrentCommands.
+func resolveMaxConcurrentCommands(logger *slog.Logger) int {
+	value := os.Getenv(maxConcurrentCommandsEnvVarName)
+	if value == "" {
+		return defaultMaxConcurrentCommands
+	}
+	maxConcurrentCommands, err := strconv.Atoi(value)
+	if err != nil || maxConcurrentCommands < 1 {
+		logger.Warn(
+			"the maximum number of concurrent commands is not a positive integer, using the default",
+			"envVar", maxConcurrentCommandsEnvVarName,
+			"value", value,
+			"default", defaultMaxConcurrentCommands,
+		)
+		return defaultMaxConcurrentCommands
+	}
+	return maxConcurrentCommands
+}
+
 // runStream opens a single SubscribeToCommandRequests stream and listens to incoming CommandRequest, until the stream
 // fails or the context is cancelled. For every received CommandRequest it executes the requested (read-only) kubectl
 // command and sends back the CommandResponse.
@@ -219,6 +277,7 @@ func runStream(
 	clientID string,
 	authToken string,
 	kubectlTmpDir string,
+	maxConcurrentCommands int,
 ) error {
 	conn, err := grpc.NewClient(
 		serverAddress,
@@ -254,7 +313,14 @@ func runStream(
 
 	logger.Info("subscribed to command requests")
 
-	return listenToCommandRequests(ctx, logger, stream, kubectlTmpDir)
+	return listenToCommandRequests(
+		ctx,
+		logger,
+		stream,
+		kubectlTmpDir,
+		maxConcurrentCommands,
+		kubectl.ExecuteCommandRequest,
+	)
 }
 
 // commandRequestStream is the subset of the gRPC bidirectional stream that listenToCommandRequests needs: receiving
@@ -265,14 +331,113 @@ type commandRequestStream interface {
 	Send(*pb.CommandResponse) error
 }
 
-// listenToCommandRequests reads CommandRequests from the stream until it is closed or fails. For every request it
-// executes the requested command and sends back the CommandResponse. It returns nil when the backend closed the stream
-// cleanly (io.EOF) and a wrapped error on any receive or send failure.
+// commandExecutor executes a single CommandRequest and returns the CommandResponse to send back.
+// kubectl.ExecuteCommandRequest is the implementation used in production; tests provide their own.
+type commandExecutor func(
+	ctx context.Context,
+	logger *slog.Logger,
+	kubectlTmpDir string,
+	req *pb.CommandRequest,
+) *pb.CommandResponse
+
+// listenToCommandRequests reads CommandRequests from the stream until it is closed or fails. Every request is handed to
+// a pool of maxConcurrentCommands workers which execute it and hand the CommandResponse to a single sender, so that one
+// slow command does not hold up the delivery of the requests behind it. Responses are not necessarily sent in the order
+// the requests arrived (the backend correlates them by request ID anyway).
+//
+// It returns nil when the backend closed the stream cleanly (io.EOF) and a wrapped error on any receive or send
+// failure.
 func listenToCommandRequests(
 	ctx context.Context,
 	logger *slog.Logger,
 	stream commandRequestStream,
 	kubectlTmpDir string,
+	maxConcurrentCommands int,
+	execute commandExecutor,
+) error {
+	workerCtx, cancelWorkers := context.WithCancel(ctx)
+	defer cancelWorkers()
+
+	requests := make(chan *pb.CommandRequest, commandQueueCapacity)
+	// Unbuffered: at most one finished response per worker waits for the sender, which bounds how much captured output
+	// is held in memory. A worker that parks here stops taking requests, the queue fills up, and the receive loop stops
+	// accepting - that is the intended backpressure.
+	responses := make(chan *pb.CommandResponse)
+
+	var workers sync.WaitGroup
+	for range maxConcurrentCommands {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for req := range requests {
+				responses <- execute(workerCtx, logger, kubectlTmpDir, req)
+			}
+		}()
+	}
+
+	var sendErr error
+	senderDone := make(chan struct{})
+	go func() {
+		defer close(senderDone)
+		for resp := range responses {
+			if sendErr != nil {
+				// The stream is broken. Keep draining so that no worker blocks on handing over its response, but do not
+				// attempt to send any more.
+				logger.Warn(
+					"discarding a command response, the stream is broken",
+					"requestId", resp.GetRequestId(),
+					"exitCode", resp.GetExitCode(),
+				)
+				continue
+			}
+			if err := stream.Send(resp); err != nil {
+				sendErr = fmt.Errorf("stream send failed: %w", err)
+				// The responses of the commands that are still running cannot be delivered any more, so abort them
+				// instead of letting them run into their timeout. This also releases the receive loop.
+				cancelWorkers()
+				logger.Warn(
+					"failed to send a command response",
+					"requestId", resp.GetRequestId(),
+					"error", err,
+				)
+				continue
+			}
+			logger.Info(
+				"sent command response",
+				"requestId", resp.GetRequestId(),
+				"exitCode", resp.GetExitCode(),
+			)
+		}
+	}()
+
+	recvErr := receiveCommandRequests(workerCtx, logger, stream, requests)
+
+	if recvErr != nil {
+		// The stream is gone, so the responses of the commands that are still running cannot be delivered. Aborting them
+		// keeps the reconnect from waiting for up to commandTimeout. A stream the backend closed cleanly (recvErr == nil)
+		// lets them finish instead.
+		cancelWorkers()
+	}
+	close(requests)
+	workers.Wait()
+	close(responses)
+	<-senderDone
+
+	if sendErr != nil {
+		// The send failure is the more specific diagnosis: it broke the stream that the receive loop then stopped on.
+		return sendErr
+	}
+	return recvErr
+}
+
+// receiveCommandRequests reads CommandRequests from the stream and hands them to the worker queue, until the stream is
+// closed or fails, or until the context is cancelled. It returns nil when the backend closed the stream cleanly
+// (io.EOF) and a wrapped error on a receive failure.
+func receiveCommandRequests(
+	ctx context.Context,
+	logger *slog.Logger,
+	stream commandRequestStream,
+	requests chan<- *pb.CommandRequest,
 ) error {
 	for {
 		req, err := stream.Recv()
@@ -290,16 +455,16 @@ func listenToCommandRequests(
 			"arguments", req.GetArguments(),
 		)
 
-		resp := kubectl.ExecuteCommandRequest(ctx, logger, kubectlTmpDir, req)
-
-		if err := stream.Send(resp); err != nil {
-			return fmt.Errorf("stream send failed: %w", err)
+		select {
+		case requests <- req:
+		case <-ctx.Done():
+			// Either the process is shutting down, or sending a response failed and the stream is broken. In both cases
+			// the request cannot be answered any more.
+			logger.Warn(
+				"dropping a command request, it cannot be answered any more",
+				"requestId", req.GetRequestId(),
+			)
+			return nil
 		}
-
-		logger.Info(
-			"sent command response",
-			"requestId", resp.GetRequestId(),
-			"exitCode", resp.GetExitCode(),
-		)
 	}
 }

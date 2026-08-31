@@ -296,6 +296,7 @@ tests:
               edge-proxy-pod-annotation: edge-proxy-pod-annotation-value
         agent0Connector:
           enabled: true
+          maxConcurrentCommands: 4
           containerResources:
             limits:
               cpu: 300m
@@ -669,6 +670,7 @@ tests:
               requests:
                 cpu: 20m
                 memory: 64Mi
+            agent0ConnectorMaxConcurrentCommands: 4
             agent0ConnectorTolerations:
               - effect: NoSchedule
                 key: key6
@@ -934,7 +936,7 @@ tests:
               limits:
                 memory: 256Mi
               requests:
-                memory: 32Mi
+                memory: 64Mi
 
   - it: should render custom agent0-connector container resources
     set:
@@ -948,7 +950,7 @@ tests:
             gomemlimit: 256MiB
             requests:
               cpu: 20m
-              memory: 64Mi
+              memory: 128Mi
     asserts:
       - matchRegex:
           path: data['extra.yaml']
@@ -960,7 +962,34 @@ tests:
                 memory: 512Mi
               requests:
                 cpu: 20m
-                memory: 64Mi
+                memory: 128Mi
+
+  - it: should render the default number of concurrent agent0-connector commands
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorMaxConcurrentCommands: 2'
+
+  - it: should render a custom number of concurrent agent0-connector commands
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          maxConcurrentCommands: 6
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorMaxConcurrentCommands: 6'
+
+  - it: should not render the number of concurrent agent0-connector commands when the agent0-connector is disabled
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorMaxConcurrentCommands
 
   - it: should not render custom agent0-connector cluster role rules by default
     asserts:

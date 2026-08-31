@@ -1341,7 +1341,23 @@ operator:
       # governed by GOMEMLIMIT but counts towards the container's memory limit.
       gomemlimit: 150MiB
       requests:
-        memory: 32Mi
+        memory: 64Mi
+
+    # The number of command requests the agent0-connector executes at the same time.
+    #
+    # Increasing this might be useful when multiple Agent0 sessions are routinely working actively with the connector in
+    # this cluster at the same time.
+    #
+    # The value is bounded by memory, not by CPU. A single request can peak at about 90 MiB memory usage: roughly 50 MiB
+    # for the kubectl child process (which GOMEMLIMIT does not govern), and roughly 40 MiB in the agent0-connector
+    # process itself, most of it to parse the output for secret redaction.
+    # The default of 2 fits into the default containerResources.limits.memory of 256Mi. Raising this value therefore
+    # requires raising containerResources.limits.memory and containerResources.gomemlimit correspondingly; otherwise the
+    # pod can get OOM-killed when several large requests coincide.
+    #
+    # With a value of 1, one slow command blocks the delivery of every request behind it for up to the command timeout
+    # of 30 seconds, hence down-sizing to 1 is not recommended.
+    maxConcurrentCommands: 2
 
     # Additional labels to be set on the agent0-connector deployment managed by the operator.
     labels: {}

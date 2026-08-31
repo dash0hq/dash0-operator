@@ -434,7 +434,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.Agent0ConnectorContainerResources.Limits.Memory().String()).To(Equal("256Mi"))
 					Expect(extraConfig.Agent0ConnectorContainerResources.GoMemLimit).To(Equal("150MiB"))
 					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
-					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
+					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("64Mi"))
 					Expect(extraConfig.Agent0ConnectorClusterRoleRules).To(BeNil())
 
 					Expect(extraConfig.MonitoringTemplateRaw).To(BeNil())

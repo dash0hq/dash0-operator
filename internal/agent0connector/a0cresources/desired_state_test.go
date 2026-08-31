@@ -502,6 +502,19 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			}
 		})
 
+		It("passes the default number of concurrent commands when the extra config has no value", func() {
+			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS", Value: "2"}))
+		})
+
+		It("passes the number of concurrent commands from the extra config", func() {
+			extraConfig := util.ExtraConfig{Agent0ConnectorMaxConcurrentCommands: 6}
+			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, extraConfig)).Spec.Template.Spec.Containers[0]
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS", Value: "6"}))
+		})
+
 		It("mounts a writable tmp volume for kubectl's cache", func() {
 			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec
 			container := podSpec.Containers[0]
