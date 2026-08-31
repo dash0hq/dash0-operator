@@ -164,6 +164,10 @@ const describeOfWorkloadNotSupported = "describing a workload resource is not su
 	"the same content with the values of its environment variables redacted, and its events with " +
 	"\"kubectl events --for <resource-type>/<name>\""
 
+const describeOfSecretNotSupported = "describing a secret is not allowed, because \"kubectl describe\" prints the " +
+	"exact length of every value; listing secrets or checking for the presence of a particular one with " +
+	"\"kubectl get secret <name>\" is supported"
+
 const kyamlNotRedactableForConfigMap = "the output format \"kyaml\" cannot be redacted reliably for a config map, " +
 	"which can contain credentials in the values of its data, because the connector does not redact this output " +
 	"format yet; reading such a resource is supported with -o json/yaml/name/wide (or without an output format)"
@@ -585,8 +589,6 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "secret", "my-secret"}, allowed: true},
 		{name: "presence check via type/name is allowed",
 			command: "kubectl", arguments: []string{"get", "secret/my-secret"}, allowed: true},
-		{name: "describe secret is allowed",
-			command: "kubectl", arguments: []string{"describe", "secret", "my-secret"}, allowed: true},
 		{name: "secret with -o name is allowed",
 			command: "kubectl", arguments: []string{"get", "secret", "-o", "name"}, allowed: true},
 		{name: "secret with -o wide is allowed",
@@ -649,6 +651,32 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "secret with --template in front of the resource is rejected",
 			command: "kubectl", arguments: []string{"get", "--template", "{{.data}}", "secret"}, allowed: false,
 			rejectionReason: contentsNotReadable},
+
+		// "kubectl describe" prints the token of a service account token secret verbatim, and the size of every other
+		// value, and its output cannot be redacted.
+		{name: "describe of a secret is rejected",
+			command: "kubectl", arguments: []string{"describe", "secret", "my-secret"}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
+		{name: "describe of secrets in all namespaces is rejected",
+			command: "kubectl", arguments: []string{"describe", "secrets", "-A"}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
+		{name: "describe of a secret via type/name is rejected",
+			command: "kubectl", arguments: []string{"describe", "secret/my-secret"}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
+		{name: "the secret kind form is covered by describe",
+			command: "kubectl", arguments: []string{"describe", "Secret", "my-secret"}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
+		{name: "the fully qualified secret resource type is covered by describe",
+			command: "kubectl", arguments: []string{"describe", "secrets.v1."}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
+		{name: "describe of a secret with a leading flag is rejected",
+			command: "kubectl", arguments: []string{"-n", "x", "describe", "secret", "my-secret"}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
+		// The secret restriction takes precedence over the one for resource types that can contain secrets, so that the
+		// rejection names the stronger of the two.
+		{name: "describe of a secret in a later slot is rejected as a secret",
+			command: "kubectl", arguments: []string{"describe", "pod/a", "secret/b"}, allowed: false,
+			rejectionReason: describeOfSecretNotSupported},
 
 		// Config maps: whether they can be read at all is decided by RBAC alone, but the connector walks their content
 		// for credentials (see redactConfigMapData), so they are restricted to the output formats it can redact,
@@ -816,7 +844,8 @@ func TestValidateCommandRequest(t *testing.T) {
 var kubectlCommandRedactionRationale = map[string]string{
 	"get": "the only kubectl command whose response is redacted, see redactSecretsInResponse",
 	"describe": "renders resource content, but is rejected for the resource types that can contain secrets, see " +
-		"describeOfResourceTypeWithSecrets",
+		"describeOfResourceTypeWithSecrets, and for the sensitive resource types, see " +
+		"describeOfSensitiveResourceRequested",
 	"cluster-info": "the bare form only prints the addresses of the control plane and of the cluster's services; its " +
 		"subcommands are rejected, see allowedSubcommandsPerKubectlCommand",
 	"api-resources": "prints the known resource types and their metadata, never the content of an instance",

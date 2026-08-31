@@ -211,6 +211,9 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments,
 	if reason, blocked := unsafeSortByOfSensitiveResourceRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
+	if reason, blocked := describeOfSensitiveResourceRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
+	}
 	if reason, blocked := describeOfResourceTypeWithSecrets(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
@@ -307,6 +310,28 @@ func describeOfResourceTypeWithSecrets(parsed kubectlArguments) (string, bool) {
 		category.description,
 		category.secrets,
 		category.redactedContent,
+	), true
+}
+
+// describeOfSensitiveResourceRequested reports whether the kubectl arguments describe a sensitive resource, returning a
+// human-readable reason when they do. Listing a secret and checking for the presence of a particular one are allowed
+// (see sensitiveContentRequested), but describing one potentially exposes its content over:
+// 1. kubectl describe secret prints the token of a "kubernetes.io/service-account-token" secret verbatim
+// 2. kubectl describe secret prints the exact size of every other value, which is a length oracle over the value.
+func describeOfSensitiveResourceRequested(parsed kubectlArguments) (string, bool) {
+	if parsed.kubectlCommand != "describe" {
+		return "", false
+	}
+	resource, targeted := targetedSensitiveResource(parsed)
+	if !targeted {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"describing a %s is not allowed, because \"kubectl describe\" prints the exact length of every value; "+
+			"listing %ss or checking for the presence of a particular one with \"kubectl get %s <name>\" is supported",
+		resource.displayName,
+		resource.displayName,
+		resource.displayName,
 	), true
 }
 
