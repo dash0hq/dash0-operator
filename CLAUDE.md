@@ -138,30 +138,6 @@ Missing that step is silent: the metric handle stays `nil`, `Reconcile` skips th
 and the reconciler emits nothing for the entire process lifetime — no build error, no test failure, no runtime
 warning. When wiring a new reconciler, grep for `selfMonitoringClients` and add the new entry before opening the PR.
 
-### Bumping the OpenTelemetry collector version
-
-The collector component versions live in `images/collector/src/builder/config.yaml`, in three sets: the stable core
-modules (1.x, e.g. the `confmap` providers), the beta core modules (0.x, e.g. `otlpreceiver`) and the contrib modules
-(0.x). The same versions have to be carried over to `images/collector/src/telemetry/go.mod`, the module of the custom
-internal-telemetry factory:
-
-- `go.opentelemetry.io/collector/component` and `go.opentelemetry.io/collector/pdata` to the stable version
-- `go.opentelemetry.io/collector/service` to the beta version
-
-Then run `go mod tidy` and `make collector-telemetry-unit-tests` in that directory.
-
-Neither of the two mechanisms that keep collector dependencies current covers that module. The scheduled workflow
-`.github/workflows/update-collector-components.yaml` rewrites `builder/config.yaml` only, and the module directory is
-not listed in `.github/dependabot.yml`. So the versions have to be carried over by hand, ideally while reviewing the
-automated bump PR.
-
-Drift here does not break the image build: the builder generates a `dist` module that requires both the telemetry
-module and the collector modules, and minimal version selection then compiles the factory against the versions from
-`builder/config.yaml`. It breaks the feedback loop instead. The unit tests of the factory compile against the older
-version from its own `go.mod`, while the image compiles against the newer one, and the factory builds on
-`go.opentelemetry.io/collector/service/telemetry`, whose `Factory` interface is marked "This API is experimental and
-will change soon" upstream. A stale `go.mod` therefore means green unit tests and a broken image build.
-
 ### Listing Kubernetes resources with pagination
 
 The `Limit` and `Continue` fields of controller-runtime's `client.ListOptions` compile with every client, but they only

@@ -12,6 +12,10 @@ fi
 
 branch_name="update-dash0-collector-components"
 config_file="images/collector/src/builder/config.yaml"
+telemetry_go_mod="images/collector/src/telemetry/go.mod"
+telemetry_module_files=("$telemetry_go_mod" "images/collector/src/telemetry/go.sum")
+# All files that update-collector-components-check-and-bump-versions.sh can modify.
+changed_files=("$config_file" "${telemetry_module_files[@]}")
 
 # Base commit that the new branch will be based on.
 base_sha=$(git rev-parse HEAD)
@@ -24,7 +28,7 @@ trap 'rm -f "$COLLECTOR_VERSIONS_OUTPUT"' EXIT
 source "$COLLECTOR_VERSIONS_OUTPUT"
 
 # git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
-if git diff-files --quiet "$config_file"; then
+if git diff-files --quiet -- "${changed_files[@]}"; then
   echo "There are no changes, everything up to date."
   exit 0
 fi
@@ -42,6 +46,17 @@ if [[ -n "${new_stable_version:-}" && -n "${new_beta_version:-}" && -n "${new_co
     "$new_stable_version" "$new_beta_version" "$new_contrib_version")
 fi
 
+if ! git diff-files --quiet -- "${telemetry_module_files[@]}"; then
+  telemetry_module_note=$(printf \
+    'Also aligns the collector modules required by %s with these versions.' \
+    "$telemetry_go_mod")
+  if [[ -n "$pr_body" ]]; then
+    pr_body="${pr_body}"$'\n\n'"${telemetry_module_note}"
+  else
+    pr_body="$telemetry_module_note"
+  fi
+fi
+
 # Remove any branch lingering from a previous failed run (no-op if it does not exist). Note: We abort early if an open
 # PR still exists, see .github/workflows/scripts/update-collector-components-check-if-pr-exists.sh.
 gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch_name}" >/dev/null 2>&1 || true
@@ -53,6 +68,15 @@ gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
 
 # Let "gh api graphql"/createCommitOnBranch create the commit via the GitHub API rather than "git commit"/"git push", so
 # commits are automatically signed.
+additions=$(
+  for file in "${changed_files[@]}"; do
+    jq -n \
+      --arg path "$file" \
+      --arg contents "$(base64 < "$file" | tr -d '\n')" \
+      '{ path: $path, contents: $contents }'
+  done | jq -s '.'
+)
+
 # Note: expectedHeadOid is an optimistic lock: the branch tip must still be at base_sha (it is, we just created it).
 jq -n \
   --arg repo "$GITHUB_REPOSITORY" \
@@ -60,8 +84,7 @@ jq -n \
   --arg headline "$commit_message" \
   --arg body "$pr_body" \
   --arg oid "$base_sha" \
-  --arg path "$config_file" \
-  --arg contents "$(base64 < "$config_file" | tr -d '\n')" \
+  --argjson additions "$additions" \
   '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {
@@ -69,7 +92,7 @@ jq -n \
         branch:          { repositoryNameWithOwner: $repo, branchName: $branch },
         message:         { headline: $headline, body: $body },
         expectedHeadOid: $oid,
-        fileChanges:     { additions: [ { path: $path, contents: $contents } ] }
+        fileChanges:     { additions: $additions }
       }
     }
   }' | gh api graphql --input - >/dev/null
