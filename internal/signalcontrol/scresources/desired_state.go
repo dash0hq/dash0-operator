@@ -56,6 +56,7 @@ func assembleDesiredState(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
 	forDeletion bool,
 	logger logd.Logger,
@@ -73,7 +74,7 @@ func assembleDesiredState(
 	if forDeletion || edgeProxyEnabled {
 		if edgeProxyEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, extraConfig, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
 				addCommonMetadata(assembleEdgeProxyPodDisruptionBudget(operatorNamespace, namePrefix)),
 			)
@@ -93,7 +94,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, util.ExtraConfig{}, true, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -104,6 +105,7 @@ func assembleEdgeProxyDeployment(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) *appsv1.Deployment {
@@ -289,7 +291,7 @@ func assembleEdgeProxyDeployment(
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
 		edgeProxyContainer.Env = append(
 			edgeProxyContainer.Env,
-			assembleSelfMonitoringEnvVars(operatorVersion, extraConfig.EdgeProxyOtlpGrpcHostPort)...,
+			assembleSelfMonitoringEnvVars(operatorVersion, otlpGrpcHostPort)...,
 		)
 	}
 	podSpec := corev1.PodSpec{

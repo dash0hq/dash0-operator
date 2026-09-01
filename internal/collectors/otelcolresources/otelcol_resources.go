@@ -677,6 +677,16 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	return kubeletStatsReceiverConfig
 }
 
+// resolveHostPort returns configured, or defaultValue if configured is not a positive port number. This is a
+// defensive fallback for zero-value oTelColConfig instances (e.g. in tests); production configuration always sets a
+// positive value via the CLI flag defaults.
+func resolveHostPort(configured int32, defaultValue int32) int32 {
+	if configured <= 0 {
+		return defaultValue
+	}
+	return configured
+}
+
 func signalControlConfigFromResource(
 	resource *dash0v1alpha1.Dash0SignalControl,
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,

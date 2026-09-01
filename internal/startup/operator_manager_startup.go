@@ -1784,6 +1784,7 @@ func startDash0Controllers(
 			envVars.edgeProxyImage,
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
+			int32(cliArgs.otlpGrpcHostPort),
 		)
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,

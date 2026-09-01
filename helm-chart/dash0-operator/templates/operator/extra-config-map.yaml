@@ -185,7 +185,6 @@ data:
     targetAllocatorNodeAffinity:
       {{- toYaml .Values.operator.targetAllocator.nodeAffinity | nindent 6 }}
 {{- if .Values.operator.signalControl.enabled }}
-    edgeProxyOtlpGrpcHostPort: {{ .Values.operator.collectors.otlpGrpcHostPort }}
     edgeProxyReplicas: {{ .Values.operator.signalControl.edgeProxy.replicas }}
     edgeProxyContainerResources:
       {{- toYaml .Values.operator.signalControl.edgeProxy.containerResources | nindent 6 }}
