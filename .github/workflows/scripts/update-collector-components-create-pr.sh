@@ -35,26 +35,23 @@ fi
 
 echo "There are changes, creating a pull request."
 
-commit_message="chore(deps): bump Dash0 collector components"
-pr_body=""
-# Note: new_stable_version etc. are sourced from $COLLECTOR_VERSIONS_OUTPUT, which is populated by
+# Note: components_updated, new_stable_version etc. are sourced from $COLLECTOR_VERSIONS_OUTPUT, which is populated by
 # .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh.
 # shellcheck disable=SC2154
-if [[ -n "${new_stable_version:-}" && -n "${new_beta_version:-}" && -n "${new_contrib_version:-}" ]]; then
+if [[ "${components_updated:-false}" == "true" ]]; then
   commit_message="chore(deps): bump Dash0 collector components (${new_stable_version}/${new_beta_version}/${new_contrib_version})"
   pr_body=$(printf 'Update to:\n- core stable version: %s\n- core beta version: v%s\n- contrib version: v%s' \
     "$new_stable_version" "$new_beta_version" "$new_contrib_version")
-fi
-
-if ! git diff-files --quiet -- "${telemetry_module_files[@]}"; then
-  telemetry_module_note=$(printf \
-    'Also aligns the collector modules required by %s with these versions.' \
-    "$telemetry_go_mod")
-  if [[ -n "$pr_body" ]]; then
-    pr_body="${pr_body}"$'\n\n'"${telemetry_module_note}"
-  else
-    pr_body="$telemetry_module_note"
+  if ! git diff-files --quiet -- "${telemetry_module_files[@]}"; then
+    pr_body="${pr_body}"$'\n\n'$(printf \
+      'Also aligns the collector modules required by %s with these versions.' \
+      "$telemetry_go_mod")
   fi
+else
+  commit_message="chore(deps): align the collector telemetry module with the builder config"
+  pr_body=$(printf \
+    'The collector modules required by %s had drifted from the component versions in %s. No component was updated.' \
+    "$telemetry_go_mod" "$config_file")
 fi
 
 # Remove any branch lingering from a previous failed run (no-op if it does not exist). Note: We abort early if an open
