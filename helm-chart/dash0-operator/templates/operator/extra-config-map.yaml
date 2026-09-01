@@ -212,6 +212,7 @@ data:
 {{- if .Values.operator.agent0Connector.enabled }}
     agent0ConnectorContainerResources:
       {{- toYaml .Values.operator.agent0Connector.containerResources | nindent 6 }}
+    agent0ConnectorMaxConcurrentCommands: {{ .Values.operator.agent0Connector.maxConcurrentCommands }}
 {{- if .Values.operator.agent0Connector.clusterRole.rules }}
     agent0ConnectorClusterRoleRules:
       {{- include "dash0-operator.agent0ConnectorClusterRoleRules" . | nindent 6 }}

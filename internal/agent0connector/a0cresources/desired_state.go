@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -28,6 +29,19 @@ const (
 	// authTokenEnvVarName is the environment variable through which the agent0-connector workload receives the Dash0
 	// authorization token (either a literal token value or resolved from a Kubernetes secret reference).
 	authTokenEnvVarName = "DASH0_AGENT0_CONNECTOR_AUTH_TOKEN"
+
+	// maxConcurrentCommandsEnvVarName is the environment variable through which the agent0-connector workload receives
+	// how many command requests it may execute at the same time.
+	maxConcurrentCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS"
+
+	// defaultMaxConcurrentCommands is the number of command requests the agent0-connector executes at the same time when
+	// the extra config does not specify a value (e.g. an older config map). It is bounded by memory: a request that
+	// returns the maximum output size costs about 90 MiB, most of it in the kubectl child process and in parsing the
+	// output in order to redact credentials from it. Raising it requires raising the container's memory limit and
+	// GOMEMLIMIT as well, which is why it is configurable via the Helm value
+	// operator.agent0Connector.maxConcurrentCommands. It mirrors defaultMaxConcurrentCommands in
+	// images/agent0-connector/src/grpc/grpcclient.go, the fallback within the workload itself.
+	defaultMaxConcurrentCommands int32 = 2
 
 	// label values
 	appKubernetesIoNameValue      = agent0Connector
@@ -511,6 +525,11 @@ func assembleDeployment(
 ) *appsv1.Deployment {
 	replicas := int32(1)
 
+	maxConcurrentCommands := extraConfig.Agent0ConnectorMaxConcurrentCommands
+	if maxConcurrentCommands < 1 {
+		maxConcurrentCommands = defaultMaxConcurrentCommands
+	}
+
 	container := corev1.Container{
 		Name:  containerName,
 		Image: c.Images.Agent0ConnectorImage,
@@ -535,6 +554,11 @@ func assembleDeployment(
 				// filesystem is read-only.
 				Name:  "DASH0_KUBECTL_TMP",
 				Value: "/tmp",
+			},
+			{
+				// How many command requests the workload executes at the same time.
+				Name:  maxConcurrentCommandsEnvVarName,
+				Value: strconv.Itoa(int(maxConcurrentCommands)),
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
