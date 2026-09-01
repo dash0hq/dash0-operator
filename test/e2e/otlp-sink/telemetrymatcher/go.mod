@@ -7,7 +7,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	go.opentelemetry.io/collector/pdata v1.65.0
 	go.opentelemetry.io/collector/pdata/pprofile v0.159.0
-	go.opentelemetry.io/otel v1.45.0
+	go.opentelemetry.io/otel v1.46.0
 )
 
 require (
