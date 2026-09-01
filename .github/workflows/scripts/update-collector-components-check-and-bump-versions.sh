@@ -246,10 +246,12 @@ if [[ "$new_beta_major" != "$new_contrib_major" || "$new_beta_minor" != "$new_co
   exit 0
 fi
 
+components_updated=false
 if [[ "$current_stable_version" != "$new_stable_version" || "$current_beta_version" != "$new_beta_version" ]]; then
   require_published_release "open-telemetry/opentelemetry-collector" "$new_beta_version"
   require_published_release "open-telemetry/opentelemetry-collector-contrib" "$new_contrib_version"
   update_components
+  components_updated=true
   echo
   echo git diff:
   git --no-pager diff -- "$builder_config"
@@ -266,6 +268,7 @@ update_telemetry_module
 
 if [[ -f "${COLLECTOR_VERSIONS_OUTPUT:-}" ]]; then
   {
+    echo "components_updated=$components_updated"
     echo "new_stable_version=$new_stable_version"
     echo "new_beta_version=$new_beta_version"
     echo "new_contrib_version=$new_contrib_version"
