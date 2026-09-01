@@ -15,6 +15,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -726,6 +727,66 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(pdbSpec.MaxUnavailable.IntValue()).To(Equal(1))
 		Expect(pdbSpec.Selector.MatchLabels).
 			To(HaveKeyWithValue("app.kubernetes.io/component", "signal-control-collector"))
+	})
+
+	It("should give the Signal Control collector a service account that can only read nodes", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			SignalControl: SignalControlConfig{
+				Enabled:     true,
+				Endpoint:    "decision-maker.example.com:443",
+				ApiEndpoint: "https://control-plane-api.dash0.com",
+				Dataset:     "default",
+			},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		serviceAccount := findObjectByName(desiredState, ExpectedSignalControlCollectorServiceAccountName)
+		Expect(serviceAccount).ToNot(BeNil())
+		Expect(serviceAccount.GetNamespace()).To(Equal(OperatorNamespace))
+
+		clusterRoleObject := findObjectByName(desiredState, ExpectedSignalControlCollectorClusterRoleName)
+		Expect(clusterRoleObject).ToNot(BeNil())
+		rules := clusterRoleObject.(*rbacv1.ClusterRole).Rules
+		Expect(rules).To(HaveLen(1))
+		Expect(rules[0].APIGroups).To(ConsistOf(""))
+		Expect(rules[0].Resources).To(ConsistOf("nodes"))
+		Expect(rules[0].Verbs).To(ConsistOf("get"))
+
+		clusterRoleBindingObject := findObjectByName(desiredState, ExpectedSignalControlCollectorClusterRoleBindingName)
+		Expect(clusterRoleBindingObject).ToNot(BeNil())
+		clusterRoleBinding := clusterRoleBindingObject.(*rbacv1.ClusterRoleBinding)
+		Expect(clusterRoleBinding.RoleRef.Kind).To(Equal("ClusterRole"))
+		Expect(clusterRoleBinding.RoleRef.Name).To(Equal(ExpectedSignalControlCollectorClusterRoleName))
+		Expect(clusterRoleBinding.Subjects).To(HaveLen(1))
+		Expect(clusterRoleBinding.Subjects[0].Kind).To(Equal("ServiceAccount"))
+		Expect(clusterRoleBinding.Subjects[0].Name).To(Equal(ExpectedSignalControlCollectorServiceAccountName))
+		Expect(clusterRoleBinding.Subjects[0].Namespace).To(Equal(OperatorNamespace))
+
+		podSpec := getSignalControlCollector(desiredState).Spec.Template.Spec
+		Expect(podSpec.ServiceAccountName).To(Equal(ExpectedSignalControlCollectorServiceAccountName))
+		// Unset means the default, true; the token has to be mounted for the node lookup to work.
+		Expect(podSpec.AutomountServiceAccountToken).To(BeNil())
+	})
+
+	It("should not create Signal Control collector RBAC when Signal Control is disabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Exporters:         defaultDash0ExportersWithToken(),
+			Images:            TestImages,
+			SignalControl:     SignalControlConfig{Enabled: false},
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, nil, util.ExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(findObjectByName(desiredState, ExpectedSignalControlCollectorServiceAccountName)).To(BeNil())
+		Expect(findObjectByName(desiredState, ExpectedSignalControlCollectorClusterRoleName)).To(BeNil())
+		Expect(findObjectByName(desiredState, ExpectedSignalControlCollectorClusterRoleBindingName)).To(BeNil())
 	})
 
 	DescribeTable("should set spec.trafficDistribution on the Signal Control collector service depending on the "+

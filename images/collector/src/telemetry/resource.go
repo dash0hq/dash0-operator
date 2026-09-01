@@ -130,7 +130,7 @@ func awaitNodeUID(ctx context.Context, nodeUIDFuture <-chan nodeUIDResult) (stri
 }
 
 // resolveNodeUIDViaKubernetesAPI fetches the node with the given name via the in-cluster Kubernetes API and returns its
-// UID. The collector's service account already has get/list/watch permissions on nodes.
+// UID. Components that want to use this need the "get" permission on nodes.
 func resolveNodeUIDViaKubernetesAPI(ctx context.Context, nodeName string) (string, error) {
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
