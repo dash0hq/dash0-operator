@@ -335,7 +335,7 @@ func responseCanContainSecrets(parsed kubectlArguments) bool {
 	//nolint:goconst
 	if parsed.kubectlCommand != "get" {
 		// No other allowed kubectl command renders the content of such a resource: "describe" is rejected for these
-		// resource types (see describeOfResourceTypeWithSecrets), and "explain" only prints the schema.
+		// resource types (see describeOfResourceTypeWithSecretsRequested), and "explain" only prints the schema.
 		return false
 	}
 	if parsed.outputIsContentFree() {
