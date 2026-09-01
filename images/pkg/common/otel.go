@@ -95,11 +95,13 @@ func InitOTelSdkFromEnvVars(
 	serviceName string,
 	containerName string,
 ) otelmetric.Meter {
+	PrefetchNodeUid(ctx)
+
 	// InitOTelSdkFromEnvVars is used in the configuration reloader and filelog offset sync container. The OTel SDK
 	// will either be started once at process startup or not. In contrast to InitOTelSdkWithConfig, it will not be
 	// restarted, and the configuration is not modified from different threads. Hence, no thread safety is needed here
 	// and oTelSdkMutex is not used.
-	PrefetchNodeUid(ctx)
+
 	if OTelSDKIsConfigured() {
 
 		protocol, protocolIsSet := os.LookupEnv("OTEL_EXPORTER_OTLP_PROTOCOL")
@@ -242,15 +244,14 @@ func InitOTelSdkWithConfig(
 	oTelSdkConfig *OTelSdkConfig,
 	exporterFactory ExporterFactory,
 ) (*otelzap.Core, otelmetric.Meter) {
+	// Prefetching the node UID before taking the lock keeps the request to the Kubernetes API off the critical
+	// section. It is a no-op if the operator manager has started the prefetch at startup.
+	PrefetchNodeUid(ctx)
+
 	// InitOTelSdkWithConfig is used in the operator manager process. Depending on changes to the operator configuration
 	// resource (in particular, spec.selfMonitoring.enabled and the export config), the OTel SDK might need to be
 	// started, shut down, and restarted multiple times during the lifetime of the operator manager process. This can
 	// potentially be triggered by different threads, thus we need thread safety here.
-	//
-	// Prefetching the node UID before taking the lock keeps the request to the Kubernetes API off the critical
-	// section. It is a no-op once the operator manager has prefetched at startup.
-	PrefetchNodeUid(ctx)
-
 	oTelSdkMutex.Lock()
 	defer func() {
 		oTelSdkMutex.Unlock()
