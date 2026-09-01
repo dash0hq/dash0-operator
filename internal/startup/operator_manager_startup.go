@@ -283,11 +283,6 @@ func Start() {
 
 	setupLog.Debug("development/debug mode enabled")
 
-	if err := validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
-		setupLog.Error(err, "invalid OTLP collector host port configuration")
-		os.Exit(1)
-	}
-
 	pprofPort := os.Getenv(pprofPortEnvVarName)
 	if pprofPort != "" {
 		go func() {
@@ -378,6 +373,10 @@ func Start() {
 	}
 	if err = readExtraConfigMap(); err != nil {
 		setupLog.Error(err, "cannot read extra config map file at startup")
+		os.Exit(1)
+	}
+	if err = validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
+		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
 	}
 	if err = extraConfigMapWatcher.StartWatch(setupLog); err != nil {
