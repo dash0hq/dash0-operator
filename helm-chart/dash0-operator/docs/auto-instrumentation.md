@@ -260,6 +260,7 @@ env:
 > * Listing the definition for `K8S_NODE_IP` _before_ `OTEL_EXPORTER_OTLP_ENDPOINT` is crucial.
 > * Adding `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` is optional when the OpenTelemetry SDK in question uses that protocol as the default.
 > * For gRCP, use `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(K8S_NODE_IP):40317` together with `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` instead.
+> * The ports 40318 and 40317 in the examples above are the defaults. If the operator has been deployed with `operator.collectors.otlpHttpHostPort` or `operator.collectors.otlpGrpcHostPort`, use the configured ports instead.
 
 To use the service endpoint instead of the host port, you need to know:
 
@@ -327,6 +328,7 @@ Regardless of the instrumentation delivery:
 >   - name: OTEL_EXPORTER_OTLP_ENDPOINT
 >     value: http://$(MY_NODE_IP):40317
 >   ```
+>   Use the port configured via `operator.collectors.otlpGrpcHostPort` instead of 40317 if the operator has been deployed with a custom gRPC host port.
 >   To disable workload instrumentation for a workload, you can opt out of auto-instrumentation via a workload label (i.e. `dash0.com/enable: "false"`, see [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)), or by not installing a Dash0 monitoring resource in the namespace where these workloads are located. The workloads can then be monitored by following the setup described in [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator) to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC. Note that this is not relevant for workloads that do not have an OpenTelemetry SDK at all, since they will ignore `OTEL_EXPORTER_OTLP_ENDPOINT`. In case the Dash0 operator Helm chart has been deployed with `operator.collectors.forceUseServiceUrl=true` or `operator.collectors.disableHostPorts=true`, `OTEL_EXPORTER_OTLP_ENDPOINT` is not set to `http://$(NODE_IP):40318`, but to the HTTP port of the DaemonSet collector's service URL `http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318` instead.
 
 ### Technical Details
