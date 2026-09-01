@@ -4,8 +4,11 @@
 package scresources
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
@@ -268,6 +271,72 @@ var _ = Describe("Edge Proxy tail-sampling gating", func() {
 		env := envNames(dep.Spec.Template.Spec.Containers[0])
 		Expect(env).To(HaveKey("UPSTREAM_ADDRESS"))
 		Expect(env).ToNot(HaveKey("UPSTREAM_TAILSAMPLING_ENABLED"))
+	})
+})
+
+var _ = Describe("Edge Proxy log-pattern polling", func() {
+	envNames := func(container corev1.Container) map[string]corev1.EnvVar {
+		m := map[string]corev1.EnvVar{}
+		for _, e := range container.Env {
+			m[e.Name] = e
+		}
+		return m
+	}
+
+	It("enables log-pattern polling on the edge-settings upstream when log enrichment is enabled", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.Export.Dash0.ApiEndpoint = "https://api.dash0.com"
+		sc := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+					Enabled:                ptr(true),
+					PatternRefreshInterval: &metav1.Duration{Duration: 30 * time.Second},
+				},
+			},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", sc, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env["UPSTREAM_EDGESETTINGS_LOGPATTERNS_ENABLED"].Value).To(Equal("true"))
+		Expect(env["UPSTREAM_EDGESETTINGS_LOGPATTERNS_REFRESHINTERVAL"].Value).To(Equal("30s"))
+	})
+
+	It("omits the refresh interval env var when only enablement is set", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.Export.Dash0.ApiEndpoint = "https://api.dash0.com"
+		sc := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{Enabled: ptr(true)},
+			},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", sc, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_EDGESETTINGS_LOGPATTERNS_ENABLED"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_EDGESETTINGS_LOGPATTERNS_REFRESHINTERVAL"))
+	})
+
+	It("does not set log-pattern env vars when log enrichment is disabled", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.Export.Dash0.ApiEndpoint = "https://api.dash0.com"
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_EDGESETTINGS_ENABLED"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_EDGESETTINGS_LOGPATTERNS_ENABLED"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_EDGESETTINGS_LOGPATTERNS_REFRESHINTERVAL"))
 	})
 })
 

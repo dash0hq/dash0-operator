@@ -111,6 +111,24 @@ func (h *SignalControlValidationWebhookHandler) Handle(ctx context.Context, requ
 			logger.Warn("Rejecting Signal Control resource, invalid edgeProxy.settingsRefreshInterval.", "error", err)
 			return admission.Denied(err.Error())
 		}
+
+		if err := validateDurationBounds(
+			"logEnrichment.patternRefreshInterval", signalControlResource.Spec.LogEnrichment.PatternRefreshInterval); err != nil {
+			logger.Warn("Rejecting Signal Control resource, invalid logEnrichment.patternRefreshInterval.", "error", err)
+			return admission.Denied(err.Error())
+		}
+
+		if err := validateDurationBounds(
+			"logEnrichment.parserCacheExpiration", signalControlResource.Spec.LogEnrichment.ParserCacheExpiration); err != nil {
+			logger.Warn("Rejecting Signal Control resource, invalid logEnrichment.parserCacheExpiration.", "error", err)
+			return admission.Denied(err.Error())
+		}
+
+		if err := validateDurationBounds(
+			"logEnrichment.groupingCacheExpiration", signalControlResource.Spec.LogEnrichment.GroupingCacheExpiration); err != nil {
+			logger.Warn("Rejecting Signal Control resource, invalid logEnrichment.groupingCacheExpiration.", "error", err)
+			return admission.Denied(err.Error())
+		}
 	}
 
 	return admission.Allowed("")

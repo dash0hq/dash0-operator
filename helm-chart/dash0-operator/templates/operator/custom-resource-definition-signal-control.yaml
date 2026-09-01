@@ -143,6 +143,51 @@ spec:
                   and no Signal Control resources (e.g. Edge Proxy) are deployed, regardless of other settings in this resource. This
                   setting is optional, it defaults to true.
                 type: boolean
+              logEnrichment:
+                description: |-
+                  Configuration for edge-side log enrichment: the dash0logparser and dash0loggrouping processors,
+                  which apply centrally learned patterns to set OTLP severity, dash0.log.message and
+                  dash0.log.pattern, plus the dash0settingsonedge extension's log-pattern polling that feeds them.
+                  When enabled, both processors are wired into the logs pipeline before the spam filter, so filter
+                  rules can match on log pattern and severity.
+                properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      Whether to wire the dash0logparser and dash0loggrouping processors into the logs pipeline and poll
+                      learned log patterns. Unlike the other Signal Control components this defaults to false: the
+                      feature is opt-in and only works once the configured Signal Control collector image contains the
+                      two processors. This setting is optional, it defaults to false.
+                    type: boolean
+                  groupingCacheExpiration:
+                    description: |-
+                      How long the dash0loggrouping processor caches templates per workload. Go duration syntax. Must be
+                      between 10s and 1h; a non-zero value outside this range is rejected at admission. This setting is
+                      optional; the processor default (1m) applies when unset.
+                    type: string
+                  parserCacheExpiration:
+                    description: |-
+                      How long the dash0logparser caches compiled patterns per workload. Go duration syntax. Must be
+                      between 10s and 1h; a non-zero value outside this range is rejected at admission. This setting is
+                      optional; the processor default (1m) applies when unset.
+                    type: string
+                  parserMaxPatterns:
+                    description: |-
+                      The maximum number of parser patterns applied per workload, bounding per-record match cost. This
+                      setting is optional; the processor default (10) applies when unset.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  patternRefreshInterval:
+                    description: |-
+                      How often the dash0settingsonedge extension re-polls learned patterns and templates. Go duration
+                      syntax (e.g. "60s", "5m"). Must be between 10s and 1h; a non-zero value outside this range is
+                      rejected at admission. This setting is optional; the extension default (the settings refresh
+                      interval) applies when unset.
+                    type: string
+                required:
+                - enabled
+                type: object
               operationProcessor:
                 description: |-
                   Configuration for the dash0operation processor. This processor derives dash0.operation.* and dash0.span.*

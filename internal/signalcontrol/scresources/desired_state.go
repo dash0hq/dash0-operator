@@ -285,6 +285,20 @@ func assembleEdgeProxyDeployment(
 				Value: spec.EdgeProxy.SettingsRefreshInterval.Duration.String(),
 			})
 		}
+		// Log enrichment polls patterns on the shared settings stream, so it rides the same edge-settings
+		// upstream and requires it to be enabled.
+		if pointers.ReadBoolPointerWithDefault(spec.LogEnrichment.Enabled, false) {
+			edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+				Name:  "UPSTREAM_EDGESETTINGS_LOGPATTERNS_ENABLED",
+				Value: "true",
+			})
+			if d := spec.LogEnrichment.PatternRefreshInterval; d != nil && d.Duration > 0 {
+				edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+					Name:  "UPSTREAM_EDGESETTINGS_LOGPATTERNS_REFRESHINTERVAL",
+					Value: d.Duration.String(),
+				})
+			}
+		}
 	}
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
 		edgeProxyContainer.Env = append(edgeProxyContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)

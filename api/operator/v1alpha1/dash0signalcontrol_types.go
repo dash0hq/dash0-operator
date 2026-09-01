@@ -85,6 +85,15 @@ type Dash0SignalControlSpec struct {
 	// +kubebuilder:validation:Optional
 	OperationProcessor OperationProcessorConfig `json:"operationProcessor,omitempty"`
 
+	// Configuration for edge-side log enrichment: the dash0logparser and dash0loggrouping processors,
+	// which apply centrally learned patterns to set OTLP severity, dash0.log.message and
+	// dash0.log.pattern, plus the dash0settingsonedge extension's log-pattern polling that feeds them.
+	// When enabled, both processors are wired into the logs pipeline before the spam filter, so filter
+	// rules can match on log pattern and severity.
+	//
+	// +kubebuilder:validation:Optional
+	LogEnrichment LogEnrichmentConfig `json:"logEnrichment,omitempty"`
+
 	// The Dash0 API endpoint used by the dash0settingsonedge extension to fetch settings and rules (it queries
 	// {endpoint}/api/edge/settings on the region-bound Dash0 public API). This setting is optional. When not set,
 	// it defaults to the Dash0 API endpoint configured in the operator configuration resource as-is
@@ -413,6 +422,49 @@ type OperationMatcher struct {
 	//
 	// +kubebuilder:validation:Optional
 	Literal *bool `json:"literal,omitempty"`
+}
+
+// LogEnrichmentConfig configures edge-side log pattern application: the dash0logparser and
+// dash0loggrouping processors and the dash0settingsonedge extension's log-pattern polling that feeds
+// them. The parser applies learned patterns to set OTLP severity and dash0.log.message; grouping tags
+// records with dash0.log.pattern. Both run in the logs pipeline before the spam filter.
+type LogEnrichmentConfig struct {
+	// Whether to wire the dash0logparser and dash0loggrouping processors into the logs pipeline and poll
+	// learned log patterns. Unlike the other Signal Control components this defaults to false: the
+	// feature is opt-in and only works once the configured Signal Control collector image contains the
+	// two processors. This setting is optional, it defaults to false.
+	//
+	// +kubebuilder:default=false
+	Enabled *bool `json:"enabled"`
+
+	// How often the dash0settingsonedge extension re-polls learned patterns and templates. Go duration
+	// syntax (e.g. "60s", "5m"). Must be between 10s and 1h; a non-zero value outside this range is
+	// rejected at admission. This setting is optional; the extension default (the settings refresh
+	// interval) applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	PatternRefreshInterval *metav1.Duration `json:"patternRefreshInterval,omitempty"`
+
+	// How long the dash0logparser caches compiled patterns per workload. Go duration syntax. Must be
+	// between 10s and 1h; a non-zero value outside this range is rejected at admission. This setting is
+	// optional; the processor default (1m) applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	ParserCacheExpiration *metav1.Duration `json:"parserCacheExpiration,omitempty"`
+
+	// The maximum number of parser patterns applied per workload, bounding per-record match cost. This
+	// setting is optional; the processor default (10) applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	ParserMaxPatterns *int32 `json:"parserMaxPatterns,omitempty"`
+
+	// How long the dash0loggrouping processor caches templates per workload. Go duration syntax. Must be
+	// between 10s and 1h; a non-zero value outside this range is rejected at admission. This setting is
+	// optional; the processor default (1m) applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	GroupingCacheExpiration *metav1.Duration `json:"groupingCacheExpiration,omitempty"`
 }
 
 // Dash0SignalControlStatus defines the observed state of the Dash0SignalControl resource.

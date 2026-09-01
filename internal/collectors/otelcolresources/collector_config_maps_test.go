@@ -5435,6 +5435,150 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		)
 	})
 
+	Describe("Signal Control log enrichment [SignalControl]", func() {
+		logEnrichmentSC := func() SignalControlConfig {
+			return SignalControlConfig{
+				Enabled:              true,
+				LogEnrichmentEnabled: true,
+				Endpoint:             "decision-maker.example.com:443",
+				ApiEndpoint:          "https://control-plane-api.dash0.com",
+				Dataset:              "default",
+			}
+		}
+
+		assembleWith := func(sc SignalControlConfig, exporters otlpExporters) map[string]interface{} {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         exporters,
+				SignalControl:     sc,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			return parseConfigMapContent(configMap)
+		}
+
+		It("runs the parser then grouping before the filter on the default logs pipeline [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.SpamFilterEnabled = true
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0metering",
+				"dash0logparser",
+				"dash0loggrouping",
+				"dash0filter",
+			}))
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			Expect(processors["dash0logparser"].(map[string]interface{})["enable"]).
+				To(HaveKeyWithValue("default", true))
+			Expect(processors["dash0loggrouping"].(map[string]interface{})["enable"]).
+				To(HaveKeyWithValue("default", true))
+
+			assertCollectorConfigStructurallyValid(collectorConfig, "signal-control/log-enrichment-default")
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/log-enrichment-default")
+		})
+
+		It("runs enrichment even when no spam filter or metering is present [SignalControl]", func() {
+			collectorConfig := assembleWith(logEnrichmentSC(), cmTestSingleDefaultOtlpExporter())
+			pipelines := readPipelines(collectorConfig)
+
+			// No spam filter and no signal-to-metrics, so no metering and no filter; enrichment still runs.
+			Expect(readPipelineProcessors(pipelines, "logs/sc/default")).To(Equal([]any{
+				"resource/signal_control_attributes",
+				"dash0resource",
+				"dash0logparser",
+				"dash0loggrouping",
+			}))
+		})
+
+		It("enables log-pattern polling on the settings extension in direct mode [SignalControl]", func() {
+			collectorConfig := assembleWith(logEnrichmentSC(), cmTestSingleDefaultOtlpExporter())
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			logPatterns := settingsOnEdge["log_patterns"].(map[string]interface{})
+			Expect(logPatterns).To(HaveKeyWithValue("enabled", true))
+		})
+
+		It("renders parser and grouping tunables and the pattern refresh interval when set [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.LogPatternRefreshInterval = "30s"
+			sc.LogParserCacheExpiration = "2m"
+			sc.LogParserMaxPatterns = ptr.To(int32(15))
+			sc.LogGroupingCacheExpiration = "3m"
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+
+			processors := collectorConfig["processors"].(map[string]interface{})
+			parser := processors["dash0logparser"].(map[string]interface{})
+			Expect(parser).To(HaveKeyWithValue("edge_cache_expiration", "2m"))
+			Expect(parser).To(HaveKeyWithValue("max_patterns_per_key", 15))
+			grouping := processors["dash0loggrouping"].(map[string]interface{})
+			Expect(grouping).To(HaveKeyWithValue("cache_expiration", "3m"))
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			logPatterns := settingsOnEdge["log_patterns"].(map[string]interface{})
+			Expect(logPatterns).To(HaveKeyWithValue("refresh_interval", "30s"))
+		})
+
+		It("declares no log processors and no pattern polling when disabled [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.LogEnrichmentEnabled = false
+			sc.SpamFilterEnabled = true
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+
+			processors := topLevelComponentKeys(collectorConfig, "processors")
+			Expect(processors).ToNot(HaveKey("dash0logparser"))
+			Expect(processors).ToNot(HaveKey("dash0loggrouping"))
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "dash0logparser")
+			verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "dash0loggrouping")
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			Expect(settingsOnEdge).ToNot(HaveKey("log_patterns"))
+		})
+
+		It("does not put log_patterns on the extension in Edge Proxy mode [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.EdgeProxyEnabled = true
+			sc.Endpoint = namePrefix + "-edge-proxy." + OperatorNamespace + ".svc.cluster.local:8011"
+			collectorConfig := assembleWith(sc, cmTestSingleDefaultOtlpExporter())
+
+			extensions := collectorConfig["extensions"].(map[string]interface{})
+			settingsOnEdge := extensions["dash0settingsonedgeextension"].(map[string]interface{})
+			// In Edge Proxy mode the extension subscribes over gRPC and patterns ride that stream, so the
+			// log_patterns block would be ignored; the operator does not render it (the Edge Proxy gates polling).
+			Expect(settingsOnEdge).To(HaveKey("proxy"))
+			Expect(settingsOnEdge).ToNot(HaveKey("log_patterns"))
+			Expect(readPipelineProcessors(readPipelines(collectorConfig), "logs/sc/default")).
+				To(ContainElement("dash0logparser"))
+		})
+
+		It("wires enrichment into namespaced logs pipelines before the namespaced filter [SignalControl]", func() {
+			sc := logEnrichmentSC()
+			sc.SpamFilterEnabled = true
+			collectorConfig := assembleWith(sc, cmTestNamespacedMultiDatasetExporters())
+			pipelines := readPipelines(collectorConfig)
+
+			for _, idx := range []string{"0", "1"} {
+				branch := namespace1 + "/" + idx
+				Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+branch)).To(Equal([]any{
+					"resource/signal_control_attributes/ns/" + branch,
+					"dash0resource",
+					"dash0metering/ns/" + branch,
+					"dash0logparser",
+					"dash0loggrouping",
+					"dash0filter/ns/" + branch,
+				}), branch)
+			}
+			assertNoDanglingPipelineComponents(collectorConfig, "signal-control/log-enrichment-ns")
+		})
+	})
+
 	Describe("Signal Control metering [SignalControl]", func() {
 		meteringSC := func() SignalControlConfig {
 			return SignalControlConfig{

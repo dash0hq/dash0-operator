@@ -53,6 +53,15 @@ extensions:
     subscribing to it would loop silently, whereas an empty endpoint here is rejected by the extension at startup. */}}
     endpoint: {{ .SignalControl.ApiEndpoint }}
     auth_token: ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
+{{- if .SignalControl.LogEnrichmentEnabled }}
+    {{- /* Direct mode only: in Edge Proxy mode patterns ride the settings gRPC stream and this block is
+    ignored, so the Edge Proxy's UPSTREAM_EDGESETTINGS_LOGPATTERNS_ENABLED gates polling there instead. */}}
+    log_patterns:
+      enabled: true
+{{- if .SignalControl.LogPatternRefreshInterval }}
+      refresh_interval: {{ .SignalControl.LogPatternRefreshInterval }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- if $scDefault }}
   dash0metricrecorder: {}
@@ -357,6 +366,25 @@ processors:
 {{- end }}
 {{- else }}
   dash0operation: {}
+{{- end }}
+{{- if .SignalControl.LogEnrichmentEnabled }}
+  {{- /* Edge mode is auto-detected from the dash0settingsonedge extension; there is no mode key. The parser
+  must precede grouping in the logs pipeline, since grouping matches on the dash0.log.message it writes. */}}
+  dash0logparser:
+    enable:
+      default: true
+{{- if .SignalControl.LogParserCacheExpiration }}
+    edge_cache_expiration: {{ .SignalControl.LogParserCacheExpiration }}
+{{- end }}
+{{- if .SignalControl.LogParserMaxPatterns }}
+    max_patterns_per_key: {{ .SignalControl.LogParserMaxPatterns }}
+{{- end }}
+  dash0loggrouping:
+    enable:
+      default: true
+{{- if .SignalControl.LogGroupingCacheExpiration }}
+    cache_expiration: {{ .SignalControl.LogGroupingCacheExpiration }}
+{{- end }}
 {{- end }}
 {{- if .SignalControl.SpamFilterEnabled }}
 {{- if or $scDefault .SignalControl.SpamFilterCacheExpiration .SignalControl.SpamFilterAllowNoSettingsExt }}
@@ -712,6 +740,10 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         {{- if or .SignalControl.SpamFilterEnabled .SignalControl.SignalToMetricsEnabled }}
         - dash0metering
         {{- end }}
+        {{- if .SignalControl.LogEnrichmentEnabled }}
+        - dash0logparser
+        - dash0loggrouping
+        {{- end }}
         {{- if .SignalControl.SpamFilterEnabled }}
         - dash0filter
         {{- end }}
@@ -744,6 +776,10 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
         - dash0resource
         {{- if or $.SignalControl.SpamFilterEnabled $.SignalControl.SignalToMetricsEnabled }}
         - dash0metering/ns/{{ $ns }}/{{ $b.DatasetIndex }}
+        {{- end }}
+        {{- if $.SignalControl.LogEnrichmentEnabled }}
+        - dash0logparser
+        - dash0loggrouping
         {{- end }}
         {{- if $.SignalControl.SpamFilterEnabled }}
         - dash0filter/ns/{{ $ns }}/{{ $b.DatasetIndex }}
