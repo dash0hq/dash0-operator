@@ -24,9 +24,6 @@ import (
 )
 
 const (
-	serviceAccountTokenPath  = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-	serviceAccountCACertPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-
 	// nodeUidLookupTimeout bounds the request to the Kubernetes API, so that a slow or unreachable API server cannot
 	// stall the startup of the process that initializes the OTel SDK.
 	nodeUidLookupTimeout = 5 * time.Second
@@ -44,6 +41,10 @@ const (
 )
 
 var (
+	// The service account volume the kubelet mounts into every container.
+	serviceAccountTokenPath  = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+	serviceAccountCACertPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
 	nodeUidMutex sync.Mutex
 
 	// resolvedNodeUid stores the node uid if it has been resolved, so a successful lookup happens at most once process
@@ -60,10 +61,10 @@ var (
 // available when GetNodeUid is called. It returns immediately and never blocks the caller.
 //
 // Call it as early in the process lifetime as possible: the lookup then overlaps with the remaining startup work,
-// which is what keeps GetNodeUid from waiting at all in the common case. It is safe to call repeatedly and from multiple
-// goroutines. Calls are ignored while a lookup is in flight and once one has succeeded, so a process performs at most
-// one successful lookup. A failed attempt is not remembered, hence a later call can still retry - in the background,
-// so the retry never delays the caller either.
+// which is what keeps GetNodeUid from waiting at all in the common case. It is safe to call repeatedly and from
+// multiple goroutines. Calls are ignored while a lookup is in flight and once one has succeeded, so a process performs
+// at most one successful lookup. A failed attempt is not remembered, hence a later call can still retry - in the
+// background, so the retry never delays the caller either.
 //
 // Prefetch does nothing when the node name is empty, in which case GetNodeUid returns an empty string.
 func Prefetch(ctx context.Context, nodeName string) {

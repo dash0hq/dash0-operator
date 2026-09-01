@@ -5,9 +5,18 @@ package nodeuid
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -320,4 +329,166 @@ func TestConcurrentPrefetchStartsOneLookup(t *testing.T) {
 	if got := calls.Load(); got != 1 {
 		t.Errorf("the resolver ran %d times, want exactly 1 for concurrent Prefetch calls", got)
 	}
+}
+
+// inClusterFixture stands up a TLS server that impersonates the Kubernetes API and points the package at a service
+// account volume that trusts it, so that resolveNodeUidViaKubernetesApi can be exercised end to end: reading the
+// token, building the CA-verifying HTTP client, and making the request. It returns the server so that the test can
+// inspect what arrived.
+func inClusterFixture(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewTLSServer(handler)
+	t.Cleanup(server.Close)
+
+	serverUrl, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("cannot parse the test server URL %q: %v", server.URL, err)
+	}
+	t.Setenv("KUBERNETES_SERVICE_HOST", serverUrl.Hostname())
+	t.Setenv("KUBERNETES_SERVICE_PORT", serverUrl.Port())
+
+	caCert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	writeServiceAccountVolume(t, "service-account-token\n", caCert)
+
+	return server
+}
+
+// writeServiceAccountVolume points serviceAccountTokenPath and serviceAccountCACertPath at temporary files holding the
+// given content. An empty token or CA cert leaves that file absent, which is how the paths behave in a pod without a
+// mounted service account.
+func writeServiceAccountVolume(t *testing.T, token string, caCert []byte) {
+	t.Helper()
+	directory := t.TempDir()
+
+	originalTokenPath := serviceAccountTokenPath
+	originalCACertPath := serviceAccountCACertPath
+	t.Cleanup(func() {
+		serviceAccountTokenPath = originalTokenPath
+		serviceAccountCACertPath = originalCACertPath
+	})
+
+	serviceAccountTokenPath = filepath.Join(directory, "token")
+	if token != "" {
+		if err := os.WriteFile(serviceAccountTokenPath, []byte(token), 0o600); err != nil {
+			t.Fatalf("cannot write the token file: %v", err)
+		}
+	}
+
+	serviceAccountCACertPath = filepath.Join(directory, "ca.crt")
+	if len(caCert) > 0 {
+		if err := os.WriteFile(serviceAccountCACertPath, caCert, 0o600); err != nil {
+			t.Fatalf("cannot write the CA cert file: %v", err)
+		}
+	}
+}
+
+func TestResolveNodeUidViaKubernetesApi(t *testing.T) {
+	var requestPath, authorizationHeader string
+	inClusterFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.EscapedPath()
+		authorizationHeader = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"metadata":{"uid":"uid-a"}}`)
+	})
+
+	if got := resolveNodeUidViaKubernetesApi(context.Background(), "node-a"); got != "uid-a" {
+		t.Errorf("resolveNodeUidViaKubernetesApi() = %q, want %q", got, "uid-a")
+	}
+	if requestPath != "/api/v1/nodes/node-a" {
+		t.Errorf("request path = %q, want %q", requestPath, "/api/v1/nodes/node-a")
+	}
+	// The trailing newline of the token file must not end up in the header.
+	if authorizationHeader != "Bearer service-account-token" {
+		t.Errorf("Authorization header = %q, want %q", authorizationHeader, "Bearer service-account-token")
+	}
+}
+
+func TestResolveNodeUidViaKubernetesApiFailures(t *testing.T) {
+	unreadableHandler := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = fmt.Fprint(w, `{"kind":"Status","code":403}`)
+	}
+	okHandler := func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `{"metadata":{"uid":"uid-a"}}`)
+	}
+
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		// breakVolume replaces the service account volume the fixture set up.
+		breakVolume func(t *testing.T, caCert []byte)
+	}{
+		{
+			name:    "the API server denies the request",
+			handler: unreadableHandler,
+		},
+		{
+			name:    "the service account token is not mounted",
+			handler: okHandler,
+			breakVolume: func(t *testing.T, caCert []byte) {
+				writeServiceAccountVolume(t, "", caCert)
+			},
+		},
+		{
+			name:    "the cluster CA certificate is not mounted",
+			handler: okHandler,
+			breakVolume: func(t *testing.T, _ []byte) {
+				writeServiceAccountVolume(t, "service-account-token", nil)
+			},
+		},
+		{
+			name:    "the cluster CA certificate cannot be parsed",
+			handler: okHandler,
+			breakVolume: func(t *testing.T, _ []byte) {
+				writeServiceAccountVolume(t, "service-account-token", []byte("this is not a PEM certificate"))
+			},
+		},
+		{
+			name:    "the API server presents a certificate the cluster CA did not sign",
+			handler: okHandler,
+			breakVolume: func(t *testing.T, _ []byte) {
+				writeServiceAccountVolume(t, "service-account-token", unrelatedCACert(t))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := inClusterFixture(t, tt.handler)
+			if tt.breakVolume != nil {
+				caCert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+				tt.breakVolume(t, caCert)
+			}
+
+			if got := resolveNodeUidViaKubernetesApi(context.Background(), "node-a"); got != "" {
+				t.Errorf("resolveNodeUidViaKubernetesApi() = %q, want an empty string", got)
+			}
+		})
+	}
+}
+
+// unrelatedCACert returns a PEM-encoded certificate of a CA that did not sign the test server's certificate, so that
+// the TLS handshake fails verification rather than the connection failing outright.
+func unrelatedCACert(t *testing.T) []byte {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("cannot generate a key: %v", err)
+	}
+	template := x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "unrelated-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("cannot create a certificate: %v", err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }
