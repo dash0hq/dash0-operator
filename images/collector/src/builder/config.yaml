@@ -15,6 +15,11 @@ telemetry:
   import: "github.com/dash0hq/dash0-operator/images/collector/src/telemetry"
   name: "dash0telemetry"
   path: "telemetry"
+replaces:
+  # The telemetry factory resolves the node UID via the shared nodeuid module. A replace directive in that module's own
+  # go.mod does not apply here, because the builder generates its own main module, so the replacement has to be
+  # declared for the generated go.mod as well.
+  - "github.com/dash0hq/dash0-operator/images/pkg/nodeuid => ../pkg/nodeuid"
 extensions:
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.159.0"
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.159.0"

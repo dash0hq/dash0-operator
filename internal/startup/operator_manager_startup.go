@@ -1256,6 +1256,10 @@ func startOperatorManager(
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	developmentMode bool,
 ) error {
+	// Start resolving the node UID for the self-monitoring telemetry in the background as early as possible, so it is
+	// available by the time the OTel SDK is started.
+	common.PrefetchNodeUid(ctx)
+
 	options := ctrl.Options{
 		Scheme: runtimeScheme,
 		Metrics: metricsserver.Options{

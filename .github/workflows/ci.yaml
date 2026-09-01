@@ -159,7 +159,8 @@ jobs:
           imageTitle: Dash0 Kubernetes Collector
           imageDescription: the OpenTelemetry collector for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
-          context: images/collector
+          context: images
+          file: images/collector/Dockerfile
 
       - name: build configuration reloader image
         uses: ./.github/actions/build-image
