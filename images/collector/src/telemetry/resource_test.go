@@ -5,65 +5,69 @@ package dash0telemetry
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
+
+	"github.com/dash0hq/dash0-operator/images/pkg/nodeuid"
 )
 
-// futureWith returns a prefetch channel already holding the given result.
-func futureWith(result nodeUIDResult) <-chan nodeUIDResult {
-	ch := make(chan nodeUIDResult, 1)
-	ch <- result
-	return ch
+// stubResolvedNodeUID makes the prefetched lookup resolve to the given UID for the duration of the test. An empty UID
+// makes it fail, which is how the shared lookup reports every error.
+func stubResolvedNodeUID(t *testing.T, uid string) {
+	t.Helper()
+	t.Cleanup(nodeuid.SetResolverForTest(func(context.Context, string) string { return uid }))
 }
 
 func TestAddNodeUID(t *testing.T) {
 	tests := []struct {
 		name        string
-		future      <-chan nodeUIDResult
+		resolvedUID string
+		nodeName    string
 		presetUID   string
-		hasPreset   bool
 		expectedUID string // "" means the attribute must be absent afterwards
 	}{
 		{
 			name:        "sets attribute from resolved uid",
-			future:      futureWith(nodeUIDResult{uid: "uid-a"}),
+			resolvedUID: "uid-a",
+			nodeName:    "node-a",
 			expectedUID: "uid-a",
 		},
 		{
-			name:        "nil future skips (no node name)",
-			future:      nil,
+			name:        "no node name means no lookup and no attribute",
+			resolvedUID: "uid-a",
+			nodeName:    "",
 			expectedUID: "",
 		},
 		{
-			name:        "lookup failure is best effort",
-			future:      futureWith(nodeUIDResult{err: errors.New("boom")}),
-			expectedUID: "",
-		},
-		{
-			name:        "empty resolved uid is not set",
-			future:      futureWith(nodeUIDResult{uid: ""}),
+			// The shared lookup reports every failure as an empty string, after logging the reason itself.
+			name:        "unresolved uid is best effort",
+			resolvedUID: "",
+			nodeName:    "node-a",
 			expectedUID: "",
 		},
 		{
 			name:        "does not override existing attribute",
-			future:      futureWith(nodeUIDResult{uid: "uid-a"}),
+			resolvedUID: "uid-a",
+			nodeName:    "node-a",
 			presetUID:   "preset-uid",
-			hasPreset:   true,
 			expectedUID: "preset-uid",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(nodeNameEnvVarName, tc.nodeName)
+			stubResolvedNodeUID(t, tc.resolvedUID)
+
 			res := pcommon.NewResource()
-			if tc.hasPreset {
+			if tc.presetUID != "" {
 				res.Attributes().PutStr(k8sNodeUIDResourceAttrKey, tc.presetUID)
 			}
 
-			addNodeUID(context.Background(), res, tc.future)
+			startNodeUIDPrefetch(context.Background())
+			addNodeUID(res)
 
 			value, ok := res.Attributes().Get(k8sNodeUIDResourceAttrKey)
 			if tc.expectedUID == "" {
@@ -83,16 +87,23 @@ func TestAddNodeUID(t *testing.T) {
 }
 
 func TestAddNodeUIDDoesNotBlockPastWaitTimeout(t *testing.T) {
-	// A future that never receives a result simulates a lookup that has not finished yet.
-	neverResolves := make(chan nodeUIDResult)
+	t.Setenv(nodeNameEnvVarName, "node-a")
+	release := make(chan struct{})
+	defer close(release)
+	t.Cleanup(nodeuid.SetResolverForTest(func(context.Context, string) string {
+		<-release
+		return "uid-a"
+	}))
 
 	original := nodeUIDStartupWaitTimeout
 	nodeUIDStartupWaitTimeout = 10 * time.Millisecond
 	t.Cleanup(func() { nodeUIDStartupWaitTimeout = original })
 
+	startNodeUIDPrefetch(context.Background())
+
 	res := pcommon.NewResource()
 	start := time.Now()
-	addNodeUID(context.Background(), res, neverResolves)
+	addNodeUID(res)
 	elapsed := time.Since(start)
 
 	if elapsed > time.Second {
@@ -103,63 +114,23 @@ func TestAddNodeUIDDoesNotBlockPastWaitTimeout(t *testing.T) {
 	}
 }
 
-func TestAddNodeUIDRespectsContextCancellation(t *testing.T) {
-	neverResolves := make(chan nodeUIDResult)
+// TestReloadKeepsTheNodeUID covers the configuration reload path: the collector builds a new factory, and therefore
+// prefetches again, on every reload, but the attribute has to stay on the resource each time.
+func TestReloadKeepsTheNodeUID(t *testing.T) {
+	t.Setenv(nodeNameEnvVarName, "node-a")
+	stubResolvedNodeUID(t, "uid-a")
 
-	// A long wait timeout ensures the context cancellation, not the deadline, ends the wait.
-	original := nodeUIDStartupWaitTimeout
-	nodeUIDStartupWaitTimeout = time.Hour
-	t.Cleanup(func() { nodeUIDStartupWaitTimeout = original })
+	for reload := range 3 {
+		startNodeUIDPrefetch(context.Background())
+		res := pcommon.NewResource()
+		addNodeUID(res)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	res := pcommon.NewResource()
-	start := time.Now()
-	addNodeUID(ctx, res, neverResolves)
-	elapsed := time.Since(start)
-
-	if elapsed > time.Second {
-		t.Fatalf("addNodeUID blocked for %s, expected it to return promptly on context cancellation", elapsed)
+		value, ok := res.Attributes().Get(k8sNodeUIDResourceAttrKey)
+		if !ok {
+			t.Fatalf("reload %d: expected %s to be set", reload, k8sNodeUIDResourceAttrKey)
+		}
+		if value.Str() != "uid-a" {
+			t.Fatalf("reload %d: expected uid-a, got %q", reload, value.Str())
+		}
 	}
-	if _, ok := res.Attributes().Get(k8sNodeUIDResourceAttrKey); ok {
-		t.Fatalf("expected %s to be absent when the context is cancelled", k8sNodeUIDResourceAttrKey)
-	}
-}
-
-func TestStartNodeUIDPrefetch(t *testing.T) {
-	t.Run("returns nil when node name is not set", func(t *testing.T) {
-		t.Setenv(nodeNameEnvVarName, "")
-		if future := startNodeUIDPrefetch(context.Background()); future != nil {
-			t.Fatalf("expected nil future when node name is not set, got %v", future)
-		}
-	})
-
-	t.Run("resolves the node uid via the resolver", func(t *testing.T) {
-		t.Setenv(nodeNameEnvVarName, "node-a")
-		original := nodeUIDResolver
-		nodeUIDResolver = func(_ context.Context, nodeName string) (string, error) {
-			if nodeName != "node-a" {
-				t.Errorf("expected node name node-a, got %q", nodeName)
-			}
-			return "uid-a", nil
-		}
-		t.Cleanup(func() { nodeUIDResolver = original })
-
-		future := startNodeUIDPrefetch(context.Background())
-		if future == nil {
-			t.Fatal("expected a non-nil future when the node name is set")
-		}
-		select {
-		case result := <-future:
-			if result.err != nil {
-				t.Fatalf("unexpected error: %v", result.err)
-			}
-			if result.uid != "uid-a" {
-				t.Fatalf("expected uid-a, got %q", result.uid)
-			}
-		case <-time.After(time.Second):
-			t.Fatal("timed out waiting for the prefetch result")
-		}
-	})
 }

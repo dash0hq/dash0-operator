@@ -28,6 +28,8 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
+	"github.com/dash0hq/dash0-operator/images/pkg/nodeuid"
 )
 
 type OTelSdkConfig struct {
@@ -57,6 +59,11 @@ const (
 	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#endpoint-urls-for-otlphttp
 	otlpLogsDefaultSignalPath    = "/v1/logs"
 	otlpMetricsDefaultSignalPath = "/v1/metrics"
+
+	// nodeUidWaitTimeout bounds how long assembling the resource waits for the node UID lookup that PrefetchNodeUid
+	// started. That lookup normally finishes long before the OTel SDK is initialized, so this deadline only applies
+	// when it has not, and the attribute is then left unset rather than delaying the SDK.
+	nodeUidWaitTimeout = 5 * time.Second
 )
 
 var (
@@ -71,6 +78,17 @@ func OTelSDKIsConfigured() bool {
 	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != ""
 }
 
+// PrefetchNodeUid starts resolving the UID of the node this process runs on in the background, so that the
+// k8s.node.uid resource attribute is already available when the OTel SDK is initialized.
+//
+// Call it once, as early in the process lifetime as possible. Reading the node UID requires a request to the
+// Kubernetes API, and the OTel SDK of the operator manager is initialized (and re-initialized, whenever the operator
+// configuration resource changes) while oTelSdkMutex is held, so doing the lookup there would block every concurrent
+// caller for the duration of that request. Prefetching moves it off that path entirely.
+func PrefetchNodeUid(ctx context.Context) {
+	nodeuid.Prefetch(ctx, os.Getenv("K8S_NODE_NAME"))
+}
+
 func InitOTelSdkFromEnvVars(
 	ctx context.Context,
 	meterName string,
@@ -81,6 +99,7 @@ func InitOTelSdkFromEnvVars(
 	// will either be started once at process startup or not. In contrast to InitOTelSdkWithConfig, it will not be
 	// restarted, and the configuration is not modified from different threads. Hence, no thread safety is needed here
 	// and oTelSdkMutex is not used.
+	PrefetchNodeUid(ctx)
 	if OTelSDKIsConfigured() {
 
 		protocol, protocolIsSet := os.LookupEnv("OTEL_EXPORTER_OTLP_PROTOCOL")
@@ -227,6 +246,11 @@ func InitOTelSdkWithConfig(
 	// resource (in particular, spec.selfMonitoring.enabled and the export config), the OTel SDK might need to be
 	// started, shut down, and restarted multiple times during the lifetime of the operator manager process. This can
 	// potentially be triggered by different threads, thus we need thread safety here.
+	//
+	// Prefetching the node UID before taking the lock keeps the request to the Kubernetes API off the critical
+	// section. It is a no-op once the operator manager has prefetched at startup.
+	PrefetchNodeUid(ctx)
+
 	oTelSdkMutex.Lock()
 	defer func() {
 		oTelSdkMutex.Unlock()
@@ -444,9 +468,10 @@ func assembleResource(
 
 	if nodeName := os.Getenv("K8S_NODE_NAME"); nodeName != "" {
 		attributes = append(attributes, semconv.K8SNodeName(nodeName))
-		// The node UID, unlike the node name, is not available via the downward API and has to be resolved via the
-		// Kubernetes API.
-		if nodeUid := resolveNodeUid(ctx, nodeName); nodeUid != "" {
+		// The node UID, unlike the node name, is not available via the downward API and has to be read from the
+		// Kubernetes API. PrefetchNodeUid starts that lookup in the background, so this only collects the result and
+		// gives up quickly if it is not available yet, rather than holding oTelSdkMutex for the duration of a request.
+		if nodeUid := nodeuid.GetNodeUid(nodeUidWaitTimeout); nodeUid != "" {
 			attributes = append(attributes, semconv.K8SNodeUID(nodeUid))
 		}
 	}

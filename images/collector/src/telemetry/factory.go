@@ -34,11 +34,12 @@ import (
 func NewFactory() telemetry.Factory {
 	base := otelconftelemetry.NewFactory()
 	// Kick off the node UID lookup right away so it runs concurrently with the remaining startup work and is usually
-	// already resolved by the time CreateResource is called.
-	nodeUIDFuture := startNodeUIDPrefetch(context.Background())
+	// already resolved by the time CreateResource is called. The collector builds a new factory on every configuration
+	// reload, but only the first lookup of the process reaches the Kubernetes API.
+	startNodeUIDPrefetch(context.Background())
 	return telemetry.NewFactory(
 		base.CreateDefaultConfig,
-		telemetry.WithCreateResource(createResourceWithNodeUID(base, nodeUIDFuture)),
+		telemetry.WithCreateResource(createResourceWithNodeUID(base)),
 		telemetry.WithCreateLogger(base.CreateLogger),
 		telemetry.WithCreateMeterProvider(base.CreateMeterProvider),
 		telemetry.WithCreateTracerProvider(base.CreateTracerProvider),
