@@ -246,10 +246,31 @@ function update_telemetry_module {
     return 0
   fi
 
+  # Every indirect requirement of the module comes from one of the collector modules, so the whole set is dropped and
+  # re-derived from them by go mod tidy below. Without that, an indirect version that ended up above what the
+  # components require - a stray "go get -u", a hand edit - would stay there forever: go mod tidy raises versions but
+  # never lowers them, and the module takes part in the module resolution of the collector binary, so that version
+  # would silently become the minimum for the whole binary.
+  local indirect_requirements
+  indirect_requirements=$( \
+    go mod edit -json "$telemetry_module_dir/go.mod" \
+    | jq -r '.Require[] | select(.Indirect == true) | .Path'
+  )
+
+  local drop_args=()
+  while IFS= read -r module; do
+    if [[ -n "$module" ]]; then
+      drop_args+=("-droprequire=$module")
+    fi
+  done <<< "$indirect_requirements"
+
   echo "Updating the collector modules required by $telemetry_module_dir/go.mod:"
   printf -- "- %s\n" "${module_args[@]}"
   (
     cd "$telemetry_module_dir"
+    if [[ ${#drop_args[@]} -gt 0 ]]; then
+      go mod edit "${drop_args[@]}"
+    fi
     go get "${module_args[@]}"
     go mod tidy
   )
