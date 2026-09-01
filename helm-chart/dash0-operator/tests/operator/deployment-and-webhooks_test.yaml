@@ -199,6 +199,51 @@ tests:
       - failedTemplate:
           errorMessage: "Error: operator.collectors.sendBatchMaxSize must be greater than or equal to operator.collectors.sendBatchSize."
 
+  - it: should reject an out of range otlpGrpcHostPort
+    set:
+      operator:
+        collectors:
+          otlpGrpcHostPort: 70000
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.otlpGrpcHostPort must be in the range 1-65535, but was 70000."
+
+  - it: should reject an out of range otlpHttpHostPort
+    set:
+      operator:
+        collectors:
+          otlpHttpHostPort: 0
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.otlpHttpHostPort must be in the range 1-65535, but was 0."
+
+  - it: should reject identical OTLP host ports
+    set:
+      operator:
+        collectors:
+          otlpGrpcHostPort: 4317
+          otlpHttpHostPort: 4317
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.collectors.otlpGrpcHostPort and operator.collectors.otlpHttpHostPort must be different, both are set to 4317."
+
+  - it: should render custom OTLP host ports
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        collectors:
+          otlpGrpcHostPort: 4317
+          otlpHttpHostPort: 4318
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-otel-collector-otlp-grpc-host-port=4317
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --dash0-otel-collector-otlp-http-host-port=4318
+
   - it: should accept sendBatchMaxSize equal to sendBatchSize
     documentSelector:
       path: metadata.name

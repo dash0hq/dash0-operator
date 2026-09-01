@@ -164,8 +164,19 @@ spec:
         - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --dash0-gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
         - --dash0-disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
-        - --dash0-otel-collector-otlp-grpc-host-port={{ .Values.operator.collectors.otlpGrpcHostPort }}
-        - --dash0-otel-collector-otlp-http-host-port={{ .Values.operator.collectors.otlpHttpHostPort }}
+{{- $otlpGrpcHostPort := int .Values.operator.collectors.otlpGrpcHostPort }}
+{{- $otlpHttpHostPort := int .Values.operator.collectors.otlpHttpHostPort }}
+{{- if or (lt $otlpGrpcHostPort 1) (gt $otlpGrpcHostPort 65535) }}
+{{- fail (printf "Error: operator.collectors.otlpGrpcHostPort must be in the range 1-65535, but was %d." $otlpGrpcHostPort) -}}
+{{- end }}
+{{- if or (lt $otlpHttpHostPort 1) (gt $otlpHttpHostPort 65535) }}
+{{- fail (printf "Error: operator.collectors.otlpHttpHostPort must be in the range 1-65535, but was %d." $otlpHttpHostPort) -}}
+{{- end }}
+{{- if eq $otlpGrpcHostPort $otlpHttpHostPort }}
+{{- fail (printf "Error: operator.collectors.otlpGrpcHostPort and operator.collectors.otlpHttpHostPort must be different, both are set to %d." $otlpGrpcHostPort) -}}
+{{- end }}
+        - --dash0-otel-collector-otlp-grpc-host-port={{ $otlpGrpcHostPort }}
+        - --dash0-otel-collector-otlp-http-host-port={{ $otlpHttpHostPort }}
 {{- if (default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis) }}
         - --instrumentation-delay-after-each-workload-millis={{ default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
 {{- end }}

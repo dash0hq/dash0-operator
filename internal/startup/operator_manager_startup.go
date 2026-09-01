@@ -371,12 +371,12 @@ func Start() {
 		setupLog.Error(err, "cannot read environment variables")
 		os.Exit(1)
 	}
-	if err = readExtraConfigMap(); err != nil {
-		setupLog.Error(err, "cannot read extra config map file at startup")
-		os.Exit(1)
-	}
 	if err = validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
 		setupLog.Error(err, "invalid OTLP collector host port configuration")
+		os.Exit(1)
+	}
+	if err = readExtraConfigMap(); err != nil {
+		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
 	if err = extraConfigMapWatcher.StartWatch(setupLog); err != nil {
@@ -743,28 +743,6 @@ func defineCommandLineArguments() *commandLineArguments {
 	return cliArgs
 }
 
-// validateOtlpHostPorts checks that the configured OTLP collector host ports are valid port numbers and distinct
-// from each other. It does not (and cannot) detect whether a port is already in use on a given node -- that surfaces
-// as a normal Kubernetes pod scheduling failure once the collector DaemonSet is applied.
-func validateOtlpHostPorts(grpcHostPort int, httpHostPort int) error {
-	for _, port := range []int{grpcHostPort, httpHostPort} {
-		if port < 1 || port > 65535 {
-			return fmt.Errorf(
-				"the OTLP collector host ports must be in the range 1-65535, got %d "+
-					"(--dash0-otel-collector-otlp-grpc-host-port/--dash0-otel-collector-otlp-http-host-port)",
-				port,
-			)
-		}
-	}
-	if grpcHostPort == httpHostPort {
-		return fmt.Errorf(
-			"the OTLP collector gRPC and HTTP host ports must be different, both are set to %d",
-			grpcHostPort,
-		)
-	}
-	return nil
-}
-
 func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool) crzap.Options {
 	var opts crzap.Options
 	if developmentMode {
@@ -1079,6 +1057,28 @@ func readExtraConfigMap() error {
 	extraConfig, err = util.ReadExtraConfigMap()
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateOtlpHostPorts checks that the configured OTLP collector host ports are valid port numbers and distinct
+// from each other. It does not (and cannot) detect whether a port is already in use on a given node -- that surfaces
+// as a normal Kubernetes pod scheduling failure once the collector DaemonSet is applied.
+func validateOtlpHostPorts(grpcHostPort int, httpHostPort int) error {
+	for _, port := range []int{grpcHostPort, httpHostPort} {
+		if port < 1 || port > 65535 {
+			return fmt.Errorf(
+				"the OTLP collector host ports must be in the range 1-65535, got %d "+
+					"(--dash0-otel-collector-otlp-grpc-host-port/--dash0-otel-collector-otlp-http-host-port)",
+				port,
+			)
+		}
+	}
+	if grpcHostPort == httpHostPort {
+		return fmt.Errorf(
+			"the OTLP collector gRPC and HTTP host ports must be different, both are set to %d",
+			grpcHostPort,
+		)
 	}
 	return nil
 }
