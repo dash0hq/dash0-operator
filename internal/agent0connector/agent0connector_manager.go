@@ -19,6 +19,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
@@ -73,12 +74,6 @@ func (m *Agent0ConnectorManager) UpdateExtraConfig(ctx context.Context, newConfi
 	} else {
 		logger.Info("ignoring extra config map update, both the new and the old extra config map have the same content")
 	}
-}
-
-// agent0ConnectorEnabled reports whether the optional agent0-connector deployment should be managed. It is controlled by
-// the Helm value operator.agent0Connector.enabled.
-func (m *Agent0ConnectorManager) agent0ConnectorEnabled() bool {
-	return m.enabled
 }
 
 // ReconcileAgent0Connector can be triggered by
@@ -139,7 +134,7 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 		return err == nil, err
 	}
 
-	if !m.agent0ConnectorEnabled() {
+	if !m.agent0ConnectorEnabled(operatorConfigurationResource) {
 		logger.Debug("The agent0-connector deployment is disabled, it (if present) will be removed.")
 		if err = m.removeAgent0Connector(ctx, *extraConfig, logger); err != nil {
 			return false, err
@@ -157,6 +152,16 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 		return false, nil
 	}
 	return hasBeenReconciled, err
+}
+
+// agent0ConnectorEnabled reports whether the optional agent0-connector deployment should be managed. It requires the
+// Helm value operator.agent0Connector.enabled, which users can override with spec.agent0Connector.enabled of the
+// Dash0OperatorConfiguration resource to opt out.
+func (m *Agent0ConnectorManager) agent0ConnectorEnabled(
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) bool {
+	return m.enabled &&
+		pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Agent0Connector.Enabled, true)
 }
 
 // reportAgent0ConnectorStatus records the outcome of the last attempt to create or update the agent0-connector

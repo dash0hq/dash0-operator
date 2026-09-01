@@ -163,6 +163,13 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	Profiling *Profiling `json:"profiling,omitempty"`
+
+	// Settings for the agent0-connector. This setting is optional; if it is omitted, the operator deploys the
+	// agent0-connector if and only if it is enabled via the Helm chart (operator.agent0Connector.enabled). It is a
+	// validation error to set `agent0Connector.enabled=true` when the agent0-connector is disabled via the Helm chart.
+	//
+	// +kubebuilder:validation:Optional
+	Agent0Connector Agent0Connector `json:"agent0Connector,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
@@ -190,6 +197,17 @@ type PrometheusCrdSupport struct {
 	// deploying the OpenTelemetry target-allocator.
 	// It is a validation error to set`telemetryCollection.enabled=false` and `prometheusCrdSupport.enabled=true` at
 	// the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// Agent0Connector describes whether the operator deploys the agent0-connector.
+type Agent0Connector struct {
+	// An opt-out switch for the agent0-connector deployment. This setting is optional; if it is omitted, it defaults to
+	// the value of the Helm value operator.agent0Connector.enabled. Setting it to `false` prevents the operator from
+	// deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a validation
+	// error to set it to `true` when the agent0-connector is disabled via the Helm chart.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`

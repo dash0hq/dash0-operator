@@ -34,6 +34,12 @@ type migrateOperatorConfigExportToExportsTestConfig struct {
 	wanted    dash0v1alpha1.Dash0OperatorConfigurationSpec
 }
 
+type agent0ConnectorDefaultTestConfig struct {
+	agent0ConnectorEnabledViaHelm bool
+	enabled                       *bool
+	wanted                        *bool
+}
+
 type setMonitoringTemplateDefaultsTestConfig struct {
 	autoMonitorNamespacesEnabled bool
 	template                     *dash0v1alpha1.MonitoringTemplate
@@ -73,6 +79,7 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.CollectNodeLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(new(true)))
+				g.Expect(spec.Agent0Connector.Enabled).To(Equal(new(false)))
 			})
 		})
 
@@ -108,6 +115,53 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 		})
 	})
 
+	DescribeTable("should default agent0Connector.enabled",
+		func(testConfig agent0ConnectorDefaultTestConfig) {
+			handler := NewOperatorConfigurationMutatingWebhookHandler(
+				k8sClient,
+				testConfig.agent0ConnectorEnabledViaHelm,
+			)
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Agent0Connector: dash0v1alpha1.Agent0Connector{
+					Enabled: testConfig.enabled,
+				},
+			}
+			_, errorResponse := handler.normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+			Expect(errorResponse).To(BeNil())
+			Expect(spec.Agent0Connector.Enabled).To(Equal(testConfig.wanted))
+		},
+		Entry("unset, enabled via Helm: default to true",
+			agent0ConnectorDefaultTestConfig{
+				agent0ConnectorEnabledViaHelm: true,
+				enabled:                       nil,
+				wanted:                        new(true),
+			}),
+		Entry("unset, disabled via Helm: default to false",
+			agent0ConnectorDefaultTestConfig{
+				agent0ConnectorEnabledViaHelm: false,
+				enabled:                       nil,
+				wanted:                        new(false),
+			}),
+		Entry("explicitly false, enabled via Helm: keep false",
+			agent0ConnectorDefaultTestConfig{
+				agent0ConnectorEnabledViaHelm: true,
+				enabled:                       new(false),
+				wanted:                        new(false),
+			}),
+		Entry("explicitly true, enabled via Helm: keep true",
+			agent0ConnectorDefaultTestConfig{
+				agent0ConnectorEnabledViaHelm: true,
+				enabled:                       new(true),
+				wanted:                        new(true),
+			}),
+		Entry("explicitly true, disabled via Helm: keep true (the validation webhook rejects it)",
+			agent0ConnectorDefaultTestConfig{
+				agent0ConnectorEnabledViaHelm: false,
+				enabled:                       new(true),
+				wanted:                        new(true),
+			}),
+	)
+
 	DescribeTable("should normalize the resource spec", func(testConfig normalizeOperatorConfigurationResourceSpecTestConfig) {
 		spec := testConfig.spec
 		_, errorResponse := operatorConfigurationMutatingWebhookHandler.normalizeOperatorConfigurationResourceSpec(
@@ -122,6 +176,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			normalizeOperatorConfigurationResourceSpecTestConfig{
 				spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: new(true),
 					},
@@ -156,6 +213,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					TelemetryCollection:                       dash0v1alpha1.TelemetryCollection{},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: new(true),
 					},
@@ -188,6 +248,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						// self-monitoring does not depend on the telemetry collection flag
 						Enabled: new(true),
@@ -224,6 +287,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: new(true),
 					},
@@ -269,6 +335,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: new(false),
 					},
@@ -317,6 +386,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: new(false),
 					},
@@ -362,6 +434,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: new(true),
 					},
@@ -407,6 +482,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: new(true),
 					},
@@ -438,6 +516,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					Export: Dash0ExportWithEndpointAndToken(),
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					Export:  nil,
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -470,6 +551,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					Export:  nil,
 					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -503,6 +587,9 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 					Exports: []dash0common.Export{*GrpcExportTest()},
 				},
 				wanted: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Agent0Connector: dash0v1alpha1.Agent0Connector{
+						Enabled: new(false),
+					},
 					// export is cleared, exports is kept as-is
 					Export:  nil,
 					Exports: []dash0common.Export{*GrpcExportTest()},

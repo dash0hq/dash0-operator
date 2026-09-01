@@ -41,14 +41,17 @@ var (
 )
 
 type OperatorConfigurationMutatingWebhookHandler struct {
-	Client client.Client
+	Client                        client.Client
+	agent0ConnectorEnabledViaHelm bool
 }
 
 func NewOperatorConfigurationMutatingWebhookHandler(
 	k8sClient client.Client,
+	agent0ConnectorEnabledViaHelm bool,
 ) *OperatorConfigurationMutatingWebhookHandler {
 	return &OperatorConfigurationMutatingWebhookHandler{
-		Client: k8sClient,
+		Client:                        k8sClient,
+		agent0ConnectorEnabledViaHelm: agent0ConnectorEnabledViaHelm,
 	}
 }
 
@@ -171,6 +174,12 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 	}
 	if spec.PrometheusCrdSupport.Enabled == nil {
 		spec.PrometheusCrdSupport.Enabled = ptr.To(false)
+		patchRequired = true
+	}
+	if spec.Agent0Connector.Enabled == nil {
+		// The agent0-connector can only be deployed when it is enabled via the Helm chart, so an unset flag follows the
+		// Helm value. An explicitly set flag is never modified.
+		spec.Agent0Connector.Enabled = ptr.To(h.agent0ConnectorEnabledViaHelm)
 		patchRequired = true
 	}
 

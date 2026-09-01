@@ -140,6 +140,14 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
 				false,
 			)
+	// The agent0-connector requires the Helm value operator.agent0Connector.enabled; the operator configuration resource
+	// can opt out of it.
+	agent0ConnectorEnabled :=
+		m.collectorConfig.Agent0ConnectorEnabled &&
+			pointers.ReadBoolPointerWithDefault(
+				operatorConfigurationResource.Spec.Agent0Connector.Enabled,
+				true,
+			)
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(
@@ -176,7 +184,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
-		Agent0ConnectorEnabled:                           m.collectorConfig.Agent0ConnectorEnabled,
+		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
 		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix),
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),

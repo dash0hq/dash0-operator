@@ -63,6 +63,20 @@ spec:
             description: Dash0OperatorConfigurationSpec describes cluster-wide configuration
               settings for the Dash0 operator.
             properties:
+              agent0Connector:
+                description: |-
+                  Settings for the agent0-connector. This setting is optional; if it is omitted, the operator deploys the
+                  agent0-connector if and only if it is enabled via the Helm chart (operator.agent0Connector.enabled). It is a
+                  validation error to set `agent0Connector.enabled=true` when the agent0-connector is disabled via the Helm chart.
+                properties:
+                  enabled:
+                    description: |-
+                      An opt-out switch for the agent0-connector deployment. This setting is optional; if it is omitted, it defaults to
+                      the value of the Helm value operator.agent0Connector.enabled. Setting it to `false` prevents the operator from
+                      deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a validation
+                      error to set it to `true` when the agent0-connector is disabled via the Helm chart.
+                    type: boolean
+                type: object
               autoMonitorNamespaces:
                 default:
                   enabled: false

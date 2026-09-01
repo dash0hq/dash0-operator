@@ -562,4 +562,87 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+
+	Describe("agent0-connector", func() {
+		It("should reject enabling the agent0-connector when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						Agent0Connector: dash0v1alpha1.Agent0Connector{
+							Enabled: new(true),
+						},
+					},
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The agent0-connector " +
+					"has been disabled via the Helm chart (operator.agent0Connector.enabled: false), but the provided Dash0 " +
+					"operator configuration resource has agent0Connector.enabled=true. The agent0-connector cannot be " +
+					"enabled via the operator configuration resource when it has been disabled via the Helm chart. Instead, " +
+					"run helm upgrade --install to set operator.agent0Connector.enabled: true via the Helm chart.")))
+		})
+
+		It("should allow disabling the agent0-connector when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						Agent0Connector: dash0v1alpha1.Agent0Connector{
+							Enabled: new(false),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		Describe("with the agent0-connector enabled via Helm", Ordered, func() {
+			BeforeAll(func() {
+				operatorConfigurationMutatingWebhookHandler.agent0ConnectorEnabledViaHelm = true
+				operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = true
+			})
+
+			AfterAll(func() {
+				operatorConfigurationMutatingWebhookHandler.agent0ConnectorEnabledViaHelm = false
+				operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = false
+			})
+
+			It("should allow enabling the agent0-connector", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							Agent0Connector: dash0v1alpha1.Agent0Connector{
+								Enabled: new(true),
+							},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should allow disabling the agent0-connector", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							Agent0Connector: dash0v1alpha1.Agent0Connector{
+								Enabled: new(false),
+							},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+	})
 })

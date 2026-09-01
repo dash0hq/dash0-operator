@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -153,6 +154,34 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(hasBeenReconciled).To(BeTrue())
 		expectAgent0ConnectorResourcesToNotExist(ctx)
+	})
+
+	It("removes the agent0-connector resources when it is disabled in the operator configuration resource", func() {
+		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+		manager := newManager(true)
+		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		Expect(err).ToNot(HaveOccurred())
+		expectAgent0ConnectorResourcesToExist(ctx)
+		Expect(expectAgent0ConnectorStatus(ctx).Deployed).To(BeTrue())
+
+		disableAgent0ConnectorInOperatorConfigurationResource(ctx)
+		hasBeenReconciled, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(hasBeenReconciled).To(BeTrue())
+		expectAgent0ConnectorResourcesToNotExist(ctx)
+		operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+		Expect(operatorConfigurationResource.Status.Agent0Connector).To(BeNil())
+	})
+
+	It("deploys the agent0-connector when it is explicitly enabled in the operator configuration resource", func() {
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithAgent0Connector(true))
+
+		hasBeenReconciled, err := newManager(true).ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(hasBeenReconciled).To(BeTrue())
+		expectAgent0ConnectorResourcesToExist(ctx)
 	})
 
 	It("removes the agent0-connector resources when there is no operator configuration resource", func() {
@@ -321,6 +350,23 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		Expect(executions).To(Equal(2))
 	})
 })
+
+// operatorConfigurationSpecWithAgent0Connector returns the default operator configuration spec with an explicit value
+// for spec.agent0Connector.enabled.
+func operatorConfigurationSpecWithAgent0Connector(enabled bool) dash0v1alpha1.Dash0OperatorConfigurationSpec {
+	spec := OperatorConfigurationResourceDefaultSpec
+	spec.Agent0Connector = dash0v1alpha1.Agent0Connector{Enabled: &enabled}
+	return spec
+}
+
+// disableAgent0ConnectorInOperatorConfigurationResource sets spec.agent0Connector.enabled to false on the operator
+// configuration resource in the cluster, which is how a user opts out of the agent0-connector.
+func disableAgent0ConnectorInOperatorConfigurationResource(ctx context.Context) {
+	GinkgoHelper()
+	operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+	operatorConfigurationResource.Spec.Agent0Connector.Enabled = ptr.To(false)
+	Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+}
 
 // extraConfigWithWriteVerb returns custom cluster role rules with a write verb, e.g. an invalid configuration.
 func extraConfigWithWriteVerb() util.ExtraConfig {

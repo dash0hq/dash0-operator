@@ -24,6 +24,12 @@ const ErrorMessageTelemetryCollectionDisabledViaHelm = "Telemetry collection has
 	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
 	"operator.telemetryCollectionEnabled: true via the Helm chart."
 
+const ErrorMessageAgent0ConnectorDisabledViaHelm = "The agent0-connector has been disabled via the Helm chart " +
+	"(operator.agent0Connector.enabled: false), but the provided Dash0 operator configuration resource has " +
+	"agent0Connector.enabled=true. The agent0-connector cannot be enabled via the operator configuration resource " +
+	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
+	"operator.agent0Connector.enabled: true via the Helm chart."
+
 const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
 	"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 	"Please either set telemetryCollection.enabled=true or " +
@@ -51,15 +57,18 @@ const ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl = "The
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
 	telemetryCollectionEnabledViaHelm bool
+	agent0ConnectorEnabledViaHelm     bool
 }
 
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
 	telemetryCollectionEnabledViaHelm bool,
+	agent0ConnectorEnabledViaHelm bool,
 ) *OperatorConfigurationValidationWebhookHandler {
 	return &OperatorConfigurationValidationWebhookHandler{
 		Client:                            k8sClient,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
+		agent0ConnectorEnabledViaHelm:     agent0ConnectorEnabledViaHelm,
 	}
 }
 
@@ -93,6 +102,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	if !h.telemetryCollectionEnabledViaHelm && spec.TelemetryCollection.Enabled != nil && *spec.TelemetryCollection.Enabled {
 		logger.Warn(ErrorMessageTelemetryCollectionDisabledViaHelm)
 		return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm)
+	}
+
+	if !h.agent0ConnectorEnabledViaHelm && spec.Agent0Connector.Enabled != nil && *spec.Agent0Connector.Enabled {
+		logger.Warn(ErrorMessageAgent0ConnectorDisabledViaHelm)
+		return admission.Denied(ErrorMessageAgent0ConnectorDisabledViaHelm)
 	}
 
 	// Reject if both the deprecated export and the new exports field are set.
