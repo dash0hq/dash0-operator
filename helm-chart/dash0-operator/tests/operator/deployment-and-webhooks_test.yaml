@@ -394,15 +394,21 @@ tests:
           value: --dash0-disable-otel-collector-host-ports=true
       - equal:
           path: spec.template.spec.containers[0].args[7]
-          value: --instrumentation-delay-after-each-workload-millis=13
+          value: --dash0-otel-collector-otlp-grpc-host-port=40317
       - equal:
           path: spec.template.spec.containers[0].args[8]
-          value: --instrumentation-delay-after-each-namespace-millis=123
+          value: --dash0-otel-collector-otlp-http-host-port=40318
       - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --instrumentation-delay-after-each-workload-millis=13
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
+          value: --instrumentation-delay-after-each-namespace-millis=123
+      - equal:
+          path: spec.template.spec.containers[0].args[11]
           value: --dash0-log-level=info
       - notExists:
-          path: spec.template.spec.containers[0].args[10]
+          path: spec.template.spec.containers[0].args[12]
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: GOMEMLIMIT
@@ -711,15 +717,21 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[7]
-          value: --instrumentation-delay-after-each-workload-millis=2
+          value: --dash0-otel-collector-otlp-grpc-host-port=40317
       - equal:
           path: spec.template.spec.containers[0].args[8]
-          value: --instrumentation-delay-after-each-namespace-millis=135
+          value: --dash0-otel-collector-otlp-http-host-port=40318
       - equal:
           path: spec.template.spec.containers[0].args[9]
+          value: --instrumentation-delay-after-each-workload-millis=2
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
+          value: --instrumentation-delay-after-each-namespace-millis=135
+      - equal:
+          path: spec.template.spec.containers[0].args[11]
           value: --dash0-log-level=info
       - notExists:
-          path: spec.template.spec.containers[0].args[10]
+          path: spec.template.spec.containers[0].args[12]
 
   - it: should render disableReplicasetInformer from legacy path
     documentSelector:

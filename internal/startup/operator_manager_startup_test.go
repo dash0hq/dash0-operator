@@ -214,3 +214,25 @@ var _ = Describe("operator manager startup", func() {
 		)
 	})
 })
+
+var _ = Describe("validateOtlpHostPorts", func() {
+	It("accepts the default ports", func() {
+		Expect(validateOtlpHostPorts(40317, 40318)).To(Succeed())
+	})
+
+	It("accepts the standard OTLP ports", func() {
+		Expect(validateOtlpHostPorts(4317, 4318)).To(Succeed())
+	})
+
+	DescribeTable("rejects invalid input",
+		func(grpcPort int, httpPort int) {
+			Expect(validateOtlpHostPorts(grpcPort, httpPort)).To(HaveOccurred())
+		},
+		Entry("grpc port is zero", 0, 40318),
+		Entry("grpc port is negative", -1, 40318),
+		Entry("grpc port is above the valid range", 65536, 40318),
+		Entry("http port is zero", 40317, 0),
+		Entry("http port is above the valid range", 40317, 65536),
+		Entry("grpc and http ports are equal", 4317, 4317),
+	)
+})

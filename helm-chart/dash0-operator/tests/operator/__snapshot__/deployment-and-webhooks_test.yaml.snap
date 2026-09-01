@@ -52,6 +52,8 @@ deployment should match snapshot (default values):
                 - --dash0-force-use-otel-collector-service-url=false
                 - --dash0-gke-autopilot=false
                 - --dash0-disable-otel-collector-host-ports=false
+                - --dash0-otel-collector-otlp-grpc-host-port=40317
+                - --dash0-otel-collector-otlp-http-host-port=40318
                 - --dash0-log-level=info
               command:
                 - /manager
@@ -224,6 +226,8 @@ deployment should match snapshot when using cert-manager:
                 - --dash0-force-use-otel-collector-service-url=false
                 - --dash0-gke-autopilot=false
                 - --dash0-disable-otel-collector-host-ports=false
+                - --dash0-otel-collector-otlp-grpc-host-port=40317
+                - --dash0-otel-collector-otlp-http-host-port=40318
                 - --dash0-log-level=info
               command:
                 - /manager

@@ -19,6 +19,7 @@ tests:
             cpu: 506m
             ephemeral-storage: 606Mi
         collectors:
+          otlpGrpcHostPort: 4317
           filelogOffsetSyncStorageVolume:
             name: filelogreceiver-offsets
             persistentVolumeClaim:
@@ -621,6 +622,7 @@ tests:
                     values:
                     - value-07
                     - value-08
+            edgeProxyOtlpGrpcHostPort: 4317
             edgeProxyReplicas: 2
             edgeProxyContainerResources:
               gomemlimit: 200MiB

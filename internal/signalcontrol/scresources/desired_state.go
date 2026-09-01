@@ -287,7 +287,10 @@ func assembleEdgeProxyDeployment(
 		}
 	}
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
-		edgeProxyContainer.Env = append(edgeProxyContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
+		edgeProxyContainer.Env = append(
+			edgeProxyContainer.Env,
+			assembleSelfMonitoringEnvVars(operatorVersion, extraConfig.EdgeProxyOtlpGrpcHostPort)...,
+		)
 	}
 	podSpec := corev1.PodSpec{
 		AutomountServiceAccountToken:  new(false),
@@ -343,7 +346,10 @@ func assembleEdgeProxyDeployment(
 // assembleSelfMonitoringEnvVars returns env vars that point the Edge Proxy's OTel SDK exporter at the node-local daemonset
 // collector's OTLP gRPC host-port. DASH0_NODE_IP is resolved via the downward API (status.hostIP) and must be defined
 // before OTEL_EXPORTER_OTLP_ENDPOINT, which references it.
-func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
+func assembleSelfMonitoringEnvVars(operatorVersion string, otlpGrpcHostPort int32) []corev1.EnvVar {
+	if otlpGrpcHostPort <= 0 {
+		otlpGrpcHostPort = otelcolresources.DefaultOtlpGrpcHostPort
+	}
 	return []corev1.EnvVar{
 		{
 			Name: util.EnvVarDash0NodeIp,
@@ -357,7 +363,7 @@ func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
 			// http:// scheme signals plaintext to the OTel Go SDK's gRPC exporter; dns:// or a bare endpoint would
 			// default to TLS, which the node-local daemonset collector does not terminate.
 			Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-			Value: fmt.Sprintf("http://$(%s):%d", util.EnvVarDash0NodeIp, otelcolresources.OtlpGrpcHostPort),
+			Value: fmt.Sprintf("http://$(%s):%d", util.EnvVarDash0NodeIp, otlpGrpcHostPort),
 		},
 		{
 			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",

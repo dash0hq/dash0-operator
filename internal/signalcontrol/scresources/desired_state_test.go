@@ -4,6 +4,8 @@
 package scresources
 
 import (
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -52,7 +54,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
-		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion)
+		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion, 40317)
 	})
 
 	It("injects OTel exporter env vars when self-monitoring is explicitly enabled", func() {
@@ -65,7 +67,21 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
-		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion)
+		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion, 40317)
+	})
+
+	It("injects OTel exporter env vars pointing at a custom OTLP gRPC host port", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.SelfMonitoring.Enabled = ptr(true)
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion,
+			util.ExtraConfig{EdgeProxyOtlpGrpcHostPort: 4317}, logd.Discard(),
+		)
+
+		container := dep.Spec.Template.Spec.Containers[0]
+		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion, 4317)
 	})
 
 	It("does not inject OTel exporter env vars when self-monitoring is explicitly disabled", func() {
@@ -92,7 +108,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 	})
 })
 
-func expectSelfMonitoringEnvVarsPresent(container corev1.Container, operatorVersion string) {
+func expectSelfMonitoringEnvVarsPresent(container corev1.Container, operatorVersion string, expectedOtlpGrpcHostPort int32) {
 	envByName := map[string]corev1.EnvVar{}
 	for _, e := range container.Env {
 		envByName[e.Name] = e
@@ -103,7 +119,9 @@ func expectSelfMonitoringEnvVarsPresent(container corev1.Container, operatorVers
 	Expect(envByName["DASH0_NODE_IP"].ValueFrom.FieldRef.FieldPath).To(Equal("status.hostIP"))
 
 	Expect(envByName).To(HaveKey("OTEL_EXPORTER_OTLP_ENDPOINT"))
-	Expect(envByName["OTEL_EXPORTER_OTLP_ENDPOINT"].Value).To(Equal("http://$(DASH0_NODE_IP):40317"))
+	Expect(envByName["OTEL_EXPORTER_OTLP_ENDPOINT"].Value).To(Equal(
+		fmt.Sprintf("http://$(DASH0_NODE_IP):%d", expectedOtlpGrpcHostPort),
+	))
 
 	Expect(envByName).To(HaveKey("OTEL_EXPORTER_OTLP_PROTOCOL"))
 	Expect(envByName["OTEL_EXPORTER_OTLP_PROTOCOL"].Value).To(Equal("grpc"))

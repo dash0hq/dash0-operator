@@ -164,6 +164,8 @@ spec:
         - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --dash0-gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
         - --dash0-disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
+        - --dash0-otel-collector-otlp-grpc-host-port={{ .Values.operator.collectors.otlpGrpcHostPort }}
+        - --dash0-otel-collector-otlp-http-host-port={{ .Values.operator.collectors.otlpHttpHostPort }}
 {{- if (default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis) }}
         - --instrumentation-delay-after-each-workload-millis={{ default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
 {{- end }}

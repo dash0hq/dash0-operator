@@ -109,6 +109,11 @@ type ExtraConfig struct {
 	EdgeProxyContainerResources ResourceRequirementsWithGoMemLimit `json:"edgeProxyContainerResources"`
 	EdgeProxyTolerations        []corev1.Toleration                `json:"edgeProxyTolerations,omitempty"`
 	EdgeProxyNodeAffinity       *corev1.NodeAffinity               `json:"edgeProxyNodeAffinity,omitempty"`
+	// EdgeProxyOtlpGrpcHostPort is the host port of the collector DaemonSet's gRPC OTLP receiver that the Edge Proxy's
+	// own self-monitoring exporter sends telemetry to. Set from the Helm value operator.collectors.otlpGrpcHostPort. A
+	// zero value (e.g. an old rendered ConfigMap without this key yet) falls back to
+	// otelcolresources.DefaultOtlpGrpcHostPort.
+	EdgeProxyOtlpGrpcHostPort int32 `json:"edgeProxyOtlpGrpcHostPort,omitempty"`
 
 	EdgeProxyLabels         map[string]string `json:"edgeProxyLabels,omitempty"`
 	EdgeProxyAnnotations    map[string]string `json:"edgeProxyAnnotations,omitempty"`

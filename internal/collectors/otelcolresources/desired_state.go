@@ -109,6 +109,8 @@ type oTelColConfig struct {
 	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	DisableHostPorts                                 bool
+	OtlpGrpcHostPort                                 int32
+	OtlpHttpHostPort                                 int32
 	PseudoClusterUid                                 types.UID
 	ClusterName                                      string
 	Images                                           util.Images
@@ -191,12 +193,16 @@ type TargetAllocatorMtlsConfig struct {
 }
 
 const (
-	OtlpGrpcHostPort = 40317
-	OtlpHttpHostPort = 40318
-	// ^ We deliberately do not use the default grpc/http ports as host ports. If there is another OTel collector
+	// DefaultOtlpGrpcHostPort and DefaultOtlpHttpHostPort are the default host ports for the collector DaemonSet's
+	// gRPC/HTTP OTLP receivers, used unless overridden via the Helm values operator.collectors.otlpGrpcHostPort /
+	// otlpHttpHostPort.
+	//
+	// We deliberately do not default to the standard grpc/http ports as host ports. If there is another OTel collector
 	// daemonset in the cluster (which is not managed by the operator), it will very likely use the 4317/4318 as host
 	// ports. When the operator creates its daemonset, the pods of one of the two otelcol daemonsets would fail to start
 	// due to port conflicts.
+	DefaultOtlpGrpcHostPort = 40317
+	DefaultOtlpHttpHostPort = 40318
 
 	otlpGrpcPort = 4317
 	otlpHttpPort = 4318
@@ -258,6 +264,16 @@ const (
 	targetAllocatorCertsVolumeName = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
 )
+
+// resolveHostPort returns configured, or defaultValue if configured is not a positive port number. This is a
+// defensive fallback for zero-value oTelColConfig instances (e.g. in tests); production configuration always sets a
+// positive value via the CLI flag defaults.
+func resolveHostPort(configured int32, defaultValue int32) int32 {
+	if configured <= 0 {
+		return defaultValue
+	}
+	return configured
+}
 
 var (
 	rbacApiVersion = fmt.Sprintf("%s/v1", rbacApiGroup)
@@ -1276,8 +1292,8 @@ func assembleDaemonSetCollectorContainer(
 		ContainerPort: otlpHttpPort,
 	}
 	if !config.DisableHostPorts {
-		otlpPort.HostPort = int32(OtlpGrpcHostPort)
-		httpPort.HostPort = int32(OtlpHttpHostPort)
+		otlpPort.HostPort = config.OtlpGrpcHostPort
+		httpPort.HostPort = config.OtlpHttpHostPort
 	}
 
 	collectorArgs := []string{

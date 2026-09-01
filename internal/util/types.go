@@ -96,11 +96,17 @@ type CollectorConfig struct {
 	IsIPv6Cluster              bool
 	IsDocker                   bool
 	DisableHostPorts           bool
-	IsGkeAutopilot             bool
-	DevelopmentMode            bool
-	DebugVerbosityDetailed     bool
-	EnableProfExtension        bool
-	CompressConfigMap          bool
+	// OtlpGrpcHostPort and OtlpHttpHostPort are the host ports the collector DaemonSet pods use for the gRPC/HTTP OTLP
+	// receivers, set from the Helm values operator.collectors.otlpGrpcHostPort / otlpHttpHostPort via the CLI flags
+	// --dash0-otel-collector-otlp-grpc-host-port / --dash0-otel-collector-otlp-http-host-port. They only take effect
+	// when DisableHostPorts is false.
+	OtlpGrpcHostPort       int32
+	OtlpHttpHostPort       int32
+	IsGkeAutopilot         bool
+	DevelopmentMode        bool
+	DebugVerbosityDetailed bool
+	EnableProfExtension    bool
+	CompressConfigMap      bool
 }
 
 // KubeletStatsReceiverConfig holds the configuration for the kubeletstats receiver in the DaemonSet collector. It is

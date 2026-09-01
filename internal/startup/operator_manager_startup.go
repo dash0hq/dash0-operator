@@ -157,6 +157,8 @@ type commandLineArguments struct {
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
 	disableOpenTelemetryCollectorHostPorts                                bool
+	otlpGrpcHostPort                                                      int
+	otlpHttpHostPort                                                      int
 	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
 	enableLeaderElection                                                  bool
@@ -280,6 +282,11 @@ func Start() {
 	// setupLog is initialized after this point and can be used
 
 	setupLog.Debug("development/debug mode enabled")
+
+	if err := validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
+		setupLog.Error(err, "invalid OTLP collector host port configuration")
+		os.Exit(1)
+	}
 
 	pprofPort := os.Getenv(pprofPortEnvVarName)
 	if pprofPort != "" {
@@ -672,6 +679,20 @@ func defineCommandLineArguments() *commandLineArguments {
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
 			"--dash0-force-use-otel-collector-service-url.",
 	)
+	flag.IntVar(
+		&cliArgs.otlpGrpcHostPort,
+		"dash0-otel-collector-otlp-grpc-host-port",
+		otelcolresources.DefaultOtlpGrpcHostPort,
+		"The host port used by the gRPC OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
+			"Only takes effect when host ports are not disabled.",
+	)
+	flag.IntVar(
+		&cliArgs.otlpHttpHostPort,
+		"dash0-otel-collector-otlp-http-host-port",
+		otelcolresources.DefaultOtlpHttpHostPort,
+		"The host port used by the HTTP OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
+			"Only takes effect when host ports are not disabled.",
+	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	flag.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachWorkloadMillis,
@@ -721,6 +742,28 @@ func defineCommandLineArguments() *commandLineArguments {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers.",
 	)
 	return cliArgs
+}
+
+// validateOtlpHostPorts checks that the configured OTLP collector host ports are valid port numbers and distinct
+// from each other. It does not (and cannot) detect whether a port is already in use on a given node -- that surfaces
+// as a normal Kubernetes pod scheduling failure once the collector DaemonSet is applied.
+func validateOtlpHostPorts(grpcHostPort int, httpHostPort int) error {
+	for _, port := range []int{grpcHostPort, httpHostPort} {
+		if port < 1 || port > 65535 {
+			return fmt.Errorf(
+				"the OTLP collector host ports must be in the range 1-65535, got %d "+
+					"(--dash0-otel-collector-otlp-grpc-host-port/--dash0-otel-collector-otlp-http-host-port)",
+				port,
+			)
+		}
+	}
+	if grpcHostPort == httpHostPort {
+		return fmt.Errorf(
+			"the OTLP collector gRPC and HTTP host ports must be different, both are set to %d",
+			grpcHostPort,
+		)
+	}
+	return nil
 }
 
 func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool) crzap.Options {
@@ -1542,6 +1585,7 @@ func startDash0Controllers(
 	possibleCollectorUrls := collectors.RenderCollectorBaseUrls(
 		envVars.oTelCollectorNamePrefix,
 		envVars.operatorNamespace,
+		int32(cliArgs.otlpHttpHostPort),
 	)
 	oTelCollectorBaseUrl := collectors.SelectCollectorBaseUrl(
 		possibleCollectorUrls,
@@ -1651,6 +1695,8 @@ func startDash0Controllers(
 			IsIPv6Cluster:                          isIPv6Cluster,
 			IsDocker:                               isDocker,
 			DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
+			OtlpGrpcHostPort:                       int32(cliArgs.otlpGrpcHostPort),
+			OtlpHttpHostPort:                       int32(cliArgs.otlpHttpHostPort),
 			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
 			DevelopmentMode:                        developmentMode,
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
