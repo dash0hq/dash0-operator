@@ -502,12 +502,6 @@ func assembleDesiredState(
 			return desiredState, err
 		}
 		desiredState = append(desiredState, addCommonMetadata(signalControlCollectorConfigMap))
-		desiredState = append(
-			desiredState, addCommonMetadata(assembleServiceAccountForSignalControlCollector(config)))
-		desiredState = append(
-			desiredState, addCommonMetadata(assembleClusterRoleForSignalControlCollector(config)))
-		desiredState = append(
-			desiredState, addCommonMetadata(assembleClusterRoleBindingForSignalControlCollector(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleSignalControlCollectorService(config)))
 		desiredState = append(
 			desiredState, addCommonMetadata(assembleSignalControlCollectorPodDisruptionBudget(config)))
@@ -1901,68 +1895,6 @@ func assembleSignalControlCollectorService(config *oTelColConfig) *corev1.Servic
 	}
 }
 
-func assembleServiceAccountForSignalControlCollector(config *oTelColConfig) *corev1.ServiceAccount {
-	return &corev1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ServiceAccount",
-			APIVersion: util.K8sApiVersionCoreV1,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      signalControlCollectorServiceAccountName(config.NamePrefix),
-			Namespace: config.OperatorNamespace,
-			Labels:    labels(false),
-		},
-	}
-}
-
-// assembleClusterRoleForSignalControlCollector grants the only Kubernetes API permission the Signal Control collector
-// needs: reading the node it runs on, to resolve the k8s.node.uid resource attribute for its self-monitoring telemetry
-// (see images/collector/src/telemetry). Nodes are cluster-scoped, hence a ClusterRole rather than a Role. Unlike the
-// DaemonSet and Deployment collectors, this collector runs no Kubernetes receivers and no k8sattributes processor, so
-// it needs nothing beyond this.
-func assembleClusterRoleForSignalControlCollector(config *oTelColConfig) *rbacv1.ClusterRole {
-	return &rbacv1.ClusterRole{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ClusterRole",
-			APIVersion: rbacApiVersion,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   SignalControlCollectorClusterRoleName(config.NamePrefix),
-			Labels: labels(false),
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{""},
-				Resources: []string{"nodes"},
-				Verbs:     []string{"get"},
-			},
-		},
-	}
-}
-
-func assembleClusterRoleBindingForSignalControlCollector(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
-	return &rbacv1.ClusterRoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ClusterRoleBinding",
-			APIVersion: rbacApiVersion,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   SignalControlCollectorClusterRoleBindingName(config.NamePrefix),
-			Labels: labels(false),
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: rbacApiGroup,
-			Kind:     "ClusterRole",
-			Name:     SignalControlCollectorClusterRoleName(config.NamePrefix),
-		},
-		Subjects: []rbacv1.Subject{{
-			Kind:      "ServiceAccount",
-			Name:      signalControlCollectorServiceAccountName(config.NamePrefix),
-			Namespace: config.OperatorNamespace,
-		}},
-	}
-}
-
 func assembleSignalControlCollectorDeployment(
 	config *oTelColConfig,
 	extraConfig util.ExtraConfig,
@@ -2001,10 +1933,10 @@ func assembleSignalControlCollectorDeployment(
 
 	podSpec := corev1.PodSpec{
 		Tolerations: extraConfig.SignalControlCollectorTolerations,
-		// The Signal Control collector runs neither k8s_attributes nor any of the Kubernetes receivers. Its service
-		// account exists for a single purpose: reading the node it runs on to resolve k8s.node.uid for its
-		// self-monitoring telemetry, see assembleClusterRoleForSignalControlCollector.
-		ServiceAccountName: signalControlCollectorServiceAccountName(config.NamePrefix),
+		// The Signal Control collector talks to the Dash0 API and the Decision Maker, but never to the Kubernetes API
+		// server: it runs neither k8s_attributes nor any of the Kubernetes receivers. Hence it needs no service
+		// account and no RBAC.
+		AutomountServiceAccountToken: new(false),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: new(true),
 			SeccompProfile: &corev1.SeccompProfile{
@@ -2255,10 +2187,6 @@ func deploymentServiceAccountName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "sa")
 }
 
-func signalControlCollectorServiceAccountName(namePrefix string) string {
-	return renderName(namePrefix, openTelemetryCollectorSignalControlNameSuffix, "sa")
-}
-
 func FilelogReceiverOffsetsConfigMapName(namePrefix string) string {
 	return renderName(namePrefix, "filelogoffsets", "cm")
 }
@@ -2283,20 +2211,12 @@ func DeploymentClusterRoleName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cr")
 }
 
-func SignalControlCollectorClusterRoleName(namePrefix string) string {
-	return renderName(namePrefix, openTelemetryCollectorSignalControlNameSuffix, "cr")
-}
-
 func DaemonSetClusterRoleBindingName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollector, "crb")
 }
 
 func DeploymentClusterRoleBindingName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "crb")
-}
-
-func SignalControlCollectorClusterRoleBindingName(namePrefix string) string {
-	return renderName(namePrefix, openTelemetryCollectorSignalControlNameSuffix, "crb")
 }
 
 func roleName(namePrefix string) string {

@@ -47,16 +47,10 @@ var (
 	ExpectedDeploymentCollectorConfigMapName = fmt.Sprintf("%s-cluster-metrics-collector-cm", NamePrefix)
 	ExpectedDeploymentName                   = fmt.Sprintf("%s-cluster-metrics-collector-deployment", NamePrefix)
 
-	ExpectedSignalControlCollectorConfigMapName          = fmt.Sprintf("%s-signal-control-collector-cm", NamePrefix)
-	ExpectedSignalControlCollectorServiceAccountName     = fmt.Sprintf("%s-signal-control-collector-sa", NamePrefix)
-	ExpectedSignalControlCollectorClusterRoleName        = fmt.Sprintf("%s-signal-control-collector-cr", NamePrefix)
-	ExpectedSignalControlCollectorClusterRoleBindingName = fmt.Sprintf(
-		"%s-signal-control-collector-crb",
-		NamePrefix,
-	)
-	ExpectedSignalControlCollectorServiceName = fmt.Sprintf("%s-signal-control-collector-service", NamePrefix)
-	ExpectedSignalControlCollectorName        = fmt.Sprintf("%s-signal-control-collector-deployment", NamePrefix)
-	ExpectedSignalControlCollectorPdbName     = fmt.Sprintf("%s-signal-control-collector-pdb", NamePrefix)
+	ExpectedSignalControlCollectorConfigMapName = fmt.Sprintf("%s-signal-control-collector-cm", NamePrefix)
+	ExpectedSignalControlCollectorServiceName   = fmt.Sprintf("%s-signal-control-collector-service", NamePrefix)
+	ExpectedSignalControlCollectorName          = fmt.Sprintf("%s-signal-control-collector-deployment", NamePrefix)
+	ExpectedSignalControlCollectorPdbName       = fmt.Sprintf("%s-signal-control-collector-pdb", NamePrefix)
 
 	expectedResourceDaemonSetConfigMap = expectedResource{
 		name:     ExpectedDaemonSetCollectorConfigMapName,
@@ -105,17 +99,6 @@ var (
 	// case for the tests that verify the always-present collector resources.
 	AllSignalControlCollectorRelatedResources = []expectedResource{
 		{name: ExpectedSignalControlCollectorConfigMapName, receiver: &corev1.ConfigMap{}},
-		{name: ExpectedSignalControlCollectorServiceAccountName, receiver: &corev1.ServiceAccount{}},
-		{
-			name:          ExpectedSignalControlCollectorClusterRoleName,
-			clusterScoped: true,
-			receiver:      &rbacv1.ClusterRole{},
-		},
-		{
-			name:          ExpectedSignalControlCollectorClusterRoleBindingName,
-			clusterScoped: true,
-			receiver:      &rbacv1.ClusterRoleBinding{},
-		},
 		{name: ExpectedSignalControlCollectorServiceName, receiver: &corev1.Service{}},
 		{name: ExpectedSignalControlCollectorPdbName, receiver: &policyv1.PodDisruptionBudget{}},
 		{name: ExpectedSignalControlCollectorName, receiver: &appsv1.Deployment{}},
