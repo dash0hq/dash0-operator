@@ -97,19 +97,19 @@ var _ = Describe("Delegating Zap Core", func() {
 
 		Expect(logMessageBuffer.Len()).To(Equal(3))
 		Expect(logMessageBuffer.elements[0]).To(Equal(
-			ZapEntryWithFields{
+			&ZapEntryWithFields{
 				Entry:  entry2,
 				Fields: fields,
 			}),
 		)
 		Expect(logMessageBuffer.elements[1]).To(Equal(
-			ZapEntryWithFields{
+			&ZapEntryWithFields{
 				Entry:  entry3,
 				Fields: fields,
 			}),
 		)
 		Expect(logMessageBuffer.elements[2]).To(Equal(
-			ZapEntryWithFields{
+			&ZapEntryWithFields{
 				Entry:  entry4,
 				Fields: fields,
 			}),
@@ -150,7 +150,7 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(delegate.syncCalls).To(Equal(1))
 	})
 
-	It("SetDelegate spools buffered messages to new delegate in order", func() {
+	It("SetDelegate keeps the buffered messages in order for the owner of the buffer to spool", func() {
 		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
 		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		entry1 := zapcore.Entry{Level: zapcore.InfoLevel}
@@ -166,6 +166,15 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(delegate.writtenEntries).To(BeEmpty())
 
 		delegatingCore.SetDelegate(delegate)
+
+		// SetDelegate only switches the core over to the delegate, the buffered messages are spooled by the owner of the
+		// buffer, see selfmonitoringapiaccess.startOTelSDK.
+		Expect(delegate.writtenEntries).To(BeEmpty())
+		Expect(logMessageBuffer.Len()).To(Equal(3))
+
+		logMessageBuffer.ForAllAndClear(func(bufferedEntry *ZapEntryWithFields) {
+			Expect(delegate.Write(bufferedEntry.Entry, bufferedEntry.Fields)).To(Succeed())
+		})
 
 		Expect(delegate.writtenEntries).To(HaveLen(3))
 		Expect(delegate.writtenEntries[0]).To(Equal(
@@ -209,12 +218,10 @@ var _ = Describe("Delegating Zap Core", func() {
 		}
 		dc2Raw := originalDelegatingCore.With(withFields1)
 
-		// verify With actually returned a clone, but with the same properties (except for buffered messages)
+		// verify With actually returned a clone, but with the same properties
 		dc2, ok := dc2Raw.(*DelegatingZapCore)
 		Expect(ok).To(BeTrue())
 		Expect(dc2 == originalDelegatingCore).To(BeFalse())
-		// we do not copy buffered messages when cloning via With
-		Expect(dc2.logMessageBuffer.IsEmpty()).To(BeTrue())
 		Expect(dc2.level).To(Equal(zapcore.DebugLevel))
 		Expect(dc2.fields).To(HaveLen(2))
 		Expect(dc2.fields[0].Key).To(Equal("with1"))
@@ -242,8 +249,8 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(ok).To(BeTrue())
 		Expect(dc3 == originalDelegatingCore).To(BeFalse())
 		Expect(dc3 == dc2).To(BeFalse())
-		Expect(dc3.logMessageBuffer.IsEmpty()).To(BeTrue())
 		Expect(dc3.level).To(Equal(zapcore.DebugLevel))
+		// the clones share the log message buffer of the original core, buffered messages are not copied
 		Expect(dc3.logMessageBuffer == originalDelegatingCore.logMessageBuffer).To(BeTrue())
 		Expect(dc3.fields).To(HaveLen(5))
 		Expect(dc3.fields[0].Key).To(Equal("with1"))
