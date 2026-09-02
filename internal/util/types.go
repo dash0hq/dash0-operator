@@ -203,11 +203,6 @@ type PossibleCollectorUrls struct {
 	ServiceBaseUrl   string
 }
 
-// All returns all possible collector base URLs as a slice.
-func (u PossibleCollectorUrls) All() []string {
-	return []string{u.NodeLocalBaseUrl, u.ServiceBaseUrl}
-}
-
 // ClusterInstrumentationConfig holds configuration values relevant for instrumenting workloads which apply to the whole
 // cluster, e.g. settings from the helm chart or the operator configuration resource.
 type ClusterInstrumentationConfig struct {
