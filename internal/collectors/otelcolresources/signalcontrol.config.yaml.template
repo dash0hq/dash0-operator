@@ -390,6 +390,9 @@ processors:
 {{- end }}
 {{- if $samplingActive }}
   dash0sampling:
+{{- if $scDefault }}
+    metric_recorder: dash0metricrecorder
+{{- end }}
     decision_maker_endpoint: {{ .SignalControl.Endpoint }}
     decision_maker_headers:
       Authorization: Bearer ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
