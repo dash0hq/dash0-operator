@@ -114,11 +114,19 @@ func GetNodeUid(waitTimeout time.Duration) string {
 		return ""
 	}
 
+	waitStart := time.Now()
 	timeout := time.NewTimer(waitTimeout)
 	defer timeout.Stop()
 	select {
 	case <-done:
+		log.Printf("Waited %s for the UID of the node to become available.\n", time.Since(waitStart))
 	case <-timeout.C:
+		log.Printf(
+			nodeUidUnavailableMsgTemplate,
+			fmt.Sprintf("Waited %s for the UID of the node, the lookup did not finish in time. "+
+				"Some self-monitoring telemetry will miss the k8s.node.uid resource attribute.",
+				time.Since(waitStart)),
+		)
 		return ""
 	}
 
