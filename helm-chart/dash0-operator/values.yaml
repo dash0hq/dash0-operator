@@ -623,6 +623,14 @@ operator:
     # Implies forceUseServiceUrl: true.
     disableHostPorts: false
 
+    # The host port the OpenTelemetry collector DaemonSet pods use for the gRPC OTLP receiver. Only takes effect
+    # when disableHostPorts is false. Make sure the host port you set is available on all nodes in the cluster.
+    otlpGrpcHostPort: 40317
+
+    # The host port the OpenTelemetry collector DaemonSet pods use for the HTTP OTLP receiver. Only takes effect
+    # when disableHostPorts is false. Make sure the host port you set is available on all nodes in the cluster.
+    otlpHttpHostPort: 40318
+
     # If set to true, the pprof extension will be enabled for both collectors.
     # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
     # after the collector troubleshooting is finished.

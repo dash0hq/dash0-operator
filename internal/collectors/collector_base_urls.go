@@ -19,12 +19,16 @@ const (
 // OpenTelemetry collector daemonset: the service URL of the collector DaemonSet and the node-local URL (node IP plus
 // host port). The URL that is actually used for instrumentation is picked from these two values via
 // SelectCollectorBaseUrl.
-func RenderCollectorBaseUrls(oTelCollectorNamePrefix string, operatorNamespace string) util.PossibleCollectorUrls {
+func RenderCollectorBaseUrls(
+	oTelCollectorNamePrefix string,
+	operatorNamespace string,
+	otlpHttpHostPort int32,
+) util.PossibleCollectorUrls {
 	return util.PossibleCollectorUrls{
 		NodeLocalBaseUrl: fmt.Sprintf(
 			oTelCollectorNodeLocalBaseUrlPattern,
 			util.EnvVarDash0NodeIp,
-			otelcolresources.OtlpHttpHostPort,
+			otelcolresources.ResolveOtlpHttpHostPort(otlpHttpHostPort),
 		),
 		ServiceBaseUrl: fmt.Sprintf(
 			oTelCollectorServiceBaseUrlPattern,

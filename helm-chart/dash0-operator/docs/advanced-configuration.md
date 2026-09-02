@@ -12,6 +12,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
   - [Preventing Operator Scheduling on Specific Nodes](#preventing-operator-scheduling-on-specific-nodes)
   - [Custom Node Affinity](#custom-node-affinity)
   - [Adding Custom Labels and Annotations to the Collector Resources](#adding-custom-labels-and-annotations-to-the-collector-resources)
+- [Configuring Collector Host Ports](#configuring-collector-host-ports)
 - [Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)](#configuring-pod-level-sysctls-for-the-collector-pods-tcp-keepalive)
 - [Disable Self-Monitoring](#disable-self-monitoring)
 - [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
@@ -466,6 +467,13 @@ operator:
     podAnnotations:
       my-pod-annotation: my-value
 ```
+
+## Configuring Collector Host Ports
+
+The OpenTelemetry collector DaemonSet managed by the operator uses the host ports 40317 for gRPC and 40318 for HTTP,
+for node-local traffic.
+Different host ports can be configured via Helm by setting `operator.collectors.otlpGrpcHostPort` and
+`operator.collectors.otlpHttpHostPort`.
 
 ## Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)
 

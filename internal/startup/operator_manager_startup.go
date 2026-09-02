@@ -157,6 +157,8 @@ type commandLineArguments struct {
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
 	disableOpenTelemetryCollectorHostPorts                                bool
+	otlpGrpcHostPort                                                      int
+	otlpHttpHostPort                                                      int
 	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
 	enableLeaderElection                                                  bool
@@ -226,6 +228,11 @@ const (
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
+
+	// The Helm values behind the OTLP host port CLI flags. Validation errors name these rather than the flags, since
+	// the Helm chart is how the operator is configured; the flags are only how the values arrive.
+	otlpGrpcHostPortHelmValue = "operator.collectors.otlpGrpcHostPort"
+	otlpHttpHostPortHelmValue = "operator.collectors.otlpHttpHostPort"
 
 	envVarValueTrue = "true"
 
@@ -367,6 +374,10 @@ func Start() {
 	var err error
 	if err = readEnvironmentVariables(setupLog); err != nil {
 		setupLog.Error(err, "cannot read environment variables")
+		os.Exit(1)
+	}
+	if err = validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
+		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
 	}
 	if err = readExtraConfigMap(); err != nil {
@@ -671,6 +682,20 @@ func defineCommandLineArguments() *commandLineArguments {
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
 			"--dash0-force-use-otel-collector-service-url.",
+	)
+	flag.IntVar(
+		&cliArgs.otlpGrpcHostPort,
+		"dash0-otel-collector-otlp-grpc-host-port",
+		otelcolresources.DefaultOtlpGrpcHostPort,
+		"The host port used by the gRPC OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
+			"Only takes effect when host ports are not disabled.",
+	)
+	flag.IntVar(
+		&cliArgs.otlpHttpHostPort,
+		"dash0-otel-collector-otlp-http-host-port",
+		otelcolresources.DefaultOtlpHttpHostPort,
+		"The host port used by the HTTP OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
+			"Only takes effect when host ports are not disabled.",
 	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	flag.Uint64Var(
@@ -1037,6 +1062,37 @@ func readExtraConfigMap() error {
 	extraConfig, err = util.ReadExtraConfigMap()
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateOtlpHostPorts checks that the configured OTLP collector host ports are valid port numbers and distinct
+// from each other. It does not (and cannot) detect whether a port is already in use on a given node -- that surfaces
+// as a normal Kubernetes pod scheduling failure once the collector DaemonSet is applied.
+func validateOtlpHostPorts(grpcHostPort int, httpHostPort int) error {
+	ports := []struct {
+		helmValue string
+		value     int
+	}{
+		{helmValue: otlpGrpcHostPortHelmValue, value: grpcHostPort},
+		{helmValue: otlpHttpHostPortHelmValue, value: httpHostPort},
+	}
+	for _, port := range ports {
+		if port.value < 1 || port.value > 65535 {
+			return fmt.Errorf(
+				"%s must be in the range 1-65535, but was %d",
+				port.helmValue,
+				port.value,
+			)
+		}
+	}
+	if grpcHostPort == httpHostPort {
+		return fmt.Errorf(
+			"%s and %s must be different, both are set to %d",
+			otlpGrpcHostPortHelmValue,
+			otlpHttpHostPortHelmValue,
+			grpcHostPort,
+		)
 	}
 	return nil
 }
@@ -1542,6 +1598,7 @@ func startDash0Controllers(
 	possibleCollectorUrls := collectors.RenderCollectorBaseUrls(
 		envVars.oTelCollectorNamePrefix,
 		envVars.operatorNamespace,
+		int32(cliArgs.otlpHttpHostPort),
 	)
 	oTelCollectorBaseUrl := collectors.SelectCollectorBaseUrl(
 		possibleCollectorUrls,
@@ -1651,6 +1708,8 @@ func startDash0Controllers(
 			IsIPv6Cluster:                          isIPv6Cluster,
 			IsDocker:                               isDocker,
 			DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
+			OtlpGrpcHostPort:                       int32(cliArgs.otlpGrpcHostPort),
+			OtlpHttpHostPort:                       int32(cliArgs.otlpHttpHostPort),
 			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
 			DevelopmentMode:                        developmentMode,
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
@@ -1738,6 +1797,7 @@ func startDash0Controllers(
 			envVars.edgeProxyImage,
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
+			int32(cliArgs.otlpGrpcHostPort),
 		)
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,

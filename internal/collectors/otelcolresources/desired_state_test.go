@@ -427,6 +427,69 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetPodSpec.Containers[0].Resources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 	})
 
+	Describe("OTLP host ports on the DaemonSet collector container", func() {
+		It("should use the configured host ports when host ports are enabled", func() {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				Images:            TestImages,
+				OtlpGrpcHostPort:  4317,
+				OtlpHttpHostPort:  4318,
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			container := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+			otlpPort := findContainerPortByName(container.Ports, "otlp")
+			otlpHttpPort := findContainerPortByName(container.Ports, "otlp-http")
+			Expect(otlpPort).NotTo(BeNil())
+			Expect(otlpPort.ContainerPort).To(Equal(int32(4317)))
+			Expect(otlpPort.HostPort).To(Equal(int32(4317)))
+			Expect(otlpHttpPort).NotTo(BeNil())
+			Expect(otlpHttpPort.ContainerPort).To(Equal(int32(4318)))
+			Expect(otlpHttpPort.HostPort).To(Equal(int32(4318)))
+		})
+
+		It("should use the default host ports when configured with the default values", func() {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				Images:            TestImages,
+				OtlpGrpcHostPort:  DefaultOtlpGrpcHostPort,
+				OtlpHttpHostPort:  DefaultOtlpHttpHostPort,
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			container := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+			otlpPort := findContainerPortByName(container.Ports, "otlp")
+			otlpHttpPort := findContainerPortByName(container.Ports, "otlp-http")
+			Expect(otlpPort.HostPort).To(Equal(int32(40317)))
+			Expect(otlpHttpPort.HostPort).To(Equal(int32(40318)))
+		})
+
+		It("should not set host ports when host ports are disabled, regardless of the configured values", func() {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         defaultDash0ExportersWithToken(),
+				Images:            TestImages,
+				DisableHostPorts:  true,
+				OtlpGrpcHostPort:  4317,
+				OtlpHttpHostPort:  4318,
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+
+			container := getDaemonSet(desiredState).Spec.Template.Spec.Containers[0]
+			otlpPort := findContainerPortByName(container.Ports, "otlp")
+			otlpHttpPort := findContainerPortByName(container.Ports, "otlp-http")
+			Expect(otlpPort.ContainerPort).To(Equal(int32(4317)))
+			Expect(otlpPort.HostPort).To(Equal(int32(0)))
+			Expect(otlpHttpPort.ContainerPort).To(Equal(int32(4318)))
+			Expect(otlpHttpPort.HostPort).To(Equal(int32(0)))
+		})
+	})
+
 	It("should not override an explicit ephemeral-storage request", func() {
 		extraConfig := util.ExtraConfigDefaults
 		extraConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{
@@ -2661,6 +2724,15 @@ func getFileOffsetConfigMapContent(desiredState []clientObject) string {
 func getDaemonSet(desiredState []clientObject) *appsv1.DaemonSet {
 	if daemonSet := findObjectByName(desiredState, ExpectedDaemonSetName); daemonSet != nil {
 		return daemonSet.(*appsv1.DaemonSet)
+	}
+	return nil
+}
+
+func findContainerPortByName(ports []corev1.ContainerPort, name string) *corev1.ContainerPort {
+	for _, port := range ports {
+		if port.Name == name {
+			return &port
+		}
 	}
 	return nil
 }

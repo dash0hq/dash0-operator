@@ -189,6 +189,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		//   For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
 		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.collectorConfig.IsDocker,
 		DisableHostPorts:       m.collectorConfig.DisableHostPorts,
+		OtlpGrpcHostPort:       ResolveOtlpGrpcHostPort(m.collectorConfig.OtlpGrpcHostPort),
+		OtlpHttpHostPort:       ResolveOtlpHttpHostPort(m.collectorConfig.OtlpHttpHostPort),
 		ClusterName:            clusterName,
 		PseudoClusterUid:       m.collectorConfig.PseudoClusterUid,
 		Images:                 m.collectorConfig.Images,
@@ -473,8 +475,10 @@ func (m *OTelColResourceManager) DeleteResources(
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
-		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,        // irrelevant for deletion
-		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts, // irrelevant for deletion
+		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,                                 // irrelevant for deletion
+		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts,                          // irrelevant for deletion
+		OtlpGrpcHostPort:                                 ResolveOtlpGrpcHostPort(m.collectorConfig.OtlpGrpcHostPort), // irrelevant for deletion
+		OtlpHttpHostPort:                                 ResolveOtlpHttpHostPort(m.collectorConfig.OtlpHttpHostPort), // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:                                   m.collectorConfig.IsGkeAutopilot,

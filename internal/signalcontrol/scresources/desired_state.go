@@ -56,6 +56,7 @@ func assembleDesiredState(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
 	forDeletion bool,
 	logger logd.Logger,
@@ -73,7 +74,7 @@ func assembleDesiredState(
 	if forDeletion || edgeProxyEnabled {
 		if edgeProxyEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, extraConfig, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
 				addCommonMetadata(assembleEdgeProxyPodDisruptionBudget(operatorNamespace, namePrefix)),
 			)
@@ -93,7 +94,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, util.ExtraConfig{}, true, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -104,6 +105,7 @@ func assembleEdgeProxyDeployment(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) *appsv1.Deployment {
@@ -287,7 +289,10 @@ func assembleEdgeProxyDeployment(
 		}
 	}
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
-		edgeProxyContainer.Env = append(edgeProxyContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
+		edgeProxyContainer.Env = append(
+			edgeProxyContainer.Env,
+			assembleSelfMonitoringEnvVars(operatorVersion, otlpGrpcHostPort)...,
+		)
 	}
 	podSpec := corev1.PodSpec{
 		AutomountServiceAccountToken:  new(false),
@@ -343,7 +348,8 @@ func assembleEdgeProxyDeployment(
 // assembleSelfMonitoringEnvVars returns env vars that point the Edge Proxy's OTel SDK exporter at the node-local daemonset
 // collector's OTLP gRPC host-port. DASH0_NODE_IP is resolved via the downward API (status.hostIP) and must be defined
 // before OTEL_EXPORTER_OTLP_ENDPOINT, which references it.
-func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
+func assembleSelfMonitoringEnvVars(operatorVersion string, otlpGrpcHostPort int32) []corev1.EnvVar {
+	otlpGrpcHostPort = otelcolresources.ResolveOtlpGrpcHostPort(otlpGrpcHostPort)
 	return []corev1.EnvVar{
 		{
 			Name: util.EnvVarDash0NodeIp,
@@ -357,7 +363,7 @@ func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
 			// http:// scheme signals plaintext to the OTel Go SDK's gRPC exporter; dns:// or a bare endpoint would
 			// default to TLS, which the node-local daemonset collector does not terminate.
 			Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-			Value: fmt.Sprintf("http://$(%s):%d", util.EnvVarDash0NodeIp, otelcolresources.OtlpGrpcHostPort),
+			Value: fmt.Sprintf("http://$(%s):%d", util.EnvVarDash0NodeIp, otlpGrpcHostPort),
 		},
 		{
 			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
