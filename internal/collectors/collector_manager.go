@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -37,16 +38,27 @@ type CollectorManager struct {
 	signalControlFeatureEnabled bool
 	enablementChecker           enablement.Checker
 	updateInProgress            atomic.Bool
-	// lastReportedZoneCoverage remembers the (zone count, replica count) pair the zone coverage warning was last
-	// emitted for, so that the warning is logged on transitions instead of on every reconcile.
-	lastReportedZoneCoverage atomic.Pointer[zoneCoverage]
+	// now returns the current time. It is overridable in tests to exercise the zone-coverage check interval;
+	// NewCollectorManager defaults it to time.Now.
+	now func() time.Time
+	// lastZoneCoverage remembers the outcome of the most recent availability-zone coverage evaluation, so that the
+	// node list backing the check runs at most once per zoneCoverageCheckInterval and the warning is logged on a
+	// change of state rather than on every reconcile.
+	lastZoneCoverage atomic.Pointer[zoneCoverageState]
 }
 
-// zoneCoverage is the pair the zone coverage warning is keyed on.
-type zoneCoverage struct {
+// zoneCoverageState captures the most recent availability-zone coverage evaluation: when the node list was last
+// performed, the zone and replica counts it observed, and whether the warning was active for them.
+type zoneCoverageState struct {
+	checkedAt    time.Time
 	zoneCount    int
 	replicaCount int32
+	warned       bool
 }
+
+// zoneCoverageCheckInterval is the minimum time between two node-list backed availability-zone checks. An explicit
+// change to the Signal Control collector replica count bypasses it, so a reconfiguration is reflected without waiting.
+const zoneCoverageCheckInterval = 30 * time.Minute
 
 type CollectorReconcileTrigger string
 
@@ -78,8 +90,16 @@ func NewCollectorManager(
 		enablementChecker:           enablementChecker,
 		oTelColResourceManager:      oTelColResourceManager,
 	}
+	m.now = time.Now
 	m.extraConfig.Store(&extraConfig)
 	return m
+}
+
+func (m *CollectorManager) nowOrDefault() time.Time {
+	if m.now != nil {
+		return m.now()
+	}
+	return time.Now()
 }
 
 func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logd.Logger) {
@@ -231,6 +251,22 @@ func (m *CollectorManager) warnAboutInsufficientZoneCoverage(
 	if m.nodeMetadataClient == nil {
 		return
 	}
+
+	replicaCount := extraConfig.SignalControlCollectorReplicas
+	if replicaCount < 1 {
+		replicaCount = otelcolresources.SignalControlCollectorDefaultReplicas
+	}
+
+	now := m.nowOrDefault()
+	previous := m.lastZoneCoverage.Load()
+	replicaCountChanged := previous != nil && previous.replicaCount != replicaCount
+	// The node list is the expensive part of the check, so it is performed at most once per zoneCoverageCheckInterval.
+	// An explicit change to the replica count bypasses the interval, so a reconfiguration is evaluated - and its
+	// warning re-logged, or an info logged when it resolved the issue - without waiting for the next interval.
+	if previous != nil && !replicaCountChanged && now.Sub(previous.checkedAt) < zoneCoverageCheckInterval {
+		return
+	}
+
 	// The metadata client bypasses the controller-runtime cache on purpose: reading nodes through the cached client
 	// would start an informer that keeps every node object in memory for the lifetime of the operator. Only object
 	// metadata is requested, since the zone label is all that is read, which keeps the node status (in particular the
@@ -253,35 +289,57 @@ func (m *CollectorManager) warnAboutInsufficientZoneCoverage(
 		}
 	}
 
-	replicaCount := extraConfig.SignalControlCollectorReplicas
-	if replicaCount < 1 {
-		replicaCount = otelcolresources.SignalControlCollectorDefaultReplicas
-	}
-	m.reportZoneCoverage(len(zones), replicaCount, logger)
+	m.reportZoneCoverage(len(zones), replicaCount, now, logger)
 }
 
-// reportZoneCoverage emits the zone coverage warning when there are more availability zones than Signal Control
-// collector replicas, at most once per distinct (zone count, replica count) pair so that a steady state does not
-// produce a warning on every reconcile.
-func (m *CollectorManager) reportZoneCoverage(zoneCount int, replicaCount int32, logger logd.Logger) {
+// reportZoneCoverage evaluates the availability-zone coverage for the given zone and replica counts, logs the warning
+// when there are more zones than replicas, and records the outcome under checkedAt. In a steady state the warning is
+// logged once, on the transition into it, not on every check. A replica-count change is always acted on, so the
+// warning is re-logged if the situation persists. When a previously warned situation resolves - by more replicas or a
+// lower zone count - a short info is logged once.
+func (m *CollectorManager) reportZoneCoverage(
+	zoneCount int,
+	replicaCount int32,
+	checkedAt time.Time,
+	logger logd.Logger,
+) {
+	previous := m.lastZoneCoverage.Load()
+	wasWarned := previous != nil && previous.warned
+
 	// With zero or one zone there is nothing to spread over, the zone preference is inert either way.
-	if zoneCount <= 1 || int32(zoneCount) <= replicaCount {
-		m.lastReportedZoneCoverage.Store(nil)
+	insufficient := zoneCount > 1 && int32(zoneCount) > replicaCount
+
+	m.lastZoneCoverage.Store(&zoneCoverageState{
+		checkedAt:    checkedAt,
+		zoneCount:    zoneCount,
+		replicaCount: replicaCount,
+		warned:       insufficient,
+	})
+
+	if insufficient {
+		// A steady state - the same zone and replica count already warned about - is not warned about again.
+		if wasWarned && previous.zoneCount == zoneCount && previous.replicaCount == replicaCount {
+			return
+		}
+		logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
+			"The cluster has %d availability zones but the Signal Control collector runs with %d replicas, so at least "+
+				"one zone has no Signal Control collector pod. Telemetry from those zones is sent to a collector in "+
+				"another zone, which works but incurs cross-zone traffic cost. Set "+
+				"operator.collectors.signalControlCollectorReplicas to at least %d to avoid that.",
+			zoneCount, replicaCount, zoneCount,
+		))
 		return
 	}
 
-	current := zoneCoverage{zoneCount: zoneCount, replicaCount: replicaCount}
-	if previous := m.lastReportedZoneCoverage.Load(); previous != nil && *previous == current {
-		return
+	// Resolved: announce it whenever a previously active warning has cleared, whether the replica count was raised
+	// or the zone count dropped on its own.
+	if wasWarned {
+		logger.Info(fmt.Sprintf(
+			"The Signal Control collector now runs with %d replicas across %d availability zones, so every zone has a "+
+				"Signal Control collector pod and cross-zone traffic is avoided.",
+			replicaCount, zoneCount,
+		))
 	}
-	m.lastReportedZoneCoverage.Store(&current)
-	logger.WarnTelemetryCollectionIssue(fmt.Sprintf(
-		"The cluster has %d availability zones but the Signal Control collector runs with %d replicas, so at least "+
-			"one zone has no Signal Control collector pod. Telemetry from those zones is sent to a collector in "+
-			"another zone, which works but incurs cross-zone traffic cost. Set "+
-			"operator.collectors.signalControlCollectorReplicas to at least %d to avoid that.",
-		zoneCount, replicaCount, zoneCount,
-	))
 }
 
 func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
