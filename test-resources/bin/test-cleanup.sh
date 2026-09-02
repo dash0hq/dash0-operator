@@ -39,6 +39,9 @@ helm uninstall --namespace test-namespace-3 test-app-dotnet-ns3 --ignore-not-fou
 helm uninstall --namespace "$target_namespace" test-app-python --ignore-not-found || true
 helm uninstall --namespace test-namespace-2 test-app-python-ns2 --ignore-not-found || true
 helm uninstall --namespace test-namespace-3 test-app-python-ns3 --ignore-not-found || true
+helm uninstall --namespace "$target_namespace" test-app-ruby --ignore-not-found || true
+helm uninstall --namespace test-namespace-2 test-app-ruby-ns2 --ignore-not-found || true
+helm uninstall --namespace test-namespace-3 test-app-ruby-ns3 --ignore-not-found || true
 
 wait_for_third_party_resource_deletion="false"
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml; then
@@ -147,6 +150,10 @@ kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-cl
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-manager-rolebinding
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-opentelemetry-collector-crb
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-proxy-rolebinding
+kubectl delete configmap                    --ignore-not-found dash0-operator-signal-control-collector-cm
+kubectl delete service                      --ignore-not-found dash0-operator-signal-control-collector-service
+kubectl delete poddisruptionbudget          --ignore-not-found dash0-operator-signal-control-collector-pdb
+kubectl delete deployment                   --ignore-not-found dash0-operator-signal-control-collector-deployment
 kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-injector
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-operator-configuration-validator
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-validator

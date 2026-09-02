@@ -68,7 +68,7 @@ func (l Logger) ErrorAsWarnTelemetryCollectionIssue(err error, msg string, keysA
 
 // ErrorTelemetryCollectionIssue logs an error as a telemetry collection issue at level at zapcore.ErrorLevel.
 func (l Logger) ErrorTelemetryCollectionIssue(err error, msg string, keysAndValues ...any) {
-	l.ErrorAsWarn(err, msg, append([]any{telemetryCollectionIssueMarker, true}, keysAndValues...)...)
+	l.Error(err, msg, append([]any{telemetryCollectionIssueMarker, true}, keysAndValues...)...)
 }
 
 // WithValues returns a new Logger with additional key-value pairs.

@@ -106,7 +106,8 @@ rules:
   - patch
   - update
 
-# Permissions required to detect the container runtime:
+# Permissions required to detect the container runtime, and to count the cluster's availability zones when checking
+# whether the Signal Control collector has a replica in every zone:
 - apiGroups:
   - ""
   resources:
@@ -409,6 +410,20 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - policy
+  resources:
+  # The pod disruption budget of the Signal Control collector, which keeps voluntary disruptions from taking down more
+  # than one of its replicas at a time.
+  - poddisruptionbudgets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 
 # Permissions required due to the fact that the operator needs to create dedicated service accounts/cluster roles/
 # cluster role bindings for the OTel collector daemonset/deployment and give it a set of permissions; which it can only
@@ -646,10 +661,15 @@ rules:
 {{/*
 The -manager-agent0-connector-ro cluster role holds the read-only permissions that the operator delegates to the
 agent0-connector deployment. The operator creates a dedicated cluster role/cluster role binding granting the
-agent0-connector service account "get" & "list" on all resources plus get on all non-resource URLs. Kubernetes'
-privilege-escalation prevention only allows the operator to grant permissions it holds itself, so it must hold these
-read permissions as well. This cluster role (and its binding) only exist when the agent0-connector feature is enabled
-(operator.agent0Connector.enabled).
+agent0-connector service account "get" & "list" on the well-known resource types plus get on all non-resource URLs.
+Kubernetes' privilege-escalation prevention only allows the operator to grant permissions it holds itself, so it must
+hold these read permissions as well. This cluster role (and its binding) only exist when the agent0-connector feature
+is enabled (operator.agent0Connector.enabled).
+
+The rules are rendered from files/agent0-connector-default-cluster-role-rules.yaml, or from
+operator.agent0Connector.clusterRole.rules when custom rules are configured. Either way they are the same rules the
+operator grants to the agent0-connector service account, see the named template
+dash0-operator.agent0ConnectorClusterRoleRules.
 */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -662,23 +682,7 @@ metadata:
     {{- include "dash0-operator.labels" . | nindent 4 }}
 
 rules:
-
-# Cluster-wide, read-only access to all resources, mirroring what the operator grants to the agent0-connector service
-# account:
-- apiGroups:
-  - '*'
-  resources:
-  - '*'
-  verbs:
-  - get
-  - list
-
-# Read access to all non-resource URLs (API discovery, OpenAPI schema, health endpoints, ...), mirroring what the
-# operator grants to the agent0-connector service account:
-- nonResourceURLs:
-  - '*'
-  verbs:
-  - get
+{{ include "dash0-operator.agent0ConnectorClusterRoleRules" . }}
 
 ---
 {{/*

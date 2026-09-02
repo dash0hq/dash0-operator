@@ -6,6 +6,14 @@ tests:
     asserts:
       - matchSnapshot: {}
 
+  - it: cluster roles should match snapshot with agent0-connector enabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchSnapshot: {}
+
   - it: should grant permissions for telemetry collection if telemetry collection is enabled
     asserts:
       - hasDocuments:
@@ -72,8 +80,145 @@ tests:
           kind: ClusterRole
           apiVersion: rbac.authorization.k8s.io/v1
           name: dash0-operator-manager-agent0-connector-ro
-        documentIndex: 4
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
       - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - componentstatuses
+              - endpoints
+              - events
+              - limitranges
+              - namespaces
+              - nodes
+              - persistentvolumeclaims
+              - persistentvolumes
+              - podtemplates
+              - pods
+              - pods/log
+              - replicationcontrollers
+              - resourcequotas
+              - serviceaccounts
+              - services
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - controllerrevisions
+              - daemonsets
+              - deployments
+              - replicasets
+              - statefulsets
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - metrics.k8s.io
+            resources:
+              - nodes
+              - pods
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - authorization.k8s.io
+            resources:
+              - selfsubjectaccessreviews
+              - selfsubjectrulesreviews
+            verbs:
+              - create
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - monitoring.coreos.com
+            resources:
+              - podmonitors
+              - probes
+              - prometheusrules
+              - scrapeconfigs
+              - servicemonitors
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - perses.dev
+            resources:
+              - persesdashboards
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - dash0.com
+            resources:
+              - dash0teams
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - operator.dash0.com
+            resources:
+              - dash0monitorings
+              - dash0notificationchannels
+              - dash0operatorconfigurations
+              - dash0samplingrules
+              - dash0signalcontrols
+              - dash0signaltometrics
+              - dash0spamfilters
+              - dash0syntheticchecks
+              - dash0views
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
           path: rules
           content:
             apiGroups:
@@ -83,7 +228,21 @@ tests:
             verbs:
               - get
               - list
-        documentIndex: 4
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
+          path: rules[*].resources
+          content: secrets
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - notContains:
+          path: rules[*].resources
+          content: configmaps
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
       - contains:
           path: rules
           content:
@@ -91,12 +250,16 @@ tests:
               - '*'
             verbs:
               - get
-        documentIndex: 4
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
       - containsDocument:
           kind: ClusterRole
           apiVersion: rbac.authorization.k8s.io/v1
           name: dash0-operator-manager-agent0-connector
-        documentIndex: 5
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector
       - contains:
           path: rules
           content:
@@ -112,7 +275,9 @@ tests:
               - patch
               - update
               - watch
-        documentIndex: 5
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector
       - contains:
           path: rules
           content:
@@ -129,7 +294,9 @@ tests:
               - patch
               - update
               - watch
-        documentIndex: 5
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector
       - contains:
           path: rules
           content:
@@ -145,7 +312,9 @@ tests:
               - patch
               - update
               - watch
-        documentIndex: 5
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector
 
   - it: should grant agent0-connector management permissions independently of telemetry collection
     set:
@@ -171,3 +340,216 @@ tests:
           apiVersion: rbac.authorization.k8s.io/v1
           name: dash0-operator-manager-agent0-connector
         documentIndex: 3
+
+  - it: should render custom cluster role rules instead of the default rules for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["configmaps", "pods"]
+                verbs: ["get", "list"]
+              - apiGroups: ["authorization.k8s.io"]
+                resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+                verbs: ["create"]
+              - nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - lengthEqual:
+          path: rules
+          count: 3
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - configmaps
+              - pods
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      - contains:
+          path: rules
+          content:
+            nonResourceURLs:
+              - "*"
+            verbs:
+              - get
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+      # The default rules must be gone entirely, they are replaced and not extended.
+      - notContains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - controllerrevisions
+              - daemonsets
+              - deployments
+              - replicasets
+              - statefulsets
+            verbs:
+              - get
+              - list
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+
+  - it: should reject custom cluster role rules with a write verb
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list", "delete"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "delete" is not allowed'
+
+  - it: should reject custom cluster role rules with a wildcard verb
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: ["*"]
+                resources: ["*"]
+                verbs: ["*"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "\*" is not allowed'
+
+  - it: should reject custom cluster role rules which grant create beyond the self subject review API
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: ["authorization.k8s.io", ""]
+                resources: ["selfsubjectaccessreviews", "pods"]
+                verbs: ["create"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "create" is not allowed'
+
+  # The API server rejects a malformed rule when the manifest is applied, which would leave the installation half
+  # applied. These rules have to fail at template time instead.
+
+  - it: should reject a custom cluster role rule without verbs
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: verbs must contain at least one value'
+
+  - it: should reject a custom cluster role rule which mixes resources and non-resource URLs
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: a rule cannot apply to both regular resources and non-resource URLs'
+
+  - it: should reject a custom cluster role rule which mixes resource names and non-resource URLs
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - resourceNames: ["some-pod"]
+                nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: a rule cannot apply to both regular resources and non-resource URLs'
+
+  - it: should reject a custom cluster role rule without apiGroups
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - resources: ["pods"]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: a rule for regular resources must supply at least one apiGroup'
+
+  - it: should reject a custom cluster role rule without resources
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                verbs: ["get"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: a rule for regular resources must supply at least one resource'
+
+  - it: should accept a custom cluster role rule which only addresses non-resource URLs
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - nonResourceURLs:
+                - '*'
+              verbs:
+                - get
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-agent0-connector-ro
+
+  - it: should reject a malformed custom cluster role rule
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: "get"
+    asserts:
+      - failedTemplate:
+          errorPattern: "range can't iterate over get"

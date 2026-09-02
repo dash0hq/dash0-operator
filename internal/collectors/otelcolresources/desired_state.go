@@ -13,6 +13,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -108,48 +109,67 @@ type oTelColConfig struct {
 	KubeletStatsReceiverConfig                       util.KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	DisableHostPorts                                 bool
+	OtlpGrpcHostPort                                 int32
+	OtlpHttpHostPort                                 int32
 	PseudoClusterUid                                 types.UID
 	ClusterName                                      string
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
 	IsGkeAutopilot                                   bool
-	OffsetStorageVolume                              *corev1.Volume
-	SignalControl                                    SignalControlConfig
-	AutoNamespaceMonitoringEnabled                   bool
-	DevelopmentMode                                  bool
-	DebugVerbosityDetailed                           bool
-	EnableProfExtension                              bool
-	ProfilingEnabled                                 bool
-	CompressConfigMap                                bool
+	// ServiceTrafficDistribution is the value for spec.trafficDistribution on the operator's services, or nil when the
+	// Kubernetes version does not enable the field by default. See cluster.ResolveServiceTrafficDistribution.
+	ServiceTrafficDistribution     *string
+	OffsetStorageVolume            *corev1.Volume
+	SignalControl                  SignalControlConfig
+	AutoNamespaceMonitoringEnabled bool
+	DevelopmentMode                bool
+	DebugVerbosityDetailed         bool
+	EnableProfExtension            bool
+	ProfilingEnabled               bool
+	CompressConfigMap              bool
 }
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
 	return c.OffsetStorageVolume != nil
 }
 
-// usesSignalControlCollectorImage reports whether the collector workloads should use the Signal Control collector
-// image instead of the regular collector image. This is the case when Signal Control is enabled via the
-// Dash0SignalControl resource and the Signal Control collector image has been provided by the Helm chart (which only
-// happens when the Signal Control feature is enabled at install/upgrade time).
-func (c *oTelColConfig) usesSignalControlCollectorImage() bool {
-	return c.SignalControl.Enabled && c.Images.SignalControlCollectorImage != ""
+// signalControlGatewayActive reports whether the dedicated Signal Control collector deployment (the "gateway") is
+// deployed. All Signal Control components run there; the daemonset and the cluster-metrics deployment forward their
+// Dash0-bound telemetry to it instead of exporting to Dash0 themselves.
+//
+// Three conditions must hold: Signal Control is enabled via the Dash0SignalControl resource, the Signal Control
+// collector image has been provided by the Helm chart (which only happens when the Signal Control feature is enabled
+// at install/upgrade time), and there is at least one Dash0 exporter for the gateway to export to. The exact same
+// expression gates the "export to the gateway" switch in all three collector configuration templates.
+func (c *oTelColConfig) signalControlGatewayActive() bool {
+	return c.SignalControl.Enabled &&
+		c.Images.SignalControlCollectorImage != "" &&
+		(len(c.Exporters.DefaultDash0Exporters()) > 0 || c.Exporters.HasNamespacedDash0Exporters())
 }
 
-// collectorImage returns the collector image to use for the collector workloads, deferring the choice between the
-// regular and the Signal Control collector image to reconcile time, see usesSignalControlCollectorImage.
+// collectorImage returns the collector image for the daemonset and the cluster-metrics deployment. Since Signal
+// Control moved into its own collector deployment, these two workloads always run the regular collector image, which
+// does not contain any of the dash0* Signal Control components.
 func (c *oTelColConfig) collectorImage() string {
-	if c.usesSignalControlCollectorImage() {
-		return c.Images.SignalControlCollectorImage
-	}
 	return c.Images.CollectorImage
 }
 
 // collectorImagePullPolicy returns the image pull policy matching the image returned by collectorImage.
 func (c *oTelColConfig) collectorImagePullPolicy() corev1.PullPolicy {
-	if c.usesSignalControlCollectorImage() {
-		return c.Images.SignalControlCollectorImagePullPolicy
-	}
 	return c.Images.CollectorImagePullPolicy
+}
+
+// signalControlCollectorImage returns the image for the Signal Control collector deployment. It is only used when
+// signalControlGatewayActive reports true, which already guarantees a non-empty image.
+func (c *oTelColConfig) signalControlCollectorImage() string {
+	return c.Images.SignalControlCollectorImage
+}
+
+// signalControlCollectorImagePullPolicy returns the image pull policy matching signalControlCollectorImage. It does
+// not fall back to the regular collector's pull policy: the Helm chart only ever emits the Signal Control pull policy
+// when one is configured for the Signal Control collector image.
+func (c *oTelColConfig) signalControlCollectorImagePullPolicy() corev1.PullPolicy {
+	return c.Images.SignalControlCollectorImagePullPolicy
 }
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -173,12 +193,16 @@ type TargetAllocatorMtlsConfig struct {
 }
 
 const (
-	OtlpGrpcHostPort = 40317
-	OtlpHttpHostPort = 40318
-	// ^ We deliberately do not use the default grpc/http ports as host ports. If there is another OTel collector
+	// DefaultOtlpGrpcHostPort and DefaultOtlpHttpHostPort are the default host ports for the collector DaemonSet's
+	// gRPC/HTTP OTLP receivers, used unless overridden via the Helm values operator.collectors.otlpGrpcHostPort /
+	// otlpHttpHostPort.
+	//
+	// We deliberately do not default to the standard grpc/http ports as host ports. If there is another OTel collector
 	// daemonset in the cluster (which is not managed by the operator), it will very likely use the 4317/4318 as host
 	// ports. When the operator creates its daemonset, the pods of one of the two otelcol daemonsets would fail to start
 	// due to port conflicts.
+	DefaultOtlpGrpcHostPort = 40317
+	DefaultOtlpHttpHostPort = 40318
 
 	otlpGrpcPort = 4317
 	otlpHttpPort = 4318
@@ -190,12 +214,14 @@ const (
 	defaultUser  int64 = 65532
 	defaultGroup int64 = 0
 
-	openTelemetryCollector                     = "opentelemetry-collector"
-	openTelemetryCollectorDaemonSetNameSuffix  = "opentelemetry-collector-agent"
-	openTelemetryCollectorDeploymentNameSuffix = "cluster-metrics-collector"
+	openTelemetryCollector                        = "opentelemetry-collector"
+	openTelemetryCollectorDaemonSetNameSuffix     = "opentelemetry-collector-agent"
+	openTelemetryCollectorDeploymentNameSuffix    = "cluster-metrics-collector"
+	openTelemetryCollectorSignalControlNameSuffix = "signal-control-collector"
 
-	daemonSetServiceComponent  = "agent-collector"
-	deploymentServiceComponent = openTelemetryCollectorDeploymentNameSuffix
+	daemonSetServiceComponent     = "agent-collector"
+	deploymentServiceComponent    = openTelemetryCollectorDeploymentNameSuffix
+	signalControlServiceComponent = openTelemetryCollectorSignalControlNameSuffix
 
 	configReloader    = "configuration-reloader"
 	fileLogOffsetSync = "filelog-offset-sync"
@@ -227,9 +253,13 @@ const (
 	pidFileVolumeName    = "opentelemetry-collector-pidfile"
 	offsetsDirPath       = "/var/otelcol/filelogreceiver_offsets"
 
-	gkeAutopilotAllowlistLabelKey             = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.4"
-	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.4"
+	traceReservoirVolumeName = "trace-reservoir"
+	traceReservoirDirPath    = "/var/lib/dash0/trace-reservoir"
+
+	gkeAutopilotAllowlistLabelKey                = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistLabelDaemonsetValue     = "dash0-opentelemetry-collector-agent-v1.0.4"
+	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.4"
+	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.4"
 
 	targetAllocatorCertsVolumeName = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
@@ -247,6 +277,11 @@ var (
 		util.AppKubernetesIoNameLabel:      appKubernetesIoNameValue,
 		util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
 		util.AppKubernetesIoComponentLabel: deploymentServiceComponent,
+	}
+	signalControlMatchLabels = map[string]string{
+		util.AppKubernetesIoNameLabel:      appKubernetesIoNameValue,
+		util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
+		util.AppKubernetesIoComponentLabel: signalControlServiceComponent,
 	}
 
 	nodeIpFieldSpec = corev1.ObjectFieldSelector{
@@ -338,6 +373,14 @@ var (
 	}
 
 	deploymentReplicas int32 = 1
+
+	// SignalControlCollectorDefaultReplicas is used when the extra config map does not specify a replica count. Two
+	// replicas halve the per-process concentration of the RED connector's cardinality tracking and of the sampling
+	// reservoir compared to a single pod, and let a rolling update proceed without emptying the pool. The topology
+	// spread constraints bias them onto separate zones and nodes, and the pod disruption budget keeps a voluntary
+	// disruption from taking down both; neither is a hard guarantee, see
+	// signalControlCollectorTopologySpreadConstraints.
+	SignalControlCollectorDefaultReplicas int32 = 2
 )
 
 func assembleDesiredStateForUpsert(
@@ -397,6 +440,25 @@ func assembleDesiredStateForUpsert(
 	)
 }
 
+// ResolveOtlpGrpcHostPort returns configured, or DefaultOtlpGrpcHostPort if configured is not a positive port number.
+func ResolveOtlpGrpcHostPort(configured int32) int32 {
+	return resolveHostPort(configured, DefaultOtlpGrpcHostPort)
+}
+
+// ResolveOtlpHttpHostPort returns configured, or DefaultOtlpHttpHostPort if configured is not a positive port number.
+func ResolveOtlpHttpHostPort(configured int32) int32 {
+	return resolveHostPort(configured, DefaultOtlpHttpHostPort)
+}
+
+// resolveHostPort is a defensive fallback for configurations that never went through the operator manager's CLI flags,
+// for example zero-value structs in tests; production configuration always provides a positive, validated value.
+func resolveHostPort(configured int32, defaultValue int32) int32 {
+	if configured <= 0 {
+		return defaultValue
+	}
+	return configured
+}
+
 func assembleDesiredStateForDelete(
 	config *oTelColConfig,
 	extraConfig util.ExtraConfig,
@@ -444,6 +506,37 @@ func assembleDesiredState(
 	}
 
 	var desiredState []clientObject
+
+	// The Signal Control collector deployment is created before the two producer collectors are (re)configured to
+	// export to it, so that its service exists as early as possible. This does not close the window in which the
+	// producers already point at it while it is not ready yet: the producers only pick up their new configuration
+	// when the configuration reloader next polls. Telemetry sent in the meantime is buffered by the producers' OTLP
+	// exporter queue and dropped once that queue overflows. The same window exists in reverse when Signal Control is
+	// disabled.
+	//
+	// When assembling the desired state for deletion, the Signal Control resources are always included, no matter
+	// whether Signal Control is currently active: otherwise they would be orphaned when Signal Control is disabled or
+	// the operator configuration resource is removed.
+	if forDeletion || config.signalControlGatewayActive() {
+		signalControlCollectorConfigMap, err := assembleSignalControlCollectorConfigMap(
+			config,
+			monitoredNamespaces,
+			forDeletion,
+		)
+		if err != nil {
+			return desiredState, err
+		}
+		desiredState = append(desiredState, addCommonMetadata(signalControlCollectorConfigMap))
+		desiredState = append(desiredState, addCommonMetadata(assembleSignalControlCollectorService(config)))
+		desiredState = append(
+			desiredState, addCommonMetadata(assembleSignalControlCollectorPodDisruptionBudget(config)))
+		signalControlCollectorDeployment, err := assembleSignalControlCollectorDeployment(config, extraConfig)
+		if err != nil {
+			return desiredState, err
+		}
+		desiredState = append(desiredState, addCommonMetadata(signalControlCollectorDeployment))
+	}
+
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(
 		config,
@@ -1015,18 +1108,6 @@ func assembleCollectorDaemonSetVolumes(
 		})
 	}
 
-	if config.SignalControl.UsesDiskReservoir() {
-		traceReservoirSizeLimit := reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
-		volumes = append(volumes, corev1.Volume{
-			Name: "trace-reservoir",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{
-					SizeLimit: &traceReservoirSizeLimit,
-				},
-			},
-		})
-	}
-
 	return volumes, filelogOffsetsVolume
 }
 
@@ -1107,13 +1188,6 @@ func assembleCollectorDaemonSetVolumeMounts(
 		})
 	}
 
-	if config.SignalControl.UsesDiskReservoir() {
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "trace-reservoir",
-			MountPath: "/var/lib/dash0/trace-reservoir",
-		})
-	}
-
 	return volumeMounts
 }
 
@@ -1126,10 +1200,14 @@ func createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume co
 	}
 }
 
+// assembleCollectorEnvVars builds the environment for a collector container. withSignalControlAuthToken must only be
+// set for the Signal Control collector: it is the only workload whose configuration references
+// DASH0_SIGNAL_CONTROL_AUTH_TOKEN, and the token should not be spread to workloads that do not need it.
 func assembleCollectorEnvVars(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
 	goMemLimit string,
+	withSignalControlAuthToken bool,
 ) ([]corev1.EnvVar, error) {
 	collectorEnv := []corev1.EnvVar{
 		{
@@ -1179,11 +1257,11 @@ func assembleCollectorEnvVars(
 		}
 	}
 
-	if config.SignalControl.Enabled {
+	if withSignalControlAuthToken && config.SignalControl.Enabled {
 		// The Signal Control settings extension authenticates against the control plane API and is used by both the
 		// sampling processor and the spam filter, so the token is emitted whenever Signal Control is enabled.
 		// Uses Kubernetes dependent variable expansion: $(VAR_NAME) references the exporter auth token env var
-		// defined earlier in this container's env list. The referenced env var (e.g., DASH0_AUTHORIZATION_DEFAULT_0)
+		// defined earlier in this container's env list. The referenced env var (e.g., OTELCOL_AUTH_TOKEN_DEFAULT_0)
 		// must appear before this one.
 		collectorEnv = append(collectorEnv,
 			corev1.EnvVar{
@@ -1205,26 +1283,12 @@ func assembleDaemonSetCollectorContainer(
 	probes util.CollectorProbes,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config, filelogOffsetsVolume, targetAllocatorMtlsConfig)
-	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, false)
 	if err != nil {
 		return corev1.Container{}, err
 	}
 
-	// When the trace reservoir is active, request ephemeral storage derived from its max_disk_bytes so the
-	// scheduler reserves enough node scratch space. An explicit user-provided ephemeral-storage request is
-	// never overridden.
 	collectorResources := resourceRequirements.ToResourceRequirements()
-	if config.SignalControl.UsesDiskReservoir() &&
-		collectorResources.Requests.StorageEphemeral().IsZero() {
-		// Clone the requests map so the shared resourceRequirements passed by the caller is not mutated.
-		requests := maps.Clone(collectorResources.Requests)
-		if requests == nil {
-			requests = corev1.ResourceList{}
-		}
-		requests[corev1.ResourceEphemeralStorage] =
-			reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
-		collectorResources.Requests = requests
-	}
 
 	otlpPort := corev1.ContainerPort{
 		Name:          "otlp",
@@ -1237,13 +1301,12 @@ func assembleDaemonSetCollectorContainer(
 		ContainerPort: otlpHttpPort,
 	}
 	if !config.DisableHostPorts {
-		otlpPort.HostPort = int32(OtlpGrpcHostPort)
-		httpPort.HostPort = int32(OtlpHttpHostPort)
+		otlpPort.HostPort = config.OtlpGrpcHostPort
+		httpPort.HostPort = config.OtlpHttpHostPort
 	}
 
 	collectorArgs := []string{
 		"--config=file:" + collectorConfigurationFilePath,
-		"--feature-gates=-processor.resourcedetection.propagateerrors",
 	}
 	if config.ProfilingEnabled {
 		collectorArgs = append(collectorArgs, "--feature-gates=service.profilesSupport")
@@ -1634,7 +1697,11 @@ func assembleCollectorDeployment(
 				extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
 			),
 		},
-		Volumes:     assembleCollectorDeploymentVolumes(config, configMapItems),
+		Volumes: assembleCollectorDeploymentVolumes(
+			config,
+			DeploymentCollectorConfigConfigMapName(config.NamePrefix),
+			configMapItems,
+		),
 		HostNetwork: false,
 	}
 
@@ -1693,6 +1760,7 @@ func assembleCollectorDeployment(
 
 func assembleCollectorDeploymentVolumes(
 	config *oTelColConfig,
+	configMapName string,
 	configMapItems []corev1.KeyToPath,
 ) []corev1.Volume {
 	pidFileVolumeSizeLimit := resource.MustParse("1M")
@@ -1715,7 +1783,7 @@ func assembleCollectorDeploymentVolumes(
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: DeploymentCollectorConfigConfigMapName(config.NamePrefix),
+							Name: configMapName,
 						},
 						Items: configMapItems,
 					},
@@ -1730,7 +1798,7 @@ func assembleCollectorDeploymentVolumes(
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: DeploymentCollectorConfigConfigMapName(config.NamePrefix),
+							Name: configMapName,
 						},
 						Items: configMapItems,
 					},
@@ -1767,17 +1835,18 @@ func assembleDeploymentCollectorContainer(
 			collectorPidFileMountRW,
 		}
 	}
-	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, false)
 	if err != nil {
 		return corev1.Container{}, err
 	}
 
+	collectorArgs := []string{
+		"--config=file:" + collectorConfigurationFilePath,
+	}
+
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,
-		Args: []string{
-			"--config=file:" + collectorConfigurationFilePath,
-			"--feature-gates=-processor.resourcedetection.propagateerrors",
-		},
+		Args: collectorArgs,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: new(false),
 			ReadOnlyRootFilesystem:   new(false),
@@ -1798,6 +1867,335 @@ func assembleDeploymentCollectorContainer(
 		VolumeMounts:   collectorVolumeMounts,
 	}
 	if pullPolicy := config.collectorImagePullPolicy(); pullPolicy != "" {
+		collectorContainer.ImagePullPolicy = pullPolicy
+	}
+	return collectorContainer, nil
+}
+
+// assembleSignalControlCollectorService exposes the Signal Control collector deployment to the other collector
+// workloads. It is a regular (non-headless) ClusterIP service on purpose: only a service with a virtual IP is
+// programmed by kube-proxy, which is the prerequisite for zone-aware routing via EndpointSlice hints
+// (spec.trafficDistribution). A headless service, or a client-side balancer resolving pod IPs directly, bypasses
+// kube-proxy and makes those hints inert. Since kube-proxy picks a backend per connection and the producers hold
+// long-lived HTTP/2 connections, the collector's OTLP receiver ages connections out so senders redistribute over time.
+//
+// Unlike the daemonset's service, this one must not set InternalTrafficPolicy: Local, which would blackhole all
+// cross-node traffic.
+func assembleSignalControlCollectorService(config *oTelColConfig) *corev1.Service {
+	return &corev1.Service{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Service",
+			APIVersion: util.K8sApiVersionCoreV1,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      SignalControlCollectorServiceName(config.NamePrefix),
+			Namespace: config.OperatorNamespace,
+			Labels:    signalControlCollectorServiceLabels(),
+		},
+		Spec: corev1.ServiceSpec{
+			Type: corev1.ServiceTypeClusterIP,
+			// Prefer endpoints in the sender's own availability zone, so the producers' telemetry does not cross
+			// zones. This only takes effect when the sender's zone has a ready endpoint; otherwise kube-proxy falls
+			// back to the full endpoint set for that node, which costs cross-zone traffic but never drops it. That is
+			// also why the operator warns when there are fewer replicas than zones, see
+			// CollectorManager.warnAboutInsufficientZoneCoverage.
+			TrafficDistribution: config.ServiceTrafficDistribution,
+			Ports: []corev1.ServicePort{
+				{
+					Name:        "otlp",
+					Port:        otlpGrpcPort,
+					TargetPort:  intstr.FromInt32(otlpGrpcPort),
+					Protocol:    corev1.ProtocolTCP,
+					AppProtocol: new("grpc"),
+				},
+				{
+					Name:       "otlp-http",
+					Port:       otlpHttpPort,
+					TargetPort: intstr.FromInt32(otlpHttpPort),
+					Protocol:   corev1.ProtocolTCP,
+				},
+			},
+			Selector: signalControlMatchLabels,
+		},
+	}
+}
+
+func assembleSignalControlCollectorDeployment(
+	config *oTelColConfig,
+	extraConfig util.ExtraConfig,
+) (*appsv1.Deployment, error) {
+	deploymentName := SignalControlCollectorDeploymentName(config.NamePrefix)
+	workloadNameEnvVar := corev1.EnvVar{
+		Name:  "K8S_DEPLOYMENT_NAME",
+		Value: deploymentName,
+	}
+	collectorContainer, err := assembleSignalControlCollectorContainer(
+		config,
+		workloadNameEnvVar,
+		extraConfig.SignalControlCollectorContainerResources,
+		extraConfig.SignalControlCollectorProbes,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	volumes := assembleCollectorDeploymentVolumes(
+		config,
+		SignalControlCollectorConfigConfigMapName(config.NamePrefix),
+		configMapItems,
+	)
+	if config.SignalControl.UsesDiskReservoir() {
+		traceReservoirSizeLimit := reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
+		volumes = append(volumes, corev1.Volume{
+			Name: traceReservoirVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: &traceReservoirSizeLimit,
+				},
+			},
+		})
+	}
+
+	podSpec := corev1.PodSpec{
+		Tolerations: extraConfig.SignalControlCollectorTolerations,
+		// The Signal Control collector talks to the Dash0 API and the Decision Maker, but never to the Kubernetes API
+		// server: it runs neither k8s_attributes nor any of the Kubernetes receivers. Hence it needs no service
+		// account and no RBAC.
+		AutomountServiceAccountToken: new(false),
+		SecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: new(true),
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+			Sysctls: extraConfig.SignalControlCollectorSysctls,
+		},
+		// This setting is required to enable the configuration reloader process to send Unix signals to the
+		// collector process.
+		ShareProcessNamespace: new(true),
+		Containers: []corev1.Container{
+			collectorContainer,
+			assembleConfigurationReloaderContainer(
+				config,
+				workloadNameEnvVar,
+				extraConfig.SignalControlCollectorConfigurationReloaderContainerResources,
+			),
+		},
+		Volumes:     volumes,
+		HostNetwork: false,
+	}
+
+	if extraConfig.SignalControlCollectorNodeAffinity != nil {
+		podSpec.Affinity = &corev1.Affinity{
+			NodeAffinity: extraConfig.SignalControlCollectorNodeAffinity,
+		}
+	}
+	podSpec.TopologySpreadConstraints = signalControlCollectorTopologySpreadConstraints()
+
+	priorityClassName := strings.TrimSpace(extraConfig.SignalControlCollectorPriorityClassName)
+	if priorityClassName != "" {
+		podSpec.PriorityClassName = priorityClassName
+	}
+
+	replicas := extraConfig.SignalControlCollectorReplicas
+	if replicas < 1 {
+		// Default when the extra config does not specify a value (e.g. older config maps).
+		replicas = SignalControlCollectorDefaultReplicas
+	}
+
+	templateLabels :=
+		addGkeAutopilotAllowlistMatchLabel(config, signalControlMatchLabels, gkeAutopilotAllowlistLabelSignalControlValue)
+	collectorDeployment := &appsv1.Deployment{
+		TypeMeta: util.K8sTypeMetaDeployment,
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        deploymentName,
+			Namespace:   config.OperatorNamespace,
+			Labels:      util.MergeMaps(labels(true), extraConfig.SignalControlCollectorLabels),
+			Annotations: util.MergeMaps(nil, extraConfig.SignalControlCollectorAnnotations),
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: signalControlMatchLabels,
+			},
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
+				// Never go below the configured replica count during a rollout, and add at most one pod at a time.
+				// The defaults (25% each) already amount to this at two or three replicas; the explicit values matter
+				// from four replicas up, which is what a cluster with several availability zones is expected to run.
+				// The cluster-metrics collector deliberately stays on the defaults: it is not on the export path and
+				// holds no buffered telemetry.
+				RollingUpdate: &appsv1.RollingUpdateDeployment{
+					MaxUnavailable: ptr.To(intstr.FromInt32(0)),
+					MaxSurge:       ptr.To(intstr.FromInt32(1)),
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      util.MergeMaps(templateLabels, extraConfig.SignalControlCollectorPodLabels),
+					Annotations: util.MergeMaps(nil, extraConfig.SignalControlCollectorPodAnnotations),
+				},
+				Spec: podSpec,
+			},
+		},
+	}
+
+	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDeployment(
+			collectorDeployment,
+			config.SelfMonitoringConfiguration,
+			config.Images.GetOperatorVersion(),
+			config.DevelopmentMode,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return collectorDeployment, nil
+}
+
+// signalControlCollectorTopologySpreadConstraints spreads the Signal Control collector's replicas evenly over the
+// cluster's availability zones. maxSkew bounds the difference between the per-zone pod counts, not the count itself,
+// so with more replicas than zones several replicas share a zone (evenly), and with fewer replicas than zones each
+// one gets its own zone.
+//
+// Both constraints are advisory (ScheduleAnyway). DoNotSchedule must not be used for the zone constraint: the
+// scheduler rejects every node that does not carry the constraint's topology key outright, instead of ignoring it, so
+// on a cluster whose nodes are not labelled with topology.kubernetes.io/zone - kind, minikube and many on-premises
+// clusters - no replica could be scheduled at all. minDomains is left unset for the same reason.
+//
+// matchLabelKeys scopes both constraints to one ReplicaSet, so that during a rolling update the outgoing pods are not
+// counted against the incoming ones (which would block the rollout on a zone-saturated cluster).
+func signalControlCollectorTopologySpreadConstraints() []corev1.TopologySpreadConstraint {
+	labelSelector := &metav1.LabelSelector{MatchLabels: signalControlMatchLabels}
+	return []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           1,
+			TopologyKey:       corev1.LabelTopologyZone,
+			WhenUnsatisfiable: corev1.ScheduleAnyway,
+			LabelSelector:     labelSelector,
+			MatchLabelKeys:    []string{appsv1.DefaultDeploymentUniqueLabelKey},
+		},
+		{
+			MaxSkew:           1,
+			TopologyKey:       corev1.LabelHostname,
+			WhenUnsatisfiable: corev1.ScheduleAnyway,
+			LabelSelector:     labelSelector,
+			MatchLabelKeys:    []string{appsv1.DefaultDeploymentUniqueLabelKey},
+		},
+	}
+}
+
+// assembleSignalControlCollectorPodDisruptionBudget keeps voluntary disruptions (node drains, cluster upgrades) from
+// taking down more than one Signal Control collector replica at a time. Together with the topology spread constraints
+// this is what keeps the Signal Control path available while a zone or node is being drained.
+func assembleSignalControlCollectorPodDisruptionBudget(config *oTelColConfig) *policyv1.PodDisruptionBudget {
+	maxUnavailable := intstr.FromInt32(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: "policy/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      SignalControlCollectorPodDisruptionBudgetName(config.NamePrefix),
+			Namespace: config.OperatorNamespace,
+			Labels:    labels(false),
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			// maxUnavailable, never minAvailable: with minAvailable a single-replica deployment can never be drained.
+			MaxUnavailable: &maxUnavailable,
+			Selector:       &metav1.LabelSelector{MatchLabels: signalControlMatchLabels},
+		},
+	}
+}
+
+func assembleSignalControlCollectorContainer(
+	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
+	probes util.CollectorProbes,
+) (corev1.Container, error) {
+	var collectorVolumeMounts []corev1.VolumeMount
+	if config.CompressConfigMap {
+		collectorVolumeMounts = []corev1.VolumeMount{
+			collectorConfigCompressedVolumeMount,
+			collectorConfigDecompressedVolumeMount,
+			collectorPidFileMountRW,
+		}
+	} else {
+		collectorVolumeMounts = []corev1.VolumeMount{
+			collectorConfigPlainTextVolumeMount,
+			collectorPidFileMountRW,
+		}
+	}
+
+	// When the trace reservoir is active, request ephemeral storage derived from its max_disk_bytes so the
+	// scheduler reserves enough node scratch space. An explicit user-provided ephemeral-storage request is
+	// never overridden.
+	collectorResources := resourceRequirements.ToResourceRequirements()
+	if config.SignalControl.UsesDiskReservoir() {
+		collectorVolumeMounts = append(collectorVolumeMounts, corev1.VolumeMount{
+			Name:      traceReservoirVolumeName,
+			MountPath: traceReservoirDirPath,
+		})
+		if collectorResources.Requests.StorageEphemeral().IsZero() {
+			// Clone the requests map so the shared resourceRequirements passed by the caller is not mutated.
+			requests := maps.Clone(collectorResources.Requests)
+			if requests == nil {
+				requests = corev1.ResourceList{}
+			}
+			requests[corev1.ResourceEphemeralStorage] =
+				reservoirDerivedStorage(config.SignalControl.SamplingReservoirMaxDiskBytes)
+			collectorResources.Requests = requests
+		}
+	}
+
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, true)
+	if err != nil {
+		return corev1.Container{}, err
+	}
+
+	// No --feature-gates argument: this collector runs no resourcedetection processor, all resource detection has
+	// already happened in the producer collectors.
+	collectorArgs := []string{
+		"--config=file:" + collectorConfigurationFilePath,
+	}
+
+	collectorContainer := corev1.Container{
+		Name: openTelemetryCollector,
+		Args: collectorArgs,
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: new(false),
+			ReadOnlyRootFilesystem:   new(false),
+			RunAsNonRoot:             new(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Image: config.signalControlCollectorImage(),
+		Ports: []corev1.ContainerPort{
+			{
+				Name:          "otlp",
+				Protocol:      corev1.ProtocolTCP,
+				ContainerPort: otlpGrpcPort,
+			},
+			{
+				Name:          "otlp-http",
+				Protocol:      corev1.ProtocolTCP,
+				ContainerPort: otlpHttpPort,
+			},
+		},
+		Env:            collectorEnv,
+		LivenessProbe:  WithProbeHandler(probes.Liveness),
+		StartupProbe:   WithProbeHandler(probes.Startup),
+		ReadinessProbe: WithProbeHandler(probes.Readiness),
+		Resources:      collectorResources,
+		VolumeMounts:   collectorVolumeMounts,
+	}
+	if pullPolicy := config.signalControlCollectorImagePullPolicy(); pullPolicy != "" {
 		collectorContainer.ImagePullPolicy = pullPolicy
 	}
 	return collectorContainer, nil
@@ -1824,6 +2222,10 @@ func DaemonSetCollectorConfigConfigMapName(namePrefix string) string {
 
 func DeploymentCollectorConfigConfigMapName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cm")
+}
+
+func SignalControlCollectorConfigConfigMapName(namePrefix string) string {
+	return renderName(namePrefix, openTelemetryCollectorSignalControlNameSuffix, "cm")
 }
 
 func DaemonSetClusterRoleName(namePrefix string) string {
@@ -1854,9 +2256,23 @@ func ServiceName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollector, "service")
 }
 
+func SignalControlCollectorServiceName(namePrefix string) string {
+	return renderName(namePrefix, openTelemetryCollectorSignalControlNameSuffix, "service")
+}
+
+func SignalControlCollectorPodDisruptionBudgetName(namePrefix string) string {
+	return renderName(namePrefix, openTelemetryCollectorSignalControlNameSuffix, "pdb")
+}
+
 func serviceLabels() map[string]string {
 	lbls := labels(false)
 	lbls[util.AppKubernetesIoComponentLabel] = daemonSetServiceComponent
+	return lbls
+}
+
+func signalControlCollectorServiceLabels() map[string]string {
+	lbls := labels(false)
+	lbls[util.AppKubernetesIoComponentLabel] = signalControlServiceComponent
 	return lbls
 }
 
@@ -1866,6 +2282,10 @@ func DaemonSetName(namePrefix string) string {
 
 func DeploymentName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "deployment")
+}
+
+func SignalControlCollectorDeploymentName(namePrefix string) string {
+	return renderName(namePrefix, openTelemetryCollectorSignalControlNameSuffix, "deployment")
 }
 
 func renderName(prefix string, parts ...string) string {

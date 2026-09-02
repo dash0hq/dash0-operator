@@ -12,6 +12,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
   - [Preventing Operator Scheduling on Specific Nodes](#preventing-operator-scheduling-on-specific-nodes)
   - [Custom Node Affinity](#custom-node-affinity)
   - [Adding Custom Labels and Annotations to the Collector Resources](#adding-custom-labels-and-annotations-to-the-collector-resources)
+- [Configuring Collector Host Ports](#configuring-collector-host-ports)
 - [Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)](#configuring-pod-level-sysctls-for-the-collector-pods-tcp-keepalive)
 - [Disable Self-Monitoring](#disable-self-monitoring)
 - [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
@@ -221,7 +222,7 @@ spec:
 
 The operator sets [resource requests and limits](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
 on the workloads it deploys, including the operator manager, the DaemonSet collector pods (one per node), the
-cluster-metrics-collector Deployment.
+cluster-metrics-collector Deployment and, when SignalControl Edge is enabled, the SignalControl collector Deployment.
 Each of these ships with default requests and limits that are a reasonable starting point for many clusters.
 
 However, these defaults are not guaranteed to be optimal for every use case.
@@ -250,7 +251,34 @@ The following Helm values control the resource settings, all nested under the to
 | `collectors.daemonSetFileLogOffsetSyncContainerResources` | DaemonSet filelog offset sync | `memory: 32Mi` | `memory: 32Mi` |
 | `collectors.deploymentCollectorContainerResources` | cluster-metrics-collector container | `memory: 500Mi` | `memory: 500Mi` |
 | `collectors.deploymentConfigurationReloaderContainerResources` | cluster-metrics-collector configuration reloader | `memory: 12Mi` | `memory: 24Mi` |
+| `collectors.signalControlCollectorContainerResources` | SignalControl collector container | `memory: 1Gi` | `memory: 1Gi` |
+| `collectors.signalControlCollectorConfigurationReloaderContainerResources` | SignalControl collector configuration reloader | `memory: 12Mi` | `memory: 24Mi` |
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
+| `agent0Connector.containerResources` | agent0-connector container | `memory: 32Mi` | `memory: 256Mi` |
+
+The agent0-connector container runs `kubectl` as a child process, whose memory counts towards the container's memory
+limit, but is not governed by `GOMEMLIMIT`. Its `gomemlimit` default is therefore about 60% of the memory limit,
+instead of the 80% recommended for the other containers.
+
+The SignalControl collector only exists when SignalControl Edge is enabled. Unlike the other two collectors it
+processes the Dash0-bound telemetry of the whole cluster, so its memory requirement scales with total telemetry volume
+rather than with per-node volume. Its replica count is configured separately via
+`operator.collectors.signalControlCollectorReplicas` (default `2`).
+
+Its replicas are distributed as evenly as possible over the cluster's availability zones and nodes: the operator sets
+`topologySpreadConstraints` with `maxSkew: 1` on `topology.kubernetes.io/zone` and on `kubernetes.io/hostname`. Since
+`maxSkew` bounds the difference between the per-zone pod counts rather than the count itself, more replicas than zones
+simply means several replicas per zone, spread evenly; fewer replicas than zones means each replica gets its own zone.
+Both constraints use `whenUnsatisfiable: ScheduleAnyway`, so they are a scheduling preference and never leave a
+replica unschedulable — in particular on clusters whose nodes carry no `topology.kubernetes.io/zone` label. The
+operator also creates a `PodDisruptionBudget` with `maxUnavailable: 1` for this collector, so a node drain or cluster
+upgrade cannot take down more than one replica at a time.
+
+**Set the replica count to at least the number of availability zones that run monitored workloads.** The SignalControl
+collector's service is configured for zone-aware routing (see
+[SignalControl Edge](signal-control-edge.md#zone-aware-routing)), which only keeps traffic inside a zone that actually
+has a SignalControl collector pod. With fewer replicas than zones, the uncovered zones keep sending across zone
+boundaries. The operator logs a warning when it detects this.
 
 The settings for `managerContainerResources`, `collectors.daemonSetCollectorContainerResources` and
 `collectors.deploymentCollectorContainerResources` are the ones that are most likely to require tuning.
@@ -319,7 +347,10 @@ operator:
 
 In the same fashion, tolerations can also be configured for the Dash0 operator manager (Helm value
 `operator.tolerations`), the OpenTelemetry collector deployment for collecting cluster metrics
-(Helm value `operator.collectors.deploymentTolerations`) and the OpenTelemetry target-allocator deployment (Helm value `operator.targetAllocator.tolerations`).
+(Helm value `operator.collectors.deploymentTolerations`), the SignalControl collector deployment
+(Helm value `operator.collectors.signalControlCollectorTolerations`), the OpenTelemetry target-allocator deployment
+(Helm value `operator.targetAllocator.tolerations`) and the agent0-connector deployment (Helm value
+`operator.agent0Connector.tolerations`).
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or similar to take effect.
 
@@ -350,7 +381,8 @@ spec:
 
 ### Custom Node Affinity
 
-The node affinity for all pods deployed by the operator can be customized by setting the `nodeAffinity` field for the respective component.
+The node affinity for all pods deployed by the operator can be customized by setting the `nodeAffinity` field for the
+respective component.
 
 ```yaml
 operator:
@@ -365,8 +397,12 @@ operator:
   collectors:
     daemonSetNodeAffinity: <custom_node_affinity>
     deploymentNodeAffinity: <custom_node_affinity>
+    signalControlCollectorNodeAffinity: <custom_node_affinity>
 
   targetAllocator:
+    nodeAffinity: <custom_node_affinity>
+
+  agent0Connector:
     nodeAffinity: <custom_node_affinity>
 ```
 
@@ -398,6 +434,16 @@ operator:
     deploymentPodAnnotations:
       my-pod-annotation: my-value
 
+    # labels/annotations for the SignalControl collector deployment
+    signalControlCollectorLabels:
+      my-label: my-value
+    signalControlCollectorAnnotations:
+      my-annotation: my-value
+    signalControlCollectorPodLabels:
+      my-pod-label: my-value
+    signalControlCollectorPodAnnotations:
+      my-pod-annotation: my-value
+
   targetAllocator:
     # labels/annotations for the target-allocator deployment
     labels:
@@ -422,12 +468,20 @@ operator:
       my-pod-annotation: my-value
 ```
 
+## Configuring Collector Host Ports
+
+The OpenTelemetry collector DaemonSet managed by the operator uses the host ports 40317 for gRPC and 40318 for HTTP,
+for node-local traffic.
+Different host ports can be configured via Helm by setting `operator.collectors.otlpGrpcHostPort` and
+`operator.collectors.otlpHttpHostPort`.
+
 ## Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)
 
 Pod-level [sysctls](https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/) can be applied to the
-collector pods via `operator.collectors.daemonSetSysctls` (for the daemonset collector) and
-`operator.collectors.deploymentSysctls` (for the cluster-metrics-collector deployment).
-Both default to being unset, so no sysctls are applied unless you configure them.
+collector pods via `operator.collectors.daemonSetSysctls` (for the daemonset collector),
+`operator.collectors.deploymentSysctls` (for the cluster-metrics-collector deployment) and
+`operator.collectors.signalControlCollectorSysctls` (for the SignalControl collector deployment).
+All three default to being unset, so no sysctls are applied unless you configure them.
 
 The primary use case is forcing TCP keepalive on the collector's network namespace.
 On some environments the connection-tracking layer reaps idle established TCP connections after a relatively short

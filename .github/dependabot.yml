@@ -3,7 +3,8 @@ updates:
 
   # Maintenance note: every update block below sets its own commit-message.prefix explicitly, new blocks should do the
   # same. When a block leaves the prefix unset, Dependabot infers a commit message prefix, and this is not always
-  # reliable.
+  # reliable. The same applies to cooldown.default-days: set it explicitly instead of relying on Dependabot's implicit
+  # default.
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -12,6 +13,8 @@ updates:
       day: "tuesday"
       time: "07:00"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     commit-message:
       prefix: "ci(deps)"
 
@@ -28,6 +31,8 @@ updates:
       day: "tuesday"
       time: "07:05"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -43,6 +48,8 @@ updates:
       interval: "daily"
       time: "07:10"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
 
@@ -51,25 +58,10 @@ updates:
     directory: "images/instrumentation/jvm/"
     schedule:
       interval: "daily"
+    cooldown:
+      default-days: 4
     commit-message:
       prefix: "chore(deps)"
-
-  # OpenTelemetry Distro for Python
-  - package-ecosystem: "pip"
-    directory: "images/instrumentation/python/"
-    schedule:
-      interval: "daily"
-      time: "09:15"
-      timezone: "Europe/Berlin"
-    commit-message:
-      prefix: "chore(deps)"
-    # The OpenTelemetry Python packages are pinned in lockstep (the 0.x beta instrumentation packages together with
-    # the matching 1.x stable exporter). Group them into a single pull request so they are always updated together;
-    # updating them individually would break the lockstep and likely fail pip's dependency resolution.
-    groups:
-      all:
-        patterns:
-          - "*"
 
   # Docker
   - package-ecosystem: "docker"
@@ -87,6 +79,8 @@ updates:
       interval: "daily"
       time: "07:15"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -96,9 +90,10 @@ updates:
     # that update dependencies to pre-release versions.
     # The rules need to be manually disabled when a new stable minor version is available.
     ignore:
-      # enable the following `ignore` to prevent upgrades to golang pre-releases
+      # Go updates are handled by .github/workflows/update-go-versions.yaml, which updates the golang base images
+      # and the `go` directive of all go.mod files together. Dependabot would update them in separate pull requests,
+      # which breaks `make go-version-check`.
       - dependency-name: "golang"
-        update-types: ["version-update:semver-minor"]
       # enable the following `ignore` to prevent upgrades to python pre-releases
       - dependency-name: "python"
         update-types: ["version-update:semver-minor"]
@@ -118,14 +113,16 @@ updates:
       interval: "daily"
       time: "07:18"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       development-dependencies:
         dependency-type: "development"
     commit-message:
       prefix: "test"
     ignore:
+      # Go updates are handled by .github/workflows/update-go-versions.yaml, see above.
       - dependency-name: "golang"
-        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "helm"
     directories:
@@ -135,6 +132,8 @@ updates:
       interval: "daily"
       time: "09:00"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       development-dependencies:
         dependency-type: "development"
@@ -154,16 +153,17 @@ updates:
       day: "tuesday"
       time: "07:15"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       all:
         patterns:
           - "*"
     commit-message:
       prefix: "test"
-    # enable the following `ignore` to prevent upgrades to RCs
     ignore:
+      # Go updates are handled by .github/workflows/update-go-versions.yaml, see above.
       - dependency-name: "golang"
-        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "maven"
     directory: "test-resources/jvm/spring-boot"
@@ -172,6 +172,8 @@ updates:
       day: "tuesday"
       time: "07:25"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 4
     groups:
       all:
         patterns:
@@ -187,6 +189,8 @@ updates:
       day: "tuesday"
       time: "07:30"
       timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 7
     groups:
       all:
         patterns:

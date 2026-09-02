@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
@@ -40,6 +41,16 @@ func (r *InstrumentAtStartupRunnable) NeedLeaderElection() bool {
 func (r *InstrumentAtStartupRunnable) Start(ctx context.Context) error {
 	logger := logd.FromContext(ctx)
 	r.instrumenter.Client = r.manager.GetClient()
+	logger.Info("waiting for instrumentation delivery resolution before instrumenting workloads at startup")
+	// The minimum kubelet version detection runs concurrently with the operator manager startup, so it can still be in
+	// progress here. Instrumenting workloads now would pin them to the init container fallback, since they are not
+	// re-instrumented when the resolved delivery mechanism changes later.
+	resolvedInstrumentationDelivery := r.instrumenter.ClusterInstrumentationConfig.
+		WaitForInstrumentationDeliveryAutoToBeResolved(ctx, cluster.InstrumentAtStartUpDeliverySettleTimeout)
+	logger.Info(
+		"instrumenting existing workloads at startup",
+		"resolved instrumentation delivery", resolvedInstrumentationDelivery,
+	)
 	r.instrumenter.InstrumentAtStartup(ctx, logger)
 	return nil
 }

@@ -5,9 +5,11 @@ package scresources
 
 import (
 	"fmt"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,6 +59,7 @@ func assembleDesiredState(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
 	isGkeAutopilot bool,
 	forDeletion bool,
@@ -75,13 +78,15 @@ func assembleDesiredState(
 	if forDeletion || edgeProxyEnabled {
 		if edgeProxyEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, extraConfig, isGkeAutopilot, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, isGkeAutopilot, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
+				addCommonMetadata(assembleEdgeProxyPodDisruptionBudget(operatorNamespace, namePrefix)),
 			)
 		} else {
 			desiredState = append(desiredState,
 				addCommonMetadata(assembleEdgeProxyDeploymentForDeletion(operatorNamespace, namePrefix)),
 				addCommonMetadata(assembleEdgeProxyServiceForDeletion(operatorNamespace, namePrefix)),
+				addCommonMetadata(assembleEdgeProxyPodDisruptionBudgetForDeletion(operatorNamespace, namePrefix)),
 			)
 		}
 	}
@@ -93,7 +98,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", util.ExtraConfig{}, false, true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, util.ExtraConfig{}, false, true, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -104,6 +109,7 @@ func assembleEdgeProxyDeployment(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
 	isGkeAutopilot bool,
 	logger logd.Logger,
@@ -114,13 +120,29 @@ func assembleEdgeProxyDeployment(
 		replicas = 1
 	}
 
-	dmEndpoint, authorization, dataset := deriveUpstreamConfig(operatorConfig)
+	dmEndpoint, authorization, dataset, apiEndpoint := deriveUpstreamConfig(operatorConfig)
 	if signalControlResource.Spec.Sampling.DecisionMakerEndpoint != "" {
 		dmEndpoint = signalControlResource.Spec.Sampling.DecisionMakerEndpoint
 	}
-	if dmEndpoint == "" {
+	if signalControlResource.Spec.ControlPlaneApiEndpoint != "" {
+		apiEndpoint = strings.TrimSuffix(signalControlResource.Spec.ControlPlaneApiEndpoint, "/")
+	}
+	samplingEnabled := pointers.ReadBoolPointerWithDefault(signalControlResource.Spec.Sampling.Enabled, true)
+	// Run the proxy settings-only (no decision-maker upstream) when tail sampling is off and the settings feed can
+	// carry the proxy on its own; otherwise keep tail sampling on so the proxy is never left with both pipelines off.
+	tailSamplingEnabled := samplingEnabled || apiEndpoint == ""
+	if tailSamplingEnabled && dmEndpoint == "" {
 		logger.Warn("No Decision Maker endpoint could be derived for the Edge Proxy. The Edge Proxy " +
-			"will not be able to forward sampling decisions to the Decision Maker.")
+			"will not be able to relay sampling decisions from the Decision Maker to the collectors.")
+	}
+	if apiEndpoint == "" {
+		logger.Warn("No Dash0 API endpoint could be derived for the Edge Proxy. The Edge Proxy will not be able " +
+			"to serve the organization settings feed (spam filters, signal-to-metrics and sampling rules) to the " +
+			"collectors.")
+	}
+	fallbackMinConnectedRatio := "1.0"
+	if signalControlResource.Spec.EdgeProxy.FallbackMinConnectedRatio != nil {
+		fallbackMinConnectedRatio = *signalControlResource.Spec.EdgeProxy.FallbackMinConnectedRatio
 	}
 	authTokenEnvVar := assembleAuthTokenEnvVar(authorization, logger)
 
@@ -157,12 +179,10 @@ func assembleEdgeProxyDeployment(
 			},
 			authTokenEnvVar,
 			{
-				Name:  "UPSTREAM_ADDRESS",
-				Value: dmEndpoint,
-			},
-			{
-				Name:  "UPSTREAM_HEADERS",
-				Value: fmt.Sprintf("authorization=Bearer $(%s),Dash0-Dataset=%s", edgeProxyAuthTokenEnvVarName, dataset),
+				// Ratio of upstream Decision Maker connections that must stay up before collectors enter fallback.
+				// The CRD default 1.0 fails loud on any loss; see EdgeProxyConfig.FallbackMinConnectedRatio.
+				Name:  "FALLBACKMINCONNECTEDRATIO",
+				Value: fallbackMinConnectedRatio,
 			},
 			{
 				Name:  "LISTENADDRESS",
@@ -183,6 +203,7 @@ func assembleEdgeProxyDeployment(
 			},
 			InitialDelaySeconds: 5,
 			PeriodSeconds:       10,
+			FailureThreshold:    3,
 		},
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -192,12 +213,41 @@ func assembleEdgeProxyDeployment(
 				},
 			},
 			InitialDelaySeconds: 5,
-			PeriodSeconds:       10,
+			PeriodSeconds:       5,
+			FailureThreshold:    3,
+		},
+		Lifecycle: &corev1.Lifecycle{
+			PreStop: &corev1.LifecycleHandler{
+				// Leave the Service endpoints before the process starts shutting down, so reconnecting collectors
+				// are not sent straight back to a terminating pod.
+				Exec: &corev1.ExecAction{Command: []string{"/bin/sleep", "15"}},
+			},
 		},
 	}
 
 	if edgeProxyImagePullPolicy != "" {
 		edgeProxyContainer.ImagePullPolicy = edgeProxyImagePullPolicy
+	}
+
+	if tailSamplingEnabled {
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env,
+			corev1.EnvVar{
+				Name:  "UPSTREAM_ADDRESS",
+				Value: dmEndpoint,
+			},
+			corev1.EnvVar{
+				Name:  "UPSTREAM_HEADERS",
+				Value: fmt.Sprintf("authorization=Bearer $(%s),Dash0-Dataset=%s", edgeProxyAuthTokenEnvVarName, dataset),
+			},
+		)
+	} else {
+		// Settings-only proxy: no decision-maker upstream. Reached only when tail sampling is disabled and the
+		// settings feed keeps the proxy useful; UPSTREAM_ADDRESS is omitted (the component requires it only when
+		// tail sampling is enabled).
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+			Name:  "UPSTREAM_TAILSAMPLING_ENABLED",
+			Value: "false",
+		})
 	}
 
 	spec := signalControlResource.Spec
@@ -219,11 +269,39 @@ func assembleEdgeProxyDeployment(
 			Value: "true",
 		})
 	}
+	if apiEndpoint != "" {
+		edgeProxyContainer.Env = append(edgeProxyContainer.Env,
+			corev1.EnvVar{
+				Name:  "UPSTREAM_EDGESETTINGS_ENABLED",
+				Value: "true",
+			},
+			corev1.EnvVar{
+				Name:  "UPSTREAM_EDGESETTINGS_ADDRESS",
+				Value: apiEndpoint,
+			},
+			corev1.EnvVar{
+				// No dataset header: each rule carries its own dataset, so the poller fetches the whole
+				// organization.
+				Name:  "UPSTREAM_EDGESETTINGS_HEADERS",
+				Value: fmt.Sprintf("authorization=Bearer $(%s)", edgeProxyAuthTokenEnvVarName),
+			},
+		)
+		if spec.EdgeProxy.SettingsRefreshInterval != nil {
+			edgeProxyContainer.Env = append(edgeProxyContainer.Env, corev1.EnvVar{
+				Name:  "UPSTREAM_EDGESETTINGS_REFRESHINTERVAL",
+				Value: spec.EdgeProxy.SettingsRefreshInterval.Duration.String(),
+			})
+		}
+	}
 	if operatorConfig != nil && pointers.ReadBoolPointerWithDefault(operatorConfig.Spec.SelfMonitoring.Enabled, true) {
-		edgeProxyContainer.Env = append(edgeProxyContainer.Env, assembleSelfMonitoringEnvVars(operatorVersion)...)
+		edgeProxyContainer.Env = append(
+			edgeProxyContainer.Env,
+			assembleSelfMonitoringEnvVars(operatorVersion, otlpGrpcHostPort)...,
+		)
 	}
 	podSpec := corev1.PodSpec{
-		AutomountServiceAccountToken: new(false),
+		AutomountServiceAccountToken:  new(false),
+		TerminationGracePeriodSeconds: new(int64(30)),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: new(true),
 			RunAsUser:    new(edgeProxyUserID),
@@ -231,7 +309,8 @@ func assembleEdgeProxyDeployment(
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Tolerations: extraConfig.EdgeProxyTolerations,
+		TopologySpreadConstraints: edgeProxyTopologySpreadConstraints(),
+		Tolerations:               extraConfig.EdgeProxyTolerations,
 		Containers: []corev1.Container{
 			edgeProxyContainer,
 		},
@@ -248,14 +327,27 @@ func assembleEdgeProxyDeployment(
 	}
 
 	deployment := assembleEdgeProxyDeploymentForDeletion(operatorNamespace, namePrefix)
+	deployment.Labels = util.MergeMaps(edgeProxyLabels(), extraConfig.EdgeProxyLabels)
+	deployment.Annotations = util.MergeMaps(nil, extraConfig.EdgeProxyAnnotations)
 	deployment.Spec = appsv1.DeploymentSpec{
-		Replicas: &replicas,
+		Replicas:             &replicas,
+		RevisionHistoryLimit: new(int32(3)),
 		Selector: &metav1.LabelSelector{
 			MatchLabels: edgeProxyMatchLabels,
 		},
+		Strategy: appsv1.DeploymentStrategy{
+			Type: appsv1.RollingUpdateDeploymentStrategyType,
+			// Never drop below the desired replica count during a rollout; add at most one pod at a time. A single
+			// unavailable Edge Proxy pod takes down the decision stream of every collector pinned to it.
+			RollingUpdate: &appsv1.RollingUpdateDeployment{
+				MaxUnavailable: new(intstr.FromInt32(0)),
+				MaxSurge:       new(intstr.FromInt32(1)),
+			},
+		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: templateLabels,
+				Labels:      util.MergeMaps(templateLabels, extraConfig.EdgeProxyPodLabels),
+				Annotations: util.MergeMaps(nil, extraConfig.EdgeProxyPodAnnotations),
 			},
 			Spec: podSpec,
 		},
@@ -266,7 +358,8 @@ func assembleEdgeProxyDeployment(
 // assembleSelfMonitoringEnvVars returns env vars that point the Edge Proxy's OTel SDK exporter at the node-local daemonset
 // collector's OTLP gRPC host-port. DASH0_NODE_IP is resolved via the downward API (status.hostIP) and must be defined
 // before OTEL_EXPORTER_OTLP_ENDPOINT, which references it.
-func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
+func assembleSelfMonitoringEnvVars(operatorVersion string, otlpGrpcHostPort int32) []corev1.EnvVar {
+	otlpGrpcHostPort = otelcolresources.ResolveOtlpGrpcHostPort(otlpGrpcHostPort)
 	return []corev1.EnvVar{
 		{
 			Name: util.EnvVarDash0NodeIp,
@@ -280,7 +373,7 @@ func assembleSelfMonitoringEnvVars(operatorVersion string) []corev1.EnvVar {
 			// http:// scheme signals plaintext to the OTel Go SDK's gRPC exporter; dns:// or a bare endpoint would
 			// default to TLS, which the node-local daemonset collector does not terminate.
 			Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-			Value: fmt.Sprintf("http://$(%s):%d", util.EnvVarDash0NodeIp, otelcolresources.OtlpGrpcHostPort),
+			Value: fmt.Sprintf("http://$(%s):%d", util.EnvVarDash0NodeIp, otlpGrpcHostPort),
 		},
 		{
 			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
@@ -337,10 +430,11 @@ func assembleEdgeProxyService(operatorNamespace string, namePrefix string) *core
 		Selector: edgeProxyMatchLabels,
 		Ports: []corev1.ServicePort{
 			{
-				Name:       "grpc",
-				Port:       edgeProxyGrpcPort,
-				TargetPort: intstr.FromInt32(edgeProxyGrpcPort),
-				Protocol:   corev1.ProtocolTCP,
+				Name:        "grpc",
+				Port:        edgeProxyGrpcPort,
+				TargetPort:  intstr.FromInt32(edgeProxyGrpcPort),
+				Protocol:    corev1.ProtocolTCP,
+				AppProtocol: new("grpc"),
 			},
 		},
 	}
@@ -360,23 +454,75 @@ func assembleEdgeProxyServiceForDeletion(operatorNamespace string, namePrefix st
 	}
 }
 
+// assembleEdgeProxyPodDisruptionBudget keeps voluntary disruptions (node drains, cluster upgrades) from taking down
+// more than one Edge Proxy replica at a time. Every removed pod forces its pinned collectors to reconnect to another
+// pod, so bounding concurrent disruptions is what keeps the decision stream available while a node is drained.
+func assembleEdgeProxyPodDisruptionBudget(operatorNamespace string, namePrefix string) *policyv1.PodDisruptionBudget {
+	pdb := assembleEdgeProxyPodDisruptionBudgetForDeletion(operatorNamespace, namePrefix)
+	pdb.Spec = policyv1.PodDisruptionBudgetSpec{
+		// maxUnavailable, never minAvailable: minAvailable on a single-replica Deployment blocks node drains
+		// permanently.
+		MaxUnavailable: new(intstr.FromInt32(1)),
+		Selector:       &metav1.LabelSelector{MatchLabels: edgeProxyMatchLabels},
+	}
+	return pdb
+}
+
+func assembleEdgeProxyPodDisruptionBudgetForDeletion(operatorNamespace string, namePrefix string) *policyv1.PodDisruptionBudget {
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "policy/v1",
+			Kind:       "PodDisruptionBudget",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      PodDisruptionBudgetName(namePrefix),
+			Namespace: operatorNamespace,
+		},
+	}
+}
+
+// edgeProxyTopologySpreadConstraints spreads the Edge Proxy replicas across zones and nodes, so that draining a single
+// node or zone does not take down the decision stream of every collector pinned to the Edge Proxy at once. Both
+// constraints are advisory (ScheduleAnyway) so a cluster whose nodes carry neither topology label can still schedule;
+// matchLabelKeys scopes them to one ReplicaSet so a rolling update is not blocked by the outgoing pods.
+func edgeProxyTopologySpreadConstraints() []corev1.TopologySpreadConstraint {
+	labelSelector := &metav1.LabelSelector{MatchLabels: edgeProxyMatchLabels}
+	return []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           1,
+			TopologyKey:       corev1.LabelTopologyZone,
+			WhenUnsatisfiable: corev1.ScheduleAnyway,
+			LabelSelector:     labelSelector,
+			MatchLabelKeys:    []string{appsv1.DefaultDeploymentUniqueLabelKey},
+		},
+		{
+			MaxSkew:           1,
+			TopologyKey:       corev1.LabelHostname,
+			WhenUnsatisfiable: corev1.ScheduleAnyway,
+			LabelSelector:     labelSelector,
+			MatchLabelKeys:    []string{appsv1.DefaultDeploymentUniqueLabelKey},
+		},
+	}
+}
+
 func deriveUpstreamConfig(
 	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
-) (string, *dash0common.Authorization, string) {
+) (string, *dash0common.Authorization, string, string) {
 	if operatorConfig == nil {
-		return "", nil, defaultDataset
+		return "", nil, defaultDataset, ""
 	}
 	for _, export := range operatorConfig.EffectiveExports() {
 		if export.Dash0 != nil {
 			endpoint := util.DeriveDecisionMakerEndpoint(export.Dash0.Endpoint)
+			apiEndpoint := strings.TrimSuffix(export.Dash0.ApiEndpoint, "/")
 			dataset := export.Dash0.Dataset
 			if dataset == "" {
 				dataset = defaultDataset
 			}
-			return endpoint, &export.Dash0.Authorization, dataset
+			return endpoint, &export.Dash0.Authorization, dataset, apiEndpoint
 		}
 	}
-	return "", nil, defaultDataset
+	return "", nil, defaultDataset, ""
 }
 
 func DeploymentName(namePrefix string) string {
@@ -384,6 +530,10 @@ func DeploymentName(namePrefix string) string {
 }
 
 func ServiceName(namePrefix string) string {
+	return namePrefix + "-edge-proxy"
+}
+
+func PodDisruptionBudgetName(namePrefix string) string {
 	return namePrefix + "-edge-proxy"
 }
 

@@ -12,9 +12,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -60,8 +60,9 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				PossibleCollectorUrlsTest,
 				OTelCollectorNodeLocalBaseUrlTest,
 				util.ExtraConfigDefaults,
-				cluster.ResolvedInstrumentationDeliveryInitContainer,
+				dash0v1alpha1.InstrumentationDeliveryInitContainer,
 				nil,
+				false,
 				false,
 				false,
 			),
@@ -802,9 +803,10 @@ var _ = Describe("The instrumenter", Ordered, func() {
 					PossibleCollectorUrlsTest,
 					OTelCollectorNodeLocalBaseUrlTest,
 					util.ExtraConfigDefaults,
-					cluster.ResolvedInstrumentationDeliveryInitContainer,
+					dash0v1alpha1.InstrumentationDeliveryInitContainer,
 					nil,
 					true,
+					false,
 					false,
 				),
 			)

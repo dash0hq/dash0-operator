@@ -1,0 +1,8 @@
+# Note: All test cases share the same Python installation, i.e.
+# images/instrumentation/test/python-dependency-conflict/test-cases/xxx/requirements.txt and
+# images/instrumentation/test/python-dependency-conflict/test-cases/yyy/requirements.txt are not isolated from each
+# other. Please keep that in mind when designing test cases.
+
+# Deliberately add a requirement that conflicts with the Dash0 OpenTelemetry Python distro, to verify this case is
+# detected correctly and the distro deactivates itself instead of running with an incompatible dependency.
+opentelemetry-api==1.40.0

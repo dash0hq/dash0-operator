@@ -140,6 +140,35 @@ func QueueFailedUninstrumentationEvent(eventRecorder events.EventRecorder, resou
 	)
 }
 
+// QueueAgent0ConnectorDeployedEvent queues the event reporting that the operator has created or updated the
+// agent0-connector resources. It should only be queued when the agent0-connector was not deployed before, see
+// Dash0OperatorConfiguration#SetAgent0ConnectorStatus.
+func QueueAgent0ConnectorDeployedEvent(eventRecorder events.EventRecorder, resource runtime.Object) {
+	eventRecorder.Eventf(
+		resource,
+		nil,
+		corev1.EventTypeNormal,
+		string(ReasonAgent0ConnectorDeployed),
+		string(ActionAgent0ConnectorDeploy),
+		"The operator has deployed the agent0-connector.",
+	)
+}
+
+// QueueAgent0ConnectorNotDeployedEvent queues the event reporting that the operator could not create or update the
+// agent0-connector resources. It should only be queued when the outcome changed, see
+// Dash0OperatorConfiguration#SetAgent0ConnectorStatus.
+func QueueAgent0ConnectorNotDeployedEvent(eventRecorder events.EventRecorder, resource runtime.Object, message string) {
+	eventRecorder.Eventf(
+		resource,
+		nil,
+		corev1.EventTypeWarning,
+		string(ReasonAgent0ConnectorNotDeployed),
+		string(ActionAgent0ConnectorDeploy),
+		"The operator has not deployed the agent0-connector: %s",
+		message,
+	)
+}
+
 func stringifyContainerInstrumentationIssues(instrumentationIssuesPerContainer map[string][]string) string {
 	var sb strings.Builder
 	for idx, containerName := range slices.Sorted(maps.Keys(instrumentationIssuesPerContainer)) {

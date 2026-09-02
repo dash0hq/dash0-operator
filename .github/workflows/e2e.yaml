@@ -69,7 +69,6 @@ jobs:
       - name: Create volume directories and kind config
         run: |
           # Create directories in /tmp for the kind cluster volumes
-          mkdir -p /tmp/filelog-offsets
           mkdir -p /tmp/offset-storage
           mkdir -p /tmp/kind-registry
 
@@ -87,8 +86,10 @@ jobs:
                 password = "${{ secrets.GITHUB_TOKEN }}"
           nodes:
             - role: control-plane
+              labels:
+                topology.kubernetes.io/zone: zone-a
               extraMounts:
-                - hostPath: /tmp/filelog-offsets
+                - hostPath: /tmp/offset-storage
                   containerPath: /offset-storage
             - role: worker
               extraPortMappings:
@@ -100,10 +101,13 @@ jobs:
                   protocol: TCP
               labels:
                 nginx-ingress: "true"
+                topology.kubernetes.io/zone: zone-a
               extraMounts:
                 - hostPath: /tmp/offset-storage
                   containerPath: /offset-storage
             - role: worker
+              labels:
+                topology.kubernetes.io/zone: zone-b
               extraMounts:
                 - hostPath: /tmp/offset-storage
                   containerPath: /offset-storage
@@ -123,6 +127,12 @@ jobs:
           echo ""
           echo "All pods:"
           kubectl get pods -A
+
+      # Workaround for resourcedetection bug in the gcp detector that makes the collector slow to become ready.
+      # https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/issues/1026
+      - name: Make the instance metadata endpoint unreachable
+        run: |
+          ./.github/workflows/e2e/add-instance-metadata-unreachable-route.sh
 
       - name: Verify registry is running
         run: |

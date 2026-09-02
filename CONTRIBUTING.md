@@ -243,6 +243,10 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     `test-resources/customresources/dash0signaltometrics` to deploy a signal-to-metrics resource that will be
     synchronized to Dash0 via the Dash0 API. E.g. `DEPLOY_SIGNAL_TO_METRICS=spans` will deploy `spans.yaml`.
     This defaults to being empty, which means no resource will be deployed.
+    * `ENABLE_PYTHON_AUTO_INSTRUMENTATION`: Set this to "true" to enable Python auto-instrumentation. This corresponds
+      to the Helm setting `operator.instrumentation.enablePythonAutoInstrumentation=true`. This defaults to "false".
+    * `ENABLE_RUBY_AUTO_INSTRUMENTATION`: Set this to "true" to enable Ruby auto-instrumentation. This corresponds to
+      the Helm setting `operator.instrumentation.enableRubyAutoInstrumentation=true`. This defaults to "false".
     * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
       based storage. Possible values:
         * `FILELOG_OFFSETS_PVC=kind`: deploy a PersistentVolume and PersistentVolumeClaim suitable for kind clusters
@@ -300,6 +304,12 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `SYNCHRONIZE_PROMETHEUS_RULES`: Set this to "false" to disable synchronizing Prometheus rule resources via the
       Dash0 API.
       This defaults to "true".
+    * `TA_ALLOW_INSECURE_AUTH_SECRETS`: Set this to "true" to have the target allocator serve the credentials for
+      metrics endpoints which require authorization over plain HTTP, instead of over mTLS.
+      This defaults to "false".
+    * `TA_MTLS_ENABLED`: Set this to "true" to enable mTLS for the communication between the target allocator and the
+      collectors. Requires `USE_CERT_MANAGER=true`, since the certificates are provisioned via cert-manager.
+      This defaults to "false", except in test scenario 06, where it defaults to "true".
     * `TELEMETRY_COLLECTION_ENABLED`: Set this to "false" to instruct the operator to not deploy OpenTelemetry
       collectors and the target allocator.
       This defaults to "true".

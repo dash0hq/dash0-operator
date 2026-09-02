@@ -423,13 +423,53 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.TargetAllocatorMtlsEnabled).To(BeFalse())
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal(""))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal(""))
+					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeFalse())
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits).To(BeNil())
 					Expect(extraConfig.TargetAllocatorContainerResources.Requests).To(BeNil())
 					Expect(extraConfig.TargetAllocatorContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.TargetAllocatorTolerations).To(HaveLen(0))
 					Expect(extraConfig.TargetAllocatorNodeAffinity).To(BeNil())
 
+					Expect(extraConfig.Agent0ConnectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
+					Expect(extraConfig.Agent0ConnectorContainerResources.Limits.Memory().String()).To(Equal("256Mi"))
+					Expect(extraConfig.Agent0ConnectorContainerResources.GoMemLimit).To(Equal("150MiB"))
+					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
+					Expect(extraConfig.Agent0ConnectorContainerResources.Requests.Memory().String()).To(Equal("64Mi"))
+					Expect(extraConfig.Agent0ConnectorClusterRoleRules).To(BeNil())
+
 					Expect(extraConfig.MonitoringTemplateRaw).To(BeNil())
+				})
+
+				It("should parse the custom cluster role rules for the agent0-connector", func() {
+					_, err := tmpFile.WriteString(`
+agent0ConnectorClusterRoleRules:
+- apiGroups:
+  - ""
+  - apps
+  resources:
+  - pods
+  - deployments
+  verbs:
+  - get
+  - list
+- nonResourceURLs:
+  - '*'
+  verbs:
+  - get
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.Agent0ConnectorClusterRoleRules).To(HaveLen(2))
+					firstRule := extraConfig.Agent0ConnectorClusterRoleRules[0]
+					Expect(firstRule.APIGroups).To(ConsistOf("", "apps"))
+					Expect(firstRule.Resources).To(ConsistOf("pods", "deployments"))
+					Expect(firstRule.Verbs).To(ConsistOf("get", "list"))
+					secondRule := extraConfig.Agent0ConnectorClusterRoleRules[1]
+					Expect(secondRule.NonResourceURLs).To(ConsistOf("*"))
+					Expect(secondRule.Verbs).To(ConsistOf("get"))
 				})
 
 				It("should parse the config map content with all values set", func() {
@@ -575,6 +615,7 @@ deploymentNodeAffinity:
 targetAllocatorMtlsEnabled: true
 targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
 targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
+targetAllocatorAllowInsecureAuthSecrets: true
 targetAllocatorContainerResources:
   limits:
     cpu: 500m
@@ -755,6 +796,7 @@ monitoringTemplate:
 					Expect(extraConfig.TargetAllocatorMtlsEnabled).To(BeTrue())
 					Expect(extraConfig.TargetAllocatorMtlsServerCertSecretName).To(Equal("ta-mtls-server-cert"))
 					Expect(extraConfig.TargetAllocatorMtlsClientCertSecretName).To(Equal("ta-mtls-client-cert"))
+					Expect(extraConfig.TargetAllocatorAllowInsecureAuthSecrets).To(BeTrue())
 
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Cpu().String()).To(Equal("500m"))
 					Expect(extraConfig.TargetAllocatorContainerResources.Limits.Memory().String()).To(Equal("806Mi"))

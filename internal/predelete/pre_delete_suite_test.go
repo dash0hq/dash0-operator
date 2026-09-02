@@ -12,6 +12,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,7 +29,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -42,12 +42,13 @@ const (
 )
 
 var (
-	k8sClient        client.Client
-	clientset        *kubernetes.Clientset
-	preDeleteHandler *OperatorPreDeleteHandler
-	reconciler       *controller.MonitoringReconciler
-	cfg              *rest.Config
-	testEnv          *envtest.Environment
+	k8sClient          client.Client
+	clientset          *kubernetes.Clientset
+	nodeMetadataClient metadata.Interface
+	preDeleteHandler   *OperatorPreDeleteHandler
+	reconciler         *controller.MonitoringReconciler
+	cfg                *rest.Config
+	testEnv            *envtest.Environment
 )
 
 func TestRemoval(t *testing.T) {
@@ -89,6 +90,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(clientset).NotTo(BeNil())
 
+	nodeMetadataClient, err = metadata.NewForConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(nodeMetadataClient).NotTo(BeNil())
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
 	})
@@ -104,8 +109,9 @@ var _ = BeforeSuite(func() {
 			PossibleCollectorUrlsTest,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
-			cluster.ResolvedInstrumentationDeliveryInitContainer,
+			dash0v1alpha1.InstrumentationDeliveryInitContainer,
 			nil,
+			false,
 			false,
 			false,
 		),
@@ -123,7 +129,7 @@ var _ = BeforeSuite(func() {
 	)
 	collectorManager := collectors.NewCollectorManager(
 		k8sClient,
-		clientset,
+		nodeMetadataClient,
 		util.ExtraConfigDefaults,
 		false,
 		false,

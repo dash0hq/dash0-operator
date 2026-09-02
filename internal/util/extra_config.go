@@ -13,6 +13,7 @@ import (
 	"github.com/bep/debounce"
 	"github.com/fsnotify/fsnotify"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 
@@ -74,9 +75,28 @@ type ExtraConfig struct {
 
 	DeploymentProbes CollectorProbes `json:"deploymentProbes"`
 
+	SignalControlCollectorReplicas                                int32                              `json:"signalControlCollectorReplicas,omitempty"`
+	SignalControlCollectorContainerResources                      ResourceRequirementsWithGoMemLimit `json:"signalControlCollectorContainerResources"`
+	SignalControlCollectorConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"signalControlCollectorConfigurationReloaderContainerResources"`
+
+	SignalControlCollectorLabels         map[string]string `json:"signalControlCollectorLabels,omitempty"`
+	SignalControlCollectorAnnotations    map[string]string `json:"signalControlCollectorAnnotations,omitempty"`
+	SignalControlCollectorPodLabels      map[string]string `json:"signalControlCollectorPodLabels,omitempty"`
+	SignalControlCollectorPodAnnotations map[string]string `json:"signalControlCollectorPodAnnotations,omitempty"`
+
+	SignalControlCollectorTolerations  []corev1.Toleration  `json:"signalControlCollectorTolerations,omitempty"`
+	SignalControlCollectorNodeAffinity *corev1.NodeAffinity `json:"signalControlCollectorNodeAffinity,omitempty"`
+
+	SignalControlCollectorSysctls []corev1.Sysctl `json:"signalControlCollectorSysctls,omitempty"`
+
+	SignalControlCollectorPriorityClassName string `json:"signalControlCollectorPriorityClassName,omitempty"`
+
+	SignalControlCollectorProbes CollectorProbes `json:"signalControlCollectorProbes"`
+
 	TargetAllocatorMtlsEnabled              bool                               `json:"targetAllocatorMtlsEnabled,omitempty"`
 	TargetAllocatorMtlsServerCertSecretName string                             `json:"targetAllocatorMtlsServerCertSecretName,omitempty"`
 	TargetAllocatorMtlsClientCertSecretName string                             `json:"targetAllocatorMtlsClientCertSecretName,omitempty"`
+	TargetAllocatorAllowInsecureAuthSecrets bool                               `json:"targetAllocatorAllowInsecureAuthSecrets,omitempty"`
 	TargetAllocatorContainerResources       ResourceRequirementsWithGoMemLimit `json:"targetAllocatorContainerResources"`
 	TargetAllocatorLabels                   map[string]string                  `json:"targetAllocatorLabels,omitempty"`
 	TargetAllocatorAnnotations              map[string]string                  `json:"targetAllocatorAnnotations,omitempty"`
@@ -90,10 +110,20 @@ type ExtraConfig struct {
 	EdgeProxyTolerations        []corev1.Toleration                `json:"edgeProxyTolerations,omitempty"`
 	EdgeProxyNodeAffinity       *corev1.NodeAffinity               `json:"edgeProxyNodeAffinity,omitempty"`
 
-	Agent0ConnectorLabels         map[string]string `json:"agent0ConnectorLabels,omitempty"`
-	Agent0ConnectorAnnotations    map[string]string `json:"agent0ConnectorAnnotations,omitempty"`
-	Agent0ConnectorPodLabels      map[string]string `json:"agent0ConnectorPodLabels,omitempty"`
-	Agent0ConnectorPodAnnotations map[string]string `json:"agent0ConnectorPodAnnotations,omitempty"`
+	EdgeProxyLabels         map[string]string `json:"edgeProxyLabels,omitempty"`
+	EdgeProxyAnnotations    map[string]string `json:"edgeProxyAnnotations,omitempty"`
+	EdgeProxyPodLabels      map[string]string `json:"edgeProxyPodLabels,omitempty"`
+	EdgeProxyPodAnnotations map[string]string `json:"edgeProxyPodAnnotations,omitempty"`
+
+	Agent0ConnectorMaxConcurrentCommands int32                              `json:"agent0ConnectorMaxConcurrentCommands,omitempty"`
+	Agent0ConnectorContainerResources    ResourceRequirementsWithGoMemLimit `json:"agent0ConnectorContainerResources"`
+	Agent0ConnectorClusterRoleRules      []rbacv1.PolicyRule                `json:"agent0ConnectorClusterRoleRules,omitempty"`
+	Agent0ConnectorLabels                map[string]string                  `json:"agent0ConnectorLabels,omitempty"`
+	Agent0ConnectorAnnotations           map[string]string                  `json:"agent0ConnectorAnnotations,omitempty"`
+	Agent0ConnectorPodLabels             map[string]string                  `json:"agent0ConnectorPodLabels,omitempty"`
+	Agent0ConnectorPodAnnotations        map[string]string                  `json:"agent0ConnectorPodAnnotations,omitempty"`
+	Agent0ConnectorTolerations           []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
+	Agent0ConnectorNodeAffinity          *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
 	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
 	// dependencies. We should revisit how to untangle this.
@@ -157,6 +187,35 @@ var (
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
 		},
+		// The Signal Control collector aggregates the Dash0-bound telemetry of the whole cluster (tail-sampling
+		// reservoir, RED metrics, signal-to-metrics), so it needs considerably more memory than the per-node collector.
+		SignalControlCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+			GoMemLimit: "800MiB",
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+		},
+		SignalControlCollectorConfigurationReloaderContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("12Mi"),
+			},
+			GoMemLimit: "8MiB",
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("12Mi"),
+			},
+		},
+		Agent0ConnectorContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("256Mi"),
+			},
+			GoMemLimit: "150MiB",
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("64Mi"),
+			},
+		},
 	}
 )
 
@@ -202,6 +261,18 @@ func readExtraConfigurationFromFile(configurationFile string) (ExtraConfig, erro
 	applyDefaults(
 		&extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
 		&ExtraConfigDefaults.CollectorDeploymentConfigurationReloaderContainerResources,
+	)
+	applyDefaults(
+		&extraConfig.SignalControlCollectorContainerResources,
+		&ExtraConfigDefaults.SignalControlCollectorContainerResources,
+	)
+	applyDefaults(
+		&extraConfig.SignalControlCollectorConfigurationReloaderContainerResources,
+		&ExtraConfigDefaults.SignalControlCollectorConfigurationReloaderContainerResources,
+	)
+	applyDefaults(
+		&extraConfig.Agent0ConnectorContainerResources,
+		&ExtraConfigDefaults.Agent0ConnectorContainerResources,
 	)
 
 	return *extraConfig, nil

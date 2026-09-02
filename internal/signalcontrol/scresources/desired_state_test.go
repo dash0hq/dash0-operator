@@ -4,6 +4,8 @@
 package scresources
 
 import (
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -19,7 +21,8 @@ import (
 )
 
 const (
-	testOperatorVersion = "v1.2.3"
+	testOperatorVersion  = "v1.2.3"
+	testOtlpGrpcHostPort = int32(40317)
 )
 
 var (
@@ -48,11 +51,11 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
-		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion)
+		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion, 40317)
 	})
 
 	It("injects OTel exporter env vars when self-monitoring is explicitly enabled", func() {
@@ -61,11 +64,25 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
-		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion)
+		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion, 40317)
+	})
+
+	It("injects OTel exporter env vars pointing at a custom OTLP gRPC host port", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.SelfMonitoring.Enabled = ptr(true)
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion,
+			int32(4317), util.ExtraConfig{}, false, logd.Discard(),
+		)
+
+		container := dep.Spec.Template.Spec.Containers[0]
+		expectSelfMonitoringEnvVarsPresent(container, testOperatorVersion, 4317)
 	})
 
 	It("does not inject OTel exporter env vars when self-monitoring is explicitly disabled", func() {
@@ -74,7 +91,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -84,7 +101,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 	It("does not inject OTel exporter env vars when operator config is nil", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, nil,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		container := dep.Spec.Template.Spec.Containers[0]
@@ -92,7 +109,7 @@ var _ = Describe("Edge Proxy deployment self-monitoring env vars", func() {
 	})
 })
 
-func expectSelfMonitoringEnvVarsPresent(container corev1.Container, operatorVersion string) {
+func expectSelfMonitoringEnvVarsPresent(container corev1.Container, operatorVersion string, expectedOtlpGrpcHostPort int32) {
 	envByName := map[string]corev1.EnvVar{}
 	for _, e := range container.Env {
 		envByName[e.Name] = e
@@ -103,7 +120,9 @@ func expectSelfMonitoringEnvVarsPresent(container corev1.Container, operatorVers
 	Expect(envByName["DASH0_NODE_IP"].ValueFrom.FieldRef.FieldPath).To(Equal("status.hostIP"))
 
 	Expect(envByName).To(HaveKey("OTEL_EXPORTER_OTLP_ENDPOINT"))
-	Expect(envByName["OTEL_EXPORTER_OTLP_ENDPOINT"].Value).To(Equal("http://$(DASH0_NODE_IP):40317"))
+	Expect(envByName["OTEL_EXPORTER_OTLP_ENDPOINT"].Value).To(Equal(
+		fmt.Sprintf("http://$(DASH0_NODE_IP):%d", expectedOtlpGrpcHostPort),
+	))
 
 	Expect(envByName).To(HaveKey("OTEL_EXPORTER_OTLP_PROTOCOL"))
 	Expect(envByName["OTEL_EXPORTER_OTLP_PROTOCOL"].Value).To(Equal("grpc"))
@@ -155,7 +174,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, extraConfig, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, extraConfig, false, logd.Discard(),
 		)
 
 		podSpec := dep.Spec.Template.Spec
@@ -180,7 +199,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 	It("leaves Affinity unset when EdgeProxyNodeAffinity is nil", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		Expect(dep.Spec.Template.Spec.Affinity).To(BeNil())
@@ -190,7 +209,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 	It("defaults to a single replica when EdgeProxyReplicas is unset", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		Expect(dep.Spec.Replicas).ToNot(BeNil())
@@ -201,7 +220,7 @@ var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
 			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion,
-			util.ExtraConfig{EdgeProxyReplicas: 3}, false, logd.Discard(),
+			testOtlpGrpcHostPort, util.ExtraConfig{EdgeProxyReplicas: 3}, false, logd.Discard(),
 		)
 
 		Expect(dep.Spec.Replicas).ToNot(BeNil())
@@ -213,7 +232,7 @@ var _ = Describe("Edge Proxy deployment GKE Autopilot allowlist label", func() {
 	It("adds the matching-allowlist label to the pod template on GKE Autopilot", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, true, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, true, logd.Discard(),
 		)
 
 		value, ok := dep.Spec.Template.Labels[gkeAutopilotAllowlistLabelKey]
@@ -224,11 +243,98 @@ var _ = Describe("Edge Proxy deployment GKE Autopilot allowlist label", func() {
 	It("does not add the matching-allowlist label when not on GKE Autopilot", func() {
 		dep := assembleEdgeProxyDeployment(
 			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
-			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, util.ExtraConfig{}, false, logd.Discard(),
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
 		)
 
 		_, ok := dep.Spec.Template.Labels[gkeAutopilotAllowlistLabelKey]
 		Expect(ok).To(BeFalse())
+	})
+})
+
+var _ = Describe("Edge Proxy tail-sampling gating", func() {
+	envNames := func(container corev1.Container) map[string]corev1.EnvVar {
+		m := map[string]corev1.EnvVar{}
+		for _, e := range container.Env {
+			m[e.Name] = e
+		}
+		return m
+	}
+
+	It("runs the proxy settings-only when sampling is disabled and an API endpoint is available", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.Export.Dash0.ApiEndpoint = "https://api.dash0.com"
+		sc := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Sampling: dash0v1alpha1.SamplingConfig{Enabled: ptr(false)},
+			},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", sc, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_TAILSAMPLING_ENABLED"))
+		Expect(env["UPSTREAM_TAILSAMPLING_ENABLED"].Value).To(Equal("false"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_ADDRESS"))
+		Expect(env).To(HaveKey("UPSTREAM_EDGESETTINGS_ENABLED"))
+	})
+
+	It("keeps tail sampling on when sampling is enabled", func() {
+		opConfig := operatorConfigWithDash0Export.DeepCopy()
+		opConfig.Spec.Export.Dash0.ApiEndpoint = "https://api.dash0.com"
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, opConfig,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_ADDRESS"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_TAILSAMPLING_ENABLED"))
+	})
+
+	It("keeps tail sampling on when sampling is disabled but no API endpoint is available", func() {
+		sc := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Sampling: dash0v1alpha1.SamplingConfig{Enabled: ptr(false)},
+			},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", sc, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+		)
+
+		env := envNames(dep.Spec.Template.Spec.Containers[0])
+		Expect(env).To(HaveKey("UPSTREAM_ADDRESS"))
+		Expect(env).ToNot(HaveKey("UPSTREAM_TAILSAMPLING_ENABLED"))
+	})
+})
+
+var _ = Describe("Edge Proxy deployment labels and annotations", func() {
+	It("merges labels, annotations, pod labels, and pod annotations from extraConfig", func() {
+		extraConfig := util.ExtraConfig{
+			EdgeProxyLabels:         map[string]string{"team": "obs"},
+			EdgeProxyAnnotations:    map[string]string{"ann/key": "v1"},
+			EdgeProxyPodLabels:      map[string]string{"pod-label": "pv"},
+			EdgeProxyPodAnnotations: map[string]string{"pod-ann/key": "pa"},
+		}
+
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, extraConfig, false, logd.Discard(),
+		)
+
+		Expect(dep.Labels).To(HaveKeyWithValue("team", "obs"))
+		Expect(dep.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, edgeProxyComponentName))
+		Expect(dep.Annotations).To(HaveKeyWithValue("ann/key", "v1"))
+
+		tmpl := dep.Spec.Template.ObjectMeta
+		Expect(tmpl.Labels).To(HaveKeyWithValue("pod-label", "pv"))
+		Expect(tmpl.Labels).To(HaveKeyWithValue(util.AppKubernetesIoComponentLabel, edgeProxyComponentName))
+		Expect(tmpl.Annotations).To(HaveKeyWithValue("pod-ann/key", "pa"))
 	})
 })
 

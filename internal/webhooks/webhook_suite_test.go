@@ -17,6 +17,7 @@ import (
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,7 +30,6 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,13 +39,14 @@ import (
 )
 
 var (
-	manager   ctrl.Manager
-	cfg       *rest.Config
-	k8sClient client.Client
-	clientset *kubernetes.Clientset
-	testEnv   *envtest.Environment
-	ctx       context.Context
-	cancel    context.CancelFunc
+	manager            ctrl.Manager
+	cfg                *rest.Config
+	k8sClient          client.Client
+	clientset          *kubernetes.Clientset
+	nodeMetadataClient metadata.Interface
+	testEnv            *envtest.Environment
+	ctx                context.Context
+	cancel             context.CancelFunc
 
 	operatorConfigurationMutatingWebhookHandler   *OperatorConfigurationMutatingWebhookHandler
 	operatorConfigurationValidationWebhookHandler *OperatorConfigurationValidationWebhookHandler
@@ -101,6 +102,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(clientset).NotTo(BeNil())
 
+	nodeMetadataClient, err = metadata.NewForConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(nodeMetadataClient).NotTo(BeNil())
+
 	By("setting up resources")
 	setupTestResources()
 
@@ -131,8 +136,9 @@ var _ = BeforeSuite(func() {
 			PossibleCollectorUrlsTest,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
-			cluster.ResolvedInstrumentationDeliveryInitContainer,
+			dash0v1alpha1.InstrumentationDeliveryInitContainer,
 			nil,
+			false,
 			false,
 			false,
 		),

@@ -42,3 +42,6 @@ dash0-operator-values.yaml
 
 # direnv
 .envrc
+
+# local demo/test environment files with credentials
+test-resources/*.env

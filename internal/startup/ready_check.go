@@ -15,8 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/retry"
 )
 
 type ReadyCheckExecuter struct {
@@ -101,15 +101,13 @@ func (c *ReadyCheckExecuter) pollWebhookServiceEndpoint(ctx context.Context, log
 			"starting to poll the webhook service endpoint until %s",
 			conditionLabel,
 		))
-	if err := util.RetryWithCustomBackoff(
+	if err := retry.Retry(
 		"waiting for webhook service endpoint",
 		func() error {
 			return c.checkWebhookServiceEndpoint(ctx, waitForReadyCondition)
 		},
 		c.retryBackoff,
-		false,
-		true,
-		logger,
+		nil,
 	); err != nil {
 		e := fmt.Errorf("waiting for the webhook service endpoint has timed out (no more retries left): %v", err)
 		return e

@@ -148,13 +148,18 @@ Here is a list of configuration options for this resource:
   workloads when applying auto-instrumentation.
   See [Using Image Volumes for Auto-Instrumentation Files](#using-image-volumes-for-auto-instrumentation-files).
   Allowed values:
-  - `auto`: use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
-    approach.
-  - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
-    version is older than 1.31, the operator manager will log a warning and fall back to the init container
-    approach, since image volumes are not supported in that version. Note that if you are using
-    Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
-    your cluster, since image volumes are disabled by default in versions older than 1.35.
+  - `auto`: use image volumes if the Kubernetes API server version and the kubelet version of all nodes of the cluster
+    is 1.36 or later, otherwise use the init container approach.
+    The operator manager determines the minimum kubelet version by inspecting all nodes of the cluster once, shortly
+    after it has started; until that has finished, it uses the init container approach.
+    Nodes that join the cluster later on are not taken into account.
+  - `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
+    already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it
+    will log a warning and fall back to the init container approach, since image volumes are not supported in that
+    version. That fallback is best-effort: it does not cover workloads instrumented before the operator manager has
+    inspected the cluster's nodes, nor nodes that join the cluster later on. Note that if you are using Kubernetes 1.34
+    or earlier, and you want to use this setting, you need to enable image volumes when configuring your cluster, since
+    image volumes are disabled by default in versions older than 1.35.
   - `init-container`: always use the init container approach, regardless of the Kubernetes version.
     This is the default.
 
@@ -790,13 +795,18 @@ When using the operator manager to create and manage the operator configuration 
 `operator.dash0Export.enabled=true`), set `operator.instrumentation.delivery` in Helm to configure image volumes.
 
 Allowed values for the instrumentation delivery setting:
-- `auto`: use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container
-  approach.
-- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes
-  version is older than 1.31, the operator manager will log a warning and fall back to the init container
-  approach, since image volumes are not supported in that version. Note that if you are using
-  Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring
-  your cluster, since image volumes are disabled by default in versions older than 1.35.
+- `auto`: use image volumes if the Kubernetes API server version and the kubelet version of all nodes of the cluster is
+  1.36 or later, otherwise use the init container approach.
+  The operator manager determines the minimum kubelet version by inspecting all nodes of the cluster once, shortly after
+  it has started; until that has finished, it uses the init container approach.
+  Nodes that join the cluster later on are not taken into account.
+- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
+  already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it will
+  log a warning and fall back to the init container approach, since image volumes are not supported in that version.
+  That fallback is best-effort: it does not cover workloads instrumented before the operator manager has inspected the
+  cluster's nodes, nor nodes that join the cluster later on. Note that if you are using Kubernetes 1.34 or earlier, and
+  you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are
+  disabled by default in versions older than 1.35.
 - `init-container`: always use the init container approach, regardless of the Kubernetes version.
   This is the default.
 
@@ -819,7 +829,7 @@ re-deployment of the workload.
 The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
 Dash0Monitoring resource.
 
-Python auto-instrumentation is only supported for Python 3.9 or later.
+Python auto-instrumentation is only supported for Python 3.10 or later.
 If the Dash0 Python auto-instrumentation detects an incompatible Python version (i.e. version 3.9 or older), it will
 automatically deactivate itself safely and print a warning to `stderr`:
 ```
@@ -869,6 +879,57 @@ Resolve the version conflicts to enable automatic Python instrumentation by Dash
 by updating the dependency versions used by the workload.
 If the conflicting dependencies cannot be resolved, you might need to instrument this workload individually, for
 example by using the OpenTelemetry Python [zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/).
+
+### Ruby Auto-Instrumentation
+
+To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true`
+via Helm.
+If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled
+immediately for workloads in namespaces that have a Dash0Monitoring resource with
+[`instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) `all`.
+This will cause all pods in these namespaces to be restarted.
+For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next
+re-deployment of the workload.
+The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a
+Dash0Monitoring resource.
+
+Ruby auto-instrumentation is only supported for Ruby 3.3 or later.
+On an older Ruby version, the Dash0 Ruby distribution deactivates itself safely and prints a warning to `stderr`:
+```
+[Dash0 OpenTelemetry Distribution] Ruby 3.2.11 is not supported (requires >= 3.3.0). OpenTelemetry data will not be sent to Dash0.
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace.
+Update the Ruby version to enable automatic Ruby instrumentation by Dash0 for this workload.
+
+Ruby auto-instrumentation only works if the configured OTLP export protocol is `http/protobuf`, the only protocol the
+OpenTelemetry Ruby OTLP exporter supports.
+If the operator is managing the container's `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` variables,
+this will be set correctly automatically.
+If the container sets `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` itself, its workload is still instrumented, but no telemetry
+is exported, and the OpenTelemetry SDK prints a warning to `stderr` for each affected signal:
+```
+The grpc transport protocol is not supported by the OTLP exporter, spans will not be exported.
+```
+Remove these environment variables from the pod spec template to enable automatic Ruby instrumentation by Dash0 for
+this workload.
+
+If the Dash0 Ruby distribution cannot be loaded at all, it deactivates itself safely, so the workload always starts,
+and prints a warning to `stderr`:
+```
+[Dash0 OpenTelemetry Distribution] Initialization failed: <reason>. OpenTelemetry data will not be sent to Dash0.
+```
+
+Instrumentation for a library is installed when the application loads that library, so no particular load order is
+required: Rails applications, applications using Bundler, and plain Ruby scripts without a `Gemfile` are all
+instrumented.
+
+Because the Dash0 Ruby distribution is loaded before the application's own libraries, its bundled `google-protobuf`
+takes precedence over the version the application declares.
+This only matters for applications that use protobuf themselves and depend on behavior that changed between the bundled
+version and their own.
+Set `DISALLOWED_LIB_PATH=google-protobuf` on the container to make the distribution defer to the application's copy
+instead; if that copy is outside the range the OTLP exporter supports, the distribution deactivates itself safely rather
+than break the application.
 
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 

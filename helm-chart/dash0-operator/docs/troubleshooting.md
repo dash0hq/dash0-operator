@@ -8,6 +8,7 @@ This guide covers common troubleshooting procedures for the Dash0 operator.
   - [Operator Manager Heap Profile](#operator-manager-heap-profile)
   - [Collector Daemonset Heap Profile](#collector-daemonset-heap-profile)
   - [Collector Deployment Heap Profile](#collector-deployment-heap-profile)
+  - [SignalControl Collector Heap Profile](#signalcontrol-collector-heap-profile)
 
 ## Create Heap Profiles
 
@@ -51,6 +52,13 @@ To get a heap profile from a OpenTelemetry collector deployment container:
 
 * Follow the same steps as for the collector daemonset, but use
   `-l app.kubernetes.io/component=cluster-metrics-collector` in step (3).
+
+### SignalControl Collector Heap Profile
+
+To get a heap profile from the SignalControl collector (only present when SignalControl Edge is enabled):
+
+* Follow the same steps as for the collector daemonset, but use
+  `-l app.kubernetes.io/component=signal-control-collector` in step (3).
 
 ## Getting Help
 

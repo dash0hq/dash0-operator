@@ -340,6 +340,18 @@ cluster roles should match snapshot:
           - update
           - watch
       - apiGroups:
+          - policy
+        resources:
+          - poddisruptionbudgets
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
           - ""
         resources:
           - configmaps
@@ -545,3 +557,859 @@ cluster roles should match snapshot:
           - delete
           - get
           - list
+cluster roles should match snapshot with agent0-connector enabled:
+  1: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-base
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-manager-base
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0operatorconfigurations
+        verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0operatorconfigurations/finalizers
+        verbs:
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0operatorconfigurations/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0monitorings
+        verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0monitorings/finalizers
+        verbs:
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0monitorings/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - events.k8s.io
+        resources:
+          - events
+        verbs:
+          - create
+          - list
+          - patch
+          - update
+      - apiGroups:
+          - ""
+        resources:
+          - namespaces
+        verbs:
+          - get
+      - apiGroups:
+          - ""
+        resources:
+          - events
+        verbs:
+          - list
+          - patch
+          - update
+      - apiGroups:
+          - ""
+        resources:
+          - nodes
+        verbs:
+          - get
+          - list
+  2: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-iac
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-manager-iac
+    rules:
+      - apiGroups:
+          - apiextensions.k8s.io
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - apiextensions.k8s.io
+        resourceNames:
+          - persesdashboards.perses.dev
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - patch
+          - update
+      - apiGroups:
+          - perses.dev
+        resources:
+          - persesdashboards
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - monitoring.coreos.com
+        resources:
+          - prometheusrules
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0syntheticchecks
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0syntheticchecks/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0signaltometrics
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0signaltometrics/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0views
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0views/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0notificationchannels
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0notificationchannels/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - dash0.com
+        resources:
+          - dash0teams
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - dash0.com
+        resources:
+          - dash0teams/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0spamfilters
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0spamfilters/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0signalcontrols
+        verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0signalcontrols/finalizers
+        verbs:
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0signalcontrols/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0samplingrules
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0samplingrules/status
+        verbs:
+          - get
+          - patch
+          - update
+  3: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-collector
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-manager-collector
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - configmaps
+          - serviceaccounts
+          - services
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - rbac.authorization.k8s.io
+        resources:
+          - clusterroles
+          - clusterrolebindings
+          - roles
+          - rolebindings
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - apps
+        resources:
+          - daemonsets
+          - deployments
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - policy
+        resources:
+          - poddisruptionbudgets
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - configmaps
+          - pods
+          - persistentvolumes
+          - persistentvolumeclaims
+          - namespaces
+          - nodes
+          - nodes/stats
+          - endpoints
+          - services
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - nodes/proxy
+        verbs:
+          - get
+      - apiGroups:
+          - apps
+        resources:
+          - replicasets
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - extensions
+        resources:
+          - replicasets
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - events
+          - namespaces
+          - namespaces/status
+          - nodes
+          - nodes/spec
+          - pods
+          - pods/status
+          - replicationcontrollers
+          - replicationcontrollers/status
+          - resourcequotas
+          - services
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - apps
+        resources:
+          - daemonsets
+          - deployments
+          - replicasets
+          - statefulsets
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - extensions
+        resources:
+          - daemonsets
+          - deployments
+          - replicasets
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - batch
+        resources:
+          - jobs
+          - cronjobs
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - autoscaling
+        resources:
+          - horizontalpodautoscalers
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - monitoring.coreos.com
+        resources:
+          - podmonitors
+          - probes
+          - prometheusrules
+          - scrapeconfigs
+          - servicemonitors
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - apps
+        resources:
+          - statefulsets
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - namespaces
+          - nodes
+          - nodes/metrics
+          - services
+          - pods
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - configmaps
+        verbs:
+          - get
+      - apiGroups:
+          - discovery.k8s.io
+        resources:
+          - endpointslices
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - networking.k8s.io
+        resources:
+          - ingresses
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - secrets
+        verbs:
+          - get
+          - list
+          - watch
+      - nonResourceURLs:
+          - /metrics
+        verbs:
+          - get
+  4: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-instrument
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-manager-instrument
+    rules:
+      - apiGroups:
+          - apps
+        resources:
+          - daemonsets
+          - deployments
+          - replicasets
+          - statefulsets
+        verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - batch
+        resources:
+          - cronjobs
+          - jobs
+        verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - pods
+        verbs:
+          - delete
+          - get
+          - list
+  5: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-agent0-connector
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-manager-agent0-connector-ro
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - componentstatuses
+          - endpoints
+          - events
+          - limitranges
+          - namespaces
+          - nodes
+          - persistentvolumeclaims
+          - persistentvolumes
+          - podtemplates
+          - pods
+          - pods/log
+          - replicationcontrollers
+          - resourcequotas
+          - serviceaccounts
+          - services
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - apps
+        resources:
+          - controllerrevisions
+          - daemonsets
+          - deployments
+          - replicasets
+          - statefulsets
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - batch
+        resources:
+          - cronjobs
+          - jobs
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - autoscaling
+        resources:
+          - horizontalpodautoscalers
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - policy
+        resources:
+          - poddisruptionbudgets
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - networking.k8s.io
+        resources:
+          - ingressclasses
+          - ingresses
+          - ipaddresses
+          - networkpolicies
+          - servicecidrs
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - discovery.k8s.io
+        resources:
+          - endpointslices
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - storage.k8s.io
+        resources:
+          - csidrivers
+          - csinodes
+          - csistoragecapacities
+          - storageclasses
+          - volumeattachments
+          - volumeattributesclasses
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - scheduling.k8s.io
+        resources:
+          - priorityclasses
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - node.k8s.io
+        resources:
+          - runtimeclasses
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - coordination.k8s.io
+        resources:
+          - leases
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - certificates.k8s.io
+        resources:
+          - certificatesigningrequests
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - flowcontrol.apiserver.k8s.io
+        resources:
+          - flowschemas
+          - prioritylevelconfigurations
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - resource.k8s.io
+        resources:
+          - deviceclasses
+          - resourceclaims
+          - resourceclaimtemplates
+          - resourceslices
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - events.k8s.io
+        resources:
+          - events
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - metrics.k8s.io
+        resources:
+          - nodes
+          - pods
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - apiextensions.k8s.io
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - apiregistration.k8s.io
+        resources:
+          - apiservices
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - admissionregistration.k8s.io
+        resources:
+          - mutatingadmissionpolicies
+          - mutatingadmissionpolicybindings
+          - mutatingwebhookconfigurations
+          - validatingadmissionpolicies
+          - validatingadmissionpolicybindings
+          - validatingwebhookconfigurations
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - rbac.authorization.k8s.io
+        resources:
+          - clusterrolebindings
+          - clusterroles
+          - rolebindings
+          - roles
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - authorization.k8s.io
+        resources:
+          - selfsubjectaccessreviews
+          - selfsubjectrulesreviews
+        verbs:
+          - create
+      - apiGroups:
+          - dash0.com
+        resources:
+          - dash0teams
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0monitorings
+          - dash0notificationchannels
+          - dash0operatorconfigurations
+          - dash0samplingrules
+          - dash0signalcontrols
+          - dash0signaltometrics
+          - dash0spamfilters
+          - dash0syntheticchecks
+          - dash0views
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - monitoring.coreos.com
+        resources:
+          - podmonitors
+          - probes
+          - prometheusrules
+          - scrapeconfigs
+          - servicemonitors
+        verbs:
+          - get
+          - list
+      - apiGroups:
+          - perses.dev
+        resources:
+          - persesdashboards
+        verbs:
+          - get
+          - list
+      - nonResourceURLs:
+          - '*'
+        verbs:
+          - get
+  6: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: cluster-role-agent0-connector
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-manager-agent0-connector
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - serviceaccounts
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - rbac.authorization.k8s.io
+        resources:
+          - clusterroles
+          - clusterrolebindings
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - apps
+        resources:
+          - deployments
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch

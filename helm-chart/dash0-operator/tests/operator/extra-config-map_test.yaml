@@ -157,11 +157,68 @@ tests:
               initialDelaySeconds: 7
               periodSeconds: 6
               timeoutSeconds: 5
+          signalControlCollectorReplicas: 4
+          signalControlCollectorContainerResources:
+            limits:
+              memory: 3Gi
+              cpu: 800m
+            gomemlimit: 2400MiB
+            requests:
+              memory: 3Gi
+              cpu: 400m
+          signalControlCollectorConfigurationReloaderContainerResources:
+            limits:
+              memory: 40Mi
+            gomemlimit: 32MiB
+            requests:
+              memory: 40Mi
+          signalControlCollectorLabels:
+            signal-control-collector-label: signal-control-collector-label-value
+          signalControlCollectorAnnotations:
+            signal-control-collector-annotation: signal-control-collector-annotation-value
+          signalControlCollectorPodLabels:
+            signal-control-collector-pod-label: signal-control-collector-pod-label-value
+          signalControlCollectorPodAnnotations:
+            signal-control-collector-pod-annotation: signal-control-collector-pod-annotation-value
+          signalControlCollectorSysctls:
+            - name: net.ipv4.tcp_keepalive_time
+              value: "240"
+          signalControlCollectorTolerations:
+            - key: key5
+              operator: Equal
+              value: value5
+              effect: NoSchedule
+          signalControlCollectorNodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-09
+                      operator: In
+                      values:
+                        - value-13
+          signalControlCollectorPriorityClassName: signal-control-collector-priority-class
+          signalControlCollectorProbes:
+            liveness:
+              failureThreshold: 24
+              initialDelaySeconds: 23
+              periodSeconds: 22
+              timeoutSeconds: 21
+            readiness:
+              failureThreshold: 20
+              initialDelaySeconds: 19
+              periodSeconds: 18
+              timeoutSeconds: 17
+            startup:
+              failureThreshold: 16
+              initialDelaySeconds: 15
+              periodSeconds: 14
+              timeoutSeconds: 13
         targetAllocator:
           mTls:
             enabled: true
             serverCertSecretName: ta-mtls-server-cert
             clientCertSecretName: ta-mtls-client-cert
+          allowInsecureAuthSecrets: true
           containerResources:
             limits:
               memory: 2Gi
@@ -229,6 +286,47 @@ tests:
                         operator: In
                         values:
                           - value-12
+            labels:
+              edge-proxy-label: edge-proxy-label-value
+            annotations:
+              edge-proxy-annotation: edge-proxy-annotation-value
+            podLabels:
+              edge-proxy-pod-label: edge-proxy-pod-label-value
+            podAnnotations:
+              edge-proxy-pod-annotation: edge-proxy-pod-annotation-value
+        agent0Connector:
+          enabled: true
+          maxConcurrentCommands: 4
+          containerResources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            gomemlimit: 256MiB
+            requests:
+              cpu: 20m
+              memory: 64Mi
+          tolerations:
+            - key: key6
+              operator: Equal
+              value: value6
+              effect: NoSchedule
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-label-key-09
+                      operator: In
+                      values:
+                        - value-13
+                        - value-14
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 1
+                preference:
+                  matchExpressions:
+                    - key: node-label-key-10
+                      operator: In
+                      values:
+                        - value-15
         monitoringTemplate:
           metadata:
             name: monitoring-template-name
@@ -431,9 +529,66 @@ tests:
                 initialDelaySeconds: 7
                 periodSeconds: 6
                 timeoutSeconds: 5
+            signalControlCollectorReplicas: 4
+            signalControlCollectorContainerResources:
+              gomemlimit: 2400MiB
+              limits:
+                cpu: 800m
+                memory: 3Gi
+              requests:
+                cpu: 400m
+                memory: 3Gi
+            signalControlCollectorConfigurationReloaderContainerResources:
+              gomemlimit: 32MiB
+              limits:
+                memory: 40Mi
+              requests:
+                memory: 40Mi
+            signalControlCollectorLabels:
+              signal-control-collector-label: signal-control-collector-label-value
+            signalControlCollectorAnnotations:
+              signal-control-collector-annotation: signal-control-collector-annotation-value
+            signalControlCollectorPodLabels:
+              signal-control-collector-pod-label: signal-control-collector-pod-label-value
+            signalControlCollectorPodAnnotations:
+              signal-control-collector-pod-annotation: signal-control-collector-pod-annotation-value
+            signalControlCollectorTolerations:
+              - effect: NoSchedule
+                key: key5
+                operator: Equal
+                value: value5
+            signalControlCollectorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-09
+                    operator: In
+                    values:
+                    - value-13
+            signalControlCollectorPriorityClassName: signal-control-collector-priority-class
+            signalControlCollectorProbes:
+              liveness:
+                failureThreshold: 24
+                initialDelaySeconds: 23
+                periodSeconds: 22
+                timeoutSeconds: 21
+              readiness:
+                failureThreshold: 20
+                initialDelaySeconds: 19
+                periodSeconds: 18
+                timeoutSeconds: 17
+              startup:
+                failureThreshold: 16
+                initialDelaySeconds: 15
+                periodSeconds: 14
+                timeoutSeconds: 13
+            signalControlCollectorSysctls:
+              - name: net.ipv4.tcp_keepalive_time
+                value: "240"
             targetAllocatorMtlsEnabled: true
             targetAllocatorMtlsServerCertSecretName: "ta-mtls-server-cert"
             targetAllocatorMtlsClientCertSecretName: "ta-mtls-client-cert"
+            targetAllocatorAllowInsecureAuthSecrets: true
             targetAllocatorContainerResources:
               gomemlimit: 1500MiB
               limits:
@@ -466,7 +621,7 @@ tests:
                     values:
                     - value-07
                     - value-08
-            edgeProxyReplicas: 1
+            edgeProxyReplicas: 2
             edgeProxyContainerResources:
               gomemlimit: 200MiB
               limits:
@@ -499,6 +654,45 @@ tests:
                     values:
                     - value-10
                     - value-11
+            edgeProxyLabels:
+              edge-proxy-label: edge-proxy-label-value
+            edgeProxyAnnotations:
+              edge-proxy-annotation: edge-proxy-annotation-value
+            edgeProxyPodLabels:
+              edge-proxy-pod-label: edge-proxy-pod-label-value
+            edgeProxyPodAnnotations:
+              edge-proxy-pod-annotation: edge-proxy-pod-annotation-value
+            agent0ConnectorContainerResources:
+              gomemlimit: 256MiB
+              limits:
+                cpu: 300m
+                memory: 512Mi
+              requests:
+                cpu: 20m
+                memory: 64Mi
+            agent0ConnectorMaxConcurrentCommands: 4
+            agent0ConnectorTolerations:
+              - effect: NoSchedule
+                key: key6
+                operator: Equal
+                value: value6
+            agent0ConnectorNodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - preference:
+                  matchExpressions:
+                  - key: node-label-key-10
+                    operator: In
+                    values:
+                    - value-15
+                weight: 1
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-label-key-09
+                    operator: In
+                    values:
+                    - value-13
+                    - value-14
             monitoringTemplate:
               metadata:
                 annotations:
@@ -691,6 +885,7 @@ tests:
     set:
       operator:
         agent0Connector:
+          enabled: true
           labels:
             a0c-label: a0c-label-value
           annotations:
@@ -726,6 +921,195 @@ tests:
       - notMatchRegex:
           path: data['extra.yaml']
           pattern: agent0ConnectorPodAnnotations
+
+  - it: should render the default agent0-connector container resources
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorContainerResources:
+              gomemlimit: 150MiB
+              limits:
+                memory: 256Mi
+              requests:
+                memory: 64Mi
+
+  - it: should render custom agent0-connector container resources
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          containerResources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            gomemlimit: 256MiB
+            requests:
+              cpu: 20m
+              memory: 128Mi
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorContainerResources:
+              gomemlimit: 256MiB
+              limits:
+                cpu: 300m
+                memory: 512Mi
+              requests:
+                cpu: 20m
+                memory: 128Mi
+
+  - it: should render the default number of concurrent agent0-connector commands
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorMaxConcurrentCommands: 2'
+
+  - it: should render a custom number of concurrent agent0-connector commands
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          maxConcurrentCommands: 6
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: 'agent0ConnectorMaxConcurrentCommands: 6'
+
+  - it: should not render the number of concurrent agent0-connector commands when the agent0-connector is disabled
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorMaxConcurrentCommands
+
+  - it: should not render custom agent0-connector cluster role rules by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorClusterRoleRules
+
+  - it: should not render custom agent0-connector cluster role rules when the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list"]
+    asserts:
+      # The operator does not read the rules when it does not manage the agent0-connector, and the
+      # -manager-agent0-connector-ro cluster role which would have to hold them is not rendered either.
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorClusterRoleRules
+
+  - it: should render custom agent0-connector cluster role rules when set
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["configmaps", "pods"]
+                verbs: ["get", "list"]
+              - apiGroups: ["authorization.k8s.io"]
+                resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+                verbs: ["create"]
+              - nonResourceURLs: ["*"]
+                verbs: ["get"]
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorClusterRoleRules:
+              - apiGroups:
+                - ""
+                resources:
+                - configmaps
+                - pods
+                verbs:
+                - get
+                - list
+              - apiGroups:
+                - authorization.k8s.io
+                resources:
+                - selfsubjectaccessreviews
+                - selfsubjectrulesreviews
+                verbs:
+                - create
+              - nonResourceURLs:
+                - '\*'
+                verbs:
+                - get
+
+  - it: should reject custom agent0-connector cluster role rules with a write verb
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          clusterRole:
+            rules:
+              - apiGroups: [""]
+                resources: ["pods"]
+                verbs: ["get", "list", "patch"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "patch" is not allowed'
+
+  - it: should render the default agent0-connector tolerations and node affinity
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorTolerations:
+              \[\]
+            agent0ConnectorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+
+  - it: should not render any agent0-connector settings while the agent0-connector is disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: false
+          containerResources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+          tolerations:
+            - key: key6
+              operator: Equal
+              value: value6
+              effect: NoSchedule
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0Connector
 
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
@@ -878,9 +1262,53 @@ tests:
                 initialDelaySeconds: 0
                 periodSeconds: 2
                 timeoutSeconds: 1
+            signalControlCollectorReplicas: 2
+            signalControlCollectorContainerResources:
+              gomemlimit: 800MiB
+              limits:
+                memory: 1Gi
+              requests:
+                memory: 1Gi
+            signalControlCollectorConfigurationReloaderContainerResources:
+              gomemlimit: 18MiB
+              limits:
+                memory: 24Mi
+              requests:
+                memory: 12Mi
+            signalControlCollectorTolerations:
+              []
+            signalControlCollectorNodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: dash0.com/enable
+                    operator: NotIn
+                    values:
+                    - "false"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+            signalControlCollectorProbes:
+              liveness:
+                failureThreshold: 20
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+              readiness:
+                failureThreshold: 3
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
+              startup:
+                failureThreshold: 45
+                initialDelaySeconds: 0
+                periodSeconds: 2
+                timeoutSeconds: 1
             targetAllocatorMtlsEnabled: false
             targetAllocatorMtlsServerCertSecretName: ""
             targetAllocatorMtlsClientCertSecretName: ""
+            targetAllocatorAllowInsecureAuthSecrets: false
             targetAllocatorContainerResources:
               gomemlimit: 400MiB
               limits:

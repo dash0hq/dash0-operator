@@ -31,7 +31,7 @@ There are two ways to achieve this:
 
 1. Install the Perses dashboard custom resource definition with the following command:
    ```console
-   kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.4.0/config/crd/bases/perses.dev_persesdashboards.yaml
+   kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.5.0/config/crd/bases/perses.dev_persesdashboards.yaml
    ```
 2. Alternatively, install the full Perses operator: Go to <https://github.com/perses/perses-operator> and follow the
    installation instructions there.
@@ -147,7 +147,7 @@ There are two ways to achieve this:
 
 1. Install the Prometheus rules custom resource definition with the following command:
    ```console
-   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.92.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.93.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
    ```
 2. Alternatively, install the full kube-prometheus stack Helm chart: Go to
    <https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack> and follow the

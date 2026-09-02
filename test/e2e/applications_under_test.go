@@ -57,6 +57,14 @@ func determineTestAppImages() {
 			imageTag,
 			pullPolicy,
 		)
+	testAppImages[runtimeTypeRuby] =
+		determineContainerImage(
+			"TEST_APP_RUBY",
+			repositoryPrefix,
+			"dash0-operator-ruby-rails-test-app",
+			imageTag,
+			pullPolicy,
+		)
 }
 
 //nolint:unparam
@@ -168,6 +176,17 @@ func installNodeJsStatefulSet(namespace string) error {
 func installPythonDeployment(namespace string) error {
 	return installTestAppWorkload(
 		runtimeTypePython,
+		workloadTypeDeployment,
+		namespace,
+		"",
+		nil,
+		nil,
+	)
+}
+
+func installRubyDeployment(namespace string) error {
+	return installTestAppWorkload(
+		runtimeTypeRuby,
 		workloadTypeDeployment,
 		namespace,
 		"",
@@ -297,6 +316,10 @@ func uninstallPythonRelease(namespace string) error {
 	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypePython, namespace))
 }
 
+func uninstallRubyRelease(namespace string) error {
+	return runTestAppHelmUninstall(namespace, helmReleaseName(runtimeTypeRuby, namespace))
+}
+
 func killBatchJobsAndPods(namespace string) {
 	By("deleting job spawned by a cronjob")
 	Expect(runAndIgnoreOutput(
@@ -338,6 +361,7 @@ func removeAllTestApplications(namespace string) {
 	Expect(uninstallJvmRelease(namespace)).To(Succeed())
 	Expect(uninstallNodeJsRelease(namespace)).To(Succeed())
 	Expect(uninstallPythonRelease(namespace)).To(Succeed())
+	Expect(uninstallRubyRelease(namespace)).To(Succeed())
 }
 
 // compileWorkloadTypeSetParams creates a list of Helm --set flags for the test app Helm chart to deploy a specific set

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,13 +20,14 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
+	"github.com/dash0hq/dash0-operator/internal/agent0connector"
+	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
-	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 
@@ -1135,6 +1137,47 @@ var _ = Describe(
 		)
 
 		Describe(
+			"when the agent0-connector is misconfigured", func() {
+
+				AfterEach(
+					func() {
+						RemoveOperatorConfigurationResource(ctx, k8sClient)
+					},
+				)
+
+				It(
+					"should continue with the remaining reconciliation steps instead of requeuing the request",
+					func() {
+						reconciler, _ = createReconcilerWithAgent0ConnectorManager(
+							apiClient1,
+							apiClient2,
+							newAgent0ConnectorManagerWithInvalidClusterRoleRules(),
+						)
+						CreateOperatorConfigurationResourceWithSpec(
+							ctx,
+							k8sClient,
+							dash0v1alpha1.Dash0OperatorConfigurationSpec{
+								Exports: Dash0ExportWithEndpointAndToken().ToExports(),
+								SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+									Enabled: new(false),
+								},
+								ClusterName: ClusterNameTest,
+							},
+						)
+
+						// triggerOperatorConfigurationReconcileRequest asserts that Reconcile returns no error, that
+						// is, that the misconfiguration of the agent0-connector is not propagated to
+						// controller-runtime. Marking the resource as available is the last step of the reconcile
+						// function, so it also proves that the misconfiguration does not abort the reconciliation.
+						triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+
+						verifyOperatorConfigurationResourceIsAvailable(ctx)
+					},
+				)
+			},
+		)
+
+		Describe(
 			"uniqueness check", func() {
 				It(
 					"should mark only the most recent resource as available and the other ones as degraded when multiple resources exist",
@@ -1280,6 +1323,14 @@ func verifyOperatorManagerResourceAttributes(g Gomega, oTelSdkConfig *common.OTe
 }
 
 func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*OperatorConfigurationReconciler, *zaputil.DelegatingZapCoreWrapper) {
+	return createReconcilerWithAgent0ConnectorManager(apiClient1, apiClient2, nil)
+}
+
+func createReconcilerWithAgent0ConnectorManager(
+	apiClient1 *DummyApiClient,
+	apiClient2 *DummyApiClient,
+	agent0ConnectorManager *agent0connector.Agent0ConnectorManager,
+) (*OperatorConfigurationReconciler, *zaputil.DelegatingZapCoreWrapper) {
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
 		k8sClient.Scheme(),
@@ -1293,7 +1344,7 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 	)
 	collectorManager := collectors.NewCollectorManager(
 		k8sClient,
-		clientset,
+		nodeMetadataClient,
 		util.ExtraConfigDefaults,
 		false,
 		false,
@@ -1326,15 +1377,16 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 		},
 		collectorManager,
 		targetallocatorManager,
-		nil,
+		agent0ConnectorManager,
 		nil,
 		util.NewClusterInstrumentationConfig(
 			TestImages,
 			PossibleCollectorUrlsTest,
 			OTelCollectorNodeLocalBaseUrlTest,
 			util.ExtraConfigDefaults,
-			cluster.ResolvedInstrumentationDeliveryInitContainer,
+			dash0v1alpha1.InstrumentationDeliveryInitContainer,
 			nil,
+			false,
 			false,
 			false,
 		),
@@ -1348,6 +1400,40 @@ func createReconciler(apiClient1 *DummyApiClient, apiClient2 *DummyApiClient) (*
 		false,
 	)
 	return operatorConfigurationReconciler, delegatingZapCoreWrapper
+}
+
+// newAgent0ConnectorManagerWithInvalidClusterRoleRules creates an agent0-connector manager with custom cluster role
+// rules that grant a write verb. The resource manager rejects these rules as a misconfiguration.
+func newAgent0ConnectorManagerWithInvalidClusterRoleRules() *agent0connector.Agent0ConnectorManager {
+	authToken := AuthorizationTokenTest
+	agent0ConnectorResourceManager := a0cresources.NewAgent0ConnectorResourceManager(
+		k8sClient,
+		k8sClient.Scheme(),
+		OperatorManagerDeployment,
+		util.Agent0ConnectorConfig{
+			Images:            TestImages,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        "unit-test",
+			ServerAddress:     Agent0ConnectorServerAddress,
+			Authorization:     dash0common.Authorization{Token: &authToken},
+		},
+	)
+	extraConfig := util.ExtraConfigDefaults
+	extraConfig.Agent0ConnectorClusterRoleRules = []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{""},
+			Resources: []string{"pods"},
+			Verbs:     []string{"get", "list", "delete"},
+		},
+	}
+	return agent0connector.NewAgent0ConnectorManager(
+		k8sClient,
+		true,
+		extraConfig,
+		false,
+		agent0ConnectorResourceManager,
+		recorder,
+	)
 }
 
 func triggerOperatorConfigurationReconcileRequest(

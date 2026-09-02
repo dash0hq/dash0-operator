@@ -1,12 +1,13 @@
 # Automatic Workload Instrumentation
 
-This guide covers automatic workload instrumentation, including Python support, image volumes, disabling instrumentation, and resource attributes.
+This guide covers automatic workload instrumentation, including Python and Ruby support, image volumes, disabling instrumentation, and resource attributes.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Using Image Volumes for Auto-Instrumentation Files](#using-image-volumes-for-auto-instrumentation-files)
 - [Python Auto-Instrumentation](#python-auto-instrumentation)
+- [Ruby Auto-Instrumentation](#ruby-auto-instrumentation)
 - [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)
 - [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation)
 - [Specifying Additional Resource Attributes via Labels and Annotations](#specifying-additional-resource-attributes-via-labels-and-annotations)
@@ -53,11 +54,24 @@ They were introduced in Kubernetes 1.31 as an alpha feature behind a feature gat
 Set the `instrumentationDelivery` setting in the operator configuration resource to determine under which circumstances image volumes will be used instead of the init container approach. When using the operator manager to create and manage the operator configuration resource (i.e. with `operator.dash0Export.enabled=true`), set `operator.instrumentation.delivery` in Helm to configure image volumes.
 
 Allowed values for the instrumentation delivery setting:
-- `auto`: use image volumes if the Kubernetes version is 1.36 or later, otherwise use the init container approach.
-- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the Kubernetes version is older than 1.31, the operator manager will log a warning and fall back to the init container approach, since image volumes are not supported in that version. Note that if you are using Kubernetes 1.34 or earlier, and you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are disabled by default in versions older than 1.35.
+- `auto`: use image volumes if the Kubernetes API server version and the kubelet version of all nodes of the cluster is
+   1.36 or later, otherwise use the init container approach. The operator manager determines the minimum kubelet version
+   by inspecting all nodes of the cluster once, shortly after it has started; until that has finished, it uses the init
+   container approach. Nodes that join the cluster later on are not taken into account.
+- `image-volume`: always use image volumes, also on Kubernetes versions older than 1.36. If the operator manager has
+   already detected that the Kubernetes API server version or the kubelet version of a node is older than 1.31, it will
+   log a warning and fall back to the init container approach, since image volumes are not supported in that version.
+   That fallback is best-effort: it does not cover workloads instrumented before the operator manager has inspected the
+   cluster's nodes, nor nodes that join the cluster later on. Note that if you are using Kubernetes 1.34 or earlier, and
+   you want to use this setting, you need to enable image volumes when configuring your cluster, since image volumes are
+   disabled by default in versions older than 1.35.
 - `init-container`: always use the init container approach, regardless of the Kubernetes version. This is the default.
 
-Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`. Once a workload has been successfully instrumented, there is no benefit in re-instrumenting it with a different delivery mechanism. The new setting will be applied when instrumenting newly deployed workloads, or when a workload is updated/re-deployed.
+Note: Changing the instrumentation delivery setting for an existing operator installation will not trigger a bulk
+re-instrumentation of all existing workloads, even for namespaces that are set to `instrumentWorkloadsMode=all`.
+Once a workload has been successfully instrumented, there is no benefit in re-instrumenting it with a different delivery
+mechanism.
+The new setting will be applied when instrumenting newly deployed workloads, or when a workload is updated/re-deployed.
 
 ## Python Auto-Instrumentation
 
@@ -88,6 +102,31 @@ Last but not least, due to the nature of Python's dependency management, Python 
 [dash0] warning: cannot auto-instrument Python process: dependency conflicts: {'package-name': {'version_required': '>=20.0', 'version_found': '19.0'}}
 ```
 This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace. Resolve the version conflicts to enable automatic Python instrumentation by Dash0 for this workload, for example by updating the dependency versions used by the workload. If the conflicting dependencies cannot be resolved, you might need to instrument this workload individually, for example by using the OpenTelemetry Python [zero-code instrumentation](https://opentelemetry.io/docs/zero-code/python/).
+
+## Ruby Auto-Instrumentation
+
+To enable auto-instrumentation for Ruby workloads, set `operator.instrumentation.enableRubyAutoInstrumentation=true` via Helm. If this setting is enabled for an existing operator installation, Ruby auto-instrumentation will be enabled immediately for workloads in namespaces that have a Dash0Monitoring resource with `instrumentWorkloads.mode` set to `all`. This will cause all pods in these namespaces to be restarted. For workloads in namespaces that use `instrumentWorkloads.mode=created-and-updated`, it will become active with the next re-deployment of the workload. The setting has no effect on workloads in namespaces that use `instrumentWorkloads.mode=none` or do not have a Dash0Monitoring resource.
+
+Ruby auto-instrumentation is only supported for Ruby 3.3 or later. On an older Ruby version, the Dash0 Ruby distribution deactivates itself safely and prints a warning to `stderr`:
+```
+[Dash0 OpenTelemetry Distribution] Ruby 3.2.11 is not supported (requires >= 3.3.0). OpenTelemetry data will not be sent to Dash0.
+```
+This warning is also visible in the Dash0 UI's log view, unless log collection has been disabled for the namespace. Update the Ruby version to enable automatic Ruby instrumentation by Dash0 for this workload.
+
+Ruby auto-instrumentation only works if the configured OTLP export protocol is `http/protobuf`, the only protocol the OpenTelemetry Ruby OTLP exporter supports. If the operator is managing the container's `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` variables, this will be set correctly automatically. If the container sets `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` itself, its workload is still instrumented, but no telemetry is exported, and the OpenTelemetry SDK prints a warning to `stderr` for each affected signal:
+```
+The grpc transport protocol is not supported by the OTLP exporter, spans will not be exported.
+```
+Remove these environment variables from the pod spec template to enable automatic Ruby instrumentation by Dash0 for this workload.
+
+If the Dash0 Ruby distribution cannot be loaded at all, it deactivates itself safely, so the workload always starts, and prints a warning to `stderr`:
+```
+[Dash0 OpenTelemetry Distribution] Initialization failed: <reason>. OpenTelemetry data will not be sent to Dash0.
+```
+
+Instrumentation for a library is installed when the application loads that library, so no particular load order is required: Rails applications, applications using Bundler, and plain Ruby scripts without a `Gemfile` are all instrumented.
+
+Because the Dash0 Ruby distribution is loaded before the application's own libraries, its bundled `google-protobuf` takes precedence over the version the application declares. This only matters for applications that use protobuf themselves and depend on behavior that changed between the bundled version and their own. Set `DISALLOWED_LIB_PATH=google-protobuf` on the container to make the distribution defer to the application's copy instead; if that copy is outside the range the OTLP exporter supports, the distribution deactivates itself safely rather than break the application.
 
 ## Disabling Auto-Instrumentation for Specific Workloads
 
@@ -201,7 +240,7 @@ If the workload is in a namespace that is monitored by Dash0, the OpenTelemetry 
 
 If the workload is in a namespace that is not monitored by Dash0 (or if `spec.instrumentWorkloads.mode` is set to `none` in the respective Dash0 monitoring resource, or if the workload has opted out of auto-instrumentation via a [label](#disabling-auto-instrumentation-for-specific-workloads), you need to set the environment variable [`OTEL_EXPORTER_OTLP_ENDPOINT`](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/) (and optionally also [`OTEL_EXPORTER_OTLP_PROTOCOL`](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#specify-protocol)) yourself.
 
-The DaemonSet OpenTelemetry collector managed by the Dash0 operator listens on host port 40318 for HTTP traffic and 40317 for gRPC traffic (unless the Helm chart has been deployed with `operator.collectors.disableHostPorts=true`, which disables the host ports for the collector pods). A service for the DaemonSet collector which listens on the standard ports (4318 for HTTP and 4317 for gRPC) is also available.
+The DaemonSet OpenTelemetry collector managed by the Dash0 operator listens on host port 40318 for HTTP traffic and 40317 for gRPC traffic by default (unless the Helm chart has been deployed with `operator.collectors.disableHostPorts=true`, which disables the host ports for the collector pods). These host ports are configurable via `operator.collectors.otlpHttpHostPort` and `operator.collectors.otlpGrpcHostPort`, for example to use the standard OTLP ports 4318/4317 instead of the non-default ones, if you know they will not collide with another OpenTelemetry collector daemonset in the cluster. A service for the DaemonSet collector which listens on the standard ports (4318 for HTTP and 4317 for gRPC) is also available.
 
 The preferred way of sending OTLP from your workload to the Dash0-managed collector is to use node-local traffic via the host port. To do so, add the following environment variables to your workload:
 
@@ -221,6 +260,7 @@ env:
 > * Listing the definition for `K8S_NODE_IP` _before_ `OTEL_EXPORTER_OTLP_ENDPOINT` is crucial.
 > * Adding `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` is optional when the OpenTelemetry SDK in question uses that protocol as the default.
 > * For gRCP, use `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(K8S_NODE_IP):40317` together with `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` instead.
+> * The ports 40318 and 40317 in the examples above are the defaults. If the operator has been deployed with `operator.collectors.otlpHttpHostPort` or `operator.collectors.otlpGrpcHostPort`, use the configured ports instead.
 
 To use the service endpoint instead of the host port, you need to know:
 
@@ -279,7 +319,7 @@ Regardless of the instrumentation delivery:
 >
 > * Automatic tracing will only happen for [supported runtimes](../README.md#supported-runtimes). Nonetheless, the modifications outlined above are performed for every workload. One reason for that is that there is no way to tell which runtime a workload uses from the outside, e.g. on the Kubernetes level. The more important reason is that runtimes that are not (yet) supported for auto-instrumentation still benefit from the improved OpenTelemetry resource attribute detection.
 > * The operator will add neither `OTEL_EXPORTER_OTLP_ENDPOINT` nor `OTEL_EXPORTER_OTLP_PROTOCOL` to containers that already have at least one of those environment variables set. A Kubernetes event of type `Warning` is created for workloads with affected containers.
-> * The operator sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(NODE_IP):40318`, that is, it tells the workload to send OTLP traffic to the HTTP port of the OpenTelemetry collector pod on the same host, which belongs to the OpenTelemetry collector DaemonSet managed by the operator. It also sets the protocol accordingly by setting `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`. The protocol `http/protobuf` is the recommended default according to the [OpenTelemetry specification](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#specify-protocol), and it is widely supported. It does so under the assumption that workloads which have an OpenTelemetry SDK use an SDK that respects `OTEL_EXPORTER_OTLP_PROTOCOL` and also has support for the `http/protobuf` protocol. For workloads that have an OpenTelemetry SDK that either does not respect `OTEL_EXPORTER_OTLP_PROTOCOL` (and defaults to `grpc`) or does not have support for `http/protobuf`, this will lead to the SDK trying to establish a gRPC connection to the collector's HTTP endpoint, that is, the SDK will not be able to emit telemetry. SDKs without support for `http/protobuf` are rather rare, but one prominent example is the Kubernetes [ingress-nginx](https://kubernetes.github.io/ingress-nginx/user-guide/third-party-addons/opentelemetry/). The recommended approach is to either set `OTEL_EXPORTER_OTLP_ENDPOINT` manually to the gRPC port or to disable workload instrumentation by the Dash0 operator for these workloads. To set `OTEL_EXPORTER_OTLP_ENDPOINT` manually, you can add the following entries to the container's `env` section:
+> * The operator sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(NODE_IP):40318` by default (or to the port configured via `operator.collectors.otlpHttpHostPort`, if set), that is, it tells the workload to send OTLP traffic to the HTTP port of the OpenTelemetry collector pod on the same host, which belongs to the OpenTelemetry collector DaemonSet managed by the operator. It also sets the protocol accordingly by setting `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`. The protocol `http/protobuf` is the recommended default according to the [OpenTelemetry specification](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#specify-protocol), and it is widely supported. It does so under the assumption that workloads which have an OpenTelemetry SDK use an SDK that respects `OTEL_EXPORTER_OTLP_PROTOCOL` and also has support for the `http/protobuf` protocol. For workloads that have an OpenTelemetry SDK that either does not respect `OTEL_EXPORTER_OTLP_PROTOCOL` (and defaults to `grpc`) or does not have support for `http/protobuf`, this will lead to the SDK trying to establish a gRPC connection to the collector's HTTP endpoint, that is, the SDK will not be able to emit telemetry. SDKs without support for `http/protobuf` are rather rare, but one prominent example is the Kubernetes [ingress-nginx](https://kubernetes.github.io/ingress-nginx/user-guide/third-party-addons/opentelemetry/). The recommended approach is to either set `OTEL_EXPORTER_OTLP_ENDPOINT` manually to the gRPC port or to disable workload instrumentation by the Dash0 operator for these workloads. To set `OTEL_EXPORTER_OTLP_ENDPOINT` manually, you can add the following entries to the container's `env` section:
 >   ```
 >   - name: MY_NODE_IP
 >     valueFrom:
@@ -288,6 +328,7 @@ Regardless of the instrumentation delivery:
 >   - name: OTEL_EXPORTER_OTLP_ENDPOINT
 >     value: http://$(MY_NODE_IP):40317
 >   ```
+>   Use the port configured via `operator.collectors.otlpGrpcHostPort` instead of 40317 if the operator has been deployed with a custom gRPC host port.
 >   To disable workload instrumentation for a workload, you can opt out of auto-instrumentation via a workload label (i.e. `dash0.com/enable: "false"`, see [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)), or by not installing a Dash0 monitoring resource in the namespace where these workloads are located. The workloads can then be monitored by following the setup described in [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator) to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC. Note that this is not relevant for workloads that do not have an OpenTelemetry SDK at all, since they will ignore `OTEL_EXPORTER_OTLP_ENDPOINT`. In case the Dash0 operator Helm chart has been deployed with `operator.collectors.forceUseServiceUrl=true` or `operator.collectors.disableHostPorts=true`, `OTEL_EXPORTER_OTLP_ENDPOINT` is not set to `http://$(NODE_IP):40318`, but to the HTTP port of the DaemonSet collector's service URL `http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318` instead.
 
 ### Technical Details
@@ -297,5 +338,5 @@ The remainder of this section provides a more detailed step-by-step description 
 1. The Dash0 operator adds the `dash0-instrumentation` init container with the [Dash0 instrumentation image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation) to the pod spec template of workloads. The instrumentation image contains OpenTelemetry SDKs and distributions for all supported runtimes and the [OpenTelemetry injector](https://github.com/open-telemetry/opentelemetry-injector) binary.
 2. When the init container starts, it copies the OpenTelemetry distributions and the OpenTelemetry injector binary to a dedicated shared volume mount that has been added by the operator, so they are available in the target container's file system. When it has copied all files, the init container exits.
 3. The operator also adds environment variables to the target container to ensure that the OpenTelemetry SDK has the correct configuration and will get activated at startup. The activation of the OpenTelemetry SDK happens via an `LD_PRELOAD` hook. For that purpose, the Dash0 operator adds the `LD_PRELOAD` environment variable to the pod spec template of the workload. `LD_PRELOAD` is an environment variable that is evaluated by the [dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts. In general, it specifies a list of additional shared objects to be loaded before the actual code of the executable. In this specific case, the OpenTelemetry injector binary is added to the `LD_PRELOAD` list.
-4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and others). The reason for doing that at process startup and not when modifying the pod spec (where environment variables can also be added and modified) is that the original environment variables are not necessarily fully known at that time. Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment variables are only available at process runtime. For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect tracing data from all Node.js workloads. For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely adding a `-javaagent`). For .NET or other CLR-based workloads, the `CORECLR_PROFILER` mechanism is used to add the OpenTelemetry .NET instrumentation. For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`. (Python auto-instrumentation needs to be [enabled](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) explicitly via Helm.)
+4. At process startup, the OpenTelemetry injector adds additional environment variables to the running process by hooking into the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify environment variables (like `OTEL_RESOURCE_ATTRIBUTES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS` and others). The reason for doing that at process startup and not when modifying the pod spec (where environment variables can also be added and modified) is that the original environment variables are not necessarily fully known at that time. Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment variables are only available at process runtime. For example, the OpenTelemetry injector sets (or appends to) `NODE_OPTIONS` to activate the [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect tracing data from all Node.js workloads. For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely adding a `-javaagent`). For .NET or other CLR-based workloads, the `CORECLR_PROFILER` mechanism is used to add the OpenTelemetry .NET instrumentation. For Python auto-instrumentation, the OpenTelemetry SDK is prepended to `PYTHONPATH`. For Ruby auto-instrumentation, `RUBYOPT` is set (or prepended to) so that Ruby requires the [Dash0 OpenTelemetry distribution for Ruby](https://github.com/dash0hq/opentelemetry-ruby-distribution) at startup, and `OTEL_RUBY_ADDITIONAL_GEM_PATH` points at the distribution's gems. (Python and Ruby auto-instrumentation need to be [enabled](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) explicitly via Helm.)
 5. The OpenTelemetry injector also automatically improves Kubernetes-related resource attributes as follows: The operator sets the environment variables `OTEL_INJECTOR_K8S_NAMESPACE_NAME`, `OTEL_INJECTOR_K8S_POD_NAME`, `OTEL_INJECTOR_K8S_POD_UID` and `OTEL_INJECTOR_K8S_CONTAINER_NAME` on workloads. The OpenTelemetry injector binary picks these values up and uses them to populate the resource attributes `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable. If `OTEL_RESOURCE_ATTRIBUTES` is already set on the process, the key-value pairs for these attributes are appended to the existing value of `OTEL_RESOURCE_ATTRIBUTES`. If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the OpenTelemetry injector will add `OTEL_RESOURCE_ATTRIBUTES` as a new environment variable.

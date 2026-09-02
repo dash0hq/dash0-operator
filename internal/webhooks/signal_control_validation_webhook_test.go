@@ -89,29 +89,29 @@ var _ = Describe("validateOperationProcessorCardinalityRules", func() {
 	})
 })
 
-var _ = Describe("validateCacheExpiration", func() {
+var _ = Describe("validateDurationBounds", func() {
 
 	It("should accept a nil duration", func() {
-		Expect(validateCacheExpiration("signalToMetrics.cacheExpiration", nil)).To(Succeed())
+		Expect(validateDurationBounds("signalToMetrics.cacheExpiration", nil)).To(Succeed())
 	})
 
 	It("should accept a zero duration", func() {
-		Expect(validateCacheExpiration(
+		Expect(validateDurationBounds(
 			"signalToMetrics.cacheExpiration", &metav1.Duration{Duration: 0})).To(Succeed())
 	})
 
 	It("should accept the lower bound of 10s", func() {
-		Expect(validateCacheExpiration(
+		Expect(validateDurationBounds(
 			"signalToMetrics.cacheExpiration", &metav1.Duration{Duration: 10 * time.Second})).To(Succeed())
 	})
 
 	It("should accept the upper bound of 1h", func() {
-		Expect(validateCacheExpiration(
+		Expect(validateDurationBounds(
 			"spamFilter.cacheExpiration", &metav1.Duration{Duration: time.Hour})).To(Succeed())
 	})
 
 	It("should reject a value below the lower bound", func() {
-		err := validateCacheExpiration(
+		err := validateDurationBounds(
 			"signalToMetrics.cacheExpiration", &metav1.Duration{Duration: 5 * time.Second})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("signalToMetrics.cacheExpiration"))
@@ -119,7 +119,7 @@ var _ = Describe("validateCacheExpiration", func() {
 	})
 
 	It("should reject a value above the upper bound", func() {
-		err := validateCacheExpiration(
+		err := validateDurationBounds(
 			"spamFilter.cacheExpiration", &metav1.Duration{Duration: 2 * time.Hour})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("spamFilter.cacheExpiration"))
@@ -176,13 +176,28 @@ var _ = Describe("The Signal Control validation webhook (cacheExpiration bounds)
 			ContainSubstring("spamFilter.cacheExpiration must be between 10s and 1h"))
 	})
 
-	It("should allow a resource with in-range cacheExpiration values", func() {
+	It("should deny a resource with an out-of-range edgeProxy.settingsRefreshInterval", func() {
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{
+			EdgeProxy: dash0v1alpha1.EdgeProxyConfig{
+				SettingsRefreshInterval: &metav1.Duration{Duration: 2 * time.Hour},
+			},
+		})
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeFalse())
+		Expect(response.Result.Message).To(
+			ContainSubstring("edgeProxy.settingsRefreshInterval must be between 10s and 1h"))
+	})
+
+	It("should allow a resource with in-range cacheExpiration and settingsRefreshInterval values", func() {
 		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{
 			SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
 				CacheExpiration: &metav1.Duration{Duration: 30 * time.Second},
 			},
 			SpamFilter: dash0v1alpha1.SpamFilterConfig{
 				CacheExpiration: &metav1.Duration{Duration: 5 * time.Minute},
+			},
+			EdgeProxy: dash0v1alpha1.EdgeProxyConfig{
+				SettingsRefreshInterval: &metav1.Duration{Duration: 45 * time.Second},
 			},
 		})
 		response := handler.Handle(ctx, request)

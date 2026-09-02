@@ -31,6 +31,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -117,6 +118,7 @@ type environmentVariables struct {
 	kubeletStatsReceiverConfig                  *util.KubeletStatsReceiverConfig
 	instrumentationDebug                        bool
 	enablePythonAutoInstrumentation             bool
+	enableRubyAutoInstrumentation               bool
 	debugVerbosityDetailed                      bool
 	disableCollectorResourceWatches             bool
 	enablePprofExtension                        bool
@@ -149,12 +151,14 @@ type commandLineArguments struct {
 	operatorConfigurationClusterName                                      string
 	operatorConfigurationAutoMonitorNamespacesEnabled                     bool
 	operatorConfigurationAutoMonitorNamespacesLabelSelector               string
-	operatorConfigurationInstrumentationDelivery                          string
+	operatorConfigurationInstrumentationDelivery                          dash0v1alpha1.InstrumentationDelivery
 	telemetryCollectionEnabled                                            bool
 	featureSignalControlEnabled                                           bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
 	disableOpenTelemetryCollectorHostPorts                                bool
+	otlpGrpcHostPort                                                      int
+	otlpHttpHostPort                                                      int
 	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
 	enableLeaderElection                                                  bool
@@ -207,6 +211,7 @@ const (
 	pprofPortEnvVarName                              = "DASH0_PPROF_PORT"
 	instrumentationDebugEnvVarName                   = "DASH0_INSTRUMENTATION_DEBUG"
 	enablePythonAutoInstrumentationEnvVarName        = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
+	enableRubyAutoInstrumentationEnvVarName          = "DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION"
 	disableCollectorResourceWatchesEnvVarName        = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName                 = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchSizeEnvVarName                          = "OTEL_COLLECTOR_SEND_BATCH_SIZE"
@@ -223,6 +228,11 @@ const (
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
+
+	// The Helm values behind the OTLP host port CLI flags. Validation errors name these rather than the flags, since
+	// the Helm chart is how the operator is configured; the flags are only how the values arrive.
+	otlpGrpcHostPortHelmValue = "operator.collectors.otlpGrpcHostPort"
+	otlpHttpHostPortHelmValue = "operator.collectors.otlpHttpHostPort"
 
 	envVarValueTrue = "true"
 
@@ -266,8 +276,7 @@ func init() {
 func Start() {
 	ctx := context.Background()
 
-	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
-	developmentMode := isSet && strings.ToLower(developmentModeRaw) == envVarValueTrue
+	developmentMode := readBooleanEnvVar(developmentModeEnvVarName)
 
 	cliArgs := defineCommandLineArguments()
 	opts := parseCommandLineOptions(cliArgs, developmentMode)
@@ -365,6 +374,10 @@ func Start() {
 	var err error
 	if err = readEnvironmentVariables(setupLog); err != nil {
 		setupLog.Error(err, "cannot read environment variables")
+		os.Exit(1)
+	}
+	if err = validateOtlpHostPorts(cliArgs.otlpGrpcHostPort, cliArgs.otlpHttpHostPort); err != nil {
+		setupLog.Error(err, "invalid OTLP collector host port configuration")
 		os.Exit(1)
 	}
 	if err = readExtraConfigMap(); err != nil {
@@ -640,13 +653,15 @@ func defineCommandLineArguments() *commandLineArguments {
 		"The value for autoMonitorNamespaces.labelSelector on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.StringVar(
-		&cliArgs.operatorConfigurationInstrumentationDelivery,
+	flag.Func(
 		"operator-configuration-instrumentation-delivery",
-		"",
 		"The value for spec.instrumentWorkloads.instrumentationDelivery on the operator configuration resource. "+
 			"Allowed values are \"auto\", \"image-volume\" and \"init-container\". Will be ignored if "+
 			"operator-configuration-endpoint is not set.",
+		func(value string) error {
+			cliArgs.operatorConfigurationInstrumentationDelivery = dash0v1alpha1.InstrumentationDelivery(value)
+			return nil
+		},
 	)
 	flag.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
@@ -667,6 +682,20 @@ func defineCommandLineArguments() *commandLineArguments {
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
 			"--dash0-force-use-otel-collector-service-url.",
+	)
+	flag.IntVar(
+		&cliArgs.otlpGrpcHostPort,
+		"dash0-otel-collector-otlp-grpc-host-port",
+		otelcolresources.DefaultOtlpGrpcHostPort,
+		"The host port used by the gRPC OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
+			"Only takes effect when host ports are not disabled.",
+	)
+	flag.IntVar(
+		&cliArgs.otlpHttpHostPort,
+		"dash0-otel-collector-otlp-http-host-port",
+		otelcolresources.DefaultOtlpHttpHostPort,
+		"The host port used by the HTTP OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
+			"Only takes effect when host ports are not disabled.",
 	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	flag.Uint64Var(
@@ -785,6 +814,12 @@ func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 	return delegatingZapCoreWrapper
 }
 
+// readBooleanEnvVar reports whether the environment variable with the given name is set to "true", ignoring case.
+func readBooleanEnvVar(name string) bool {
+	value, isSet := os.LookupEnv(name)
+	return isSet && strings.ToLower(value) == envVarValueTrue
+}
+
 func readEnvironmentVariables(logger logd.Logger) error {
 	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
@@ -882,8 +917,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	agent0ConnectorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(agent0ConnectorImagePullPolicyEnvVarName)
 	agent0ConnectorEnabled := readOptionalBoolFromEnvironmentVariable(agent0ConnectorEnabledEnvVarName, false)
 	agent0ConnectorServerAddress, _ := os.LookupEnv(agent0ConnectorServerAddressEnvVarName)
-	agent0ConnectorInsecureRaw, isSet := os.LookupEnv(agent0ConnectorInsecureEnvVarName)
-	agent0ConnectorInsecure := isSet && strings.ToLower(agent0ConnectorInsecureRaw) == envVarValueTrue
+	agent0ConnectorInsecure := readBooleanEnvVar(agent0ConnectorInsecureEnvVarName)
 	agent0ConnectorToken, _ := os.LookupEnv(agent0ConnectorTokenEnvVarName)
 	agent0ConnectorSecretRefName, _ := os.LookupEnv(agent0ConnectorSecretRefNameEnvVarName)
 	agent0ConnectorSecretRefKey, _ := os.LookupEnv(agent0ConnectorSecretRefKeyEnvVarName)
@@ -901,16 +935,13 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sPodIpEnvVarName)
 	}
 
-	instrumentationDebugRaw, isSet := os.LookupEnv(instrumentationDebugEnvVarName)
-	instrumentationDebug := isSet && strings.ToLower(instrumentationDebugRaw) == envVarValueTrue
-	enablePythonAutoInstrumentationRaw, isSet := os.LookupEnv(enablePythonAutoInstrumentationEnvVarName)
-	enablePythonAutoInstrumentation := isSet && strings.ToLower(enablePythonAutoInstrumentationRaw) == envVarValueTrue
+	instrumentationDebug := readBooleanEnvVar(instrumentationDebugEnvVarName)
+	enablePythonAutoInstrumentation := readBooleanEnvVar(enablePythonAutoInstrumentationEnvVarName)
+	enableRubyAutoInstrumentation := readBooleanEnvVar(enableRubyAutoInstrumentationEnvVarName)
 
-	debugVerbosityDetailedRaw, isSet := os.LookupEnv(debugVerbosityDetailedEnvVarName)
-	debugVerbosityDetailed := isSet && strings.ToLower(debugVerbosityDetailedRaw) == envVarValueTrue
+	debugVerbosityDetailed := readBooleanEnvVar(debugVerbosityDetailedEnvVarName)
 
-	disableCollectorResourceWatchesRaw, isSet := os.LookupEnv(disableCollectorResourceWatchesEnvVarName)
-	disableCollectorResourceWatches := isSet && strings.ToLower(disableCollectorResourceWatchesRaw) == envVarValueTrue
+	disableCollectorResourceWatches := readBooleanEnvVar(disableCollectorResourceWatchesEnvVarName)
 
 	var sendBatchSize *uint32
 	sendBatchSizeRaw, isSet := os.LookupEnv(sendBatchSizeEnvVarName)
@@ -934,21 +965,16 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		}
 	}
 
-	k8sAttributesDisableReplicasetInformerRaw, isSet := os.LookupEnv(k8sAttributesDisableReplicasetInformerEnvVarName)
-	k8sAttributesDisableReplicasetInformer :=
-		isSet && strings.ToLower(k8sAttributesDisableReplicasetInformerRaw) == envVarValueTrue
+	k8sAttributesDisableReplicasetInformer := readBooleanEnvVar(k8sAttributesDisableReplicasetInformerEnvVarName)
 
-	k8sAttributesWaitForMetadataRaw, isSet := os.LookupEnv(k8sAttributesWaitForMetadataEnvVarName)
-	k8sAttributesWaitForMetadata := isSet && strings.ToLower(k8sAttributesWaitForMetadataRaw) == envVarValueTrue
+	k8sAttributesWaitForMetadata := readBooleanEnvVar(k8sAttributesWaitForMetadataEnvVarName)
 	k8sAttributesWaitForMetadataTimeout, _ := os.LookupEnv(k8sAttributesWaitForMetadataTimeoutEnvVarName)
 
 	kubeletStatsAutoDetectEndpoint, kubeletStatsReceiverConfig := readKubeletStatsReceiverConfigFromEnv()
 
-	enablePprofExtensionRaw, isSet := os.LookupEnv(enablePprofExtensionEnvVarName)
-	enablePprofExtension := isSet && strings.ToLower(enablePprofExtensionRaw) == envVarValueTrue
+	enablePprofExtension := readBooleanEnvVar(enablePprofExtensionEnvVarName)
 
-	compressConfigMapsRaw, isSet := os.LookupEnv(compressConfigMapsEnvVarName)
-	compressConfigMaps := isSet && strings.ToLower(compressConfigMapsRaw) == envVarValueTrue
+	compressConfigMaps := readBooleanEnvVar(compressConfigMapsEnvVarName)
 
 	envVars = environmentVariables{
 		operatorNamespace:                           operatorNamespace,
@@ -997,6 +1023,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		kubeletStatsReceiverConfig:                  kubeletStatsReceiverConfig,
 		instrumentationDebug:                        instrumentationDebug,
 		enablePythonAutoInstrumentation:             enablePythonAutoInstrumentation,
+		enableRubyAutoInstrumentation:               enableRubyAutoInstrumentation,
 		debugVerbosityDetailed:                      debugVerbosityDetailed,
 		disableCollectorResourceWatches:             disableCollectorResourceWatches,
 		enablePprofExtension:                        enablePprofExtension,
@@ -1019,8 +1046,7 @@ func readKubeletStatsReceiverConfigFromEnv() (bool, *util.KubeletStatsReceiverCo
 	}
 	endpoint, _ := os.LookupEnv(kubeletStatsEndpointEnvVarName)
 	authType, _ := os.LookupEnv(kubeletStatsAuthTypeEnvVarName)
-	insecureSkipVerifyRaw, isSet := os.LookupEnv(kubeletStatsInsecureSkipVerifyEnvVarName)
-	insecureSkipVerify := isSet && strings.ToLower(insecureSkipVerifyRaw) == envVarValueTrue
+	insecureSkipVerify := readBooleanEnvVar(kubeletStatsInsecureSkipVerifyEnvVarName)
 	return false, &util.KubeletStatsReceiverConfig{
 		Enabled:            true,
 		Endpoint:           endpoint,
@@ -1036,6 +1062,37 @@ func readExtraConfigMap() error {
 	extraConfig, err = util.ReadExtraConfigMap()
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateOtlpHostPorts checks that the configured OTLP collector host ports are valid port numbers and distinct
+// from each other. It does not (and cannot) detect whether a port is already in use on a given node -- that surfaces
+// as a normal Kubernetes pod scheduling failure once the collector DaemonSet is applied.
+func validateOtlpHostPorts(grpcHostPort int, httpHostPort int) error {
+	ports := []struct {
+		helmValue string
+		value     int
+	}{
+		{helmValue: otlpGrpcHostPortHelmValue, value: grpcHostPort},
+		{helmValue: otlpHttpHostPortHelmValue, value: httpHostPort},
+	}
+	for _, port := range ports {
+		if port.value < 1 || port.value > 65535 {
+			return fmt.Errorf(
+				"%s must be in the range 1-65535, but was %d",
+				port.helmValue,
+				port.value,
+			)
+		}
+	}
+	if grpcHostPort == httpHostPort {
+		return fmt.Errorf(
+			"%s and %s must be different, both are set to %d",
+			otlpGrpcHostPortHelmValue,
+			otlpHttpHostPortHelmValue,
+			grpcHostPort,
+		)
 	}
 	return nil
 }
@@ -1301,14 +1358,13 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
-	kubernetesVersionInfo, kubernetesVersionDetected := cluster.DetectKubernetesVersion(clientset, setupLog)
-	resolvedInstrumentationDelivery := cluster.ResolveInstrumentationDelivery(
-		cliArgs.operatorConfigurationInstrumentationDelivery,
-		kubernetesVersionInfo,
-		kubernetesVersionDetected,
-		operatorConfigurationIsManagedViaHelm(cliArgs),
-		setupLog,
-	)
+	// Used for reads that only need object metadata, see CollectorManager.warnAboutInsufficientZoneCoverage.
+	nodeMetadataClient, err := metadata.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		return fmt.Errorf("unable to create the metadata client")
+	}
+
+	kubernetesApiServerVersionInfo := cluster.DetectKubernetesApiServerVersion(clientset, setupLog)
 
 	operatorConfigurationTokenRedacted := ""
 	if cliArgs.operatorConfigurationToken != "" {
@@ -1417,8 +1473,6 @@ func startOperatorManager(
 
 		"requested instrumentation delivery",
 		cliArgs.operatorConfigurationInstrumentationDelivery,
-		"resolved instrumentation delivery",
-		resolvedInstrumentationDelivery,
 		"instrumentation delays",
 		cliArgs.instrumentationDelays,
 		"development mode",
@@ -1433,23 +1487,22 @@ func startOperatorManager(
 		envVars.instrumentationDebug,
 		"Python auto-instrumentation enabled",
 		envVars.enablePythonAutoInstrumentation,
+		"Ruby auto-instrumentation enabled",
+		envVars.enableRubyAutoInstrumentation,
 		"watch collector resources",
 		!envVars.disableCollectorResourceWatches,
-		"Kubernetes version",
-		kubernetesVersionInfo.VersionString,
-		"Kubernetes version detected",
-		kubernetesVersionDetected,
+		"Kubernetes API server version",
+		kubernetesApiServerVersionInfo,
 	)
 
 	err = startDash0Controllers(
 		ctx,
 		mgr,
 		clientset,
+		nodeMetadataClient,
 		cliArgs,
 		operatorConfigurationValues,
-		kubernetesVersionInfo,
-		kubernetesVersionDetected,
-		resolvedInstrumentationDelivery,
+		kubernetesApiServerVersionInfo,
 		delegatingZapCoreWrapper,
 		developmentMode,
 	)
@@ -1503,11 +1556,10 @@ func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
+	nodeMetadataClient metadata.Interface,
 	cliArgs *commandLineArguments,
 	operatorConfigurationValues *OperatorConfigurationValues,
-	kubernetesVersionInfo cluster.KubernetesVersionInfo,
-	kubernetesVersionDetected bool,
-	instrumentationDelivery cluster.ResolvedInstrumentationDelivery,
+	kubernetesApiServerVersionInfo cluster.KubernetesVersionInfo,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	developmentMode bool,
 ) error {
@@ -1546,6 +1598,7 @@ func startDash0Controllers(
 	possibleCollectorUrls := collectors.RenderCollectorBaseUrls(
 		envVars.oTelCollectorNamePrefix,
 		envVars.operatorNamespace,
+		int32(cliArgs.otlpHttpHostPort),
 	)
 	oTelCollectorBaseUrl := collectors.SelectCollectorBaseUrl(
 		possibleCollectorUrls,
@@ -1582,12 +1635,21 @@ func startDash0Controllers(
 		possibleCollectorUrls,
 		oTelCollectorBaseUrl,
 		extraConfig,
-		instrumentationDelivery,
+		cliArgs.operatorConfigurationInstrumentationDelivery,
 		cliArgs.instrumentationDelays,
 		envVars.instrumentationDebug,
 		envVars.enablePythonAutoInstrumentation,
+		envVars.enableRubyAutoInstrumentation,
 	)
-	clusterInstrumentationConfig.SetKubernetesVersion(kubernetesVersionInfo, kubernetesVersionDetected)
+
+	startMinimumKubeletVersionDetection(
+		ctx,
+		clientset,
+		clusterInstrumentationConfig,
+		kubernetesApiServerVersionInfo,
+		cliArgs.operatorConfigurationInstrumentationDelivery,
+	)
+
 	clusterUid, err := cluster.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, setupLog)
 	if err != nil {
 		return err
@@ -1642,9 +1704,12 @@ func startDash0Controllers(
 			KubeletStatsAutoDetectEndpoint:         envVars.kubeletStatsAutoDetectEndpoint,
 			KubeletStatsReceiverConfig:             envVars.kubeletStatsReceiverConfig,
 			PseudoClusterUid:                       clusterUid,
+			KubernetesApiServerVersion:             kubernetesApiServerVersionInfo,
 			IsIPv6Cluster:                          isIPv6Cluster,
 			IsDocker:                               isDocker,
 			DisableHostPorts:                       cliArgs.disableOpenTelemetryCollectorHostPorts,
+			OtlpGrpcHostPort:                       int32(cliArgs.otlpGrpcHostPort),
+			OtlpHttpHostPort:                       int32(cliArgs.otlpHttpHostPort),
 			IsGkeAutopilot:                         cliArgs.isGkeAutopilot,
 			DevelopmentMode:                        developmentMode,
 			DebugVerbosityDetailed:                 envVars.debugVerbosityDetailed,
@@ -1659,7 +1724,7 @@ func startDash0Controllers(
 		)
 		collectorManager = collectors.NewCollectorManager(
 			k8sClient,
-			clientset,
+			nodeMetadataClient,
 			extraConfig,
 			developmentMode,
 			cliArgs.featureSignalControlEnabled,
@@ -1733,6 +1798,7 @@ func startDash0Controllers(
 			envVars.edgeProxyImage,
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
+			int32(cliArgs.otlpGrpcHostPort),
 			cliArgs.isGkeAutopilot,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
@@ -2118,6 +2184,35 @@ func createOrUpdateAutoOperatorConfigurationResource(
 	}
 }
 
+func startMinimumKubeletVersionDetection(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
+	kubernetesApiServerVersionInfo cluster.KubernetesVersionInfo,
+	requestedInstrumentationDelivery dash0v1alpha1.InstrumentationDelivery,
+) {
+	minimumKubeletVersionDetector := cluster.NewMinimumKubeletVersionDetector()
+	clusterInstrumentationConfig.SetKubernetesVersions(
+		kubernetesApiServerVersionInfo,
+		minimumKubeletVersionDetector,
+	)
+	minimumKubeletVersionDetector.StartDetection(
+		ctx,
+		clientset,
+		func() {
+			setupLog.Info(
+				"the instrumentation delivery mechanism has been re-evaluated after determining the minimum "+
+					"kubelet version among the cluster's nodes",
+				"requested instrumentation delivery",
+				requestedInstrumentationDelivery,
+				"resolved instrumentation delivery",
+				clusterInstrumentationConfig.ResolveInstrumentationDelivery(),
+			)
+		},
+		setupLog,
+	)
+}
+
 // setupCollectorReconciler sets up the reconciler that watches the OpenTelemetry collector resources managed by the
 // operator, unless the troubleshooting setting operator.disableCollectorResourceWatches is enabled.
 func setupCollectorReconciler(
@@ -2176,14 +2271,16 @@ func setupAgent0ConnectorManager(
 		mgr.GetScheme(),
 		operatorDeploymentSelfReference,
 		agent0ConnectorConfig,
-		extraConfig,
 	)
 	agent0ConnectorManager := agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
 		envVars.agent0ConnectorEnabled,
+		extraConfig,
 		developmentMode,
 		agent0ConnectorResourceManager,
+		mgr.GetEventRecorder("dash0-agent0-connector"),
 	)
+	extraConfigMapWatcher.AddClient(agent0ConnectorManager)
 	agent0ConnectorReconciler := agent0connector.NewAgent0ConnectorReconciler(
 		k8sClient,
 		agent0ConnectorManager,

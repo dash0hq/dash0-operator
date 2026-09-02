@@ -24,7 +24,8 @@ runtime_under_test="nodejs" # nodejs is currently the only runtime with a /metri
 additional_namespaces="false"
 USE_CERT_MANAGER="true"
 PROMETHEUS_CRD_SUPPORT_ENABLED="true"
-TA_MTLS_ENABLED="true"
+TA_MTLS_ENABLED="${TA_MTLS_ENABLED:-true}"
+TA_ALLOW_INSECURE_AUTH_SECRETS="${TA_ALLOW_INSECURE_AUTH_SECRETS:-false}"
 DEPLOY_CADVISOR_SCRAPECONFIG="true"
 
 # shellcheck source=./lib/util

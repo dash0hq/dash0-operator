@@ -9,6 +9,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -52,6 +53,7 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			r.withNamePredicate([]string{
 				otelcolresources.DaemonSetCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
 				otelcolresources.DeploymentCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
+				otelcolresources.SignalControlCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
 				// Note: We are deliberately not watching the file_log receiver offsets ConfigMap, since it is updated
 				// frequently by the filelog offset sync container and does not require reconciliation.
 			}, true)).
@@ -74,6 +76,7 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
 				otelcolresources.ServiceName(r.oTelCollectorNamePrefix),
+				otelcolresources.SignalControlCollectorServiceName(r.oTelCollectorNamePrefix),
 			}, true)).
 		Watches(
 			&appsv1.DaemonSet{},
@@ -88,7 +91,14 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(
 				r.createNameFilterPredicate([]string{
 					otelcolresources.DeploymentName(r.oTelCollectorNamePrefix),
+					otelcolresources.SignalControlCollectorDeploymentName(r.oTelCollectorNamePrefix),
 				}, true), generationOrLabelChangePredicate)).
+		Watches(
+			&policyv1.PodDisruptionBudget{},
+			&handler.EnqueueRequestForObject{},
+			r.withNamePredicate([]string{
+				otelcolresources.SignalControlCollectorPodDisruptionBudgetName(r.oTelCollectorNamePrefix),
+			}, true)).
 		Complete(r)
 }
 

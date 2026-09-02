@@ -107,8 +107,10 @@ func (r *SynchronizationRetryRunnable) Start(ctx context.Context) error {
 // retryFailedSynchronizations checks whether any IaC resource had retryable synchronization issues, and if so, triggers
 // the synchronization for it again.
 func (r *SynchronizationRetryRunnable) retryFailedSynchronizations(ctx context.Context) {
+	log.FromContext(ctx).Info("SynchronizationRetryRunnable: checking for retryable resources")
 	r.retryFailedSynchronizationsForOwnedResources(ctx)
 	r.retryFailedSynchronizationsForThirdPartyResources(ctx)
+	log.FromContext(ctx).Info("SynchronizationRetryRunnable: done checking for retryable resources")
 }
 
 // retryFailedSynchronizationsForOwnedResources inspects all resource types that are owned by the Dash0 operator

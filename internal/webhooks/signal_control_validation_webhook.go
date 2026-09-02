@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	cacheExpirationMin = 10 * time.Second
-	cacheExpirationMax = 1 * time.Hour
+	durationBoundMin = 10 * time.Second
+	durationBoundMax = 1 * time.Hour
 )
 
 type SignalControlValidationWebhookHandler struct {
@@ -94,15 +94,21 @@ func (h *SignalControlValidationWebhookHandler) Handle(ctx context.Context, requ
 			return admission.Denied(err.Error())
 		}
 
-		if err := validateCacheExpiration(
+		if err := validateDurationBounds(
 			"signalToMetrics.cacheExpiration", signalControlResource.Spec.SignalToMetrics.CacheExpiration); err != nil {
 			logger.Warn("Rejecting Signal Control resource, invalid signalToMetrics.cacheExpiration.", "error", err)
 			return admission.Denied(err.Error())
 		}
 
-		if err := validateCacheExpiration(
+		if err := validateDurationBounds(
 			"spamFilter.cacheExpiration", signalControlResource.Spec.SpamFilter.CacheExpiration); err != nil {
 			logger.Warn("Rejecting Signal Control resource, invalid spamFilter.cacheExpiration.", "error", err)
+			return admission.Denied(err.Error())
+		}
+
+		if err := validateDurationBounds(
+			"edgeProxy.settingsRefreshInterval", signalControlResource.Spec.EdgeProxy.SettingsRefreshInterval); err != nil {
+			logger.Warn("Rejecting Signal Control resource, invalid edgeProxy.settingsRefreshInterval.", "error", err)
 			return admission.Denied(err.Error())
 		}
 	}
@@ -135,15 +141,15 @@ func validateOperationProcessorCardinalityRules(rules []dash0v1alpha1.Cardinalit
 	return nil
 }
 
-// validateCacheExpiration rejects a non-zero cacheExpiration outside the 10s–1h range. A nil or zero value is
-// accepted here because signalControlConfigFromResource omits a zero cacheExpiration from the rendered collector
-// config, so the component keeps its factory default (60s for the dash0signaltometrics connector, 60s for the
-// dash0filter processor) instead of validating a literal 0.
-func validateCacheExpiration(fieldPath string, d *metav1.Duration) error {
+// validateDurationBounds rejects a non-zero duration outside the 10s–1h range shared by the settings-driven Signal
+// Control knobs (signalToMetrics.cacheExpiration, spamFilter.cacheExpiration and edgeProxy.settingsRefreshInterval).
+// A nil or zero value is accepted: the collector config and the Edge Proxy builder omit a zero value from the rendered
+// config, so the component keeps its factory default (60s) instead of validating a literal 0.
+func validateDurationBounds(fieldPath string, d *metav1.Duration) error {
 	if d == nil || d.Duration == 0 {
 		return nil
 	}
-	if d.Duration < cacheExpirationMin || d.Duration > cacheExpirationMax {
+	if d.Duration < durationBoundMin || d.Duration > durationBoundMax {
 		return fmt.Errorf("%s must be between 10s and 1h, got %s", fieldPath, d.Duration)
 	}
 	return nil

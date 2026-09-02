@@ -19,12 +19,23 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
+// ErrMisconfigured is wrapped into every error that CreateOrUpdateAgent0ConnectorResources returns for an invalid
+// Helm level agent0-connector configuration. Such an error is permanent, reconciling again with the same configuration
+// fails identically. Callers must not requeue a reconcile request for it.
+var ErrMisconfigured = errors.New("the agent0-connector is misconfigured")
+
+// ErrInvalidClusterRoleRules and ErrNoAuthorizationToken are the individual misconfigurations, so that a caller can
+// report which one occurred. Both wrap ErrMisconfigured, hence errors.Is(err, ErrMisconfigured) matches either.
+var (
+	ErrInvalidClusterRoleRules = fmt.Errorf("%w: the custom cluster role rules are invalid", ErrMisconfigured)
+	ErrNoAuthorizationToken    = fmt.Errorf("%w: no Dash0 authorization token is available", ErrMisconfigured)
+)
+
 type Agent0ConnectorResourceManager struct {
 	client.Client
 	scheme                    *runtime.Scheme
 	operatorManagerDeployment *appsv1.Deployment
 	agent0ConnectorConfig     util.Agent0ConnectorConfig
-	extraConfig               util.ExtraConfig
 }
 
 func NewAgent0ConnectorResourceManager(
@@ -32,32 +43,42 @@ func NewAgent0ConnectorResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	agent0ConnectorConfig util.Agent0ConnectorConfig,
-	extraConfig util.ExtraConfig,
 ) *Agent0ConnectorResourceManager {
 	return &Agent0ConnectorResourceManager{
 		Client:                    k8sClient,
 		scheme:                    scheme,
 		operatorManagerDeployment: operatorManagerDeployment,
 		agent0ConnectorConfig:     agent0ConnectorConfig,
-		extraConfig:               extraConfig,
 	}
 }
 
 func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
+	if err := validateClusterRoleRules(extraConfig.Agent0ConnectorClusterRoleRules); err != nil {
+		logger.ErrorTelemetryCollectionIssue(err, "the custom cluster role rules for the agent0-connector "+
+			"(Helm value operator.agent0Connector.clusterRole.rules) are invalid, not creating or updating the "+
+			"agent0-connector resources")
+		// The rules only change when the extra config map changes, and that triggers a new reconciliation via
+		// UpdateExtraConfig.
+		return false, false, fmt.Errorf("%w: %w", ErrInvalidClusterRoleRules, err)
+	}
+
 	authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
 		m.agent0ConnectorConfig.Authorization,
 		authTokenEnvVarName,
 	)
 	if err != nil {
-		logger.Error(err, "no Dash0 authorization token is available for the agent0-connector workload, "+
-			"not creating the agent0-connector resources")
-		return false, false, err
+		logger.ErrorTelemetryCollectionIssue(err, "no Dash0 authorization token is available for the "+
+			"agent0-connector workload, not creating the agent0-connector resources")
+		// The authorization is read from the operator manager's environment variables once at startup, so it cannot
+		// change while the process runs.
+		return false, false, fmt.Errorf("%w: %w", ErrNoAuthorizationToken, err)
 	}
 
-	desiredState := assembleDesiredState(&m.agent0ConnectorConfig, &authTokenEnvVar, m.extraConfig)
+	desiredState := assembleDesiredState(&m.agent0ConnectorConfig, &authTokenEnvVar, extraConfig)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
@@ -177,6 +198,7 @@ func (m *Agent0ConnectorResourceManager) updateResource(
 
 func (m *Agent0ConnectorResourceManager) DeleteResources(
 	ctx context.Context,
+	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, error) {
 	logger.Info(
@@ -184,7 +206,7 @@ func (m *Agent0ConnectorResourceManager) DeleteResources(
 			"Deleting the agent0-connector Kubernetes resources in the Dash0 operator namespace %s (if existing).",
 			m.agent0ConnectorConfig.OperatorNamespace,
 		))
-	desiredResources := assembleDesiredState(&m.agent0ConnectorConfig, nil, m.extraConfig)
+	desiredResources := assembleDesiredState(&m.agent0ConnectorConfig, nil, extraConfig)
 	var allErrors []error
 	resourcesHaveBeenDeleted := false
 	for _, wrapper := range desiredResources {

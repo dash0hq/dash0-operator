@@ -127,19 +127,38 @@ type collectorConfigurationTemplateValues struct {
 	EnableProfExtension                              bool
 	ProfilingEnabled                                 bool
 	SignalControl                                    SignalControlConfig
+	SignalControlGatewayActive                       bool
+	SignalControlCollectorServiceName                string
+	SignalControlCollectorDeploymentName             string
 }
 
 var (
+	//go:embed exporters.partial.yaml.template
+	exportersPartialTemplateSource string
+
 	//go:embed daemonset.config.yaml.template
 	daemonSetCollectorConfigurationTemplateSource string
-	daemonSetCollectorConfigurationTemplate       = template.Must(
-		template.New("daemonset-collector-configuration").Parse(daemonSetCollectorConfigurationTemplateSource))
+	daemonSetCollectorConfigurationTemplate       = parseCollectorConfigurationTemplate(
+		"daemonset-collector-configuration", daemonSetCollectorConfigurationTemplateSource)
 
 	//go:embed deployment.config.yaml.template
 	deploymentCollectorConfigurationTemplateSource string
-	deploymentCollectorConfigurationTemplate       = template.Must(
-		template.New("deployment-collector-configuration").Parse(deploymentCollectorConfigurationTemplateSource))
+	deploymentCollectorConfigurationTemplate       = parseCollectorConfigurationTemplate(
+		"deployment-collector-configuration", deploymentCollectorConfigurationTemplateSource)
+
+	//go:embed signalcontrol.config.yaml.template
+	signalControlCollectorConfigurationTemplateSource string
+	signalControlCollectorConfigurationTemplate       = parseCollectorConfigurationTemplate(
+		"signal-control-collector-configuration", signalControlCollectorConfigurationTemplateSource)
 )
+
+// parseCollectorConfigurationTemplate parses one collector configuration template together with the shared partials
+// from exporters.partial.yaml.template. The partial file contains only definitions, so parsing it into the template
+// set does not replace the main template's body.
+func parseCollectorConfigurationTemplate(name string, source string) *template.Template {
+	parsed := template.Must(template.New(name).Parse(source))
+	return template.Must(parsed.Parse(exportersPartialTemplateSource))
+}
 
 type excludedMetadataKey struct {
 	// key is the literal label/annotation key that must not be collected.
@@ -233,6 +252,30 @@ func assembleDeploymentCollectorConfigMap(
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
 		TargetAllocatorMtlsConfig{}, // target-allocator mTLS config is not used when rendering the deployment config map
+		forDeletion,
+	)
+}
+
+// assembleSignalControlCollectorConfigMap renders the configuration of the Signal Control collector deployment. That
+// collector receives the Dash0-bound telemetry of the other two collector workloads via OTLP, applies Signal Control
+// and exports to Dash0, so it needs neither the namespace lists (all enrichment and filtering has already happened
+// upstream) nor the target-allocator mTLS config.
+func assembleSignalControlCollectorConfigMap(
+	config *oTelColConfig,
+	monitoredNamespaces []string,
+	forDeletion bool,
+) (*corev1.ConfigMap, error) {
+	return assembleCollectorConfigMap(
+		config,
+		monitoredNamespaces,
+		nil, // namespacesWithLogCollection is not used when rendering the Signal Control collector config map
+		nil, // namespacesWithEventCollection is not used when rendering the Signal Control collector config map
+		nil, // namespacesWithPrometheusScraping is not used when rendering the Signal Control collector config map
+		nil, // custom filters are applied upstream, in the daemonset and deployment collectors
+		nil, // custom transforms are applied upstream, in the daemonset and deployment collectors
+		signalControlCollectorConfigurationTemplate,
+		SignalControlCollectorConfigConfigMapName(config.NamePrefix),
+		TargetAllocatorMtlsConfig{}, // target-allocator mTLS config is not used for the Signal Control collector
 		forDeletion,
 	)
 }
@@ -334,6 +377,9 @@ func assembleCollectorConfigMap(
 			EnableProfExtension:                              config.EnableProfExtension,
 			ProfilingEnabled:                                 config.ProfilingEnabled,
 			SignalControl:                                    config.SignalControl,
+			SignalControlGatewayActive:                       config.signalControlGatewayActive(),
+			SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
+			SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
 		})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
@@ -407,6 +453,16 @@ func renderOttlNamespaceFilter(
 			config.OperatorNamespace,
 		)
 	}
+	// Do not drop metrics from the Signal Control collector deployment even if there isn't a Dash0Monitoring resource
+	// in the operator namespace; like the other collectors, its metrics are considered self-monitoring.
+	signalControlCollectorExclusion := ""
+	if selfMonitoringEnabled && config.signalControlGatewayActive() {
+		signalControlCollectorExclusion = fmt.Sprintf("(resource.attributes[\"k8s.deployment.name\"] != \"%s\" or "+
+			"resource.attributes[\"k8s.namespace.name\"] != \"%s\") and\n          ",
+			SignalControlCollectorDeploymentName(config.NamePrefix),
+			config.OperatorNamespace,
+		)
+	}
 	// Do not drop metrics about the Edge Proxy pod (kubeletstats / k8s_cluster receivers) nor OTLP-pushed metrics from
 	// the Edge Proxy itself when self-monitoring is enabled.
 	edgeProxyExclusion := ""
@@ -428,7 +484,8 @@ func renderOttlNamespaceFilter(
 			config.OperatorNamespace,
 		)
 	}
-	selfMonitoringExclusions := operatorManagerExclusion + taExclusion + edgeProxyExclusion + agent0ConnectorExclusion
+	selfMonitoringExclusions := operatorManagerExclusion + taExclusion + signalControlCollectorExclusion +
+		edgeProxyExclusion + agent0ConnectorExclusion
 
 	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
 	// list of monitored namespaces.
