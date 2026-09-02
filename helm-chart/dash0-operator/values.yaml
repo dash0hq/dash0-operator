@@ -624,11 +624,11 @@ operator:
     disableHostPorts: false
 
     # The host port the OpenTelemetry collector DaemonSet pods use for the gRPC OTLP receiver. Only takes effect
-    # when disableHostPorts is false. Change this only if 40317 is known to collide with something else on your nodes.
+    # when disableHostPorts is false. Make sure the host port you set is available on all nodes in the cluster.
     otlpGrpcHostPort: 40317
 
     # The host port the OpenTelemetry collector DaemonSet pods use for the HTTP OTLP receiver. Only takes effect
-    # when disableHostPorts is false. Change this only if 40318 is known to collide with something else on your nodes.
+    # when disableHostPorts is false. Make sure the host port you set is available on all nodes in the cluster.
     otlpHttpHostPort: 40318
 
     # If set to true, the pprof extension will be enabled for both collectors.
