@@ -10,12 +10,15 @@
 # - By default, the most recent published Helm chart (dash0-operator/dash0-operator) will be tested.
 # - Set USE_LOCAL_CHART=true to test a local Helm chart.
 #   By default, the local chart directory helm-chart/dash0-operator will be used, set OPERATOR_HELM_CHART to override that.
-#   When using a local Helm chart, the container image repositories ghcr.io/dash0hq/gke-ap-xxx will be used.
+#   When using a local Helm chart, the container image repositories ghcr.io/dash0hq/gke-ap-xxx will be used by default.
 #   (These are allow-listed in addition to the official ghcr.io/dash0hq repositories in the Google GKE AutoPilot allowlists.
-#   Testing with arbitrarycontainer image repositories is not supported due to allowlist restrictions on the container images.)
+#   Testing with arbitrary container image repositories is not supported due to allowlist restrictions on the container images.)
 #   IMPORTANT: Make sure the ghcr.io/dash0hq/gke-ap-xxx repositories have up-to-date images that represent your current
 #   branch. This script does not build or push images.
-# - Use IMAGE_TAG to control which tag is used for the ghcr.io/dash0hq/gke-ap-xxx images (defaults to "latest").
+# - Use IMAGE_REPOSITORY_PREFIX to control the prefix of the container image repositories used with a local Helm chart
+#   (defaults to "ghcr.io/dash0hq/gke-ap-"). For example, set it to "ghcr.io/dash0hq/" to use the official image
+#   repositories (both prefixes are allow-listed on the GKE Autopilot cluster).
+# - Use IMAGE_TAG to control which tag is used for the container images (defaults to "latest").
 
 set -euo pipefail
 
@@ -27,12 +30,105 @@ use_local_chart="${USE_LOCAL_CHART:-}"
 if [[ "$use_local_chart" = "true" ]]; then
   chart="${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
   image_tag="${IMAGE_TAG:-latest}"
+  image_repository_prefix="${IMAGE_REPOSITORY_PREFIX:-ghcr.io/dash0hq/gke-ap-}"
+  # Only the official ghcr.io/dash0hq repositories and the ghcr.io/dash0hq/gke-ap- repositories are allow-listed on the
+  # GKE Autopilot cluster. Using any other prefix would make the operator pods unschedulable.
+  if [[ "$image_repository_prefix" != "ghcr.io/dash0hq/" && "$image_repository_prefix" != "ghcr.io/dash0hq/gke-ap-" ]]; then
+    echo "ERROR: unsupported IMAGE_REPOSITORY_PREFIX '$image_repository_prefix'."
+    echo "Only 'ghcr.io/dash0hq/' and 'ghcr.io/dash0hq/gke-ap-' are allow-listed."
+    exit 1
+  fi
 else
   chart="${OPERATOR_HELM_CHART:-dash0-operator/dash0-operator}"
 fi
 helm_release_name=dash0-operator
 
+# Directory and archive used to collect cluster diagnostics when the check fails. These paths are relative to the
+# repository root (we cd into it above), which is also the working directory of the GitHub Actions job, so the workflow
+# can upload the archive as an artifact.
+diagnostics_dir=gke-ap-allowlist-check-diagnostics
+diagnostics_archive="${diagnostics_dir}.tar.gz"
+
+# Set to "true" once all checks have passed. As long as this is not "true" when cleanup() runs, we assume the check has
+# failed and collect cluster diagnostics before tearing everything down.
+check_succeeded=false
+
+# Collects diagnostic information from the cluster (workloads, pods, their logs, events, config maps and the relevant
+# custom resources) into $diagnostics_dir and compresses it into $diagnostics_archive. This runs at the start of
+# cleanup() when the check has failed, that is, before "helm uninstall" removes everything from the cluster.
+collect_diagnostics() {
+  set +e
+  echo "the check did not succeed, collecting cluster diagnostics into \"$diagnostics_dir\" before cleanup"
+  mkdir -p "$diagnostics_dir"
+
+  # Runs a command and stores its combined stdout/stderr in $diagnostics_dir/$1. Best effort: a failing command must
+  # never abort the diagnostics collection or the cleanup.
+  dump() {
+    local file="$diagnostics_dir/$1"
+    shift
+    mkdir -p "$(dirname "$file")"
+    {
+      echo "\$ $*"
+      echo
+      "$@" 2>&1
+    } > "$file" || echo "(command exited with a non-zero status)" >> "$file"
+  }
+
+  # Cluster-scoped GKE Autopilot allowlist resources. A mismatch or a not-yet-ready AllowlistSynchronizer is the most
+  # likely reason for this check to fail.
+  dump allowlistsynchronizers-get.txt kubectl get allowlistsynchronizers.auto.gke.io -o wide
+  dump allowlistsynchronizers-describe.txt kubectl describe allowlistsynchronizers.auto.gke.io
+  dump workloadallowlists-get.txt kubectl get workloadallowlists.auto.gke.io -o wide
+  dump workloadallowlists-describe.txt kubectl describe workloadallowlists.auto.gke.io
+
+  # Dash0 custom resources.
+  dump dash0monitorings-get.txt kubectl get dash0monitorings.operator.dash0.com --all-namespaces -o wide
+  dump dash0monitorings-describe.txt kubectl describe dash0monitorings.operator.dash0.com --all-namespaces
+  dump dash0operatorconfigurations-get.txt kubectl get dash0operatorconfigurations.operator.dash0.com -o wide
+  dump dash0operatorconfigurations-describe.txt kubectl describe dash0operatorconfigurations.operator.dash0.com
+
+  # Cluster-wide events (scheduling and allowlist rejections often show up here).
+  dump events-all-namespaces.txt kubectl get events --all-namespaces --sort-by=.lastTimestamp
+
+  local namespace
+  for namespace in "$operator_namespace" "$monitored_namespace"; do
+    dump "$namespace/workloads-get.txt" \
+      kubectl get deployments,daemonsets,statefulsets,replicasets,jobs,pods,configmaps,services \
+      --namespace "$namespace" -o wide
+    dump "$namespace/workloads-describe.txt" \
+      kubectl describe deployments,daemonsets,statefulsets,jobs --namespace "$namespace"
+    dump "$namespace/pods-describe.txt" kubectl describe pods --namespace "$namespace"
+    dump "$namespace/configmaps-describe.txt" kubectl describe configmaps --namespace "$namespace"
+    dump "$namespace/events.txt" kubectl get events --namespace "$namespace" --sort-by=.lastTimestamp
+
+    # Collect logs (all containers, current and previous) for every pod in the namespace.
+    local pod
+    while IFS= read -r pod; do
+      [[ -z "$pod" ]] && continue
+      dump "$namespace/logs-${pod}.txt" \
+        kubectl logs --namespace "$namespace" "$pod" --all-containers=true --prefix=true
+      # Previous logs only exist for containers that have restarted; ignore the file if there are none.
+      if ! kubectl logs --namespace "$namespace" "$pod" --all-containers=true --prefix=true --previous \
+        > "$diagnostics_dir/$namespace/logs-${pod}-previous.txt" 2>/dev/null; then
+        rm -f "$diagnostics_dir/$namespace/logs-${pod}-previous.txt"
+      fi
+    done < <(kubectl get pods --namespace "$namespace" \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null)
+  done
+
+  if tar -czf "$diagnostics_archive" "$diagnostics_dir"; then
+    echo "cluster diagnostics have been collected in \"$diagnostics_archive\""
+  else
+    echo "WARNING: failed to create the diagnostics archive \"$diagnostics_archive\""
+  fi
+  set -e
+}
+
 cleanup() {
+  if [[ "$check_succeeded" != "true" ]]; then
+    collect_diagnostics
+  fi
+
   set +e
   set -x
   echo "running cleanup"
@@ -140,19 +236,19 @@ helm_command+=" --set operator.dash0Export.apiEndpoint=https://api.dummy-url.aws
 helm_command+=" --set operator.prometheusCrdSupportEnabled=true"
 helm_command+=" --set operator.clusterName=dummy-cluster-name"
 if [[ "$use_local_chart" = "true" ]]; then
-  helm_command+=" --set operator.image.repository=ghcr.io/dash0hq/gke-ap-operator-controller"
+  helm_command+=" --set operator.image.repository=${image_repository_prefix}operator-controller"
   helm_command+=" --set operator.image.tag=$image_tag"
-  helm_command+=" --set operator.instrumentationImage.repository=ghcr.io/dash0hq/gke-ap-instrumentation"
+  helm_command+=" --set operator.instrumentationImage.repository=${image_repository_prefix}instrumentation"
   helm_command+=" --set operator.instrumentationImage.tag=$image_tag"
-  helm_command+=" --set operator.collectorImage.repository=ghcr.io/dash0hq/gke-ap-collector"
+  helm_command+=" --set operator.collectorImage.repository=${image_repository_prefix}collector"
   helm_command+=" --set operator.collectorImage.tag=$image_tag"
-  helm_command+=" --set operator.configurationReloaderImage.repository=ghcr.io/dash0hq/gke-ap-configuration-reloader"
+  helm_command+=" --set operator.configurationReloaderImage.repository=${image_repository_prefix}configuration-reloader"
   helm_command+=" --set operator.configurationReloaderImage.tag=$image_tag"
-  helm_command+=" --set operator.filelogOffsetSyncImage.repository=ghcr.io/dash0hq/gke-ap-filelog-offset-sync"
+  helm_command+=" --set operator.filelogOffsetSyncImage.repository=${image_repository_prefix}filelog-offset-sync"
   helm_command+=" --set operator.filelogOffsetSyncImage.tag=$image_tag"
-  helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=ghcr.io/dash0hq/gke-ap-filelog-offset-volume-ownership"
+  helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=${image_repository_prefix}filelog-offset-volume-ownership"
   helm_command+=" --set operator.filelogOffsetVolumeOwnershipImage.tag=$image_tag"
-  helm_command+=" --set operator.targetAllocatorImage.repository=ghcr.io/dash0hq/gke-ap-target-allocator"
+  helm_command+=" --set operator.targetAllocatorImage.repository=${image_repository_prefix}target-allocator"
   helm_command+=" --set operator.targetAllocatorImage.tag=$image_tag"
 fi
 helm_command+=" $helm_release_name"
@@ -223,3 +319,6 @@ echo "the target-allocator is ready now"
 echo
 echo "success: all checks have passed"
 echo
+
+# Mark the check as successful so that cleanup() does not collect diagnostics.
+check_succeeded=true
