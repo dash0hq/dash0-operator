@@ -3645,6 +3645,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			sampling := processors["dash0sampling"].(map[string]interface{})
 			Expect(sampling).ToNot(HaveKey("fallback_sample_ratio"))
 			Expect(sampling).ToNot(HaveKey("debug"))
+			Expect(sampling).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 		})
 
 		It("should render the disk trace reservoir max_disk_bytes and metric_level [SignalControl]", func() {
