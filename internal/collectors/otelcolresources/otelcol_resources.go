@@ -189,8 +189,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		//   For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
 		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.collectorConfig.IsDocker,
 		DisableHostPorts:       m.collectorConfig.DisableHostPorts,
-		OtlpGrpcHostPort:       resolveHostPort(m.collectorConfig.OtlpGrpcHostPort, DefaultOtlpGrpcHostPort),
-		OtlpHttpHostPort:       resolveHostPort(m.collectorConfig.OtlpHttpHostPort, DefaultOtlpHttpHostPort),
+		OtlpGrpcHostPort:       ResolveOtlpGrpcHostPort(m.collectorConfig.OtlpGrpcHostPort),
+		OtlpHttpHostPort:       ResolveOtlpHttpHostPort(m.collectorConfig.OtlpHttpHostPort),
 		ClusterName:            clusterName,
 		PseudoClusterUid:       m.collectorConfig.PseudoClusterUid,
 		Images:                 m.collectorConfig.Images,
@@ -475,10 +475,10 @@ func (m *OTelColResourceManager) DeleteResources(
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
-		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,                                                  // irrelevant for deletion
-		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts,                                           // irrelevant for deletion
-		OtlpGrpcHostPort:                                 resolveHostPort(m.collectorConfig.OtlpGrpcHostPort, DefaultOtlpGrpcHostPort), // irrelevant for deletion
-		OtlpHttpHostPort:                                 resolveHostPort(m.collectorConfig.OtlpHttpHostPort, DefaultOtlpHttpHostPort), // irrelevant for deletion
+		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,                                 // irrelevant for deletion
+		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts,                          // irrelevant for deletion
+		OtlpGrpcHostPort:                                 ResolveOtlpGrpcHostPort(m.collectorConfig.OtlpGrpcHostPort), // irrelevant for deletion
+		OtlpHttpHostPort:                                 ResolveOtlpHttpHostPort(m.collectorConfig.OtlpHttpHostPort), // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:                                   m.collectorConfig.IsGkeAutopilot,
@@ -675,16 +675,6 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	// reconcile.
 	m.kubeletStatsReceiverConfig.Store(&kubeletStatsReceiverConfig)
 	return kubeletStatsReceiverConfig
-}
-
-// resolveHostPort returns configured, or defaultValue if configured is not a positive port number. This is a
-// defensive fallback for zero-value oTelColConfig instances (e.g. in tests); production configuration always sets a
-// positive value via the CLI flag defaults.
-func resolveHostPort(configured int32, defaultValue int32) int32 {
-	if configured <= 0 {
-		return defaultValue
-	}
-	return configured
 }
 
 func signalControlConfigFromResource(

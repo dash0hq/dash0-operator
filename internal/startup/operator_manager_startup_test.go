@@ -224,6 +224,19 @@ var _ = Describe("validateOtlpHostPorts", func() {
 		Expect(validateOtlpHostPorts(4317, 4318)).To(Succeed())
 	})
 
+	It("names the Helm value that is out of range", func() {
+		Expect(validateOtlpHostPorts(70000, 40318)).To(
+			MatchError("operator.collectors.otlpGrpcHostPort must be in the range 1-65535, but was 70000"))
+		Expect(validateOtlpHostPorts(40317, 0)).To(
+			MatchError("operator.collectors.otlpHttpHostPort must be in the range 1-65535, but was 0"))
+	})
+
+	It("names both Helm values when the ports are equal", func() {
+		Expect(validateOtlpHostPorts(4317, 4317)).To(MatchError(
+			"operator.collectors.otlpGrpcHostPort and operator.collectors.otlpHttpHostPort must be different, " +
+				"both are set to 4317"))
+	})
+
 	DescribeTable("rejects invalid input",
 		func(grpcPort int, httpPort int) {
 			Expect(validateOtlpHostPorts(grpcPort, httpPort)).To(HaveOccurred())

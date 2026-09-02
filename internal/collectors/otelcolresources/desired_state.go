@@ -440,6 +440,25 @@ func assembleDesiredStateForUpsert(
 	)
 }
 
+// ResolveOtlpGrpcHostPort returns configured, or DefaultOtlpGrpcHostPort if configured is not a positive port number.
+func ResolveOtlpGrpcHostPort(configured int32) int32 {
+	return resolveHostPort(configured, DefaultOtlpGrpcHostPort)
+}
+
+// ResolveOtlpHttpHostPort returns configured, or DefaultOtlpHttpHostPort if configured is not a positive port number.
+func ResolveOtlpHttpHostPort(configured int32) int32 {
+	return resolveHostPort(configured, DefaultOtlpHttpHostPort)
+}
+
+// resolveHostPort is a defensive fallback for configurations that never went through the operator manager's CLI flags,
+// for example zero-value structs in tests; production configuration always provides a positive, validated value.
+func resolveHostPort(configured int32, defaultValue int32) int32 {
+	if configured <= 0 {
+		return defaultValue
+	}
+	return configured
+}
+
 func assembleDesiredStateForDelete(
 	config *oTelColConfig,
 	extraConfig util.ExtraConfig,

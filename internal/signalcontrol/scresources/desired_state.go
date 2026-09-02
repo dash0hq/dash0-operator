@@ -349,9 +349,7 @@ func assembleEdgeProxyDeployment(
 // collector's OTLP gRPC host-port. DASH0_NODE_IP is resolved via the downward API (status.hostIP) and must be defined
 // before OTEL_EXPORTER_OTLP_ENDPOINT, which references it.
 func assembleSelfMonitoringEnvVars(operatorVersion string, otlpGrpcHostPort int32) []corev1.EnvVar {
-	if otlpGrpcHostPort <= 0 {
-		otlpGrpcHostPort = otelcolresources.DefaultOtlpGrpcHostPort
-	}
+	otlpGrpcHostPort = otelcolresources.ResolveOtlpGrpcHostPort(otlpGrpcHostPort)
 	return []corev1.EnvVar{
 		{
 			Name: util.EnvVarDash0NodeIp,

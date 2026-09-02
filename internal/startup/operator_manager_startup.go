@@ -229,6 +229,11 @@ const (
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
 
+	// The Helm values behind the OTLP host port CLI flags. Validation errors name these rather than the flags, since
+	// the Helm chart is how the operator is configured; the flags are only how the values arrive.
+	otlpGrpcHostPortHelmValue = "operator.collectors.otlpGrpcHostPort"
+	otlpHttpHostPortHelmValue = "operator.collectors.otlpHttpHostPort"
+
 	envVarValueTrue = "true"
 
 	// defaultPeriodicRetryInterval is the fallback interval for the periodic synchronization retry job, used when
@@ -1065,18 +1070,27 @@ func readExtraConfigMap() error {
 // from each other. It does not (and cannot) detect whether a port is already in use on a given node -- that surfaces
 // as a normal Kubernetes pod scheduling failure once the collector DaemonSet is applied.
 func validateOtlpHostPorts(grpcHostPort int, httpHostPort int) error {
-	for _, port := range []int{grpcHostPort, httpHostPort} {
-		if port < 1 || port > 65535 {
+	ports := []struct {
+		helmValue string
+		value     int
+	}{
+		{helmValue: otlpGrpcHostPortHelmValue, value: grpcHostPort},
+		{helmValue: otlpHttpHostPortHelmValue, value: httpHostPort},
+	}
+	for _, port := range ports {
+		if port.value < 1 || port.value > 65535 {
 			return fmt.Errorf(
-				"the OTLP collector host ports must be in the range 1-65535, got %d "+
-					"(--dash0-otel-collector-otlp-grpc-host-port/--dash0-otel-collector-otlp-http-host-port)",
-				port,
+				"%s must be in the range 1-65535, but was %d",
+				port.helmValue,
+				port.value,
 			)
 		}
 	}
 	if grpcHostPort == httpHostPort {
 		return fmt.Errorf(
-			"the OTLP collector gRPC and HTTP host ports must be different, both are set to %d",
+			"%s and %s must be different, both are set to %d",
+			otlpGrpcHostPortHelmValue,
+			otlpHttpHostPortHelmValue,
 			grpcHostPort,
 		)
 	}

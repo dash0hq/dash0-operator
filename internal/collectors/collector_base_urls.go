@@ -6,6 +6,7 @@ package collectors
 import (
 	"fmt"
 
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -27,7 +28,7 @@ func RenderCollectorBaseUrls(
 		NodeLocalBaseUrl: fmt.Sprintf(
 			oTelCollectorNodeLocalBaseUrlPattern,
 			util.EnvVarDash0NodeIp,
-			otlpHttpHostPort,
+			otelcolresources.ResolveOtlpHttpHostPort(otlpHttpHostPort),
 		),
 		ServiceBaseUrl: fmt.Sprintf(
 			oTelCollectorServiceBaseUrlPattern,
