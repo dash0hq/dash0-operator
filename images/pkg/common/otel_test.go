@@ -154,7 +154,6 @@ func TestAssembleResourceWithExplicitValues(t *testing.T) {
 }
 
 func TestAssembleResourceFallsBackToEnvVars(t *testing.T) {
-	t.Setenv("SERVICE_VERSION", "version-from-env")
 	t.Setenv("K8S_CLUSTER_UID", "cluster-uid-from-env")
 	t.Setenv("K8S_CLUSTER_NAME", "cluster-name-from-env")
 	t.Setenv("K8S_DEPLOYMENT_UID", "deployment-uid-from-env")
@@ -173,7 +172,6 @@ func TestAssembleResourceFallsBackToEnvVars(t *testing.T) {
 	)
 
 	expectedAttributes := map[string]string{
-		"service.version":     "version-from-env",
 		"k8s.cluster.uid":     "cluster-uid-from-env",
 		"k8s.cluster.name":    "cluster-name-from-env",
 		"k8s.deployment.uid":  "deployment-uid-from-env",
@@ -191,13 +189,12 @@ func TestAssembleResourceFallsBackToEnvVars(t *testing.T) {
 }
 
 func TestAssembleResourceExplicitValuesTakePrecedenceOverEnvVars(t *testing.T) {
-	t.Setenv("SERVICE_VERSION", "version-from-env")
 	t.Setenv("K8S_CLUSTER_NAME", "cluster-name-from-env")
 
 	resourceAttributes := assembleResource(
 		context.Background(),
 		"service-name",
-		"explicit-version",
+		"",
 		"",
 		"explicit-cluster-name",
 		"",
@@ -205,9 +202,6 @@ func TestAssembleResourceExplicitValuesTakePrecedenceOverEnvVars(t *testing.T) {
 		"",
 	)
 
-	if got := attributeValue(resourceAttributes.Attributes(), "service.version"); got != "explicit-version" {
-		t.Errorf("resource attribute \"service.version\" = %q, want %q", got, "explicit-version")
-	}
 	if got := attributeValue(resourceAttributes.Attributes(), "k8s.cluster.name"); got != "explicit-cluster-name" {
 		t.Errorf("resource attribute \"k8s.cluster.name\" = %q, want %q", got, "explicit-cluster-name")
 	}

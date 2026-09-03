@@ -427,8 +427,6 @@ func assembleResource(
 	}
 	if serviceVersion != "" {
 		attributes = append(attributes, semconv.ServiceVersion(serviceVersion))
-	} else if serviceVersionFromEnvVar := os.Getenv("SERVICE_VERSION"); serviceVersionFromEnvVar != "" {
-		attributes = append(attributes, semconv.ServiceVersion(serviceVersionFromEnvVar))
 	}
 
 	if pseudoClusterUid != "" {
