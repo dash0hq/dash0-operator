@@ -35,6 +35,10 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
+// generationOrLabelChangePredicate reacts on spec changes (via generation) and label changes, but ignores status
+// subresource updates so that writing the status after a reconcile does not trigger another no-op reconcile.
+var generationOrLabelChangePredicate = predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{})
+
 // ThirdPartyCrdReconciler is an interface for reconcilers that act on CRDs of third-party resource types (i.e. when a
 // particular CRD is deployed to the cluster or removed).
 type ThirdPartyCrdReconciler interface {

@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -21,9 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -71,7 +68,7 @@ func (r *NotificationChannelReconciler) SetupWithManager(mgr manager.Manager) er
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1beta1.Dash0NotificationChannel{}).
 		// ignore changes in the status subresource, but react on changes to spec, label and annotations
-		WithEventFilter(notificationChannelPredicate{}).
+		WithEventFilter(generationOrLabelChangePredicate).
 		Complete(r)
 }
 
@@ -592,31 +589,4 @@ func (r *NotificationChannelReconciler) CreateReconcileRequestsForRetryableSyncE
 		}
 	}
 	return requests, nil
-}
-
-// An event filter that ignores changes in the status subresource but reacts on changes to spec, label and annotations.
-// Ideally we would just use predicate.GenerationChangedPredicate, but it unfortunately also ignores label and
-// annotation changes. This is necessary because we update the status subresource when reconciling the resource, and
-// without the filter this would cause another no-op reconcile request.
-type notificationChannelPredicate struct {
-	predicate.Funcs
-}
-
-func (p notificationChannelPredicate) Update(e event.UpdateEvent) bool {
-	if e.ObjectOld == nil || e.ObjectNew == nil {
-		return true
-	}
-
-	oldObj, okOld := e.ObjectOld.(*dash0v1beta1.Dash0NotificationChannel)
-	newObj, okNew := e.ObjectNew.(*dash0v1beta1.Dash0NotificationChannel)
-
-	if !okOld || !okNew {
-		return true
-	}
-
-	specChanged := !reflect.DeepEqual(oldObj.Spec, newObj.Spec)
-	labelsChanged := !reflect.DeepEqual(oldObj.Labels, newObj.Labels)
-	annotationsChanged := !reflect.DeepEqual(oldObj.Annotations, newObj.Annotations)
-
-	return specChanged || labelsChanged || annotationsChanged
 }
