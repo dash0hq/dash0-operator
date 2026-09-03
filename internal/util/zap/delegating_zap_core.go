@@ -11,8 +11,8 @@ import (
 )
 
 // DelegatingZapCore is a Zap core that keeps messages in a size-limited buffer until another core is added as a
-// delegate, then spools all buffered messages to the delegate. After that, the core will pass all messages to the
-// delegate.
+// delegate via SetDelegate. After that, the core will pass all messages to the delegate. The messages that are already
+// buffered can then be spooled to the new core via DelegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear.
 type DelegatingZapCore struct {
 	delegate         atomic.Pointer[zapcore.Core]
 	logMessageBuffer *Mru[*ZapEntryWithFields]
@@ -131,10 +131,9 @@ func (dc *DelegatingZapCore) Sync() error {
 	return nil
 }
 
-// SetDelegate sets the delegate core to which all messages will be forwarded. Also, all buffered messages will be
-// spooled to the delegate, and then deleted from the DelegatingZapCore's buffer. Check will not be called again, the
-// buffered entries will be written unconditionally. Errors occurring during spooling will be silently ignored.
-// The SetDelegate call will also be propagated to all clones created via With previous to this call.
+// SetDelegate sets the delegate core to which all messages will be forwarded. The messages that are already buffered
+// can then be spooled to the new core via DelegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear. The SetDelegate
+// call will also be propagated to all clones created via With previous to this call.
 func (dc *DelegatingZapCore) SetDelegate(delegate zapcore.Core) {
 	dc.delegate.Store(&delegate)
 	for _, clone := range dc.clones {
