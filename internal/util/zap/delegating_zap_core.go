@@ -12,10 +12,10 @@ import (
 
 // DelegatingZapCore is a Zap core that keeps messages in a size-limited buffer until an actual zapcore.Core is added as
 // a delegate via SetDelegate. The messages that are already buffered can then be spooled to the new core via
-// DelegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear. After SetDelegate, DelegatingZapCore will pass all messages
-// to the delegate.
+// DelegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear. After SetDelegate, DelegatingZapCore will pass new incoming
+// messages to the new delegate.
 //
-// DelegatingZapCores conceptually form a tree structure, just like zap loggers do; without representing an actual tree
+// DelegatingZapCores conceptually form a tree structure, just like zap loggers do; without representing the actual tree
 // in memory. You start with a root DelegatingZapCore, and then derive child loggers (by calling `With`) that add
 // additional fields (which will be included in every log record written by that child logger). There are no references
 // from parent to child or vice versa.
@@ -36,11 +36,11 @@ type DelegatingZapCore struct {
 // from the sharedDelegate reference, and then write log messages to it.
 //
 // Note that the references only point from the derived DelegatingZapCores to the sharedDelegate, *not* the other way
-// around, or from a DelegatingZapCore to its child cores. This makes a DelegatingZapCore derived via `With` eligible
-// for garbage collection as soon as the logger holding it goes out of scope. Tracking the derived DelegatingZapCores
-// in their parent would create a reference chain from the root DelegatingZapCore to every derived DelegatingZapCore,
-// and retain every logger ever derived for the lifetime of the root DelegatingZapCore object - i.e. it would be a
-// memory leak.
+// around, nor from a DelegatingZapCore to its child/derived cores. This makes a DelegatingZapCore derived via `With`
+// eligible for garbage collection as soon as the logger holding it goes out of scope. Tracking the derived
+// DelegatingZapCores in their parent would create a reference chain from the root DelegatingZapCore to every derived
+// DelegatingZapCore, and retain every logger ever derived for the lifetime of the root DelegatingZapCore object
+// (which is often alive for the entire process) - i.e. it would be a memory leak.
 //
 // The generation counter is used for caching cores together with their applied Zap fields. The generation is
 // incremented on every SetDelegate/UnsetDelegate call. This lets a derived core detect that the delegate it has
@@ -63,14 +63,15 @@ type sharedDelegate struct {
 }
 
 // derivedDelegate is the delegate of a single DelegatingZapCore, that is, it is that tree node's delegate with the
-// core's fields applied, together with the generation it has been derived from.
+// core's fields applied, together with the sharedDelegate generation it has been derived from.
 //
 // A DelegatingZapCore derived via `With` cannot use sharedDelegate.delegate directly to write log messages, the fields
 // provided via With would be missing. Naively, it would need to call zapcore.Core#With(dc.fields) for every single log
 // message, to apply the Zap fields. The otelzap conversion is somewhat expensive though. Thus, each DelegatingZapCore
-// in the tree keeps its own copy of the zapcore.Core with all fields already applied. This is what the derivedDelegate
-// is for. Its generation counter is used to compare with sharedDelegate.generation, to determine if we are still
-// logging to the same zapcore.Core, or if it has been replaced via SetDelegate/UnsetDelegate since memoizing it.
+// in the tree keeps its own lazily initialized copy of the zapcore.Core with all fields already applied. This is what
+// the derivedDelegate is for. Its generation counter is used to compare with sharedDelegate.generation, to determine if
+// we are still logging to the same zapcore.Core, or if it has been replaced via SetDelegate/UnsetDelegate since
+// memoizing it.
 //
 // The first log call after a delegate change pays for the otelzap conversion once. Every call after that is two atomic
 // loads and a comparison.
@@ -221,12 +222,12 @@ func (dc *DelegatingZapCore) Sync() error {
 // spooled to the new core via DelegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear.
 func (dc *DelegatingZapCore) SetDelegate(delegate zapcore.Core) {
 	// Store the delegate before incrementing the generation, never the other way around. That way, if delegate() memoizes
-	// a new derivedDelegate, it would err on the side of storing a too-new delegate with an older generation counter, and
-	// memoize again on the next log call. That is, the error is a wasted With call.
+	// a new derivedDelegate right between the two calls, it would err on the side of storing a too-new delegate with an
+	// older generation counter, and memoize again on the next log call. That is, the error is a wasted With call.
 	//
-	// If instead we did the increment first, a reader can observe the new generation together with an outdated delegate.
-	// That is much worse, it will memoize that pair and the stale delegate is potentially trusted for the rest of the
-	// process lifetime.
+	// If instead we did the increment first, a reader can observe the new generation counter together with an outdated
+	// delegate. That is much worse, it will memoize that pair and the stale delegate is potentially trusted for the rest
+	// of the process lifetime.
 	dc.sharedDelegate.delegate.Store(&delegate)
 	dc.sharedDelegate.generation.Add(1)
 }
