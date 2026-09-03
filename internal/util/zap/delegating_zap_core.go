@@ -48,7 +48,7 @@ type DelegatingZapCore struct {
 // and DelegatingZapCore#delegate() which handles the memoization.
 //
 // The two fields (delegate and generation) are written separately, without a lock. That is safe because a derived
-// DelegatingZapCoreDelegatingZapCore only uses its memoized delegate while the memoized generation still equals the current one, and
+// DelegatingZapCore only uses its memoized delegate while the memoized generation still equals the current one, and
 // because writers always store the delegate before they increment the generation: observing a generation means the
 // delegate for that generation has already been stored, so a reader either memoizes the matching delegate or memoizes
 // one tagged with a generation that is already superseded, which makes it derive again on the next call. Do not replace
@@ -148,22 +148,30 @@ func (dc *DelegatingZapCore) delegate() zapcore.Core {
 }
 
 func (dc *DelegatingZapCore) Enabled(lvl zapcore.Level) bool {
-	if delegate := dc.delegate(); delegate != nil {
-		return lvl >= dc.level && delegate.Enabled(lvl)
+	// Check the configured level before looking up the delegate: delegate() would apply this core's fields to the
+	// tree's delegate, which is the expensive part, for a level that is discarded anyway.
+	if lvl < dc.level {
+		return false
 	}
 
-	return lvl >= dc.level
+	if delegate := dc.delegate(); delegate != nil {
+		return delegate.Enabled(lvl)
+	}
+
+	return true
 }
 
 // Check determines whether the supplied Entry should be logged. If a delegate is set, the call will simply be delegated
 // to the delegate's Check method, otherwise it will be checked against the level set in SetBufferingLevel.
 func (dc *DelegatingZapCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	// Respect the configured level so that debug messages are not forwarded to the OTel pipeline when not in
+	// development mode. Checking the level before looking up the delegate also avoids applying this core's fields to
+	// the tree's delegate for an entry that is dropped anyway.
+	if entry.Level < dc.level {
+		return ce
+	}
+
 	if delegate := dc.delegate(); delegate != nil {
-		// Respect the configured level so that debug messages are not forwarded to the OTel pipeline when not in
-		// development mode.
-		if entry.Level < dc.level {
-			return ce
-		}
 		if !zapcore.DebugLevel.Enabled(entry.Level) { // this is equivalent to `entry.Level < -1`
 			// There is some unfortunate interaction going on between controller-runtime debug logging and the zap OTel
 			// bridge. When controller-runtime logs with a level below -1, like for example here:
@@ -178,10 +186,7 @@ func (dc *DelegatingZapCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry
 		return delegate.Check(entry, ce)
 	}
 
-	if dc.Enabled(entry.Level) {
-		return ce.AddCore(entry, dc)
-	}
-	return ce
+	return ce.AddCore(entry, dc)
 }
 
 // Write will forward the entry and fields to the delegate if one is set, or put it into the interal buffer otherwise.
@@ -235,5 +240,5 @@ func (dc *DelegatingZapCore) UnsetDelegate() {
 }
 
 func (dc *DelegatingZapCore) ForTestOnlyHasDelegate() bool {
-	return dc.delegate() != nil
+	return dc.sharedDelegate.delegate.Load() != nil
 }

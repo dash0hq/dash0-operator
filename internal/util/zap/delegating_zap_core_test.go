@@ -5,6 +5,8 @@ package zap
 
 import (
 	"runtime"
+	"strconv"
+	"sync"
 
 	"go.uber.org/zap/zapcore"
 
@@ -254,7 +256,7 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(dc3 == originalDelegatingCore).To(BeFalse())
 		Expect(dc3 == dc2).To(BeFalse())
 		Expect(dc3.level).To(Equal(zapcore.DebugLevel))
-		// the clones share the log message buffer of the original core, buffered messages are not copied
+		// derived cores share the log message buffer of the original core, buffered messages are not copied
 		Expect(dc3.logMessageBuffer == originalDelegatingCore.logMessageBuffer).To(BeTrue())
 		Expect(dc3.fields).To(HaveLen(5))
 		Expect(dc3.fields[0].Key).To(Equal("with1"))
@@ -380,6 +382,62 @@ var _ = Describe("Delegating Zap Core", func() {
 		// retained every derived core.
 		runtime.KeepAlive(originalDelegatingCore)
 	})
+
+	It("resolves the current delegate while SetDelegate and UnsetDelegate run concurrently", func() {
+		// The memoization in delegate() is lock-free and relies on SetDelegate/UnsetDelegate storing the delegate
+		// before incrementing the generation. Run this with -race to exercise that ordering.
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		rootCore := NewDelegatingZapCore(logMessageBuffer)
+		rootCore.SetBufferingLevel(zapcore.DebugLevel)
+
+		derivedOfA := &concurrencySafeDelegate{}
+		delegateA := &concurrencySafeDelegate{withReturnValue: derivedOfA}
+		derivedOfB := &concurrencySafeDelegate{}
+		delegateB := &concurrencySafeDelegate{withReturnValue: derivedOfB}
+
+		derivedCores := make([]*DelegatingZapCore, 8)
+		for i := range derivedCores {
+			derived, ok := rootCore.With([]zapcore.Field{{Key: "key", String: strconv.Itoa(i)}}).(*DelegatingZapCore)
+			Expect(ok).To(BeTrue())
+			derivedCores[i] = derived
+		}
+
+		stop := make(chan struct{})
+		var readers sync.WaitGroup
+		for _, core := range derivedCores {
+			readers.Add(1)
+			go func(dc *DelegatingZapCore) {
+				defer readers.Done()
+				defer GinkgoRecover()
+				entry := zapcore.Entry{Level: zapcore.InfoLevel, Message: "concurrent"}
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					dc.Enabled(zapcore.InfoLevel)
+					dc.Check(entry, &zapcore.CheckedEntry{})
+					Expect(dc.Write(entry, nil)).To(Succeed())
+					Expect(dc.Sync()).To(Succeed())
+				}
+			}(core)
+		}
+
+		for range 1000 {
+			rootCore.SetDelegate(delegateB)
+			rootCore.UnsetDelegate()
+			rootCore.SetDelegate(delegateA)
+		}
+		close(stop)
+		readers.Wait()
+
+		// No core is left pinned to a delegate of an earlier generation, they all pick up the final delegate.
+		Expect(rootCore.delegate() == zapcore.Core(delegateA)).To(BeTrue())
+		for _, dc := range derivedCores {
+			Expect(dc.delegate() == zapcore.Core(derivedOfA)).To(BeTrue())
+		}
+	})
 })
 
 // deriveAndDrop derives a core from the given core, uses it so that it memoizes its delegate, and registers a cleanup
@@ -438,5 +496,31 @@ func (dd *mockDelegate) Write(entry zapcore.Entry, fields []zapcore.Field) error
 // Sync instructs the delegate to flush buffered logs, if there is a delegate. Otherwise, the call is ignored.
 func (dd *mockDelegate) Sync() error {
 	dd.syncCalls++
+	return nil
+}
+
+// concurrencySafeDelegate is a delegate for tests that use it from multiple goroutines. In contrast to mockDelegate it
+// records nothing, so the race detector only reports races in the code under test.
+type concurrencySafeDelegate struct {
+	withReturnValue zapcore.Core
+}
+
+func (dd *concurrencySafeDelegate) With(_ []zapcore.Field) zapcore.Core {
+	return dd.withReturnValue
+}
+
+func (dd *concurrencySafeDelegate) Enabled(_ zapcore.Level) bool {
+	return true
+}
+
+func (dd *concurrencySafeDelegate) Check(_ zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	return ce
+}
+
+func (dd *concurrencySafeDelegate) Write(_ zapcore.Entry, _ []zapcore.Field) error {
+	return nil
+}
+
+func (dd *concurrencySafeDelegate) Sync() error {
 	return nil
 }
