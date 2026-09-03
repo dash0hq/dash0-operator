@@ -793,6 +793,49 @@ var _ = Describe(
 		)
 
 		Describe(
+			"set the resource attributes for the collector containers", func() {
+
+				It("should use one service name for every container, independent of the container name", func() {
+					containers := []corev1.Container{
+						{Name: "opentelemetry-collector"},
+						{Name: "configuration-reloader"},
+						{Name: "filelog-offset-sync"},
+					}
+					err := enableSelfMonitoringInCollector(
+						containers,
+						SelfMonitoringConfiguration{
+							SelfMonitoringEnabled: true,
+							Export: dash0common.Export{
+								Http: &dash0common.HttpConfiguration{
+									Endpoint: EndpointHttpTest,
+									Encoding: dash0common.Proto,
+								},
+							},
+						},
+						"1.2.3",
+						false,
+					)
+					Expect(err).NotTo(HaveOccurred())
+					for _, container := range containers {
+						idx := slices.IndexFunc(
+							container.Env,
+							matchEnvVar(util.OtelResourceAttributesEnvVarName),
+						)
+						Expect(idx).To(
+							BeNumerically(">=", 0),
+							fmt.Sprintf("container %s should have an OTEL_RESOURCE_ATTRIBUTES env var", container.Name),
+						)
+						Expect(container.Env[idx].Value).To(Equal(
+							"service.namespace=dash0-operator," +
+								"service.name=dash0-operator-collector," +
+								"service.version=1.2.3",
+						))
+					}
+				})
+			},
+		)
+
+		Describe(
 			"convert export settings to collector metrics self-monitoring pipeline string", func() {
 
 				type exportToCollectorMetricsSelfMonitoringPipelineTestConfig struct {

@@ -422,8 +422,9 @@ func enableSelfMonitoringInCollectorContainer(
 	updateOrAppendEnvVar(
 		container, util.OtelResourceAttributesEnvVarName,
 		fmt.Sprintf(
-			"service.namespace=dash0-operator,service.name=%s,service.version=%s",
-			container.Name,
+			"service.namespace=%s,service.name=%s,service.version=%s",
+			common.OperatorManagerServiceNamespace,
+			common.CollectorServiceName,
 			operatorVersion,
 		),
 	)

@@ -48,6 +48,10 @@ type OTelSdkConfig struct {
 const (
 	OperatorManagerServiceNamespace = "dash0-operator"
 
+	// CollectorServiceName is the service.name of all containers of the collector pods. The individual containers are
+	// distinguished by k8s.container.name, not by service.name.
+	CollectorServiceName = "dash0-operator-collector"
+
 	ProtocolGrpc         = "grpc"
 	ProtocolHttpProtobuf = "http/protobuf"
 	ProtocolHttpJson     = "http/json"
@@ -74,7 +78,6 @@ func OTelSDKIsConfigured() bool {
 func InitOTelSdkFromEnvVars(
 	ctx context.Context,
 	meterName string,
-	serviceName string,
 	containerName string,
 ) otelmetric.Meter {
 	// InitOTelSdkFromEnvVars is used in the configuration reloader and filelog offset sync container. The OTel SDK
@@ -95,7 +98,8 @@ func InitOTelSdkFromEnvVars(
 
 		resourceAttributes := assembleResource(
 			ctx,
-			serviceName,
+			// serviceName will be read from env var
+			"",
 			// serviceVersion will be read from env var
 			"",
 			// pseudoClusterUid will be read from env var
