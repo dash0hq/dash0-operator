@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -365,6 +366,63 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				&appsv1.DaemonSet{},
 			)
 		})
+	})
+
+	Context("when the agent0-connector is enabled via the Helm chart", func() {
+		var managerWithAgent0Connector *OTelColResourceManager
+
+		BeforeEach(func() {
+			managerWithAgent0Connector = NewOTelColResourceManager(
+				k8sClient,
+				k8sClient.Scheme(),
+				OperatorManagerDeployment,
+				util.CollectorConfig{
+					Images:                         TestImages,
+					OperatorNamespace:              OperatorNamespace,
+					OTelCollectorNamePrefix:        OTelCollectorNamePrefixTest,
+					KubeletStatsAutoDetectEndpoint: true,
+					DevelopmentMode:                true,
+					Agent0ConnectorEnabledViaHelm:  true,
+				},
+			)
+		})
+
+		DescribeTable("should collect the agent0-connector's pod logs unless the resource opts out",
+			func(enabledInResource *bool, expectPodLogsToBeCollected bool) {
+				operatorConfiguration := DefaultOperatorConfigurationResource()
+				operatorConfiguration.Spec.Agent0Connector.Enabled = enabledInResource
+				_, _, err := managerWithAgent0Connector.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					util.ExtraConfigDefaults,
+					operatorConfiguration,
+					nil,
+					nil,
+					logger,
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				configMap := VerifyResourceExists(
+					ctx,
+					k8sClient,
+					OperatorNamespace,
+					ExpectedDaemonSetCollectorConfigMapName,
+					&corev1.ConfigMap{},
+				).(*corev1.ConfigMap)
+				podLogsPath := fmt.Sprintf(
+					"- /var/log/pods/%s_%s*/*/*.log",
+					OperatorNamespace,
+					a0cresources.DeploymentName(OTelCollectorNamePrefixTest),
+				)
+				if expectPodLogsToBeCollected {
+					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(podLogsPath))
+				} else {
+					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(podLogsPath))
+				}
+			},
+			Entry("with no explicit setting in the resource, following the Helm value", nil, true),
+			Entry("when explicitly enabled in the resource", new(true), true),
+			Entry("when explicitly disabled in the resource", new(false), false),
+		)
 	})
 
 	Context("when OpenTelemetry collector resources have been modified externally", func() {
