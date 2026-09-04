@@ -300,6 +300,14 @@ func selfMonitoringLogsResourceMatcherCollector(
 			"opentelemetry-collector",
 			matchResult,
 		)
+		// k8s.node.uid is added by the collector image's custom internal-telemetry factory (see
+		// images/collector/src/telemetry), which resolves the node UID via the Kubernetes API at collector startup. The
+		// node UID is not available via the downward API, hence it cannot be set as a static resource attribute.
+		verifyResourceAttributeExists(
+			attributes,
+			string(semconv.K8SNodeUIDKey),
+			matchResult,
+		)
 
 		selfMonitoringCommonResourceMatcher(
 			clusterName,
