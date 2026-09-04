@@ -34,6 +34,66 @@ func TestResolveAuthToken(t *testing.T) {
 	}
 }
 
+func TestResolveServerAddress(t *testing.T) {
+	logger := discardLogger()
+
+	tests := []struct {
+		name     string
+		value    string
+		expected string
+	}{
+		{
+			name:     "keeps a plain host and port",
+			value:    "outbound-connector.eu-west-1.aws.dash0.com:4317",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com:4317",
+		},
+		{
+			name:     "removes an https prefix",
+			value:    "https://outbound-connector.eu-west-1.aws.dash0.com:4317",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com:4317",
+		},
+		{
+			name:     "removes an http prefix",
+			value:    "http://host.docker.internal:8022",
+			expected: "host.docker.internal:8022",
+		},
+		{
+			name:     "removes a prefix written in upper case",
+			value:    "HTTPS://outbound-connector.eu-west-1.aws.dash0.com",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com",
+		},
+		{
+			name:     "removes a trailing slash",
+			value:    "https://outbound-connector.eu-west-1.aws.dash0.com:443/",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com:443",
+		},
+		{
+			name:     "removes a path, a query and a fragment",
+			value:    "https://outbound-connector.eu-west-1.aws.dash0.com:443/v1/commands?foo=bar#baz",
+			expected: "outbound-connector.eu-west-1.aws.dash0.com:443",
+		},
+		{
+			name:     "keeps a gRPC target with a scheme of its own",
+			value:    "dns:///outbound-connector.eu-west-1.aws.dash0.com:443",
+			expected: "dns:///outbound-connector.eu-west-1.aws.dash0.com:443",
+		},
+		{
+			name:     "keeps a host that merely starts with the letters of a prefix",
+			value:    "https-endpoint.dash0.com:443",
+			expected: "https-endpoint.dash0.com:443",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(serverAddressEnvVarName, test.value)
+			if serverAddress := resolveServerAddress(logger); serverAddress != test.expected {
+				t.Errorf("expected the server address %q to resolve to %q, got %q", test.value, test.expected, serverAddress)
+			}
+		})
+	}
+}
+
 func TestResolveClientID(t *testing.T) {
 	logger := discardLogger()
 
