@@ -1388,7 +1388,7 @@ service:
         - forward/logs-processors
     {{- end }}
 
-    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled)) }}
+    {{- if and .SelfMonitoringEnabled (or .PrometheusCrdSupportEnabled (and .SignalControl.Enabled .SignalControl.EdgeProxyEnabled) .Agent0ConnectorEnabled) }}
     logs/selfmonitoring-filelog-to-forwarder:
       receivers:
         - file_log/selfmonitoring

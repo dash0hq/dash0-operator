@@ -19,6 +19,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
@@ -27,7 +28,6 @@ type Agent0ConnectorManager struct {
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager
 	eventRecorder                  events.EventRecorder
 	extraConfig                    atomic.Pointer[util.ExtraConfig]
-	enabledViaHelm                 bool
 	developmentMode                bool
 	reconcileGuard                 util.ReconcileGuard
 }
@@ -41,7 +41,6 @@ const (
 
 func NewAgent0ConnectorManager(
 	k8sClient client.Client,
-	enabledViaHelm bool,
 	extraConfig util.ExtraConfig,
 	developmentMode bool,
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager,
@@ -49,7 +48,6 @@ func NewAgent0ConnectorManager(
 ) *Agent0ConnectorManager {
 	m := &Agent0ConnectorManager{
 		Client:                         k8sClient,
-		enabledViaHelm:                 enabledViaHelm,
 		developmentMode:                developmentMode,
 		agent0ConnectorResourceManager: agent0ConnectorResourceManager,
 		eventRecorder:                  eventRecorder,
@@ -153,13 +151,17 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 	return hasBeenReconciled, err
 }
 
-// agent0ConnectorEnabled reports whether the optional agent0-connector deployment should be managed. It requires the
-// Helm value operator.agent0Connector.enabled, which users can override with spec.agent0Connector.enabled of the
-// Dash0OperatorConfiguration resource to opt out.
+// agent0ConnectorEnabled reports whether the optional agent0-connector deployment should be managed. The manager only
+// exists when the agent0-connector is enabled via the Helm chart (operator.agent0Connector.enabled), see
+// setupAgent0ConnectorManager, so only the opt-out in spec.agent0Connector.enabled of the Dash0OperatorConfiguration
+// resource is evaluated here.
 func (m *Agent0ConnectorManager) agent0ConnectorEnabled(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 ) bool {
-	return operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.enabledViaHelm)
+	// The default fallback here (if operatorConfigurationResource.Spec.Agent0Connector.Enabled is unset) is true;
+	// we only get here if agent0-connector has been enabled via Helm, so the user has already intentionally enabled
+	// agent0-connector at the Helm level.
+	return pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Agent0Connector.Enabled, true)
 }
 
 // reportAgent0ConnectorStatus records the outcome of the last attempt to create or update the agent0-connector
@@ -209,12 +211,11 @@ func (m *Agent0ConnectorManager) reportAgent0ConnectorDisabled(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) {
-	message := agent0ConnectorDisabledMessage(m.enabledViaHelm)
 	changed, err := m.updateAgent0ConnectorStatus(
 		ctx,
 		operatorConfigurationResource,
 		func(resource *dash0v1alpha1.Dash0OperatorConfiguration) bool {
-			return resource.SetAgent0ConnectorStatus(false, StatusReasonDisabled, message)
+			return resource.SetAgent0ConnectorStatus(false, StatusReasonDisabled, agent0ConnectorDisabledMessage)
 		},
 	)
 	if err != nil {
@@ -224,18 +225,13 @@ func (m *Agent0ConnectorManager) reportAgent0ConnectorDisabled(
 	if !changed {
 		return
 	}
-	util.QueueAgent0ConnectorDisabledEvent(m.eventRecorder, operatorConfigurationResource, message)
+	util.QueueAgent0ConnectorDisabledEvent(m.eventRecorder, operatorConfigurationResource, agent0ConnectorDisabledMessage)
 }
 
-// agent0ConnectorDisabledMessage describes which of the two settings switched the agent0-connector off.
-func agent0ConnectorDisabledMessage(enabledViaHelm bool) string {
-	if !enabledViaHelm {
-		return "The operator has not deployed the agent0-connector because it is disabled via the Helm chart " +
-			"(operator.agent0Connector.enabled: false)."
-	}
-	return "The operator has not deployed the agent0-connector because it is disabled in the Dash0 operator " +
-		"configuration resource (agent0Connector.enabled: false)."
-}
+// agent0ConnectorDisabledMessage names the setting that switched the agent0-connector off. The Helm value is not a
+// candidate: the manager only exists when it is true, see setupAgent0ConnectorManager.
+const agent0ConnectorDisabledMessage = "The operator has not deployed the agent0-connector because it is disabled " +
+	"in the Dash0 operator configuration resource (agent0Connector.enabled: false)."
 
 // updateAgent0ConnectorStatus applies the given modification to the status of the Dash0OperatorConfiguration resource
 // and reports whether it changed anything. The resource is read again for every attempt: the agent0-connector is

@@ -2245,7 +2245,6 @@ log_statements:
 	}) // end of suite "with the Signal Control feature enabled"
 
 	Context("with the agent0-connector enabled", Ordered, func() {
-		agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
 		var pseudoClusterUid string
 
 		BeforeAll(func() {
@@ -2285,16 +2284,7 @@ log_statements:
 		})
 
 		It("establishes the command request stream and executes a kubectl command", func() {
-			By("waiting for the agent0-connector deployment to become available")
-			Eventually(func(g Gomega) {
-				g.Expect(runAndIgnoreOutput(exec.Command(
-					"kubectl",
-					"-n", operatorNamespace,
-					"wait", "--for=condition=Available",
-					"deployment/"+agent0ConnectorDeployment,
-					"--timeout=30s",
-				))).To(Succeed())
-			}, 120*time.Second, 2*time.Second).Should(Succeed())
+			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 
@@ -2554,6 +2544,66 @@ spec:
 		)
 	}) // end of suite "with the agent0-connector enabled"
 
+	Context("with the agent0-connector enabled and a manually managed operator configuration resource", Ordered, func() {
+		BeforeAll(func() {
+			By("installing the outbound-connector mock")
+			installOutboundConnectorMock()
+
+			By("deploying the Dash0 operator with the agent0-connector enabled, but without an operator configuration " +
+				"resource")
+			deployOperatorWithoutAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				map[string]string{
+					"operator.agent0Connector.enabled":       "true",
+					"operator.agent0Connector.serverAddress": outboundConnectorMockGrpcEndpoint,
+					"operator.agent0Connector.token":         agent0ConnectorDummyToken,
+					"operator.agent0Connector.insecure":      "true",
+				},
+			)
+
+			// The agent0-connector is independent of telemetry collection, so this suite does not deploy collectors.
+			By("deploying the Dash0 operator configuration resource manually")
+			deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				SelfMonitoringEnabled:      false,
+				Endpoint:                   defaultEndpoint,
+				Token:                      defaultToken,
+				ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+				ClusterName:                e2eKubernetesContext,
+				TelemetryCollectionEnabled: false,
+			}, operatorNamespace, operatorHelmChart)
+		})
+
+		AfterAll(func() {
+			undeployDash0OperatorConfigurationResource()
+			undeployOperator(operatorNamespace)
+			uninstallOutboundConnectorMock()
+		})
+
+		It("removes the agent0-connector when the operator configuration resource opts out, and redeploys it when the "+
+			"opt-out is revoked", func() {
+			waitForAgent0ConnectorDeploymentToBecomeAvailable()
+			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+
+			By("opting out of the agent0-connector via the operator configuration resource")
+			updateOperatorConfigurationAgent0ConnectorEnabled(
+				dash0OperatorConfigurationResourceManuallyManagedName, false)
+
+			verifyAgent0ConnectorResourcesDoNotExist()
+			verifyAgent0ConnectorIsReportedAsDisabled(dash0OperatorConfigurationResourceManuallyManagedName)
+
+			By("revoking the opt-out via the operator configuration resource")
+			updateOperatorConfigurationAgent0ConnectorEnabled(
+				dash0OperatorConfigurationResourceManuallyManagedName, true)
+
+			waitForAgent0ConnectorDeploymentToBecomeAvailable()
+			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+		})
+	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
+
 	Context("with the agent0-connector and a custom cluster role", Ordered, func() {
 		var pseudoClusterUid string
 
@@ -2618,17 +2668,7 @@ spec:
 		})
 
 		It("grants the custom rules and not the default rules", func() {
-			By("waiting for the agent0-connector deployment to become available")
-			agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
-			Eventually(func(g Gomega) {
-				g.Expect(runAndIgnoreOutput(exec.Command(
-					"kubectl",
-					"-n", operatorNamespace,
-					"wait", "--for=condition=Available",
-					"deployment/"+agent0ConnectorDeployment,
-					"--timeout=30s",
-				))).To(Succeed())
-			}, 120*time.Second, 2*time.Second).Should(Succeed())
+			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 

@@ -387,7 +387,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			)
 		})
 
-		DescribeTable("should collect the agent0-connector's pod logs unless the resource opts out",
+		DescribeTable("should collect and forward the agent0-connector's pod logs unless the resource opts out",
 			func(enabledInResource *bool, expectPodLogsToBeCollected bool) {
 				operatorConfiguration := DefaultOperatorConfigurationResource()
 				operatorConfiguration.Spec.Agent0Connector.Enabled = enabledInResource
@@ -413,10 +413,15 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace,
 					a0cresources.DeploymentName(OTelCollectorNamePrefixTest),
 				)
+				// The receiver alone collects nothing: the pipeline that forwards its records has to be rendered as
+				// well, otherwise the collected pod logs never leave the collector.
+				selfMonitoringLogsPipeline := "logs/selfmonitoring-filelog-to-forwarder:"
 				if expectPodLogsToBeCollected {
 					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(podLogsPath))
+					Expect(configMap.Data["config.yaml"]).To(ContainSubstring(selfMonitoringLogsPipeline))
 				} else {
 					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(podLogsPath))
+					Expect(configMap.Data["config.yaml"]).ToNot(ContainSubstring(selfMonitoringLogsPipeline))
 				}
 			},
 			Entry("with no explicit setting in the resource, following the Helm value", nil, true),

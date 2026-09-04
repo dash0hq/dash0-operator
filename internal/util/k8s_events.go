@@ -180,6 +180,7 @@ func QueueAgent0ConnectorDisabledEvent(eventRecorder events.EventRecorder, resou
 		corev1.EventTypeNormal,
 		string(ReasonAgent0ConnectorDisabled),
 		string(ActionAgent0ConnectorDeploy),
+		"%s",
 		message,
 	)
 }

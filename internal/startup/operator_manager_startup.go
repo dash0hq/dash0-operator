@@ -2271,7 +2271,6 @@ func setupAgent0ConnectorManager(
 	)
 	agent0ConnectorManager := agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
-		envVars.agent0ConnectorEnabled,
 		extraConfig,
 		developmentMode,
 		agent0ConnectorResourceManager,
