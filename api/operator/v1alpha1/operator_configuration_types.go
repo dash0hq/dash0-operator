@@ -407,8 +407,11 @@ type Dash0OperatorConfigurationStatus struct {
 	// +kubebuilder:validation:Optional
 	PreviousMonitoringTemplate *MonitoringTemplate `json:"previousMonitoringTemplate,omitempty"`
 
-	// Agent0Connector reports whether the operator has deployed the agent0-connector. It is only present when the
-	// agent0-connector is enabled (Helm value operator.agent0Connector.enabled).
+	// Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it has not. A
+	// disabled agent0-connector is reported with deployed=false and reason=Disabled, which is what distinguishes it
+	// from one that failed to deploy. This is absent until the operator reconciles the agent0-connector for the first
+	// time, which it only does when the agent0-connector is enabled via the Helm chart
+	// (operator.agent0Connector.enabled).
 	//
 	// +kubebuilder:validation:Optional
 	Agent0Connector *Agent0ConnectorStatus `json:"agent0Connector,omitempty"`
@@ -719,16 +722,6 @@ func (d *Dash0OperatorConfiguration) SetAgent0ConnectorStatus(deployed bool, rea
 		LastTransitionTime: lastTransitionTime,
 	}
 	return changed
-}
-
-// RemoveAgent0ConnectorStatus removes the agent0-connector status, which is what the operator does when the
-// agent0-connector is disabled. It reports whether the status was present before.
-func (d *Dash0OperatorConfiguration) RemoveAgent0ConnectorStatus() bool {
-	if d.Status.Agent0Connector == nil {
-		return false
-	}
-	d.Status.Agent0Connector = nil
-	return true
 }
 
 //+kubebuilder:object:root=true

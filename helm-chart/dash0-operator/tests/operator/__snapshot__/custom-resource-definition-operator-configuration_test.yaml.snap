@@ -1815,8 +1815,11 @@ custom resource definition for operator configuration should match snapshot:
                   properties:
                     agent0Connector:
                       description: |-
-                        Agent0Connector reports whether the operator has deployed the agent0-connector. It is only present when the
-                        agent0-connector is enabled (Helm value operator.agent0Connector.enabled).
+                        Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it has not. A
+                        disabled agent0-connector is reported with deployed=false and reason=Disabled, which is what distinguishes it
+                        from one that failed to deploy. This is absent until the operator reconciles the agent0-connector for the first
+                        time, which it only does when the agent0-connector is enabled via the Helm chart
+                        (operator.agent0Connector.enabled).
                       properties:
                         deployed:
                           description: |-

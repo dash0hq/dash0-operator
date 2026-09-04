@@ -138,7 +138,7 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 		if err = m.removeAgent0Connector(ctx, *extraConfig, logger); err != nil {
 			return false, err
 		}
-		m.clearAgent0ConnectorStatus(ctx, operatorConfigurationResource, logger)
+		m.reportAgent0ConnectorDisabled(ctx, operatorConfigurationResource, logger)
 		return true, nil
 	}
 
@@ -200,22 +200,41 @@ func (m *Agent0ConnectorManager) reportAgent0ConnectorStatus(
 	}
 }
 
-// clearAgent0ConnectorStatus removes the agent0-connector status, so that a disabled agent0-connector does not leave a
-// stale entry behind.
-func (m *Agent0ConnectorManager) clearAgent0ConnectorStatus(
+// reportAgent0ConnectorDisabled records in the status of the Dash0OperatorConfiguration resource that the
+// agent0-connector is not deployed because it is disabled, and queues a Kubernetes event when the outcome changed.
+// Reporting the reason instead of removing the status is what distinguishes a deliberately disabled agent0-connector
+// from one that the operator has never deployed or has failed to deploy.
+func (m *Agent0ConnectorManager) reportAgent0ConnectorDisabled(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) {
-	if _, err := m.updateAgent0ConnectorStatus(
+	message := agent0ConnectorDisabledMessage(m.enabledViaHelm)
+	changed, err := m.updateAgent0ConnectorStatus(
 		ctx,
 		operatorConfigurationResource,
 		func(resource *dash0v1alpha1.Dash0OperatorConfiguration) bool {
-			return resource.RemoveAgent0ConnectorStatus()
+			return resource.SetAgent0ConnectorStatus(false, StatusReasonDisabled, message)
 		},
-	); err != nil {
-		logger.Error(err, "cannot remove the agent0-connector status from the Dash0OperatorConfiguration resource")
+	)
+	if err != nil {
+		logger.Error(err, "cannot record the agent0-connector status in the Dash0OperatorConfiguration resource")
+		return
 	}
+	if !changed {
+		return
+	}
+	util.QueueAgent0ConnectorDisabledEvent(m.eventRecorder, operatorConfigurationResource, message)
+}
+
+// agent0ConnectorDisabledMessage describes which of the two settings switched the agent0-connector off.
+func agent0ConnectorDisabledMessage(enabledViaHelm bool) string {
+	if !enabledViaHelm {
+		return "The operator has not deployed the agent0-connector because it is disabled via the Helm chart " +
+			"(operator.agent0Connector.enabled: false)."
+	}
+	return "The operator has not deployed the agent0-connector because it is disabled in the Dash0 operator " +
+		"configuration resource (agent0Connector.enabled: false)."
 }
 
 // updateAgent0ConnectorStatus applies the given modification to the status of the Dash0OperatorConfiguration resource
@@ -247,10 +266,11 @@ func (m *Agent0ConnectorManager) updateAgent0ConnectorStatus(
 
 // The programmatic identifiers reported in status.agent0Connector.reason of the Dash0OperatorConfiguration resource.
 // They name the individual outcome and are therefore more specific than the reason of the Kubernetes event, which only
-// distinguishes deployed from not deployed. A new failure mode needs an entry here and in
+// distinguishes deployed, not deployed and disabled. A new failure mode needs an entry here and in
 // agent0ConnectorFailureReason, otherwise it is reported as StatusReasonReconcileFailed.
 const (
 	StatusReasonDeployed                   = "Deployed"
+	StatusReasonDisabled                   = "Disabled"
 	StatusReasonInvalidClusterRoleRules    = "InvalidClusterRoleRules"
 	StatusReasonNoAuthorizationToken       = "NoAuthorizationToken"
 	StatusReasonOperatorMissingPermissions = "OperatorMissingPermissions"

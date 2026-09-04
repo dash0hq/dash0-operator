@@ -45,6 +45,7 @@ const (
 const (
 	ReasonAgent0ConnectorDeployed    Reason = "Agent0ConnectorDeployed"
 	ReasonAgent0ConnectorNotDeployed Reason = "Agent0ConnectorNotDeployed"
+	ReasonAgent0ConnectorDisabled    Reason = "Agent0ConnectorDisabled"
 )
 
 // AllInstrumentationEvents lists the events the instrumentation webhook queues for a workload. The webhook cannot set

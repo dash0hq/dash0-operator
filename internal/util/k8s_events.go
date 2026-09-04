@@ -169,6 +169,21 @@ func QueueAgent0ConnectorNotDeployedEvent(eventRecorder events.EventRecorder, re
 	)
 }
 
+// QueueAgent0ConnectorDisabledEvent queues the event reporting that the operator has removed the agent0-connector
+// because it is disabled. This is a normal event, not a warning: the agent0-connector is absent because it has been
+// switched off, not because the operator failed to deploy it. It should only be queued when the outcome changed, see
+// Dash0OperatorConfiguration#SetAgent0ConnectorStatus.
+func QueueAgent0ConnectorDisabledEvent(eventRecorder events.EventRecorder, resource runtime.Object, message string) {
+	eventRecorder.Eventf(
+		resource,
+		nil,
+		corev1.EventTypeNormal,
+		string(ReasonAgent0ConnectorDisabled),
+		string(ActionAgent0ConnectorDeploy),
+		message,
+	)
+}
+
 func stringifyContainerInstrumentationIssues(instrumentationIssuesPerContainer map[string][]string) string {
 	var sb strings.Builder
 	for idx, containerName := range slices.Sorted(maps.Keys(instrumentationIssuesPerContainer)) {
