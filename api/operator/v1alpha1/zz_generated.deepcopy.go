@@ -2129,6 +2129,11 @@ func (in *ReservoirConfig) DeepCopyInto(out *ReservoirConfig) {
 		*out = new(ReservoirType)
 		**out = **in
 	}
+	if in.BufferDuration != nil {
+		in, out := &in.BufferDuration, &out.BufferDuration
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	if in.MaxDiskBytes != nil {
 		in, out := &in.MaxDiskBytes, &out.MaxDiskBytes
 		x := (*in).DeepCopy()

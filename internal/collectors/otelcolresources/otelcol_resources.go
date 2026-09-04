@@ -706,6 +706,7 @@ func signalControlConfigFromResource(
 	// applies for the memory/serialized_memory reservoir types.
 	var samplingReservoirMaxMemoryBytes int64
 	samplingReservoirMetricLevel := string(dash0v1alpha1.ReservoirMetricLevelBasic)
+	var samplingReservoirBufferDuration string
 	if r := resource.Spec.Sampling.Reservoir; r != nil {
 		if r.Type != nil && *r.Type != "" {
 			samplingReservoirType = string(*r.Type)
@@ -724,6 +725,9 @@ func signalControlConfigFromResource(
 		}
 		if r.MaxMemoryBytes != nil {
 			samplingReservoirMaxMemoryBytes = r.MaxMemoryBytes.Value()
+		}
+		if d := r.BufferDuration; d != nil && d.Duration > 0 {
+			samplingReservoirBufferDuration = d.Duration.String()
 		}
 		if r.MetricLevel != nil && *r.MetricLevel != "" {
 			samplingReservoirMetricLevel = string(*r.MetricLevel)
@@ -804,6 +808,7 @@ func signalControlConfigFromResource(
 		SamplingReservoirMaxDiskBytes:      samplingReservoirMaxDiskBytes,
 		SamplingReservoirMaxMemoryBytes:    samplingReservoirMaxMemoryBytes,
 		SamplingReservoirMetricLevel:       samplingReservoirMetricLevel,
+		SamplingReservoirBufferDuration:    samplingReservoirBufferDuration,
 		SignalToMetricsEnabled:             signalToMetricsEnabled,
 		SignalToMetricsMaxTimeSeries:       resource.Spec.SignalToMetrics.MaxTimeSeries,
 		SignalToMetricsFlushInterval:       signalToMetricsFlushInterval,
