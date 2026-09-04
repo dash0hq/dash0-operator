@@ -601,14 +601,59 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		It("should reject an update that enables the agent0-connector when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.Agent0Connector.Enabled = new(true)
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(
+				MatchError(ContainSubstring(ErrorMessageAgent0ConnectorDisabledViaHelm)))
+		})
+
+		It("should allow an unrelated update when the agent0-connector has been disabled via Helm after the fact", func() {
+			// Store agent0Connector.enabled=true while the agent0-connector is still enabled via Helm, ...
+			operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = true
+			DeferCleanup(func() {
+				operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = false
+			})
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						Agent0Connector: dash0v1alpha1.Agent0Connector{
+							Enabled: new(true),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			// ... then disable it via Helm and update an unrelated field.
+			operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = false
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.ClusterName = "cluster-name-set-after-the-fact"
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+		})
+
 		Describe("with the agent0-connector enabled via Helm", Ordered, func() {
 			BeforeAll(func() {
-				operatorConfigurationMutatingWebhookHandler.agent0ConnectorEnabledViaHelm = true
 				operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = true
 			})
 
 			AfterAll(func() {
-				operatorConfigurationMutatingWebhookHandler.agent0ConnectorEnabledViaHelm = false
 				operatorConfigurationValidationWebhookHandler.agent0ConnectorEnabledViaHelm = false
 			})
 

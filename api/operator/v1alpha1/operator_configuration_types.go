@@ -213,6 +213,14 @@ type Agent0Connector struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
+// IsEnabled reports whether the operator deploys the agent0-connector. The parameter enabledViaHelm is the value of the
+// Helm value operator.agent0Connector.enabled, which the operator holds for the lifetime of the process. The
+// agent0-connector requires that Helm value; this resource can only opt out of it, which is why an unset Enabled flag
+// follows the Helm value.
+func (a Agent0Connector) IsEnabled(enabledViaHelm bool) bool {
+	return enabledViaHelm && pointers.ReadBoolPointerWithDefault(a.Enabled, true)
+}
+
 // InstrumentationDelivery selects how the Dash0 instrumentation files (the OpenTelemetry injector and the
 // auto-instrumentation agents) are made available to instrumented workload containers.
 //

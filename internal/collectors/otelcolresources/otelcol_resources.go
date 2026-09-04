@@ -140,14 +140,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
 				false,
 			)
-	// The agent0-connector requires the Helm value operator.agent0Connector.enabled; the operator configuration resource
-	// can opt out of it.
 	agent0ConnectorEnabled :=
-		m.collectorConfig.Agent0ConnectorEnabled &&
-			pointers.ReadBoolPointerWithDefault(
-				operatorConfigurationResource.Spec.Agent0Connector.Enabled,
-				true,
-			)
+		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabled)
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(

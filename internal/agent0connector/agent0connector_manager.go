@@ -19,7 +19,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
-	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
@@ -160,8 +159,7 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 func (m *Agent0ConnectorManager) agent0ConnectorEnabled(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 ) bool {
-	return m.enabled &&
-		pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Agent0Connector.Enabled, true)
+	return operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.enabled)
 }
 
 // reportAgent0ConnectorStatus records the outcome of the last attempt to create or update the agent0-connector
