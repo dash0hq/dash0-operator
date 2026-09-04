@@ -1693,7 +1693,7 @@ func startDash0Controllers(
 			OperatorNamespace:                      envVars.operatorNamespace,
 			OTelCollectorNamePrefix:                envVars.oTelCollectorNamePrefix,
 			TargetAllocatorNamePrefix:              envVars.targetAllocatorNamePrefix,
-			Agent0ConnectorEnabled:                 envVars.agent0ConnectorEnabled,
+			Agent0ConnectorEnabledViaHelm:          envVars.agent0ConnectorEnabled,
 			SendBatchSize:                          envVars.sendBatchSize,
 			SendBatchMaxSize:                       envVars.sendBatchMaxSize,
 			K8sAttributesDisableReplicasetInformer: envVars.k8sAttributesDisableReplicasetInformer,

@@ -51,13 +51,13 @@ func newResourceManager() *a0cresources.Agent0ConnectorResourceManager {
 // under test has queued.
 var eventRecorder *events.FakeRecorder
 
-func newManager(enabled bool) *Agent0ConnectorManager {
-	return newManagerWithExtraConfig(enabled, util.ExtraConfig{})
+func newManager(enabledViaHelm bool) *Agent0ConnectorManager {
+	return newManagerWithExtraConfig(enabledViaHelm, util.ExtraConfig{})
 }
 
-func newManagerWithExtraConfig(enabled bool, extraConfig util.ExtraConfig) *Agent0ConnectorManager {
+func newManagerWithExtraConfig(enabledViaHelm bool, extraConfig util.ExtraConfig) *Agent0ConnectorManager {
 	eventRecorder = events.NewFakeRecorder(10)
-	return NewAgent0ConnectorManager(k8sClient, enabled, extraConfig, false, newResourceManager(), eventRecorder)
+	return NewAgent0ConnectorManager(k8sClient, enabledViaHelm, extraConfig, false, newResourceManager(), eventRecorder)
 }
 
 // recordedEvents drains the events the manager under test has queued so far.

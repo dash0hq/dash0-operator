@@ -27,7 +27,7 @@ type Agent0ConnectorManager struct {
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager
 	eventRecorder                  events.EventRecorder
 	extraConfig                    atomic.Pointer[util.ExtraConfig]
-	enabled                        bool
+	enabledViaHelm                 bool
 	developmentMode                bool
 	reconcileGuard                 util.ReconcileGuard
 }
@@ -41,7 +41,7 @@ const (
 
 func NewAgent0ConnectorManager(
 	k8sClient client.Client,
-	enabled bool,
+	enabledViaHelm bool,
 	extraConfig util.ExtraConfig,
 	developmentMode bool,
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager,
@@ -49,7 +49,7 @@ func NewAgent0ConnectorManager(
 ) *Agent0ConnectorManager {
 	m := &Agent0ConnectorManager{
 		Client:                         k8sClient,
-		enabled:                        enabled,
+		enabledViaHelm:                 enabledViaHelm,
 		developmentMode:                developmentMode,
 		agent0ConnectorResourceManager: agent0ConnectorResourceManager,
 		eventRecorder:                  eventRecorder,
@@ -159,7 +159,7 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 func (m *Agent0ConnectorManager) agent0ConnectorEnabled(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 ) bool {
-	return operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.enabled)
+	return operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.enabledViaHelm)
 }
 
 // reportAgent0ConnectorStatus records the outcome of the last attempt to create or update the agent0-connector

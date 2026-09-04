@@ -141,7 +141,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 				false,
 			)
 	agent0ConnectorEnabled :=
-		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabled)
+		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(
