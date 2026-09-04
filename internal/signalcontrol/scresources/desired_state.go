@@ -34,6 +34,9 @@ const (
 	edgeProxyUserID int64 = 10001
 
 	defaultDataset = "default"
+
+	gkeAutopilotAllowlistLabelKey            = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistLabelEdgeProxyValue = "dash0-edge-proxy-v1.0.4"
 )
 
 var (
@@ -58,6 +61,7 @@ func assembleDesiredState(
 	operatorVersion string,
 	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
+	isGkeAutopilot bool,
 	forDeletion bool,
 	logger logd.Logger,
 ) []clientObject {
@@ -74,7 +78,7 @@ func assembleDesiredState(
 	if forDeletion || edgeProxyEnabled {
 		if edgeProxyEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, isGkeAutopilot, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
 				addCommonMetadata(assembleEdgeProxyPodDisruptionBudget(operatorNamespace, namePrefix)),
 			)
@@ -94,7 +98,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, util.ExtraConfig{}, true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, util.ExtraConfig{}, false, true, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -107,6 +111,7 @@ func assembleEdgeProxyDeployment(
 	operatorVersion string,
 	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
+	isGkeAutopilot bool,
 	logger logd.Logger,
 ) *appsv1.Deployment {
 	replicas := extraConfig.EdgeProxyReplicas
@@ -316,6 +321,11 @@ func assembleEdgeProxyDeployment(
 		}
 	}
 
+	templateLabels := edgeProxyLabels()
+	if isGkeAutopilot {
+		templateLabels[gkeAutopilotAllowlistLabelKey] = gkeAutopilotAllowlistLabelEdgeProxyValue
+	}
+
 	deployment := assembleEdgeProxyDeploymentForDeletion(operatorNamespace, namePrefix)
 	deployment.Labels = util.MergeMaps(edgeProxyLabels(), extraConfig.EdgeProxyLabels)
 	deployment.Annotations = util.MergeMaps(nil, extraConfig.EdgeProxyAnnotations)
@@ -336,7 +346,7 @@ func assembleEdgeProxyDeployment(
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels:      util.MergeMaps(edgeProxyLabels(), extraConfig.EdgeProxyPodLabels),
+				Labels:      util.MergeMaps(templateLabels, extraConfig.EdgeProxyPodLabels),
 				Annotations: util.MergeMaps(nil, extraConfig.EdgeProxyPodAnnotations),
 			},
 			Spec: podSpec,

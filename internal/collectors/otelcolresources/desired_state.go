@@ -257,9 +257,9 @@ const (
 	traceReservoirDirPath    = "/var/lib/dash0/trace-reservoir"
 
 	gkeAutopilotAllowlistLabelKey                = "cloud.google.com/matching-allowlist"
-	gkeAutopilotAllowlistLabelDaemonsetValue     = "dash0-opentelemetry-collector-agent-v1.0.3"
-	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.3"
-	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.3"
+	gkeAutopilotAllowlistLabelDaemonsetValue     = "dash0-opentelemetry-collector-agent-v1.0.4"
+	gkeAutopilotAllowlistLabelDeploymentValue    = "dash0-opentelemetry-cluster-metrics-collector-v1.0.4"
+	gkeAutopilotAllowlistLabelSignalControlValue = "dash0-opentelemetry-signal-control-collector-v1.0.4"
 
 	targetAllocatorCertsVolumeName = "ta-mtls-certs"
 	targetAllocatorCertsVolumeDir  = "/etc/certs/ta-client"
@@ -964,10 +964,6 @@ func assembleFileLogOffsetSyncContainer(
 			{
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
-			},
-			{
-				Name:  "SERVICE_VERSION",
-				Value: config.Images.GetOperatorVersion(),
 			},
 			{
 				Name:  "K8S_CLUSTER_UID",

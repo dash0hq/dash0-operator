@@ -30,6 +30,7 @@ type SignalControlResourceManager struct {
 	edgeProxyImagePullPolicy  corev1.PullPolicy
 	operatorVersion           string
 	otlpGrpcHostPort          int32
+	isGkeAutopilot            bool
 }
 
 func NewSignalControlResourceManager(
@@ -42,6 +43,7 @@ func NewSignalControlResourceManager(
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	otlpGrpcHostPort int32,
+	isGkeAutopilot bool,
 ) *SignalControlResourceManager {
 	return &SignalControlResourceManager{
 		Client:                    k8sClient,
@@ -53,6 +55,7 @@ func NewSignalControlResourceManager(
 		edgeProxyImagePullPolicy:  edgeProxyImagePullPolicy,
 		operatorVersion:           operatorVersion,
 		otlpGrpcHostPort:          otlpGrpcHostPort,
+		isGkeAutopilot:            isGkeAutopilot,
 	}
 }
 
@@ -63,7 +66,7 @@ func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, extraConfig, false, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, extraConfig, m.isGkeAutopilot, false, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
