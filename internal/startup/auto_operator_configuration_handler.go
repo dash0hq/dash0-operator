@@ -286,7 +286,12 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 			)
 		}
 
+		// Users set spec.agent0Connector.enabled directly on the resource to opt out of the agent0-connector, it is not
+		// derived from the Helm values. Carry it over, otherwise this update would discard the opt-out and the operator
+		// would deploy the agent0-connector again.
+		agent0Connector := existingOperatorConfigurationResource.Spec.Agent0Connector
 		existingOperatorConfigurationResource.Spec = operatorConfigurationResource.Spec
+		existingOperatorConfigurationResource.Spec.Agent0Connector = agent0Connector
 		if err := r.Update(ctx, &existingOperatorConfigurationResource); err != nil {
 			return fmt.Errorf("failed to update the Dash0 operator configuration resource: %w", err)
 		}
