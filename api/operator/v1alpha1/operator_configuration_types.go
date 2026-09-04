@@ -206,6 +206,9 @@ type Agent0Connector struct {
 	// operator from deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a
 	// validation error to set it to `true` when the agent0-connector is disabled via the Helm chart.
 	//
+	// Using this setting to disable agent0-connector when it is enabled via Helm and the Helm chart manages the
+	// Dash0OperatorConfiguration resource (operator.dash0Export.enabled=true) is not supported.
+	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 }

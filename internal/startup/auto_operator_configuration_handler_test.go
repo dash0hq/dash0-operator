@@ -868,60 +868,6 @@ var _ = Describe(
 		)
 
 		It(
-			"should keep the agent0-connector opt-out when updating the existing resource", func() {
-				handler := NewAutoOperatorConfigurationResourceHandler(
-					k8sClient,
-					readyCheckExecuter,
-					operatorConfigurationValuesWithToken,
-					nil,
-				)
-				handler.NotifyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
-				Expect(err).ToNot(HaveOccurred())
-
-				// Opt out of the agent0-connector, the way a user would.
-				operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
-				Eventually(
-					func(g Gomega) {
-						g.Expect(k8sClient.Get(
-							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
-							&operatorConfiguration,
-						)).To(Succeed())
-					}, 5*time.Second, 100*time.Millisecond,
-				).Should(Succeed())
-				operatorConfiguration.Spec.Agent0Connector.Enabled = new(false)
-				Expect(k8sClient.Update(ctx, &operatorConfiguration)).To(Succeed())
-
-				// Now let the operator recreate the resource from the Helm values, as it does at every startup. The
-				// cluster name is only in the Helm values of the second handler, so it marks the point in time when the
-				// update has actually replaced the spec.
-				valuesWithClusterName := operatorConfigurationValuesWithToken
-				valuesWithClusterName.ClusterName = "cluster-name-from-helm-values"
-				handlerAfterRestart := NewAutoOperatorConfigurationResourceHandler(
-					k8sClient,
-					readyCheckExecuter,
-					valuesWithClusterName,
-					nil,
-				)
-				handlerAfterRestart.NotifyOperatorManagerJustBecameLeader(ctx, logger)
-				_, err = handlerAfterRestart.CreateOrUpdateOperatorConfigurationResource(ctx, logger)
-				Expect(err).ToNot(HaveOccurred())
-
-				Eventually(
-					func(g Gomega) {
-						updatedOperatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
-						g.Expect(k8sClient.Get(
-							ctx, types.NamespacedName{Name: util.OperatorConfigurationAutoResourceName},
-							&updatedOperatorConfiguration,
-						)).To(Succeed())
-						g.Expect(updatedOperatorConfiguration.Spec.ClusterName).To(Equal("cluster-name-from-helm-values"))
-						g.Expect(updatedOperatorConfiguration.Spec.Agent0Connector.Enabled).To(Equal(new(false)))
-					}, 5*time.Second, 100*time.Millisecond,
-				).Should(Succeed())
-			},
-		)
-
-		It(
 			"should update the existing resource if there already is an auto-operator-configuration-resource", func() {
 				handler1 := NewAutoOperatorConfigurationResourceHandler(
 					k8sClient,

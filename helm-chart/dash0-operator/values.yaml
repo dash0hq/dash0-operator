@@ -1308,9 +1308,7 @@ operator:
     # account, cluster roles & bindings) from the cluster. It cannot, because agent0Connector.enabled=false implies that
     # the necessary RBAC permissions for managing these resources (including the permission to delete these resources)
     # are not granted to the operator manager. The recommended resolution is to uninstall the operator from the cluster
-    # entirely, then re-install with agent0Connector.enabled=false. To switch the agent0-connector off without
-    # uninstalling the operator, leave this Helm value at true and set spec.agent0Connector.enabled to false in the
-    # Dash0OperatorConfiguration resource instead; the operator removes the agent0-connector resources in that case.
+    # entirely, then re-install with agent0Connector.enabled=false.
     enabled: false
 
     # The address (host:port) of the Dash0 backend service the agent0-connector pod connects to. This value is mandatory
