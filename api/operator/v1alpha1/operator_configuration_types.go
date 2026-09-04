@@ -164,9 +164,7 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:validation:Optional
 	Profiling *Profiling `json:"profiling,omitempty"`
 
-	// Settings for the agent0-connector. This setting is optional; if it is omitted, the operator deploys the
-	// agent0-connector if and only if it is enabled via the Helm chart (operator.agent0Connector.enabled). It is a
-	// validation error to set `agent0Connector.enabled=true` when the agent0-connector is disabled via the Helm chart.
+	// Settings for the agent0-connector.
 	//
 	// +kubebuilder:validation:Optional
 	Agent0Connector Agent0Connector `json:"agent0Connector,omitempty"`
@@ -202,12 +200,11 @@ type PrometheusCrdSupport struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
-// Agent0Connector describes whether the operator deploys the agent0-connector.
+// Agent0Connector contains settings for the agent0-connector.
 type Agent0Connector struct {
-	// An opt-out switch for the agent0-connector deployment. This setting is optional; if it is omitted, it defaults to
-	// the value of the Helm value operator.agent0Connector.enabled. Setting it to `false` prevents the operator from
-	// deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a validation
-	// error to set it to `true` when the agent0-connector is disabled via the Helm chart.
+	// An opt-out switch for the agent0-connector deployment. This setting is optional. Setting it to `false` prevents the
+	// operator from deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a
+	// validation error to set it to `true` when the agent0-connector is disabled via the Helm chart.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
@@ -407,7 +404,7 @@ type Dash0OperatorConfigurationStatus struct {
 	// +kubebuilder:validation:Optional
 	PreviousMonitoringTemplate *MonitoringTemplate `json:"previousMonitoringTemplate,omitempty"`
 
-	// Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it has not. A
+	// Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it hasn't. A
 	// disabled agent0-connector is reported with deployed=false and reason=Disabled, which is what distinguishes it
 	// from one that failed to deploy. This is absent until the operator reconciles the agent0-connector for the first
 	// time, which it only does when the agent0-connector is enabled via the Helm chart
@@ -672,7 +669,7 @@ func (d *Dash0OperatorConfiguration) cloneAndRedact() Dash0OperatorConfiguration
 // Agent0ConnectorStatus reports whether the operator has deployed the agent0-connector, that is, whether it has
 // successfully created or updated the agent0-connector's service account, cluster role, cluster role binding and
 // deployment. It does not report whether the agent0-connector's pod is up: a successful deployment can still fail to
-// roll out, which the deployment resource itself reports.
+// start, which the deployment resource itself reports.
 //
 // This is deliberately not a status condition: the agent0-connector is an optional feature, and an issue with it
 // neither makes the operator configuration resource unavailable nor degraded.
@@ -681,7 +678,7 @@ type Agent0ConnectorStatus struct {
 	// last time it tried.
 	Deployed bool `json:"deployed"`
 
-	// Reason is a programmatic identifier for the last outcome, e.g. "InvalidClusterRoleRules".
+	// Reason is a programmatic identifier for the last negative outcome, e.g. "InvalidClusterRoleRules".
 	//
 	// +kubebuilder:validation:Optional
 	Reason string `json:"reason,omitempty"`

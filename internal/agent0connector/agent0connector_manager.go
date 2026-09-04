@@ -37,6 +37,9 @@ type Agent0ConnectorReconcileTrigger string
 const (
 	TriggeredByWatchEvent                                  Agent0ConnectorReconcileTrigger = "watch"
 	TriggeredByDash0OperatorConfigurationResourceReconcile Agent0ConnectorReconcileTrigger = "resource"
+
+	agent0ConnectorDisabledMessage = "The operator has not deployed the agent0-connector because it is disabled " +
+		"in the Dash0 operator configuration resource (agent0Connector.enabled: false)."
 )
 
 func NewAgent0ConnectorManager(
@@ -151,10 +154,10 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 	return hasBeenReconciled, err
 }
 
-// agent0ConnectorEnabled reports whether the optional agent0-connector deployment should be managed. The manager only
-// exists when the agent0-connector is enabled via the Helm chart (operator.agent0Connector.enabled), see
-// setupAgent0ConnectorManager, so only the opt-out in spec.agent0Connector.enabled of the Dash0OperatorConfiguration
-// resource is evaluated here.
+// agent0ConnectorEnabled reports whether the optional agent0-connector deployment should be managed. The
+// Agent0ConnectorManager only exists when the agent0-connector is enabled via the Helm chart
+// (operator.agent0Connector.enabled), see setupAgent0ConnectorManager, so only the opt-out in
+// spec.agent0Connector.enabled of the Dash0OperatorConfiguration resource is evaluated here.
 func (m *Agent0ConnectorManager) agent0ConnectorEnabled(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 ) bool {
@@ -227,11 +230,6 @@ func (m *Agent0ConnectorManager) reportAgent0ConnectorDisabled(
 	}
 	util.QueueAgent0ConnectorDisabledEvent(m.eventRecorder, operatorConfigurationResource, agent0ConnectorDisabledMessage)
 }
-
-// agent0ConnectorDisabledMessage names the setting that switched the agent0-connector off. The Helm value is not a
-// candidate: the manager only exists when it is true, see setupAgent0ConnectorManager.
-const agent0ConnectorDisabledMessage = "The operator has not deployed the agent0-connector because it is disabled " +
-	"in the Dash0 operator configuration resource (agent0Connector.enabled: false)."
 
 // updateAgent0ConnectorStatus applies the given modification to the status of the Dash0OperatorConfiguration resource
 // and reports whether it changed anything. The resource is read again for every attempt: the agent0-connector is
