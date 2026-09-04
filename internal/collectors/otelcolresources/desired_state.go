@@ -966,10 +966,6 @@ func assembleFileLogOffsetSyncContainer(
 				Value: offsetsDirPath,
 			},
 			{
-				Name:  "SERVICE_VERSION",
-				Value: config.Images.GetOperatorVersion(),
-			},
-			{
 				Name:  "K8S_CLUSTER_UID",
 				Value: string(config.PseudoClusterUid),
 			},
