@@ -45,6 +45,7 @@ const (
 const (
 	ReasonAgent0ConnectorDeployed    Reason = "Agent0ConnectorDeployed"
 	ReasonAgent0ConnectorNotDeployed Reason = "Agent0ConnectorNotDeployed"
+	ReasonAgent0ConnectorDisabled    Reason = "Agent0ConnectorDisabled"
 )
 
 // AllInstrumentationEvents lists the events the instrumentation webhook queues for a workload. The webhook cannot set
@@ -71,7 +72,7 @@ type CollectorConfig struct {
 	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
 	// config of the prometheus_receiver
 	TargetAllocatorNamePrefix              string
-	Agent0ConnectorEnabled                 bool
+	Agent0ConnectorEnabledViaHelm          bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
 	K8sAttributesDisableReplicasetInformer bool

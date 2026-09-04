@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -50,13 +51,13 @@ func newResourceManager() *a0cresources.Agent0ConnectorResourceManager {
 // under test has queued.
 var eventRecorder *events.FakeRecorder
 
-func newManager(enabled bool) *Agent0ConnectorManager {
-	return newManagerWithExtraConfig(enabled, util.ExtraConfig{})
+func newManager() *Agent0ConnectorManager {
+	return newManagerWithExtraConfig(util.ExtraConfig{})
 }
 
-func newManagerWithExtraConfig(enabled bool, extraConfig util.ExtraConfig) *Agent0ConnectorManager {
+func newManagerWithExtraConfig(extraConfig util.ExtraConfig) *Agent0ConnectorManager {
 	eventRecorder = events.NewFakeRecorder(10)
-	return NewAgent0ConnectorManager(k8sClient, enabled, extraConfig, false, newResourceManager(), eventRecorder)
+	return NewAgent0ConnectorManager(k8sClient, extraConfig, false, newResourceManager(), eventRecorder)
 }
 
 // recordedEvents drains the events the manager under test has queued so far.
@@ -133,38 +134,69 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 	It("creates the agent0-connector resources when enabled and an operator configuration resource exists", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 
-		hasBeenReconciled, err := newManager(true).ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		hasBeenReconciled, err := newManager().ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(hasBeenReconciled).To(BeTrue())
 		expectAgent0ConnectorResourcesToExist(ctx)
 	})
 
-	It("removes the agent0-connector resources when the feature is disabled", func() {
+	It("removes the agent0-connector resources when it is disabled in the operator configuration resource", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		// First create the resources with an enabled manager, ...
-		_, err := newManager(true).ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		manager := newManager()
+		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 		Expect(err).ToNot(HaveOccurred())
 		expectAgent0ConnectorResourcesToExist(ctx)
+		Expect(expectAgent0ConnectorStatus(ctx).Deployed).To(BeTrue())
 
-		// ... then reconcile with a disabled manager and expect them to be removed again.
-		hasBeenReconciled, err := newManager(false).ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		disableAgent0ConnectorInOperatorConfigurationResource(ctx)
+		_ = recordedEvents()
+		hasBeenReconciled, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(hasBeenReconciled).To(BeTrue())
 		expectAgent0ConnectorResourcesToNotExist(ctx)
+		status := expectAgent0ConnectorStatus(ctx)
+		Expect(status.Deployed).To(BeFalse())
+		Expect(status.Reason).To(Equal(StatusReasonDisabled))
+		Expect(status.Message).To(ContainSubstring("disabled in the Dash0 operator configuration resource"))
+		Expect(recordedEvents()).To(ContainElement(ContainSubstring("Agent0ConnectorDisabled")))
+	})
+
+	It("reports the agent0-connector as disabled only once while it stays disabled", func() {
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithAgent0Connector(false))
+		manager := newManager()
+		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(recordedEvents()).To(ContainElement(ContainSubstring("Agent0ConnectorDisabled")))
+
+		// Reconciling again must not queue the event a second time, the outcome has not changed.
+		_, err = manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(recordedEvents()).To(BeEmpty())
+	})
+
+	It("deploys the agent0-connector when it is explicitly enabled in the operator configuration resource", func() {
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithAgent0Connector(true))
+
+		hasBeenReconciled, err := newManager().ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(hasBeenReconciled).To(BeTrue())
+		expectAgent0ConnectorResourcesToExist(ctx)
 	})
 
 	It("removes the agent0-connector resources when there is no operator configuration resource", func() {
 		// Create the resources first (with an operator configuration resource present), ...
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		_, err := newManager(true).ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
+		_, err := newManager().ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 		Expect(err).ToNot(HaveOccurred())
 		expectAgent0ConnectorResourcesToExist(ctx)
 
 		// ... then delete the operator configuration resource and reconcile again.
 		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
-		hasBeenReconciled, err := newManager(true).ReconcileAgent0Connector(ctx, TriggeredByWatchEvent)
+		hasBeenReconciled, err := newManager().ReconcileAgent0Connector(ctx, TriggeredByWatchEvent)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(hasBeenReconciled).To(BeTrue())
@@ -173,7 +205,7 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 
 	It("applies an updated extra config map to the agent0-connector deployment", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		manager := newManager(true)
+		manager := newManager()
 		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 		Expect(err).ToNot(HaveOccurred())
 		expectAgent0ConnectorResourcesToExist(ctx)
@@ -198,7 +230,7 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 
 	It("does not report an error when the agent0-connector is misconfigured", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		manager := newManagerWithExtraConfig(true, extraConfigWithWriteVerb())
+		manager := newManagerWithExtraConfig(extraConfigWithWriteVerb())
 
 		hasBeenReconciled, err := manager.ReconcileAgent0Connector(
 			ctx,
@@ -214,7 +246,7 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 
 	It("reports a misconfiguration in the status and queues a warning event", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		manager := newManagerWithExtraConfig(true, extraConfigWithWriteVerb())
+		manager := newManagerWithExtraConfig(extraConfigWithWriteVerb())
 
 		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 		Expect(err).ToNot(HaveOccurred())
@@ -234,7 +266,7 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 		Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
 
-		manager := newManagerWithExtraConfig(true, extraConfigWithWriteVerb())
+		manager := newManagerWithExtraConfig(extraConfigWithWriteVerb())
 		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -248,7 +280,7 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 
 	It("queues no second event while the misconfiguration is unchanged", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		manager := newManagerWithExtraConfig(true, extraConfigWithWriteVerb())
+		manager := newManagerWithExtraConfig(extraConfigWithWriteVerb())
 
 		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 		Expect(err).ToNot(HaveOccurred())
@@ -263,7 +295,7 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 
 	It("reports the recovery in the status and queues a normal event", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		manager := newManagerWithExtraConfig(true, extraConfigWithWriteVerb())
+		manager := newManagerWithExtraConfig(extraConfigWithWriteVerb())
 		_, err := manager.ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(expectAgent0ConnectorStatus(ctx).Deployed).To(BeFalse())
@@ -279,24 +311,9 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		expectAgent0ConnectorResourcesToExist(ctx)
 	})
 
-	It("removes the status when the agent0-connector is disabled", func() {
-		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		_, err := newManager(true).ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(expectAgent0ConnectorStatus(ctx).Deployed).To(BeTrue())
-
-		_, err = newManager(false).ReconcileAgent0Connector(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
-		Expect(err).ToNot(HaveOccurred())
-
-		operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-		Expect(operatorConfigurationResource.Status.Agent0Connector).To(BeNil())
-		// Disabling the feature is an explicit action, the operator of the cluster does not need to be told about it.
-		Expect(recordedEvents()).To(BeEmpty())
-	})
-
 	It("does not reconcile when a reconciliation is already in progress, but does not lose the trigger", func() {
 		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		manager := newManager(true)
+		manager := newManager()
 
 		// Occupy the manager's reconcile guard and trigger a reconciliation from within it, the way a watch event or
 		// an extra config map update would arrive while a reconciliation is running.
@@ -321,6 +338,23 @@ var _ = Describe("The agent0-connector manager", Ordered, func() {
 		Expect(executions).To(Equal(2))
 	})
 })
+
+// operatorConfigurationSpecWithAgent0Connector returns the default operator configuration spec with an explicit value
+// for spec.agent0Connector.enabled.
+func operatorConfigurationSpecWithAgent0Connector(enabled bool) dash0v1alpha1.Dash0OperatorConfigurationSpec {
+	spec := OperatorConfigurationResourceDefaultSpec
+	spec.Agent0Connector = dash0v1alpha1.Agent0Connector{Enabled: &enabled}
+	return spec
+}
+
+// disableAgent0ConnectorInOperatorConfigurationResource sets spec.agent0Connector.enabled to false on the operator
+// configuration resource in the cluster, which is how a user opts out of the agent0-connector.
+func disableAgent0ConnectorInOperatorConfigurationResource(ctx context.Context) {
+	GinkgoHelper()
+	operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+	operatorConfigurationResource.Spec.Agent0Connector.Enabled = ptr.To(false)
+	Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+}
 
 // extraConfigWithWriteVerb returns custom cluster role rules with a write verb, e.g. an invalid configuration.
 func extraConfigWithWriteVerb() util.ExtraConfig {
