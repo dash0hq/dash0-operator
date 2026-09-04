@@ -241,6 +241,13 @@ type ReservoirConfig struct {
 	// +kubebuilder:default=serialized_memory
 	Type *ReservoirType `json:"type,omitempty"`
 
+	// The maximum age of buffered spans before the reservoir evicts them, i.e. how long a span is retained
+	// while it awaits a sampling decision. Applies to all reservoir types. Go duration syntax (e.g. "60s",
+	// "90s"). This setting is optional; the processor default (60s) applies when unset.
+	//
+	// +kubebuilder:validation:Optional
+	BufferDuration *metav1.Duration `json:"bufferDuration,omitempty"`
+
 	// The maximum total disk usage of the trace reservoir across all shards. Only used when type is "disk".
 	// When the reservoir exceeds this limit, the oldest buffered spans are evicted regardless of age. The
 	// operator also derives the reservoir volume's storage size limit and the collector container's
