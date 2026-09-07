@@ -89,7 +89,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
   cp dash0/opentelemetry/injector/sitecustomize.py sitecustomize.py
 
 # install Python artifacts (musl)
-FROM python:3.14.7-alpine3.23 AS build-python-musl
+FROM python:3.14.7-alpine3.24 AS build-python-musl
 RUN mkdir -p /dash0-instrumentation/python
 WORKDIR /dash0-instrumentation/python
 COPY python/extract-flattened-requirements.sh .
@@ -129,7 +129,7 @@ COPY ruby/install-bundle.sh /tmp/install-bundle.sh
 RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
 
 # install Ruby artifacts (musl)
-FROM ruby:4.0.6-alpine3.23 AS build-ruby-musl
+FROM ruby:4.0.6-alpine3.24 AS build-ruby-musl
 RUN apk add --no-cache build-base
 COPY --from=download-dash0-ruby-distribution /dash0-ruby-distribution /tmp/dash0-ruby-distribution
 COPY ruby/install-bundle.sh /tmp/install-bundle.sh
