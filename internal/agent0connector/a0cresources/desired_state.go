@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
@@ -57,6 +58,34 @@ var (
 		util.AppKubernetesIoNameLabel:     appKubernetesIoNameValue,
 		util.AppKubernetesIoInstanceLabel: appKubernetesIoInstanceValue,
 	}
+
+	// The environment variables from which the OpenTelemetry Go SDK of the agent0-connector workload derives the
+	// Kubernetes resource attributes of its self-monitoring telemetry, see images/pkg/common/otel.go#assembleResource.
+	// They are set no matter whether self-monitoring is enabled.
+	k8sNodeNameEnvVar = corev1.EnvVar{
+		Name: "K8S_NODE_NAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"},
+		},
+	}
+	operatorNamespaceEnvVar = corev1.EnvVar{
+		Name: "DASH0_OPERATOR_NAMESPACE",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+		},
+	}
+	k8sPodUidEnvVar = corev1.EnvVar{
+		Name: "K8S_POD_UID",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"},
+		},
+	}
+	k8sPodNameEnvVar = corev1.EnvVar{
+		Name: "K8S_POD_NAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+		},
+	}
 )
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -64,17 +93,30 @@ type clientObject struct {
 	object client.Object
 }
 
+// selfMonitoringInput carries everything the self-monitoring of the agent0-connector workload is derived from. In
+// contrast to util.Agent0ConnectorConfig, which is fixed when the operator manager starts, it comes from the
+// Dash0OperatorConfiguration resource and is therefore read again for every reconciliation.
+type selfMonitoringInput struct {
+	configuration selfmonitoringapiaccess.SelfMonitoringConfiguration
+	clusterName   string
+}
+
 func assembleDesiredState(
 	config *util.Agent0ConnectorConfig,
 	authTokenEnvVar *corev1.EnvVar,
 	extraConfig util.ExtraConfig,
-) []clientObject {
+	selfMonitoring selfMonitoringInput,
+) ([]clientObject, error) {
+	deployment, err := assembleDeployment(config, authTokenEnvVar, extraConfig, selfMonitoring)
+	if err != nil {
+		return nil, err
+	}
 	desiredState := make([]clientObject, 0, 4)
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccount(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRole(config, extraConfig)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBinding(config)))
-	desiredState = append(desiredState, addCommonMetadata(assembleDeployment(config, authTokenEnvVar, extraConfig)))
-	return desiredState
+	desiredState = append(desiredState, addCommonMetadata(deployment))
+	return desiredState, nil
 }
 
 func assembleServiceAccount(c *util.Agent0ConnectorConfig) *corev1.ServiceAccount {
@@ -523,8 +565,10 @@ func assembleDeployment(
 	c *util.Agent0ConnectorConfig,
 	authTokenEnvVar *corev1.EnvVar,
 	extraConfig util.ExtraConfig,
-) *appsv1.Deployment {
+	selfMonitoring selfMonitoringInput,
+) (*appsv1.Deployment, error) {
 	replicas := int32(1)
+	deploymentName := DeploymentName(c.NamePrefix)
 
 	maxConcurrentCommands := extraConfig.Agent0ConnectorMaxConcurrentCommands
 	if maxConcurrentCommands < 1 {
@@ -561,6 +605,18 @@ func assembleDeployment(
 				Name:  maxConcurrentCommandsEnvVarName,
 				Value: strconv.Itoa(int(maxConcurrentCommands)),
 			},
+			{
+				Name:  "K8S_CLUSTER_NAME",
+				Value: selfMonitoring.clusterName,
+			},
+			{
+				Name:  "K8S_DEPLOYMENT_NAME",
+				Value: deploymentName,
+			},
+			k8sNodeNameEnvVar,
+			operatorNamespaceEnvVar,
+			k8sPodUidEnvVar,
+			k8sPodNameEnvVar,
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
@@ -631,13 +687,13 @@ func assembleDeployment(
 		}
 	}
 
-	return &appsv1.Deployment{
+	deployment := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        DeploymentName(c.NamePrefix),
+			Name:        deploymentName,
 			Namespace:   c.OperatorNamespace,
 			Labels:      util.MergeMaps(labels(), extraConfig.Agent0ConnectorLabels),
 			Annotations: util.MergeMaps(nil, extraConfig.Agent0ConnectorAnnotations),
@@ -656,6 +712,19 @@ func assembleDeployment(
 			},
 		},
 	}
+
+	if selfMonitoring.configuration.SelfMonitoringEnabled {
+		if err := selfmonitoringapiaccess.EnableSelfMonitoringInDeployment(
+			deployment,
+			selfMonitoring.configuration,
+			c.Images.GetOperatorVersion(),
+			c.DevelopmentMode,
+		); err != nil {
+			return nil, err
+		}
+	}
+
+	return deployment, nil
 }
 
 // ---utils---

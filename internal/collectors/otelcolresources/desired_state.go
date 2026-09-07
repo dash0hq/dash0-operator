@@ -921,7 +921,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 	}
 
 	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
-		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDaemonSet(
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInDaemonSet(
 			collectorDaemonSet,
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
@@ -1763,7 +1763,7 @@ func assembleCollectorDeployment(
 	}
 
 	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
-		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDeployment(
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInDeployment(
 			collectorDeployment,
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
@@ -2059,7 +2059,7 @@ func assembleSignalControlCollectorDeployment(
 	}
 
 	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
-		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDeployment(
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInDeployment(
 			collectorDeployment,
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),

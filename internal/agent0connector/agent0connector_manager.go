@@ -143,7 +143,7 @@ func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, l
 		return true, nil
 	}
 
-	hasBeenReconciled, err := m.createOrUpdateAgent0Connector(ctx, *extraConfig, logger)
+	hasBeenReconciled, err := m.createOrUpdateAgent0Connector(ctx, *extraConfig, operatorConfigurationResource, logger)
 	m.reportAgent0ConnectorStatus(ctx, operatorConfigurationResource, err, logger)
 	if errors.Is(err, a0cresources.ErrMisconfigured) {
 		// Requeuing the reconcile request cannot fix a Helm-level misconfiguration, and agent0-connector deployment must
@@ -304,10 +304,16 @@ func agent0ConnectorFailureMessage(reason string, err error) string {
 func (m *Agent0ConnectorManager) createOrUpdateAgent0Connector(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) (bool, error) {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
-		m.agent0ConnectorResourceManager.CreateOrUpdateAgent0ConnectorResources(ctx, extraConfig, logger)
+		m.agent0ConnectorResourceManager.CreateOrUpdateAgent0ConnectorResources(
+			ctx,
+			extraConfig,
+			operatorConfigurationResource,
+			logger,
+		)
 	if err != nil {
 		if !errors.Is(err, a0cresources.ErrMisconfigured) {
 			// The resource manager has already logged the details of a misconfiguration.

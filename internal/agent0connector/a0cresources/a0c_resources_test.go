@@ -106,7 +106,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when creating all agent0-connector resources", func() {
 		It("should create the service account, cluster role, cluster role binding, and deployment", func() {
-			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 			Expect(updated).To(BeFalse())
@@ -129,7 +134,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 						Verbs:           []string{"get"},
 					},
 				},
-			}, logger)
+			}, DefaultOperatorConfigurationResource(), logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -149,14 +154,19 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 						Verbs:     []string{"get", "list"},
 					},
 				},
-			}, logger)
+			}, DefaultOperatorConfigurationResource(), logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
 			// The user removes operator.agent0Connector.clusterRole.rules again, so the Helm chart stops rendering the
 			// key and the extra config map arrives without it. The existing cluster role has to be updated back to the
 			// default rules rather than keeping the custom ones.
-			_, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			_, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(updated).To(BeTrue())
 
@@ -175,7 +185,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 						Verbs:     []string{"get", "list", "delete"},
 					},
 				},
-			}, logger)
+			}, DefaultOperatorConfigurationResource(), logger)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(`rules[0]: the verb "delete" is not allowed`))
@@ -186,7 +196,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 		})
 
 		It("leaves the rules of an existing cluster role untouched when the custom rules are not read-only", func() {
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -198,7 +213,7 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 						Verbs:     []string{"*"},
 					},
 				},
-			}, logger)
+			}, DefaultOperatorConfigurationResource(), logger)
 			Expect(err).To(HaveOccurred())
 
 			clusterRole := &rbacv1.ClusterRole{}
@@ -211,7 +226,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when resolving the authorization for the agent0-connector workload", func() {
 		It("passes a literal token as the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN environment variable", func() {
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -227,7 +247,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 					Key:  "token",
 				},
 			})
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -245,7 +270,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			// Authorization is deliberately left unset (neither token nor secretRef).
 			manager = newAgent0ConnectorResourceManager(dash0common.Authorization{})
 
-			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 
 			Expect(err).To(HaveOccurred())
 			Expect(errors.Is(err, ErrMisconfigured)).To(BeTrue())
@@ -255,9 +285,46 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 		})
 	})
 
+	Context("when self-monitoring is enabled in the Dash0OperatorConfiguration resource", func() {
+		It("sets the environment variables of the OTel SDK on the deployed container", func() {
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(created).To(BeTrue())
+
+			container := getDeployedAgent0ConnectorContainer(ctx)
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "SELF_MONITORING_AUTH_TOKEN", Value: AuthorizationTokenTest}))
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: EndpointDash0WithProtocolTest}))
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "OTEL_EXPORTER_OTLP_PROTOCOL", Value: "grpc"}))
+		})
+
+		It("omits the environment variables of the OTel SDK when there is no operator configuration resource", func() {
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, nil, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(created).To(BeTrue())
+
+			container := getDeployedAgent0ConnectorContainer(ctx)
+			for _, envVar := range container.Env {
+				Expect(envVar.Name).ToNot(HavePrefix("OTEL_"))
+			}
+		})
+	})
+
 	Context("when agent0-connector resources have been modified externally", func() {
 		It("should reconcile the resources back into the desired state", func() {
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -273,7 +340,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			deployment.Spec.Replicas = &changedReplicas
 			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
 
-			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeFalse())
 			Expect(updated).To(BeTrue())
@@ -290,7 +362,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when agent0-connector resources have been deleted externally", func() {
 		It("should re-create the resources", func() {
-			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -302,7 +379,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 			)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, serviceAccount)).To(Succeed())
 
-			created, _, err = manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, _, err = manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 
@@ -318,12 +400,22 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when all agent0-connector resources are up to date", func() {
 		It("should report that nothing has changed", func() {
-			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, updated, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeTrue())
 			Expect(updated).To(BeFalse())
 
-			created, updated, err = manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			created, updated, err = manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(created).To(BeFalse())
 			Expect(updated).To(BeFalse())
@@ -334,7 +426,12 @@ var _ = Describe("The agent0-connector resource manager", Ordered, func() {
 
 	Context("when deleting all agent0-connector resources", func() {
 		It("should delete the resources", func() {
-			_, _, err := manager.CreateOrUpdateAgent0ConnectorResources(ctx, util.ExtraConfig{}, logger)
+			_, _, err := manager.CreateOrUpdateAgent0ConnectorResources(
+				ctx,
+				util.ExtraConfig{},
+				DefaultOperatorConfigurationResource(),
+				logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 			verifyAgent0ConnectorResourcesExist(ctx)
 

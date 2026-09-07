@@ -16,6 +16,7 @@ RUN apk add --no-cache ca-certificates
 # Copy go.mod and go.sum and run go mod download separately before copying the actual sources, to improve container
 # build caching.
 COPY agent0-connector/src/go.mod agent0-connector/src/go.sum /usr/local/go/src/agent0-connector/
+COPY pkg /usr/local/go/pkg
 RUN go mod download
 
 # now copy the actual go sources (including the proto/ subpackage) and compile them

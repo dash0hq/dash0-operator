@@ -15,6 +15,7 @@ import (
 	"time"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
+	"github.com/dash0hq/dash0-operator/images/agent0-connector/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/tracecontext"
 )
 
@@ -152,20 +153,31 @@ func ExecuteCommandRequest(
 	kubectlTmpDir string,
 	req *pb.CommandRequest,
 ) *pb.CommandResponse {
-	tc := tracecontext.ParseTraceparent(req.GetTraceparent())
+	// Note: trace context has been in extracted in grpcclient.go#receiveCommandRequests already, but
+	// ExecuteCommandRequest runs in a goroutine with a different context, so we need to extract it again here.
+	ctx, tc := tracecontext.Extract(ctx, req.GetTraceparent())
 	if tc.TraceID != "" {
 		logger = logger.With("traceID", tc.TraceID, "spanID", tc.SpanID)
 	}
 
 	parsed, validationErr := validateCommandAndParseArguments(req)
 	if validationErr != nil {
-		logger.Warn("rejecting command request", "requestId", req.GetRequestId(), "reason", validationErr.Error())
+		selfmonitoring.RecordCommandRequest(ctx, selfmonitoring.CommandUnknown)
+		selfmonitoring.RecordCommandError(ctx, selfmonitoring.CommandUnknown, selfmonitoring.ErrorTypeRejected)
+		logger.WarnContext(ctx, "rejecting command request", "requestId", req.GetRequestId(), "reason", validationErr.Error())
 		return &pb.CommandResponse{
 			RequestId: req.GetRequestId(),
 			ExitCode:  exitCodeRejected,
 			Stderr:    fmt.Sprintf("dash0 agent0-connector rejected the command: %s", validationErr),
 		}
 	}
+
+	requestedKubectlCommand := parsed.kubectlCommand
+	selfmonitoring.RecordCommandRequest(ctx, requestedKubectlCommand)
+	startedAt := time.Now()
+	defer func() {
+		selfmonitoring.RecordCommandDuration(ctx, requestedKubectlCommand, time.Since(startedAt))
+	}()
 
 	execCtx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
@@ -190,7 +202,11 @@ func ExecuteCommandRequest(
 	// output.
 	redactionErr := redactSecretsInResponse(parsed, resp, stdout.truncated)
 	if redactionErr != nil {
-		logger.Error(
+		// A withheld response delivers nothing at all, which is the more specific outcome than the exit code of the
+		// invocation, hence it is the one error recorded for this request.
+		selfmonitoring.RecordCommandError(ctx, requestedKubectlCommand, selfmonitoring.ErrorTypeWithheld)
+		logger.ErrorContext(
+			ctx,
 			"withholding a command response that could not be redacted",
 			"requestId", req.GetRequestId(),
 			"reason", redactionErr.Error(),
@@ -205,6 +221,10 @@ func ExecuteCommandRequest(
 			resp.ExitCode = exitCodeTimedOut
 		}
 		return resp
+	}
+
+	if errorType, hasFailed := commandErrorType(exitCode, timedOut); hasFailed {
+		selfmonitoring.RecordCommandError(ctx, requestedKubectlCommand, errorType)
 	}
 
 	if stdout.truncated {
@@ -294,6 +314,20 @@ func withTruncationNotice(output string, limit int) string {
 		output,
 		fmt.Sprintf("[dash0 agent0-connector truncated the output at %d bytes]", limit),
 	)
+}
+
+// commandErrorType maps the outcome of a kubectl invocation to the value of the error.type attribute of the command
+// errors metric, and reports whether the invocation failed at all. A failure to execute kubectl is not distinguished
+// from a non-zero exit code of kubectl itself, the response reports it via exitCodeNotExecutable either way.
+func commandErrorType(exitCode int32, timedOut bool) (string, bool) {
+	switch {
+	case timedOut:
+		return selfmonitoring.ErrorTypeTimedOut, true
+	case exitCode != 0:
+		return selfmonitoring.ErrorTypeNonZeroExitCode, true
+	default:
+		return "", false
+	}
 }
 
 // cappedBuffer is an io.Writer that captures up to limit bytes and discards the rest, recording whether any data was

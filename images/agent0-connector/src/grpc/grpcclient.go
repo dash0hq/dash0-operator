@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/kubectl"
+	"github.com/dash0hq/dash0-operator/images/agent0-connector/tracecontext"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -500,7 +501,14 @@ func receiveCommandRequests(
 			return fmt.Errorf("stream receive failed: %w", err)
 		}
 
-		logger.Info(
+		requestCtx, tc := tracecontext.Extract(ctx, req.GetTraceparent())
+		requestLogger := logger
+		if tc.TraceID != "" {
+			requestLogger = logger.With("traceID", tc.TraceID, "spanID", tc.SpanID)
+		}
+
+		requestLogger.InfoContext(
+			requestCtx,
 			"received command request",
 			"requestId", req.GetRequestId(),
 			"command", req.GetCommand(),
@@ -512,7 +520,8 @@ func receiveCommandRequests(
 		case <-ctx.Done():
 			// Either the process is shutting down, or sending a response failed and the stream is broken. In both cases
 			// the request cannot be answered any more.
-			logger.Warn(
+			requestLogger.WarnContext(
+				requestCtx,
 				"dropping a command request, it cannot be answered any more",
 				"requestId", req.GetRequestId(),
 			)
