@@ -22,8 +22,9 @@ image_specs=(
   "edge-proxy:edgeProxyImage"
 )
 
-# Resolve the highest published vMAJOR.MINOR.PATCH tag for a ghcr.io/dash0hq image via the OCI
+# Resolve the highest published MAJOR.MINOR.PATCH tag for a ghcr.io/dash0hq image via the OCI
 # registry tags/list endpoint. Prints the tag to stdout; all diagnostics go to stderr.
+# Legacy v-prefixed build tags (e.g. v2.0.3005) are ignored; only unprefixed semver releases count.
 resolve_latest_tag() {
   local img="$1"
   local token
@@ -52,9 +53,9 @@ resolve_latest_tag() {
   done
 
   local latest
-  latest=$(echo "$all_tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+  latest=$(echo "$all_tags" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
   if [[ -z "$latest" ]]; then
-    echo "Error: no tag matching vMAJOR.MINOR.PATCH found for ${img}." >&2
+    echo "Error: no tag matching MAJOR.MINOR.PATCH found for ${img}." >&2
     exit 1
   fi
   echo "$latest"
@@ -87,7 +88,7 @@ update_expected_tag_in_tests() {
 assert_no_other_pinned_references() {
   local img="$1"
   local other_files
-  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v[0-9]+" -- . ":!${values_file}" ":!${test_file}" || true)
+  other_files=$(git grep -lE "ghcr\.io/dash0hq/${img}:v?[0-9]+" -- . ":!${values_file}" ":!${test_file}" || true)
   if [[ -n "$other_files" ]]; then
     echo "Error: ${img} is pinned to a tag in unexpected files, update this script to rewrite them, too:" >&2
     echo "$other_files" >&2
