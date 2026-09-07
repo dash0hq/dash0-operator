@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/agent0-connector
 
-go 1.27.0
+go 1.27.1
 
 require (
 	go.opentelemetry.io/otel v1.46.0
