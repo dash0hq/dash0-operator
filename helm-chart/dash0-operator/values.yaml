@@ -486,7 +486,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "v2.0.3005"
+    tag: "1.1.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -497,7 +497,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "v2.0.3005"
+    tag: "1.1.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
