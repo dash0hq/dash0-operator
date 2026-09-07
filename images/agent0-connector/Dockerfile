@@ -7,7 +7,7 @@
 # final (scratch) image. We source it from the official Kubernetes-published kubectl image.
 FROM registry.k8s.io/kubectl:v1.37.0 AS kubectl
 
-FROM --platform=${BUILDPLATFORM} golang:1.27.0-alpine3.24 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.1-alpine3.24 AS builder
 
 WORKDIR /usr/local/go/src/agent0-connector
 
