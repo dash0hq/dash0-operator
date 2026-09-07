@@ -39,13 +39,13 @@ func startNodeUIDPrefetch(ctx context.Context) {
 // createResourceWithNodeUID returns a CreateResourceFunc that delegates to the wrapped factory's CreateResource and
 // then attaches the k8s.node.uid attribute to the resulting resource.
 func createResourceWithNodeUID(base telemetry.Factory) telemetry.CreateResourceFunc {
-	return func(ctx context.Context, set telemetry.Settings, cfg component.Config) (pcommon.Resource, error) {
-		res, err := base.CreateResource(ctx, set, cfg)
+	return func(ctx context.Context, set telemetry.Settings, cfg component.Config) (pcommon.Resource, string, error) {
+		res, schemaURL, err := base.CreateResource(ctx, set, cfg)
 		if err != nil {
-			return res, err
+			return res, schemaURL, err
 		}
 		addNodeUID(res)
-		return res, nil
+		return res, schemaURL, nil
 	}
 }
 
