@@ -281,6 +281,12 @@ spec:
                       Configuration for the trace reservoir, the buffer that holds spans awaiting a sampling decision.
                       This setting is optional.
                     properties:
+                      bufferDuration:
+                        description: |-
+                          The maximum age of buffered spans before the reservoir evicts them, i.e. how long a span is retained
+                          while it awaits a sampling decision. Applies to all reservoir types. Go duration syntax (e.g. "60s",
+                          "90s"). This setting is optional; the processor default (60s) applies when unset.
+                        type: string
                       maxDiskBytes:
                         anyOf:
                         - type: integer

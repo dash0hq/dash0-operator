@@ -39,6 +39,7 @@ type SignalControlConfig struct {
 	SamplingReservoirMaxDiskBytes      int64
 	SamplingReservoirMaxMemoryBytes    int64
 	SamplingReservoirMetricLevel       string
+	SamplingReservoirBufferDuration    string
 	SignalToMetricsEnabled             bool
 	SignalToMetricsMaxTimeSeries       *int32
 	SignalToMetricsFlushInterval       string

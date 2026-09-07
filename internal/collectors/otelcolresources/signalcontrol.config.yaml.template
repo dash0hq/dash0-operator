@@ -408,6 +408,9 @@ processors:
     reservoir:
       type: {{ .SignalControl.SamplingReservoirType }}
       metric_level: {{ .SignalControl.SamplingReservoirMetricLevel }}
+{{- if .SignalControl.SamplingReservoirBufferDuration }}
+      buffer_duration: {{ .SignalControl.SamplingReservoirBufferDuration }}
+{{- end }}
 {{- if eq .SignalControl.SamplingReservoirType "disk" }}
       data_dir: /var/lib/dash0/trace-reservoir
       max_disk_bytes: {{ .SignalControl.SamplingReservoirMaxDiskBytes }}

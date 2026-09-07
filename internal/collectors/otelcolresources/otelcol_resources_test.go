@@ -889,6 +889,7 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		Expect(config.SamplingReservoirMaxDiskBytes).To(Equal(int64(1024 * 1024 * 1024)))
 		Expect(config.SamplingReservoirMaxMemoryBytes).To(Equal(int64(0)))
 		Expect(config.SamplingReservoirMetricLevel).To(Equal("basic"))
+		Expect(config.SamplingReservoirBufferDuration).To(Equal(""))
 	})
 
 	It("should use the configured reservoir type and max memory bytes", func() {
@@ -909,6 +910,23 @@ var _ = Describe("signalControlConfigFromResource", func() {
 		config := signalControlConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
 		Expect(config.SamplingReservoirType).To(Equal("serialized_memory"))
 		Expect(config.SamplingReservoirMaxMemoryBytes).To(Equal(int64(512 * 1024 * 1024)))
+	})
+
+	It("should use the configured reservoir buffer duration", func() {
+		bufferDuration := metav1.Duration{Duration: 90 * time.Second}
+		edge := &dash0v1alpha1.Dash0SignalControl{
+			Spec: dash0v1alpha1.Dash0SignalControlSpec{
+				Enabled:   boolPtr(true),
+				EdgeProxy: dash0v1alpha1.EdgeProxyConfig{Enabled: boolPtr(false)},
+				Sampling: dash0v1alpha1.SamplingConfig{
+					Reservoir: &dash0v1alpha1.ReservoirConfig{
+						BufferDuration: &bufferDuration,
+					},
+				},
+			},
+		}
+		config := signalControlConfigFromResource(edge, operatorConfig, operatorNamespace, namePrefix, logger)
+		Expect(config.SamplingReservoirBufferDuration).To(Equal("1m30s"))
 	})
 
 	It("should use the configured reservoir max disk bytes and metric level", func() {

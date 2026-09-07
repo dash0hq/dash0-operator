@@ -3705,6 +3705,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(reservoir).ToNot(HaveKey("data_dir"))
 			Expect(reservoir).ToNot(HaveKey("max_disk_bytes"))
 			Expect(reservoir).ToNot(HaveKey("max_memory_bytes"))
+			Expect(reservoir).ToNot(HaveKey("buffer_duration"))
 		})
 
 		It("should render the serialized_memory trace reservoir max_memory_bytes when set [SignalControl]", func() {
@@ -3734,6 +3735,32 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(reservoir["max_memory_bytes"]).To(BeNumerically("==", int64(512*1024*1024)))
 			Expect(reservoir).ToNot(HaveKey("data_dir"))
 			Expect(reservoir).ToNot(HaveKey("max_disk_bytes"))
+		})
+
+		It("should render the trace reservoir buffer_duration when set [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:                         true,
+					SamplingEnabled:                 true,
+					SamplingReservoirType:           "serialized_memory",
+					SamplingReservoirMetricLevel:    "basic",
+					SamplingReservoirBufferDuration: "1m30s",
+					Endpoint:                        "decision-maker.example.com:443",
+					ApiEndpoint:                     "https://control-plane-api.dash0.com",
+					Dataset:                         "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			reservoir := sampling["reservoir"].(map[string]interface{})
+			Expect(reservoir["buffer_duration"]).To(Equal("1m30s"))
 		})
 
 		It("should render sampling enable_batching when set [SignalControl]", func() {
