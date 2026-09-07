@@ -3,5 +3,5 @@
 
 alpine:3.23.2
 alpine:3.19.8
+debian:trixie-slim
 debian:bookworm-slim
-debian:bullseye-slim
