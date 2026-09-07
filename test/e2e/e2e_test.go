@@ -863,6 +863,48 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
 
+				//nolint:dupl
+				It("should synchronize a time series aggregation to the Dash0 API", func() {
+					deployTimeSeriesAggregationResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					//nolint:lll
+					routeRegex := "/api/time-series-aggregations/dash0-operator_.*_default_e2e-test-ns_time-series-aggregation-e2e-test\\?dataset=default"
+
+					By("verifying the time series aggregation has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("http.server.duration"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInTimeSeriesAggregation(applicationUnderTestNamespace, "false")
+					//nolint:lll
+					By("verifying the time series aggregation has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInTimeSeriesAggregation(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the time series aggregation has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("http.server.duration"))
+					verifyApiSyncRequest(req)
+
+					removeTimeSeriesAggregationResource(applicationUnderTestNamespace)
+					//nolint:lll
+					By("verifying the time series aggregation has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
 				runPersesDashboardSyncTest := func(persesDashboardCrdVersion string) {
 					verifyPersesDashboardCrdConversionWebhookConfigured(operatorNamespace)
 
@@ -4452,6 +4494,30 @@ spec:
 					g.Expect(countCapturedApiRequests(g, "PUT", spamFilterPutRegex)).To(
 						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
 						"expected the spam filter to be re-synchronized by the periodic retry",
+					)
+				}, 90*time.Second, 2*time.Second).Should(Succeed())
+			})
+
+			It("retries a Dash0 time series aggregation synchronization after a transient server error (HTTP 503)", func() {
+				By("configuring the API mock to fail the time series aggregation with HTTP 503 for the first sync attempt")
+				configureApiMockResponseOverrides(apiMockResponseOverride{
+					Method:         "PUT",
+					RouteSubstring: "time-series-aggregation-e2e-test",
+					StatusCode:     503,
+					Times:          apiMockFailTimesForOneSyncAttempt,
+				})
+
+				deployTimeSeriesAggregationResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+
+				//nolint:lll
+				timeSeriesAggregationPutRegex := "^/api/time-series-aggregations/dash0-operator_.*_default_e2e-test-ns_time-series-aggregation-e2e-test\\?dataset=default$"
+
+				//nolint:lll
+				By("verifying the operator performs a second synchronization attempt and the time series aggregation is synchronized")
+				Eventually(func(g Gomega) {
+					g.Expect(countCapturedApiRequests(g, "PUT", timeSeriesAggregationPutRegex)).To(
+						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
+						"expected the time series aggregation to be re-synchronized by the periodic retry",
 					)
 				}, 90*time.Second, 2*time.Second).Should(Succeed())
 			})

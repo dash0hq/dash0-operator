@@ -1189,6 +1189,11 @@ deploy_dash0_api_sync_resources() {
     kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0spamfilter/dash0spamfilter.yaml
     finish_step
   fi
+  if [[ "${DEPLOY_TIME_SERIES_AGGREGATION:-}" = "true" ]]; then
+    echo "STEP $step_counter: deploy a Dash0 time series aggregation resource to namespace ${target_namespace}"
+    kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0timeseriesaggregation/dash0timeseriesaggregation.yaml
+    finish_step
+  fi
   if [[ "${DEPLOY_PERSES_DASHBOARD:-}" = "true" ]]; then
     DEPLOY_PERSES_DASHBOARD="v1alpha2"
   fi

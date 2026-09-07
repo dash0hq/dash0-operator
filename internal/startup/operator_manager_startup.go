@@ -1193,6 +1193,28 @@ func setupTeamReconciler(
 	return teamReconciler, nil
 }
 
+// setupTimeSeriesAggregationReconciler constructs and wires the time-series-aggregation reconciler with the manager and
+// the leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupTimeSeriesAggregationReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+) (*controller.TimeSeriesAggregationReconciler, error) {
+	timeSeriesAggregationReconciler := controller.NewTimeSeriesAggregationReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := timeSeriesAggregationReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the time series aggregation reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(timeSeriesAggregationReconciler)
+	return timeSeriesAggregationReconciler, nil
+}
+
 // allOwnedIacResourceSynchronizationControllers gathers the reconcilers of the operator-owned resource types into a
 // slice of OwnedIacResourceSynchronizationController for the periodic synchronization retry runnable. The sampling rule
 // reconciler is optional (it is only created when the corresponding feature is enabled), so it is only included when
@@ -1203,6 +1225,7 @@ func allOwnedIacResourceSynchronizationControllers(
 	spamFilterReconciler *controller.SpamFilterReconciler,
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
 	teamReconciler *controller.TeamReconciler,
+	timeSeriesAggregationReconciler *controller.TimeSeriesAggregationReconciler,
 	viewReconciler *controller.ViewReconciler,
 	samplingRuleReconciler *controller.SamplingRuleReconciler,
 ) []controller.OwnedIacResourceSynchronizationController {
@@ -1212,6 +1235,7 @@ func allOwnedIacResourceSynchronizationControllers(
 		spamFilterReconciler,
 		syntheticCheckReconciler,
 		teamReconciler,
+		timeSeriesAggregationReconciler,
 		viewReconciler,
 	}
 	if samplingRuleReconciler != nil {
@@ -1875,6 +1899,17 @@ func startDash0Controllers(
 		return err
 	}
 
+	timeSeriesAggregationReconciler, err := setupTimeSeriesAggregationReconciler(
+		mgr,
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err != nil {
+		return err
+	}
+
 	var samplingRuleReconciler *controller.SamplingRuleReconciler
 	if cliArgs.featureSignalControlEnabled {
 		samplingRuleReconciler = controller.NewSamplingRuleReconciler(
@@ -1950,6 +1985,7 @@ func startDash0Controllers(
 			spamFilterReconciler,
 			syntheticCheckReconciler,
 			teamReconciler,
+			timeSeriesAggregationReconciler,
 			viewReconciler,
 			samplingRuleReconciler,
 		),
@@ -1967,6 +2003,7 @@ func startDash0Controllers(
 		notificationChannelReconciler,
 		spamFilterReconciler,
 		teamReconciler,
+		timeSeriesAggregationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
@@ -2006,6 +2043,7 @@ func startDash0Controllers(
 			notificationChannelReconciler,
 			spamFilterReconciler,
 			teamReconciler,
+			timeSeriesAggregationReconciler,
 			signalToMetricsReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
@@ -2078,6 +2116,7 @@ func startDash0Controllers(
 		teamReconciler,
 		viewReconciler,
 		spamFilterReconciler,
+		timeSeriesAggregationReconciler,
 		signalToMetricsReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
