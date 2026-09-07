@@ -88,6 +88,11 @@ const (
 	healthyStreamThreshold = 1 * time.Minute
 )
 
+// toleratedSchemePrefixes are the protocol prefixes that resolveServerAddress accepts and removes from the configured
+// server address. Any other scheme is left alone, in particular the schemes of gRPC's own target syntax (dns://,
+// passthrough:, unix:), which grpc.NewClient understands.
+var toleratedSchemePrefixes = []string{"https://", "http://"}
+
 // RunSubscriber opens the SubscribeToCommandRequests stream to the backend and keeps it open, reconnecting
 // whenever the stream drops, until the provided context is cancelled (e.g. on shutdown).
 func RunSubscriber(ctx context.Context, logger *slog.Logger) {
@@ -167,7 +172,8 @@ func jitter(d time.Duration) time.Duration {
 // resolveServerAddress returns the address of the Dash0 backend service, read from the
 // DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS environment variable. The address is mandatory; if it is not set the process
 // logs an error and exits, since the client has nothing to connect to. (When the operator deploys this workload, the
-// address is always provided via the Helm value operator.agent0Connector.serverAddress.)
+// address is always provided via the Helm value operator.agent0Connector.serverAddress.) An address that is configured
+// as a URL is reduced to its host and port, see normalizeServerAddress.
 func resolveServerAddress(logger *slog.Logger) string {
 	serverAddress := os.Getenv(serverAddressEnvVarName)
 	if serverAddress == "" {
@@ -177,7 +183,53 @@ func resolveServerAddress(logger *slog.Logger) string {
 		)
 		os.Exit(1)
 	}
+	serverAddress = normalizeServerAddress(logger, serverAddress)
+	if serverAddress == "" {
+		logger.Error(
+			"the server address environment variable has no host, cannot connect to the Dash0 backend",
+			"envVar", serverAddressEnvVarName,
+			"value", os.Getenv(serverAddressEnvVarName),
+		)
+		os.Exit(1)
+	}
 	return serverAddress
+}
+
+// normalizeServerAddress turns a server address that is configured as a URL into a gRPC target, by removing a leading
+// http:// or https:// prefix together with everything that follows the host and port. Note that the scheme has no say
+// in whether the connection uses TLS, only the DASH0_AGENT0_CONNECTOR_INSECURE environment variable does. An address
+// without one of the two prefixes is returned unchanged.
+func normalizeServerAddress(logger *slog.Logger, serverAddress string) string {
+	prefixLength := 0
+	for _, prefix := range toleratedSchemePrefixes {
+		if len(serverAddress) >= len(prefix) && strings.EqualFold(serverAddress[:len(prefix)], prefix) {
+			prefixLength = len(prefix)
+			break
+		}
+	}
+	if prefixLength == 0 {
+		return serverAddress
+	}
+
+	normalized := serverAddress[prefixLength:]
+	if index := strings.IndexAny(normalized, "/?#"); index >= 0 {
+		if normalized[index:] != "/" {
+			logger.Warn(
+				"the configured server address has a path, a query or a fragment, ignoring everything after the host "+
+					"and the port",
+				"envVar", serverAddressEnvVarName,
+				"value", serverAddress,
+			)
+		}
+		normalized = normalized[:index]
+	}
+	logger.Info(
+		"the configured server address has a protocol prefix, using its host and port as the gRPC target",
+		"envVar", serverAddressEnvVarName,
+		"value", serverAddress,
+		"target", normalized,
+	)
+	return normalized
 }
 
 // resolveTransportCredentials returns the gRPC transport credentials used to connect to the Dash0 backend. By default

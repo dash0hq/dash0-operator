@@ -154,6 +154,9 @@ func (m *SignalControlResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+	// Carry over the live resource version; some kinds (PodDisruptionBudget) reject an update without it
+	// ("resourceVersion: Invalid value: 0: must be specified for an update") and it adds optimistic locking.
+	desiredResource.SetResourceVersion(existingResource.GetResourceVersion())
 	if err = m.Update(ctx, desiredResource); err != nil {
 		return false, err
 	}

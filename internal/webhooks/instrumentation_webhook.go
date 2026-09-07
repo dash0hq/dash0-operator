@@ -129,8 +129,9 @@ func (h *InstrumentationWebhookHandler) UpdateExtraConfig(_ context.Context, ext
 	h.ClusterInstrumentationConfig.ExtraConfig.Store(&extraConfig)
 }
 
-func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
-	logger := logd.NewLogger(
+// newRequestLogger derives a logger with the attributes of one admission request.
+func newRequestLogger(request admission.Request) logd.Logger {
+	return logd.NewLogger(
 		instrumentationWebhookLog.WithValues(
 			"operation",
 			request.Operation,
@@ -142,7 +143,9 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 			request.Name,
 		),
 	)
+}
 
+func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
 	targetNamespace := request.Namespace
 
 	dash0List := &dash0v1beta1.Dash0MonitoringList{}
@@ -164,7 +167,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 					targetNamespace,
 					err,
 				),
-				logger,
+				newRequestLogger(request),
 			)
 		}
 	}
@@ -179,6 +182,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	}
 
 	dash0MonitoringResource := dash0List.Items[0]
+	logger := newRequestLogger(request)
 	logger.Debug(
 		"found Dash0 monitoring resource in namespace",
 		"namespace",

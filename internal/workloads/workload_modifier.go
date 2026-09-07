@@ -620,9 +620,8 @@ func (m *ResourceModifier) instrumentContainer(
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
 ) []string {
-	perContainerLogger := m.logger.WithValues("container", container.Name)
 	m.addMount(container)
-	return m.addEnvironmentVariables(container, workloadMeta, podMeta, perContainerLogger)
+	return m.addEnvironmentVariables(container, workloadMeta, podMeta)
 }
 
 func (m *ResourceModifier) addMount(container *corev1.Container) {
@@ -653,7 +652,6 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	container *corev1.Container,
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
-	perContainerLogger logd.Logger,
 ) []string {
 	var instrumentationIssues []string
 	if container.Env == nil {
@@ -689,12 +687,11 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		container,
 		collectorBaseUrl,
 		instrumentationIssues,
-		perContainerLogger,
 	)
 
 	m.addOtelLogsExporterEnvVar(container)
 
-	instrumentationIssues = m.addOrAppendToLdPreloadEnvVar(container, instrumentationIssues, perContainerLogger)
+	instrumentationIssues = m.addOrAppendToLdPreloadEnvVar(container, instrumentationIssues)
 	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
@@ -988,7 +985,6 @@ func (m *ResourceModifier) addOrUpdateOtelExporterOtlpEnvVars(
 	container *corev1.Container,
 	otelExporterOtlpEndpointValue string,
 	instrumentationIssues []string,
-	perContainerLogger logd.Logger,
 ) []string {
 	if otelExportEnvVarsCanBeUpdatedForContainer(container, m.clusterInstrumentationConfig) {
 		// It is safe to set/update the OTEL_EXPORTER_OTLP_* env vars, and at least one of them needs to be changed.
@@ -1023,7 +1019,7 @@ func (m *ResourceModifier) addOrUpdateOtelExporterOtlpEnvVars(
 	//   an OTel SDK is set up manually in the workload's code.
 	// * It will also break for OTel SDKs that only support the GRPC exporter, but not HTTP (Python & nginx for
 	//   example).
-	perContainerLogger.WarnTelemetryCollectionIssue(otelExporterOtlpNoOverwriteMsg)
+	m.perContainerLogger(container).WarnTelemetryCollectionIssue(otelExporterOtlpNoOverwriteMsg)
 	instrumentationIssues = append(instrumentationIssues, otelExporterOtlpNoOverwriteMsg)
 	return instrumentationIssues
 }
@@ -1111,7 +1107,6 @@ func otelExporterOtlpEnvVarsAlreadyHaveDesiredValues(
 func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 	container *corev1.Container,
 	instrumentationIssues []string,
-	perContainerLogger logd.Logger,
 ) []string {
 	idx := findEnvVarIdx(container, envVarLdPreloadName)
 	if idx < 0 {
@@ -1127,7 +1122,7 @@ func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 				"Dash0 cannot prepend anything to the environment variable %s as it is specified via "+
 					"ValueFrom, this container will not be instrumented to send telemetry to Dash0.",
 				envVarLdPreloadName)
-			perContainerLogger.WarnTelemetryCollectionIssue(msg)
+			m.perContainerLogger(container).WarnTelemetryCollectionIssue(msg)
 			instrumentationIssues = append(instrumentationIssues, msg)
 			return instrumentationIssues
 		}
@@ -1974,4 +1969,11 @@ func (m *ResourceModifier) hasMatchingOwnerReference(workload client.Object, pos
 		}
 	}
 	return false
+}
+
+// perContainerLogger derives a logger for one container. It is only called when a telemetry collection issue actually
+// needs to be reported, which is rare: deriving it eagerly for every container of every admission request allocates a
+// zap core and a field slice that the happy path never uses.
+func (m *ResourceModifier) perContainerLogger(container *corev1.Container) logd.Logger {
+	return m.logger.WithValues("container", container.Name)
 }

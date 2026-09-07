@@ -1212,7 +1212,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				VerifyEnvVar(testConfig.ldPreloadExpectation, container.Env, envVarLdPreloadName, "")
@@ -1755,19 +1754,18 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}, clusterInstrumentationConfig)
 				Expect(preInstrumentationCheckResult).To(Equal(testConfig.expectedPreInstrumentationCheckResult))
 
+				capturingLogger, capturingLogSink := NewCapturingLogger()
 				modifier := NewResourceModifier(
 					clusterInstrumentationConfig,
 					DefaultNamespaceInstrumentationConfig,
 					testActor,
-					logger,
+					capturingLogger,
 				)
 
-				capturingLogger, capturingLogSink := NewCapturingLogger()
 				instrumentationIssues := modifier.addEnvironmentVariables(
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					capturingLogger,
 				)
 
 				envVars := container.Env
@@ -2254,7 +2252,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&workloadMeta,
 					&podMeta,
-					logger,
 				)
 
 				envVars := container.Env
@@ -2651,7 +2648,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				container1,
 				&workloadMeta1,
 				&podMeta1,
-				logger,
 			)
 
 			// now re-order the annotations and generate the DASH0_RESOURCE_ATTRIBUTES value again
@@ -2674,7 +2670,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				container2,
 				&workloadMeta2,
 				&podMeta2,
-				logger,
 			)
 
 			// Verify that the value of DASH0_RESOURCE_ATTRIBUTES is independent of the order in which annotations
@@ -2715,7 +2710,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				envVars := container.Env
@@ -2990,7 +2984,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
@@ -3375,7 +3368,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				envVars := container.Env

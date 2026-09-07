@@ -253,6 +253,11 @@ go-mod-tidy: ## Run go mod tidy for all modules
 		(cd "$$dir" && GOBIN=$(LOCALBIN) go mod tidy); \
 	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
 
+.PHONY: ginkgo-suite-check
+ginkgo-suite-check: ## Check whether every package with Ginkgo specs has a suite bootstrap.
+	@echo "-------------------------------- (verifying every package with Ginkgo specs has a suite bootstrap)"
+	./test-resources/bin/ginkgo-suite-check.sh
+
 .PHONY: internal-config-map-lint
 internal-config-map-lint: ## Verify config map templates for resources managed by the collector.
 	@if grep -ne '[[:space:]]$$' internal/collectors/otelcolresources/daemonset.config.yaml.template; then \
@@ -355,7 +360,7 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: go-version-check golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
+lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
 
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix
