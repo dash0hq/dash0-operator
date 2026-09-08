@@ -26,6 +26,8 @@ updates:
       - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
       - "test/e2e"
+      # images/collector/src/telemetry is deliberately absent here, it is updated via
+      # .github/workflows/scripts/update-collector-components-check-and-bump-versions.sh
     schedule:
       interval: "weekly"
       day: "tuesday"

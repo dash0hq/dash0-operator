@@ -13,6 +13,7 @@ require (
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/dash0hq/dash0-operator/images/pkg/nodeuid v0.0.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -43,3 +44,5 @@ require (
 )
 
 replace github.com/dash0hq/dash0-operator/images/pkg/common => ../../pkg/common
+
+replace github.com/dash0hq/dash0-operator/images/pkg/nodeuid => ../../pkg/nodeuid

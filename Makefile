@@ -179,7 +179,7 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
@@ -193,9 +193,17 @@ endif
 common-package-unit-tests: ## Run the Go unit tests for the common package (code shared between operator manager and other images, i.e. config-reloader, filelogoffsetsync).
 	go test github.com/dash0hq/dash0-operator/images/pkg/common
 
+.PHONY: nodeuid-package-unit-tests
+nodeuid-package-unit-tests: ## Run the Go unit tests for the nodeuid package (shared between the operator manager, the other images, and the collector's internal-telemetry factory).
+	cd images/pkg/nodeuid && go test ./...
+
 .PHONY: agent0-connector-unit-tests
 agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
 	cd images/agent0-connector/src && go test ./...
+
+.PHONY: collector-telemetry-unit-tests
+collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
+	cd images/collector/src/telemetry && go test ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -327,6 +335,7 @@ instrumentation-test-lint: npm-installed
 GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:go.mod:Dockerfile \
   dockerfile:images/agent0-connector/src/go.mod:images/agent0-connector/Dockerfile \
+  dockerfile:images/collector/src/telemetry/go.mod:images/collector/Dockerfile \
   dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
   dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \
@@ -338,6 +347,7 @@ GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
 # Pairs of go.mod files whose Go versions must be in sync, encoded as "gomod:<go.mod>:<go.mod>".
 GO_VERSION_CHECK_GOMOD_GOMOD_PAIRS := \
   gomod:go.mod:images/pkg/common/go.mod \
+  gomod:go.mod:images/pkg/nodeuid/go.mod \
   gomod:go.mod:test/e2e/go.mod \
   gomod:test/e2e/go.mod:test/e2e/pkg/shared/go.mod \
   gomod:test/e2e/pkg/shared/go.mod:test/e2e/otlp-sink/telemetrymatcher/go.mod
@@ -574,7 +584,7 @@ image-instrumentation: ## Build the instrumentation image.
 
 .PHONY: image-collector
 image-collector: ## Build the OpenTelemetry collector container image.
-	@$(call build_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG),images/collector)
+	@$(call build_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG),images,images/collector/Dockerfile)
 
 .PHONY: image-config-reloader
 image-config-reloader: ## Build the config reloader container image.
