@@ -24,6 +24,12 @@ const ErrorMessageTelemetryCollectionDisabledViaHelm = "Telemetry collection has
 	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
 	"operator.telemetryCollectionEnabled: true via the Helm chart."
 
+const ErrorMessageAgent0ConnectorDisabledViaHelm = "The agent0-connector has been disabled via the Helm chart " +
+	"(operator.agent0Connector.enabled: false), but the provided Dash0 operator configuration resource has " +
+	"agent0Connector.enabled=true. The agent0-connector cannot be enabled via the operator configuration resource " +
+	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
+	"operator.agent0Connector.enabled: true via the Helm chart."
+
 const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
 	"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 	"Please either set telemetryCollection.enabled=true or " +
@@ -51,15 +57,18 @@ const ErrorMessageOperatorConfigurationDash0ExportRequiredBySignalControl = "The
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
 	telemetryCollectionEnabledViaHelm bool
+	agent0ConnectorEnabledViaHelm     bool
 }
 
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
 	telemetryCollectionEnabledViaHelm bool,
+	agent0ConnectorEnabledViaHelm bool,
 ) *OperatorConfigurationValidationWebhookHandler {
 	return &OperatorConfigurationValidationWebhookHandler{
 		Client:                            k8sClient,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
+		agent0ConnectorEnabledViaHelm:     agent0ConnectorEnabledViaHelm,
 	}
 }
 
@@ -93,6 +102,17 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	if !h.telemetryCollectionEnabledViaHelm && spec.TelemetryCollection.Enabled != nil && *spec.TelemetryCollection.Enabled {
 		logger.Warn(ErrorMessageTelemetryCollectionDisabledViaHelm)
 		return admission.Denied(ErrorMessageTelemetryCollectionDisabledViaHelm)
+	}
+
+	if !h.agent0ConnectorEnabledViaHelm && pointers.ReadBoolPointerWithDefault(spec.Agent0Connector.Enabled, false) {
+		newlyEnabled, errorResponse := isAgent0ConnectorNewlyEnabled(request, logger)
+		if errorResponse != nil {
+			return *errorResponse
+		}
+		if newlyEnabled {
+			logger.Warn(ErrorMessageAgent0ConnectorDisabledViaHelm)
+			return admission.Denied(ErrorMessageAgent0ConnectorDisabledViaHelm)
+		}
 	}
 
 	// Reject if both the deprecated export and the new exports field are set.
@@ -178,6 +198,34 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	return admission.Allowed("")
+}
+
+// isAgent0ConnectorNewlyEnabled reports whether the request itself enables the agent0-connector, as opposed to carrying
+// over a value the resource already had. Returns true for CREATE operations and for UPDATE operations where the stored
+// resource did not have spec.agent0Connector.enabled=true. Without this distinction, a resource that was stored with
+// spec.agent0Connector.enabled=true before the agent0-connector was disabled via the Helm chart could no longer be
+// updated at all, not even to change unrelated fields. Returns an error response if the OldObject cannot be decoded.
+func isAgent0ConnectorNewlyEnabled(
+	request admission.Request,
+	logger logd.Logger,
+) (bool, *admission.Response) {
+	if request.Operation != admissionv1.Update {
+		return true, nil
+	}
+	if request.OldObject.Raw == nil {
+		return true, nil
+	}
+	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
+	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
+		msg := "could not decode OldObject for the agent0-connector validation"
+		logger.Error(err, msg)
+		errResponse := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("%s: %w", msg, err),
+		)
+		return false, &errResponse
+	}
+	return !pointers.ReadBoolPointerWithDefault(oldResource.Spec.Agent0Connector.Enabled, false), nil
 }
 
 // validateTelemetryCollectionDisabledConsistency rejects operator configuration resources that keep individual

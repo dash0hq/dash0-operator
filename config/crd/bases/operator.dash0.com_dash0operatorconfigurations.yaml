@@ -63,6 +63,19 @@ spec:
             description: Dash0OperatorConfigurationSpec describes cluster-wide configuration
               settings for the Dash0 operator.
             properties:
+              agent0Connector:
+                description: Settings for the agent0-connector.
+                properties:
+                  enabled:
+                    description: |-
+                      An opt-out switch for the agent0-connector deployment. This setting is optional. Setting it to `false` prevents the
+                      operator from deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a
+                      validation error to set it to `true` when the agent0-connector is disabled via the Helm chart.
+
+                      Using this setting to disable agent0-connector when it is enabled via Helm and the Helm chart manages the
+                      Dash0OperatorConfiguration resource (operator.dash0Export.enabled=true) is not supported.
+                    type: boolean
+                type: object
               autoMonitorNamespaces:
                 default:
                   enabled: false
@@ -1941,8 +1954,11 @@ spec:
             properties:
               agent0Connector:
                 description: |-
-                  Agent0Connector reports whether the operator has deployed the agent0-connector. It is only present when the
-                  agent0-connector is enabled (Helm value operator.agent0Connector.enabled).
+                  Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it hasn't. A
+                  disabled agent0-connector is reported with deployed=false and reason=Disabled, which is what distinguishes it
+                  from one that failed to deploy. This is absent until the operator reconciles the agent0-connector for the first
+                  time, which it only does when the agent0-connector is enabled via the Helm chart
+                  (operator.agent0Connector.enabled).
                 properties:
                   deployed:
                     description: |-
@@ -1960,7 +1976,7 @@ spec:
                     type: string
                   reason:
                     description: Reason is a programmatic identifier for the last
-                      outcome, e.g. "InvalidClusterRoleRules".
+                      negative outcome, e.g. "InvalidClusterRoleRules".
                     type: string
                 required:
                 - deployed

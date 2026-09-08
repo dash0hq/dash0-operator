@@ -298,6 +298,49 @@ func verifyNoAgent0ConnectorStatusOrEvent(operatorConfigurationResourceName stri
 	}, 10*time.Second, pollingInterval).Should(Succeed())
 }
 
+// verifyAgent0ConnectorIsReportedAsDisabled verifies that the operator reports the agent0-connector as not deployed
+// because it has been disabled in the operator configuration resource, both in the status of that resource and via a
+// Kubernetes event.
+func verifyAgent0ConnectorIsReportedAsDisabled(operatorConfigurationResourceName string) {
+	By("verifying that the operator configuration resource reports the agent0-connector as disabled")
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		agent0ConnectorStatus := operatorConfiguration.Status.Agent0Connector
+		g.Expect(agent0ConnectorStatus).ToNot(BeNil(),
+			"the operator configuration resource has no status.agent0Connector entry")
+		g.Expect(agent0ConnectorStatus.Deployed).To(BeFalse())
+		g.Expect(agent0ConnectorStatus.Reason).To(Equal(agent0connector.StatusReasonDisabled),
+			"the agent0-connector is not reported as disabled: %s", agent0ConnectorStatus.Message)
+
+		// Disabling the agent0-connector must not affect the availability of the operator configuration resource.
+		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
+		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+
+	By("verifying that the operator has written the agent0-connector disabled event")
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		g.Expect(agent0ConnectorEventReasons(g, string(operatorConfiguration.UID))).To(
+			ContainElement(string(util.ReasonAgent0ConnectorDisabled)))
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+}
+
+// updateOperatorConfigurationAgent0ConnectorEnabled sets spec.agent0Connector.enabled on the given operator
+// configuration resource, which is how a user opts out of the agent0-connector and back in again.
+func updateOperatorConfigurationAgent0ConnectorEnabled(operatorConfigurationResourceName string, enabled bool) {
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"patch",
+			"Dash0OperatorConfiguration",
+			operatorConfigurationResourceName,
+			"--type",
+			"merge",
+			"-p",
+			fmt.Sprintf(`{"spec":{"agent0Connector":{"enabled":%t}}}`, enabled),
+		))).To(Succeed())
+}
+
 // agent0ConnectorEventReasons returns the reasons of the agent0-connector events the operator has written for the
 // operator configuration resource with the given UID. The events are matched by UID rather than by name, so that
 // events left behind by an earlier test which used an equally named resource are ignored. The events are attached to
@@ -316,6 +359,7 @@ func agent0ConnectorEventReasons(g Gomega, operatorConfigurationResourceUid stri
 	agent0ConnectorReasons := []string{
 		string(util.ReasonAgent0ConnectorDeployed),
 		string(util.ReasonAgent0ConnectorNotDeployed),
+		string(util.ReasonAgent0ConnectorDisabled),
 	}
 	var reasons []string
 	for _, line := range strings.Split(output, "\n") {

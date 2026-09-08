@@ -73,6 +73,8 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				g.Expect(spec.CollectNamespaceLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.CollectNodeLabelsAndAnnotations.Enabled).To(Equal(new(false)))
 				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(new(true)))
+				// the mutating webhook does not default agent0Connector.enabled
+				g.Expect(spec.Agent0Connector.Enabled).To(BeNil())
 			})
 		})
 
@@ -107,6 +109,25 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 			})
 		})
 	})
+
+	DescribeTable("should never modify agent0Connector.enabled",
+		func(enabled *bool) {
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Agent0Connector: dash0v1alpha1.Agent0Connector{
+					Enabled: enabled,
+				},
+			}
+
+			_, errorResponse := operatorConfigurationMutatingWebhookHandler.
+				normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+
+			Expect(errorResponse).To(BeNil())
+			Expect(spec.Agent0Connector.Enabled).To(Equal(enabled))
+		},
+		Entry("unset: stays unset, so the operator resolves it against the Helm value", nil),
+		Entry("explicitly false: kept", new(false)),
+		Entry("explicitly true: kept", new(true)),
+	)
 
 	DescribeTable("should normalize the resource spec", func(testConfig normalizeOperatorConfigurationResourceSpecTestConfig) {
 		spec := testConfig.spec

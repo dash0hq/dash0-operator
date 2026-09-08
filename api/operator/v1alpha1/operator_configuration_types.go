@@ -163,6 +163,11 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	Profiling *Profiling `json:"profiling,omitempty"`
+
+	// Settings for the agent0-connector.
+	//
+	// +kubebuilder:validation:Optional
+	Agent0Connector Agent0Connector `json:"agent0Connector,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
@@ -193,6 +198,27 @@ type PrometheusCrdSupport struct {
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// Agent0Connector contains settings for the agent0-connector.
+type Agent0Connector struct {
+	// An opt-out switch for the agent0-connector deployment. This setting is optional. Setting it to `false` prevents the
+	// operator from deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a
+	// validation error to set it to `true` when the agent0-connector is disabled via the Helm chart.
+	//
+	// Using this setting to disable agent0-connector when it is enabled via Helm and the Helm chart manages the
+	// Dash0OperatorConfiguration resource (operator.dash0Export.enabled=true) is not supported.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// IsEnabled reports whether the operator deploys the agent0-connector. The parameter enabledViaHelm is the value of the
+// Helm value operator.agent0Connector.enabled, which the operator holds for the lifetime of the process. The
+// agent0-connector requires that Helm value; this resource can only opt out of it, which is why an unset Enabled flag
+// follows the Helm value.
+func (a Agent0Connector) IsEnabled(enabledViaHelm bool) bool {
+	return enabledViaHelm && pointers.ReadBoolPointerWithDefault(a.Enabled, true)
 }
 
 // InstrumentationDelivery selects how the Dash0 instrumentation files (the OpenTelemetry injector and the
@@ -381,8 +407,11 @@ type Dash0OperatorConfigurationStatus struct {
 	// +kubebuilder:validation:Optional
 	PreviousMonitoringTemplate *MonitoringTemplate `json:"previousMonitoringTemplate,omitempty"`
 
-	// Agent0Connector reports whether the operator has deployed the agent0-connector. It is only present when the
-	// agent0-connector is enabled (Helm value operator.agent0Connector.enabled).
+	// Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it hasn't. A
+	// disabled agent0-connector is reported with deployed=false and reason=Disabled, which is what distinguishes it
+	// from one that failed to deploy. This is absent until the operator reconciles the agent0-connector for the first
+	// time, which it only does when the agent0-connector is enabled via the Helm chart
+	// (operator.agent0Connector.enabled).
 	//
 	// +kubebuilder:validation:Optional
 	Agent0Connector *Agent0ConnectorStatus `json:"agent0Connector,omitempty"`
@@ -643,7 +672,7 @@ func (d *Dash0OperatorConfiguration) cloneAndRedact() Dash0OperatorConfiguration
 // Agent0ConnectorStatus reports whether the operator has deployed the agent0-connector, that is, whether it has
 // successfully created or updated the agent0-connector's service account, cluster role, cluster role binding and
 // deployment. It does not report whether the agent0-connector's pod is up: a successful deployment can still fail to
-// roll out, which the deployment resource itself reports.
+// start, which the deployment resource itself reports.
 //
 // This is deliberately not a status condition: the agent0-connector is an optional feature, and an issue with it
 // neither makes the operator configuration resource unavailable nor degraded.
@@ -652,7 +681,7 @@ type Agent0ConnectorStatus struct {
 	// last time it tried.
 	Deployed bool `json:"deployed"`
 
-	// Reason is a programmatic identifier for the last outcome, e.g. "InvalidClusterRoleRules".
+	// Reason is a programmatic identifier for the last negative outcome, e.g. "InvalidClusterRoleRules".
 	//
 	// +kubebuilder:validation:Optional
 	Reason string `json:"reason,omitempty"`
@@ -693,16 +722,6 @@ func (d *Dash0OperatorConfiguration) SetAgent0ConnectorStatus(deployed bool, rea
 		LastTransitionTime: lastTransitionTime,
 	}
 	return changed
-}
-
-// RemoveAgent0ConnectorStatus removes the agent0-connector status, which is what the operator does when the
-// agent0-connector is disabled. It reports whether the status was present before.
-func (d *Dash0OperatorConfiguration) RemoveAgent0ConnectorStatus() bool {
-	if d.Status.Agent0Connector == nil {
-		return false
-	}
-	d.Status.Agent0Connector = nil
-	return true
 }
 
 //+kubebuilder:object:root=true

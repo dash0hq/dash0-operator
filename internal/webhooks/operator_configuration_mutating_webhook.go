@@ -174,6 +174,10 @@ func (h *OperatorConfigurationMutatingWebhookHandler) normalizeOperatorConfigura
 		patchRequired = true
 	}
 
+	// spec.agent0Connector.enabled is deliberately not defaulted: an unset flag means "follow the Helm value", which
+	// Agent0Connector#IsEnabled resolves against the Helm value the operator holds for the lifetime of the process.
+	// Persisting that Helm value here would keep a later helm upgrade from changing it.
+
 	patchRequiredForMonitoringTemplate := h.setMonitoringTemplateDefaults(spec)
 	patchRequired = patchRequired || patchRequiredForMonitoringTemplate
 
