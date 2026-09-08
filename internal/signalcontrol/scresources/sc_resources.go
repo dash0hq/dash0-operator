@@ -16,20 +16,22 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
 type SignalControlResourceManager struct {
 	client.Client
-	scheme                    *runtime.Scheme
-	operatorManagerDeployment *appsv1.Deployment
-	operatorNamespace         string
-	namePrefix                string
-	edgeProxyImage            string
-	edgeProxyImagePullPolicy  corev1.PullPolicy
-	operatorVersion           string
-	otlpGrpcHostPort          int32
+	scheme                     *runtime.Scheme
+	operatorManagerDeployment  *appsv1.Deployment
+	operatorNamespace          string
+	namePrefix                 string
+	edgeProxyImage             string
+	edgeProxyImagePullPolicy   corev1.PullPolicy
+	operatorVersion            string
+	otlpGrpcHostPort           int32
+	kubernetesApiServerVersion cluster.KubernetesVersionInfo
 }
 
 func NewSignalControlResourceManager(
@@ -42,17 +44,19 @@ func NewSignalControlResourceManager(
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
 	otlpGrpcHostPort int32,
+	kubernetesApiServerVersion cluster.KubernetesVersionInfo,
 ) *SignalControlResourceManager {
 	return &SignalControlResourceManager{
-		Client:                    k8sClient,
-		scheme:                    scheme,
-		operatorManagerDeployment: operatorManagerDeployment,
-		operatorNamespace:         operatorNamespace,
-		namePrefix:                namePrefix,
-		edgeProxyImage:            edgeProxyImage,
-		edgeProxyImagePullPolicy:  edgeProxyImagePullPolicy,
-		operatorVersion:           operatorVersion,
-		otlpGrpcHostPort:          otlpGrpcHostPort,
+		Client:                     k8sClient,
+		scheme:                     scheme,
+		operatorManagerDeployment:  operatorManagerDeployment,
+		operatorNamespace:          operatorNamespace,
+		namePrefix:                 namePrefix,
+		edgeProxyImage:             edgeProxyImage,
+		edgeProxyImagePullPolicy:   edgeProxyImagePullPolicy,
+		operatorVersion:            operatorVersion,
+		otlpGrpcHostPort:           otlpGrpcHostPort,
+		kubernetesApiServerVersion: kubernetesApiServerVersion,
 	}
 }
 
@@ -63,7 +67,7 @@ func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, extraConfig, false, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, m.kubernetesApiServerVersion, extraConfig, false, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false

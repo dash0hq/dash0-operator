@@ -12,6 +12,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -327,3 +328,50 @@ func expectSelfMonitoringEnvVarsAbsent(container corev1.Container) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+var _ = Describe("Edge Proxy service zone-aware routing", func() {
+	DescribeTable("sets spec.trafficDistribution according to the Kubernetes version",
+		func(versionInfo cluster.KubernetesVersionInfo, expected *string) {
+			desiredState := assembleDesiredState(
+				OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+				"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort,
+				versionInfo, util.ExtraConfig{}, false, logd.Discard(),
+			)
+			service := edgeProxyServiceFrom(desiredState)
+			Expect(service).ToNot(BeNil())
+			if expected == nil {
+				Expect(service.Spec.TrafficDistribution).To(BeNil())
+			} else {
+				Expect(service.Spec.TrafficDistribution).ToNot(BeNil())
+				Expect(*service.Spec.TrafficDistribution).To(Equal(*expected))
+			}
+		},
+		Entry("omitted on 1.29",
+			cluster.KubernetesVersionInfo{Version: cluster.KubernetesVersion{Major: 1, Minor: 29}, Detected: true}, nil),
+		Entry("omitted on 1.30",
+			cluster.KubernetesVersionInfo{Version: cluster.KubernetesVersion{Major: 1, Minor: 30}, Detected: true}, nil),
+		Entry("set on 1.31",
+			cluster.KubernetesVersionInfo{Version: cluster.KubernetesVersion{Major: 1, Minor: 31}, Detected: true},
+			ptr("PreferClose")),
+		Entry("set on 1.34",
+			cluster.KubernetesVersionInfo{Version: cluster.KubernetesVersion{Major: 1, Minor: 34}, Detected: true},
+			ptr("PreferClose")),
+		Entry("omitted when the version is unknown", cluster.KubernetesVersionInfo{}, nil),
+	)
+
+	It("omits spec.trafficDistribution on the service assembled for deletion", func() {
+		desiredState := assembleDesiredStateForDelete(OperatorNamespace, "test-prefix", logd.Discard())
+		service := edgeProxyServiceFrom(desiredState)
+		Expect(service).ToNot(BeNil())
+		Expect(service.Spec.TrafficDistribution).To(BeNil())
+	})
+})
+
+func edgeProxyServiceFrom(objs []clientObject) *corev1.Service {
+	for _, o := range objs {
+		if service, ok := o.object.(*corev1.Service); ok {
+			return service
+		}
+	}
+	return nil
+}

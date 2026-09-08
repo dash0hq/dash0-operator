@@ -1238,9 +1238,12 @@ operator:
     # Settings for the Edge Proxy deployed when signalControl.enabled=true.
     edgeProxy:
       # The number of Edge Proxy pods to run. The Edge Proxy is stateless, so it can be scaled horizontally to
-      # handle higher collector-to-Decision-Maker traffic. Collectors connect via the Edge Proxy service,
-      # which distributes gRPC connections across the available pods. Defaults to 2, the availability floor: with the
-      # pod disruption budget a single pod restart, rollout or node drain always leaves one pod serving the fleet.
+      # handle higher collector-to-Decision-Maker traffic. Collectors connect via the Edge Proxy service, which on
+      # Kubernetes 1.31+ prefers an Edge Proxy pod in the sender's own availability zone and otherwise distributes gRPC
+      # connections across the available pods. Defaults to 2, the availability floor: with the pod disruption budget a
+      # single pod restart, rollout or node drain always leaves one pod serving the fleet. Set this to at least the
+      # number of availability zones so that every zone has a local Edge Proxy pod and the decision stream does not
+      # cross zones.
       replicas: 2
 
       # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.
