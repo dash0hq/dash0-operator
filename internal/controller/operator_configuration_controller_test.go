@@ -1348,7 +1348,6 @@ func createReconcilerWithAgent0ConnectorManager(
 		util.ExtraConfigDefaults,
 		false,
 		false,
-		nil,
 		oTelColResourceManager,
 	)
 	targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(

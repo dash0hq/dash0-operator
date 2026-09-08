@@ -17,12 +17,6 @@ Tail-sampling decisions that require cross-collector coordination are made by th
 Sampling rules, spam filters, and signal-to-metrics rules are configured as Kubernetes custom resources and synced to the
 Dash0 backend.
 
-## Note about availability
-
-SignalControl Edge is not generally available and must be enabled for your organization on the Dash0 side. The operator verifies this entitlement
-against the Dash0 API; if the organization is not entitled, the `Dash0SignalControl` resource is marked degraded, SignalControl Edge is
-not applied and the standard collector is used, even when the Helm flag and the `Dash0SignalControl` resource are set.
-
 ## Quickstart
 
 Enabling SignalControl Edge takes two steps: turning the feature flag on in the Helm chart, and creating a

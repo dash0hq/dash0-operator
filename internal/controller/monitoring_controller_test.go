@@ -111,7 +111,6 @@ var _ = Describe(
 					util.ExtraConfigDefaults,
 					false,
 					false,
-					nil,
 					oTelColResourceManager,
 				)
 				targetAllocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
