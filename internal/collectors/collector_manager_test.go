@@ -21,7 +21,6 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
@@ -67,7 +66,6 @@ var _ = Describe("The collector manager", Ordered, func() {
 			util.ExtraConfigDefaults,
 			false,
 			false,
-			nil,
 			oTelColResourceManager,
 		)
 	})
@@ -603,7 +601,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 
-	Describe("when Signal Control is gated on the organization's entitlement", func() {
+	Describe("when Signal Control is enabled", func() {
 		BeforeEach(func() {
 			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
 			scResource := &dash0v1alpha1.Dash0SignalControl{
@@ -620,8 +618,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 		})
 
-		It("deploys the Signal Control collector when the organization is entitled", func() {
-			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: true})
+		It("deploys the Signal Control collector when enabled", func() {
+			collectorManager = newCollectorManagerWithSignalControlEnabled()
 
 			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
 			Expect(err).ToNot(HaveOccurred())
@@ -635,25 +633,13 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(daemonSetConfig).To(ContainSubstring("otlp/signal-control-collector"))
 		})
 
-		It("deploys no Signal Control collector when the organization is not entitled", func() {
-			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: false})
-
-			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
-			Expect(err).ToNot(HaveOccurred())
-
-			VerifySignalControlCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
-			daemonSetConfig := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace).Data["config.yaml"]
-			Expect(daemonSetConfig).ToNot(ContainSubstring("dash0settingsonedgeextension"))
-			Expect(daemonSetConfig).ToNot(ContainSubstring("otlp/signal-control-collector"))
-		})
-
-		It("deploys no Signal Control collector when the operator configuration has no Dash0 export, even when entitled", func() {
+		It("deploys no Signal Control collector when the operator configuration has no Dash0 export", func() {
 			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 			CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, dash0v1alpha1.Dash0OperatorConfigurationSpec{
 				SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(false)},
 				Exports:        []dash0common.Export{*HttpExportTest()},
 			})
-			collectorManager = newCollectorManagerWithEnablementChecker(stubEnablementChecker{allowed: true})
+			collectorManager = newCollectorManagerWithSignalControlEnabled()
 
 			_, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
 			Expect(err).ToNot(HaveOccurred())
@@ -782,26 +768,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 	})
 })
 
-type stubEnablementChecker struct {
-	allowed bool
-}
-
-func (s stubEnablementChecker) EnsureAllowed(
-	context.Context,
-	*dash0v1alpha1.Dash0OperatorConfiguration,
-	logd.Logger,
-) bool {
-	return s.allowed
-}
-
-func (s stubEnablementChecker) Result() enablement.Result {
-	if s.allowed {
-		return enablement.ResultAllowed
-	}
-	return enablement.ResultNotAllowed
-}
-
-func newCollectorManagerWithEnablementChecker(checker enablement.Checker) *CollectorManager {
+func newCollectorManagerWithSignalControlEnabled() *CollectorManager {
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
 		k8sClient.Scheme(),
@@ -819,7 +786,6 @@ func newCollectorManagerWithEnablementChecker(checker enablement.Checker) *Colle
 		util.ExtraConfigDefaults,
 		false,
 		true,
-		checker,
 		oTelColResourceManager,
 	)
 }

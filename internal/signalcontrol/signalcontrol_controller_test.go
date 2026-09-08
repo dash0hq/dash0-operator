@@ -5,9 +5,7 @@ package signalcontrol
 
 import (
 	"context"
-	"net/http"
 
-	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -24,7 +22,6 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -45,8 +42,6 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		// A client with a nil transport uses http.DefaultTransport, which gock replaces when a mock is registered.
-		checker := enablement.NewEnablementChecker(&http.Client{}, k8sClient, OperatorNamespace)
 		scResourceManager := scresources.NewSignalControlResourceManager(
 			k8sClient,
 			k8sClient.Scheme(),
@@ -58,7 +53,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			OperatorVersionTest,
 			otelcolresources.DefaultOtlpGrpcHostPort,
 		)
-		scManager := NewSignalControlManager(k8sClient, scResourceManager, checker, util.ExtraConfigDefaults)
+		scManager := NewSignalControlManager(k8sClient, scResourceManager, util.ExtraConfigDefaults)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 			k8sClient,
 			k8sClient.Scheme(),
@@ -76,10 +71,9 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			util.ExtraConfigDefaults,
 			false,
 			true,
-			checker,
 			oTelColResourceManager,
 		)
-		reconciler = NewSignalControlReconciler(k8sClient, scManager, collectorManager, checker)
+		reconciler = NewSignalControlReconciler(k8sClient, scManager, collectorManager)
 
 		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			Exports: []dash0common.Export{
@@ -102,7 +96,6 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		gock.Off()
 		_ = k8sClient.Delete(ctx, &dash0v1alpha1.Dash0SignalControl{
 			ObjectMeta: metav1.ObjectMeta{Name: signalControlResourceNameTest},
 		})
@@ -113,16 +106,9 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 		Expect(k8sClient.DeleteAllOf(ctx, &corev1.Service{}, client.InNamespace(OperatorNamespace))).To(Succeed())
 	})
 
-	It("marks the resource available and deploys the Edge Proxy when the organization is entitled", func() {
-		gock.New(ApiEndpointTest).
-			Get("/api/signal-control/edge/settings").
-			MatchHeader("Authorization", AuthorizationHeaderTest).
-			Reply(http.StatusOK).
-			JSON(map[string]bool{"enabled": true})
-
+	It("marks the resource available and deploys the Edge Proxy when Signal Control is enabled", func() {
 		_, err := reconciler.Reconcile(ctx, scRequest)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(gock.IsDone()).To(BeTrue())
 
 		signalControlResource := loadSignalControlResource(ctx)
 		Expect(signalControlResource.IsAvailable()).To(BeTrue())
@@ -130,30 +116,6 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 
 		By("verifying the Edge Proxy deployment has been created")
 		Expect(k8sClient.Get(ctx, edgeProxyName, &appsv1.Deployment{})).To(Succeed())
-	})
-
-	It("marks the resource degraded and does not deploy the Edge Proxy when the organization is not entitled", func() {
-		gock.New(ApiEndpointTest).
-			Get("/api/signal-control/edge/settings").
-			Reply(http.StatusOK).
-			JSON(map[string]bool{"enabled": false})
-
-		_, err := reconciler.Reconcile(ctx, scRequest)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(gock.IsDone()).To(BeTrue())
-
-		signalControlResource := loadSignalControlResource(ctx)
-		Expect(signalControlResource.IsDegraded()).To(BeTrue())
-		degraded := meta.FindStatusCondition(
-			signalControlResource.Status.Conditions,
-			string(dash0common.ConditionTypeDegraded),
-		)
-		Expect(degraded).ToNot(BeNil())
-		Expect(degraded.Reason).To(Equal(reasonSignalControlNotEnabledForOrganization))
-
-		By("verifying no Edge Proxy deployment has been created")
-		err = k8sClient.Get(ctx, edgeProxyName, &appsv1.Deployment{})
-		Expect(apierrors.IsNotFound(err)).To(BeTrue())
 	})
 
 	It("marks the resource degraded and does not deploy the Edge Proxy when no Dash0 export is configured", func() {
@@ -164,8 +126,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			Exports:        []dash0common.Export{*HttpExportTest()},
 		})
 
-		// No entitlement mock is registered: the Dash0-export precheck happens before the entitlement HTTP check,
-		// so no request is made. The reconcile returns an error to requeue until a Dash0 export is configured.
+		// The reconcile returns an error to requeue until a Dash0 export is configured.
 		_, err := reconciler.Reconcile(ctx, scRequest)
 		Expect(err).To(HaveOccurred())
 
@@ -183,28 +144,6 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 		Expect(apierrors.IsNotFound(err)).To(BeTrue())
 	})
 
-	It("marks the resource degraded and requeues when the entitlement check cannot be completed", func() {
-		gock.New(ApiEndpointTest).
-			Get("/api/signal-control/edge/settings").
-			Persist().
-			Reply(http.StatusServiceUnavailable)
-
-		_, err := reconciler.Reconcile(ctx, scRequest)
-		Expect(err).To(HaveOccurred())
-
-		signalControlResource := loadSignalControlResource(ctx)
-		Expect(signalControlResource.IsDegraded()).To(BeTrue())
-		degraded := meta.FindStatusCondition(
-			signalControlResource.Status.Conditions,
-			string(dash0common.ConditionTypeDegraded),
-		)
-		Expect(degraded).ToNot(BeNil())
-		Expect(degraded.Reason).To(Equal(reasonSignalControlEnablementCheckFailed))
-
-		By("verifying no Edge Proxy deployment has been created")
-		err = k8sClient.Get(ctx, edgeProxyName, &appsv1.Deployment{})
-		Expect(apierrors.IsNotFound(err)).To(BeTrue())
-	})
 })
 
 func loadSignalControlResource(ctx context.Context) *dash0v1alpha1.Dash0SignalControl {

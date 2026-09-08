@@ -60,7 +60,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/predelete"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol"
-	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator"
 	"github.com/dash0hq/dash0-operator/internal/targetallocator/taresources"
@@ -1624,12 +1623,6 @@ func startDash0Controllers(
 
 	k8sClient := mgr.GetClient()
 
-	scEnablementChecker := enablement.NewEnablementChecker(
-		httpClient,
-		k8sClient,
-		envVars.operatorNamespace,
-	)
-
 	if err = mgr.Add(NewLogConfigurationResourcesRunnable(k8sClient)); err != nil {
 		return fmt.Errorf("unable to add log-operator-configuration task: %w", err)
 	}
@@ -1732,7 +1725,6 @@ func startDash0Controllers(
 			extraConfig,
 			developmentMode,
 			cliArgs.featureSignalControlEnabled,
-			scEnablementChecker,
 			oTelColResourceManager,
 		)
 		// We update the extra config map in the collectorManager when the extra config map changes, and also trigger a
@@ -1806,7 +1798,6 @@ func startDash0Controllers(
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,
 			scResourceManager,
-			scEnablementChecker,
 			extraConfig,
 		)
 		// Update the extra config in the Signal Control manager when the extra config map changes, and also trigger a
@@ -1816,7 +1807,6 @@ func startDash0Controllers(
 			k8sClient,
 			scManager,
 			collectorManager,
-			scEnablementChecker,
 		)
 		if err := scReconciler.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to set up the Signal Control reconciler: %w", err)

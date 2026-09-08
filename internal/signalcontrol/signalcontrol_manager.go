@@ -13,7 +13,6 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
-	"github.com/dash0hq/dash0-operator/internal/signalcontrol/enablement"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -21,22 +20,19 @@ import (
 
 type SignalControlManager struct {
 	client.Client
-	resourceManager   *scresources.SignalControlResourceManager
-	enablementChecker enablement.Checker
-	extraConfig       atomic.Pointer[util.ExtraConfig]
-	updateInProgress  atomic.Bool
+	resourceManager  *scresources.SignalControlResourceManager
+	extraConfig      atomic.Pointer[util.ExtraConfig]
+	updateInProgress atomic.Bool
 }
 
 func NewSignalControlManager(
 	k8sClient client.Client,
 	resourceManager *scresources.SignalControlResourceManager,
-	enablementChecker enablement.Checker,
 	extraConfig util.ExtraConfig,
 ) *SignalControlManager {
 	m := &SignalControlManager{
-		Client:            k8sClient,
-		resourceManager:   resourceManager,
-		enablementChecker: enablementChecker,
+		Client:          k8sClient,
+		resourceManager: resourceManager,
 	}
 	m.extraConfig.Store(&extraConfig)
 	return m
@@ -104,36 +100,31 @@ func (m *SignalControlManager) ReconcileSignalControl(
 		return m.removeSignalControl(ctx)
 	}
 
-	// Gate the Signal Control components (in particular the Edge Proxy) on the organization's entitlement. The result
-	// is populated by the Signal Control controller's entitlement check; this reads the cached value (no HTTP call), so
-	// callers that react to unrelated changes (e.g. the extra config map watcher via Reconcile) do not deploy the Edge
-	// Proxy for an organization that is not entitled or whose entitlement has not been confirmed yet.
-	if m.enablementChecker != nil && m.enablementChecker.Result() != enablement.ResultAllowed {
-		logger.Info("The organization is not entitled to use Signal Control (or the entitlement has not been " +
-			"confirmed yet), removing Signal Control components.")
-		return m.removeSignalControl(ctx)
-	}
-
-	logger.Info("Signal Control is enabled, reconciling Signal Control components.")
-	return m.createOrUpdateSignalControl(ctx, signalControlResource)
-}
-
-func (m *SignalControlManager) createOrUpdateSignalControl(
-	ctx context.Context,
-	signalControlResource *dash0v1alpha1.Dash0SignalControl,
-) (bool, error) {
-	logger := logd.FromContext(ctx)
-
+	// Gate the Signal Control components (in particular the Edge Proxy) on a Dash0 export in the operator
+	// configuration. Signal Control requires a Dash0 export with an auth token for the Decision Maker connection;
+	// without it, callers that react to unrelated changes (e.g. the extra config map watcher via Reconcile) must not
+	// deploy the Edge Proxy. The Signal Control controller marks the resource degraded in the same situation.
 	operatorConfig, err := m.findOperatorConfigurationResource(ctx)
 	if err != nil {
 		logger.Error(err, "failed to find operator configuration resource")
 		return false, err
 	}
-	if operatorConfig == nil {
-		logger.Info("No operator configuration resource found. Signal Control components will be created " +
-			"with incomplete configuration (missing endpoints and authorization). Create an operator " +
-			"configuration resource with a Dash0 export to complete the setup.")
+	if operatorConfig == nil || !operatorConfig.HasDash0ExportConfigured() {
+		logger.Info("Signal Control is enabled, but the operator configuration has no Dash0 export; removing Signal " +
+			"Control components.")
+		return m.removeSignalControl(ctx)
 	}
+
+	logger.Info("Signal Control is enabled, reconciling Signal Control components.")
+	return m.createOrUpdateSignalControl(ctx, signalControlResource, operatorConfig)
+}
+
+func (m *SignalControlManager) createOrUpdateSignalControl(
+	ctx context.Context,
+	signalControlResource *dash0v1alpha1.Dash0SignalControl,
+	operatorConfig *dash0v1alpha1.Dash0OperatorConfiguration,
+) (bool, error) {
+	logger := logd.FromContext(ctx)
 
 	extraConfig := m.extraConfig.Load()
 	if extraConfig == nil {
