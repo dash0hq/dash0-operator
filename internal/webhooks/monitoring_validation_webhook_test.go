@@ -603,7 +603,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`unable to parse OTTL condition "invalid_syntax(...": condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
+					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in span event filter", ottlValidationTestConfig{
@@ -616,7 +616,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`unable to parse OTTL condition "invalid_syntax(...": condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
+					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in metric filter", ottlValidationTestConfig{
@@ -644,7 +644,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`unable to parse OTTL condition "invalid_syntax(...": condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
+					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in log record filter", ottlValidationTestConfig{
@@ -657,7 +657,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`unable to parse OTTL condition "invalid_syntax(...": condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
+					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in profile filter", ottlValidationTestConfig{
@@ -670,7 +670,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`unable to parse OTTL condition "invalid_syntax(...": condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
+					"unable to parse OTTL condition \"invalid_syntax(...\": condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should allow monitoring resource with valid filter", ottlValidationTestConfig{
@@ -716,7 +716,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`statement has invalid syntax: 1:16: unexpected token "." (expected ")" Key*)`,
+					"statement has invalid syntax at 1:16 near `...`: (expected \")\" Key*)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid traces transform", ottlValidationTestConfig{
@@ -727,7 +727,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`statement has invalid syntax: 1:16: unexpected token "." (expected ")" Key*)`,
+					"statement has invalid syntax at 1:16 near `...`: (expected \")\" Key*)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid metrics transform", ottlValidationTestConfig{
@@ -738,7 +738,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`statement has invalid syntax: 1:16: unexpected token "." (expected ")" Key*)`,
+					"statement has invalid syntax at 1:16 near `...`: (expected \")\" Key*)",
 				},
 			}),
 			Entry("should reject monitoring resource with invalid logs transform", ottlValidationTestConfig{
@@ -749,7 +749,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 				},
 				expectErrorSubstrings: []string{
 					`admission webhook "validate-monitoring.dash0.com" denied the request: `,
-					`statement has invalid syntax: 1:16: unexpected token "." (expected ")" Key*)`,
+					"statement has invalid syntax at 1:16 near `...`: (expected \")\" Key*)",
 				},
 			}),
 			Entry("should allow monitoring resource with valid transform", ottlValidationTestConfig{
@@ -794,7 +794,7 @@ var _ = Describe("The validation webhook for the monitoring resource", Ordered, 
 					},
 				},
 				expectErrorSubstrings: []string{
-					`condition has invalid syntax: 1:15: unexpected token "(" (expected <opcomparison> Value)`,
+					"condition has invalid syntax at 1:15 near `(...`: (expected <opcomparison> Value)",
 				},
 			}),
 			Entry("should reject monitoring resource with an undefined transform function", ottlValidationTestConfig{
