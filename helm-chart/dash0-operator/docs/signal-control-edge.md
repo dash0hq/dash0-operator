@@ -12,6 +12,8 @@ metrics accurate
 filter - so you keep visibility into filtered data without shipping the raw signals. It also carries the SignalControl
 metering counters, which are classified internal: they are not billed at ingest and do not appear in your telemetry
 - the operation processor derives useful attributes and normalizes high-cardinality attributes
+- log enrichment applies centrally learned patterns to logs, setting the OTLP severity, a normalized message and a
+pattern attribute so logs are easier to query and lower in cardinality (opt-in)
 
 Tail-sampling decisions that require cross-collector coordination are made by the Dash0 Decision Maker (SaaS-side).
 Sampling rules, spam filters, and signal-to-metrics rules are configured as Kubernetes custom resources and synced to the
@@ -63,8 +65,8 @@ decisions are pending, raise the memory limit for clusters with high trace volum
 Once the helm install or upgrade has completed, the next step is to create a `Dash0SignalControl` resource.
 Note that this resource is a singleton: only one instance may exist per cluster.
 
-Since every component defaults to enabled, a minimal resource with an empty spec turns on the full SCE pipeline,
-including the Edge Proxy (recommended whenever you run more than one collector instance):
+Since every component except log enrichment defaults to enabled, a minimal resource with an empty spec turns on the full
+SCE pipeline, including the Edge Proxy (recommended whenever you run more than one collector instance):
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -134,6 +136,25 @@ everything that receiver emits. The pipelines it names here sit on *different ro
 are mutually exclusive: a resource is routed by its namespace, or to the default branch when no namespace matches, never
 both. Nothing is counted twice. (Within a single route the connector does deliver to every pipeline of that route, which
 is how a namespace with several datasets gets a copy per dataset — and why only the first of those branches counts.)
+
+### Log enrichment
+
+Log enrichment applies centrally learned log patterns in-cluster so that logs are easier to query and carry lower
+cardinality. Two processors run in the SignalControl collector's logs pipeline: `dash0logparser` applies the learned
+patterns to set the OTLP severity and a normalized `dash0.log.message`, and `dash0loggrouping` tags each record with the
+`dash0.log.pattern` it matched. Both run ahead of the spam filter, so spam-filter rules can match on the pattern and
+severity that enrichment adds.
+
+The patterns are learned by Dash0 and polled back into the cluster at runtime: in direct mode the `dash0settingsonedge`
+extension fetches them; when the Edge Proxy is enabled they ride the proxy's settings stream instead. Either way, pattern
+changes take effect without redeploying the collector.
+
+Unlike the other SignalControl components, log enrichment is off by default and must be turned on explicitly with
+`spec.logEnrichment.enabled: true`. It also requires a SignalControl collector image that contains the two processors;
+on an image without them, enabling the toggle has no effect. The pattern refresh interval, the parser and grouping cache
+expirations and the parser's per-workload pattern limit are configurable under `spec.logEnrichment` — see
+[dash0signalcontrol_types.go](https://github.com/dash0hq/dash0-operator/blob/main/api/operator/v1alpha1/dash0signalcontrol_types.go)
+for the fields and their defaults.
 
 ### Zone-aware routing
 
