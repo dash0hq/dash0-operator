@@ -1,0 +1,43 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: aggregate-http-server-duration
+  labels:
+    dash0.com/dataset: $DASH0_DATASET
+spec:
+  enabled: true
+  display:
+    name: HTTP server duration (aggregated)
+  match:
+    metricNameMatcher:
+      operator: "is"
+      value: "http.server.duration"
+  sample:
+    interval: 60s
+---
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: aggregate-namespace-metrics
+  labels:
+    dash0.com/dataset: $DASH0_DATASET
+spec:
+  enabled: true
+  match:
+    metricNameMatcher:
+      operator: "starts_with"
+      value: "http."
+    otherFilters:
+      - key: "k8s.namespace.name"
+        operator: "is"
+        value: "$TARGET_NAMESPACE"
+  sample:
+    interval: 60s
+    delay: 20s
+  attributeModifications:
+    - kind: drop_attributes
+      spec:
+        context: datapoint
+        keyMatcher:
+          operator: "is"
+          value: "http.route"

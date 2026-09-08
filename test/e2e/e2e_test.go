@@ -863,6 +863,48 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					Expect(req.Url).To(MatchRegexp(routeRegex))
 				})
 
+				//nolint:dupl
+				It("should synchronize a time series aggregation to the Dash0 API", func() {
+					deployTimeSeriesAggregationResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					//nolint:lll
+					routeRegex := "/api/time-series-aggregations/dash0-operator_.*_default_e2e-test-ns_time-series-aggregation-e2e-test\\?dataset=default"
+
+					By("verifying the time series aggregation has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("http.server.duration"))
+					verifyApiSyncRequest(req)
+
+					setOptOutLabelInTimeSeriesAggregation(applicationUnderTestNamespace, "false")
+					//nolint:lll
+					By("verifying the time series aggregation has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInTimeSeriesAggregation(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the time series aggregation has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("http.server.duration"))
+					verifyApiSyncRequest(req)
+
+					removeTimeSeriesAggregationResource(applicationUnderTestNamespace)
+					//nolint:lll
+					By("verifying the time series aggregation has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
 				runPersesDashboardSyncTest := func(persesDashboardCrdVersion string) {
 					verifyPersesDashboardCrdConversionWebhookConfigured(operatorNamespace)
 
@@ -2168,7 +2210,6 @@ log_statements:
 	}) // end of suite "with the Signal Control feature enabled"
 
 	Context("with the agent0-connector enabled", Ordered, func() {
-		agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
 		var pseudoClusterUid string
 
 		BeforeAll(func() {
@@ -2208,16 +2249,7 @@ log_statements:
 		})
 
 		It("establishes the command request stream and executes a kubectl command", func() {
-			By("waiting for the agent0-connector deployment to become available")
-			Eventually(func(g Gomega) {
-				g.Expect(runAndIgnoreOutput(exec.Command(
-					"kubectl",
-					"-n", operatorNamespace,
-					"wait", "--for=condition=Available",
-					"deployment/"+agent0ConnectorDeployment,
-					"--timeout=30s",
-				))).To(Succeed())
-			}, 120*time.Second, 2*time.Second).Should(Succeed())
+			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 
@@ -2477,6 +2509,66 @@ spec:
 		)
 	}) // end of suite "with the agent0-connector enabled"
 
+	Context("with the agent0-connector enabled and a manually managed operator configuration resource", Ordered, func() {
+		BeforeAll(func() {
+			By("installing the outbound-connector mock")
+			installOutboundConnectorMock()
+
+			By("deploying the Dash0 operator with the agent0-connector enabled, but without an operator configuration " +
+				"resource")
+			deployOperatorWithoutAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				map[string]string{
+					"operator.agent0Connector.enabled":       "true",
+					"operator.agent0Connector.serverAddress": outboundConnectorMockGrpcEndpoint,
+					"operator.agent0Connector.token":         agent0ConnectorDummyToken,
+					"operator.agent0Connector.insecure":      "true",
+				},
+			)
+
+			// The agent0-connector is independent of telemetry collection, so this suite does not deploy collectors.
+			By("deploying the Dash0 operator configuration resource manually")
+			deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				SelfMonitoringEnabled:      false,
+				Endpoint:                   defaultEndpoint,
+				Token:                      defaultToken,
+				ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+				ClusterName:                e2eKubernetesContext,
+				TelemetryCollectionEnabled: false,
+			}, operatorNamespace, operatorHelmChart)
+		})
+
+		AfterAll(func() {
+			undeployDash0OperatorConfigurationResource()
+			undeployOperator(operatorNamespace)
+			uninstallOutboundConnectorMock()
+		})
+
+		It("removes the agent0-connector when the operator configuration resource opts out, and redeploys it when the "+
+			"opt-out is revoked", func() {
+			waitForAgent0ConnectorDeploymentToBecomeAvailable()
+			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+
+			By("opting out of the agent0-connector via the operator configuration resource")
+			updateOperatorConfigurationAgent0ConnectorEnabled(
+				dash0OperatorConfigurationResourceManuallyManagedName, false)
+
+			verifyAgent0ConnectorResourcesDoNotExist()
+			verifyAgent0ConnectorIsReportedAsDisabled(dash0OperatorConfigurationResourceManuallyManagedName)
+
+			By("revoking the opt-out via the operator configuration resource")
+			updateOperatorConfigurationAgent0ConnectorEnabled(
+				dash0OperatorConfigurationResourceManuallyManagedName, true)
+
+			waitForAgent0ConnectorDeploymentToBecomeAvailable()
+			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
+		})
+	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
+
 	Context("with the agent0-connector and a custom cluster role", Ordered, func() {
 		var pseudoClusterUid string
 
@@ -2541,17 +2633,7 @@ spec:
 		})
 
 		It("grants the custom rules and not the default rules", func() {
-			By("waiting for the agent0-connector deployment to become available")
-			agent0ConnectorDeployment := operatorHelmReleaseName + "-agent0-connector"
-			Eventually(func(g Gomega) {
-				g.Expect(runAndIgnoreOutput(exec.Command(
-					"kubectl",
-					"-n", operatorNamespace,
-					"wait", "--for=condition=Available",
-					"deployment/"+agent0ConnectorDeployment,
-					"--timeout=30s",
-				))).To(Succeed())
-			}, 120*time.Second, 2*time.Second).Should(Succeed())
+			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 
@@ -4375,6 +4457,30 @@ spec:
 					g.Expect(countCapturedApiRequests(g, "PUT", spamFilterPutRegex)).To(
 						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
 						"expected the spam filter to be re-synchronized by the periodic retry",
+					)
+				}, 90*time.Second, 2*time.Second).Should(Succeed())
+			})
+
+			It("retries a Dash0 time series aggregation synchronization after a transient server error (HTTP 503)", func() {
+				By("configuring the API mock to fail the time series aggregation with HTTP 503 for the first sync attempt")
+				configureApiMockResponseOverrides(apiMockResponseOverride{
+					Method:         "PUT",
+					RouteSubstring: "time-series-aggregation-e2e-test",
+					StatusCode:     503,
+					Times:          apiMockFailTimesForOneSyncAttempt,
+				})
+
+				deployTimeSeriesAggregationResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+
+				//nolint:lll
+				timeSeriesAggregationPutRegex := "^/api/time-series-aggregations/dash0-operator_.*_default_e2e-test-ns_time-series-aggregation-e2e-test\\?dataset=default$"
+
+				//nolint:lll
+				By("verifying the operator performs a second synchronization attempt and the time series aggregation is synchronized")
+				Eventually(func(g Gomega) {
+					g.Expect(countCapturedApiRequests(g, "PUT", timeSeriesAggregationPutRegex)).To(
+						BeNumerically(">=", apiMockFailTimesForOneSyncAttempt+1),
+						"expected the time series aggregation to be re-synchronized by the periodic retry",
 					)
 				}, 90*time.Second, 2*time.Second).Should(Succeed())
 			})

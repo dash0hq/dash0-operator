@@ -140,6 +140,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
 				false,
 			)
+	agent0ConnectorEnabled :=
+		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(
@@ -176,7 +178,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
-		Agent0ConnectorEnabled:                           m.collectorConfig.Agent0ConnectorEnabled,
+		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
 		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix),
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),

@@ -1427,7 +1427,6 @@ func newAgent0ConnectorManagerWithInvalidClusterRoleRules() *agent0connector.Age
 	}
 	return agent0connector.NewAgent0ConnectorManager(
 		k8sClient,
-		true,
 		extraConfig,
 		false,
 		agent0ConnectorResourceManager,
