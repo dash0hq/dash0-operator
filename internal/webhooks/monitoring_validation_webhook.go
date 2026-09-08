@@ -10,10 +10,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/confmap"
 	"go.uber.org/multierr"
-	"go.uber.org/zap"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -27,12 +28,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
-	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/internal_/filter/filterottl"
-	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/common"
-	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/logs"
-	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/metrics"
-	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/profiles"
-	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/traces"
 )
 
 const ErrorMessageMonitoringGrpcExportInvalidInsecure = "The provided Dash0 monitoring resource has both insecure and insecureSkipVerify " +
@@ -394,12 +389,6 @@ func (h *MonitoringValidationWebhookHandler) validateTraceContextPropagators(mon
 }
 
 func (h *MonitoringValidationWebhookHandler) validateOttl(monitoringResource *dash0v1beta1.Dash0Monitoring) (admission.Response, bool) {
-	// Note: Due to dash0common.Filter and dash0common.Transform using different types than the Config modules in
-	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor and
-	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/transformprocessor,
-	// we need to vendor in quite a bit of internal code from the collector-contrib repo, see
-	// internal/webhooks/vendored/opentelemetry-collector-contrib.
-
 	var errors error
 
 	filter := monitoringResource.Spec.Filter
@@ -418,125 +407,126 @@ func (h *MonitoringValidationWebhookHandler) validateOttl(monitoringResource *da
 	return admission.Response{}, false
 }
 
-// validateFilter is a modified copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/filterprocessor/config.go,
-// func (cfg *Config) Validate() error {
+// validateFilter checks the filter conditions of a monitoring resource by rendering them into the configuration of the
+// collector's filter processor and running that processor's own validation.
 func validateFilter(filter *dash0common.Filter) error {
-	var errors error
-
-	if filter.Traces != nil {
-		if filter.Traces.SpanFilter != nil {
-			_, err := filterottl.NewBoolExprForSpan(filter.Traces.SpanFilter, filterottl.StandardSpanFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
-			errors = multierr.Append(errors, err)
-		}
-		if filter.Traces.SpanEventFilter != nil {
-			_, err := filterottl.NewBoolExprForSpanEvent(filter.Traces.SpanEventFilter, filterottl.StandardSpanEventFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
-			errors = multierr.Append(errors, err)
-		}
-	}
-
-	if filter.Metrics != nil {
-		if filter.Metrics.MetricFilter != nil {
-			_, err := filterottl.NewBoolExprForMetric(filter.Metrics.MetricFilter, filterottl.StandardMetricFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
-			errors = multierr.Append(errors, err)
-		}
-		if filter.Metrics.DataPointFilter != nil {
-			_, err := filterottl.NewBoolExprForDataPoint(filter.Metrics.DataPointFilter, filterottl.StandardDataPointFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
-			errors = multierr.Append(errors, err)
-		}
-	}
-
-	if filter.Logs != nil {
-		if filter.Logs.LogRecordFilter != nil {
-			_, err := filterottl.NewBoolExprForLog(filter.Logs.LogRecordFilter, filterottl.StandardLogFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
-			errors = multierr.Append(errors, err)
-		}
-	}
-
-	if filter.Profiles != nil {
-		if filter.Profiles.ProfileFilter != nil {
-			_, err := filterottl.NewBoolExprForProfile(filter.Profiles.ProfileFilter, filterottl.StandardProfileFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
-			errors = multierr.Append(errors, err)
-		}
-	}
-
-	return errors
+	return unmarshalAndValidateProcessorConfig(
+		filterprocessor.NewFactory().CreateDefaultConfig(),
+		renderFilterProcessorConfig(filter),
+	)
 }
 
-// validateTransform is a modified copy of
-// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/config.go,
-// func (cfg *Config) Validate() error {
+// validateTransform checks the transform statements of a monitoring resource by rendering them into the configuration
+// of the collector's transform processor and running that processor's own validation.
 func validateTransform(transform *dash0common.NormalizedTransformSpec) error {
-	var errors error
-
-	if len(transform.Traces) > 0 {
-		pc, err := common.NewTraceParserCollection(component.TelemetrySettings{Logger: zap.NewNop()}, common.WithSpanParser(traces.SpanFunctions()), common.WithSpanEventParser(traces.SpanEventFunctions()))
-		if err != nil {
-			return err
-		}
-		for _, cs := range transform.Traces {
-			_, err = pc.ParseContextStatements(toContextStatements(cs))
-			if err != nil {
-				errors = multierr.Append(errors, err)
-			}
-		}
-	}
-
-	if len(transform.Metrics) > 0 {
-		pc, err := common.NewMetricParserCollection(component.TelemetrySettings{Logger: zap.NewNop()}, common.WithMetricParser(metrics.MetricFunctions()), common.WithDataPointParser(metrics.DataPointFunctions()))
-		if err != nil {
-			return err
-		}
-		for _, cs := range transform.Metrics {
-			_, err := pc.ParseContextStatements(toContextStatements(cs))
-			if err != nil {
-				errors = multierr.Append(errors, err)
-			}
-		}
-	}
-
-	if len(transform.Logs) > 0 {
-		pc, err := common.NewLogParserCollection(component.TelemetrySettings{Logger: zap.NewNop()}, common.WithLogParser(logs.LogFunctions()))
-		if err != nil {
-			return err
-		}
-		for _, cs := range transform.Logs {
-			_, err = pc.ParseContextStatements(toContextStatements(cs))
-			if err != nil {
-				errors = multierr.Append(errors, err)
-			}
-		}
-	}
-
-	if len(transform.Profiles) > 0 {
-		pc, err := common.NewProfileParserCollection(component.TelemetrySettings{Logger: zap.NewNop()}, common.WithProfileParser(profiles.ProfileFunctions()))
-		if err != nil {
-			return err
-		}
-		for _, cs := range transform.Profiles {
-			_, err = pc.ParseContextStatements(toContextStatements(cs))
-			if err != nil {
-				errors = multierr.Append(errors, err)
-			}
-		}
-	}
-
-	return errors
+	return unmarshalAndValidateProcessorConfig(
+		transformprocessor.NewFactory().CreateDefaultConfig(),
+		renderTransformProcessorConfig(transform),
+	)
 }
 
-func toContextStatements(transformGroup dash0common.NormalizedTransformGroup) common.ContextStatements {
-	var ctx common.ContextID
-	if transformGroup.Context != nil {
-		ctx = common.ContextID(*transformGroup.Context)
+// unmarshalAndValidateProcessorConfig populates a processor configuration created by its factory from rawConfig and
+// then validates it. Unmarshalling rejects unknown keys and invalid enum values, validation parses the OTTL
+// expressions, hence both steps need to pass.
+func unmarshalAndValidateProcessorConfig(processorConfig component.Config, rawConfig map[string]any) error {
+	if err := confmap.NewFromStringMap(rawConfig).Unmarshal(processorConfig); err != nil {
+		return err
 	}
-	var errorMode ottl.ErrorMode
-	if transformGroup.ErrorMode != nil {
-		errorMode = ottl.ErrorMode(*transformGroup.ErrorMode)
+	return confmap.Validate(processorConfig)
+}
+
+// renderFilterProcessorConfig converts the filter settings of a monitoring resource to the configuration of the
+// collector's filter processor. The keys need to match
+// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/filterprocessor/config.go and
+// the filter processor sections of daemonset.config.yaml.template and deployment.config.yaml.template.
+func renderFilterProcessorConfig(filter *dash0common.Filter) map[string]any {
+	rawConfig := map[string]any{}
+	if filter.ErrorMode != "" {
+		rawConfig["error_mode"] = string(filter.ErrorMode)
 	}
-	return common.ContextStatements{
-		Context:    ctx,
-		Conditions: transformGroup.Conditions,
-		Statements: transformGroup.Statements,
-		ErrorMode:  errorMode,
+	if filter.Traces != nil {
+		traces := map[string]any{}
+		addConditions(traces, "span", filter.Traces.SpanFilter)
+		addConditions(traces, "spanevent", filter.Traces.SpanEventFilter)
+		if len(traces) > 0 {
+			rawConfig["traces"] = traces
+		}
 	}
+	if filter.Metrics != nil {
+		metrics := map[string]any{}
+		addConditions(metrics, "metric", filter.Metrics.MetricFilter)
+		addConditions(metrics, "datapoint", filter.Metrics.DataPointFilter)
+		if len(metrics) > 0 {
+			rawConfig["metrics"] = metrics
+		}
+	}
+	if filter.Logs != nil {
+		logs := map[string]any{}
+		addConditions(logs, "log_record", filter.Logs.LogRecordFilter)
+		if len(logs) > 0 {
+			rawConfig["logs"] = logs
+		}
+	}
+	if filter.Profiles != nil {
+		profiles := map[string]any{}
+		addConditions(profiles, "profile", filter.Profiles.ProfileFilter)
+		if len(profiles) > 0 {
+			rawConfig["profiles"] = profiles
+		}
+	}
+	return rawConfig
+}
+
+func addConditions(signalConfig map[string]any, key string, conditions []string) {
+	if len(conditions) == 0 {
+		return
+	}
+	signalConfig[key] = toAnySlice(conditions)
+}
+
+// renderTransformProcessorConfig converts the normalized transform settings of a monitoring resource to the
+// configuration of the collector's transform processor. The keys need to match
+// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/config.go
+// and the transform processor sections of daemonset.config.yaml.template and deployment.config.yaml.template.
+func renderTransformProcessorConfig(transform *dash0common.NormalizedTransformSpec) map[string]any {
+	rawConfig := map[string]any{}
+	if transform.ErrorMode != nil {
+		rawConfig["error_mode"] = string(*transform.ErrorMode)
+	}
+	addTransformGroups(rawConfig, "trace_statements", transform.Traces)
+	addTransformGroups(rawConfig, "metric_statements", transform.Metrics)
+	addTransformGroups(rawConfig, "log_statements", transform.Logs)
+	addTransformGroups(rawConfig, "profile_statements", transform.Profiles)
+	return rawConfig
+}
+
+func addTransformGroups(rawConfig map[string]any, key string, groups []dash0common.NormalizedTransformGroup) {
+	if len(groups) == 0 {
+		return
+	}
+	renderedGroups := make([]any, 0, len(groups))
+	for _, group := range groups {
+		renderedGroup := map[string]any{
+			"statements": toAnySlice(group.Statements),
+		}
+		if group.Context != nil {
+			renderedGroup["context"] = *group.Context
+		}
+		if group.ErrorMode != nil {
+			renderedGroup["error_mode"] = string(*group.ErrorMode)
+		}
+		if len(group.Conditions) > 0 {
+			renderedGroup["conditions"] = toAnySlice(group.Conditions)
+		}
+		renderedGroups = append(renderedGroups, renderedGroup)
+	}
+	rawConfig[key] = renderedGroups
+}
+
+func toAnySlice(values []string) []any {
+	converted := make([]any, 0, len(values))
+	for _, value := range values {
+		converted = append(converted, value)
+	}
+	return converted
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/bep/debounce"
 	"github.com/fsnotify/fsnotify"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 
@@ -114,12 +115,15 @@ type ExtraConfig struct {
 	EdgeProxyPodLabels      map[string]string `json:"edgeProxyPodLabels,omitempty"`
 	EdgeProxyPodAnnotations map[string]string `json:"edgeProxyPodAnnotations,omitempty"`
 
-	Agent0ConnectorLabels         map[string]string    `json:"agent0ConnectorLabels,omitempty"`
-	Agent0ConnectorAnnotations    map[string]string    `json:"agent0ConnectorAnnotations,omitempty"`
-	Agent0ConnectorPodLabels      map[string]string    `json:"agent0ConnectorPodLabels,omitempty"`
-	Agent0ConnectorPodAnnotations map[string]string    `json:"agent0ConnectorPodAnnotations,omitempty"`
-	Agent0ConnectorTolerations    []corev1.Toleration  `json:"agent0ConnectorTolerations,omitempty"`
-	Agent0ConnectorNodeAffinity   *corev1.NodeAffinity `json:"agent0ConnectorNodeAffinity,omitempty"`
+	Agent0ConnectorMaxConcurrentCommands int32                              `json:"agent0ConnectorMaxConcurrentCommands,omitempty"`
+	Agent0ConnectorContainerResources    ResourceRequirementsWithGoMemLimit `json:"agent0ConnectorContainerResources"`
+	Agent0ConnectorClusterRoleRules      []rbacv1.PolicyRule                `json:"agent0ConnectorClusterRoleRules,omitempty"`
+	Agent0ConnectorLabels                map[string]string                  `json:"agent0ConnectorLabels,omitempty"`
+	Agent0ConnectorAnnotations           map[string]string                  `json:"agent0ConnectorAnnotations,omitempty"`
+	Agent0ConnectorPodLabels             map[string]string                  `json:"agent0ConnectorPodLabels,omitempty"`
+	Agent0ConnectorPodAnnotations        map[string]string                  `json:"agent0ConnectorPodAnnotations,omitempty"`
+	Agent0ConnectorTolerations           []corev1.Toleration                `json:"agent0ConnectorTolerations,omitempty"`
+	Agent0ConnectorNodeAffinity          *corev1.NodeAffinity               `json:"agent0ConnectorNodeAffinity,omitempty"`
 
 	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
 	// dependencies. We should revisit how to untangle this.
@@ -203,6 +207,15 @@ var (
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
 		},
+		Agent0ConnectorContainerResources: ResourceRequirementsWithGoMemLimit{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("256Mi"),
+			},
+			GoMemLimit: "150MiB",
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("64Mi"),
+			},
+		},
 	}
 )
 
@@ -256,6 +269,10 @@ func readExtraConfigurationFromFile(configurationFile string) (ExtraConfig, erro
 	applyDefaults(
 		&extraConfig.SignalControlCollectorConfigurationReloaderContainerResources,
 		&ExtraConfigDefaults.SignalControlCollectorConfigurationReloaderContainerResources,
+	)
+	applyDefaults(
+		&extraConfig.Agent0ConnectorContainerResources,
+		&ExtraConfigDefaults.Agent0ConnectorContainerResources,
 	)
 
 	return *extraConfig, nil

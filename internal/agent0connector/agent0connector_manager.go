@@ -5,25 +5,31 @@ package agent0connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync/atomic"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/tools/events"
+	k8sretry "k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector/a0cresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
 )
 
 type Agent0ConnectorManager struct {
 	client.Client
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager
+	eventRecorder                  events.EventRecorder
 	extraConfig                    atomic.Pointer[util.ExtraConfig]
-	enabled                        bool
 	developmentMode                bool
-	updateInProgress               atomic.Bool
+	reconcileGuard                 util.ReconcileGuard
 }
 
 type Agent0ConnectorReconcileTrigger string
@@ -31,20 +37,23 @@ type Agent0ConnectorReconcileTrigger string
 const (
 	TriggeredByWatchEvent                                  Agent0ConnectorReconcileTrigger = "watch"
 	TriggeredByDash0OperatorConfigurationResourceReconcile Agent0ConnectorReconcileTrigger = "resource"
+
+	agent0ConnectorDisabledMessage = "The operator has not deployed the agent0-connector because it is disabled " +
+		"in the Dash0 operator configuration resource (agent0Connector.enabled: false)."
 )
 
 func NewAgent0ConnectorManager(
 	k8sClient client.Client,
-	enabled bool,
 	extraConfig util.ExtraConfig,
 	developmentMode bool,
 	agent0ConnectorResourceManager *a0cresources.Agent0ConnectorResourceManager,
+	eventRecorder events.EventRecorder,
 ) *Agent0ConnectorManager {
 	m := &Agent0ConnectorManager{
 		Client:                         k8sClient,
-		enabled:                        enabled,
 		developmentMode:                developmentMode,
 		agent0ConnectorResourceManager: agent0ConnectorResourceManager,
+		eventRecorder:                  eventRecorder,
 	}
 	m.extraConfig.Store(&extraConfig)
 	return m
@@ -67,20 +76,23 @@ func (m *Agent0ConnectorManager) UpdateExtraConfig(ctx context.Context, newConfi
 	}
 }
 
-// agent0ConnectorEnabled reports whether the optional agent0-connector deployment should be managed. It is controlled by
-// the Helm value operator.agent0Connector.enabled.
-func (m *Agent0ConnectorManager) agent0ConnectorEnabled() bool {
-	return m.enabled
-}
-
 // ReconcileAgent0Connector can be triggered by
 // 1. a reconcile request from the Dash0OperatorConfiguration resource, or
 // 2. a change event on one of the agent0-connector related resources that the operator manages.
 //
 // Returns a boolean flag indicating whether the reconciliation has been performed (true) or has been cancelled, due to
-// another reconciliation already being in progress. A return value of (true, nil) does not necessarily indicate that
-// any agent0-connector resource has been created, updated, or deleted; it only indicates that the reconciliation has
-// been performed.
+// another reconciliation already being in progress or due to the agent0-connector being misconfigured. A return value
+// of (true, nil) does not necessarily indicate that any agent0-connector resource has been created, updated, or
+// deleted; it only indicates that the reconciliation has been performed.
+//
+// A request that arrives while a reconciliation is in progress is not executed. The reconciliation which is in progress
+// repeats itself once it is done, see util.ReconcileGuard. Without that, a corrected extra config map arriving
+// mid-reconciliation would be stored but never applied, since neither controller requeues periodically.
+//
+// A misconfiguration of the agent0-connector is reported as (false, nil): the error is not passed on to the caller,
+// since requeuing the reconcile request cannot fix it, and since reconciling agent0-connector must not block the
+// caller's remaining reconciliation steps. It is reported in the status of the Dash0OperatorConfiguration resource
+// (status.agent0Connector) and, on a change of the outcome, as a Kubernetes event.
 func (m *Agent0ConnectorManager) ReconcileAgent0Connector(
 	ctx context.Context,
 	trigger Agent0ConnectorReconcileTrigger,
@@ -88,18 +100,23 @@ func (m *Agent0ConnectorManager) ReconcileAgent0Connector(
 	logger := logd.FromContext(ctx)
 	logger.Debug("ReconcileAgent0Connector", "trigger", trigger)
 
-	if m.updateInProgress.Load() {
-		if m.developmentMode {
-			logger.Info("creation/update of the agent0-connector resources is already in progress, skipping " +
-				"additional reconciliation request.")
-		}
-		return false, nil
-	}
-	m.updateInProgress.Store(true)
-	defer func() {
-		m.updateInProgress.Store(false)
-	}()
+	return m.reconcileGuard.Run(
+		func() (bool, error) {
+			return m.reconcileAgent0Connector(ctx, logger)
+		},
+		func() {
+			if m.developmentMode {
+				logger.Info("creation/update of the agent0-connector resources is already in progress, the " +
+					"additional reconciliation request will be served by the reconciliation which is in progress.")
+			}
+		},
+	)
+}
 
+// reconcileAgent0Connector is the body of ReconcileAgent0Connector, executed under the manager's reconcile guard. It
+// reads the operator configuration resource and the extra config itself, which is what allows the guard to repeat it
+// for a trigger that arrived while it was running.
+func (m *Agent0ConnectorManager) reconcileAgent0Connector(ctx context.Context, logger logd.Logger) (bool, error) {
 	operatorConfigurationResource, err := resources.FindOperatorConfigurationResource(ctx, m.Client, logger)
 	if err != nil {
 		return false, err
@@ -117,26 +134,186 @@ func (m *Agent0ConnectorManager) ReconcileAgent0Connector(
 		return err == nil, err
 	}
 
-	if !m.agent0ConnectorEnabled() {
+	if !m.agent0ConnectorEnabled(operatorConfigurationResource) {
 		logger.Debug("The agent0-connector deployment is disabled, it (if present) will be removed.")
-		err = m.removeAgent0Connector(ctx, *extraConfig, logger)
-		return err == nil, err
+		if err = m.removeAgent0Connector(ctx, *extraConfig, logger); err != nil {
+			return false, err
+		}
+		m.reportAgent0ConnectorDisabled(ctx, operatorConfigurationResource, logger)
+		return true, nil
 	}
 
-	err = m.createOrUpdateAgent0Connector(ctx, *extraConfig, logger)
-	return err == nil, err
+	hasBeenReconciled, err := m.createOrUpdateAgent0Connector(ctx, *extraConfig, logger)
+	m.reportAgent0ConnectorStatus(ctx, operatorConfigurationResource, err, logger)
+	if errors.Is(err, a0cresources.ErrMisconfigured) {
+		// Requeuing the reconcile request cannot fix a Helm-level misconfiguration, and agent0-connector deployment must
+		// not block the remaining reconciliation steps for the Dash0OperatorConfiguration resource. The status and the
+		// Kubernetes event above report it instead.
+		return false, nil
+	}
+	return hasBeenReconciled, err
 }
 
+// agent0ConnectorEnabled reports whether the optional agent0-connector deployment should be managed. The
+// Agent0ConnectorManager only exists when the agent0-connector is enabled via the Helm chart
+// (operator.agent0Connector.enabled), see setupAgent0ConnectorManager, so only the opt-out in
+// spec.agent0Connector.enabled of the Dash0OperatorConfiguration resource is evaluated here.
+func (m *Agent0ConnectorManager) agent0ConnectorEnabled(
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) bool {
+	// The default fallback here (if operatorConfigurationResource.Spec.Agent0Connector.Enabled is unset) is true;
+	// we only get here if agent0-connector has been enabled via Helm, so the user has already intentionally enabled
+	// agent0-connector at the Helm level.
+	return pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.Agent0Connector.Enabled, true)
+}
+
+// reportAgent0ConnectorStatus records the outcome of the last attempt to create or update the agent0-connector
+// resources in the status of the Dash0OperatorConfiguration resource and queues a Kubernetes event when the outcome
+// changed.
+func (m *Agent0ConnectorManager) reportAgent0ConnectorStatus(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	reconcileErr error,
+	logger logd.Logger,
+) {
+	deployed := reconcileErr == nil
+	reason := StatusReasonDeployed
+	message := "The operator has deployed the agent0-connector."
+	if !deployed {
+		reason = agent0ConnectorFailureReason(reconcileErr)
+		message = agent0ConnectorFailureMessage(reason, reconcileErr)
+	}
+
+	changed, err := m.updateAgent0ConnectorStatus(
+		ctx,
+		operatorConfigurationResource,
+		func(resource *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return resource.SetAgent0ConnectorStatus(deployed, reason, message)
+		},
+	)
+	if err != nil {
+		logger.Error(err, "cannot record the agent0-connector status in the Dash0OperatorConfiguration resource")
+		return
+	}
+	if !changed {
+		return
+	}
+	if deployed {
+		util.QueueAgent0ConnectorDeployedEvent(m.eventRecorder, operatorConfigurationResource)
+	} else {
+		util.QueueAgent0ConnectorNotDeployedEvent(m.eventRecorder, operatorConfigurationResource, message)
+	}
+}
+
+// reportAgent0ConnectorDisabled records in the status of the Dash0OperatorConfiguration resource that the
+// agent0-connector is not deployed because it is disabled, and queues a Kubernetes event when the outcome changed.
+// Reporting the reason instead of removing the status is what distinguishes a deliberately disabled agent0-connector
+// from one that the operator has never deployed or has failed to deploy.
+func (m *Agent0ConnectorManager) reportAgent0ConnectorDisabled(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	logger logd.Logger,
+) {
+	changed, err := m.updateAgent0ConnectorStatus(
+		ctx,
+		operatorConfigurationResource,
+		func(resource *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return resource.SetAgent0ConnectorStatus(false, StatusReasonDisabled, agent0ConnectorDisabledMessage)
+		},
+	)
+	if err != nil {
+		logger.Error(err, "cannot record the agent0-connector status in the Dash0OperatorConfiguration resource")
+		return
+	}
+	if !changed {
+		return
+	}
+	util.QueueAgent0ConnectorDisabledEvent(m.eventRecorder, operatorConfigurationResource, agent0ConnectorDisabledMessage)
+}
+
+// updateAgent0ConnectorStatus applies the given modification to the status of the Dash0OperatorConfiguration resource
+// and reports whether it changed anything. The resource is read again for every attempt: the agent0-connector is
+// reconciled from three independent triggers, which can collide with each other and with the status update of the
+// operator configuration controller.
+func (m *Agent0ConnectorManager) updateAgent0ConnectorStatus(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	modify func(*dash0v1alpha1.Dash0OperatorConfiguration) bool,
+) (bool, error) {
+	changed := false
+	err := k8sretry.RetryOnConflict(k8sretry.DefaultRetry, func() error {
+		resource := &dash0v1alpha1.Dash0OperatorConfiguration{}
+		if err := m.Get(ctx, client.ObjectKeyFromObject(operatorConfigurationResource), resource); err != nil {
+			return err
+		}
+		changed = modify(resource)
+		if !changed {
+			return nil
+		}
+		return m.Status().Update(ctx, resource)
+	})
+	if err != nil {
+		return false, err
+	}
+	return changed, nil
+}
+
+// The programmatic identifiers reported in status.agent0Connector.reason of the Dash0OperatorConfiguration resource.
+// They name the individual outcome and are therefore more specific than the reason of the Kubernetes event, which only
+// distinguishes deployed, not deployed and disabled. A new failure mode needs an entry here and in
+// agent0ConnectorFailureReason, otherwise it is reported as StatusReasonReconcileFailed.
+const (
+	StatusReasonDeployed                   = "Deployed"
+	StatusReasonDisabled                   = "Disabled"
+	StatusReasonInvalidClusterRoleRules    = "InvalidClusterRoleRules"
+	StatusReasonNoAuthorizationToken       = "NoAuthorizationToken"
+	StatusReasonOperatorMissingPermissions = "OperatorMissingPermissions"
+	StatusReasonReconcileFailed            = "ReconcileFailed"
+)
+
+// agent0ConnectorFailureReason maps a reconcile error to the programmatic identifier reported in the status.
+func agent0ConnectorFailureReason(err error) string {
+	switch {
+	case errors.Is(err, a0cresources.ErrInvalidClusterRoleRules):
+		return StatusReasonInvalidClusterRoleRules
+	case errors.Is(err, a0cresources.ErrNoAuthorizationToken):
+		return StatusReasonNoAuthorizationToken
+	case apierrors.IsForbidden(err):
+		return StatusReasonOperatorMissingPermissions
+	default:
+		return StatusReasonReconcileFailed
+	}
+}
+
+// agent0ConnectorFailureMessage describes a reconcile failure for the status and for the Kubernetes event.
+func agent0ConnectorFailureMessage(reason string, err error) string {
+	if reason != StatusReasonOperatorMissingPermissions {
+		return err.Error()
+	}
+	return fmt.Sprintf(
+		"The API server rejected an agent0-connector resource as forbidden. One possible cause is Kubernetes' "+
+			"privilege escalation prevention (the operator can only grant permissions it holds itself). The API "+
+			"server reported: %s",
+		err.Error(),
+	)
+}
+
+// createOrUpdateAgent0Connector creates or updates the agent0-connector resources. The returned flag reports whether
+// the resources have been reconciled. Every error is passed on, including a misconfiguration, which the caller reports
+// via the status and a Kubernetes event before it stops the error from reaching its own caller.
 func (m *Agent0ConnectorManager) createOrUpdateAgent0Connector(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
-) error {
+) (bool, error) {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.agent0ConnectorResourceManager.CreateOrUpdateAgent0ConnectorResources(ctx, extraConfig, logger)
 	if err != nil {
-		logger.Error(err, "failed to create one or more of the agent0-connector resources")
-		return err
+		if !errors.Is(err, a0cresources.ErrMisconfigured) {
+			// The resource manager has already logged the details of a misconfiguration.
+			logger.Error(err, "failed to create one or more of the agent0-connector resources")
+		}
+		return false, err
 	}
 
 	if resourcesHaveBeenCreated && resourcesHaveBeenUpdated {
@@ -149,7 +326,7 @@ func (m *Agent0ConnectorManager) createOrUpdateAgent0Connector(
 		logger.Debug("agent0-connector Kubernetes resources are already up to date, no changes required")
 	}
 
-	return nil
+	return true, nil
 }
 
 func (m *Agent0ConnectorManager) removeAgent0Connector(

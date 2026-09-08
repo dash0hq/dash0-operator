@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 
@@ -176,5 +177,24 @@ var _ = Describe("v1alpha1 Dash0 operator configuration CRD", func() {
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom.SecretKeyRef.Name).To(Equal("my-secret"))
 			Expect(redacted.Spec.Exports[0].Grpc.Headers[0].ValueFrom.SecretKeyRef.Key).To(Equal("api-key"))
 		})
+	})
+
+	Describe("Agent0Connector#IsEnabled", func() {
+
+		DescribeTable("should require the Helm value and let the resource opt out",
+			func(enabled *bool, enabledViaHelm bool, expected bool) {
+				agent0Connector := Agent0Connector{Enabled: enabled}
+
+				Expect(agent0Connector.IsEnabled(enabledViaHelm)).To(Equal(expected))
+			},
+			Entry("unset, enabled via Helm: enabled", nil, true, true),
+			Entry("unset, disabled via Helm: disabled", nil, false, false),
+			Entry("explicitly true, enabled via Helm: enabled", ptr.To(true), true, true),
+			Entry("explicitly true, disabled via Helm: disabled, the Helm value is required",
+				ptr.To(true), false, false),
+			Entry("explicitly false, enabled via Helm: disabled, the resource opts out",
+				ptr.To(false), true, false),
+			Entry("explicitly false, disabled via Helm: disabled", ptr.To(false), false, false),
+		)
 	})
 })

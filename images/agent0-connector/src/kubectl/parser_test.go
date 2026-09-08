@@ -136,6 +136,10 @@ func TestExtractNormalizedResourceTypes(t *testing.T) {
 		{name: "type with an API group", argument: "Dash0Monitorings.operator.dash0.com", isResourceTypeSlot: true,
 			expected: []string{"dash0monitorings"}},
 		{name: "fully qualified type/name pair in a later slot", argument: "Secrets.v1./my-secret", expected: []string{"secrets"}},
+		{name: "padded type in the resource type slot", argument: " secret\t", isResourceTypeSlot: true, expected: []string{"secret"}},
+		{name: "padded type in a comma-separated list", argument: "configmap, secret", isResourceTypeSlot: true,
+			expected: []string{"configmap", "secret"}},
+		{name: "padded type/name pair in a later slot", argument: " secret/my-secret", expected: []string{"secret"}},
 
 		// Degenerate inputs are normalized to empty types rather than being rejected here: resource types are only ever
 		// used for lookups, and an empty type matches nothing.

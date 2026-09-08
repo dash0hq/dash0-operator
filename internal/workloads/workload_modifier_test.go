@@ -1212,7 +1212,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				VerifyEnvVar(testConfig.ldPreloadExpectation, container.Env, envVarLdPreloadName, "")
@@ -1694,6 +1693,41 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 		)
 
+		DescribeTable("isOperatorCollectorEndpoint",
+			func(value string, expected bool) {
+				container := &corev1.Container{
+					Env: []corev1.EnvVar{{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: value,
+					}},
+				}
+				Expect(isOperatorCollectorEndpoint(container, 0, PossibleCollectorUrlsTest)).To(Equal(expected))
+			},
+			Entry("the currently configured node-local URL", OTelCollectorNodeLocalBaseUrlTest, true),
+			Entry("a node-local URL with a previously configured host port", "http://$(DASH0_NODE_IP):4318", true),
+			Entry("a node-local URL with the shortest possible port", "http://$(DASH0_NODE_IP):1", true),
+			Entry("the service URL", OTelCollectorServiceBaseUrlTest, true),
+			Entry("a manually configured endpoint", "http://some-endpoint.tld", false),
+			Entry("a node-local URL with a different node IP env var", "http://$(K8S_NODE_IP):4318", false),
+			Entry("a node-local URL without a port", "http://$(DASH0_NODE_IP)", false),
+			Entry("a node-local URL with a non-numeric port", "http://$(DASH0_NODE_IP):port", false),
+			Entry("a node-local URL with a trailing path", "http://$(DASH0_NODE_IP):4318/v1/traces", false),
+			Entry("a node-local URL with an https scheme", "https://$(DASH0_NODE_IP):4318", false),
+			Entry("an empty value", "", false),
+		)
+
+		It("isOperatorCollectorEndpoint should reject an endpoint that is populated via valueFrom", func() {
+			container := &corev1.Container{
+				Env: []corev1.EnvVar{{
+					Name: envVarOtelExporterOtlpEndpointName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"},
+					},
+				}},
+			}
+			Expect(isOperatorCollectorEndpoint(container, 0, PossibleCollectorUrlsTest)).To(BeFalse())
+		})
+
 		type otelExporterEnvVarsTest struct {
 			existingEnvVars                       []corev1.EnvVar
 			clusterInstrumentationConfig          *util.ClusterInstrumentationConfig
@@ -1720,19 +1754,18 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}, clusterInstrumentationConfig)
 				Expect(preInstrumentationCheckResult).To(Equal(testConfig.expectedPreInstrumentationCheckResult))
 
+				capturingLogger, capturingLogSink := NewCapturingLogger()
 				modifier := NewResourceModifier(
 					clusterInstrumentationConfig,
 					DefaultNamespaceInstrumentationConfig,
 					testActor,
-					logger,
+					capturingLogger,
 				)
 
-				capturingLogger, capturingLogSink := NewCapturingLogger()
 				instrumentationIssues := modifier.addEnvironmentVariables(
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					capturingLogger,
 				)
 
 				envVars := container.Env
@@ -1812,6 +1845,20 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
 				},
 				clusterInstrumentationConfig: clusterInstrumentationConfigWithServiceUrl,
+			}),
+			Entry("should update OTEL_EXPORTER_OTLP_ENDPOINT when the collector's OTLP host port has been reconfigured", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  envVarOtelExporterOtlpEndpointName,
+					Value: "http://$(DASH0_NODE_IP):4318",
+				}, {
+					Name:  envVarOtelExporterOtlpProtocolName,
+					Value: common.ProtocolHttpProtobuf,
+				}},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: {Value: OTelCollectorNodeLocalBaseUrlTest},
+					envVarOtelExporterOtlpProtocolName: {Value: common.ProtocolHttpProtobuf},
+				},
 			}),
 			Entry("should not update OTEL_EXPORTER_OTLP_ENDPOINT when _PROTOCOL is set and has an unexpected value", otelExporterEnvVarsTest{
 				existingEnvVars: []corev1.EnvVar{{
@@ -1962,6 +2009,21 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{
 						Name:  envVarOtelExporterOtlpEndpointName,
 						Value: OTelCollectorNodeLocalBaseUrlTest,
+					},
+					{
+						Name:  envVarOtelExporterOtlpProtocolName,
+						Value: common.ProtocolHttpProtobuf,
+					}},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarOtelExporterOtlpEndpointName: nil,
+					envVarOtelExporterOtlpProtocolName: nil,
+				},
+			}),
+			Entry("should remove OTEL_EXPORTER_OTLP_* when the collector's OTLP host port has been reconfigured", otelExporterEnvVarsTest{
+				existingEnvVars: []corev1.EnvVar{
+					{
+						Name:  envVarOtelExporterOtlpEndpointName,
+						Value: "http://$(DASH0_NODE_IP):4318",
 					},
 					{
 						Name:  envVarOtelExporterOtlpProtocolName,
@@ -2190,7 +2252,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&workloadMeta,
 					&podMeta,
-					logger,
 				)
 
 				envVars := container.Env
@@ -2587,7 +2648,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				container1,
 				&workloadMeta1,
 				&podMeta1,
-				logger,
 			)
 
 			// now re-order the annotations and generate the DASH0_RESOURCE_ATTRIBUTES value again
@@ -2610,7 +2670,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				container2,
 				&workloadMeta2,
 				&podMeta2,
-				logger,
 			)
 
 			// Verify that the value of DASH0_RESOURCE_ATTRIBUTES is independent of the order in which annotations
@@ -2651,7 +2710,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				envVars := container.Env
@@ -2926,7 +2984,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, container.Env)
@@ -3311,7 +3368,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container,
 					&metav1.ObjectMeta{},
 					&metav1.ObjectMeta{},
-					logger,
 				)
 
 				envVars := container.Env

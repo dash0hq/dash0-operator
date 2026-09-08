@@ -18,9 +18,6 @@ exclude:
     - /test-resources/
     - /images/instrumentation/test
 
-    # Vendored code (excluded in SonarCloud and golangci-lint)
-    - /internal/webhooks/vendored/
-
     # Generated Kustomize sources (intermediate stage for Helm chart)
     - /config/
 

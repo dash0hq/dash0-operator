@@ -65,6 +65,7 @@ var knownUnredactedFields = map[string]string{
 	// Attribute keys of filters, columns and assertions - the left-hand side of a comparison, never a secret.
 	"filter.key":         "an attribute key of a filter",
 	"filters.key":        "an attribute key of a filter",
+	"otherFilters.key":   "an attribute key of a filter",
 	"implicitFilter.key": "an attribute key of a filter",
 	"columns.key":        "an attribute key of a table column",
 	"sort.key":           "an attribute key of a sort order",

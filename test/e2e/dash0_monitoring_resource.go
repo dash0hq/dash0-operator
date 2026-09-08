@@ -144,6 +144,41 @@ func deployRenderedMonitoringResourceWithRetry(
 	waitForMonitoringResourceToBecomeAvailable(namespace, dash0MonitoringResourceName)
 }
 
+// deployDash0MonitoringResourceExpectingRejection tries to deploy a Dash0 monitoring resource and verifies that the
+// validation webhook rejects it with an error message that contains all expected substrings. The resource is applied
+// only once, without a retry, since the rejection is the expected outcome. It returns the output of the kubectl apply
+// command, so that callers can make additional assertions on the rejection message.
+//
+//nolint:unparam
+func deployDash0MonitoringResourceExpectingRejection(
+	namespace string,
+	dash0MonitoringValues dash0MonitoringValues,
+	expectedErrorSubstrings ...string,
+) string {
+	renderedResourceFileName := renderDash0MonitoringResourceTemplate(dash0MonitoringValues)
+	defer func() {
+		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
+	}()
+	By(fmt.Sprintf(
+		"deploying an invalid Dash0 monitoring resource to namespace %s from file %s, expecting the validation webhook "+
+			"to reject it",
+		namespace, renderedResourceFileName))
+	output, err := run(exec.Command(
+		"kubectl",
+		"apply",
+		"-n",
+		namespace,
+		"-f",
+		renderedResourceFileName,
+	), true, false, false)
+	Expect(err).To(HaveOccurred())
+	Expect(output).To(ContainSubstring(`admission webhook "validate-monitoring.dash0.com" denied the request`))
+	for _, expectedErrorSubstring := range expectedErrorSubstrings {
+		Expect(output).To(ContainSubstring(expectedErrorSubstring))
+	}
+	return output
+}
+
 func waitForMonitoringResourceToBecomeAvailable(namespace string, name string) {
 	By("waiting for the Dash0 monitoring resource to become available")
 	Eventually(func(g Gomega) {

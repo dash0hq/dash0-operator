@@ -104,8 +104,8 @@ connectors:
   dash0redmetrics: {}
 {{- end }}
 {{- if .SignalControl.SignalToMetricsEnabled }}
-{{- if or .SignalControl.SignalToMetricsMaxTimeSeries .SignalControl.SignalToMetricsFlushInterval .SignalControl.SignalToMetricsCacheExpiration }}
   dash0signaltometrics:
+    metric_recorder: dash0metricrecorder
 {{- if .SignalControl.SignalToMetricsMaxTimeSeries }}
     max_time_series: {{ .SignalControl.SignalToMetricsMaxTimeSeries }}
 {{- end }}
@@ -114,9 +114,6 @@ connectors:
 {{- end }}
 {{- if .SignalControl.SignalToMetricsFlushInterval }}
     metrics_flush_interval: {{ .SignalControl.SignalToMetricsFlushInterval }}
-{{- end }}
-{{- else }}
-  dash0signaltometrics: {}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -138,8 +135,8 @@ connectors:
   dash0redmetrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
 {{- end }}
 {{- if $.SignalControl.SignalToMetricsEnabled }}
-{{- if or $.SignalControl.SignalToMetricsMaxTimeSeries $.SignalControl.SignalToMetricsFlushInterval $.SignalControl.SignalToMetricsCacheExpiration }}
   dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}:
+    metric_recorder: dash0metricrecorder/ns/{{ $ns }}/{{ $b.DatasetIndex }}
 {{- if $.SignalControl.SignalToMetricsMaxTimeSeries }}
     max_time_series: {{ $.SignalControl.SignalToMetricsMaxTimeSeries }}
 {{- end }}
@@ -148,9 +145,6 @@ connectors:
 {{- end }}
 {{- if $.SignalControl.SignalToMetricsFlushInterval }}
     metrics_flush_interval: {{ $.SignalControl.SignalToMetricsFlushInterval }}
-{{- end }}
-{{- else }}
-  dash0signaltometrics/ns/{{ $ns }}/{{ $b.DatasetIndex }}: {}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -418,6 +412,9 @@ processors:
 {{- end }}
 {{- if $samplingActive }}
   dash0sampling:
+{{- if $scDefault }}
+    metric_recorder: dash0metricrecorder
+{{- end }}
     decision_maker_endpoint: {{ .SignalControl.Endpoint }}
     decision_maker_headers:
       Authorization: Bearer ${env:DASH0_SIGNAL_CONTROL_AUTH_TOKEN}
@@ -436,6 +433,9 @@ processors:
     reservoir:
       type: {{ .SignalControl.SamplingReservoirType }}
       metric_level: {{ .SignalControl.SamplingReservoirMetricLevel }}
+{{- if .SignalControl.SamplingReservoirBufferDuration }}
+      buffer_duration: {{ .SignalControl.SamplingReservoirBufferDuration }}
+{{- end }}
 {{- if eq .SignalControl.SamplingReservoirType "disk" }}
       data_dir: /var/lib/dash0/trace-reservoir
       max_disk_bytes: {{ .SignalControl.SamplingReservoirMaxDiskBytes }}

@@ -163,6 +163,11 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	Profiling *Profiling `json:"profiling,omitempty"`
+
+	// Settings for the agent0-connector.
+	//
+	// +kubebuilder:validation:Optional
+	Agent0Connector Agent0Connector `json:"agent0Connector,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
@@ -193,6 +198,27 @@ type PrometheusCrdSupport struct {
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// Agent0Connector contains settings for the agent0-connector.
+type Agent0Connector struct {
+	// An opt-out switch for the agent0-connector deployment. This setting is optional. Setting it to `false` prevents the
+	// operator from deploying the agent0-connector, even when the agent0-connector is enabled via the Helm chart. It is a
+	// validation error to set it to `true` when the agent0-connector is disabled via the Helm chart.
+	//
+	// Using this setting to disable agent0-connector when it is enabled via Helm and the Helm chart manages the
+	// Dash0OperatorConfiguration resource (operator.dash0Export.enabled=true) is not supported.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// IsEnabled reports whether the operator deploys the agent0-connector. The parameter enabledViaHelm is the value of the
+// Helm value operator.agent0Connector.enabled, which the operator holds for the lifetime of the process. The
+// agent0-connector requires that Helm value; this resource can only opt out of it, which is why an unset Enabled flag
+// follows the Helm value.
+func (a Agent0Connector) IsEnabled(enabledViaHelm bool) bool {
+	return enabledViaHelm && pointers.ReadBoolPointerWithDefault(a.Enabled, true)
 }
 
 // InstrumentationDelivery selects how the Dash0 instrumentation files (the OpenTelemetry injector and the
@@ -380,6 +406,15 @@ type Dash0OperatorConfigurationStatus struct {
 	//
 	// +kubebuilder:validation:Optional
 	PreviousMonitoringTemplate *MonitoringTemplate `json:"previousMonitoringTemplate,omitempty"`
+
+	// Agent0Connector reports whether the operator has deployed the agent0-connector, and why not if it hasn't. A
+	// disabled agent0-connector is reported with deployed=false and reason=Disabled, which is what distinguishes it
+	// from one that failed to deploy. This is absent until the operator reconciles the agent0-connector for the first
+	// time, which it only does when the agent0-connector is enabled via the Helm chart
+	// (operator.agent0Connector.enabled).
+	//
+	// +kubebuilder:validation:Optional
+	Agent0Connector *Agent0ConnectorStatus `json:"agent0Connector,omitempty"`
 }
 
 func (d *Dash0OperatorConfiguration) IsMarkedForDeletion() bool {
@@ -632,6 +667,61 @@ func (d *Dash0OperatorConfiguration) cloneAndRedact() Dash0OperatorConfiguration
 		export.Redact()
 	}
 	return redactedResource
+}
+
+// Agent0ConnectorStatus reports whether the operator has deployed the agent0-connector, that is, whether it has
+// successfully created or updated the agent0-connector's service account, cluster role, cluster role binding and
+// deployment. It does not report whether the agent0-connector's pod is up: a successful deployment can still fail to
+// start, which the deployment resource itself reports.
+//
+// This is deliberately not a status condition: the agent0-connector is an optional feature, and an issue with it
+// neither makes the operator configuration resource unavailable nor degraded.
+type Agent0ConnectorStatus struct {
+	// Deployed reports whether the operator has successfully created or updated the agent0-connector resources the
+	// last time it tried.
+	Deployed bool `json:"deployed"`
+
+	// Reason is a programmatic identifier for the last negative outcome, e.g. "InvalidClusterRoleRules".
+	//
+	// +kubebuilder:validation:Optional
+	Reason string `json:"reason,omitempty"`
+
+	// Message describes the last outcome in a human-readable form.
+	//
+	// +kubebuilder:validation:Optional
+	Message string `json:"message,omitempty"`
+
+	// LastTransitionTime is the time at which Deployed last changed.
+	//
+	// +kubebuilder:validation:Optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// SetAgent0ConnectorStatus records the outcome of the last attempt to create or update the agent0-connector resources.
+// It reports whether the recorded state changed, so that the caller only queues a Kubernetes event on a transition
+// instead of on every reconciliation.
+//
+// A change is the value of Deployed flipping, the status appearing for the first time, or the reason changing while
+// the agent0-connector is not deployed - an operator who fixes one misconfiguration and runs into the next one has to
+// learn about the second one as well. LastTransitionTime only advances when Deployed flips, mirroring the semantics of
+// a status condition.
+func (d *Dash0OperatorConfiguration) SetAgent0ConnectorStatus(deployed bool, reason string, message string) bool {
+	previous := d.Status.Agent0Connector
+	changed := previous == nil ||
+		previous.Deployed != deployed ||
+		(!deployed && previous.Reason != reason)
+
+	lastTransitionTime := metav1.Now()
+	if previous != nil && previous.Deployed == deployed {
+		lastTransitionTime = previous.LastTransitionTime
+	}
+	d.Status.Agent0Connector = &Agent0ConnectorStatus{
+		Deployed:           deployed,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: lastTransitionTime,
+	}
+	return changed
 }
 
 //+kubebuilder:object:root=true

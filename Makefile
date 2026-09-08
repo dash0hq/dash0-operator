@@ -179,23 +179,31 @@ go-fix: ## Run go fix against code.
 test: go-unit-tests helm-unit-tests ## Run all unit tests (Go, Helm chart unit tests).
 
 .PHONY: go-unit-tests
-go-unit-tests: common-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests ## Run the Go unit tests for all packages.
+go-unit-tests: common-package-unit-tests nodeuid-package-unit-tests operator-manager-unit-tests agent0-connector-unit-tests collector-telemetry-unit-tests ## Run the Go unit tests for all packages.
 
 .PHONY: operator-manager-unit-tests
 operator-manager-unit-tests: manifests generate fmt vet envtest ## Run the Go unit tests for the operator code.
 ifdef GINKGO_FOCUS
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e -e /vendored) -ginkgo.focus="$(GINKGO_FOCUS)" -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -ginkgo.focus="$(GINKGO_FOCUS)" -coverprofile cover.out
 else
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e -e /vendored) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v -e /e2e) -coverprofile cover.out
 endif
 
 .PHONY: common-package-unit-tests
 common-package-unit-tests: ## Run the Go unit tests for the common package (code shared between operator manager and other images, i.e. config-reloader, filelogoffsetsync).
 	go test github.com/dash0hq/dash0-operator/images/pkg/common
 
+.PHONY: nodeuid-package-unit-tests
+nodeuid-package-unit-tests: ## Run the Go unit tests for the nodeuid package (shared between the operator manager, the other images, and the collector's internal-telemetry factory).
+	cd images/pkg/nodeuid && go test ./...
+
 .PHONY: agent0-connector-unit-tests
 agent0-connector-unit-tests: ## Run the Go unit tests for the agent0-connector image Go app.
 	cd images/agent0-connector/src && go test ./...
+
+.PHONY: collector-telemetry-unit-tests
+collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image's custom internal-telemetry factory.
+	cd images/collector/src/telemetry && go test ./...
 
 .PHONY: helm-unit-tests
 helm-unit-tests: ## Run the Helm chart unit tests.
@@ -252,6 +260,11 @@ go-mod-tidy: ## Run go mod tidy for all modules
 		dir=$$(dirname "$$f"); echo $$dir; \
 		(cd "$$dir" && GOBIN=$(LOCALBIN) go mod tidy); \
 	done < <(find . -maxdepth 5 -type f -name go.mod -print0)
+
+.PHONY: ginkgo-suite-check
+ginkgo-suite-check: ## Check whether every package with Ginkgo specs has a suite bootstrap.
+	@echo "-------------------------------- (verifying every package with Ginkgo specs has a suite bootstrap)"
+	./test-resources/bin/ginkgo-suite-check.sh
 
 .PHONY: internal-config-map-lint
 internal-config-map-lint: ## Verify config map templates for resources managed by the collector.
@@ -322,6 +335,7 @@ instrumentation-test-lint: npm-installed
 GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
   dockerfile:go.mod:Dockerfile \
   dockerfile:images/agent0-connector/src/go.mod:images/agent0-connector/Dockerfile \
+  dockerfile:images/collector/src/telemetry/go.mod:images/collector/Dockerfile \
   dockerfile:images/configreloader/src/go.mod:images/configreloader/Dockerfile \
   dockerfile:images/filelogoffsetsync/src/go.mod:images/filelogoffsetsync/Dockerfile \
   dockerfile:test/e2e/control-plane-mock/go.mod:test/e2e/control-plane-mock/Dockerfile \
@@ -333,6 +347,7 @@ GO_VERSION_CHECK_GOMOD_DOCKERFILE_PAIRS := \
 # Pairs of go.mod files whose Go versions must be in sync, encoded as "gomod:<go.mod>:<go.mod>".
 GO_VERSION_CHECK_GOMOD_GOMOD_PAIRS := \
   gomod:go.mod:images/pkg/common/go.mod \
+  gomod:go.mod:images/pkg/nodeuid/go.mod \
   gomod:go.mod:test/e2e/go.mod \
   gomod:test/e2e/go.mod:test/e2e/pkg/shared/go.mod \
   gomod:test/e2e/pkg/shared/go.mod:test/e2e/otlp-sink/telemetrymatcher/go.mod
@@ -355,7 +370,7 @@ perses-crd-version-check: ## Check whether all references to the PersesDashboard
 	./test-resources/bin/perses-crd-version-check.sh
 
 .PHONY: lint
-lint: go-version-check golangci-lint internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
+lint: go-version-check golangci-lint ginkgo-suite-check internal-config-map-lint helm-chart-lint shellcheck-lint instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check ## Run all static code analysis checks (Go, Helm, shell scripts, etc.).
 
 .PHONY: lint-fix
 lint-fix: golangci-lint-fix
@@ -569,7 +584,7 @@ image-instrumentation: ## Build the instrumentation image.
 
 .PHONY: image-collector
 image-collector: ## Build the OpenTelemetry collector container image.
-	@$(call build_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG),images/collector)
+	@$(call build_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG),images,images/collector/Dockerfile)
 
 .PHONY: image-config-reloader
 image-config-reloader: ## Build the config reloader container image.

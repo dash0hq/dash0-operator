@@ -22,12 +22,14 @@ import (
 type Action string
 
 const (
-	ActionInstrumentation   Action = "Instrumentation"
-	ActionUninstrumentation Action = "Uninstrumentation"
+	ActionInstrumentation       Action = "Instrumentation"
+	ActionUninstrumentation     Action = "Uninstrumentation"
+	ActionAgent0ConnectorDeploy Action = "Agent0ConnectorDeployment"
 )
 
 type Reason string
 
+// Instrumentation-related event reasons:
 const (
 	ReasonSuccessfulInstrumentation              Reason = "SuccessfulInstrumentation"
 	ReasonPartiallyUnsuccessfulInstrumentation   Reason = "PartiallyUnsuccessfulInstrumentation"
@@ -39,7 +41,17 @@ const (
 	ReasonFailedUninstrumentation                Reason = "FailedUninstrumentation"
 )
 
-var AllEvents = []Reason{
+// Event reasons unrelated to workload instrumentation:
+const (
+	ReasonAgent0ConnectorDeployed    Reason = "Agent0ConnectorDeployed"
+	ReasonAgent0ConnectorNotDeployed Reason = "Agent0ConnectorNotDeployed"
+	ReasonAgent0ConnectorDisabled    Reason = "Agent0ConnectorDisabled"
+)
+
+// AllInstrumentationEvents lists the events the instrumentation webhook queues for a workload. The webhook cannot set
+// the involved object's UID, so MonitoringReconciler#attachDanglingEvents looks them up by reason and attaches them
+// afterwards.
+var AllInstrumentationEvents = []Reason{
 	ReasonSuccessfulInstrumentation,
 	ReasonPartiallyUnsuccessfulInstrumentation,
 	ReasonNoInstrumentationNecessary,
@@ -60,7 +72,7 @@ type CollectorConfig struct {
 	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
 	// config of the prometheus_receiver
 	TargetAllocatorNamePrefix              string
-	Agent0ConnectorEnabled                 bool
+	Agent0ConnectorEnabledViaHelm          bool
 	SendBatchSize                          *uint32
 	SendBatchMaxSize                       *uint32
 	K8sAttributesDisableReplicasetInformer bool
@@ -85,11 +97,17 @@ type CollectorConfig struct {
 	IsIPv6Cluster              bool
 	IsDocker                   bool
 	DisableHostPorts           bool
-	IsGkeAutopilot             bool
-	DevelopmentMode            bool
-	DebugVerbosityDetailed     bool
-	EnableProfExtension        bool
-	CompressConfigMap          bool
+	// OtlpGrpcHostPort and OtlpHttpHostPort are the host ports the collector DaemonSet pods use for the gRPC/HTTP OTLP
+	// receivers, set from the Helm values operator.collectors.otlpGrpcHostPort / otlpHttpHostPort via the CLI flags
+	// --dash0-otel-collector-otlp-grpc-host-port / --dash0-otel-collector-otlp-http-host-port. They only take effect
+	// when DisableHostPorts is false.
+	OtlpGrpcHostPort       int32
+	OtlpHttpHostPort       int32
+	IsGkeAutopilot         bool
+	DevelopmentMode        bool
+	DebugVerbosityDetailed bool
+	EnableProfExtension    bool
+	CompressConfigMap      bool
 }
 
 // KubeletStatsReceiverConfig holds the configuration for the kubeletstats receiver in the DaemonSet collector. It is
@@ -184,11 +202,6 @@ func getImageVersion(image string) string {
 type PossibleCollectorUrls struct {
 	NodeLocalBaseUrl string
 	ServiceBaseUrl   string
-}
-
-// All returns all possible collector base URLs as a slice.
-func (u PossibleCollectorUrls) All() []string {
-	return []string{u.NodeLocalBaseUrl, u.ServiceBaseUrl}
 }
 
 // ClusterInstrumentationConfig holds configuration values relevant for instrumenting workloads which apply to the whole

@@ -25,7 +25,7 @@ nodes:
     labels:
       topology.kubernetes.io/zone: zone-a
     extraMounts:
-      - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/filelog-offsets
+      - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/offset-storage
         containerPath: /offset-storage
   - role: worker
     extraPortMappings:

@@ -140,6 +140,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 				operatorConfigurationResource.Spec.Profiling.Enabled,
 				false,
 			)
+	agent0ConnectorEnabled :=
+		operatorConfigurationResource.Spec.Agent0Connector.IsEnabled(m.collectorConfig.Agent0ConnectorEnabledViaHelm)
 	clusterName = operatorConfigurationResource.Spec.ClusterName
 	kubeletStatsReceiverConfig :=
 		m.determineKubeletstatsReceiverEndpoint(
@@ -176,7 +178,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
 		PrometheusCrdSupportEnabled:                      prometheusCrdSupportEnabled,
 		TargetAllocatorNamePrefix:                        m.collectorConfig.TargetAllocatorNamePrefix,
-		Agent0ConnectorEnabled:                           m.collectorConfig.Agent0ConnectorEnabled,
+		Agent0ConnectorEnabled:                           agent0ConnectorEnabled,
 		Agent0ConnectorDeploymentName:                    a0cresources.DeploymentName(m.collectorConfig.OTelCollectorNamePrefix),
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		AutoNamespaceMonitoringEnabled:                   operatorConfigurationResource.Spec.AutoMonitorNamespaces.IsEnabled(),
@@ -189,6 +191,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		//   For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
 		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.collectorConfig.IsDocker,
 		DisableHostPorts:       m.collectorConfig.DisableHostPorts,
+		OtlpGrpcHostPort:       ResolveOtlpGrpcHostPort(m.collectorConfig.OtlpGrpcHostPort),
+		OtlpHttpHostPort:       ResolveOtlpHttpHostPort(m.collectorConfig.OtlpHttpHostPort),
 		ClusterName:            clusterName,
 		PseudoClusterUid:       m.collectorConfig.PseudoClusterUid,
 		Images:                 m.collectorConfig.Images,
@@ -473,8 +477,10 @@ func (m *OTelColResourceManager) DeleteResources(
 		K8sAttributesDisableReplicasetInformer:           m.collectorConfig.K8sAttributesDisableReplicasetInformer,
 		K8sAttributesWaitForMetadata:                     m.collectorConfig.K8sAttributesWaitForMetadata,
 		K8sAttributesWaitForMetadataTimeout:              m.collectorConfig.K8sAttributesWaitForMetadataTimeout,
-		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,        // irrelevant for deletion
-		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts, // irrelevant for deletion
+		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,                                 // irrelevant for deletion
+		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts,                          // irrelevant for deletion
+		OtlpGrpcHostPort:                                 ResolveOtlpGrpcHostPort(m.collectorConfig.OtlpGrpcHostPort), // irrelevant for deletion
+		OtlpHttpHostPort:                                 ResolveOtlpHttpHostPort(m.collectorConfig.OtlpHttpHostPort), // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:                                   m.collectorConfig.IsGkeAutopilot,
@@ -702,6 +708,7 @@ func signalControlConfigFromResource(
 	// applies for the memory/serialized_memory reservoir types.
 	var samplingReservoirMaxMemoryBytes int64
 	samplingReservoirMetricLevel := string(dash0v1alpha1.ReservoirMetricLevelBasic)
+	var samplingReservoirBufferDuration string
 	if r := resource.Spec.Sampling.Reservoir; r != nil {
 		if r.Type != nil && *r.Type != "" {
 			samplingReservoirType = string(*r.Type)
@@ -720,6 +727,9 @@ func signalControlConfigFromResource(
 		}
 		if r.MaxMemoryBytes != nil {
 			samplingReservoirMaxMemoryBytes = r.MaxMemoryBytes.Value()
+		}
+		if d := r.BufferDuration; d != nil && d.Duration > 0 {
+			samplingReservoirBufferDuration = d.Duration.String()
 		}
 		if r.MetricLevel != nil && *r.MetricLevel != "" {
 			samplingReservoirMetricLevel = string(*r.MetricLevel)
@@ -796,6 +806,7 @@ func signalControlConfigFromResource(
 		SamplingReservoirMaxDiskBytes:      samplingReservoirMaxDiskBytes,
 		SamplingReservoirMaxMemoryBytes:    samplingReservoirMaxMemoryBytes,
 		SamplingReservoirMetricLevel:       samplingReservoirMetricLevel,
+		SamplingReservoirBufferDuration:    samplingReservoirBufferDuration,
 		SignalToMetricsEnabled:             signalToMetricsEnabled,
 		SignalToMetricsMaxTimeSeries:       resource.Spec.SignalToMetrics.MaxTimeSeries,
 		SignalToMetricsFlushInterval:       signalToMetricsFlushInterval,

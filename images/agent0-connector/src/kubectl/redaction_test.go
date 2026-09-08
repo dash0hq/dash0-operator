@@ -5,7 +5,9 @@ package kubectl
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -30,6 +32,20 @@ func TestResponseCanContainSecrets(t *testing.T) {
 		{name: "notification channels as yaml", arguments: []string{"get", "dash0notificationchannels", "-o", "yaml"}, expected: true},
 		{name: "synthetic checks as json", arguments: []string{"get", "dash0syntheticchecks", "-o", "json"}, expected: true},
 		{name: "multi-resource list", arguments: []string{"get", "pods,dash0monitorings,dash0operatorconfiguration", "-o", "yaml"}, expected: true},
+		{name: "workload resources as yaml", arguments: []string{"get", "deployments", "-o", "yaml"}, expected: true},
+		{name: "singular workload resource as json", arguments: []string{"get", "daemonset", "my-daemonset", "-o", "json"}, expected: true},
+		{name: "workload short name as yaml", arguments: []string{"get", "sts", "-o", "yaml"}, expected: true},
+		{name: "workload kind form as yaml", arguments: []string{"get", "CronJob", "-o", "yaml"}, expected: true},
+		{name: "fully qualified workload as yaml", arguments: []string{"get", "deployments.v1.apps", "-o", "yaml"}, expected: true},
+		{name: "workload type/name pair as json", arguments: []string{"get", "pod/my-pod", "-o", "json"}, expected: true},
+		{name: "the all shorthand renders pod specs", arguments: []string{"get", "all", "-o", "yaml"}, expected: true},
+		{name: "controller revisions embed a pod template", arguments: []string{"get", "controllerrevisions", "-o", "yaml"}, expected: true},
+		{name: "config maps as yaml", arguments: []string{"get", "configmaps", "-o", "yaml"}, expected: true},
+		{name: "singular config map as json", arguments: []string{"get", "configmap", "my-cm", "-o", "json"}, expected: true},
+		{name: "config map short name as yaml", arguments: []string{"get", "cm", "-o", "yaml"}, expected: true},
+		{name: "config map kind form as yaml", arguments: []string{"get", "ConfigMap", "-o", "yaml"}, expected: true},
+		{name: "fully qualified config map as yaml", arguments: []string{"get", "configmaps.v1.", "-o", "yaml"}, expected: true},
+		{name: "config map type/name pair as json", arguments: []string{"get", "cm/my-cm", "-o", "json"}, expected: true},
 		{name: "attached output format", arguments: []string{"get", "dash0monitorings", "-oyaml"}, expected: true},
 		{name: "grouped shorthand output format", arguments: []string{"get", "dash0monitorings", "-Aoyaml"}, expected: true},
 		{name: "leading global flag before the kubectl command", arguments: []string{"-n", "my-namespace", "get", "dash0monitorings", "-o", "yaml"}, expected: true},
@@ -42,10 +58,14 @@ func TestResponseCanContainSecrets(t *testing.T) {
 		{name: "describe is not redacted", arguments: []string{"describe", "dash0monitorings"}, expected: false},
 		{name: "explain only prints the schema", arguments: []string{"explain", "dash0monitorings", "--recursive"}, expected: false},
 		{name: "events do not reference the resource positionally", arguments: []string{"events", "--for", "dash0monitoring/my-resource"}, expected: false},
-		{name: "other resources are unaffected", arguments: []string{"get", "pods", "-o", "yaml"}, expected: false},
+		{name: "workload table output has no resource content", arguments: []string{"get", "deployments", "-o", "wide"}, expected: false},
+		{name: "config map table output has no resource content", arguments: []string{"get", "configmaps", "-o", "wide"}, expected: false},
+		{name: "a resource named like a config map is not a resource type", arguments: []string{"get", "services", "cm", "-o", "yaml"}, expected: false},
+		{name: "other resources are unaffected", arguments: []string{"get", "services", "-o", "yaml"}, expected: false},
 		{name: "Dash0 resource types without secrets are unaffected", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "pods", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "pods", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
+		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: false},
+		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
+		{name: "a resource named like a workload type is not a resource type", arguments: []string{"get", "services", "deployments", "-o", "yaml"}, expected: false},
 		{name: "no kubectl command", arguments: []string{"--help"}, expected: false},
 	}
 
@@ -82,6 +102,28 @@ func redactDocumentAs(t *testing.T, document string, format string) (string, []s
 		t.Fatalf("cannot render the redacted test document: %v", err)
 	}
 	return rendered, redacted.valuesToScrubFromStderr()
+}
+
+// decodeBinaryDataValue returns the decoded content of one binaryData value of a redacted config map response, so that
+// a test can assert on what the value holds rather than on its base64.
+func decodeBinaryDataValue(t *testing.T, response string, key string) string {
+	t.Helper()
+
+	var configMap struct {
+		BinaryData map[string]string `json:"binaryData"`
+	}
+	if err := json.Unmarshal([]byte(response), &configMap); err != nil {
+		t.Fatalf("cannot parse the redacted response: %v", err)
+	}
+	value, hasKey := configMap.BinaryData[key]
+	if !hasKey {
+		t.Fatalf("the redacted response has no binaryData value %q: %s", key, response)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		t.Fatalf("the redacted binaryData value %q is not base64: %v", key, err)
+	}
+	return string(decoded)
 }
 
 func TestRedactDocument(t *testing.T) {
@@ -335,6 +377,418 @@ func nestedObject(t *testing.T, node map[string]any, path ...string) map[string]
 		node = child
 	}
 	return node
+}
+
+// TestRedactWorkloadEnvVars covers the environment variables of a pod spec, wherever the pod spec sits.
+func TestRedactWorkloadEnvVars(t *testing.T) {
+	t.Run("redacts the literal value of every environment variable", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, workloadResourcesJson)
+
+		for _, value := range []string{
+			deploymentEnvValue,
+			initContainerEnvValue,
+			ephemeralContainerEnvValue,
+			daemonSetEnvValue,
+			lastAppliedEnvValue,
+			cronJobEnvValue,
+			controllerRevisionEnvValue,
+		} {
+			if strings.Contains(rendered, value) {
+				t.Errorf("expected the environment variable value %q to be redacted, got %q", value, rendered)
+			}
+		}
+		// The values are replaced in the document only. Scrubbing them from stderr as well would replace ordinary words
+		// in unrelated output, see redactEnvVarValue.
+		if len(replaced) > 0 {
+			t.Errorf("expected no environment variable value to be scrubbed from stderr, got %q", replaced)
+		}
+	})
+
+	t.Run("leaves everything that is not a literal value in place", func(t *testing.T) {
+		rendered, _ := redactDocument(t, workloadResourcesJson)
+
+		for _, preserved := range []string{
+			envVarName,
+			envVarSecretKeyName,
+			"DATABASE_URL",
+			"INIT_SECRET",
+			"metadata.name",
+			"secretKeyRef",
+			"envFrom",
+			"app:1.0.0",
+		} {
+			if !strings.Contains(rendered, preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+			}
+		}
+	})
+
+	t.Run("redacts the environment variables of a container in every shape", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			document string
+			expected string
+		}{
+			{
+				name:     "a literal value",
+				document: `{"env":[{"name":"A","value":"secret"}]}`,
+				expected: `{"env":[{"name":"A","value":"(redacted)"}]}`,
+			},
+			{
+				name:     "several variables of one container",
+				document: `{"env":[{"name":"A","value":"a"},{"name":"B","value":"b"}]}`,
+				expected: `{"env":[{"name":"A","value":"(redacted)"},{"name":"B","value":"(redacted)"}]}`,
+			},
+			{
+				// A well-known non-secret value keeps its place in a header, but not in an environment variable: any
+				// workload can hold a credential there, and there is no way to tell one from an innocuous value.
+				name:     "a value that would be well-known for a header",
+				document: `{"env":[{"name":"A","value":"application/json"}]}`,
+				expected: `{"env":[{"name":"A","value":"(redacted)"}]}`,
+			},
+			{
+				name:     "a value sourced via valueFrom",
+				document: `{"env":[{"name":"A","valueFrom":{"secretKeyRef":{"name":"s","key":"k"}}}]}`,
+				expected: `{"env":[{"name":"A","valueFrom":{"secretKeyRef":{"key":"k","name":"s"}}}]}`,
+			},
+			{
+				name:     "an empty value",
+				document: `{"env":[{"name":"A","value":""}]}`,
+				expected: `{"env":[{"name":"A","value":""}]}`,
+			},
+			{
+				// Not the env var list of a pod spec: the walk only replaces a string held by the "value" key of a list
+				// entry, so a field that happens to be called "env" is left alone.
+				name:     "an env field that is not a list",
+				document: `{"env":{"A":"a"}}`,
+				expected: `{"env":{"A":"a"}}`,
+			},
+			{
+				name:     "an env list of strings",
+				document: `{"env":["A=a"]}`,
+				expected: `{"env":["A=a"]}`,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var parsed any
+				if err := json.Unmarshal([]byte(tt.document), &parsed); err != nil {
+					t.Fatalf("cannot parse the test document: %v", err)
+				}
+				redactDocumentNodeRecursively(parsed, &redactor{values: make(map[string]struct{})})
+				rendered, err := json.Marshal(parsed)
+				if err != nil {
+					t.Fatalf("cannot render the redacted test document: %v", err)
+				}
+				if string(rendered) != tt.expected {
+					t.Errorf("expected %s, got %s", tt.expected, rendered)
+				}
+			})
+		}
+	})
+
+	t.Run("redacts the header values of the probes and lifecycle hooks of a pod spec", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			document string
+			expected string
+		}{
+			{
+				name:     "a liveness probe header",
+				document: `{"livenessProbe":{"httpGet":{"httpHeaders":[{"name":"Authorization","value":"Bearer t0ken"}]}}}`,
+				expected: `{"livenessProbe":{"httpGet":{"httpHeaders":[{"name":"Authorization","value":"(redacted)"}]}}}`,
+			},
+			{
+				name:     "a lifecycle hook header",
+				document: `{"lifecycle":{"preStop":{"httpGet":{"httpHeaders":[{"name":"X-Api-Key","value":"k3y"}]}}}}`,
+				expected: `{"lifecycle":{"preStop":{"httpGet":{"httpHeaders":[{"name":"X-Api-Key","value":"(redacted)"}]}}}}`,
+			},
+			{
+				// The same plausibility check as for the header values of an export: a well-known non-secret value
+				// keeps its place, see redactHeaderValueIfPlausible.
+				name:     "a well-known non-secret header value",
+				document: `{"readinessProbe":{"httpGet":{"httpHeaders":[{"name":"Accept","value":"application/json"}]}}}`,
+				expected: `{"readinessProbe":{"httpGet":{"httpHeaders":[{"name":"Accept","value":"application/json"}]}}}`,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var parsed any
+				if err := json.Unmarshal([]byte(tt.document), &parsed); err != nil {
+					t.Fatalf("cannot parse the test document: %v", err)
+				}
+				redactDocumentNodeRecursively(parsed, &redactor{values: make(map[string]struct{})})
+				rendered, err := json.Marshal(parsed)
+				if err != nil {
+					t.Fatalf("cannot render the redacted test document: %v", err)
+				}
+				if string(rendered) != tt.expected {
+					t.Errorf("expected %s, got %s", tt.expected, rendered)
+				}
+			})
+		}
+	})
+}
+
+// The "\n" sequences in these documents are two characters in the Go source and become newlines when the surrounding
+// JSON document is parsed, so the value of a data key holds a multi-line configuration file, as it does in a real
+// config map.
+const (
+	collectorConfigMapJson = `{
+		"apiVersion": "v1",
+		"kind": "ConfigMap",
+		"metadata": {"name": "dash0-operator-collector", "namespace": "dash0-system"},
+		"data": {
+			"config.yaml": "exporters:\n  otlp/dash0:\n    endpoint: ingress.dash0.com:4317\n` +
+		`    headers:\n      Authorization: Bearer collector-cm-token\n` +
+		`service:\n  pipelines:\n    traces:\n      exporters:\n      - otlp/dash0\n"
+		}
+	}`
+
+	rootCaConfigMapJson = `{
+		"apiVersion": "v1",
+		"kind": "ConfigMap",
+		"metadata": {"name": "kube-root-ca.crt", "namespace": "kube-system"},
+		"data": {
+			"ca.crt": "-----BEGIN CERTIFICATE-----\nMIIDBTCCAe2gAwIBAgIIfjlZk27R4Lgw\n-----END CERTIFICATE-----\n"
+		}
+	}`
+
+	// A config map that was created with "kubectl apply" carries a verbatim copy of itself, its data included, in the
+	// kubectl.kubernetes.io/last-applied-configuration annotation. The credential therefore sits in the response twice
+	// and has to be redacted in both places.
+	appliedConfigMapJson = `{
+		"apiVersion": "v1",
+		"kind": "ConfigMap",
+		"metadata": {
+			"name": "applied-cm",
+			"namespace": "default",
+			"annotations": {
+				"kubectl.kubernetes.io/last-applied-configuration": ` +
+		`"{\"apiVersion\":\"v1\",\"kind\":\"ConfigMap\",\"metadata\":{\"name\":\"applied-cm\"},\"data\":` +
+		`{\"config.yaml\":\"exporters:\\n  otlp/example:\\n    headers:\\n` +
+		`      Authorization: Bearer applied-cm-token\\n\"}}"
+			}
+		},
+		"data": {
+			"config.yaml": "exporters:\n  otlp/example:\n    headers:\n` +
+		`      Authorization: Bearer applied-cm-token\n"
+		}
+	}`
+)
+
+func TestRedactConfigMapData(t *testing.T) {
+	t.Run("redacts a credential inside the yaml of a data value", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, collectorConfigMapJson)
+
+		if strings.Contains(rendered, "collector-cm-token") {
+			t.Errorf("expected the export header value to be redacted, got %q", rendered)
+		}
+		if !strings.Contains(rendered, redactedValue) {
+			t.Errorf("expected the redaction placeholder in the response, got %q", rendered)
+		}
+		// Only the credential is replaced; the rest of the collector configuration stays readable.
+		for _, preserved := range []string{"ingress.dash0.com:4317", "otlp/dash0", "pipelines", "Authorization"} {
+			if !strings.Contains(rendered, preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+			}
+		}
+		if !slices.Contains(replaced, "Bearer collector-cm-token") {
+			t.Errorf("expected the header value to be scrubbed from stderr as well, got %q", replaced)
+		}
+	})
+
+	t.Run("leaves a data value the walk finds no credential in exactly as kubectl rendered it", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, rootCaConfigMapJson)
+
+		// A PEM block is not an object or a list, so there is nothing to walk and nothing to render again.
+		if !strings.Contains(rendered, "-----BEGIN CERTIFICATE-----\\nMIIDBTCCAe2gAwIBAgIIfjlZk27R4Lgw") {
+			t.Errorf("expected the certificate to be preserved verbatim, got %q", rendered)
+		}
+		if strings.Contains(rendered, redactedValue) {
+			t.Errorf("expected nothing to be redacted, got %q", rendered)
+		}
+		if len(replaced) > 0 {
+			t.Errorf("expected no value to be scrubbed from stderr, got %q", replaced)
+		}
+	})
+
+	t.Run("redacts the credential in the copy kubectl apply embeds in an annotation", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, appliedConfigMapJson)
+
+		if strings.Contains(rendered, "applied-cm-token") {
+			t.Errorf("expected the credential to be redacted in the data and in the annotation, got %q", rendered)
+		}
+		// Both the data value and the copy of it in the annotation must carry the placeholder, otherwise only one of
+		// the two was redacted.
+		if placeholders := strings.Count(rendered, redactedValue); placeholders != 2 {
+			t.Errorf("expected 2 redaction placeholders, one per copy of the credential, got %d in %q",
+				placeholders, rendered)
+		}
+		if !slices.Contains(replaced, "Bearer applied-cm-token") {
+			t.Errorf("expected the header value to be scrubbed from stderr as well, got %q", replaced)
+		}
+	})
+
+	t.Run("decodes a binaryData value, redacts it, and hands it back base64", func(t *testing.T) {
+		const plaintext = "headers:\n  Authorization: Bearer binary-cm-token\nport: 8080\n"
+		encoded := base64.StdEncoding.EncodeToString([]byte(plaintext))
+		document := fmt.Sprintf(`{"kind":"ConfigMap","binaryData":{"app.yaml":%q}}`, encoded)
+
+		rendered, replaced := redactDocument(t, document)
+
+		if strings.Contains(rendered, "binary-cm-token") {
+			t.Errorf("expected the credential not to appear in plaintext, got %q", rendered)
+		}
+		if strings.Contains(rendered, encoded) {
+			t.Errorf("expected the original base64 value to be replaced, got %q", rendered)
+		}
+		// The response must stay a valid config map, so the redacted value has to be base64 again rather than the
+		// plaintext the walk worked on.
+		decoded := decodeBinaryDataValue(t, rendered, "app.yaml")
+		if strings.Contains(decoded, "binary-cm-token") {
+			t.Errorf("expected the credential to be redacted, got %q", decoded)
+		}
+		if !strings.Contains(decoded, redactedValue) {
+			t.Errorf("expected the redaction placeholder in the decoded value, got %q", decoded)
+		}
+		if !strings.Contains(decoded, "port: 8080") {
+			t.Errorf("expected the rest of the value to stay readable, got %q", decoded)
+		}
+		// stderr carries the encoded form, in which the plaintext credential does not occur, so the encoded value has
+		// to be scrubbed in its own right.
+		if !slices.Contains(replaced, encoded) {
+			t.Errorf("expected the encoded value to be scrubbed from stderr as well, got %q", replaced)
+		}
+	})
+
+	t.Run("leaves a binaryData value holding no credential exactly as kubectl rendered it", func(t *testing.T) {
+		encoded := base64.StdEncoding.EncodeToString([]byte("port: 8080\n# a comment\n"))
+		document := fmt.Sprintf(`{"kind":"ConfigMap","binaryData":{"app.yaml":%q}}`, encoded)
+
+		rendered, replaced := redactDocument(t, document)
+
+		if !strings.Contains(rendered, encoded) {
+			t.Errorf("expected the value to be preserved verbatim, got %q", rendered)
+		}
+		if len(replaced) > 0 {
+			t.Errorf("expected no value to be scrubbed from stderr, got %q", replaced)
+		}
+	})
+
+	t.Run("redacts a data value in every shape", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			document string
+			expected string
+		}{
+			{
+				name:     "a json value stays json",
+				document: `{"kind":"ConfigMap","data":{"app.json":"{\"headers\":{\"Authorization\":\"tok-json\"}}"}}`,
+				expected: `{"data":{"app.json":"{\n    \"headers\": {\n` +
+					`        \"Authorization\": \"(redacted)\"\n    }\n}\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				name:     "a token at the top level of a yaml value",
+				document: `{"kind":"ConfigMap","data":{"app.yaml":"token: tok-yaml\nport: 8080\n"}}`,
+				expected: `{"data":{"app.yaml":"port: 8080\ntoken: (redacted)\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				// kubectl renders binaryData as base64, so a value that is not base64 cannot be one and there is
+				// nothing in it to parse.
+				name:     "a binaryData value that is not base64 is left alone",
+				document: `{"kind":"ConfigMap","binaryData":{"app.yaml":"password: pw-binary\n"}}`,
+				expected: `{"binaryData":{"app.yaml":"password: pw-binary\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				name:     "a value without a credential keeps its formatting",
+				document: `{"kind":"ConfigMap","data":{"app.yaml":"port:   8080\n# a comment\n"}}`,
+				expected: `{"data":{"app.yaml":"port:   8080\n# a comment\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				name:     "a scalar value is left alone",
+				document: `{"kind":"ConfigMap","data":{"greeting":"hello"}}`,
+				expected: `{"data":{"greeting":"hello"},"kind":"ConfigMap"}`,
+			},
+			{
+				name:     "an empty value is left alone",
+				document: `{"kind":"ConfigMap","data":{"empty":""}}`,
+				expected: `{"data":{"empty":""},"kind":"ConfigMap"}`,
+			},
+			{
+				name:     "every document of a multi-document yaml value is redacted",
+				document: `{"kind":"ConfigMap","data":{"app.yaml":"token: first\n---\ntoken: second\n"}}`,
+				expected: `{"data":{"app.yaml":"token: (redacted)\n---\ntoken: (redacted)\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				// A document start marker before the first content line opens the first document rather than a second
+				// one, and starting a YAML file with it is a widespread convention.
+				name:     "a value opening with the document start marker is redacted",
+				document: `{"kind":"ConfigMap","data":{"app.yaml":"---\ntoken: tok-marker\n"}}`,
+				expected: `{"data":{"app.yaml":"token: (redacted)\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				name:     "a value opening with a comment and the document start marker is redacted",
+				document: `{"kind":"ConfigMap","data":{"app.yaml":"# a comment\n---\ntoken: tok-comment\n"}}`,
+				expected: `{"data":{"app.yaml":"token: (redacted)\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				// A trailing separator does not open a document, so the value must not gain a "null" document.
+				name:     "a value ending with the document separator is redacted",
+				document: `{"kind":"ConfigMap","data":{"app.yaml":"token: tok-trailing\n---\n"}}`,
+				expected: `{"data":{"app.yaml":"token: (redacted)\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				// The separator only starts a document at the top level, which is why the documents are split by a
+				// parser rather than by searching the text for the separator.
+				name:     "a separator inside a block scalar does not split the value",
+				document: `{"kind":"ConfigMap","data":{"app.yaml":"token: tok-block\nnotes: |\n  ---\n  not a document\n"}}`,
+				expected: `{"data":{"app.yaml":"notes: |\n  ---\n  not a document\ntoken: (redacted)\n"},"kind":"ConfigMap"}`,
+			},
+			{
+				// The walk reaches a config map wherever it occurs, so a config map nested in the data of another one
+				// is redacted as well.
+				name: "a config map nested in the data of a config map is redacted",
+				document: `{"kind":"ConfigMap","data":{"nested.yaml":` +
+					`"kind: ConfigMap\ndata:\n  inner.yaml: |\n    token: tok-nested\n"}}`,
+				expected: `{"data":{"nested.yaml":"data:\n  inner.yaml: |\n    token: (redacted)\nkind: ConfigMap\n"},` +
+					`"kind":"ConfigMap"}`,
+			},
+			{
+				// "data" is a generic field name, so the walk is bound to the kind rather than to the field.
+				name:     "the data of another kind is not walked",
+				document: `{"kind":"SomeCustomResource","data":{"app.yaml":"token: keep-me\n"}}`,
+				expected: `{"data":{"app.yaml":"token: keep-me\n"},"kind":"SomeCustomResource"}`,
+			},
+			{
+				name:     "a resource without a kind is not walked",
+				document: `{"data":{"app.yaml":"token: keep-me\n"}}`,
+				expected: `{"data":{"app.yaml":"token: keep-me\n"}}`,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var parsed any
+				if err := json.Unmarshal([]byte(tt.document), &parsed); err != nil {
+					t.Fatalf("cannot parse the test document: %v", err)
+				}
+				redacted := &redactor{values: make(map[string]struct{})}
+				if err := redactResourceList(parsed, redacted); err != nil {
+					t.Fatalf("cannot redact the test document: %v", err)
+				}
+				rendered, err := json.Marshal(parsed)
+				if err != nil {
+					t.Fatalf("cannot render the redacted test document: %v", err)
+				}
+				if string(rendered) != tt.expected {
+					t.Errorf("expected %s, got %s", tt.expected, rendered)
+				}
+			})
+		}
+	})
 }
 
 func TestRedactSecrets(t *testing.T) {
@@ -660,15 +1114,48 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		}
 	})
 
+	t.Run("redacts the environment variable values of a workload response", func(t *testing.T) {
+		fakeKubectlEchoing(t, workloadResourcesJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-redact-workloads",
+			Command:   "kubectl",
+			Arguments: []string{"get", "deployments,daemonsets,cronjobs,controllerrevisions,pods", "-A", "-o", "json"},
+		})
+
+		if resp.GetExitCode() != 0 {
+			t.Fatalf("expected exit code 0, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
+		}
+		for _, value := range []string{
+			deploymentEnvValue,
+			initContainerEnvValue,
+			ephemeralContainerEnvValue,
+			daemonSetEnvValue,
+			lastAppliedEnvValue,
+			cronJobEnvValue,
+			controllerRevisionEnvValue,
+		} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected the environment variable value %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The rest of the workload stays readable, which is what makes the response useful for diagnosing it.
+		for _, preserved := range []string{envVarName, "app:1.0.0", "my-cron-job"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
 	t.Run("leaves the response of a request for other resources untouched", func(t *testing.T) {
-		// The fake kubectl echoes a token-like value for any request; a request that does not target a Dash0 resource
-		// must not be post-processed at all.
+		// The fake kubectl echoes a token-like value for any request; a request that targets neither a Dash0 resource nor
+		// a workload resource must not be post-processed at all.
 		fakeKubectlEchoing(t, monitoringToken)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
 			RequestId: "req-other-resource",
 			Command:   "kubectl",
-			Arguments: []string{"get", "pods", "-o", "yaml"},
+			Arguments: []string{"get", "services", "-o", "yaml"},
 		})
 
 		if strings.TrimSpace(resp.GetStdout()) != monitoringToken {
@@ -760,7 +1247,7 @@ func TestRedactDash0SecretsWithTruncatedStdout(t *testing.T) {
 	logger := discardLogger()
 
 	t.Run("withholds a response whose stdout was truncated", func(t *testing.T) {
-		// Output beyond maxOutputBytesPerStream is dropped, so the captured stdout is a prefix of the document kubectl
+		// Output beyond maxStdoutBytes is dropped, so the captured stdout is a prefix of the document kubectl
 		// rendered. That prefix cannot be parsed, and a document that cannot be parsed cannot be redacted, so the
 		// response has to be withheld even though its beginning holds the token in plaintext.
 		//
@@ -772,8 +1259,9 @@ s=0123456789012345678901234567890123456789012345678901234567890123
 s=$s$s$s$s
 s=$s$s$s$s
 s=$s$s$s$s
+s=$s$s$s$s
 i=0
-while [ $i -lt 300 ]; do
+while [ $i -lt 200 ]; do
   printf '%s' "$s"
   i=$((i+1))
 done
@@ -812,8 +1300,9 @@ s=0123456789012345678901234567890123456789012345678901234567890123
 s=$s$s$s$s
 s=$s$s$s$s
 s=$s$s$s$s
+s=$s$s$s$s
 i=0
-while [ $i -lt 300 ]; do
+while [ $i -lt 200 ]; do
   printf '%s' "$s"
   i=$((i+1))
 done
@@ -842,17 +1331,18 @@ s=0123456789012345678901234567890123456789012345678901234567890123
 s=$s$s$s$s
 s=$s$s$s$s
 s=$s$s$s$s
+s=$s$s$s$s
 i=0
-while [ $i -lt 300 ]; do
+while [ $i -lt 200 ]; do
   printf '%s' "$s"
   i=$((i+1))
 done
 `)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-truncated-pods",
+			RequestId: "req-truncated-services",
 			Command:   "kubectl",
-			Arguments: []string{"get", "pods", "-o", "json"},
+			Arguments: []string{"get", "services", "-o", "json"},
 		})
 
 		if resp.GetStdout() == "" {
@@ -1256,3 +1746,134 @@ items:
           value: ` + grpcHeaderValue + `
 kind: List
 `
+
+const (
+	deploymentEnvValue         = "postgres://app:my-deployment-db-password@db:5432/app"
+	initContainerEnvValue      = "my-init-container-secret"
+	ephemeralContainerEnvValue = "my-ephemeral-container-secret"
+	daemonSetEnvValue          = "auth_daemonset-token"
+	lastAppliedEnvValue        = "auth_previous-daemonset-token"
+	cronJobEnvValue            = "my-cron-job-secret"
+	controllerRevisionEnvValue = "my-controller-revision-secret"
+
+	// The values that must survive the walk: the name of a variable is not a credential, and a variable that sources
+	// its value via valueFrom holds a reference rather than a value.
+	envVarName          = "DASH0_AUTHORIZATION_TOKEN"
+	envVarSecretKeyName = "my-env-var-secret"
+)
+
+// workloadResourcesJson is a "kubectl get deployments,daemonsets,cronjobs,controllerrevisions,pods -o json" response.
+// It covers every place a pod spec can hold the literal value of an environment variable: the containers and the init
+// containers of a deployment, the ephemeral containers of a pod, the pod template a cron job nests two levels deep,
+// the copy of a pod template that a controller revision keeps in its "data" field, and the copy of the manifest that
+// kubectl apply leaves behind in the last-applied-configuration annotation. It also contains what must not be
+// redacted: the names of the variables, a value sourced via valueFrom, and an envFrom reference.
+const workloadResourcesJson = `{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": { "name": "my-deployment", "namespace": "my-namespace" },
+      "spec": {
+        "template": {
+          "spec": {
+            "initContainers": [
+              {
+                "name": "init",
+                "image": "init:1.0.0",
+                "env": [{ "name": "INIT_SECRET", "value": "` + initContainerEnvValue + `" }]
+              }
+            ],
+            "containers": [
+              {
+                "name": "app",
+                "image": "app:1.0.0",
+                "env": [
+                  { "name": "DATABASE_URL", "value": "` + deploymentEnvValue + `" },
+                  { "name": "POD_NAME", "valueFrom": { "fieldRef": { "fieldPath": "metadata.name" } } },
+                  {
+                    "name": "API_KEY",
+                    "valueFrom": { "secretKeyRef": { "name": "` + envVarSecretKeyName + `", "key": "api-key" } }
+                  }
+                ],
+                "envFrom": [{ "secretRef": { "name": "` + envVarSecretKeyName + `" } }]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "dash0-operator-agent",
+        "namespace": "dash0-system",
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration":
+            "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agent\",\"env\":[{\"name\":\"` +
+	envVarName + `\",\"value\":\"` + lastAppliedEnvValue + `\"}]}]}}}}"
+        }
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "containers": [
+              { "name": "agent", "env": [{ "name": "` + envVarName + `", "value": "` + daemonSetEnvValue + `" }] }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "batch/v1",
+      "kind": "CronJob",
+      "metadata": { "name": "my-cron-job", "namespace": "my-namespace" },
+      "spec": {
+        "jobTemplate": {
+          "spec": {
+            "template": {
+              "spec": {
+                "containers": [
+                  { "name": "job", "env": [{ "name": "JOB_SECRET", "value": "` + cronJobEnvValue + `" }] }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "ControllerRevision",
+      "metadata": { "name": "dash0-operator-agent-6cdb9d7c8f", "namespace": "dash0-system" },
+      "revision": 3,
+      "data": {
+        "spec": {
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "agent",
+                  "env": [{ "name": "` + envVarName + `", "value": "` + controllerRevisionEnvValue + `" }]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": { "name": "my-pod", "namespace": "my-namespace" },
+      "spec": {
+        "ephemeralContainers": [
+          { "name": "debugger", "env": [{ "name": "DEBUG_TOKEN", "value": "` + ephemeralContainerEnvValue + `" }] }
+        ]
+      }
+    }
+  ]
+}`

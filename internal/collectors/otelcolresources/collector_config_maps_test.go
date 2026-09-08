@@ -2678,11 +2678,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 
-			// Connector is defined with empty body (no tunables set)
+			// Connector carries only the metric recorder when no tunables are set
 			connectors := collectorConfig["connectors"].(map[string]interface{})
 			Expect(connectors).To(HaveKey("dash0signaltometrics"))
 			s2m := connectors["dash0signaltometrics"].(map[string]interface{})
-			Expect(s2m).To(BeEmpty(), "dash0signaltometrics should render as `{}` when no tunables set")
+			Expect(s2m).To(Equal(map[string]interface{}{"metric_recorder": "dash0metricrecorder"}))
 
 			// Spans flow into the connectors from the traces SC branch (common-processors forks to it), alongside
 			// dash0redmetrics.
@@ -2752,6 +2752,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			connectors := collectorConfig["connectors"].(map[string]interface{})
 			Expect(connectors).To(HaveKey("dash0signaltometrics"))
 			s2m := connectors["dash0signaltometrics"].(map[string]interface{})
+			Expect(s2m).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 			Expect(s2m["max_time_series"]).To(Equal(50000))
 			Expect(s2m["metrics_flush_interval"]).To(Equal("30s"))
 			Expect(s2m["cache_expiration"]).To(Equal("45s"))
@@ -3645,6 +3646,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			sampling := processors["dash0sampling"].(map[string]interface{})
 			Expect(sampling).ToNot(HaveKey("fallback_sample_ratio"))
 			Expect(sampling).ToNot(HaveKey("debug"))
+			Expect(sampling).To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder"))
 		})
 
 		It("should render the disk trace reservoir max_disk_bytes and metric_level [SignalControl]", func() {
@@ -3705,6 +3707,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(reservoir).ToNot(HaveKey("data_dir"))
 			Expect(reservoir).ToNot(HaveKey("max_disk_bytes"))
 			Expect(reservoir).ToNot(HaveKey("max_memory_bytes"))
+			Expect(reservoir).ToNot(HaveKey("buffer_duration"))
 		})
 
 		It("should render the serialized_memory trace reservoir max_memory_bytes when set [SignalControl]", func() {
@@ -3734,6 +3737,32 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(reservoir["max_memory_bytes"]).To(BeNumerically("==", int64(512*1024*1024)))
 			Expect(reservoir).ToNot(HaveKey("data_dir"))
 			Expect(reservoir).ToNot(HaveKey("max_disk_bytes"))
+		})
+
+		It("should render the trace reservoir buffer_duration when set [SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:                         true,
+					SamplingEnabled:                 true,
+					SamplingReservoirType:           "serialized_memory",
+					SamplingReservoirMetricLevel:    "basic",
+					SamplingReservoirBufferDuration: "1m30s",
+					Endpoint:                        "decision-maker.example.com:443",
+					ApiEndpoint:                     "https://control-plane-api.dash0.com",
+					Dataset:                         "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, monitoredNamespaces, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			processors := collectorConfig["processors"].(map[string]interface{})
+			sampling := processors["dash0sampling"].(map[string]interface{})
+			reservoir := sampling["reservoir"].(map[string]interface{})
+			Expect(reservoir["buffer_duration"]).To(Equal("1m30s"))
 		})
 
 		It("should render sampling enable_batching when set [SignalControl]", func() {
@@ -5907,6 +5936,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			b0 := namespace1 + "/0"
 			Expect(connectors).To(HaveKey("dash0signaltometrics/ns/" + b0))
+			Expect(connectors["dash0signaltometrics/ns/"+b0]).
+				To(HaveKeyWithValue("metric_recorder", "dash0metricrecorder/ns/"+b0))
 			Expect(readPipelineProcessors(pipelines, "logs/sc/ns/"+b0)).To(ContainElements(
 				"resource/signal_control_attributes/ns/"+b0, "dash0resource", "dash0filter/ns/"+b0))
 			Expect(readPipelineExporters(pipelines, "logs/sc/ns/"+b0)).

@@ -159,7 +159,8 @@ jobs:
           imageTitle: Dash0 Kubernetes Collector
           imageDescription: the OpenTelemetry collector for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
-          context: images/collector
+          context: images
+          file: images/collector/Dockerfile
 
       - name: build configuration reloader image
         uses: ./.github/actions/build-image
@@ -236,6 +237,24 @@ jobs:
     if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
     uses: ./.github/workflows/e2e.yaml
     secrets:
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+
+  # Runs the GKE Autopilot WorkloadAllowlist check for every commit pushed to main. The check uses the local Helm chart
+  # from this commit together with the official images that build_and_push_images just pushed with the "main-dev" tag.
+  gke_ap_workload_allowlist_check:
+    name: GKE Autopilot WorkloadAllowlist Check
+    needs:
+      - build_and_push_images
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build_and_push_images.result == 'success' }}
+    uses: ./.github/workflows/gke-ap-workload-allowlist-check.yaml
+    with:
+      use_local_chart: true
+      image_repository_prefix: ghcr.io/dash0hq/
+      image_tag: main-dev
+    secrets:
+      GKE_SA_KEY: ${{ secrets.GKE_SA_KEY }}
+      GKE_PROJECT: ${{ secrets.GKE_PROJECT }}
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
 

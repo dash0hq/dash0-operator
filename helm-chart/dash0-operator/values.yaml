@@ -486,7 +486,7 @@ operator:
     repository: "ghcr.io/dash0hq/signal-control-collector"
     # The Signal Control collector is versioned independently of the operator, so this tag is pinned to that component
     # version; it does not track the chart appVersion.
-    tag: "v2.0.3005"
+    tag: "1.1.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -497,7 +497,7 @@ operator:
     repository: "ghcr.io/dash0hq/edge-proxy"
     # The Edge Proxy is versioned independently of the operator, so this tag is pinned to that component version; it
     # does not track the chart appVersion.
-    tag: "v2.0.3005"
+    tag: "1.1.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -622,6 +622,14 @@ operator:
     # If set to true, the host ports of the OpenTelemetry collector pods managed by the operator will be disaabled.
     # Implies forceUseServiceUrl: true.
     disableHostPorts: false
+
+    # The host port the OpenTelemetry collector DaemonSet pods use for the gRPC OTLP receiver. Only takes effect
+    # when disableHostPorts is false. Make sure the host port you set is available on all nodes in the cluster.
+    otlpGrpcHostPort: 40317
+
+    # The host port the OpenTelemetry collector DaemonSet pods use for the HTTP OTLP receiver. Only takes effect
+    # when disableHostPorts is false. Make sure the host port you set is available on all nodes in the cluster.
+    otlpHttpHostPort: 40318
 
     # If set to true, the pprof extension will be enabled for both collectors.
     # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
@@ -1288,10 +1296,19 @@ operator:
       # Additional annotations for the pods of the Edge Proxy deployment managed by the operator.
       podAnnotations: {}
 
-  # Settings related to the Agent0 connector (experimental/beta).
+  # Settings related to the Agent0 connector (experimental).
   agent0Connector:
 
-    # The agent0-connector feature is currently experimental, do not enable it (yet).
+    # The agent0-connector feature is currently experimental, do not enable it.
+    #
+    # All other settings in operator.agent0Connector will be ignored if operator.agent0Connector.enabled is false.
+    #
+    # If the operator is installed with agent0Connector.enabled=true, and the flag is later flipped to false via helm
+    # upgrade, the operator will not remove the agent0-connector deployment, nor the associated resources (service
+    # account, cluster roles & bindings) from the cluster. It cannot, because agent0Connector.enabled=false implies that
+    # the necessary RBAC permissions for managing these resources (including the permission to delete these resources)
+    # are not granted to the operator manager. The recommended resolution is to uninstall the operator from the cluster
+    # entirely, then re-install with agent0Connector.enabled=false.
     enabled: false
 
     # The address (host:port) of the Dash0 backend service the agent0-connector pod connects to. This value is mandatory
@@ -1323,9 +1340,39 @@ operator:
       # secret with the command above (see property "name"), you would set the property to "token".
       key:
 
-    # Disables TLS for the agent0-connector workload's connection to the Dash0 backend, connecting via plaintext
-    # instead. This is only intended for local development.
+    # Disables TLS for the agent0-connector's connection to the Dash0 backend, connecting via plaintext instead. This
+    # is only intended for local development.
     insecure: false
+
+    # Resource settings for the agent0-connector container of the agent0-connector deployment managed by the operator.
+    containerResources:
+      limits:
+        memory: 256Mi
+      # The GOMEMLIMIT environment variable value for the agent0-connector container. Note that valid units are
+      # different from Kubernetes resource settings, use MiB or GiB (see
+      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      # The value is deliberately set to about 60% of containerResources.limits.memory, and not to the 80% recommended
+      # for other containers: the agent0-connector container also runs kubectl as a child process, whose memory is not
+      # governed by GOMEMLIMIT but counts towards the container's memory limit.
+      gomemlimit: 150MiB
+      requests:
+        memory: 64Mi
+
+    # The number of command requests the agent0-connector executes at the same time.
+    #
+    # Increasing this might be useful when multiple Agent0 sessions are routinely working actively with the connector in
+    # this cluster at the same time.
+    #
+    # The value is bounded by memory, not by CPU. A single request can peak at about 90 MiB memory usage: roughly 50 MiB
+    # for the kubectl child process (which GOMEMLIMIT does not govern), and roughly 40 MiB in the agent0-connector
+    # process itself, most of it to parse the output for secret redaction.
+    # The default of 2 fits into the default containerResources.limits.memory of 256Mi. Raising this value therefore
+    # requires raising containerResources.limits.memory and containerResources.gomemlimit correspondingly; otherwise the
+    # pod can get OOM-killed when several large requests coincide.
+    #
+    # With a value of 1, one slow command blocks the delivery of every request behind it for up to the command timeout
+    # of 30 seconds, hence down-sizing to 1 is not recommended.
+    maxConcurrentCommands: 2
 
     # Additional labels to be set on the agent0-connector deployment managed by the operator.
     labels: {}
@@ -1367,3 +1414,73 @@ operator:
               - key: "kubernetes.io/os"
                 operator: "In"
                 values: ["linux"]
+
+    # Settings for the cluster role the operator creates for the agent0-connector.
+    clusterRole:
+
+      # Custom RBAC rules for the cluster role of the agent0-connector. By default, this list is empty and the operator
+      # grants read-only access to a fixed set of well-known resource types.
+      #
+      # The rules configured here replace the default rules for the agent0-connector cluster role, they are not merged
+      # with the defaults. Configuring custom rules can also be used to restrict agent0-connector's access in the
+      # cluster, by granting access to fewer resource types. Configuring custom rules can also be used to widen
+      # agent0-connector's access, for example to a resource type the default rules do not cover. All rules configured
+      # here will also be granted to the operator manager, as it can only grant permissions to agent0-connector it holds
+      # itself.
+      #
+      # To start from the current default rules, read them from the cluster and edit the copy:
+      #   kubectl get clusterrole dash0-operator-manager-agent0-connector-ro -o yaml
+      #
+      # Prefer naming the resource types explicitly over granting a wildcard.
+      #
+      # Only read-only rules are accepted: the verbs "get" and "list" for any resource, plus "create" for the resources
+      # "selfsubjectaccessreviews" and "selfsubjectrulesreviews" in the API group "authorization.k8s.io", which
+      # "kubectl auth can-i" requires and which cannot modify cluster state. Any other verb, in particular a write verb
+      # like "create", "update", "patch" or "delete", as well as the wildcard "*", makes the Helm installation fail.
+      #
+      # Allowing access to additional resources can have security implications. Only grant access to additional
+      # resources types when you are confident that it cannot be used to exfiltrate sensitive data (auth tokens,
+      # credentials, API secrets etc.) from the cluster. Failure to do so makes these secrets accessible to anyone who
+      # has access to your Dash0 organization. The agent0-connector component uses a set of restrictions and redaction
+      # mechanisms to prevent leaking secrets. The following are redacted:
+      # * the environment variable values and probe headers of any workload,
+      # * all credential fields in any of the Dash0 custom resources.
+      # Automatic redaction is also applied to the JSON or YAML content of ConfigMaps, if access to ConfigMaps is
+      # granted via custom RBAC rules. (ConfigMaps are inaccessible under the default RBAC rules.) The redaction of
+      # ConfigMap content is best-effort: the connector parses every value of data and binaryData that is a JSON or
+      # YAML object or list, including a YAML value that holds several documents, and replaces the values of certain
+      # key names (token, password, headers, queryParameters, httpHeaders). The values of binaryData are base64 and are
+      # decoded before they are inspected and encoded again afterwards. A credential in a format the connector cannot
+      # parse (a properties file, a shell script), or under a key name it does not know, is returned unredacted. That
+      # is to say, only allow access to ConfigMaps if they do not contain secrets, or if the redaction described here
+      # is sufficient.
+      #
+      # Note that a ConfigMap value the connector did redact something in is re-rendered as a whole, which drops its
+      # comments and normalizes its key order and scalar notation. A value nothing was redacted from is returned byte
+      # for byte.
+      #
+      # The content of every resource type outside the set mentioned above (standard Kubernetes workload resources,
+      # Dash0 custom resources, and JSON/YAML ConfigMap content) is returned verbatim, i.e. unredacted.
+      #
+      # Reading the *content* of Kubernetes secrets is rejected by the agent0-connector itself, independent of
+      # the rules configured here. (Listing secrets and checking for their presence is allowed, if the rules list the
+      # secrets resource type - the default rules do not include access to secrets).
+      #
+      # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
+      # which are required for this component) to the group system:authenticated via the system:discovery cluster role
+      # binding. On a cluster where system:authenticated has been removed from that binding (e.g. for hardening etc.),
+      # add a rule with nonResourceURLs: ["*"] and verbs: ["get"], otherwise kubectl's API discovery fails and no
+      # kubectl command works.
+      #
+      # Example:
+      # rules:
+      #   - apiGroups: [""]
+      #     resources: ["pods", "pods/log", "namespaces", "nodes", "services"]
+      #     verbs: ["get", "list"]
+      #   - apiGroups: ["apps"]
+      #     resources: ["daemonsets", "deployments", "replicasets", "statefulsets"]
+      #     verbs: ["get", "list"]
+      #   - apiGroups: ["authorization.k8s.io"]
+      #     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+      #     verbs: ["create"]
+      rules: []

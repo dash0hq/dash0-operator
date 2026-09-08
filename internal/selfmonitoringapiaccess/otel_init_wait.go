@@ -329,10 +329,10 @@ func startOTelSDK(
 			exporterFactory,
 		)
 
-	// Setting the zap OTel bridge as the delegate logger core will spool all messages that have been only logged to
-	// stdout so far (and buffered in the delegating zap core) to the newly created zap OTel bridge, so that we also see
-	// messages from the operator startup in self-monitoring, even if the OTel SDK is delayed until we have found and
-	// reconciled an operator configuration resource.
+	// Set the zap OTel bridge as the delegate logger core, then spool all buffered messages that have been only logged to
+	// stdout so far, to the newly created zap OTel bridge. This is so that we also see messages from the operator startup
+	// in self-monitoring, even if the OTel SDK is delayed until we have found and reconciled an operator configuration
+	// resource.
 	delegatingZapCoreWrapper.RootDelegatingZapCore.SetDelegate(zapOTelBridge)
 	delegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear(
 		func(entry *zaputil.ZapEntryWithFields) {

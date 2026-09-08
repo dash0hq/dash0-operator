@@ -6,6 +6,7 @@ package collectors
 import (
 	"context"
 	"slices"
+	"time"
 
 	"github.com/go-logr/logr/funcr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -457,50 +458,93 @@ var _ = Describe("The collector manager", Ordered, func() {
 			}, funcr.Options{}))
 		})
 
-		It("warns once per distinct zone/replica combination, not on every reconcile", func() {
+		It("warns once per distinct zone/replica combination, not on every check", func() {
 			manager := &CollectorManager{}
+			checkedAt := time.Unix(0, 0)
 
-			manager.reportZoneCoverage(3, 2, recordingLogger)
+			manager.reportZoneCoverage(3, 2, checkedAt, recordingLogger)
 			Expect(warnings).To(HaveLen(1))
 			Expect(warnings[0]).To(ContainSubstring("3 availability zones"))
 			Expect(warnings[0]).To(ContainSubstring("2 replicas"))
 			Expect(warnings[0]).To(ContainSubstring("signalControlCollectorReplicas"))
 
 			// A steady state must not produce a warning again.
-			manager.reportZoneCoverage(3, 2, recordingLogger)
-			manager.reportZoneCoverage(3, 2, recordingLogger)
+			manager.reportZoneCoverage(3, 2, checkedAt, recordingLogger)
+			manager.reportZoneCoverage(3, 2, checkedAt, recordingLogger)
 			Expect(warnings).To(HaveLen(1))
 
 			// A changed zone count is a new situation and is reported again.
-			manager.reportZoneCoverage(4, 2, recordingLogger)
+			manager.reportZoneCoverage(4, 2, checkedAt, recordingLogger)
 			Expect(warnings).To(HaveLen(2))
 		})
 
 		It("does not warn when there are at least as many replicas as zones", func() {
 			manager := &CollectorManager{}
-			manager.reportZoneCoverage(3, 3, recordingLogger)
-			manager.reportZoneCoverage(3, 5, recordingLogger)
+			checkedAt := time.Unix(0, 0)
+			manager.reportZoneCoverage(3, 3, checkedAt, recordingLogger)
+			manager.reportZoneCoverage(3, 5, checkedAt, recordingLogger)
 			Expect(warnings).To(BeEmpty())
 		})
 
 		It("does not warn on clusters with no zone labels or a single zone", func() {
 			manager := &CollectorManager{}
-			manager.reportZoneCoverage(0, 1, recordingLogger)
-			manager.reportZoneCoverage(1, 1, recordingLogger)
+			checkedAt := time.Unix(0, 0)
+			manager.reportZoneCoverage(0, 1, checkedAt, recordingLogger)
+			manager.reportZoneCoverage(1, 1, checkedAt, recordingLogger)
 			Expect(warnings).To(BeEmpty())
 		})
 
-		It("warns again after the situation was resolved and then reoccurs", func() {
+		It("logs the warning again when a replica change leaves the issue unresolved", func() {
 			manager := &CollectorManager{}
-			manager.reportZoneCoverage(3, 2, recordingLogger)
+			checkedAt := time.Unix(0, 0)
+			manager.reportZoneCoverage(3, 1, checkedAt, recordingLogger)
 			Expect(warnings).To(HaveLen(1))
-			manager.reportZoneCoverage(3, 3, recordingLogger)
+			Expect(warnings[0]).To(ContainSubstring("incurs cross-zone traffic cost"))
+
+			// Raising the replicas but not far enough is still insufficient: warn again.
+			manager.reportZoneCoverage(3, 2, checkedAt, recordingLogger)
+			Expect(warnings).To(HaveLen(2))
+			Expect(warnings[1]).To(ContainSubstring("incurs cross-zone traffic cost"))
+			Expect(warnings[1]).To(ContainSubstring("2 replicas"))
+		})
+
+		It("logs an info when a replica change resolves an active warning, and warns again if it reoccurs", func() {
+			manager := &CollectorManager{}
+			checkedAt := time.Unix(0, 0)
+			manager.reportZoneCoverage(3, 2, checkedAt, recordingLogger)
 			Expect(warnings).To(HaveLen(1))
-			manager.reportZoneCoverage(3, 2, recordingLogger)
+			Expect(warnings[0]).To(ContainSubstring("incurs cross-zone traffic cost"))
+
+			// Raising the replica count to match the zones resolves the issue and is announced once.
+			manager.reportZoneCoverage(3, 3, checkedAt, recordingLogger)
+			Expect(warnings).To(HaveLen(2))
+			Expect(warnings[1]).To(ContainSubstring("cross-zone traffic is avoided"))
+			Expect(warnings[1]).To(ContainSubstring("3 replicas"))
+
+			// Lowering the replicas again is a new insufficient situation: warn once more.
+			manager.reportZoneCoverage(3, 2, checkedAt, recordingLogger)
+			Expect(warnings).To(HaveLen(3))
+			Expect(warnings[2]).To(ContainSubstring("incurs cross-zone traffic cost"))
+		})
+
+		It("announces the resolution when the issue resolves on its own without a replica change", func() {
+			manager := &CollectorManager{}
+			checkedAt := time.Unix(0, 0)
+			manager.reportZoneCoverage(3, 2, checkedAt, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("incurs cross-zone traffic cost"))
+
+			// The zone count drops on its own; the resolution is announced.
+			manager.reportZoneCoverage(2, 2, checkedAt, recordingLogger)
+			Expect(warnings).To(HaveLen(2))
+			Expect(warnings[1]).To(ContainSubstring("cross-zone traffic is avoided"))
+
+			// Once resolved, a further healthy evaluation is not announced again.
+			manager.reportZoneCoverage(2, 2, checkedAt, recordingLogger)
 			Expect(warnings).To(HaveLen(2))
 		})
 
-		It("derives the zone count from the node labels reported by the API server", func() {
+		It("lists nodes at most once per interval and re-checks on a replica change", func() {
 			for _, zone := range []string{"zone-a", "zone-b", "zone-c"} {
 				node := &corev1.Node{
 					ObjectMeta: metav1.ObjectMeta{
@@ -514,20 +558,48 @@ var _ = Describe("The collector manager", Ordered, func() {
 				})
 			}
 
-			manager := &CollectorManager{nodeMetadataClient: nodeMetadataClient}
+			currentTime := time.Unix(0, 0)
+			manager := &CollectorManager{
+				nodeMetadataClient: nodeMetadataClient,
+				now:                func() time.Time { return currentTime },
+			}
+			twoReplicas := util.ExtraConfig{SignalControlCollectorReplicas: 2}
+			threeReplicas := util.ExtraConfig{SignalControlCollectorReplicas: 3}
+
 			// The node list is served from the API server's watch cache, which may not have caught up with the nodes
-			// created above yet.
+			// created above yet. Reset the state on every attempt so each one is a first check that lists the nodes.
 			Eventually(func(g Gomega) {
 				warnings = nil
-				manager.warnAboutInsufficientZoneCoverage(
-					ctx,
-					util.ExtraConfig{SignalControlCollectorReplicas: 2},
-					recordingLogger,
-				)
+				manager.lastZoneCoverage.Store(nil)
+				manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
 				g.Expect(warnings).To(HaveLen(1))
 				g.Expect(warnings[0]).To(ContainSubstring("3 availability zones"))
 				g.Expect(warnings[0]).To(ContainSubstring("2 replicas"))
 			}).Should(Succeed())
+
+			// Within the interval and with an unchanged replica count, the node list is skipped and nothing is logged.
+			warnings = nil
+			manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
+			Expect(warnings).To(BeEmpty())
+
+			// A replica change bypasses the interval: the check runs again and, now sufficient, logs the info.
+			warnings = nil
+			manager.warnAboutInsufficientZoneCoverage(ctx, threeReplicas, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("cross-zone traffic is avoided"))
+
+			// Once the interval has elapsed the periodic check runs again; back to two replicas, it warns once more.
+			currentTime = currentTime.Add(zoneCoverageCheckInterval)
+			warnings = nil
+			manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("incurs cross-zone traffic cost"))
+
+			// A further periodic check in the same state does not warn again.
+			currentTime = currentTime.Add(zoneCoverageCheckInterval)
+			warnings = nil
+			manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
+			Expect(warnings).To(BeEmpty())
 		})
 	})
 

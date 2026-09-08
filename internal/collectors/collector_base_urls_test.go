@@ -7,15 +7,30 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 var _ = Describe("collector base URLs", func() {
 
 	Describe("RenderCollectorBaseUrls", func() {
-		It("should render both possible collector base URLs", func() {
-			possibleUrls := RenderCollectorBaseUrls(OTelCollectorNamePrefixTest, OperatorNamespace)
+		It("should render both possible collector base URLs with the default OTLP HTTP host port", func() {
+			possibleUrls := RenderCollectorBaseUrls(
+				OTelCollectorNamePrefixTest,
+				OperatorNamespace,
+				otelcolresources.DefaultOtlpHttpHostPort,
+			)
 			Expect(possibleUrls.ServiceBaseUrl).To(Equal(OTelCollectorServiceBaseUrlTest))
+			Expect(possibleUrls.NodeLocalBaseUrl).To(Equal(OTelCollectorNodeLocalBaseUrlTest))
+		})
+
+		It("should render the node-local URL with a custom OTLP HTTP host port", func() {
+			possibleUrls := RenderCollectorBaseUrls(OTelCollectorNamePrefixTest, OperatorNamespace, 4318)
+			Expect(possibleUrls.NodeLocalBaseUrl).To(Equal("http://$(DASH0_NODE_IP):4318"))
+		})
+
+		It("should fall back to the default OTLP HTTP host port when no port is configured", func() {
+			possibleUrls := RenderCollectorBaseUrls(OTelCollectorNamePrefixTest, OperatorNamespace, 0)
 			Expect(possibleUrls.NodeLocalBaseUrl).To(Equal(OTelCollectorNodeLocalBaseUrlTest))
 		})
 	})

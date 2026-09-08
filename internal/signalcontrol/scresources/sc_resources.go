@@ -29,6 +29,7 @@ type SignalControlResourceManager struct {
 	edgeProxyImage            string
 	edgeProxyImagePullPolicy  corev1.PullPolicy
 	operatorVersion           string
+	otlpGrpcHostPort          int32
 }
 
 func NewSignalControlResourceManager(
@@ -40,6 +41,7 @@ func NewSignalControlResourceManager(
 	edgeProxyImage string,
 	edgeProxyImagePullPolicy corev1.PullPolicy,
 	operatorVersion string,
+	otlpGrpcHostPort int32,
 ) *SignalControlResourceManager {
 	return &SignalControlResourceManager{
 		Client:                    k8sClient,
@@ -50,6 +52,7 @@ func NewSignalControlResourceManager(
 		edgeProxyImage:            edgeProxyImage,
 		edgeProxyImagePullPolicy:  edgeProxyImagePullPolicy,
 		operatorVersion:           operatorVersion,
+		otlpGrpcHostPort:          otlpGrpcHostPort,
 	}
 }
 
@@ -60,7 +63,7 @@ func (m *SignalControlResourceManager) CreateOrUpdateResources(
 	extraConfig util.ExtraConfig,
 	logger logd.Logger,
 ) (bool, bool, error) {
-	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, extraConfig, false, logger)
+	desiredState := assembleDesiredState(m.operatorNamespace, m.namePrefix, signalControlResource, operatorConfig, m.edgeProxyImage, m.edgeProxyImagePullPolicy, m.operatorVersion, m.otlpGrpcHostPort, extraConfig, false, logger)
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
@@ -151,6 +154,9 @@ func (m *SignalControlResourceManager) updateResource(
 	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return false, err
 	}
+	// Carry over the live resource version; some kinds (PodDisruptionBudget) reject an update without it
+	// ("resourceVersion: Invalid value: 0: must be specified for an update") and it adds optimistic locking.
+	desiredResource.SetResourceVersion(existingResource.GetResourceVersion())
 	if err = m.Update(ctx, desiredResource); err != nil {
 		return false, err
 	}

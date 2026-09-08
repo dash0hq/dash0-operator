@@ -12,6 +12,7 @@ This guide covers advanced configuration topics for the Dash0 operator, includin
   - [Preventing Operator Scheduling on Specific Nodes](#preventing-operator-scheduling-on-specific-nodes)
   - [Custom Node Affinity](#custom-node-affinity)
   - [Adding Custom Labels and Annotations to the Collector Resources](#adding-custom-labels-and-annotations-to-the-collector-resources)
+- [Configuring Collector Host Ports](#configuring-collector-host-ports)
 - [Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)](#configuring-pod-level-sysctls-for-the-collector-pods-tcp-keepalive)
 - [Disable Self-Monitoring](#disable-self-monitoring)
 - [Exporting Data to Other Observability Backends](#exporting-data-to-other-observability-backends)
@@ -253,6 +254,11 @@ The following Helm values control the resource settings, all nested under the to
 | `collectors.signalControlCollectorContainerResources` | SignalControl collector container | `memory: 1Gi` | `memory: 1Gi` |
 | `collectors.signalControlCollectorConfigurationReloaderContainerResources` | SignalControl collector configuration reloader | `memory: 12Mi` | `memory: 24Mi` |
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
+| `agent0Connector.containerResources` | agent0-connector container | `memory: 32Mi` | `memory: 256Mi` |
+
+The agent0-connector container runs `kubectl` as a child process, whose memory counts towards the container's memory
+limit, but is not governed by `GOMEMLIMIT`. Its `gomemlimit` default is therefore about 60% of the memory limit,
+instead of the 80% recommended for the other containers.
 
 The SignalControl collector only exists when SignalControl Edge is enabled. Unlike the other two collectors it
 processes the Dash0-bound telemetry of the whole cluster, so its memory requirement scales with total telemetry volume
@@ -461,6 +467,13 @@ operator:
     podAnnotations:
       my-pod-annotation: my-value
 ```
+
+## Configuring Collector Host Ports
+
+The OpenTelemetry collector DaemonSet managed by the operator uses the host ports 40317 for gRPC and 40318 for HTTP,
+for node-local traffic.
+Different host ports can be configured via Helm by setting `operator.collectors.otlpGrpcHostPort` and
+`operator.collectors.otlpHttpHostPort`.
 
 ## Configuring Pod-Level sysctls for the Collector Pods (TCP Keepalive)
 

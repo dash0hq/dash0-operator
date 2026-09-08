@@ -82,6 +82,9 @@ func main() {
 	router.PUT("/api/spam-filters/:origin", handleSpamFilterRequest)
 	router.DELETE("/api/spam-filters/:origin", handleSpamFilterRequest)
 
+	router.PUT("/api/time-series-aggregations/:origin", handleTimeSeriesAggregationRequest)
+	router.DELETE("/api/time-series-aggregations/:origin", handleTimeSeriesAggregationRequest)
+
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
 	router.DELETE("/api/dashboards/:origin", handleDashboardRequest)
 
@@ -219,6 +222,11 @@ func handleSignalToMetricsRequest(ginCtx *gin.Context) {
 }
 
 func handleSpamFilterRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	respondWithOverrideOrOK(ginCtx)
+}
+
+func handleTimeSeriesAggregationRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	respondWithOverrideOrOK(ginCtx)
 }

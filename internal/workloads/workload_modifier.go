@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -96,6 +97,12 @@ var (
 		envVarOtelDotnetExperimentalSqlClientCaptureQueryParametersName,
 		envVarOtelDotnetExperimentalEfCoreCaptureQueryParametersName,
 	}
+
+	// nodeLocalCollectorEndpointRegex matches the node-local collector base URLs the operator renders, with any host
+	// port. See collectors.RenderCollectorBaseUrls for the pattern this mirrors.
+	nodeLocalCollectorEndpointRegex = regexp.MustCompile(
+		`^http://\$\(` + regexp.QuoteMeta(util.EnvVarDash0NodeIp) + `\):\d{1,5}$`,
+	)
 
 	otelExporterOtlpNoOverwriteMsg = fmt.Sprintf(
 		"Dash0 will not set %s/%s since the container already has at least one of those environment "+
@@ -613,9 +620,8 @@ func (m *ResourceModifier) instrumentContainer(
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
 ) []string {
-	perContainerLogger := m.logger.WithValues("container", container.Name)
 	m.addMount(container)
-	return m.addEnvironmentVariables(container, workloadMeta, podMeta, perContainerLogger)
+	return m.addEnvironmentVariables(container, workloadMeta, podMeta)
 }
 
 func (m *ResourceModifier) addMount(container *corev1.Container) {
@@ -646,7 +652,6 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	container *corev1.Container,
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
-	perContainerLogger logd.Logger,
 ) []string {
 	var instrumentationIssues []string
 	if container.Env == nil {
@@ -682,12 +687,11 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		container,
 		collectorBaseUrl,
 		instrumentationIssues,
-		perContainerLogger,
 	)
 
 	m.addOtelLogsExporterEnvVar(container)
 
-	instrumentationIssues = m.addOrAppendToLdPreloadEnvVar(container, instrumentationIssues, perContainerLogger)
+	instrumentationIssues = m.addOrAppendToLdPreloadEnvVar(container, instrumentationIssues)
 	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
@@ -981,7 +985,6 @@ func (m *ResourceModifier) addOrUpdateOtelExporterOtlpEnvVars(
 	container *corev1.Container,
 	otelExporterOtlpEndpointValue string,
 	instrumentationIssues []string,
-	perContainerLogger logd.Logger,
 ) []string {
 	if otelExportEnvVarsCanBeUpdatedForContainer(container, m.clusterInstrumentationConfig) {
 		// It is safe to set/update the OTEL_EXPORTER_OTLP_* env vars, and at least one of them needs to be changed.
@@ -1016,7 +1019,7 @@ func (m *ResourceModifier) addOrUpdateOtelExporterOtlpEnvVars(
 	//   an OTel SDK is set up manually in the workload's code.
 	// * It will also break for OTel SDKs that only support the GRPC exporter, but not HTTP (Python & nginx for
 	//   example).
-	perContainerLogger.WarnTelemetryCollectionIssue(otelExporterOtlpNoOverwriteMsg)
+	m.perContainerLogger(container).WarnTelemetryCollectionIssue(otelExporterOtlpNoOverwriteMsg)
 	instrumentationIssues = append(instrumentationIssues, otelExporterOtlpNoOverwriteMsg)
 	return instrumentationIssues
 }
@@ -1054,10 +1057,10 @@ func otelExportEnvVarsCanBeUpdatedForContainer(
 	}
 
 	if !otelExporterOtlpEndpointIsSet ||
-		!envVarHasAnyValueFrom(
+		!isOperatorCollectorEndpoint(
 			container,
 			otelExporterOtlpEndpointIdx,
-			clusterInstrumentationConfig.PossibleCollectorUrls.All(),
+			clusterInstrumentationConfig.PossibleCollectorUrls,
 		) {
 		// Either OTEL_EXPORTER_OTLP_ENDPOINT is set to a value we did not set (a manual configuration we must not
 		// overwrite), or only OTEL_EXPORTER_OTLP_PROTOCOL is set while OTEL_EXPORTER_OTLP_ENDPOINT is missing. In the
@@ -1104,7 +1107,6 @@ func otelExporterOtlpEnvVarsAlreadyHaveDesiredValues(
 func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 	container *corev1.Container,
 	instrumentationIssues []string,
-	perContainerLogger logd.Logger,
 ) []string {
 	idx := findEnvVarIdx(container, envVarLdPreloadName)
 	if idx < 0 {
@@ -1120,7 +1122,7 @@ func (m *ResourceModifier) addOrAppendToLdPreloadEnvVar(
 				"Dash0 cannot prepend anything to the environment variable %s as it is specified via "+
 					"ValueFrom, this container will not be instrumented to send telemetry to Dash0.",
 				envVarLdPreloadName)
-			perContainerLogger.WarnTelemetryCollectionIssue(msg)
+			m.perContainerLogger(container).WarnTelemetryCollectionIssue(msg)
 			instrumentationIssues = append(instrumentationIssues, msg)
 			return instrumentationIssues
 		}
@@ -1513,12 +1515,20 @@ func envVarHasValue(container *corev1.Container, idx int, value string) bool {
 	return container.Env[idx].ValueFrom == nil && strings.TrimSpace(container.Env[idx].Value) == value
 }
 
-func envVarHasAnyValueFrom(container *corev1.Container, idx int, values []string) bool {
+// isOperatorCollectorEndpoint reports whether the env var at idx holds an OTLP endpoint that the operator could have
+// written. The service URL has to match exactly, while any node-local URL is accepted, no matter which host port it
+// carries.
+func isOperatorCollectorEndpoint(container *corev1.Container, idx int, possibleUrls util.PossibleCollectorUrls) bool {
 	if container.Env[idx].ValueFrom != nil {
 		return false
 	}
 	currentValue := strings.TrimSpace(container.Env[idx].Value)
-	return slices.Contains(values, currentValue)
+	if currentValue == possibleUrls.ServiceBaseUrl {
+		return true
+	}
+	// Only the IPv4 node-local form is matched, since SelectCollectorBaseUrl falls back to the service URL in IPv6
+	// clusters. Needs to be revisited if we alloe node-local routing for IPv6 at some point.
+	return nodeLocalCollectorEndpointRegex.MatchString(currentValue)
 }
 
 func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) ModificationResult {
@@ -1750,10 +1760,10 @@ func (m *ResourceModifier) removeOtelExporterOtlpEnvVarsIfSetByOperator(containe
 		return
 	}
 
-	if !envVarHasAnyValueFrom(
+	if !isOperatorCollectorEndpoint(
 		container,
 		otelExporterOtlpEndpointIdx,
-		m.clusterInstrumentationConfig.PossibleCollectorUrls.All(),
+		m.clusterInstrumentationConfig.PossibleCollectorUrls,
 	) ||
 		!envVarHasValue(container, otelExporterOtlpProtocolIdx, defaultOtelExporterOtlpProtocol) {
 		return
@@ -1959,4 +1969,11 @@ func (m *ResourceModifier) hasMatchingOwnerReference(workload client.Object, pos
 		}
 	}
 	return false
+}
+
+// perContainerLogger derives a logger for one container. It is only called when a telemetry collection issue actually
+// needs to be reported, which is rare: deriving it eagerly for every container of every admission request allocates a
+// zap core and a field slice that the happy path never uses.
+func (m *ResourceModifier) perContainerLogger(container *corev1.Container) logd.Logger {
+	return m.logger.WithValues("container", container.Name)
 }

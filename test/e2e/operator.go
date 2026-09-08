@@ -380,7 +380,7 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 
 func setAdditionalHelmParameters(arguments []string, additionalHelmParameters map[string]string) []string {
 	for key, value := range additionalHelmParameters {
-		arguments = setIfNotEmpty(arguments, key, value)
+		arguments = setHelmParameter(arguments, key, value)
 	}
 	return arguments
 }

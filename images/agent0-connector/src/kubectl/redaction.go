@@ -7,12 +7,10 @@
 // within that document, and the document is rendered again.
 //
 // This is only possible for formats the connector can parse, reliably interprete, and render itself. Requests that
-// targets a Dash0 custom resource which can contain secrets are restricted to output formats that satisfy these
-// constraints (see safeOrRedactableOutputFormats in validation.go):
+// target a Dash0 custom resource which can contain secrets, or a workload resource, are restricted to output formats
+// that satisfy these constraints (see safeOrRedactableOutputFormats in validation.go).
 //
-//   - "-o json" and "-o yaml" render the resources as a document. kubectl serializes a custom resource from its
-//     unstructured (map) form, so re-rendering the parsed document reproduces kubectl's output byte for byte, apart
-//     from the redacted values.
+//   - "-o json" and "-o yaml" render the resources as a document.
 //   - the content-free formats ("-o name", "-o wide", the default table) do not expose the content of a resource at
 //     all and are passed through untouched.
 //   - "-o go-template", "-o jsonpath", "-o custom-columns" and "kubectl describe" are rejected for these resource
@@ -23,9 +21,8 @@
 //   - file-related output formats (go-template-file etc.) and --raw are disallowed outright for all resource types, so
 //     they do not require specific treatment with respect to secret redaction
 //
-// A response that cannot be parsed after all - output truncated at maxOutputBytesPerStream, a multi-document YAML
-// stream, or an error message on stderr with nothing on stdout - is withheld rather than handed out, see
-// withholdResponse.
+// A response that cannot be parsed after all - output truncated at maxStdoutBytes, a multi-document YAML stream, or an
+// error message on stderr with nothing on stdout - is withheld rather than handed out, see withholdResponse.
 //
 // stderr is scrubbed by replacing the values that were redacted from the document, since kubectl formats an error
 // with Go's %v verbs rather than as a document.
@@ -33,12 +30,16 @@
 package kubectl
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"slices"
 	"strings"
 
+	yamlv2 "go.yaml.in/yaml/v2"
 	"sigs.k8s.io/yaml"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
@@ -63,7 +64,22 @@ const (
 	// jsonIndent is the indentation kubectl uses for "-o json", so that a re-rendered document matches the original
 	// output.
 	jsonIndent = "    "
+
+	// configMapKind is the kind the data of a config map is redacted for, see redactConfigMapData.
+	configMapKind = "ConfigMap"
+
+	// yamlDocumentSeparator starts a new document in a YAML stream.
+	yamlDocumentSeparator = "---"
 )
+
+// configMapDataFields are the fields of a config map that hold its content. The values of binaryData are base64 in the
+// response and are decoded before they are walked and encoded again afterwards, see redactConfigMapValue. Without that
+// detour they could never be redacted at all: the base64 alphabet holds neither ": " nor a leading "- ", so an encoded
+// value can only ever parse as a scalar.
+var configMapDataFields = []string{"data", binaryDataField}
+
+// binaryDataField is the field of a config map whose values are base64 rather than the literal content.
+const binaryDataField = "binaryData"
 
 // wellKnownNonSecretValues lists values which are very unlikely to be secrets/credentials. They are used as a
 // best-effort to not remove innocuous values from header and query parameter values (see
@@ -113,6 +129,106 @@ var dash0ResourceTypesWithSecrets = map[string]struct{}{
 	"dash0syntheticchecks":        {},
 }
 
+// workloadResourceTypes lists the resource type names of the Kubernetes resource types that carry a pod spec, and with
+// it the literal values of the environment variables of their containers. Any workload can hold a credential in an
+// environment variable. So the environment variable values of these resource types are redacted (see
+// redactEnvVarValues) and the output formats whose result cannot be redacted are rejected for them.
+//
+// Singular form, plural form and short name are listed for each type; kubectl also accepts the kind (e.g.
+// "Deployment"), which normalizes to the singular form. Additionally, "all" is the shorthand that expands to pods,
+// services, daemon sets, deployments, replica sets, stateful sets, jobs and cron jobs, so it renders pod specs as well.
+var workloadResourceTypes = map[string]struct{}{
+	"all":                    {},
+	"controllerrevision":     {},
+	"controllerrevisions":    {},
+	"cronjob":                {},
+	"cronjobs":               {},
+	"cj":                     {},
+	"daemonset":              {},
+	"daemonsets":             {},
+	"ds":                     {},
+	"deployment":             {},
+	"deployments":            {},
+	"deploy":                 {},
+	"job":                    {},
+	"jobs":                   {},
+	"pod":                    {},
+	"pods":                   {},
+	"po":                     {},
+	"podtemplate":            {},
+	"podtemplates":           {},
+	"replicaset":             {},
+	"replicasets":            {},
+	"rs":                     {},
+	"replicationcontroller":  {},
+	"replicationcontrollers": {},
+	"rc":                     {},
+	"statefulset":            {},
+	"statefulsets":           {},
+	"sts":                    {},
+}
+
+// configMapResourceTypes lists the resource type names of config maps. A config map is not meant to hold credentials,
+// but in practice it often does: the operator's own collector config maps carry the literal header values of the gRPC
+// and HTTP exports, and a third-party chart routinely renders a connection string or an API key into one. The values
+// of its data are therefore walked for credential fields (see redactConfigMapData) and the output formats whose result
+// cannot be redacted are rejected for it.
+//
+// Singular form, plural form and the short name are listed; kubectl also accepts the kind ("ConfigMap"), which
+// normalizes to the singular form.
+var configMapResourceTypes = map[string]struct{}{
+	"configmap":  {},
+	"configmaps": {},
+	"cm":         {},
+}
+
+// resourceTypeWithSecrets describes a category of resource types whose content can contain secrets, so that the
+// rejection messages of validation.go can name what is being protected and how to read the resource instead.
+type resourceTypeWithSecrets struct {
+	// description names the category in a rejection message, e.g. "a Dash0 custom resource".
+	description string
+	// secrets names what the content of such a resource can expose, e.g. "an authorization token".
+	secrets string
+	// redactedContent names what the connector replaces in a response it can redact, e.g. "its credentials".
+	redactedContent string
+}
+
+var (
+	dash0CustomResourceWithSecrets = resourceTypeWithSecrets{
+		description:     "a Dash0 custom resource",
+		secrets:         "an authorization token or third-party credentials",
+		redactedContent: "its credentials",
+	}
+	workloadResourceWithSecrets = resourceTypeWithSecrets{
+		description:     "a workload resource",
+		secrets:         "credentials in the values of its environment variables",
+		redactedContent: "the values of its environment variables",
+	}
+	configMapResourceWithSecrets = resourceTypeWithSecrets{
+		description:     "a config map",
+		secrets:         "credentials in the values of its data",
+		redactedContent: "the credentials in its data",
+	}
+)
+
+// resourceTypesWithSecrets maps every resource type name whose content can contain secrets to its category.
+var resourceTypesWithSecrets = func() map[string]resourceTypeWithSecrets {
+	types := make(
+		map[string]resourceTypeWithSecrets,
+		len(dash0ResourceTypesWithSecrets)+len(workloadResourceTypes)+len(configMapResourceTypes),
+	)
+	for resourceType := range dash0ResourceTypesWithSecrets {
+		types[resourceType] = dash0CustomResourceWithSecrets
+	}
+	for resourceType := range workloadResourceTypes {
+		types[resourceType] = workloadResourceWithSecrets
+	}
+	for resourceType := range configMapResourceTypes {
+		types[resourceType] = configMapResourceWithSecrets
+	}
+	return types
+}()
+
 // credentialFieldsPerConfigObject maps the name of a configuration object in a Dash0 custom resource to the fields
 // within it that hold a credential. Keying on the enclosing object rather than on the field name alone keeps the
 // generic field names ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification
@@ -154,13 +270,14 @@ var parseableOutputFormats = map[string]struct{}{
 }
 
 // redactSecretsInResponse redacts secrets in a command response, in place. The response is parsed into a document, the
-// credential values (Dash0 auth tokens, third-party credentials) are replaced within that document - including in the
-// copy of the spec that kubectl apply leaves behind in the "kubectl.kubernetes.io/last-applied-configuration"
-// annotation - and the document is rendered again in the format the request asked for.
+// credential values (Dash0 auth tokens, third-party credentials, the literal values of environment variables) are
+// replaced within that document - including in the copy of the spec that kubectl apply leaves behind in the
+// "kubectl.kubernetes.io/last-applied-configuration" annotation - and the document is rendered again in the format the
+// request asked for.
 //
-// Only responses that render a Dash0 custom resource which can contain secrets are redacted; for those, validation.go
-// has already restricted the request to an output format the connector can parse and render (see
-// safeOrRedactableOutputFormats).
+// Only responses that render a Dash0 custom resource which can contain secrets, or a workload resource are redacted;
+// for those, validation.go has already restricted the request to an output format the connector can parse and render
+// (see safeOrRedactableOutputFormats).
 //
 // A non-nil error means the response could not be redacted and must not be sent to the backend, see withholdResponse.
 func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, stdoutTruncated bool) error {
@@ -182,8 +299,10 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 	}
 	if stdoutTruncated {
 		return fmt.Errorf(
-			"the output exceeds the limit of %d bytes and the truncated response cannot be parsed for redaction",
-			maxOutputBytesPerStream,
+			"the output exceeds the limit of %d bytes and the truncated response cannot be parsed for redaction; "+
+				"narrow the request so that its response stays below the limit, e.g. with -n <namespace>, "+
+				"--selector, --field-selector, or by naming a single resource",
+			maxStdoutBytes,
 		)
 	}
 	if resp.GetStdout() == "" {
@@ -210,20 +329,21 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 	return nil
 }
 
-// responseCanContainSecrets reports whether the response of the given invocation renders the content of a Dash0 custom
-// resource that can contain secrets, and therefore has to be redacted.
+// responseCanContainSecrets reports whether the response of the given invocation renders the content of a resource
+// that can contain secrets, and therefore has to be redacted.
 func responseCanContainSecrets(parsed kubectlArguments) bool {
 	//nolint:goconst
 	if parsed.kubectlCommand != "get" {
-		// No other allowed kubectl command renders the content of a custom resource: "describe" is rejected for these
-		// resource types (see describeOfResourceTypeWithSecrets), and "explain" only prints the schema.
+		// No other allowed kubectl command renders the content of such a resource: "describe" is rejected for these
+		// resource types (see describeOfResourceTypeWithSecretsRequested), and "explain" only prints the schema.
 		return false
 	}
 	if parsed.outputIsContentFree() {
 		// kubectl get -o name or similar, no actual resource content in the response.
 		return false
 	}
-	return targetsResourceTypeWithSecrets(parsed)
+	_, hasSecrets := targetsResourceTypeWithSecrets(parsed)
+	return hasSecrets
 }
 
 // parseResponseDocument parses a kubectl response that renders resources in the given output format. It reports false
@@ -260,7 +380,7 @@ func parseResponseDocument(format string, stdout string) (any, bool) {
 func hasYamlDocumentSeparator(stdout string) bool {
 	for line := range strings.SplitSeq(stdout, "\n") {
 		trimmed := strings.TrimRight(line, " \t\r")
-		if trimmed == "---" || strings.HasPrefix(trimmed, "--- ") {
+		if trimmed == yamlDocumentSeparator || strings.HasPrefix(trimmed, yamlDocumentSeparator+" ") {
 			return true
 		}
 	}
@@ -277,6 +397,12 @@ type redactor struct {
 
 func (r *redactor) add(value string) {
 	r.values[value] = struct{}{}
+	r.count++
+}
+
+// addWithoutStderrScrub records a replacement whose replaced value must not be scrubbed from stderr, see
+// redactEnvVarValue. Only the count is tracked, so that redactAnnotations still notices that the node changed.
+func (r *redactor) addWithoutStderrScrub() {
 	r.count++
 }
 
@@ -301,18 +427,18 @@ func (r *redactor) valuesToScrubFromStderr() []string {
 	return sorted
 }
 
-// targetsResourceTypeWithSecrets reports whether the kubectl arguments reference a Dash0 custom resource type whose
-// content can contain secrets (see dash0ResourceTypesWithSecrets). Unlike responseCanContainSecrets it does not look at
-// the kubectl command or the output format, since it answers whether a response could contain a secret at all, not
-// whether the response has to be redacted. It is the basis for rejecting the output formats whose rendering of a secret
-// cannot be redacted reliably, see unredactableOutputRequested in validation.go.
-func targetsResourceTypeWithSecrets(parsed kubectlArguments) bool {
+// targetsResourceTypeWithSecrets returns the category of the first resource type the kubectl arguments reference whose
+// content can contain secrets (see resourceTypesWithSecrets). Unlike responseCanContainSecrets it does not look at the
+// kubectl command or the output format, since it answers whether a response could contain a secret at all, not whether
+// the response has to be redacted. It is the basis for rejecting the output formats whose rendering of a secret cannot
+// be redacted reliably, see unredactableOutputRequested in validation.go.
+func targetsResourceTypeWithSecrets(parsed kubectlArguments) (resourceTypeWithSecrets, bool) {
 	for _, resourceType := range parsed.resourceTypes {
-		if _, hasSecrets := dash0ResourceTypesWithSecrets[resourceType]; hasSecrets {
-			return true
+		if category, hasSecrets := resourceTypesWithSecrets[resourceType]; hasSecrets {
+			return category, true
 		}
 	}
-	return false
+	return resourceTypeWithSecrets{}, false
 }
 
 // redactResourceList redacts the secrets of all resources in a parsed resource document, in place. Such a document
@@ -347,6 +473,179 @@ func redactResourceItem(resource any, redacted *redactor) error {
 	return redactAnnotations(resource, redacted)
 }
 
+// redactConfigMapData redacts the credentials in the values of the data of a config map. Each value is a string that
+// holds a whole configuration file, so the credentials sit inside it rather than in a field of the resource: the
+// operator's own collector config map renders the literal header values of the gRPC and HTTP exports into the YAML of
+// its "config.yaml" key. Every value that parses as a JSON or YAML object or list is therefore walked by the same
+// credential fields the resources themselves are walked for, and is rendered again only when the walk actually
+// replaced something, so that a value nothing was redacted from is handed out exactly as kubectl rendered it.
+//
+// A value the walk does not recognize keeps its place: a credential in a format the connector cannot parse (a
+// properties file, a shell script) or one under a key name the walk does not know is not redacted. Config maps are
+// the one resource type whose content is entirely user-defined, so the walk cannot be exhaustive here the way it is
+// for the fields of a Dash0 custom resource.
+//
+// The scope is bound to the kind rather than to the key name, since "data" is a generic field that other resource
+// types carry with an unrelated meaning. It is reached from redactDocumentNodeRecursively rather than from the
+// response root, so a config map is redacted wherever it occurs, including the copy of itself that "kubectl apply"
+// leaves behind in the kubectl.kubernetes.io/last-applied-configuration annotation.
+func redactConfigMapData(resource any, redacted *redactor) {
+	resourceMap, isMap := resource.(map[string]any)
+	if !isMap {
+		return
+	}
+	if kind, isString := resourceMap["kind"].(string); !isString || kind != configMapKind {
+		return
+	}
+	for _, dataField := range configMapDataFields {
+		data, isMap := resourceMap[dataField].(map[string]any)
+		if !isMap {
+			continue
+		}
+		isBase64 := dataField == binaryDataField
+		for key := range data {
+			redactConfigMapValue(data, key, isBase64, redacted)
+		}
+	}
+}
+
+// redactConfigMapValue redacts the credentials within a single value of the data of a config map, see
+// redactConfigMapData. The value is re-rendered in the format it was parsed from, so that a JSON value stays JSON, and
+// only when the walk actually replaced something, so that a value holding no credential is handed out byte for byte.
+//
+// A value that holds several YAML documents is rendered as several documents again. Re-rendering normalizes the whole
+// value, not only the documents a credential was replaced in: comments, key order and the original scalar notation are
+// lost. That is the price of returning a value the connector can vouch for, and it is only paid by a value that
+// actually held a credential.
+//
+// A value of binaryData (isBase64) is decoded before it is parsed and encoded again after it was redacted, so that the
+// response keeps the shape kubectl produced. A value that is not valid base64 after all is left alone, since there is
+// nothing to parse in it.
+func redactConfigMapValue(data map[string]any, key string, isBase64 bool, redacted *redactor) {
+	value, isString := data[key].(string)
+	if !isString || value == "" {
+		return
+	}
+	content := value
+	if isBase64 {
+		decoded, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return
+		}
+		content = string(decoded)
+	}
+	documents, format, parsed := parseConfigMapValue(content)
+	if !parsed {
+		return
+	}
+	countBefore := redacted.count
+	for _, document := range documents {
+		redactDocumentNodeRecursively(document, redacted)
+	}
+	if redacted.count == countBefore {
+		return
+	}
+	rendered, err := renderConfigMapValue(format, documents)
+	if err != nil {
+		// Leaving the original value in place would hand out the credential the walk just found, so the value is
+		// replaced as a whole instead. The placeholder is not valid base64, which is deliberate: a reader has to be
+		// able to tell that the value was removed rather than that it decodes to something unexpected.
+		redactValueOf(data, key, redacted)
+		return
+	}
+	if isBase64 {
+		// The encoded value is the form a kubectl message about this config map would carry, and the credential the
+		// walk found is in its decoded form, so the encoded value has to be scrubbed from stderr in its own right.
+		redacted.add(value)
+		rendered = base64.StdEncoding.EncodeToString([]byte(rendered))
+	}
+	data[key] = rendered
+}
+
+// renderConfigMapValue renders the documents of one config map value again, joined by the YAML document separator when
+// there is more than one. A single document is rendered exactly as renderResponseDocument renders a response, so that
+// the common case is unchanged.
+func renderConfigMapValue(format string, documents []any) (string, error) {
+	rendered := make([]string, 0, len(documents))
+	for _, document := range documents {
+		renderedDocument, err := renderResponseDocument(format, document)
+		if err != nil {
+			return "", err
+		}
+		rendered = append(rendered, renderedDocument)
+	}
+	return strings.Join(rendered, yamlDocumentSeparator+"\n"), nil
+}
+
+// parseConfigMapValue parses one value of the data of a config map into its documents and reports the format they were
+// parsed from, so that they can be rendered again in the same format. JSON is tried first, since sigs.k8s.io/yaml
+// accepts JSON as well and would otherwise turn a JSON value into YAML. JSON has no notion of several documents, so
+// that branch always yields exactly one.
+//
+// At least one document must be an object or a list for the value to be reported as parsed: a scalar has no field the
+// walk could match.
+func parseConfigMapValue(value string) ([]any, string, bool) {
+	var content any
+	if err := json.Unmarshal([]byte(value), &content); err == nil {
+		return []any{content}, outputFormatJson, isWalkableNode(content)
+	}
+	documents, parsed := parseYamlDocuments(value)
+	if !parsed {
+		return nil, "", false
+	}
+	return documents, outputFormatYaml, slices.ContainsFunc(documents, isWalkableNode)
+}
+
+// parseYamlDocuments parses every document of a YAML stream. The documents are split with a yaml.v2 decoder rather
+// than by looking for the separator in the text, because a "---" line only starts a document outside a block scalar
+// and outside a quoted value, which the parser is the only thing that knows.
+//
+// Each document is handed to sigs.k8s.io/yaml afterwards rather than being used as the decoder returned it: the
+// decoder yields map[any]any, whereas the rest of the redaction walks the map[string]any that a detour through JSON
+// produces (see parseResponseDocument), and the two must not diverge.
+//
+// A trailing document that holds nothing is dropped, so that a value ending in a separator does not gain a "null"
+// document when it is rendered again.
+func parseYamlDocuments(value string) ([]any, bool) {
+	decoder := yamlv2.NewDecoder(strings.NewReader(value))
+	var documents []any
+	for {
+		var raw any
+		if err := decoder.Decode(&raw); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, false
+		}
+		normalized, err := yamlv2.Marshal(raw)
+		if err != nil {
+			return nil, false
+		}
+		var document any
+		if err := yaml.Unmarshal(normalized, &document); err != nil {
+			return nil, false
+		}
+		documents = append(documents, document)
+	}
+	for len(documents) > 0 && documents[len(documents)-1] == nil {
+		documents = documents[:len(documents)-1]
+	}
+	if len(documents) == 0 {
+		return nil, false
+	}
+	return documents, true
+}
+
+// isWalkableNode reports whether a parsed value has a shape redactDocumentNodeRecursively can descend into.
+func isWalkableNode(node any) bool {
+	switch node.(type) {
+	case map[string]any, []any:
+		return true
+	default:
+		return false
+	}
+}
+
 // redactDocumentNodeRecursively recursively walks the content of a resource and replaces every credential value it
 // finds with redactedValue:
 //   - the Dash0 auth token (all spec.exports.dash0.authorization.token and its legacy counterpart
@@ -355,24 +654,35 @@ func redactResourceItem(resource any, redacted *redactor) error {
 //     of a synthetic check, as well as its query parameter values,
 //   - the credentials of the third-party integration of a notification channel and the request body of a synthetic
 //     check (see credentialFieldsPerConfigObject),
-//   - the credential-bearing parts of the URL a synthetic check requests (see urlFieldsPerConfigObject).
+//   - the credential-bearing parts of the URL a synthetic check requests (see urlFieldsPerConfigObject),
+//   - the literal values of the environment variables of every container of a pod spec (see redactEnvVarValues),
+//   - the header values of the HTTP probes and lifecycle hooks of a pod spec, which have the same shape as the header
+//     values of an export,
+//   - the credentials within the values of the data of a config map (see redactConfigMapData).
 //
 // The user name of the basic authentication of a synthetic check is not a credential and is left in place. Values
 // sourced via valueFrom are ignored. Apart from the fields that are only credentials within a particular
 // configuration object, the walk is not bound to specific paths, so it covers any future location of these fields as
 // well. It is applied to the resources themselves as well as to the copies of them that are embedded in annotations
 // (see redactResourceItem).
+//
+// Every redaction is reached from this one walk, so that a node is redacted the same way wherever it occurs: at the
+// root of the response, inside the copy of a resource that a tool embedded in an annotation, or nested in the content
+// of a config map.
 func redactDocumentNodeRecursively(node any, redacted *redactor) {
 	switch typedNode := node.(type) {
 	case map[string]any:
+		redactConfigMapData(typedNode, redacted)
 		// Only the values of existing keys are replaced, never new ones added, so the map may be modified while it is
 		// ranged over.
 		for key, value := range typedNode {
 			switch key {
 			case "token", "password":
 				redactValueOf(typedNode, key, redacted)
-			case "headers", "queryParameters":
+			case "headers", "queryParameters", "httpHeaders":
 				redactHeaderValues(typedNode, key, redacted)
+			case "env":
+				redactEnvVarValues(typedNode, key, redacted)
 			default:
 				if credentialFields, hasCredentials := credentialFieldsPerConfigObject[key]; hasCredentials {
 					redactCredentialFields(value, credentialFields, redacted)
@@ -391,23 +701,56 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 	}
 }
 
-// redactValueOf replaces the value the given key holds in node with redactedValue and records the
-// replaced value, so that it can be scrubbed from stderr as well. Non-string and empty values are left alone; a
-// value sourced via valueFrom is an object rather than a string and is therefore not a credential the response
-// exposes. No length or plausibility check is applied: the value is replaced where it lives, so an unusually short
-// credential cannot affect anything else in the response.
-//
-// A value that already is the placeholder is left alone as well. Two rules can cover the same field - a credential
-// field of a configuration object that is also a header, or a header whose name happens to be "token" - and replacing
-// it twice would add the placeholder itself to the recorded values and count as another replacement, which
-// redactAnnotations reads as "this annotation held a credential".
+// redactValueOf replaces the value the given key holds in node with redactedValue and records the replaced value, so
+// that it can be scrubbed from stderr as well.
 func redactValueOf(node map[string]any, key string, redacted *redactor) {
+	if value, replaced := replaceValueOf(node, key); replaced {
+		redacted.add(value)
+	}
+}
+
+// replaceValueOf replaces the value the given key holds in node with redactedValue and returns the value it replaced.
+// Non-string and empty values are left alone; a value sourced via valueFrom is an object rather than a string and is
+// therefore not a credential the response exposes.
+//
+// A value that already is the placeholder is left alone as well.
+func replaceValueOf(node map[string]any, key string) (string, bool) {
 	value, isString := node[key].(string)
 	if !isString || value == "" || value == redactedValue {
-		return
+		return "", false
 	}
 	node[key] = redactedValue
-	redacted.add(value)
+	return value, true
+}
+
+// redactEnvVarValues redacts the literal values of the environment variables held by the given key of node, that is,
+// of one container of a pod spec. Every literal value is replaced, without the plausibility check the header values
+// get: any workload can hold a credential in an environment variable - the operator's own daemonset carries the Dash0
+// auth token that way - and there is no way to tell a credential from an innocuous value. An environment variable that
+// sources its value via valueFrom has no "value" field and is left untouched, since the reference it holds is not a
+// credential.
+func redactEnvVarValues(node map[string]any, key string, redacted *redactor) {
+	envVars, isList := node[key].([]any)
+	if !isList {
+		return
+	}
+	for _, envVar := range envVars {
+		envVarMap, isMap := envVar.(map[string]any)
+		if !isMap {
+			continue
+		}
+		redactEnvVarValue(envVarMap, redacted)
+	}
+}
+
+// redactEnvVarValue replaces the literal value of a single environment variable. Unlike redactValueOf it does not
+// record the replaced value for the stderr scrub: kubectl renders the environment variables of a resource on stdout
+// and never quotes them in an error message, while a single response can carry hundreds of them, many of them ordinary
+// words that would garble unrelated stderr output if they were replaced there.
+func redactEnvVarValue(node map[string]any, redacted *redactor) {
+	if _, replaced := replaceValueOf(node, "value"); replaced {
+		redacted.addWithoutStderrScrub()
+	}
 }
 
 // redactHeaderValues redacts the literal header or query parameter values held by the given key of node. Three shapes
