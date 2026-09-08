@@ -1,0 +1,17 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0TimeSeriesAggregation
+metadata:
+  name: time-series-aggregation-e2e-test
+  labels:
+    app.kubernetes.io/name: time-series-aggregation-e2e-test
+{{- if .Dash0ComEnabled }}
+    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
+{{- end }}
+spec:
+  enabled: true
+  match:
+    metricNameMatcher:
+      operator: "is"
+      value: "http.server.duration"
+  sample:
+    interval: 60s

@@ -295,6 +295,26 @@ rules:
   - patch
   - update
 
+# Permissions required to watch Dash0 time series aggregation resources:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0timeseriesaggregations
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to write to Dash0 time series aggregation resource status:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0timeseriesaggregations/status
+  verbs:
+  - get
+  - patch
+  - update
+
 # Permissions required to manage the Dash0 Signal Control resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com

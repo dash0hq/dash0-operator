@@ -243,6 +243,22 @@ cluster roles should match snapshot:
       - apiGroups:
           - operator.dash0.com
         resources:
+          - dash0timeseriesaggregations
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0timeseriesaggregations/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
           - dash0signalcontrols
         verbs:
           - create
@@ -802,6 +818,22 @@ cluster roles should match snapshot with agent0-connector enabled:
       - apiGroups:
           - operator.dash0.com
         resources:
+          - dash0timeseriesaggregations
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0timeseriesaggregations/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
           - dash0signalcontrols
         verbs:
           - create
@@ -1336,6 +1368,7 @@ cluster roles should match snapshot with agent0-connector enabled:
           - dash0signaltometrics
           - dash0spamfilters
           - dash0syntheticchecks
+          - dash0timeseriesaggregations
           - dash0views
         verbs:
           - get

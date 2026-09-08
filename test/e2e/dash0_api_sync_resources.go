@@ -31,6 +31,7 @@ const (
 	samplingRuleName          = "sampling-rule-e2e-test"
 	signalToMetricsName       = "signal-to-metrics-e2e-test"
 	spamFilterName            = "spam-filter-e2e-test"
+	timeSeriesAggregationName = "time-series-aggregation-e2e-test"
 	teamName                  = "team-e2e-test"
 )
 
@@ -70,6 +71,10 @@ var (
 	//go:embed dash0spamfilter.yaml.template
 	spamFilterSource   string
 	spamFilterTemplate *template.Template
+
+	//go:embed dash0timeseriesaggregation.yaml.template
+	timeSeriesAggregationSource   string
+	timeSeriesAggregationTemplate *template.Template
 
 	//go:embed dash0team.yaml.template
 	teamSource   string
@@ -515,6 +520,52 @@ func setOptOutLabelInSpamFilter(namespace string, value string) {
 	).To(Succeed())
 }
 
+func renderTimeSeriesAggregationTemplate(values dash0ApiResourceValues) string {
+	timeSeriesAggregationTemplate = initTemplateOnce(
+		timeSeriesAggregationTemplate,
+		timeSeriesAggregationSource,
+		"dash0timeseriesaggregation",
+	)
+	return renderResourceTemplate(timeSeriesAggregationTemplate, values, "dash0timeseriesaggregation")
+}
+
+func deployTimeSeriesAggregationResource(
+	namespace string,
+	values dash0ApiResourceValues,
+) {
+	renderedResourceFileName := renderTimeSeriesAggregationTemplate(values)
+	defer func() {
+		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
+	}()
+
+	By(fmt.Sprintf(
+		"deploying a Dash0TimeSeriesAggregation resource to namespace %s with values %v", namespace, values))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"apply",
+		"-n",
+		namespace,
+		"-f",
+		renderedResourceFileName,
+	))).To(Succeed())
+}
+
+func setOptOutLabelInTimeSeriesAggregation(namespace string, value string) {
+	By(fmt.Sprintf("setting the opt-out label in the time series aggregation with value %s", value))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"-n",
+			namespace,
+			"--overwrite",
+			"Dash0TimeSeriesAggregation",
+			timeSeriesAggregationName,
+			fmt.Sprintf("dash0.com/enable=%s", value),
+		)),
+	).To(Succeed())
+}
+
 func removeSamplingRuleResource(namespace string) {
 	_ = runAndIgnoreOutput(exec.Command(
 		"kubectl",
@@ -536,6 +587,18 @@ func removeSpamFilterResource(namespace string) {
 		namespace,
 		"Dash0SpamFilter",
 		spamFilterName,
+	))
+}
+
+func removeTimeSeriesAggregationResource(namespace string) {
+	_ = runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"delete",
+		"--ignore-not-found",
+		"-n",
+		namespace,
+		"Dash0TimeSeriesAggregation",
+		timeSeriesAggregationName,
 	))
 }
 
@@ -665,6 +728,7 @@ func removeDash0ApiSyncResources(namespace string) {
 	removeSamplingRuleResource(namespace)
 	removeSignalToMetricsResource(namespace)
 	removeSpamFilterResource(namespace)
+	removeTimeSeriesAggregationResource(namespace)
 	removeTeamResource(namespace)
 }
 
