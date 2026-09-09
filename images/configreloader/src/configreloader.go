@@ -68,6 +68,8 @@ func main() {
 		logger = slog.New(stdOutSlogHandler)
 	}
 
+	common.StartPprofServerIfConfigured(logger)
+
 	collectorPidFilePath := flag.String(
 		"pidfile",
 		"",

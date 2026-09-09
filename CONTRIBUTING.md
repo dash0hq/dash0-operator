@@ -195,7 +195,7 @@ Moving beyond the quickstart instructions, here are more details on the test scr
     * `COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED`: Set this to "false" to disable collecting pod labels and annotations
       as resource attributes.
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
-    * `COLLECTOR_ENABLE_PPROF`: Set to "true" to enable the pprof extension in the collector containers.
+    * `COLLECTOR_ENABLE_PPROF`: Set to "true" to enable the pprof extension in all containers of the collector pods.
       See [Creatig Heap Profiles](helm-chart/dash0-operator/docs/troubleshooting.md#create-heap-profiles) for instructions on creating heap profiles.
     * `DASH0_API_ENDPOINT`: The endpoint for API requests (for synchronizing Perses dashboards, Prometheus check rules,
       synthetic checks and views). It is recommended to set this in `test-resources/.env`.

@@ -24,6 +24,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/pointers"
@@ -226,6 +227,11 @@ const (
 
 	configReloader    = "configuration-reloader"
 	fileLogOffsetSync = "filelog-offset-sync"
+
+	// The pprof extension of the opentelemetry-collector container listens on its default port 1777. The auxiliary
+	// containers of the collector pod share the same network namespace, hence they need their own separate ports.
+	configReloaderPprofPort    = "1778"
+	fileLogOffsetSyncPprofPort = "1779"
 
 	// label keys
 	dash0OptOutLabelKey = "dash0.com/enable"
@@ -987,6 +993,12 @@ func assembleFileLogOffsetSyncContainer(
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{defaultFilelogReceiverOffsetsVolumeMount},
 	}
+	if config.EnableProfExtension {
+		filelogOffsetSyncContainer.Env = append(filelogOffsetSyncContainer.Env, corev1.EnvVar{
+			Name:  common.PprofPortEnvVarName,
+			Value: fileLogOffsetSyncPprofPort,
+		})
+	}
 	if config.Images.FilelogOffsetSyncImagePullPolicy != "" {
 		filelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy
 	}
@@ -1419,6 +1431,12 @@ func assembleConfigurationReloaderContainer(
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: reloaderVolumeMounts,
+	}
+	if config.EnableProfExtension {
+		configurationReloaderContainer.Env = append(configurationReloaderContainer.Env, corev1.EnvVar{
+			Name:  common.PprofPortEnvVarName,
+			Value: configReloaderPprofPort,
+		})
 	}
 	if config.Images.ConfigurationReloaderImagePullPolicy != "" {
 		configurationReloaderContainer.ImagePullPolicy = config.Images.ConfigurationReloaderImagePullPolicy

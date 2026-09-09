@@ -605,7 +605,7 @@ run_helm() {
     helm_install_command+=" --set operator.pprofPort=$OPERATOR_MANAGER_PPROF_PORT"
   fi
   if [[ "${COLLECTOR_ENABLE_PPROF:-}" = "true" ]]; then
-    helm_install_command+=" --set operator.collectors.enablePprofExtension=true"
+    helm_install_command+=" --set operator.collectors.enablePprof=true"
   fi
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchSize=$OTEL_COLLECTOR_SEND_BATCH_SIZE"

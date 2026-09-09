@@ -359,7 +359,7 @@ tests:
           sendBatchMaxSize: 32768
           forceUseServiceUrl: true
           disableHostPorts: true
-          enablePprofExtension: true
+          enablePprof: true
           compressConfigMaps: true
           k8s_attributes:
             disableReplicasetInformer: true
