@@ -766,6 +766,13 @@ Dash0-Dataset header and the accountant sums what arrives, so a second delivery 
   telemetry:
     resource:
       attributes:
+        {{- /*
+        service.name (dash0-operator-collector), service.version (the collector distribution's version, see
+        images/collector/src/builder/config.yaml) and service.instance.id (a random UUID) are provided automatically
+        from the collector's build info, hence they are not listed here.
+        */}}
+        - name: service.namespace
+          value: dash0-operator
         - name: k8s.cluster.uid
           value: "{{ .PseudoClusterUid }}"
         {{- if .ClusterName }}
