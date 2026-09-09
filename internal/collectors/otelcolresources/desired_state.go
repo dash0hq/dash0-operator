@@ -926,6 +926,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
+			openTelemetryCollector,
 		)
 		if err != nil {
 			return nil, err
@@ -1768,6 +1769,7 @@ func assembleCollectorDeployment(
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
+			openTelemetryCollector,
 		)
 		if err != nil {
 			return nil, err
@@ -2064,6 +2066,7 @@ func assembleSignalControlCollectorDeployment(
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
+			openTelemetryCollector,
 		)
 		if err != nil {
 			return nil, err

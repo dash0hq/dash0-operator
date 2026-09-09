@@ -7183,6 +7183,48 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readSelfMonitoringTelemetry(collectorConfig)).To(BeNil())
 		}, daemonSetAndDeployment)
 
+		DescribeTable("should render service.namespace on the internal telemetry resource",
+			func(cmTypeDef configMapTypeDefinition) {
+				configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+						SelfMonitoringEnabled: true,
+						Export:                *Dash0ExportWithEndpointAndToken(),
+					},
+				}, monitoredNamespaces, nil, nil, false)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				Expect(readSelfMonitoringResourceAttribute(collectorConfig, "service.namespace")).
+					To(Equal("dash0-operator"))
+			}, daemonSetAndDeployment)
+
+		It("should render service.namespace on the internal telemetry resource of the signal control collector "+
+			"[SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+					Export:                *Dash0ExportWithEndpointAndToken(),
+				},
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(readSelfMonitoringResourceAttribute(collectorConfig, "service.namespace")).
+				To(Equal("dash0-operator"))
+		})
+
 		DescribeTable("should render metrics & logs pipelines for a Dash0 export", func(cmTypeDef configMapTypeDefinition) {
 			export := Dash0ExportWithEndpointAndToken()
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -7511,6 +7553,30 @@ func readSelfMonitoringTelemetry(collectorConfig map[string]any) any {
 			"service",
 			"telemetry",
 		})
+}
+
+// readSelfMonitoringResourceAttribute returns the value of the resource attribute with the given name from the
+// service::telemetry::resource section, or nil if there is no such attribute.
+func readSelfMonitoringResourceAttribute(collectorConfig map[string]any, name string) any {
+	attributesRaw := ReadFromMap(
+		collectorConfig,
+		[]string{
+			"service",
+			"telemetry",
+			"resource",
+			"attributes",
+		})
+	Expect(attributesRaw).ToNot(BeNil())
+	attributes, ok := attributesRaw.([]any)
+	Expect(ok).To(BeTrue())
+	for _, attributeRaw := range attributes {
+		attribute, ok := attributeRaw.(map[string]any)
+		Expect(ok).To(BeTrue())
+		if attribute["name"] == name {
+			return attribute["value"]
+		}
+	}
+	return nil
 }
 
 func readSelfMonitoringMetricsPipeline(collectorConfig map[string]any) any {

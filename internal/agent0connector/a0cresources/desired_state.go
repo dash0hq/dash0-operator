@@ -719,6 +719,7 @@ func assembleDeployment(
 			selfMonitoring.configuration,
 			c.Images.GetOperatorVersion(),
 			c.DevelopmentMode,
+			"",
 		); err != nil {
 			return nil, err
 		}
