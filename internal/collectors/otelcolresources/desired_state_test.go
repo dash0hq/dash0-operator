@@ -2577,6 +2577,75 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(FindVolumeMountByName(deploymentConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap-decompressed")).NotTo(BeNil())
 	})
 
+	Context("pprof in the auxiliary containers of the collector pods", func() {
+		assemblePodSpecs := func(enableProfExtension bool) []corev1.PodSpec {
+			desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+				OperatorNamespace:   OperatorNamespace,
+				NamePrefix:          namePrefix,
+				Exporters:           defaultDash0ExportersWithToken(),
+				Images:              TestImages,
+				EnableProfExtension: enableProfExtension,
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, nil, util.ExtraConfigDefaults)
+			Expect(err).ToNot(HaveOccurred())
+			return []corev1.PodSpec{
+				getDaemonSet(desiredState).Spec.Template.Spec,
+				getDeployment(desiredState).Spec.Template.Spec,
+				getSignalControlCollector(desiredState).Spec.Template.Spec,
+			}
+		}
+
+		It("should not set the pprof port env var when the pprof extension is disabled", func() {
+			for _, podSpec := range assemblePodSpecs(false) {
+				for _, container := range append(podSpec.Containers, podSpec.InitContainers...) {
+					Expect(FindEnvVarByName(container.Env, "DASH0_PPROF_PORT")).To(
+						BeNil(),
+						"unexpected pprof port env var in container %s",
+						container.Name,
+					)
+				}
+			}
+		})
+
+		It("should set a distinct pprof port env var per auxiliary container when the pprof extension is enabled",
+			func() {
+				podSpecs := assemblePodSpecs(true)
+
+				for _, podSpec := range podSpecs {
+					configReloaderContainer := FindContainerByName(podSpec.Containers, "configuration-reloader")
+					Expect(configReloaderContainer).NotTo(BeNil())
+					pprofPortEnvVar := FindEnvVarByName(configReloaderContainer.Env, "DASH0_PPROF_PORT")
+					Expect(pprofPortEnvVar).NotTo(BeNil())
+					Expect(pprofPortEnvVar.Value).To(Equal("1778"))
+				}
+
+				fileLogOffsetSyncContainer :=
+					FindContainerByName(podSpecs[0].Containers, "filelog-offset-sync")
+				Expect(fileLogOffsetSyncContainer).NotTo(BeNil())
+				pprofPortEnvVar := FindEnvVarByName(fileLogOffsetSyncContainer.Env, "DASH0_PPROF_PORT")
+				Expect(pprofPortEnvVar).NotTo(BeNil())
+				Expect(pprofPortEnvVar.Value).To(Equal("1779"))
+			})
+
+		It("should not set the pprof port env var on init containers when the pprof extension is enabled", func() {
+			for _, podSpec := range assemblePodSpecs(true) {
+				for _, initContainer := range podSpec.InitContainers {
+					Expect(FindEnvVarByName(initContainer.Env, "DASH0_PPROF_PORT")).To(
+						BeNil(),
+						"unexpected pprof port env var in init container %s",
+						initContainer.Name,
+					)
+				}
+			}
+		})
+	})
+
 	It("rendered objects must be stable", func() {
 		mr1 := dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: metav1.ObjectMeta{

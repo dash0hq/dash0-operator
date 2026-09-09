@@ -9,6 +9,7 @@ This guide covers common troubleshooting procedures for the Dash0 operator.
   - [Collector Daemonset Heap Profile](#collector-daemonset-heap-profile)
   - [Collector Deployment Heap Profile](#collector-deployment-heap-profile)
   - [SignalControl Collector Heap Profile](#signalcontrol-collector-heap-profile)
+  - [Auxiliary Container Heap Profiles](#auxiliary-container-heap-profiles)
 
 ## Create Heap Profiles
 
@@ -34,7 +35,8 @@ To get a heap profile from the operator manager container:
 
 To get a heap profile from a OpenTelemetry collector daemonset container:
 
-1. Deploy the operator manager with the additional Helm value `operator.collectors.enablePprofExtension=true`.
+1. Deploy the operator manager with the additional Helm value `operator.collectors.enablePprof=true`.
+   Note that this will restart the collector pods.
 2. Take note of the namespace the operator is deployed in (default: `dash0-system`).
 3. Run `kubectl top pod -n <operator-namespace> -l app.kubernetes.io/component=agent-collector` to get the name of a
    collector pod that has high memory usage (usually something like
@@ -44,7 +46,7 @@ To get a heap profile from a OpenTelemetry collector daemonset container:
 5. In a separate shell, while the `kubectl port-forward` command from the previous step is still running, run
    `curl http://localhost:1777/debug/pprof/heap > dash0-daemonset-collector.out`.
 6. Terminate the `kubectl port-forward` command.
-7. Redeploy the operator without the Helm setting `operator.collectors.enablePprofExtension=true`.
+7. Redeploy the operator without the Helm setting `operator.collectors.enablePprof=true`.
 
 ### Collector Deployment Heap Profile
 
@@ -59,6 +61,23 @@ To get a heap profile from the SignalControl collector (only present when Signal
 
 * Follow the same steps as for the collector daemonset, but use
   `-l app.kubernetes.io/component=signal-control-collector` in step (3).
+
+### Auxiliary Container Heap Profiles
+
+The Helm value `operator.collectors.enablePprof=true` also enables pprof in the auxiliary containers of the
+collector pods.
+The pprof ports are as follows:
+
+| Container                 | Port   | Present in                                                     |
+|---------------------------|--------|----------------------------------------------------------------|
+| `opentelemetry-collector` | `1777` | daemonset, cluster metrics deployment, SignalControl collector |
+| `configuration-reloader`  | `1778` | daemonset, cluster metrics deployment, SignalControl collector |
+| `filelog-offset-sync`     | `1779` | daemonset                                                      |
+
+To get a heap profile from one of the auxiliary containers, follow the same steps as for the collector daemonset, but
+use the port of the container in question in steps (4) and (5), for example
+`kubectl port-forward -n <operator-namespace> <collector-daemonset-pod-name> 1778` and
+`curl http://localhost:1778/debug/pprof/heap > dash0-configuration-reloader.out`.
 
 ## Getting Help
 

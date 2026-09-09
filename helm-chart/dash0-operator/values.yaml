@@ -528,7 +528,7 @@ operator:
   developmentMode: false
 
   # If set to a value, the operator manager will enable pprof and make it available on the specificied port.
-  # Note that this setting is independent of operator.collectors.enablePprofExtension, which enables pprof for the
+  # Note that this setting is independent of operator.collectors.enablePprof, which enables pprof for the
   # collectors.
   # The default is null, do not override this unless explicitly instructed by Dash0 support. Remove the override
   # after the operator troubleshooting is finished.
@@ -631,10 +631,13 @@ operator:
     # when disableHostPorts is false. Make sure the host port you set is available on all nodes in the cluster.
     otlpHttpHostPort: 40318
 
-    # If set to true, the pprof extension will be enabled for both collectors.
+    # If set to true, pprof will be enabled for all collector pods. This includes enabling the pprof extension for the
+    # main collector container in these pods, as well as enabling pprof in their auxiliary containers
+    # (e.g. configuration-reloader and filelog-offset-sync). Each container serves pprof on its own port, see
+    # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/troubleshooting#auxiliary-container-heap-profiles.
     # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
-    # after the collector troubleshooting is finished.
-    enablePprofExtension: false
+    # after the collector troubleshooting is finished. Changing the flag will restart the collector pods.
+    enablePprof: false
 
     # If set to true, the collector configuration will be stored in the config map as gzip-compressed binary data.
     # This can reduce the size of the config map and may help in clusters with many monitoring resources.
