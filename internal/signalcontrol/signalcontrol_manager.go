@@ -9,13 +9,16 @@ import (
 	"reflect"
 	"sync/atomic"
 
+	"k8s.io/client-go/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
+	"github.com/dash0hq/dash0-operator/internal/util/pointers"
 )
 
 type SignalControlManager struct {
@@ -23,16 +26,21 @@ type SignalControlManager struct {
 	resourceManager  *scresources.SignalControlResourceManager
 	extraConfig      atomic.Pointer[util.ExtraConfig]
 	updateInProgress atomic.Bool
+	// zoneCoverageReporter warns when the Edge Proxy has fewer replicas than the cluster has availability zones. See
+	// cluster.ZoneCoverageReporter.
+	zoneCoverageReporter *cluster.ZoneCoverageReporter
 }
 
 func NewSignalControlManager(
 	k8sClient client.Client,
 	resourceManager *scresources.SignalControlResourceManager,
+	nodeMetadataClient metadata.Interface,
 	extraConfig util.ExtraConfig,
 ) *SignalControlManager {
 	m := &SignalControlManager{
-		Client:          k8sClient,
-		resourceManager: resourceManager,
+		Client:               k8sClient,
+		resourceManager:      resourceManager,
+		zoneCoverageReporter: cluster.NewZoneCoverageReporter(nodeMetadataClient),
 	}
 	m.extraConfig.Store(&extraConfig)
 	return m
@@ -131,6 +139,12 @@ func (m *SignalControlManager) createOrUpdateSignalControl(
 		return false, fmt.Errorf("extra config is nil in SignalControlManager#createOrUpdateSignalControl")
 	}
 
+	// Only relevant when the Edge Proxy is actually deployed: with it disabled there is nothing to spread over
+	// availability zones.
+	if pointers.ReadBoolPointerWithDefault(signalControlResource.Spec.EdgeProxy.Enabled, true) {
+		m.warnAboutInsufficientZoneCoverage(ctx, *extraConfig, logger)
+	}
+
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.resourceManager.CreateOrUpdateResources(ctx, signalControlResource, operatorConfig, *extraConfig, logger)
 	if err != nil {
@@ -145,6 +159,44 @@ func (m *SignalControlManager) createOrUpdateSignalControl(
 		logger.Info("Signal Control resources have been updated.")
 	}
 	return true, nil
+}
+
+// warnAboutInsufficientZoneCoverage warns when the cluster has more availability zones than the Edge Proxy has
+// replicas. The Edge Proxy service prefers endpoints in the sender's own zone, but kube-proxy can only do that for
+// zones that actually have a ready endpoint; collectors in the remaining zones fall back to the full endpoint set and
+// their decision stream to the Edge Proxy crosses zones.
+//
+// Like the Signal Control collector's check, this deliberately only warns and never derives the replica count from the
+// zone count: writing spec.replicas from the reconciler that also watches that deployment would turn any
+// nondeterminism in the zone count into replica churn.
+func (m *SignalControlManager) warnAboutInsufficientZoneCoverage(
+	ctx context.Context,
+	extraConfig util.ExtraConfig,
+	logger logd.Logger,
+) {
+	replicaCount := extraConfig.EdgeProxyReplicas
+	if replicaCount < 1 {
+		replicaCount = scresources.EdgeProxyDefaultReplicas
+	}
+	m.zoneCoverageReporter.Report(ctx, replicaCount, cluster.ZoneCoverageMessages{
+		Warn: func(zoneCount int, replicaCount int32) string {
+			return fmt.Sprintf(
+				"The cluster has %d availability zones but the Edge Proxy runs with %d replicas, so at least one zone "+
+					"has no Edge Proxy pod. Collectors in those zones connect to an Edge Proxy in another zone, which "+
+					"works but incurs cross-zone traffic cost. Set operator.signalControl.edgeProxy.replicas to at "+
+					"least %d to avoid that.",
+				zoneCount, replicaCount, zoneCount,
+			)
+		},
+		Resolved: func(zoneCount int, replicaCount int32) string {
+			return fmt.Sprintf(
+				"The Edge Proxy now runs with %d replicas across %d availability zones, so every zone has an Edge Proxy "+
+					"pod and cross-zone traffic is avoided.",
+				replicaCount, zoneCount,
+			)
+		},
+		ListErrDebug: "cannot list nodes to check the Edge Proxy's availability zone coverage",
+	}, logger)
 }
 
 func (m *SignalControlManager) removeSignalControl(ctx context.Context) (bool, error) {

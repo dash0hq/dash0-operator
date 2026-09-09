@@ -107,7 +107,7 @@ rules:
   - update
 
 # Permissions required to detect the container runtime, and to count the cluster's availability zones when checking
-# whether the Signal Control collector has a replica in every zone:
+# whether the Signal Control collector and the Edge Proxy have a replica in every zone:
 - apiGroups:
   - ""
   resources:

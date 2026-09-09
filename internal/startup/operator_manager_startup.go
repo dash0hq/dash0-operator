@@ -1818,10 +1818,12 @@ func startDash0Controllers(
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
 			int32(cliArgs.otlpGrpcHostPort),
+			kubernetesApiServerVersionInfo,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,
 			scResourceManager,
+			nodeMetadataClient,
 			extraConfig,
 		)
 		// Update the extra config in the Signal Control manager when the extra config map changes, and also trigger a
