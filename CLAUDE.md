@@ -138,6 +138,15 @@ Missing that step is silent: the metric handle stays `nil`, `Reconcile` skips th
 and the reconciler emits nothing for the entire process lifetime — no build error, no test failure, no runtime
 warning. When wiring a new reconciler, grep for `selfMonitoringClients` and add the new entry before opening the PR.
 
+### OTEL_RESOURCE_ATTRIBUTES and the resource of the Go OTel SDK
+
+`assembleResource` in images/pkg/common/otel.go builds its resource via
+`resource.New(ctx, resource.WithAttributes(...))`, without a `WithFromEnv` detector, and reads a few individual env
+vars (`K8S_CLUSTER_NAME`, ...) explicitly. That does not mean `OTEL_RESOURCE_ATTRIBUTES` is ignored:
+`sdkmetric.WithResource` and `sdklog.WithResource` merge the resource they are given with
+`resource.Environment()`, so everything in `OTEL_RESOURCE_ATTRIBUTES` reaches the exported telemetry (see
+https://github.com/open-telemetry/opentelemetry-go/pull/5773).
+
 ### Listing Kubernetes resources with pagination
 
 The `Limit` and `Continue` fields of controller-runtime's `client.ListOptions` compile with every client, but they only

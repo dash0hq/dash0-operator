@@ -14,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	"github.com/dash0hq/dash0-operator/internal/util/resources"
@@ -55,6 +57,7 @@ func NewAgent0ConnectorResourceManager(
 func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 	ctx context.Context,
 	extraConfig util.ExtraConfig,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
 ) (bool, bool, error) {
 	if err := validateClusterRoleRules(extraConfig.Agent0ConnectorClusterRoleRules); err != nil {
@@ -78,7 +81,16 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 		return false, false, fmt.Errorf("%w: %w", ErrNoAuthorizationToken, err)
 	}
 
-	desiredState := assembleDesiredState(&m.agent0ConnectorConfig, &authTokenEnvVar, extraConfig)
+	desiredState, err := assembleDesiredState(
+		&m.agent0ConnectorConfig,
+		&authTokenEnvVar,
+		extraConfig,
+		m.createSelfMonitoringInput(ctx, operatorConfigurationResource, logger),
+	)
+	if err != nil {
+		logger.Error(err, "cannot assemble the desired state of the agent0-connector resources")
+		return false, false, err
+	}
 
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
@@ -96,6 +108,44 @@ func (m *Agent0ConnectorResourceManager) CreateOrUpdateAgent0ConnectorResources(
 	}
 
 	return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, nil
+}
+
+// createSelfMonitoringInput derives the self-monitoring settings for the agent0-connector workload from the
+// Dash0OperatorConfiguration resource. A configuration that cannot be derived disables self-monitoring.
+func (m *Agent0ConnectorResourceManager) createSelfMonitoringInput(
+	ctx context.Context,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	logger logd.Logger,
+) selfMonitoringInput {
+	if operatorConfigurationResource == nil {
+		return selfMonitoringInput{}
+	}
+
+	selfMonitoringConfiguration, err :=
+		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+			ctx,
+			m.Client,
+			m.agent0ConnectorConfig.OperatorNamespace,
+			operatorConfigurationResource,
+			logger,
+		)
+	if err != nil {
+		logger.Error(err, "cannot generate the self-monitoring configuration for the agent0-connector workload")
+		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringConfiguration{
+			SelfMonitoringEnabled: false,
+		}
+	}
+	// ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration might have resolved Kubernetes secrets to
+	// literal values, which is required for the in-process self-monitoring setup in the operator manager. The
+	// agent0-connector workload does not need access to resolved secret literals, it receives the secret refs as
+	// environment variables of its container.
+	selfMonitoringConfiguration.Token = nil
+	selfMonitoringConfiguration.ResolvedSecretHeaderValues = nil
+
+	return selfMonitoringInput{
+		configuration: selfMonitoringConfiguration,
+		clusterName:   operatorConfigurationResource.Spec.ClusterName,
+	}
 }
 
 func (m *Agent0ConnectorResourceManager) createOrUpdateResource(
@@ -206,7 +256,12 @@ func (m *Agent0ConnectorResourceManager) DeleteResources(
 			"Deleting the agent0-connector Kubernetes resources in the Dash0 operator namespace %s (if existing).",
 			m.agent0ConnectorConfig.OperatorNamespace,
 		))
-	desiredResources := assembleDesiredState(&m.agent0ConnectorConfig, nil, extraConfig)
+	// A missing authorization token or disabled self-monitoring are irrelevant for deleting the agent0-connect resources,
+	// only their names and namespaces matter.
+	desiredResources, err := assembleDesiredState(&m.agent0ConnectorConfig, nil, extraConfig, selfMonitoringInput{})
+	if err != nil {
+		return false, err
+	}
 	var allErrors []error
 	resourcesHaveBeenDeleted := false
 	for _, wrapper := range desiredResources {

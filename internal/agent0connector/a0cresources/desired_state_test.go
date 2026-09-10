@@ -15,6 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -59,7 +61,7 @@ func testConfig() *util.Agent0ConnectorConfig {
 
 var _ = Describe("The desired state of the agent0-connector resources", func() {
 	It("renders exactly the expected set of resources with the expected names", func() {
-		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
+		desiredState := assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 
 		Expect(desiredState).To(HaveLen(4))
 		Expect(getServiceAccount(desiredState).Name).To(Equal(testNamePrefix + "-agent0-connector-sa"))
@@ -70,14 +72,14 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 	})
 
 	It("deploys the namespaced resources into the operator namespace", func() {
-		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
+		desiredState := assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 
 		Expect(getServiceAccount(desiredState).Namespace).To(Equal(testOperatorNamespace))
 		Expect(getDeployment(desiredState).Namespace).To(Equal(testOperatorNamespace))
 	})
 
 	It("adds the ArgoCD prune/compare annotations to all resources", func() {
-		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
+		desiredState := assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 
 		for _, wrapper := range desiredState {
 			annotations := wrapper.object.GetAnnotations()
@@ -88,7 +90,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 
 	Describe("the cluster role", func() {
 		It("grants cluster-wide read-only access and no write access", func() {
-			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
 			Expect(clusterRole.Rules).ToNot(BeEmpty())
 			for _, rule := range clusterRole.Rules {
@@ -110,7 +112,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		It("grants the create verb exclusively for the self subject review API", func() {
 			// "kubectl auth can-i" requires creating a SelfSubjectAccessReview/SelfSubjectRulesReview, which does not
 			// persist an object. Every other occurrence of a write verb would allow modifying cluster state.
-			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
 			selfSubjectReviewRules := 0
 			for _, rule := range clusterRole.Rules {
@@ -129,7 +131,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("grants read access to well-known resource types and to non-resource URLs", func() {
-			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
 			resourcesPerApiGroup := make(map[string][]string)
 			hasNonResourceURLs := false
@@ -172,7 +174,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			// The expected resource types are read from the generated custom resource definitions instead of being
 			// listed here, so that a new Dash0 CRD which has not been added to defaultAgent0ConnectorRbacRules fails this
 			// test. Without the rule the agent0-connector cannot read the new resource type at all.
-			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
 			for _, crd := range readDash0CustomResourceDefinitions() {
 				Expect(slices.ContainsFunc(clusterRole.Rules, func(rule rbacv1.PolicyRule) bool {
@@ -191,7 +193,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("does not grant access to secrets, config maps, or to any wildcard", func() {
-			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 
 			for _, rule := range clusterRole.Rules {
 				Expect(rule.APIGroups).ToNot(
@@ -224,7 +226,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 					},
 				}
 
-				clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
+				clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{
 					Agent0ConnectorClusterRoleRules: customRules,
 				}))
 
@@ -237,7 +239,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			})
 
 			It("falls back to the default rules when the custom rule list is empty", func() {
-				clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
+				clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{
 					Agent0ConnectorClusterRoleRules: []rbacv1.PolicyRule{},
 				}))
 
@@ -257,7 +259,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 					},
 				}
 
-				clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, extraConfig))
+				clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, extraConfig))
 				clusterRole.Rules[0].APIGroups[0] = "modified"
 				clusterRole.Rules[0].Resources[0] = "modified"
 				clusterRole.Rules[0].Verbs[0] = "modified"
@@ -430,12 +432,12 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			// The Kubernetes client decodes the API server's response into the object it was given, and the JSON
 			// decoder reuses the existing backing arrays. Sharing the package-level rules would let such a response
 			// corrupt the desired state of every subsequent reconcile.
-			clusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			clusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 			clusterRole.Rules[0].APIGroups[0] = "modified"
 			clusterRole.Rules[0].Resources[0] = "modified"
 			clusterRole.Rules[0].Verbs[0] = "modified"
 
-			secondClusterRole := getClusterRole(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
+			secondClusterRole := getClusterRole(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}))
 			Expect(secondClusterRole.Rules[0].APIGroups).ToNot(ContainElement("modified"))
 			Expect(secondClusterRole.Rules[0].Resources).ToNot(ContainElement("modified"))
 			for _, rule := range secondClusterRole.Rules {
@@ -445,7 +447,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 	})
 
 	It("binds the cluster role to the agent0-connector service account", func() {
-		desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
+		desiredState := assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 		clusterRoleBinding := getClusterRoleBinding(desiredState)
 
 		Expect(clusterRoleBinding.RoleRef.Kind).To(Equal("ClusterRole"))
@@ -458,7 +460,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 
 	Describe("the deployment", func() {
 		It("uses the configured image, pull policy, and service account", func() {
-			desiredState := assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})
+			desiredState := assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{})
 			deployment := getDeployment(desiredState)
 
 			Expect(*deployment.Spec.Replicas).To(Equal(int32(1)))
@@ -470,18 +472,24 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("passes the pseudo cluster UID as the K8S_CLUSTER_UID environment variable", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "K8S_CLUSTER_UID", Value: testPseudoClusterUid}))
 		})
 
 		It("passes the server address as the DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS environment variable", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_SERVER_ADDRESS", Value: Agent0ConnectorServerAddress}))
 		})
 
 		It("does not set the DASH0_AGENT0_CONNECTOR_INSECURE environment variable by default", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
 			for _, envVar := range container.Env {
 				Expect(envVar.Name).ToNot(Equal("DASH0_AGENT0_CONNECTOR_INSECURE"))
 			}
@@ -490,33 +498,46 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		It("sets DASH0_AGENT0_CONNECTOR_INSECURE when TLS is disabled", func() {
 			config := testConfig()
 			config.Insecure = true
-			container := getDeployment(assembleDesiredState(config, authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
+			container := getDeployment(
+				assembleDesiredStateOrFail(config, authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_INSECURE", Value: "true"}))
 		})
 
-		It("does not set the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN environment variable when no authorization is configured", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), nil, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
-			for _, envVar := range container.Env {
-				Expect(envVar.Name).ToNot(Equal("DASH0_AGENT0_CONNECTOR_AUTH_TOKEN"))
-			}
-		})
+		It(
+			"does not set the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN environment variable when no authorization is "+
+				"configured",
+			func() {
+				container := getDeployment(
+					assembleDesiredStateOrFail(testConfig(), nil, util.ExtraConfig{}),
+				).Spec.Template.Spec.Containers[0]
+				for _, envVar := range container.Env {
+					Expect(envVar.Name).ToNot(Equal("DASH0_AGENT0_CONNECTOR_AUTH_TOKEN"))
+				}
+			})
 
 		It("passes the default number of concurrent commands when the extra config has no value", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS", Value: "2"}))
 		})
 
 		It("passes the number of concurrent commands from the extra config", func() {
 			extraConfig := util.ExtraConfig{Agent0ConnectorMaxConcurrentCommands: 6}
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, extraConfig)).Spec.Template.Spec.Containers[0]
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, extraConfig),
+			).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS", Value: "6"}))
 		})
 
 		It("mounts a writable tmp volume for kubectl's cache", func() {
-			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec
+			podSpec := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec
 			container := podSpec.Containers[0]
 			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "DASH0_KUBECTL_TMP", Value: "/tmp"}))
 			Expect(container.VolumeMounts).To(ContainElement(corev1.VolumeMount{Name: "tmp", MountPath: "/tmp"}))
@@ -527,7 +548,9 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("applies a restrictive container security context", func() {
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.Containers[0]
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
 			sc := container.SecurityContext
 			Expect(sc).ToNot(BeNil())
 			Expect(*sc.AllowPrivilegeEscalation).To(BeFalse())
@@ -538,7 +561,9 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("applies a restrictive pod security context", func() {
-			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec
+			podSpec := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec
 			sc := podSpec.SecurityContext
 			Expect(sc).ToNot(BeNil())
 			Expect(*sc.RunAsNonRoot).To(BeTrue())
@@ -550,7 +575,9 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		It("omits the pod-level runAsUser/runAsGroup on OpenShift so the SCC can assign an in-range UID", func() {
 			cfg := testConfig()
 			cfg.IsOpenShift = true
-			sc := getDeployment(assembleDesiredState(cfg, authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.SecurityContext
+			sc := getDeployment(
+				assembleDesiredStateOrFail(cfg, authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.SecurityContext
 			Expect(sc).ToNot(BeNil())
 			Expect(*sc.RunAsNonRoot).To(BeTrue())
 			Expect(sc.RunAsUser).To(BeNil())
@@ -558,7 +585,7 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("renders additional labels and annotations on the workload and the pods", func() {
-			deployment := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
+			deployment := getDeployment(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{
 				Agent0ConnectorLabels:         map[string]string{"a0c-label": "a0c-label-value"},
 				Agent0ConnectorAnnotations:    map[string]string{"a0c-annotation": "a0c-annotation-value"},
 				Agent0ConnectorPodLabels:      map[string]string{"a0c-pod-label": "a0c-pod-label-value"},
@@ -588,7 +615,9 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 				},
 			}
 
-			container := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, extraConfig)).Spec.Template.Spec.Containers[0]
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, extraConfig),
+			).Spec.Template.Spec.Containers[0]
 
 			Expect(container.Resources.Requests).To(HaveLen(1))
 			Expect(container.Resources.Requests.Memory().String()).To(Equal("32Mi"))
@@ -625,7 +654,9 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 				},
 			}
 
-			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, extraConfig)).Spec.Template.Spec
+			podSpec := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, extraConfig),
+			).Spec.Template.Spec
 
 			Expect(podSpec.Tolerations).To(HaveLen(1))
 			Expect(podSpec.Tolerations[0].Key).To(Equal("agent0-connector-key"))
@@ -638,14 +669,16 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 		})
 
 		It("leaves tolerations and affinity unset when the extra config has neither", func() {
-			podSpec := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec
+			podSpec := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec
 
 			Expect(podSpec.Tolerations).To(BeEmpty())
 			Expect(podSpec.Affinity).To(BeNil())
 		})
 
 		It("does not let additional labels override operator-managed labels", func() {
-			deployment := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
+			deployment := getDeployment(assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{
 				Agent0ConnectorLabels:    map[string]string{util.AppKubernetesIoNameLabel: "custom-value"},
 				Agent0ConnectorPodLabels: map[string]string{util.AppKubernetesIoNameLabel: "custom-value"},
 			}))
@@ -654,8 +687,119 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(deployment.ObjectMeta.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
 			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue(util.AppKubernetesIoNameLabel, appKubernetesIoNameValue))
 		})
+
+		Describe("self-monitoring", func() {
+			It("passes the Kubernetes resource attributes of the workload to the OTel SDK", func() {
+				container := deploymentContainer(selfMonitoringInput{clusterName: "cluster-name-test"})
+
+				Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "K8S_CLUSTER_UID", Value: testPseudoClusterUid}))
+				Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "K8S_CLUSTER_NAME", Value: "cluster-name-test"}))
+				Expect(container.Env).To(ContainElement(corev1.EnvVar{
+					Name:  "K8S_DEPLOYMENT_NAME",
+					Value: testNamePrefix + "-agent0-connector",
+				}))
+				Expect(container.Env).To(ContainElement(envVarFromField("K8S_NODE_NAME", "spec.nodeName")))
+				Expect(container.Env).To(ContainElement(envVarFromField("DASH0_OPERATOR_NAMESPACE", "metadata.namespace")))
+				Expect(container.Env).To(ContainElement(envVarFromField("K8S_POD_UID", "metadata.uid")))
+				Expect(container.Env).To(ContainElement(envVarFromField("K8S_POD_NAME", "metadata.name")))
+			})
+
+			It("sets the OTLP export environment variables when self-monitoring is enabled", func() {
+				container := deploymentContainer(selfMonitoringInputWithDash0Export())
+
+				Expect(container.Env).To(ContainElement(corev1.EnvVar{
+					Name:  "SELF_MONITORING_AUTH_TOKEN",
+					Value: AuthorizationTokenTest,
+				}))
+				Expect(container.Env).To(ContainElement(corev1.EnvVar{
+					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
+					Value: EndpointDash0WithProtocolTest,
+				}))
+				Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "OTEL_EXPORTER_OTLP_PROTOCOL", Value: "grpc"}))
+				Expect(container.Env).To(ContainElement(corev1.EnvVar{
+					Name:  "OTEL_EXPORTER_OTLP_HEADERS",
+					Value: "Authorization=Bearer $(SELF_MONITORING_AUTH_TOKEN)",
+				}))
+				Expect(container.Env).To(ContainElement(corev1.EnvVar{
+					Name: "OTEL_RESOURCE_ATTRIBUTES",
+					Value: "service.namespace=dash0-operator,service.name=agent0-connector,service.version=" +
+						OperatorVersionTest,
+				}))
+			})
+
+			It("keeps a secret ref for the self-monitoring auth token instead of resolving it into the pod spec", func() {
+				container := deploymentContainer(selfMonitoringInputWithDash0SecretRefExport())
+
+				tokenEnvVar := util.GetEnvVar(&container, "SELF_MONITORING_AUTH_TOKEN")
+				Expect(tokenEnvVar).ToNot(BeNil())
+				Expect(tokenEnvVar.Value).To(BeEmpty())
+				Expect(tokenEnvVar.ValueFrom).ToNot(BeNil())
+				Expect(tokenEnvVar.ValueFrom.SecretKeyRef).ToNot(BeNil())
+				Expect(tokenEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(SecretRefTest.Name))
+				Expect(tokenEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(SecretRefTest.Key))
+			})
+
+			It("does not set the OTLP export environment variables when self-monitoring is disabled", func() {
+				container := deploymentContainer(selfMonitoringInput{})
+
+				for _, envVar := range container.Env {
+					Expect(envVar.Name).ToNot(HavePrefix("OTEL_"))
+					Expect(envVar.Name).ToNot(Equal("SELF_MONITORING_AUTH_TOKEN"))
+				}
+			})
+		})
 	})
 })
+
+// deploymentContainer assembles the desired state for the given self-monitoring input and returns the
+// agent0-connector container of the deployment.
+func deploymentContainer(selfMonitoring selfMonitoringInput) corev1.Container {
+	GinkgoHelper()
+	config := testConfig()
+	config.Images.OperatorImage = OperatorImageTest
+	desiredState, err := assembleDesiredState(config, authTokenEnvVar, util.ExtraConfig{}, selfMonitoring)
+	Expect(err).ToNot(HaveOccurred())
+	containers := getDeployment(desiredState).Spec.Template.Spec.Containers
+	Expect(containers).To(HaveLen(1))
+	return containers[0]
+}
+
+func selfMonitoringInputWithDash0Export() selfMonitoringInput {
+	return selfMonitoringInput{
+		configuration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+			SelfMonitoringEnabled: true,
+			Export: dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:      EndpointDash0Test,
+					Authorization: dash0common.Authorization{Token: &AuthorizationTokenTest},
+				},
+			},
+		},
+	}
+}
+
+func selfMonitoringInputWithDash0SecretRefExport() selfMonitoringInput {
+	return selfMonitoringInput{
+		configuration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+			SelfMonitoringEnabled: true,
+			Export: dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Endpoint:      EndpointDash0Test,
+					Authorization: dash0common.Authorization{SecretRef: &SecretRefTest},
+				},
+			},
+		},
+	}
+}
+
+func envVarFromField(name string, fieldPath string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name: name,
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: fieldPath},
+		},
+	}
+}
 
 // defaultClusterRoleRulesOfHelmChart is the file from which the Helm chart renders the default rules of the
 // agent0-connector's cluster role, relative to the directory of this package.
@@ -714,6 +858,17 @@ type customResourceDefinition struct {
 			Plural string `json:"plural"`
 		} `json:"names"`
 	} `json:"spec"`
+}
+
+func assembleDesiredStateOrFail(
+	config *util.Agent0ConnectorConfig,
+	authTokenEnvVar *corev1.EnvVar,
+	extraConfig util.ExtraConfig,
+) []clientObject {
+	GinkgoHelper()
+	desiredState, err := assembleDesiredState(config, authTokenEnvVar, extraConfig, selfMonitoringInput{})
+	Expect(err).ToNot(HaveOccurred())
+	return desiredState
 }
 
 func findObject[T client.Object](desiredState []clientObject) T {

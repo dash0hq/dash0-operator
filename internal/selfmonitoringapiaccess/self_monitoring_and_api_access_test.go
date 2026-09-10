@@ -747,7 +747,7 @@ var _ = Describe(
 
 				It("should wire secret-backed headers for an HTTP export in every collector container", func() {
 					containers := collectorContainers()
-					err := enableSelfMonitoringInCollector(
+					err := enableSelfMonitoringInAllContainers(
 						containers,
 						SelfMonitoringConfiguration{
 							SelfMonitoringEnabled: true,
@@ -770,7 +770,7 @@ var _ = Describe(
 
 				It("should wire secret-backed headers for a gRPC export in every collector container", func() {
 					containers := collectorContainers()
-					err := enableSelfMonitoringInCollector(
+					err := enableSelfMonitoringInAllContainers(
 						containers,
 						SelfMonitoringConfiguration{
 							SelfMonitoringEnabled: true,
