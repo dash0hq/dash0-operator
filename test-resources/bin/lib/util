@@ -134,7 +134,11 @@ install_nginx_ingress() {
 
 is_remote_image() {
   image_name="$1"
-  if [[ $image_name = */* ]]; then
+  # localhost/ references resolve to the local container store, not a remote registry, so their pull policy must be
+  # preserved (a blanked policy would default a :latest image to Always and trigger a failing registry pull).
+  if [[ $image_name == localhost/* ]]; then
+    printf "false"
+  elif [[ $image_name = */* ]]; then
     printf "true"
   else
     printf "false"
