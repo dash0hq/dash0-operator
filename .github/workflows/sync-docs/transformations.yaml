@@ -120,6 +120,11 @@ files:
     title: Managing Dash0 Resources
     description: Manage Dash0 dashboards, check rules, synthetic checks, views, notification channels, and more via Kubernetes custom resources.
 
+  - source: docs/agent0-integration.md
+    target: dash0-operator/agent0-integration.md
+    title: Agent0 Integration
+    description: Let Agent0, Dash0's observability and SRE assistant, run read-only kubectl commands in your cluster, and learn about the security mechanisms around it.
+
   - source: docs/advanced-configuration.md
     target: dash0-operator/advanced-configuration.md
     title: Advanced Configuration
