@@ -130,6 +130,7 @@ type TargetAllocatorConfig struct {
 	// CollectorComponent is used as a label matcher, so scrape targets are only assigned to Dash0 daemonset collectors.
 	CollectorComponent string
 	IsGkeAutopilot     bool
+	IsOpenShift        bool
 	DevelopmentMode    bool
 }
 
@@ -155,6 +156,7 @@ type Agent0ConnectorConfig struct {
 	// value operator.agent0Connector.secretRef). It is passed to the workload via the DASH0_AGENT0_CONNECTOR_AUTH_TOKEN
 	// environment variable.
 	Authorization   dash0common.Authorization
+	IsOpenShift     bool
 	DevelopmentMode bool
 }
 
@@ -196,6 +198,16 @@ func getImageVersion(image string) string {
 	return ""
 }
 
+// RunAsID returns a pointer to id for use as a pod security context runAsUser or runAsGroup, or nil when the operator
+// runs on OpenShift. Returning nil lets the namespace's SecurityContextConstraints assign an in-range UID/GID, instead
+// of pinning a UID that the default MustRunAsRange strategy would reject as out of range.
+func RunAsID(isOpenShift bool, id int64) *int64 {
+	if isOpenShift {
+		return nil
+	}
+	return &id
+}
+
 // PossibleCollectorUrls holds the two possible base URLs for routing telemetry from instrumented workloads to the
 // OpenTelemetry collector daemonset: the service URL of the collector DaemonSet and the node-local URL (node IP plus
 // host port). The actual URL used for instrumentation is selected from these two values depending on the cluster setup.
@@ -232,6 +244,7 @@ type ClusterInstrumentationConfig struct {
 	InstrumentationDebug            bool
 	EnablePythonAutoInstrumentation bool
 	EnableRubyAutoInstrumentation   bool
+	IsOpenShift                     bool
 }
 
 func NewClusterInstrumentationConfig(

@@ -882,6 +882,48 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 		)
 
+		It("pins the init container runAsUser/runAsGroup to 13020 when not on OpenShift", func() {
+			modifier := NewResourceModifier(
+				clusterInstrumentationConfigWithInitContainer,
+				DefaultNamespaceInstrumentationConfig,
+				testActor,
+				logger,
+			)
+			podSpec := &corev1.PodSpec{Containers: []corev1.Container{{Name: "test-container-0"}}}
+			modifier.modifyPodSpec(podSpec, &metav1.ObjectMeta{}, &metav1.ObjectMeta{})
+
+			Expect(podSpec.InitContainers).To(HaveLen(1))
+			sc := podSpec.InitContainers[0].SecurityContext
+			Expect(sc).ToNot(BeNil())
+			Expect(*sc.RunAsUser).To(Equal(int64(13020)))
+			Expect(*sc.RunAsGroup).To(Equal(int64(13020)))
+		})
+
+		It("drops the init container runAsUser/runAsGroup on OpenShift so the SCC can assign an in-range UID", func() {
+			osConfig := util.NewClusterInstrumentationConfig(
+				TestImages,
+				PossibleCollectorUrlsTest,
+				OTelCollectorNodeLocalBaseUrlTest,
+				util.ExtraConfigDefaults,
+				dash0v1alpha1.InstrumentationDeliveryInitContainer,
+				nil,
+				false,
+				false,
+				false,
+			)
+			osConfig.IsOpenShift = true
+			modifier := NewResourceModifier(osConfig, DefaultNamespaceInstrumentationConfig, testActor, logger)
+
+			podSpec := &corev1.PodSpec{Containers: []corev1.Container{{Name: "test-container-0"}}}
+			modifier.modifyPodSpec(podSpec, &metav1.ObjectMeta{}, &metav1.ObjectMeta{})
+
+			Expect(podSpec.InitContainers).To(HaveLen(1))
+			sc := podSpec.InitContainers[0].SecurityContext
+			Expect(sc).ToNot(BeNil())
+			Expect(sc.RunAsUser).To(BeNil())
+			Expect(sc.RunAsGroup).To(BeNil())
+		})
+
 		type detectNonLinuxPodTest struct {
 			podSpec         corev1.PodSpec
 			expectedMessage *string

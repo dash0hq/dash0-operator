@@ -52,6 +52,7 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			corev1.PullIfNotPresent,
 			OperatorVersionTest,
 			otelcolresources.DefaultOtlpGrpcHostPort,
+			false,
 		)
 		scManager := NewSignalControlManager(k8sClient, scResourceManager, util.ExtraConfigDefaults)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(

@@ -62,6 +62,7 @@ type targetAllocatorConfig struct {
 	Images             util.Images
 
 	IsGkeAutopilot bool
+	IsOpenShift    bool
 }
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -470,8 +471,8 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
-			RunAsUser:  new(defaultUser),
-			RunAsGroup: new(defaultGroup),
+			RunAsUser:  util.RunAsID(c.IsOpenShift, defaultUser),
+			RunAsGroup: util.RunAsID(c.IsOpenShift, defaultGroup),
 		},
 		Volumes: podVolumes,
 	}

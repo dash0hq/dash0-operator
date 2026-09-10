@@ -809,6 +809,10 @@ run_helm() {
     helm_install_command+=" --set operator.gke.autopilot.enabled=true"
   fi
 
+  if [[ "${OPENSHIFT_ENABLED:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.openShift.enabled=true"
+  fi
+
   # on kind, the collectors sometimes need more time to start
   if [[ "${ALLOW_MORE_TIME_FOR_COLLECTOR_STARTUP:-}" == "true" ]]; then
     helm_install_command+=" --set operator.collectors.daemonSetProbes.startup.failureThreshold=60"

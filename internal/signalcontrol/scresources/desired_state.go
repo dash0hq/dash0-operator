@@ -59,6 +59,7 @@ func assembleDesiredState(
 	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
 	forDeletion bool,
+	isOpenShift bool,
 	logger logd.Logger,
 ) []clientObject {
 	edgeProxyEnabled := !forDeletion &&
@@ -74,7 +75,7 @@ func assembleDesiredState(
 	if forDeletion || edgeProxyEnabled {
 		if edgeProxyEnabled {
 			desiredState = append(desiredState,
-				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, logger)),
+				addCommonMetadata(assembleEdgeProxyDeployment(operatorNamespace, namePrefix, signalControlResource, operatorConfig, edgeProxyImage, edgeProxyImagePullPolicy, operatorVersion, otlpGrpcHostPort, extraConfig, isOpenShift, logger)),
 				addCommonMetadata(assembleEdgeProxyService(operatorNamespace, namePrefix)),
 				addCommonMetadata(assembleEdgeProxyPodDisruptionBudget(operatorNamespace, namePrefix)),
 			)
@@ -94,7 +95,7 @@ func assembleDesiredStateForDelete(
 	namePrefix string,
 	logger logd.Logger,
 ) []clientObject {
-	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, util.ExtraConfig{}, true, logger)
+	return assembleDesiredState(operatorNamespace, namePrefix, nil, nil, "", "", "", 0, util.ExtraConfig{}, true, false, logger)
 }
 
 func assembleEdgeProxyDeployment(
@@ -107,6 +108,7 @@ func assembleEdgeProxyDeployment(
 	operatorVersion string,
 	otlpGrpcHostPort int32,
 	extraConfig util.ExtraConfig,
+	isOpenShift bool,
 	logger logd.Logger,
 ) *appsv1.Deployment {
 	replicas := extraConfig.EdgeProxyReplicas
@@ -299,7 +301,7 @@ func assembleEdgeProxyDeployment(
 		TerminationGracePeriodSeconds: new(int64(30)),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: new(true),
-			RunAsUser:    new(edgeProxyUserID),
+			RunAsUser:    util.RunAsID(isOpenShift, edgeProxyUserID),
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},

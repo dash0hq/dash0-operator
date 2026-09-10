@@ -180,6 +180,35 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 		Expect(value).To(Equal(gkeAutopilotAllowlistValue))
 	})
 
+	It("pins the pod-level runAsUser/runAsGroup when not on OpenShift", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+		}, nil, util.ExtraConfig{})
+		Expect(err).ToNot(HaveOccurred())
+
+		sc := getDeployment(desiredState).Spec.Template.Spec.SecurityContext
+		Expect(*sc.RunAsUser).To(Equal(int64(65532)))
+		Expect(*sc.RunAsGroup).To(Equal(int64(0)))
+	})
+
+	It("omits the pod-level runAsUser/runAsGroup on OpenShift so the SCC can assign an in-range UID", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+			IsOpenShift:       true,
+		}, nil, util.ExtraConfig{})
+		Expect(err).ToNot(HaveOccurred())
+
+		sc := getDeployment(desiredState).Spec.Template.Spec.SecurityContext
+		Expect(sc).ToNot(BeNil())
+		Expect(*sc.RunAsNonRoot).To(BeTrue())
+		Expect(sc.RunAsUser).To(BeNil())
+		Expect(sc.RunAsGroup).To(BeNil())
+	})
+
 	When("mTLS is enabled", Ordered, func() {
 		const certSecretName = "ta-mtls-server-cert-secret"
 		var desiredState []clientObject

@@ -1,0 +1,58 @@
+suite: test openshift scc
+templates:
+  - operator/openshift-scc.yaml
+tests:
+  - it: should not render the SecurityContextConstraints and RBAC when operator.openShift.enabled is false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render the SecurityContextConstraints and RBAC when operator.openShift.enabled is true
+    set:
+      operator:
+        openShift:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: should render a SecurityContextConstraints granting host access to the collector service account
+    set:
+      operator:
+        openShift:
+          enabled: true
+    documentSelector:
+      path: kind
+      value: SecurityContextConstraints
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-dash0-collector
+      - equal:
+          path: allowHostDirVolumePlugin
+          value: true
+      - equal:
+          path: allowHostPorts
+          value: true
+      - equal:
+          path: runAsUser.type
+          value: RunAsAny
+      - contains:
+          path: allowedCapabilities
+          content: CHOWN
+
+  - it: should bind the SCC-use ClusterRole to the collector service account
+    set:
+      operator:
+        openShift:
+          enabled: true
+    documentSelector:
+      path: kind
+      value: RoleBinding
+    asserts:
+      - equal:
+          path: roleRef.name
+          value: RELEASE-NAME-dash0-collector-scc-use
+      - equal:
+          path: subjects[0].name
+          value: RELEASE-NAME-opentelemetry-collector-sa

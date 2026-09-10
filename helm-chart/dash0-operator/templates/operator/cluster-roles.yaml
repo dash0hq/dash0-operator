@@ -116,6 +116,18 @@ rules:
   - get
   - list
 
+# The operator sets its own manager deployment as the owner (with blockOwnerDeletion) of the resources it manages. The
+# OwnerReferencesPermissionEnforcement admission plugin (upstream Kubernetes, enabled by default on OpenShift and
+# MicroShift, and enableable on any cluster) then requires update on the owner's finalizers subresource to set
+# blockOwnerDeletion. Granted unconditionally because it is a no-op where the plugin is off and the flag would be a
+# wrong proxy: a non-OpenShift cluster can enable the plugin too.
+- apiGroups:
+  - apps
+  resources:
+  - deployments/finalizers
+  verbs:
+  - update
+
 ---
 {{/*
 The -manager-iac cluster role holds permissions used for IaC tasks, like synchronizing dashboards and check rules.
