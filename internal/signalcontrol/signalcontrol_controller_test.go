@@ -5,7 +5,9 @@ package signalcontrol
 
 import (
 	"context"
+	"time"
 
+	"github.com/go-logr/logr/funcr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -24,6 +26,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/signalcontrol/scresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util/cluster"
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
@@ -52,9 +56,10 @@ var _ = Describe("The Signal Control controller", Ordered, func() {
 			corev1.PullIfNotPresent,
 			OperatorVersionTest,
 			otelcolresources.DefaultOtlpGrpcHostPort,
+			cluster.KubernetesVersionInfo{},
 			false,
 		)
-		scManager := NewSignalControlManager(k8sClient, scResourceManager, util.ExtraConfigDefaults)
+		scManager := NewSignalControlManager(k8sClient, scResourceManager, nodeMetadataClient, util.ExtraConfigDefaults)
 		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 			k8sClient,
 			k8sClient.Scheme(),
@@ -153,3 +158,56 @@ func loadSignalControlResource(ctx context.Context) *dash0v1alpha1.Dash0SignalCo
 		To(Succeed())
 	return signalControlResource
 }
+
+var _ = Describe("Edge Proxy availability zone coverage", func() {
+	ctx := context.Background()
+
+	var warnings []string
+	var recordingLogger logd.Logger
+
+	BeforeEach(func() {
+		warnings = nil
+		recordingLogger = logd.NewLogger(funcr.New(func(_ string, args string) {
+			warnings = append(warnings, args)
+		}, funcr.Options{}))
+	})
+
+	It("warns with the Edge Proxy wording when there are more zones than replicas, and clears it when resolved", func() {
+		for _, zone := range []string{"ep-zone-a", "ep-zone-b", "ep-zone-c"} {
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "edge-proxy-zone-coverage-" + zone,
+					Labels: map[string]string{corev1.LabelTopologyZone: zone},
+				},
+			}
+			Expect(k8sClient.Create(ctx, node)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, node))).To(Succeed())
+			})
+		}
+
+		currentTime := time.Unix(0, 0)
+		manager := &SignalControlManager{}
+		twoReplicas := util.ExtraConfig{EdgeProxyReplicas: 2}
+		threeReplicas := util.ExtraConfig{EdgeProxyReplicas: 3}
+
+		// A fresh reporter on every attempt makes each one a first check that lists the nodes, working around watch
+		// cache lag.
+		Eventually(func(g Gomega) {
+			warnings = nil
+			manager.zoneCoverageReporter = cluster.NewZoneCoverageReporter(
+				nodeMetadataClient, cluster.WithClock(func() time.Time { return currentTime }))
+			manager.warnAboutInsufficientZoneCoverage(ctx, twoReplicas, recordingLogger)
+			g.Expect(warnings).To(HaveLen(1))
+			g.Expect(warnings[0]).To(ContainSubstring("3 availability zones"))
+			g.Expect(warnings[0]).To(ContainSubstring("Edge Proxy runs with 2 replicas"))
+			g.Expect(warnings[0]).To(ContainSubstring("operator.signalControl.edgeProxy.replicas"))
+		}).Should(Succeed())
+
+		// A replica change bypasses the interval: now sufficient, it logs the resolution with the Edge Proxy wording.
+		warnings = nil
+		manager.warnAboutInsufficientZoneCoverage(ctx, threeReplicas, recordingLogger)
+		Expect(warnings).To(HaveLen(1))
+		Expect(warnings[0]).To(ContainSubstring("Edge Proxy now runs with 3 replicas"))
+	})
+})

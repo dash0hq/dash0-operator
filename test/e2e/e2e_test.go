@@ -1948,6 +1948,54 @@ log_statements:
 					"kubectl", "-n", operatorNamespace, "get", "service", edgeProxyDeployment,
 				))).To(Succeed())
 
+				By("verifying zone-aware routing is configured on the Edge Proxy service")
+				// The Edge Proxy ships two replicas by default; on a multi-zone cluster the topology spread lands one
+				// per zone, which is what the per-zone endpoint hints below rely on.
+				edgeProxyExpectedReplicas := 2
+				if kubernetesMajor == 1 && kubernetesMinor < 31 {
+					GinkgoWriter.Printf(
+						"skipping the spec.trafficDistribution assertions, the field is only enabled by default from "+
+							"Kubernetes 1.31 on, server is %d.%d\n", kubernetesMajor, kubernetesMinor)
+				} else {
+					Eventually(func(g Gomega) {
+						trafficDistribution, err := run(exec.Command(
+							"kubectl",
+							"-n", operatorNamespace,
+							"get", "service", edgeProxyDeployment,
+							"-o", "jsonpath={.spec.trafficDistribution}",
+						), false)
+						g.Expect(err).ToNot(HaveOccurred())
+						g.Expect(strings.TrimSpace(trafficDistribution)).To(Equal("PreferClose"))
+					}, 30*time.Second, pollingInterval).Should(Succeed())
+
+					// The endpoint slice controller writes the zone hints kube-proxy needs only for ready endpoints,
+					// so this has to be eventually-consistent even though the deployment is already available.
+					By("verifying every ready Edge Proxy endpoint is hinted for its own zone")
+					Eventually(func(g Gomega) {
+						endpoints, err := run(exec.Command(
+							"kubectl",
+							"-n", operatorNamespace,
+							"get", "endpointslice",
+							"-l", "kubernetes.io/service-name="+edgeProxyDeployment,
+							"-o", "jsonpath={range .items[*].endpoints[?(@.conditions.ready==true)]}"+
+								"{.zone}={.hints.forZones[0].name}{\"\\n\"}{end}",
+						), false)
+						g.Expect(err).ToNot(HaveOccurred())
+						pairs := strings.Fields(strings.TrimSpace(endpoints))
+						g.Expect(pairs).To(
+							HaveLen(edgeProxyExpectedReplicas),
+							"expected one ready endpoint per replica, got %q", endpoints)
+						for _, pair := range pairs {
+							zone, hint, found := strings.Cut(pair, "=")
+							g.Expect(found).To(BeTrue(), "malformed endpoint entry %q", pair)
+							g.Expect(zone).ToNot(BeEmpty(), "endpoint has no zone, is the kind node labelled?")
+							g.Expect(hint).To(
+								Equal(zone),
+								"endpoint in zone %s must be hinted for its own zone, got %q", zone, hint)
+						}
+					}, 60*time.Second, pollingInterval).Should(Succeed())
+				}
+
 				By("verifying the Edge Proxy container is configured with the Decision Maker mock endpoint")
 				upstream, err := run(exec.Command(
 					"kubectl",

@@ -6,11 +6,9 @@ package startup
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -168,6 +166,24 @@ type commandLineArguments struct {
 	logLevel                                                              string
 }
 
+// pprofLogger adapts logd.Logger to common.PprofLogger. The shared helper logs in the slog style, while logd.Logger
+// inherits logr's Error(err, msg, keysAndValues...) signature; the error itself arrives as a key/value pair in args.
+type pprofLogger struct {
+	logger logd.Logger
+}
+
+func (l pprofLogger) Info(msg string, args ...any) {
+	l.logger.Info(msg, args...)
+}
+
+func (l pprofLogger) Warn(msg string, args ...any) {
+	l.logger.Warn(msg, args...)
+}
+
+func (l pprofLogger) Error(msg string, args ...any) {
+	l.logger.Error(nil, msg, args...)
+}
+
 const (
 	operatorNamespaceEnvVarName                           = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                              = "DASH0_DEPLOYMENT_NAME"
@@ -208,7 +224,6 @@ const (
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
 
 	developmentModeEnvVarName                        = "DASH0_DEVELOPMENT_MODE"
-	pprofPortEnvVarName                              = "DASH0_PPROF_PORT"
 	instrumentationDebugEnvVarName                   = "DASH0_INSTRUMENTATION_DEBUG"
 	enablePythonAutoInstrumentationEnvVarName        = "DASH0_ENABLE_PYTHON_AUTO_INSTRUMENTATION"
 	enableRubyAutoInstrumentationEnvVarName          = "DASH0_ENABLE_RUBY_AUTO_INSTRUMENTATION"
@@ -288,23 +303,7 @@ func Start() {
 
 	setupLog.Debug("development/debug mode enabled")
 
-	pprofPort := os.Getenv(pprofPortEnvVarName)
-	if pprofPort != "" {
-		go func() {
-			setupLog.Warn(
-				"starting pprof server (do not use in production unless instructed by Dash0 support to do so)",
-				"port",
-				pprofPort,
-			)
-			if err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil); err != nil {
-				if errors.Is(err, http.ErrServerClosed) {
-					setupLog.Info("pprof server has been closed")
-				} else {
-					setupLog.Error(err, "error in pprof server")
-				}
-			}
-		}()
-	}
+	common.StartPprofServerIfConfigured(pprofLogger{logger: setupLog})
 
 	if cliArgs.isUninstrumentAll {
 		if err := deleteMonitoringResourcesInAllNamespaces(setupLog); err != nil {
@@ -1830,11 +1829,13 @@ func startDash0Controllers(
 			envVars.edgeProxyImagePullPolicy,
 			images.GetOperatorVersion(),
 			int32(cliArgs.otlpGrpcHostPort),
+			kubernetesApiServerVersionInfo,
 			cliArgs.isOpenShift,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,
 			scResourceManager,
+			nodeMetadataClient,
 			extraConfig,
 		)
 		// Update the extra config in the Signal Control manager when the extra config map changes, and also trigger a

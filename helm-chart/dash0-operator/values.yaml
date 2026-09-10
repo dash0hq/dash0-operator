@@ -540,7 +540,7 @@ operator:
   developmentMode: false
 
   # If set to a value, the operator manager will enable pprof and make it available on the specificied port.
-  # Note that this setting is independent of operator.collectors.enablePprofExtension, which enables pprof for the
+  # Note that this setting is independent of operator.collectors.enablePprof, which enables pprof for the
   # collectors.
   # The default is null, do not override this unless explicitly instructed by Dash0 support. Remove the override
   # after the operator troubleshooting is finished.
@@ -643,10 +643,13 @@ operator:
     # when disableHostPorts is false. Make sure the host port you set is available on all nodes in the cluster.
     otlpHttpHostPort: 40318
 
-    # If set to true, the pprof extension will be enabled for both collectors.
+    # If set to true, pprof will be enabled for all collector pods. This includes enabling the pprof extension for the
+    # main collector container in these pods, as well as enabling pprof in their auxiliary containers
+    # (e.g. configuration-reloader and filelog-offset-sync). Each container serves pprof on its own port, see
+    # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/troubleshooting#auxiliary-container-heap-profiles.
     # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
-    # after the collector troubleshooting is finished.
-    enablePprofExtension: false
+    # after the collector troubleshooting is finished. Changing the flag will restart the collector pods.
+    enablePprof: false
 
     # If set to true, the collector configuration will be stored in the config map as gzip-compressed binary data.
     # This can reduce the size of the config map and may help in clusters with many monitoring resources.
@@ -1250,9 +1253,12 @@ operator:
     # Settings for the Edge Proxy deployed when signalControl.enabled=true.
     edgeProxy:
       # The number of Edge Proxy pods to run. The Edge Proxy is stateless, so it can be scaled horizontally to
-      # handle higher collector-to-Decision-Maker traffic. Collectors connect via the Edge Proxy service,
-      # which distributes gRPC connections across the available pods. Defaults to 2, the availability floor: with the
-      # pod disruption budget a single pod restart, rollout or node drain always leaves one pod serving the fleet.
+      # handle higher collector-to-Decision-Maker traffic. Collectors connect via the Edge Proxy service, which on
+      # Kubernetes 1.31+ prefers an Edge Proxy pod in the sender's own availability zone and otherwise distributes gRPC
+      # connections across the available pods. Defaults to 2, the availability floor: with the pod disruption budget a
+      # single pod restart, rollout or node drain always leaves one pod serving the fleet. Set this to at least the
+      # number of availability zones so that every zone has a local Edge Proxy pod and the decision stream does not
+      # cross zones.
       replicas: 2
 
       # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.

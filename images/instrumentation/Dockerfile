@@ -156,6 +156,7 @@ COPY --from=build-ruby-musl /dash0-instrumentation/ruby /dash0-instrumentation/a
 
 WORKDIR /
 # A numeric non-root USER lets the kubelet verify runAsNonRoot when the pod-level runAsUser is dropped. Matches
-# defaultInitContainerUser.
+# defaultInitContainerUser. No GID is set because runAsNonRoot only validates the UID; the group is irrelevant to it
+# and defaults to 0.
 USER 13020
 CMD ["/copy-instrumentation.sh"]
