@@ -74,8 +74,8 @@ var commandTimeout = defaultCommandTimeout
 // rejected, which keeps flags added by future kubectl releases from widening what the connector accepts. Absent
 // (and therefore rejected) are flags that redirect the request target (--raw), select a different cluster or identity
 // (--server, --kubeconfig, --context, --as*, --token, ...), weaken transport security, read local files (-f, -k),
-// stream (-w, --follow), or log the HTTP request and response bodies and thereby the contents of any resource
-// (-v at verbosity 8 and above).
+// stream (-w, --follow), or log the HTTP request and response bodies and thereby the contents of any resource (-v,
+// which would do that at verbosity 8 and above; like every other unlisted flag it is rejected at every level).
 var allowedFlags = map[string]bool{
 	// global
 	"namespace": true, "n": true,
