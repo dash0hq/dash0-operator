@@ -547,6 +547,16 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(sc.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
 		})
 
+		It("omits the pod-level runAsUser/runAsGroup on OpenShift so the SCC can assign an in-range UID", func() {
+			cfg := testConfig()
+			cfg.IsOpenShift = true
+			sc := getDeployment(assembleDesiredState(cfg, authTokenEnvVar, util.ExtraConfig{})).Spec.Template.Spec.SecurityContext
+			Expect(sc).ToNot(BeNil())
+			Expect(*sc.RunAsNonRoot).To(BeTrue())
+			Expect(sc.RunAsUser).To(BeNil())
+			Expect(sc.RunAsGroup).To(BeNil())
+		})
+
 		It("renders additional labels and annotations on the workload and the pods", func() {
 			deployment := getDeployment(assembleDesiredState(testConfig(), authTokenEnvVar, util.ExtraConfig{
 				Agent0ConnectorLabels:         map[string]string{"a0c-label": "a0c-label-value"},

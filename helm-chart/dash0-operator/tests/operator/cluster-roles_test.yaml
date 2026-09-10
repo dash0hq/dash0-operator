@@ -14,6 +14,21 @@ tests:
     asserts:
       - matchSnapshot: {}
 
+  - it: should grant deployments/finalizers for OwnerReferencesPermissionEnforcement
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - apps
+            resources:
+              - deployments/finalizers
+            verbs:
+              - update
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-base
+
   - it: should grant permissions for telemetry collection if telemetry collection is enabled
     asserts:
       - hasDocuments:

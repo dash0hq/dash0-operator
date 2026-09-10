@@ -1,0 +1,89 @@
+{{/*
+On Red Hat OpenShift, the OpenTelemetry collector DaemonSet needs host access (hostPath log directories, host
+ports) and runs its filelog-offset-volume-ownership init container as root. The built-in restricted-v2 SCC denies
+all of that. This custom SecurityContextConstraints, granted to the collector DaemonSet's service account via RBAC,
+grants that host access plus the SELinux latitude to read /var/log/pods across all pods' MCS labels and the CHOWN
+capability the ownership init container needs. Rendered only when operator.openShift.enabled is true; the
+security.openshift.io API group does not exist on non-OpenShift clusters.
+*/}}
+{{- if .Values.operator.openShift.enabled }}
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ .Release.Name }}-dash0-collector
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: collector
+    app.kubernetes.io/instance: openshift-scc
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+allowPrivilegeEscalation: false
+allowHostDirVolumePlugin: true
+allowHostPorts: true
+allowHostNetwork: false
+allowHostPID: false
+allowHostIPC: false
+allowPrivilegedContainer: false
+requiredDropCapabilities:
+  - ALL
+allowedCapabilities:
+  - CHOWN
+readOnlyRootFilesystem: false
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+seccompProfiles:
+  - runtime/default
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - hostPath
+  - persistentVolumeClaim
+  - projected
+  - secret
+users: []
+groups: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-dash0-collector-scc-use
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: collector
+    app.kubernetes.io/instance: openshift-scc-use
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - security.openshift.io
+    resources:
+      - securitycontextconstraints
+    resourceNames:
+      - {{ .Release.Name }}-dash0-collector
+    verbs:
+      - use
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-dash0-collector-scc-use
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: collector
+    app.kubernetes.io/instance: openshift-scc-use
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-dash0-collector-scc-use
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-opentelemetry-collector-sa
+    namespace: {{ .Release.Namespace }}
+{{- end }}

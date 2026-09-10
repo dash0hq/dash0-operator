@@ -564,7 +564,10 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 	if securityContext == nil {
 		securityContext = &corev1.PodSecurityContext{}
 	}
-	if securityContext.FSGroup != nil {
+	if m.clusterInstrumentationConfig.IsOpenShift {
+		initContainerUser = nil
+		initContainerGroup = nil
+	} else if securityContext.FSGroup != nil {
 		initContainerUser = securityContext.FSGroup
 		initContainerGroup = securityContext.FSGroup
 	}

@@ -163,6 +163,7 @@ spec:
 {{- end }}
         - --dash0-force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --dash0-gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
+        - --dash0-openshift={{ .Values.operator.openShift.enabled }}
         - --dash0-disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
 {{- $otlpGrpcHostPort := int .Values.operator.collectors.otlpGrpcHostPort }}
 {{- $otlpHttpHostPort := int .Values.operator.collectors.otlpHttpHostPort }}

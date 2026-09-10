@@ -52,6 +52,7 @@ func (m *TargetAllocatorResourceManager) CreateOrUpdateTargetAllocatorResources(
 		CollectorComponent: m.targetAllocatorConfig.CollectorComponent,
 		Images:             m.targetAllocatorConfig.Images,
 		IsGkeAutopilot:     m.targetAllocatorConfig.IsGkeAutopilot,
+		IsOpenShift:        m.targetAllocatorConfig.IsOpenShift,
 	}
 
 	desiredState, err := assembleDesiredStateForUpsert(config, namespacesWithPrometheusScraping, extraConfig)
@@ -194,6 +195,7 @@ func (m *TargetAllocatorResourceManager) DeleteResources(
 		OperatorNamespace: m.targetAllocatorConfig.OperatorNamespace,
 		NamePrefix:        m.targetAllocatorConfig.TargetAllocatorNamePrefix,
 		IsGkeAutopilot:    m.targetAllocatorConfig.IsGkeAutopilot,
+		IsOpenShift:       m.targetAllocatorConfig.IsOpenShift,
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, extraConfig)
 	if err != nil {

@@ -134,7 +134,11 @@ install_nginx_ingress() {
 
 is_remote_image() {
   image_name="$1"
-  if [[ $image_name = */* ]]; then
+  # localhost/ references resolve to the local container store, not a remote registry, so their pull policy must be
+  # preserved (a blanked policy would default a :latest image to Always and trigger a failing registry pull).
+  if [[ $image_name == localhost/* ]]; then
+    printf "false"
+  elif [[ $image_name = */* ]]; then
     printf "true"
   else
     printf "false"
@@ -807,6 +811,10 @@ run_helm() {
 
   if [[ "${GKE_AUTOPILOT_ENABLED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.gke.autopilot.enabled=true"
+  fi
+
+  if [[ "${OPENSHIFT_ENABLED:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.openShift.enabled=true"
   fi
 
   # on kind, the collectors sometimes need more time to start

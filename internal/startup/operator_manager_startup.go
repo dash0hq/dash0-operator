@@ -153,6 +153,7 @@ type commandLineArguments struct {
 	featureSignalControlEnabled                                           bool
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	isGkeAutopilot                                                        bool
+	isOpenShift                                                           bool
 	disableOpenTelemetryCollectorHostPorts                                bool
 	otlpGrpcHostPort                                                      int
 	otlpHttpHostPort                                                      int
@@ -673,6 +674,12 @@ func defineCommandLineArguments() *commandLineArguments {
 		"dash0-gke-autopilot",
 		false,
 		"Whether the operator is running on GKE Autopilot.",
+	)
+	flag.BoolVar(
+		&cliArgs.isOpenShift,
+		"dash0-openshift",
+		false,
+		"Whether the operator is running on Red Hat OpenShift.",
 	)
 	flag.BoolVar(
 		&cliArgs.disableOpenTelemetryCollectorHostPorts,
@@ -1482,6 +1489,8 @@ func startOperatorManager(
 		cliArgs.disableOpenTelemetryCollectorHostPorts,
 		"is GKE Autopilot",
 		cliArgs.isGkeAutopilot,
+		"is OpenShift",
+		cliArgs.isOpenShift,
 
 		"metrics bind address",
 		cliArgs.metricsAddr,
@@ -1661,6 +1670,7 @@ func startDash0Controllers(
 		envVars.enablePythonAutoInstrumentation,
 		envVars.enableRubyAutoInstrumentation,
 	)
+	clusterInstrumentationConfig.IsOpenShift = cliArgs.isOpenShift
 
 	startMinimumKubeletVersionDetection(
 		ctx,
@@ -1765,6 +1775,7 @@ func startDash0Controllers(
 			TargetAllocatorNamePrefix: envVars.targetAllocatorNamePrefix,
 			CollectorComponent:        otelcolresources.CollectorDaemonSetServiceComponent(),
 			IsGkeAutopilot:            cliArgs.isGkeAutopilot,
+			IsOpenShift:               cliArgs.isOpenShift,
 		}
 		targetallocatorResourceManager := taresources.NewTargetAllocatorResourceManager(
 			k8sClient,
@@ -1797,6 +1808,7 @@ func startDash0Controllers(
 		operatorDeploymentSelfReference,
 		clusterUid,
 		developmentMode,
+		cliArgs.isOpenShift,
 	)
 	if err != nil {
 		return err
@@ -1818,6 +1830,7 @@ func startDash0Controllers(
 			images.GetOperatorVersion(),
 			int32(cliArgs.otlpGrpcHostPort),
 			kubernetesApiServerVersionInfo,
+			cliArgs.isOpenShift,
 		)
 		scManager = signalcontrol.NewSignalControlManager(
 			k8sClient,
@@ -2281,6 +2294,7 @@ func setupAgent0ConnectorManager(
 	operatorDeploymentSelfReference *appsv1.Deployment,
 	pseudoClusterUid types.UID,
 	developmentMode bool,
+	isOpenShift bool,
 ) (*agent0connector.Agent0ConnectorManager, error) {
 	if !envVars.agent0ConnectorEnabled {
 		// We might not have the permissions to manage the agent0 connector resources (in particular when telemetry
@@ -2295,6 +2309,7 @@ func setupAgent0ConnectorManager(
 		ServerAddress:     envVars.agent0ConnectorServerAddress,
 		Insecure:          envVars.agent0ConnectorInsecure,
 		Authorization:     agent0ConnectorAuthorization(envVars),
+		IsOpenShift:       isOpenShift,
 		DevelopmentMode:   developmentMode,
 	}
 	agent0ConnectorResourceManager := a0cresources.NewAgent0ConnectorResourceManager(

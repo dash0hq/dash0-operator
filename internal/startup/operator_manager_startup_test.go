@@ -47,6 +47,7 @@ var _ = Describe("operator manager startup", func() {
 				&appsv1.Deployment{},
 				"cluster-uid",
 				false,
+				false,
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(agent0ConnectorManager).To(BeNil())
@@ -66,6 +67,7 @@ var _ = Describe("operator manager startup", func() {
 				util.Images{},
 				&appsv1.Deployment{},
 				types.UID("cluster-uid"),
+				false,
 				false,
 			)
 			Expect(err).NotTo(HaveOccurred())

@@ -217,6 +217,18 @@ operator:
       # for more information.
       deployAllowlistSynchronizer: true
 
+  # Settings for Red Hat OpenShift clusters:
+  openShift:
+    # Set operator.openShift.enabled=true if you are running the Dash0 operator in a Red Hat OpenShift cluster.
+    # This will:
+    # - create a SecurityContextConstraints object plus RBAC that lets the OpenTelemetry collector DaemonSet run with
+    #   its required UID and host access
+    # - drop the hard-coded pod-level runAsUser/runAsGroup from the operator-managed workloads (agent0-connector,
+    #   target-allocator, Signal Control edge-proxy) and from the injected instrumentation init container, so the
+    #   namespace's SecurityContextConstraints can assign an in-range UID instead of a pinned one the default
+    #   MustRunAsRange strategy would reject
+    enabled: false
+
   # An array of tolerations for the operator manager deployment. This can be used to make sure that the operator manager
   # pod(s) can be scheduled on nodes where they would not be scheduled otherwise due to Kubernetes taints.
   # Example:

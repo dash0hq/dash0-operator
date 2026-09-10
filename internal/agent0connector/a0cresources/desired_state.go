@@ -620,8 +620,8 @@ func assembleDeployment(
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
-			RunAsUser:  new(defaultUser),
-			RunAsGroup: new(defaultGroup),
+			RunAsUser:  util.RunAsID(c.IsOpenShift, defaultUser),
+			RunAsGroup: util.RunAsID(c.IsOpenShift, defaultGroup),
 		},
 	}
 

@@ -7,6 +7,7 @@ This document provides platform-specific guidance, compatibility notes, and work
 - [AWS EKS](#notes-on-aws-eks)
 - [GKE Autopilot](#notes-on-gke-autopilot)
   - [Managing the AllowlistSynchronizer Manually](#managing-the-allowlistsynchronizer-manually)
+- [OpenShift](#notes-on-openshift)
 - [Azure AKS](#notes-on-azure-aks)
 - [Open Policy Agent (OPA Gatekeeper)](#notes-on-the-open-policy-agent)
 - [Kyverno Admission Controller](#notes-on-kyverno-admission-controller)
@@ -93,6 +94,29 @@ kubectl apply -f dash0-gke-autopilot-allowlist-synchronizer.yaml
 
 When managing the `AllowlistSynchronizer` manually, you might need to update it from time to time for future Dash0
 operator releases.
+
+## Notes on OpenShift
+
+When deploying the Dash0 operator to a Red Hat OpenShift cluster, provide the following additional setting when applying
+the Helm chart:
+
+```yaml
+operator:
+  openShift:
+    enabled: true
+```
+
+OpenShift enforces [Security Context Constraints](https://docs.openshift.com/container-platform/latest/authentication/managing-security-context-constraints.html)
+(SCCs) on every pod. The default `restricted-v2` SCC assigns each pod a random, in-range UID from the namespace's
+`openshift.io/sa.scc.uid-range` and rejects pods that pin a UID outside that range. With `operator.openShift.enabled`
+set to `true`, the Dash0 operator Helm chart and operator:
+
+- create a custom `SecurityContextConstraints` resource plus the RBAC that binds it to the OpenTelemetry collector
+  DaemonSet's service account, so the DaemonSet may use the host access it requires (host log directories via `hostPath`
+  and the OTLP host ports), and
+- drop the hard-coded pod-level `runAsUser`/`runAsGroup` from the operator-managed workloads (the agent0-connector, the
+  target-allocator, and the Signal Control edge-proxy) and from the injected instrumentation init container, so that the
+  namespace's SCC assigns an in-range UID instead of a pinned one that `restricted-v2` would reject.
 
 ## Notes on Azure AKS
 
