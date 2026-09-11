@@ -48,19 +48,18 @@ else
 fi
 helm_release_name=dash0-operator
 
-# Directory and archive used to collect cluster diagnostics when the check fails. These paths are relative to the
-# repository root (we cd into it above), which is also the working directory of the GitHub Actions job, so the workflow
-# can upload the archive as an artifact.
+# Directory used to collect cluster diagnostics when the check fails. The path is relative to the repository root (we cd
+# into it above), which is also the working directory of the GitHub Actions job, so the workflow can upload the directory
+# as an artifact. The upload-artifact action will automatically creates a zip archive.
 diagnostics_dir=gke-ap-allowlist-check-diagnostics
-diagnostics_archive="${diagnostics_dir}.tar.gz"
 
 # Set to "true" once all checks have passed. As long as this is not "true" when cleanup() runs, we assume the check has
 # failed and collect cluster diagnostics before tearing everything down.
 check_succeeded=false
 
 # Collects diagnostic information from the cluster (workloads, pods, their logs, events, config maps and the relevant
-# custom resources) into $diagnostics_dir and compresses it into $diagnostics_archive. This runs at the start of
-# cleanup() when the check has failed, that is, before "helm uninstall" removes everything from the cluster.
+# custom resources) into $diagnostics_dir. This runs at the start of cleanup() when the check has failed, that is,
+# before "helm uninstall" removes everything from the cluster.
 collect_diagnostics() {
   set +e
   log "the check did not succeed, collecting cluster diagnostics into \"$diagnostics_dir\" before cleanup"
@@ -123,12 +122,7 @@ collect_diagnostics() {
       -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null)
   done
 
-  log "creating the diagnostics archive \"$diagnostics_archive\""
-  if tar -czf "$diagnostics_archive" "$diagnostics_dir"; then
-    log "cluster diagnostics have been collected in \"$diagnostics_archive\""
-  else
-    log "WARNING: failed to create the diagnostics archive \"$diagnostics_archive\""
-  fi
+  log "cluster diagnostics have been collected in \"$diagnostics_dir\""
   set -e
 }
 
