@@ -79,6 +79,12 @@ collect_diagnostics() {
     } > "$file" || echo "(command exited with a non-zero status)" >> "$file"
   }
 
+  # Nodes, including their labels, taints and allocatable/allocated resources. A daemonset pod is pinned to exactly one
+  # node via nodeAffinity, so a pod that stays pending is a statement about that one node (its free capacity, its taints
+  # or its architecture), not about the cluster as a whole.
+  dump nodes-get.txt kubectl get nodes -o wide --show-labels
+  dump nodes-describe.txt kubectl describe nodes
+
   # Cluster-scoped GKE Autopilot allowlist resources. A mismatch or a not-yet-ready AllowlistSynchronizer is the most
   # likely reason for this check to fail.
   dump allowlistsynchronizers-get.txt kubectl get allowlistsynchronizers.auto.gke.io -o wide
