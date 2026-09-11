@@ -24,6 +24,11 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/../../..
 
+# Prints a message prefixed with the current UTC time, so the duration of each step can be derived from the output.
+log() {
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"
+}
+
 operator_namespace=gke-ap-workload-allowlist-check-operator
 monitored_namespace=gke-ap-workload-allowlist-check-monitored
 use_local_chart="${USE_LOCAL_CHART:-}"
@@ -34,8 +39,8 @@ if [[ "$use_local_chart" = "true" ]]; then
   # Only the official ghcr.io/dash0hq repositories and the ghcr.io/dash0hq/gke-ap- repositories are allow-listed on the
   # GKE Autopilot cluster. Using any other prefix would make the operator pods unschedulable.
   if [[ "$image_repository_prefix" != "ghcr.io/dash0hq/" && "$image_repository_prefix" != "ghcr.io/dash0hq/gke-ap-" ]]; then
-    echo "ERROR: unsupported IMAGE_REPOSITORY_PREFIX '$image_repository_prefix'."
-    echo "Only 'ghcr.io/dash0hq/' and 'ghcr.io/dash0hq/gke-ap-' are allow-listed."
+    log "ERROR: unsupported IMAGE_REPOSITORY_PREFIX '$image_repository_prefix'."
+    log "Only 'ghcr.io/dash0hq/' and 'ghcr.io/dash0hq/gke-ap-' are allow-listed."
     exit 1
   fi
 else
@@ -43,22 +48,21 @@ else
 fi
 helm_release_name=dash0-operator
 
-# Directory and archive used to collect cluster diagnostics when the check fails. These paths are relative to the
-# repository root (we cd into it above), which is also the working directory of the GitHub Actions job, so the workflow
-# can upload the archive as an artifact.
+# Directory used to collect cluster diagnostics when the check fails. The path is relative to the repository root (we cd
+# into it above), which is also the working directory of the GitHub Actions job, so the workflow can upload the directory
+# as an artifact. The upload-artifact action will automatically creates a zip archive.
 diagnostics_dir=gke-ap-allowlist-check-diagnostics
-diagnostics_archive="${diagnostics_dir}.tar.gz"
 
 # Set to "true" once all checks have passed. As long as this is not "true" when cleanup() runs, we assume the check has
 # failed and collect cluster diagnostics before tearing everything down.
 check_succeeded=false
 
 # Collects diagnostic information from the cluster (workloads, pods, their logs, events, config maps and the relevant
-# custom resources) into $diagnostics_dir and compresses it into $diagnostics_archive. This runs at the start of
-# cleanup() when the check has failed, that is, before "helm uninstall" removes everything from the cluster.
+# custom resources) into $diagnostics_dir. This runs at the start of cleanup() when the check has failed, that is,
+# before "helm uninstall" removes everything from the cluster.
 collect_diagnostics() {
   set +e
-  echo "the check did not succeed, collecting cluster diagnostics into \"$diagnostics_dir\" before cleanup"
+  log "the check did not succeed, collecting cluster diagnostics into \"$diagnostics_dir\" before cleanup"
   mkdir -p "$diagnostics_dir"
 
   # Runs a command and stores its combined stdout/stderr in $diagnostics_dir/$1. Best effort: a failing command must
@@ -66,6 +70,7 @@ collect_diagnostics() {
   dump() {
     local file="$diagnostics_dir/$1"
     shift
+    log "collecting $file"
     mkdir -p "$(dirname "$file")"
     {
       echo "\$ $*"
@@ -73,6 +78,9 @@ collect_diagnostics() {
       "$@" 2>&1
     } > "$file" || echo "(command exited with a non-zero status)" >> "$file"
   }
+
+  dump nodes-get.txt kubectl get nodes -o wide --show-labels
+  dump nodes-describe.txt kubectl describe nodes
 
   # Cluster-scoped GKE Autopilot allowlist resources. A mismatch or a not-yet-ready AllowlistSynchronizer is the most
   # likely reason for this check to fail.
@@ -108,6 +116,7 @@ collect_diagnostics() {
       dump "$namespace/logs-${pod}.txt" \
         kubectl logs --namespace "$namespace" "$pod" --all-containers=true --prefix=true
       # Previous logs only exist for containers that have restarted; ignore the file if there are none.
+      log "collecting the previous logs of pod $pod in namespace $namespace, if any"
       if ! kubectl logs --namespace "$namespace" "$pod" --all-containers=true --prefix=true --previous \
         > "$diagnostics_dir/$namespace/logs-${pod}-previous.txt" 2>/dev/null; then
         rm -f "$diagnostics_dir/$namespace/logs-${pod}-previous.txt"
@@ -116,11 +125,7 @@ collect_diagnostics() {
       -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null)
   done
 
-  if tar -czf "$diagnostics_archive" "$diagnostics_dir"; then
-    echo "cluster diagnostics have been collected in \"$diagnostics_archive\""
-  else
-    echo "WARNING: failed to create the diagnostics archive \"$diagnostics_archive\""
-  fi
+  log "cluster diagnostics have been collected in \"$diagnostics_dir\""
   set -e
 }
 
@@ -131,8 +136,9 @@ cleanup() {
 
   set +e
   set -x
-  echo "running cleanup"
+  log "running cleanup"
 
+  log "uninstalling the helm release $helm_release_name"
   helm uninstall \
     --namespace "$operator_namespace" \
     --ignore-not-found \
@@ -140,12 +146,16 @@ cleanup() {
     "$helm_release_name"
 
   # If the workload allow list for the pre-delete hook does not match, it might stick around as a Zombie job, force-delete it.
+  log "deleting the pre-delete job"
   kubectl delete job --namespace "$operator_namespace" --ignore-not-found "${helm_release_name}-pre-delete" --wait --grace-period=0 --force
 
+  log "deleting namespace $operator_namespace"
   kubectl delete namespace "$operator_namespace" --ignore-not-found --grace-period=0 --force
 
+  log "deleting namespace $monitored_namespace"
   kubectl delete namespace "$monitored_namespace" --ignore-not-found --grace-period=0 --force
 
+  log "uninstalling podinfo and deleting the namespace ensure-at-least-one-node"
   helm uninstall --namespace ensure-at-least-one-node podinfo
   kubectl delete namespace ensure-at-least-one-node --ignore-not-found --grace-period=0 --force
 
@@ -165,20 +175,20 @@ retry_command() {
     fi
 
     if [[ $attempt -eq $max_retries ]]; then
-      echo "Command failed after $max_retries attempts: $*"
+      log "Command failed after $max_retries attempts: $*"
       return 1
     fi
 
-    echo "Attempt $attempt failed, retrying in ${retry_delay} seconds..."
+    log "Attempt $attempt failed, retrying in ${retry_delay} seconds..."
     sleep $retry_delay
     attempt=$((attempt + 1))
   done
 }
 
-echo kubectl version:
+log "kubectl version:"
 kubectl version
 echo
-echo "current kubectx: $(kubectl config current-context)"
+log "current kubectx: $(kubectl config current-context)"
 echo
 
 # Install a trap to make sure we clean up after ourselves, no matter the outcome of the check.
@@ -186,12 +196,13 @@ trap cleanup HUP INT TERM EXIT
 
 # Deploy a dummy pod, to ensure the cluster is scaled up to at least one node. GKE AP has the infuriating UX problem
 # that for example a namespace can be in state terminating forever if it is scaled down to zero nodes.
+log "deploying podinfo to make sure the cluster is scaled up to at least one node"
 helm repo add podinfo https://stefanprodan.github.io/podinfo
 kubectl create namespace ensure-at-least-one-node || true
 helm install --namespace ensure-at-least-one-node podinfo podinfo/podinfo || true
 
 if [[ "$chart" != "helm-chart/dash0-operator" ]]; then
-  echo "installing the operator helm repo"
+  log "installing the operator helm repo"
   helm repo add dash0-operator https://dash0hq.github.io/dash0-operator
   helm repo update dash0-operator
 fi
@@ -200,24 +211,24 @@ fi
 # make the test invalid. We want to verify that the Helm chart correctly installs the AllowlistSynchronizer before deploying
 # the operator, and that cleanup works correctly when removing the Helm chart. A manually installed AllowlistSynchronizer
 # or WorkloadAllowlist might hide issues.
-echo "checking that no GKE Autopilot allowlist resources exist before the check starts"
+log "checking that no GKE Autopilot allowlist resources exist before the check starts"
 existing_synchronizers=$(kubectl get allowlistsynchronizers.auto.gke.io --no-headers --ignore-not-found 2>/dev/null || true)
 existing_allowlists=$(kubectl get workloadallowlists.auto.gke.io --no-headers --ignore-not-found 2>/dev/null || true)
 if [[ -n "$existing_synchronizers" || -n "$existing_allowlists" ]]; then
-  echo "ERROR: the cluster already contains GKE Autopilot allowlist resources, please clean them up before running the check."
+  log "ERROR: the cluster already contains GKE Autopilot allowlist resources, please clean them up before running the check."
   if [[ -n "$existing_synchronizers" ]]; then
-    echo "Existing AllowlistSynchronizers:"
+    log "Existing AllowlistSynchronizers:"
     echo "$existing_synchronizers"
   fi
   if [[ -n "$existing_allowlists" ]]; then
-    echo "Existing WorkloadAllowlists:"
+    log "Existing WorkloadAllowlists:"
     echo "$existing_allowlists"
   fi
   exit 1
 fi
 
 # Create the namespace and a dummy auth token secret.
-echo "creating operator namespace $operator_namespace and auth token secret"
+log "creating operator namespace $operator_namespace and auth token secret"
 kubectl create namespace "$operator_namespace"
 kubectl create secret \
   generic \
@@ -254,33 +265,58 @@ fi
 helm_command+=" $helm_release_name"
 helm_command+=" $chart"
 
-echo "running: $helm_command"
+log "running: $helm_command"
 $helm_command
 
 # Wait for the OTel collector workloads to become ready, this ensures that the WorkloadAllowlists for those also match.
-echo "helm install has been successful, waiting for the collectors to be deployed and become ready"
+log "helm install has been successful, waiting for the collectors to be deployed and become ready"
 
+log "waiting for the daemonset collector to be created"
 set -x
 kubectl wait \
   --for=create \
   daemonset "${helm_release_name}-opentelemetry-collector-agent-daemonset" \
   --namespace "$operator_namespace" \
   --timeout=60s
-kubectl \
-  rollout status \
-  daemonset "${helm_release_name}-opentelemetry-collector-agent-daemonset" \
-  --namespace "$operator_namespace" \
-  --timeout 90s
 set +x
+# Wait for one ready pod instead of using "kubectl rollout status", which requires a ready pod on every node: GKE
+# Autopilot inflates a gke-system-balloon-pod to park the spare capacity of an under-utilized node, and that pod runs
+# with the priority class system-node-critical, which a daemonset pod (priority 0) can neither fit alongside nor
+# preempt. A daemonset pod pinned to such a node stays pending no matter how long we wait.
+log "waiting for at least one pod of the daemonset collector to become ready"
+deadline=$((SECONDS + 90))
+until [[ "$(kubectl get daemonset "${helm_release_name}-opentelemetry-collector-agent-daemonset" \
+  --namespace "$operator_namespace" -o jsonpath='{.status.numberReady}')" -ge 1 ]]; do
+  if (( SECONDS >= deadline )); then
+    log "ERROR: no pod of the daemonset collector became ready within 90 seconds"
+    exit 1
+  fi
+  sleep 5
+done
+# Verify that the GKE Autopilot warden has added the WorkloadAllowlist match label to the daemonset pod.
+all_matching_allowlists=$(kubectl get pods \
+  --namespace "$operator_namespace" \
+  --selector app.kubernetes.io/component=agent-collector \
+  --field-selector status.phase=Running \
+  -o jsonpath="{.items[*].metadata.labels['cloud\.google\.com/matching-allowlist']}")
+read -r matching_allowlist _ <<< "$all_matching_allowlists"
+if [[ -z "$matching_allowlist" ]]; then
+  log "ERROR: the daemonset collector pods did not match any GKE Autopilot WorkloadAllowlist,"
+  log "the WorkloadAllowlists probably need to be updated for the current Helm chart."
+  exit 1
+fi
+log "at least one daemonset collector pod is ready now, and the daemonset pods matched the WorkloadAllowlist \"$matching_allowlist\""
 
-echo "the daemonset collector is ready now"
-
+log "waiting for the deployment collector to be created"
 set -x
 kubectl wait \
   --for=create \
   deployment "${helm_release_name}-cluster-metrics-collector-deployment" \
   --namespace "$operator_namespace" \
-  --timeout=20s
+  --timeout=30s
+set +x
+log "waiting for the deployment collector rollout to finish"
+set -x
 kubectl \
   rollout status \
   deployment "${helm_release_name}-cluster-metrics-collector-deployment" \
@@ -288,9 +324,9 @@ kubectl \
   --timeout 60s
 set +x
 
-echo "the deployment collector is ready now"
+log "the deployment collector is ready now"
 
-echo "deploying a monitoring resource to trigger deploying the target-allocator"
+log "deploying a monitoring resource to trigger deploying the target-allocator"
 
 kubectl create namespace "$monitored_namespace"
 kubectl apply --namespace "$monitored_namespace" -f - <<EOF
@@ -299,15 +335,21 @@ kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
 EOF
+log "waiting for the monitoring resource to show up"
 retry_command kubectl get --namespace "$monitored_namespace" dash0monitorings.operator.dash0.com/dash0-monitoring-resource
+log "waiting for the monitoring resource to become available"
 kubectl wait --namespace "$monitored_namespace" dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available --timeout 30s
 
+log "waiting for the target-allocator to be created"
 set -x
 kubectl wait \
   --for=create \
   deployment "${helm_release_name}-opentelemetry-target-allocator-deployment" \
   --namespace "$operator_namespace" \
   --timeout=60s
+set +x
+log "waiting for the target-allocator rollout to finish"
+set -x
 kubectl \
   rollout status \
   deployment "${helm_release_name}-opentelemetry-target-allocator-deployment" \
@@ -315,9 +357,9 @@ kubectl \
   --timeout 60s
 set +x
 
-echo "the target-allocator is ready now"
+log "the target-allocator is ready now"
 echo
-echo "success: all checks have passed"
+log "success: all checks have passed"
 echo
 
 # Mark the check as successful so that cleanup() does not collect diagnostics.
