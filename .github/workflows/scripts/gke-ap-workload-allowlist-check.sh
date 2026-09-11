@@ -288,7 +288,7 @@ kubectl \
   rollout status \
   daemonset "${helm_release_name}-opentelemetry-collector-agent-daemonset" \
   --namespace "$operator_namespace" \
-  --timeout 180s
+  --timeout 300s
 set +x
 
 log "the daemonset collector is ready now"
