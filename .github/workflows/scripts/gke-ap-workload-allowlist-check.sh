@@ -79,9 +79,6 @@ collect_diagnostics() {
     } > "$file" || echo "(command exited with a non-zero status)" >> "$file"
   }
 
-  # Nodes, including their labels, taints and allocatable/allocated resources. A daemonset pod is pinned to exactly one
-  # node via nodeAffinity, so a pod that stays pending is a statement about that one node (its free capacity, its taints
-  # or its architecture), not about the cluster as a whole.
   dump nodes-get.txt kubectl get nodes -o wide --show-labels
   dump nodes-describe.txt kubectl describe nodes
 
@@ -282,16 +279,33 @@ kubectl wait \
   --namespace "$operator_namespace" \
   --timeout=60s
 set +x
-log "waiting for the daemonset collector rollout to finish"
-set -x
-kubectl \
-  rollout status \
-  daemonset "${helm_release_name}-opentelemetry-collector-agent-daemonset" \
+# Wait for one ready pod instead of using "kubectl rollout status", which requires a ready pod on every node: GKE
+# Autopilot inflates a gke-system-balloon-pod to park the spare capacity of an under-utilized node, and that pod runs
+# with the priority class system-node-critical, which a daemonset pod (priority 0) can neither fit alongside nor
+# preempt. A daemonset pod pinned to such a node stays pending no matter how long we wait.
+log "waiting for at least one pod of the daemonset collector to become ready"
+deadline=$((SECONDS + 90))
+until [[ "$(kubectl get daemonset "${helm_release_name}-opentelemetry-collector-agent-daemonset" \
+  --namespace "$operator_namespace" -o jsonpath='{.status.numberReady}')" -ge 1 ]]; do
+  if (( SECONDS >= deadline )); then
+    log "ERROR: no pod of the daemonset collector became ready within 90 seconds"
+    exit 1
+  fi
+  sleep 5
+done
+# Verify that the GKE Autopilot warden has added the WorkloadAllowlist match label to the daemonset pod.
+all_matching_allowlists=$(kubectl get pods \
   --namespace "$operator_namespace" \
-  --timeout 300s
-set +x
-
-log "the daemonset collector is ready now"
+  --selector app.kubernetes.io/component=agent-collector \
+  --field-selector status.phase=Running \
+  -o jsonpath="{.items[*].metadata.labels['cloud\.google\.com/matching-allowlist']}")
+read -r matching_allowlist _ <<< "$all_matching_allowlists"
+if [[ -z "$matching_allowlist" ]]; then
+  log "ERROR: the daemonset collector pods did not match any GKE Autopilot WorkloadAllowlist,"
+  log "the WorkloadAllowlists probably need to be updated for the current Helm chart."
+  exit 1
+fi
+log "at least one daemonset collector pod is ready now, and the daemonset pods matched the WorkloadAllowlist \"$matching_allowlist\""
 
 log "waiting for the deployment collector to be created"
 set -x

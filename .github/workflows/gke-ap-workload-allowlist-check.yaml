@@ -121,7 +121,7 @@ jobs:
       always() &&
       (needs.build_and_push_images.result == 'success' || needs.build_and_push_images.result == 'skipped') &&
       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
