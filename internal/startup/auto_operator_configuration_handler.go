@@ -172,12 +172,12 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 			ctx,
 			setupLog,
 		); err != nil {
-			logger.Error(err, "failed to create the Dash0 operator configuration resource")
+			logger.Error(err, "failed to create or update the Dash0 operator configuration resource")
 			return
 		} else if !webhookServiceIsAvailable {
 			logger.Error(
-				fmt.Errorf("cannot create the Dash0 operator configuration resource because the webhook service did not become available"),
-				"failed to create the Dash0 operator configuration resource",
+				fmt.Errorf("cannot create or update the Dash0 operator configuration resource because the webhook service did not become available"),
+				"failed to create or update the Dash0 operator configuration resource",
 			)
 			return
 		}
@@ -189,7 +189,7 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 			operatorConfigurationResource,
 			logger,
 		); err != nil {
-			logger.Error(err, "failed to create the Dash0 operator configuration resource")
+			logger.Error(err, "failed to create or update the Dash0 operator configuration resource")
 			return
 		}
 	}()
@@ -206,14 +206,14 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 		if r.operatorConfigurationValues.SecretRef.Name == "" { //nolint:staticcheck
 			return fmt.Errorf(
 				"invalid operator configuration: --operator-configuration-endpoint has been provided, " +
-					"indicating that an operator configuration resource should be created, but neither " +
+					"indicating that an operator configuration resource should be created/updated, but neither " +
 					"--operator-configuration-token nor --operator-configuration-secret-ref-name have been provided",
 			)
 		}
 		if r.operatorConfigurationValues.SecretRef.Key == "" { //nolint:staticcheck
 			return fmt.Errorf(
 				"invalid operator configuration: --operator-configuration-endpoint has been provided, " +
-					"indicating that an operator configuration resource should be created, but neither " +
+					"indicating that an operator configuration resource should be created/updated, but neither " +
 					"--operator-configuration-token nor --operator-configuration-secret-ref-key have been provided",
 			)
 		}
@@ -271,7 +271,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 			//nolint:staticcheck
 			return retry.NewRetryableError(
 				fmt.Errorf(
-					"The configuration provided via Helm instructs the operator manager to create an operator "+
+					"The configuration provided via Helm instructs the operator manager to create/update an operator "+
 						"configuration resource at startup, that is, operator.dash0Export.enabled is true and "+
 						"operator.dash0Export.endpoint has been provided. But there is already an operator configuration "+
 						"resource in the cluster with the name %s that has not been created by the operator "+
