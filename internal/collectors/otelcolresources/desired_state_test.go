@@ -2834,7 +2834,29 @@ func verifySelfMonitoringSettings(
 	expectations collectorSelfMonitoringExpectations,
 ) {
 	for _, container := range collectorDaemonSet.Spec.Template.Spec.Containers {
+		if container.Name == openTelemetryCollector {
+			verifySelfMonitoringEnvVarsForOtelCollectorContainer(&container, expectations)
+			continue
+		}
 		verifySelfMonitoringEnvVarsForContainer(&container, expectations)
+	}
+}
+
+// verifySelfMonitoringEnvVarsForOtelCollectorContainer verifies the container running the OpenTelemetry collector,
+// which is configured via the service::telemetry section of the collector configuration and only needs the auth token
+// env var, but none of the env vars that only the OTel Go SDK reads.
+func verifySelfMonitoringEnvVarsForOtelCollectorContainer(
+	container *corev1.Container,
+	expectations collectorSelfMonitoringExpectations,
+) {
+	envVars := container.Env
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpEndpointEnvVar)).To(Equal(-1))
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpProtocolEnvVar)).To(Equal(-1))
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpHeadersEnvVar)).To(Equal(-1))
+	Expect(FindEnvVarByName(envVars, util.OtelResourceAttributesEnvVarName)).To(BeNil())
+
+	if expectations.exportIsDash0 {
+		verifyDash0SelfMonitoringEnvVars(envVars, expectations)
 	}
 }
 
