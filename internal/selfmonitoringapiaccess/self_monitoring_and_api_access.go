@@ -443,8 +443,9 @@ func enableSelfMonitoringInContainers(
 	return nil
 }
 
-// enableSelfMonitoringInOTelSdkContainer is called for the containers that run the opentelemetry-collector process, to
-// set the environment variables that the self-monitoring configuration via pipelines.telemetry requires.
+// enableSelfMonitoringInOpenTelemetryCollectorContainer is called for the containers that run the
+// opentelemetry-collector process, to set the environment variables that the self-monitoring configuration via
+// pipelines.telemetry requires.
 func enableSelfMonitoringInOpenTelemetryCollectorContainer(
 	container *corev1.Container,
 	authTokenEnvVar *corev1.EnvVar,
