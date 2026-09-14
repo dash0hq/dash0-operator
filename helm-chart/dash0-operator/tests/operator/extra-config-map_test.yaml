@@ -1264,7 +1264,7 @@ tests:
                 timeoutSeconds: 1
             signalControlCollectorReplicas: 2
             signalControlCollectorContainerResources:
-              gomemlimit: 800MiB
+              gomemlimit: ""
               limits:
                 memory: 1Gi
               requests:

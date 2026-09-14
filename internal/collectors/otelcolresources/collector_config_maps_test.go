@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -1413,6 +1414,35 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsExportDefaultExporters).To(ContainElement("otlp_grpc/dash0/default_0"))
 			Expect(logsExportDefaultExporters).To(ContainElement("otlp_grpc/default_1"))
 			Expect(logsExportDefaultExporters).To(ContainElement("otlp_http/default_2/proto"))
+		})
+
+		It("derives the memory_limiter thresholds from the collector memory limit [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace:             OperatorNamespace,
+				NamePrefix:                    namePrefix,
+				Exporters:                     cmTestMultipleExportsDefaultMixed(),
+				DaemonSetCollectorMemoryLimit: resource.MustParse("500Mi"),
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			config := configMap.Data["config.yaml"]
+			Expect(config).To(ContainSubstring("limit_mib: 404"))
+			Expect(config).To(ContainSubstring("spike_limit_mib: 32"))
+			Expect(config).NotTo(ContainSubstring("limit_percentage"))
+		})
+
+		It("falls back to the percentage memory_limiter when no memory limit is set [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleExportsDefaultMixed(),
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			config := configMap.Data["config.yaml"]
+			Expect(config).To(ContainSubstring("limit_percentage: 80"))
+			Expect(config).To(ContainSubstring("spike_limit_percentage: 25"))
+			Expect(config).NotTo(ContainSubstring("limit_mib"))
 		})
 
 		It("should list all default exporters in the default export pipeline [Deployment]", func() {

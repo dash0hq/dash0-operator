@@ -256,6 +256,22 @@ The following Helm values control the resource settings, all nested under the to
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
 | `agent0Connector.containerResources` | agent0-connector container | `memory: 32Mi` | `memory: 256Mi` |
 
+For the three collector containers (`collectors.daemonSetCollectorContainerResources`,
+`collectors.deploymentCollectorContainerResources` and `collectors.signalControlCollectorContainerResources`),
+`gomemlimit` is left empty by default. In that case the operator derives both `GOMEMLIMIT` and the collector's internal
+`memory_limiter` thresholds from the container's memory limit, keeping
+`GOMEMLIMIT < memory_limiter soft limit < memory_limiter hard limit < memory limit`. This lets the Go runtime pace
+garbage collection before the `memory_limiter` starts forcing GC and refusing telemetry. Adjusting one of these three
+collectors therefore usually means changing only its memory limit. Setting `gomemlimit` explicitly for such a container
+overrides only the derived `GOMEMLIMIT`; the `memory_limiter` thresholds are still derived. A `gomemlimit` at or above
+the derived soft limit is a misconfiguration — the collector would refuse telemetry before the Go runtime paces GC —
+and the operator logs a warning in that case.
+
+The derivation keeps a fixed amount of headroom for off-heap memory, so keep a collector's memory limit at or above the
+`500Mi` default. Below roughly `500Mi` that fixed headroom is a large fraction of the limit and the derived `GOMEMLIMIT`
+becomes very conservative; below about `152Mi` no ordered set of values fits and the collector falls back to a
+percentage-based `memory_limiter` with `GOMEMLIMIT` left unset.
+
 The agent0-connector container runs `kubectl` as a child process, whose memory counts towards the container's memory
 limit, but is not governed by `GOMEMLIMIT`. Its `gomemlimit` default is therefore about 60% of the memory limit,
 instead of the 80% recommended for the other containers.
@@ -305,17 +321,18 @@ operator:
         memory: 768Mi
       limits:
         memory: 768Mi
-      # approximately 80% of daemonSetCollectorContainerResources.limits.memory; use MiB or GiB here (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 614MiB
+      # gomemlimit is left empty: the operator derives GOMEMLIMIT and the memory_limiter thresholds from the limit above.
 ```
 
 > **Note:** Most of the operator's containers (the operator manager, the collectors, the configuration reloaders, the
 > filelog offset sync container, and the target-allocator) are Go processes, and their container resource settings have
 > a companion `gomemlimit` value (the
 > [`GOMEMLIMIT`](https://pkg.go.dev/runtime#hdr-Environment_Variables) environment variable, a soft memory limit for the
-> Go runtime's garbage collector). Whenever you raise or lower a memory limit, adjust the corresponding `gomemlimit` as
-> well; the recommended value is 80% of that container's memory limit. Note that `gomemlimit` uses different units than
-> Kubernetes resource settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
+> Go runtime's garbage collector). For the three collector containers listed above, `gomemlimit` is derived
+> automatically from the memory limit (see above), so you normally only adjust their memory limit. For the other
+> containers, whenever you raise or lower a memory limit, adjust the corresponding `gomemlimit` as well; the recommended
+> value is 80% of that container's memory limit. Note that `gomemlimit` uses different units than Kubernetes resource
+> settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
 similar to take effect.

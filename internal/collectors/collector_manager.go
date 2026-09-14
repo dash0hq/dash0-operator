@@ -74,6 +74,7 @@ func NewCollectorManager(
 func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger logd.Logger) {
 	previousConfig := m.extraConfig.Swap(&newConfig)
 	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
+		util.WarnOnCollectorGoMemLimitInversion(newConfig, logger)
 		hasBeenReconciled, err := m.ReconcileOpenTelemetryCollector(ctx)
 		if err != nil {
 			logger.ErrorTelemetryCollectionIssue(err, "Failed to create/update collector resources after extra config map update.")

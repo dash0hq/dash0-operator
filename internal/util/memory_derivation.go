@@ -1,0 +1,186 @@
+// SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package util
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/dash0hq/dash0-operator/internal/util/logd"
+)
+
+const mibBytes = 1024 * 1024
+
+// CollectorMemorySettings holds the memory_limiter thresholds and the GOMEMLIMIT value derived from a
+// collector container's memory limit. See DeriveCollectorMemorySettings for the formula.
+type CollectorMemorySettings struct {
+	// GoMemLimit is the GOMEMLIMIT value, formatted for the Go runtime (e.g. "348MiB").
+	GoMemLimit string
+	// LimitMiB is the memory_limiter hard limit (limit_mib).
+	LimitMiB int
+	// SpikeMiB is the memory_limiter spike buffer (spike_limit_mib); the soft limit is LimitMiB - SpikeMiB.
+	SpikeMiB int
+	// SoftMiB is the memory_limiter soft limit (LimitMiB - SpikeMiB), the point at which the collector starts
+	// refusing data. GOMEMLIMIT must stay below it.
+	SoftMiB int
+}
+
+// DeriveCollectorMemorySettings derives the memory_limiter thresholds and GOMEMLIMIT for a collector from its
+// container memory limit, enforcing the ordering GOMEMLIMIT < soft < hard < limit so that the Go runtime paces
+// GC before the memory_limiter starts forcing GC and refusing telemetry.
+//
+// The margins are absolute floors with a percentage slope, because the memory a collector needs on top of its
+// live heap (stacks, runtime overhead, off-heap file_storage, fragmentation) and the amount it can allocate
+// within one check interval do not scale linearly with the limit. As a result the effective ratios grow with
+// the limit (~80% hard limit at 500Mi, ~90% at >=1Gi) without stranding memory on large collectors.
+//
+// The second return value is false when no memory limit is set (or it is too small for the floors), in which
+// case the caller keeps the percentage-based memory_limiter fallback and leaves GOMEMLIMIT unset.
+func DeriveCollectorMemorySettings(limit resource.Quantity) (CollectorMemorySettings, bool) {
+	l := int(limit.Value() / mibBytes)
+	if l <= 0 {
+		return CollectorMemorySettings{}, false
+	}
+
+	reserve := clampInt(l*10/100, 96, 512) // RSS reserve, hard -> limit
+	spike := clampInt(l*5/100, 32, 256)    // spike buffer, soft -> hard
+	goMemGap := clampInt(l*3/100, 24, 128) // gomemlimit -> soft
+
+	hard := l - reserve
+	soft := hard - spike
+	goMem := soft - goMemGap
+	if goMem <= 0 || soft <= 0 || hard <= 0 {
+		// The limit is too small for the absolute floors; fall back to percentages.
+		return CollectorMemorySettings{}, false
+	}
+
+	return CollectorMemorySettings{
+		GoMemLimit: fmt.Sprintf("%dMiB", goMem),
+		LimitMiB:   hard,
+		SpikeMiB:   spike,
+		SoftMiB:    soft,
+	}, true
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// mainCollectorMemoryResources returns the collector resource specs whose GOMEMLIMIT and memory_limiter are
+// auto-derived from the memory limit, keyed by a human-readable name for logging. The auxiliary containers
+// (config reloader, filelog offset sync) are intentionally excluded: they run no memory_limiter and their
+// limits are below the derivation floors.
+func (ec *ExtraConfig) mainCollectorMemoryResources() map[string]*ResourceRequirementsWithGoMemLimit {
+	return map[string]*ResourceRequirementsWithGoMemLimit{
+		"daemonset collector":      &ec.CollectorDaemonSetCollectorContainerResources,
+		"deployment collector":     &ec.CollectorDeploymentCollectorContainerResources,
+		"signal-control collector": &ec.SignalControlCollectorContainerResources,
+	}
+}
+
+// EffectiveGoMemLimit returns the GOMEMLIMIT to use for a collector container: the explicitly configured value
+// if one is set, otherwise the value derived from the container memory limit (see DeriveCollectorMemorySettings).
+// It returns an empty string only when no value is configured and none can be derived (no memory limit set), in
+// which case GOMEMLIMIT is left unset and the collector's memory_limiter falls back to percentages.
+func (rr ResourceRequirementsWithGoMemLimit) EffectiveGoMemLimit() string {
+	if rr.GoMemLimit != "" {
+		return rr.GoMemLimit
+	}
+	if settings, ok := DeriveCollectorMemorySettings(*rr.Limits.Memory()); ok {
+		return settings.GoMemLimit
+	}
+	return ""
+}
+
+// goMemLimitInversion describes a main collector whose explicitly configured GOMEMLIMIT is not below the
+// memory_limiter soft limit derived from its memory limit.
+type goMemLimitInversion struct {
+	Collector  string
+	GoMemLimit string
+	SoftMiB    int
+}
+
+// collectorGoMemLimitInversions returns one entry per main collector whose explicitly configured GOMEMLIMIT is at
+// or above the derived memory_limiter soft limit. In that case the collector would start refusing telemetry (and
+// forcing GC) before the Go runtime paces GC against GOMEMLIMIT, which defeats the purpose of the soft limit.
+// Collectors with no explicit GOMEMLIMIT, no derivable limit, or an unparseable GOMEMLIMIT are skipped;
+// auto-derived values always satisfy the ordering and never appear here.
+func (ec ExtraConfig) collectorGoMemLimitInversions() []goMemLimitInversion {
+	var inversions []goMemLimitInversion
+	for name, res := range ec.mainCollectorMemoryResources() {
+		if res.GoMemLimit == "" {
+			continue
+		}
+		settings, ok := DeriveCollectorMemorySettings(*res.Limits.Memory())
+		if !ok {
+			continue
+		}
+		goMemMiB, parsed := parseGoMemLimitMiB(res.GoMemLimit)
+		if !parsed {
+			continue
+		}
+		if goMemMiB >= settings.SoftMiB {
+			inversions = append(inversions, goMemLimitInversion{
+				Collector:  name,
+				GoMemLimit: res.GoMemLimit,
+				SoftMiB:    settings.SoftMiB,
+			})
+		}
+	}
+	return inversions
+}
+
+// WarnOnCollectorGoMemLimitInversion logs a warning for every main collector whose explicitly configured
+// GOMEMLIMIT is not below the derived memory_limiter soft limit (see collectorGoMemLimitInversions).
+func WarnOnCollectorGoMemLimitInversion(ec ExtraConfig, logger logd.Logger) {
+	for _, inversion := range ec.collectorGoMemLimitInversions() {
+		logger.Warn(
+			"the configured GOMEMLIMIT is not below the memory_limiter soft limit; the collector may refuse "+
+				"telemetry prematurely, set gomemlimit below the soft limit or leave it empty to auto-derive",
+			"collector", inversion.Collector,
+			"gomemlimit", inversion.GoMemLimit,
+			"memoryLimiterSoftLimitMiB", inversion.SoftMiB,
+		)
+	}
+}
+
+// parseGoMemLimitMiB parses a Go GOMEMLIMIT string (a number with an optional B/KiB/MiB/GiB/TiB suffix, see
+// https://pkg.go.dev/runtime#hdr-Environment_Variables) into MiB. It returns false when the value cannot be
+// parsed, in which case callers skip the value rather than treating it as a misconfiguration.
+func parseGoMemLimitMiB(v string) (int, bool) {
+	v = strings.TrimSpace(v)
+	suffixes := []struct {
+		suffix string
+		bytes  int64
+	}{
+		{"TiB", 1 << 40},
+		{"GiB", 1 << 30},
+		{"MiB", 1 << 20},
+		{"KiB", 1 << 10},
+		{"B", 1},
+	}
+	for _, s := range suffixes {
+		if strings.HasSuffix(v, s.suffix) {
+			n, err := strconv.ParseInt(strings.TrimSpace(strings.TrimSuffix(v, s.suffix)), 10, 64)
+			if err != nil {
+				return 0, false
+			}
+			return int(n * s.bytes / mibBytes), true
+		}
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return int(n / mibBytes), true
+}

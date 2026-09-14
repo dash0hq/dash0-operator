@@ -6,7 +6,7 @@ extra config map should match snapshot:
         initContainerResources:
           {}
         collectorDaemonSetCollectorContainerResources:
-          gomemlimit: 400MiB
+          gomemlimit: ""
           limits:
             memory: 500Mi
           requests:
@@ -54,7 +54,7 @@ extra config map should match snapshot:
             periodSeconds: 2
             timeoutSeconds: 1
         collectorDeploymentCollectorContainerResources:
-          gomemlimit: 400MiB
+          gomemlimit: ""
           limits:
             memory: 500Mi
           requests:
@@ -97,7 +97,7 @@ extra config map should match snapshot:
             timeoutSeconds: 1
         signalControlCollectorReplicas: 2
         signalControlCollectorContainerResources:
-          gomemlimit: 800MiB
+          gomemlimit: ""
           limits:
             memory: 1Gi
           requests:

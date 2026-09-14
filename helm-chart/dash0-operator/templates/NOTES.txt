@@ -4,6 +4,15 @@ WARNING: You have set a custom memory limit for the operator manager (operator.m
 {{- if and (eq .Values.operator.targetAllocator.containerResources.gomemlimit "400MiB") (ne .Values.operator.targetAllocator.containerResources.limits.memory "500Mi") }}
 WARNING: You have set a custom memory limit for the target-allocator (operator.targetAllocator.containerResources.limits.memory: {{ .Values.operator.targetAllocator.containerResources.limits.memory }}), but you have not set the container's GOMEMLIMIT (operator.targetAllocator.containerResources.gomemlimit: {{ .Values.operator.targetAllocator.containerResources.gomemlimit }}). This is probably a configuration error. The recommended setting for operator.targetAllocator.containerResources.gomemlimit is 80% of operator.targetAllocator.containerResources.limits.memory.
 {{- end }}
+{{- if .Values.operator.collectors.daemonSetCollectorContainerResources.gomemlimit }}
+WARNING: A custom GOMEMLIMIT is set for the DaemonSet collector (operator.collectors.daemonSetCollectorContainerResources.gomemlimit: {{ .Values.operator.collectors.daemonSetCollectorContainerResources.gomemlimit }}). It must stay below the collector's memory_limiter soft limit; otherwise the collector may refuse telemetry prematurely. Leave gomemlimit empty to let the operator derive a correctly ordered value (GOMEMLIMIT < memory_limiter soft limit < hard limit < memory limit) automatically.
+{{- end }}
+{{- if .Values.operator.collectors.deploymentCollectorContainerResources.gomemlimit }}
+WARNING: A custom GOMEMLIMIT is set for the cluster-metrics Deployment collector (operator.collectors.deploymentCollectorContainerResources.gomemlimit: {{ .Values.operator.collectors.deploymentCollectorContainerResources.gomemlimit }}). It must stay below the collector's memory_limiter soft limit; otherwise the collector may refuse telemetry prematurely. Leave gomemlimit empty to let the operator derive a correctly ordered value (GOMEMLIMIT < memory_limiter soft limit < hard limit < memory limit) automatically.
+{{- end }}
+{{- if .Values.operator.collectors.signalControlCollectorContainerResources.gomemlimit }}
+WARNING: A custom GOMEMLIMIT is set for the Signal Control collector (operator.collectors.signalControlCollectorContainerResources.gomemlimit: {{ .Values.operator.collectors.signalControlCollectorContainerResources.gomemlimit }}). It must stay below the collector's memory_limiter soft limit; otherwise the collector may refuse telemetry prematurely. Leave gomemlimit empty to let the operator derive a correctly ordered value (GOMEMLIMIT < memory_limiter soft limit < hard limit < memory limit) automatically.
+{{- end }}
 {{- if .Release.IsInstall }}
 The Dash0 operator has been installed successfully from the chart {{ .Chart.Name }}.
 {{- else }}

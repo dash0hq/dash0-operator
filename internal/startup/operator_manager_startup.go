@@ -383,6 +383,7 @@ func Start() {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
+	util.WarnOnCollectorGoMemLimitInversion(extraConfig, setupLog)
 	if err = extraConfigMapWatcher.StartWatch(setupLog); err != nil {
 		setupLog.Error(err, "cannot establish file watch for extra config map")
 		os.Exit(1)

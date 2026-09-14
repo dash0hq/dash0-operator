@@ -146,7 +146,7 @@ var (
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
-			GoMemLimit: "400MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
@@ -173,7 +173,7 @@ var (
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
-			GoMemLimit: "400MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
@@ -193,7 +193,7 @@ var (
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			},
-			GoMemLimit: "800MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			},
