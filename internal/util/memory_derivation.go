@@ -15,9 +15,6 @@ import (
 
 const mibBytes = 1024 * 1024
 
-// GOMEMLIMIT for containers that run no memory_limiter (everything except the three collectors) is derived as a
-// percentage of the memory limit, floored so a small container keeps a minimum absolute headroom below the limit.
-// See DeriveGoMemLimitFromLimit.
 const (
 	// GoMemLimitDefaultPercent is the GOMEMLIMIT-to-memory-limit ratio for the plain Go containers.
 	GoMemLimitDefaultPercent = 80
@@ -44,16 +41,12 @@ type CollectorMemorySettings struct {
 }
 
 // DeriveCollectorMemorySettings derives the memory_limiter thresholds and GOMEMLIMIT for a collector from its
-// container memory limit, enforcing the ordering GOMEMLIMIT < soft < hard < limit so that the Go runtime paces
-// GC before the memory_limiter starts forcing GC and refusing telemetry.
-//
-// The margins are absolute floors with a percentage slope, because the memory a collector needs on top of its
-// live heap (stacks, runtime overhead, off-heap file_storage, fragmentation) and the amount it can allocate
-// within one check interval do not scale linearly with the limit. As a result the effective ratios grow with
-// the limit (~80% hard limit at 500Mi, ~90% at >=1Gi) without stranding memory on large collectors.
-//
-// The second return value is false when no memory limit is set (or it is too small for the floors), in which
-// case the caller keeps the percentage-based memory_limiter fallback and leaves GOMEMLIMIT unset.
+// container memory limit, enforcing GOMEMLIMIT < soft < hard < limit so the Go runtime paces GC before the
+// memory_limiter forces GC and refuses telemetry. The margins are absolute floors with a percentage slope, because a
+// collector's overhead on top of its live heap (stacks, off-heap file_storage, fragmentation) does not scale linearly
+// with the limit; the effective ratios therefore grow with it (~80% hard limit at 500Mi, ~90% at >=1Gi).
+// The second return value is false when no limit is set (or it is too small for the floors), in which case the caller
+// keeps the percentage-based memory_limiter fallback and leaves GOMEMLIMIT unset.
 func DeriveCollectorMemorySettings(limit resource.Quantity) (CollectorMemorySettings, bool) {
 	l := int(limit.Value() / mibBytes)
 	if l <= 0 {
@@ -90,10 +83,9 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
-// mainCollectorMemoryResources returns the collector resource specs whose GOMEMLIMIT and memory_limiter are
-// auto-derived from the memory limit, keyed by a human-readable name for logging. The auxiliary containers
-// (config reloader, filelog offset sync) are intentionally excluded: they run no memory_limiter and their
-// limits are below the derivation floors.
+// mainCollectorMemoryResources returns the collector specs whose GOMEMLIMIT and memory_limiter are auto-derived from
+// the memory limit, keyed by a human-readable name for logging. The auxiliary containers (config reloader, filelog
+// offset sync) are excluded: they run no memory_limiter and their limits are below the derivation floors.
 func (ec *ExtraConfig) mainCollectorMemoryResources() map[string]*ResourceRequirementsWithGoMemLimit {
 	return map[string]*ResourceRequirementsWithGoMemLimit{
 		"daemonset collector":      &ec.CollectorDaemonSetCollectorContainerResources,
@@ -102,10 +94,8 @@ func (ec *ExtraConfig) mainCollectorMemoryResources() map[string]*ResourceRequir
 	}
 }
 
-// EffectiveGoMemLimit returns the GOMEMLIMIT to use for a collector container: the explicitly configured value
-// if one is set, otherwise the value derived from the container memory limit (see DeriveCollectorMemorySettings).
-// It returns an empty string only when no value is configured and none can be derived (no memory limit set), in
-// which case GOMEMLIMIT is left unset and the collector's memory_limiter falls back to percentages.
+// EffectiveGoMemLimit returns the GOMEMLIMIT for a collector container: the configured value if set, otherwise the
+// value derived from the memory limit (see DeriveCollectorMemorySettings), or "" when neither is available.
 func (rr ResourceRequirementsWithGoMemLimit) EffectiveGoMemLimit() string {
 	if rr.GoMemLimit != "" {
 		return rr.GoMemLimit
@@ -116,10 +106,9 @@ func (rr ResourceRequirementsWithGoMemLimit) EffectiveGoMemLimit() string {
 	return ""
 }
 
-// DeriveGoMemLimitFromLimit derives the GOMEMLIMIT for a container that runs no memory_limiter (everything except the
-// three collectors) from its memory limit: percent of the limit, but never leaving less than goMemLimitMinHeadroomMiB
-// of absolute headroom below the limit. The second return value is false when no memory limit is set or the limit is
-// too small to leave any headroom, in which case GOMEMLIMIT is left unset.
+// DeriveGoMemLimitFromLimit derives the GOMEMLIMIT for a container that runs no memory_limiter from its memory limit:
+// percent of the limit, but never leaving less than goMemLimitMinHeadroomMiB of headroom below it. The second return
+// value is false when no memory limit is set or it is too small to leave any headroom, in which case GOMEMLIMIT is unset.
 func DeriveGoMemLimitFromLimit(limit resource.Quantity, percent int) (string, bool) {
 	l := int(limit.Value() / mibBytes)
 	if l <= 0 {
@@ -132,10 +121,9 @@ func DeriveGoMemLimitFromLimit(limit resource.Quantity, percent int) (string, bo
 	return fmt.Sprintf("%dMiB", goMem), true
 }
 
-// EffectiveGoMemLimitPercent returns the GOMEMLIMIT to use for a container that runs no memory_limiter: the explicitly
-// configured value if one is set, otherwise the value derived from the memory limit at percent (see
-// DeriveGoMemLimitFromLimit). It returns an empty string only when no value is configured and none can be derived (no
-// memory limit set).
+// EffectiveGoMemLimitPercent returns the GOMEMLIMIT for a container that runs no memory_limiter: the configured value
+// if set, otherwise the value derived from the memory limit at percent (see DeriveGoMemLimitFromLimit), or "" when
+// neither is available.
 func (rr ResourceRequirementsWithGoMemLimit) EffectiveGoMemLimitPercent(percent int) string {
 	if rr.GoMemLimit != "" {
 		return rr.GoMemLimit
@@ -154,11 +142,9 @@ type goMemLimitInversion struct {
 	SoftMiB    int
 }
 
-// collectorGoMemLimitInversions returns one entry per main collector whose explicitly configured GOMEMLIMIT is at
-// or above the derived memory_limiter soft limit. In that case the collector would start refusing telemetry (and
-// forcing GC) before the Go runtime paces GC against GOMEMLIMIT, which defeats the purpose of the soft limit.
-// Collectors with no explicit GOMEMLIMIT, no derivable limit, or an unparseable GOMEMLIMIT are skipped;
-// auto-derived values always satisfy the ordering and never appear here.
+// collectorGoMemLimitInversions returns one entry per main collector whose explicitly configured GOMEMLIMIT is at or
+// above the derived memory_limiter soft limit (a misconfiguration; see DeriveCollectorMemorySettings). Collectors with
+// no explicit GOMEMLIMIT, no derivable limit, or an unparseable GOMEMLIMIT are skipped, as are auto-derived values.
 func (ec ExtraConfig) collectorGoMemLimitInversions() []goMemLimitInversion {
 	var inversions []goMemLimitInversion
 	for name, res := range ec.mainCollectorMemoryResources() {

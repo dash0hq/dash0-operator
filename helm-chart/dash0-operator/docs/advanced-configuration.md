@@ -256,27 +256,12 @@ The following Helm values control the resource settings, all nested under the to
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
 | `agent0Connector.containerResources` | agent0-connector container | `memory: 32Mi` | `memory: 256Mi` |
 
-For the three collector containers (`collectors.daemonSetCollectorContainerResources`,
-`collectors.deploymentCollectorContainerResources` and `collectors.signalControlCollectorContainerResources`),
-`gomemlimit` is left empty by default. In that case the operator derives both `GOMEMLIMIT` and the collector's internal
-`memory_limiter` thresholds from the container's memory limit, keeping
-`GOMEMLIMIT < memory_limiter soft limit < memory_limiter hard limit < memory limit`. This lets the Go runtime pace
-garbage collection before the `memory_limiter` starts forcing GC and refusing telemetry. Adjusting one of these three
-collectors therefore usually means changing only its memory limit. Setting `gomemlimit` explicitly for such a container
-overrides only the derived `GOMEMLIMIT`; the `memory_limiter` thresholds are still derived. A `gomemlimit` at or above
-the derived soft limit is a misconfiguration — the collector would refuse telemetry before the Go runtime paces GC —
-and the operator logs a warning in that case.
-
-The derivation keeps a fixed amount of headroom for off-heap memory, so keep a collector's memory limit at or above the
-`500Mi` default. Below roughly `500Mi` that fixed headroom is a large fraction of the limit and the derived `GOMEMLIMIT`
-becomes very conservative; below about `152Mi` no ordered set of values fits and the collector falls back to a
-percentage-based `memory_limiter` with `GOMEMLIMIT` left unset.
-
-The target-allocator, edge-proxy, agent0-connector, configuration reloader and filelog offset sync containers run no
-`memory_limiter`; for these the operator derives `GOMEMLIMIT` alone (about 80% of the memory limit) whenever
-`gomemlimit` is left empty. The agent0-connector is derived lower, at about 60%, because it runs `kubectl` as a child
-process whose memory counts towards the container's memory limit but is not governed by `GOMEMLIMIT`. Only the operator
-manager (`managerContainerResources`) still takes a `gomemlimit` that you set yourself.
+For every container above except the operator manager, `gomemlimit` is left empty by default and the operator derives it
+from the container's memory limit (about 80%, or about 60% for the agent0-connector, which also runs `kubectl` as a
+child process). For the three collector containers it additionally derives the internal `memory_limiter` thresholds,
+keeping `GOMEMLIMIT < memory_limiter soft limit < memory_limiter hard limit < memory limit`; keep their memory limit at
+or above the `500Mi` default to leave enough off-heap headroom. Set `gomemlimit` explicitly only to override the derived
+value; for a collector it must stay below the derived soft limit, or the operator logs a warning.
 
 The SignalControl collector only exists when SignalControl Edge is enabled. Unlike the other two collectors it
 processes the Dash0-bound telemetry of the whole cluster, so its memory requirement scales with total telemetry volume
