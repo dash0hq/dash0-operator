@@ -4239,6 +4239,50 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			metadataList := metadataListRaw.([]any)
 			Expect(metadataList).To(ContainElement("k8s.deployment.uid"))
 		}, daemonSetAndDeployment)
+
+		It("should configure k8s_attributes/profiles to not start the replicaset informer if disabled [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace:                      OperatorNamespace,
+				NamePrefix:                             namePrefix,
+				Exporters:                              cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:                       true,
+				K8sAttributesDisableReplicasetInformer: true,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttrProfilesRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes/profiles"})
+			Expect(k8sAttrProfilesRaw).ToNot(BeNil())
+			k8sAttrProfiles := k8sAttrProfilesRaw.(map[string]any)
+			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttrProfiles, []string{"extract", "deployment_name_from_replicaset"})
+			Expect(deploymentNameFromReplicasetRaw).To(BeNil())
+			metadataListRaw := ReadFromMap(k8sAttrProfiles, []string{"extract", "metadata"})
+			Expect(metadataListRaw).ToNot(BeNil())
+			metadataList := metadataListRaw.([]any)
+			Expect(metadataList).ToNot(ContainElement("k8s.deployment.uid"))
+		})
+
+		It("should configure k8s_attributes/profiles to use the replicaset informer by default [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace:                      OperatorNamespace,
+				NamePrefix:                             namePrefix,
+				Exporters:                              cmTestSingleDefaultOtlpExporter(),
+				ProfilingEnabled:                       true,
+				K8sAttributesDisableReplicasetInformer: false,
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			k8sAttrProfilesRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes/profiles"})
+			Expect(k8sAttrProfilesRaw).ToNot(BeNil())
+			k8sAttrProfiles := k8sAttrProfilesRaw.(map[string]any)
+			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttrProfiles, []string{"extract", "deployment_name_from_replicaset"})
+			Expect(deploymentNameFromReplicasetRaw).To(BeNil())
+			metadataListRaw := ReadFromMap(k8sAttrProfiles, []string{"extract", "metadata"})
+			Expect(metadataListRaw).ToNot(BeNil())
+			metadataList := metadataListRaw.([]any)
+			Expect(metadataList).To(ContainElement("k8s.deployment.uid"))
+		})
 	})
 
 	Describe("should enable/disable wait_for_metadata", func() {
