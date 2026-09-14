@@ -146,4 +146,46 @@ var _ = Describe("collector memory derivation", func() {
 		Entry("non-numeric value is rejected", "abc", 0, false),
 		Entry("empty value is rejected", "", 0, false),
 	)
+
+	DescribeTable("DeriveGoMemLimitFromLimit",
+		func(limit string, percent, expectMiB int, expectOk bool) {
+			goMemLimit, ok := DeriveGoMemLimitFromLimit(resource.MustParse(limit), percent)
+			Expect(ok).To(Equal(expectOk))
+			if expectOk {
+				Expect(goMemLimit).To(Equal(strconv.Itoa(expectMiB) + "MiB"))
+			}
+		},
+		// The 8MiB headroom floor dominates below ~40Mi, the percentage above it.
+		Entry("config reloader (26Mi, floor-bound)", "26Mi", GoMemLimitDefaultPercent, 18, true),
+		Entry("filelog offset sync (32Mi, floor-bound)", "32Mi", GoMemLimitDefaultPercent, 24, true),
+		Entry("target-allocator (500Mi)", "500Mi", GoMemLimitDefaultPercent, 400, true),
+		Entry("edge-proxy (512Mi)", "512Mi", GoMemLimitDefaultPercent, 409, true),
+		Entry("agent0-connector (256Mi, 60%)", "256Mi", Agent0ConnectorGoMemLimitPercent, 153, true),
+		Entry("percentage dominates well above the floor", "256Mi", GoMemLimitDefaultPercent, 204, true),
+		Entry("floor leaves a sliver at a tiny limit", "10Mi", GoMemLimitDefaultPercent, 2, true),
+		Entry("limit equal to the floor -> false", "8Mi", GoMemLimitDefaultPercent, 0, false),
+		Entry("no limit -> false", "0", GoMemLimitDefaultPercent, 0, false),
+	)
+
+	Describe("EffectiveGoMemLimitPercent", func() {
+		It("returns an explicitly configured value verbatim", func() {
+			rr := ResourceRequirementsWithGoMemLimit{
+				Limits:     corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("500Mi")},
+				GoMemLimit: "123MiB",
+			}
+			Expect(rr.EffectiveGoMemLimitPercent(GoMemLimitDefaultPercent)).To(Equal("123MiB"))
+		})
+
+		It("derives the value from the memory limit when none is configured", func() {
+			rr := ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")},
+			}
+			Expect(rr.EffectiveGoMemLimitPercent(Agent0ConnectorGoMemLimitPercent)).To(Equal("153MiB"))
+		})
+
+		It("returns an empty string when neither a value nor a limit is set", func() {
+			rr := ResourceRequirementsWithGoMemLimit{}
+			Expect(rr.EffectiveGoMemLimitPercent(GoMemLimitDefaultPercent)).To(BeEmpty())
+		})
+	})
 })

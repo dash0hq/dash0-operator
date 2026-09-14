@@ -964,7 +964,7 @@ func assembleFileLogOffsetSyncContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
@@ -1419,7 +1419,7 @@ func assembleConfigurationReloaderContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CLUSTER_UID",
@@ -1473,7 +1473,7 @@ func assembleFileLogOffsetSyncInitContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",

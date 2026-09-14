@@ -700,11 +700,12 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the collector container. Leave empty to let the operator derive
-      # GOMEMLIMIT and the memory_limiter thresholds from daemonSetCollectorContainerResources.limits.memory, keeping
-      # GOMEMLIMIT < memory_limiter soft limit < memory_limiter hard limit < limits.memory. Set a value only to
-      # override the derived default; it must stay below the memory_limiter soft limit. Valid units differ from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      # The GOMEMLIMIT environment variable value for the collector container. Leaving this empty is recommended: the
+      # operator then derives GOMEMLIMIT and the memory_limiter thresholds from
+      # daemonSetCollectorContainerResources.limits.memory, keeping GOMEMLIMIT < memory_limiter soft limit <
+      # memory_limiter hard limit < limits.memory. Set a value only to override the derived default; it must stay below
+      # the memory_limiter soft limit. Valid units differ from Kubernetes resource settings, use MiB or GiB
+      # (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
       gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
@@ -716,12 +717,12 @@ operator:
     daemonSetConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
-        memory: 24Mi
+        memory: 26Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
-      # of daemonSetConfigurationReloaderContainerResources.limits.memory. Note that valid units are different from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 18MiB
+      # The GOMEMLIMIT environment variable value for the configuration reloader container. Leaving this empty is
+      # recommended; the operator then derives it from the memory limit above. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
@@ -734,10 +735,10 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 32Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the filelog offset sync container, the recommended value is 80%
-      # of daemonSetFileLogOffsetSyncContainerResources.limits.memory. Note that valid units are different from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 24MiB
+      # The GOMEMLIMIT environment variable value for the filelog offset sync container. Leaving this empty is
+      # recommended; the operator then derives it from the memory limit above. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 32Mi
@@ -838,11 +839,12 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the collector container. Leave empty to let the operator derive
-      # GOMEMLIMIT and the memory_limiter thresholds from deploymentCollectorContainerResources.limits.memory, keeping
-      # GOMEMLIMIT < memory_limiter soft limit < memory_limiter hard limit < limits.memory. Set a value only to
-      # override the derived default; it must stay below the memory_limiter soft limit. Valid units differ from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      # The GOMEMLIMIT environment variable value for the collector container. Leaving this empty is recommended: the
+      # operator then derives GOMEMLIMIT and the memory_limiter thresholds from
+      # deploymentCollectorContainerResources.limits.memory, keeping GOMEMLIMIT < memory_limiter soft limit <
+      # memory_limiter hard limit < limits.memory. Set a value only to override the derived default; it must stay below
+      # the memory_limiter soft limit. Valid units differ from Kubernetes resource settings, use MiB or GiB
+      # (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
       gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
@@ -854,12 +856,12 @@ operator:
     deploymentConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
-        memory: 24Mi
+        memory: 26Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
-      # of deploymentConfigurationReloaderContainerResources.limits.memory. Note that valid units are different from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 18MiB
+      # The GOMEMLIMIT environment variable value for the configuration reloader container. Leaving this empty is
+      # recommended; the operator then derives it from the memory limit above. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
@@ -964,11 +966,12 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 1Gi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the collector container. Leave empty to let the operator derive
-      # GOMEMLIMIT and the memory_limiter thresholds from signalControlCollectorContainerResources.limits.memory,
-      # keeping GOMEMLIMIT < memory_limiter soft limit < memory_limiter hard limit < limits.memory. Set a value only
-      # to override the derived default; it must stay below the memory_limiter soft limit. Valid units differ from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      # The GOMEMLIMIT environment variable value for the collector container. Leaving this empty is recommended: the
+      # operator then derives GOMEMLIMIT and the memory_limiter thresholds from
+      # signalControlCollectorContainerResources.limits.memory, keeping GOMEMLIMIT < memory_limiter soft limit <
+      # memory_limiter hard limit < limits.memory. Set a value only to override the derived default; it must stay below
+      # the memory_limiter soft limit. Valid units differ from Kubernetes resource settings, use MiB or GiB
+      # (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
       gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
@@ -981,13 +984,12 @@ operator:
     signalControlCollectorConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
-        memory: 24Mi
+        memory: 26Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
-      # of signalControlCollectorConfigurationReloaderContainerResources.limits.memory. Note that valid units are
-      # different from Kubernetes resource settings, use MiB or GiB (see
-      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 18MiB
+      # The GOMEMLIMIT environment variable value for the configuration reloader container. Leaving this empty is
+      # recommended; the operator then derives it from the memory limit above. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
@@ -1142,7 +1144,10 @@ operator:
       limits:
         cpu: 200m
         memory: 500Mi
-      gomemlimit: 400MiB
+      # The GOMEMLIMIT environment variable value for the target-allocator container. Leaving this empty is recommended;
+      # the operator then derives it from containerResources.limits.memory. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         cpu: 200m
         memory: 128Mi
@@ -1272,10 +1277,10 @@ operator:
         limits:
           cpu: 500m
           memory: 512Mi
-        # The GOMEMLIMIT environment variable value for the Edge Proxy container, the recommended value is 80% of
-        # containerResources.limits.memory. Note that valid units are different from Kubernetes resource settings, use
-        # MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-        gomemlimit: 400MiB
+        # The GOMEMLIMIT environment variable value for the Edge Proxy container. Leaving this empty is recommended; the
+        # operator then derives it from containerResources.limits.memory. Set a value only to override it. Valid units
+        # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+        gomemlimit: ""
         requests:
           cpu: 50m
           memory: 128Mi
@@ -1372,13 +1377,13 @@ operator:
     containerResources:
       limits:
         memory: 256Mi
-      # The GOMEMLIMIT environment variable value for the agent0-connector container. Note that valid units are
-      # different from Kubernetes resource settings, use MiB or GiB (see
+      # The GOMEMLIMIT environment variable value for the agent0-connector container. Leaving this empty is recommended;
+      # the operator then derives it from containerResources.limits.memory. It is derived at about 60%, lower than the
+      # ~80% for other containers, because the agent0-connector also runs kubectl as a child process, whose memory counts
+      # towards the container's memory limit but is not governed by GOMEMLIMIT. Set a value only to override it. Valid
+      # units differ from Kubernetes resource settings, use MiB or GiB (see
       # https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      # The value is deliberately set to about 60% of containerResources.limits.memory, and not to the 80% recommended
-      # for other containers: the agent0-connector container also runs kubectl as a child process, whose memory is not
-      # governed by GOMEMLIMIT but counts towards the container's memory limit.
-      gomemlimit: 150MiB
+      gomemlimit: ""
       requests:
         memory: 64Mi
 

@@ -627,6 +627,23 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "GOMEMLIMIT", Value: "128MiB"}))
 		})
 
+		It("derives GOMEMLIMIT from the memory limit when none is configured", func() {
+			extraConfig := util.ExtraConfig{
+				Agent0ConnectorContainerResources: util.ResourceRequirementsWithGoMemLimit{
+					Limits: corev1.ResourceList{
+						corev1.ResourceMemory: resource.MustParse("256Mi"),
+					},
+				},
+			}
+
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, extraConfig),
+			).Spec.Template.Spec.Containers[0]
+
+			// 60% of 256Mi, lower than the 80% default because the agent0-connector runs kubectl as a child process.
+			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: "GOMEMLIMIT", Value: "153MiB"}))
+		})
+
 		It("renders tolerations and node affinity from the extra config", func() {
 			extraConfig := util.ExtraConfig{
 				Agent0ConnectorTolerations: []corev1.Toleration{

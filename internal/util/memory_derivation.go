@@ -15,6 +15,20 @@ import (
 
 const mibBytes = 1024 * 1024
 
+// GOMEMLIMIT for containers that run no memory_limiter (everything except the three collectors) is derived as a
+// percentage of the memory limit, floored so a small container keeps a minimum absolute headroom below the limit.
+// See DeriveGoMemLimitFromLimit.
+const (
+	// GoMemLimitDefaultPercent is the GOMEMLIMIT-to-memory-limit ratio for the plain Go containers.
+	GoMemLimitDefaultPercent = 80
+	// Agent0ConnectorGoMemLimitPercent is lower than the default because the agent0-connector also runs kubectl as a
+	// child process, whose memory counts towards the container limit but is not governed by GOMEMLIMIT.
+	Agent0ConnectorGoMemLimitPercent = 60
+	// goMemLimitMinHeadroomMiB is the minimum absolute memory left below the limit (limit - GOMEMLIMIT); it covers the
+	// parts of RSS that GOMEMLIMIT does not account for (the binary's own mappings, delayed return-to-OS).
+	goMemLimitMinHeadroomMiB = 8
+)
+
 // CollectorMemorySettings holds the memory_limiter thresholds and the GOMEMLIMIT value derived from a
 // collector container's memory limit. See DeriveCollectorMemorySettings for the formula.
 type CollectorMemorySettings struct {
@@ -98,6 +112,36 @@ func (rr ResourceRequirementsWithGoMemLimit) EffectiveGoMemLimit() string {
 	}
 	if settings, ok := DeriveCollectorMemorySettings(*rr.Limits.Memory()); ok {
 		return settings.GoMemLimit
+	}
+	return ""
+}
+
+// DeriveGoMemLimitFromLimit derives the GOMEMLIMIT for a container that runs no memory_limiter (everything except the
+// three collectors) from its memory limit: percent of the limit, but never leaving less than goMemLimitMinHeadroomMiB
+// of absolute headroom below the limit. The second return value is false when no memory limit is set or the limit is
+// too small to leave any headroom, in which case GOMEMLIMIT is left unset.
+func DeriveGoMemLimitFromLimit(limit resource.Quantity, percent int) (string, bool) {
+	l := int(limit.Value() / mibBytes)
+	if l <= 0 {
+		return "", false
+	}
+	goMem := min(l*percent/100, l-goMemLimitMinHeadroomMiB)
+	if goMem <= 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%dMiB", goMem), true
+}
+
+// EffectiveGoMemLimitPercent returns the GOMEMLIMIT to use for a container that runs no memory_limiter: the explicitly
+// configured value if one is set, otherwise the value derived from the memory limit at percent (see
+// DeriveGoMemLimitFromLimit). It returns an empty string only when no value is configured and none can be derived (no
+// memory limit set).
+func (rr ResourceRequirementsWithGoMemLimit) EffectiveGoMemLimitPercent(percent int) string {
+	if rr.GoMemLimit != "" {
+		return rr.GoMemLimit
+	}
+	if goMemLimit, ok := DeriveGoMemLimitFromLimit(*rr.Limits.Memory(), percent); ok {
+		return goMemLimit
 	}
 	return ""
 }

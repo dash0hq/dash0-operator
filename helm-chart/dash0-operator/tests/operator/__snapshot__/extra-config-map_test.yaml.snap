@@ -12,13 +12,13 @@ extra config map should match snapshot:
           requests:
             memory: 500Mi
         collectorDaemonSetConfigurationReloaderContainerResources:
-          gomemlimit: 18MiB
+          gomemlimit: ""
           limits:
-            memory: 24Mi
+            memory: 26Mi
           requests:
             memory: 12Mi
         collectorDaemonSetFileLogOffsetSyncContainerResources:
-          gomemlimit: 24MiB
+          gomemlimit: ""
           limits:
             memory: 32Mi
           requests:
@@ -60,9 +60,9 @@ extra config map should match snapshot:
           requests:
             memory: 500Mi
         collectorDeploymentConfigurationReloaderContainerResources:
-          gomemlimit: 18MiB
+          gomemlimit: ""
           limits:
-            memory: 24Mi
+            memory: 26Mi
           requests:
             memory: 12Mi
         deploymentTolerations:
@@ -103,9 +103,9 @@ extra config map should match snapshot:
           requests:
             memory: 1Gi
         signalControlCollectorConfigurationReloaderContainerResources:
-          gomemlimit: 18MiB
+          gomemlimit: ""
           limits:
-            memory: 24Mi
+            memory: 26Mi
           requests:
             memory: 12Mi
         signalControlCollectorTolerations:
@@ -143,7 +143,7 @@ extra config map should match snapshot:
         targetAllocatorMtlsClientCertSecretName: ""
         targetAllocatorAllowInsecureAuthSecrets: false
         targetAllocatorContainerResources:
-          gomemlimit: 400MiB
+          gomemlimit: ""
           limits:
             cpu: 200m
             memory: 500Mi
