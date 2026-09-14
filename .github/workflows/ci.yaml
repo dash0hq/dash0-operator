@@ -105,6 +105,50 @@ jobs:
     needs: check_for_successful_builds_for_same_commit
     if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
+  # Renders every collector configuration the operator can produce and hands each of them to the collector binary for
+  # validation. The collector rejects settings that the OpenTelemetry collector project has removed or renamed, which
+  # would otherwise only surface as crash-looping collectors in a customer cluster, and only for the configurations
+  # that actually render the affected setting.
+  #
+  # This job builds the collector image itself instead of waiting for build_and_push_images: that job does not push
+  # images for pull requests, so its images would not be available here, which is exactly where this check is needed.
+  # Reading the same build cache keeps the build cheap.
+  collector_config_validation:
+    name: Collector Configuration Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    needs: verify
+    if: always() && (needs.verify.result == 'skipped' || needs.verify.result == 'success')
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2
+
+      - name: build collector image
+        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4
+        with:
+          context: images
+          file: images/collector/Dockerfile
+          tags: collector-config-validation:local
+          platforms: 'linux/amd64'
+          load: true
+          push: false
+          # Only read from the cache that build_and_push_images maintains, so that the two jobs do not write the same
+          # cache scope concurrently.
+          cache-from: type=gha,scope=collector
+
+      - name: validate collector configurations
+        run: |
+          make collector-config-validate COLLECTOR_IMAGE=collector-config-validation:local
+
   # Builds and potentially pushes all container images. For pushes to PRs/branches, we simply verify that the image
   # build still works, the resulting image will not be pushed to any target registry. For pushes to the main branch, the
   # images are tagged with "main-dev", but not with a version x.y.z. Finally, for pushes to a tag (or when a tag is
