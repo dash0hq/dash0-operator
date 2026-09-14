@@ -375,6 +375,7 @@ tests:
           enablePprof: true
           compressConfigMaps: true
           k8s_attributes:
+            disableReplicasetInformer: true
             wait_for_metadata: true
             wait_for_metadata_timeout: 13s
 
@@ -660,60 +661,66 @@ tests:
           value: "32768"
       - equal:
           path: spec.template.spec.containers[0].env[32].name
-          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
       - equal:
           path: spec.template.spec.containers[0].env[32].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[33].name
-          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
       - equal:
           path: spec.template.spec.containers[0].env[33].value
-          value: "13s"
-      - equal:
-          path: spec.template.spec.containers[0].env[34].name
-          value: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
-      - equal:
-          path: spec.template.spec.containers[0].env[34].value
           value: "true"
       - equal:
+          path: spec.template.spec.containers[0].env[34].name
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA_TIMEOUT
+      - equal:
+          path: spec.template.spec.containers[0].env[34].value
+          value: "13s"
+      - equal:
           path: spec.template.spec.containers[0].env[35].name
-          value: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
+          value: OTEL_COLLECTOR_ENABLE_PPROF_EXTENSION
       - equal:
           path: spec.template.spec.containers[0].env[35].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[36].name
-          value: K8S_POD_UID
+          value: OTEL_COLLECTOR_COMPRESS_CONFIG_MAPS
       - equal:
-          path: spec.template.spec.containers[0].env[36].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[36].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[37].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[37].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[38].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[38].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[39].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[39].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[40].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[40].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[41].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[41].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[41].name
+          path: spec.template.spec.containers[0].env[42].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -786,6 +793,22 @@ tests:
           value: --dash0-log-level=info
       - notExists:
           path: spec.template.spec.containers[0].args[13]
+
+  - it: should render disableReplicasetInformer from legacy path
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        collectors:
+          disableReplicasetInformer: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[18].name
+          value: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
+      - equal:
+          path: spec.template.spec.containers[0].env[18].value
+          value: "true"
 
   - it: should not render kubeletstats env vars when autoDetectEndpoint is true (default)
     documentSelector:

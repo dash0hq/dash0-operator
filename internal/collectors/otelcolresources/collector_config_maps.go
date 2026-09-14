@@ -94,6 +94,7 @@ type collectorConfigurationTemplateValues struct {
 	CollectNamespaceLabelsAndAnnotationsEnabled      bool
 	CollectNodeLabelsAndAnnotationsEnabled           bool
 	LabelAndAnnotationExclusionPatterns              []string
+	K8sAttributesDisableReplicasetInformer           bool
 	K8sAttributesWaitForMetadata                     bool
 	K8sAttributesWaitForMetadataTimeout              string
 	PrometheusCrdSupportEnabled                      bool
@@ -343,6 +344,7 @@ func assembleCollectorConfigMap(
 			CollectNamespaceLabelsAndAnnotationsEnabled:      config.CollectNamespaceLabelsAndAnnotationsEnabled,
 			CollectNodeLabelsAndAnnotationsEnabled:           config.CollectNodeLabelsAndAnnotationsEnabled,
 			LabelAndAnnotationExclusionPatterns:              labelAndAnnotationExclusionPatterns(),
+			K8sAttributesDisableReplicasetInformer:           config.K8sAttributesDisableReplicasetInformer,
 			K8sAttributesWaitForMetadata:                     config.K8sAttributesWaitForMetadata,
 			K8sAttributesWaitForMetadataTimeout:              config.K8sAttributesWaitForMetadataTimeout,
 			PrometheusCrdSupportEnabled:                      config.PrometheusCrdSupportEnabled,

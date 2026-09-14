@@ -347,6 +347,10 @@ spec:
         - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
           value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
         {{- end }}
+        {{- if or .Values.operator.collectors.k8s_attributes.disableReplicasetInformer .Values.operator.collectors.disableReplicasetInformer }}
+        - name: OTEL_COLLECTOR_K8SATTRIBUTES_DISABLE_REPLICASET_INFORMER
+          value: {{ or .Values.operator.collectors.k8s_attributes.disableReplicasetInformer .Values.operator.collectors.disableReplicasetInformer | toString | quote }}
+        {{- end }}
         {{- if .Values.operator.collectors.k8s_attributes.wait_for_metadata }}
         - name: OTEL_COLLECTOR_K8SATTRIBUTES_WAIT_FOR_METADATA
           value: {{ .Values.operator.collectors.k8s_attributes.wait_for_metadata | toString | quote }}

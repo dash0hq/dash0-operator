@@ -32,6 +32,11 @@ To inspect the operator manager's heap, you can deploy it with pprof enabled:
 ```
 operator:
   pprofPort: 1777
+  collectors:
+    # Optional, this is useful to not have the collector pods go OOM due to high number of replicasets, if you want
+    # to focus your testing on the operator manager.
+    k8s_attributes:
+      disableReplicasetInformer: true
 ```
 
 Then run
