@@ -640,9 +640,6 @@ processors:
 
   k8s_attributes:
     extract:
-      {{- if .K8sAttributesDisableReplicasetInformer }}
-      deployment_name_from_replicaset: true
-      {{- end }}
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
@@ -727,9 +724,6 @@ processors:
 {{- if .ProfilingEnabled }}
   k8s_attributes/profiles:
     extract:
-      {{- if .K8sAttributesDisableReplicasetInformer }}
-      deployment_name_from_replicaset: true
-      {{- end }}
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
