@@ -71,15 +71,14 @@ type CollectorConfig struct {
 	OTelCollectorNamePrefix string
 	// The collector needs to know about the target-allocator name prefix, so it can build the service name needed for the
 	// config of the prometheus_receiver
-	TargetAllocatorNamePrefix              string
-	Agent0ConnectorEnabledViaHelm          bool
-	SendBatchSize                          *uint32
-	SendBatchMaxSize                       *uint32
-	K8sAttributesDisableReplicasetInformer bool
-	K8sAttributesWaitForMetadata           bool
-	K8sAttributesWaitForMetadataTimeout    string
-	NodeIp                                 string
-	NodeName                               string
+	TargetAllocatorNamePrefix           string
+	Agent0ConnectorEnabledViaHelm       bool
+	SendBatchSize                       *uint32
+	SendBatchMaxSize                    *uint32
+	K8sAttributesWaitForMetadata        bool
+	K8sAttributesWaitForMetadataTimeout string
+	NodeIp                              string
+	NodeName                            string
 	// KubeletStatsAutoDetectEndpoint controls whether the operator probes the node's kubelet at startup to determine the
 	// kubeletstats receiver endpoint and TLS mode automatically. It is set from the Helm value
 	// operator.collectors.kubeletstats.autoDetectEndpoint (default true). When false, KubeletStatsReceiverConfig is used

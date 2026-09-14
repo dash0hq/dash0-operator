@@ -1059,11 +1059,6 @@ operator:
     # Settings for the k8s_attributes processor in the Dash0 operator collectors:
     k8s_attributes:
 
-      # Disables the replicaset informer for the k8s_attributes processor. This will lead to not collecting the resource
-      # attribute k8s.deployment.uid, and might lead to wrong values k8s.deployment.name in some edge cases.
-      # The default is false, do not override this unless explicitly instructed by Dash0 support.
-      disableReplicasetInformer: false
-
       # By default, the k8s_attributes processor will not wait until Kubernetes metadata has been fetched from the
       # Kubernetes API. Telemetry which is collected before the Kubernetes metadata has been synchronized will not be
       # enriched. That is, the first few spans, log records and metric data points will have less resource attributes
