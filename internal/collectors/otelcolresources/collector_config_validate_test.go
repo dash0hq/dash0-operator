@@ -201,7 +201,20 @@ func validateCollectorConfigurations(
 // piped into the container instead of being mounted, so that the test does not depend on the container runtime being
 // allowed to bind-mount the directory the test writes to.
 func validateCollectorConfiguration(collectorImage string, configuration renderedCollectorConfig) (string, error) {
-	// Running as root keeps the creation of the directories below independent of the image's user.
+	script := collectorContainerPreamble(configuration.content)
+	script += "cat > /tmp/config.yaml\n"
+	script += "exec /otelcol validate " + collectorArguments(configuration) + "\n"
+	return runCollectorContainer(collectorImage, configuration, script)
+}
+
+// runCollectorContainer runs a shell script in a collector container, with the configuration on standard input so that
+// the test does not depend on the container runtime being allowed to bind-mount the directory the test writes to.
+func runCollectorContainer(
+	collectorImage string,
+	configuration renderedCollectorConfig,
+	script string,
+) (string, error) {
+	// Running as root keeps the creation of the directories in the preamble independent of the image's user.
 	baseArguments := []string{"run", "--rm", "--interactive", "--user", "0", "--entrypoint", "sh"}
 	environment := collectorConfigurationEnvironment(configuration.content)
 	arguments := make([]string, 0, len(baseArguments)+2*len(environment)+3)
@@ -209,34 +222,42 @@ func validateCollectorConfiguration(collectorImage string, configuration rendere
 	for _, environmentVariable := range environment {
 		arguments = append(arguments, "--env", environmentVariable)
 	}
-
-	script := "set -e\n"
-	// Several components reject a directory that does not exist. In a cluster, these directories are volume mounts of
-	// the collector pod.
-	for _, directory := range collectorConfigurationRequiredDirectories(configuration.content) {
-		script += fmt.Sprintf("mkdir -p %s\n", directory)
-	}
-	// Validating a configuration builds its pipelines, so the components that read the pod's service account while
-	// being created need to find one: the resourcedetection processor builds an in-cluster client configuration (see
-	// clusterEnvironment for the matching environment variables) and the kubeletstats receiver reads the cluster's CA
-	// certificate. Nothing connects anywhere, the components only fail when these files are missing altogether.
-	script += fmt.Sprintf("mkdir -p %s\n", serviceAccountDirectory)
-	script += fmt.Sprintf("printf '%%s' '%s' > %s/token\n", serviceAccountToken, serviceAccountDirectory)
-	script += fmt.Sprintf("cat > %s/ca.crt <<'DASH0_CA_CERTIFICATE_EOF'\n%sDASH0_CA_CERTIFICATE_EOF\n",
-		serviceAccountDirectory, validationCaCertificate())
-
-	validateCommand := "exec /otelcol validate --config=/tmp/config.yaml"
-	if len(configuration.featureGates) > 0 {
-		validateCommand += " --feature-gates=" + strings.Join(configuration.featureGates, ",")
-	}
-	script += "cat > /tmp/config.yaml\n" + validateCommand + "\n"
-
 	arguments = append(arguments, collectorImage, "-c", script)
 
 	command := exec.Command("docker", arguments...)
 	command.Stdin = strings.NewReader(configuration.content)
 	output, err := command.CombinedOutput()
 	return string(output), err
+}
+
+// collectorContainerPreamble creates the files a collector configuration expects to find in a collector pod.
+func collectorContainerPreamble(configuration string) string {
+	script := "set -e\n"
+	// Several components reject a directory that does not exist. In a cluster, these directories are volume mounts of
+	// the collector pod.
+	for _, directory := range collectorConfigurationRequiredDirectories(configuration) {
+		script += fmt.Sprintf("mkdir -p %s\n", directory)
+	}
+	// Both validating and starting a configuration build its pipelines, so the components that read the pod's service
+	// account while being created need to find one: the resourcedetection processor builds an in-cluster client
+	// configuration (see clusterEnvironment for the matching environment variables) and the kubeletstats receiver
+	// reads the cluster's CA certificate. Nothing connects anywhere, the components only fail when these files are
+	// missing altogether.
+	script += fmt.Sprintf("mkdir -p %s\n", serviceAccountDirectory)
+	script += fmt.Sprintf("printf '%%s' '%s' > %s/token\n", serviceAccountToken, serviceAccountDirectory)
+	script += fmt.Sprintf("cat > %s/ca.crt <<'DASH0_CA_CERTIFICATE_EOF'\n%sDASH0_CA_CERTIFICATE_EOF\n",
+		serviceAccountDirectory, validationCaCertificate())
+	return script
+}
+
+// collectorArguments renders the command line arguments for a configuration, matching the ones the operator passes to
+// the collector container.
+func collectorArguments(configuration renderedCollectorConfig) string {
+	arguments := "--config=/tmp/config.yaml"
+	if len(configuration.featureGates) > 0 {
+		arguments += " --feature-gates=" + strings.Join(configuration.featureGates, ",")
+	}
+	return arguments
 }
 
 // validationCaCertificate returns a self-signed certificate in PEM format, used as the cluster's CA certificate while

@@ -149,6 +149,81 @@ jobs:
         run: |
           make collector-config-validate COLLECTOR_IMAGE=collector-config-validation:local
 
+  # Starts a collector for every configuration the operator can render and reports the settings the OpenTelemetry
+  # collector project has deprecated but not yet removed. Those are the settings that will make the collectors
+  # crash-loop after one of the next collector bumps, so finding them here means months of lead time.
+  #
+  # Unlike the validation above, this starts actual collector processes, which takes a few minutes. It therefore only
+  # runs when the collector's build manifest changes, which is when a new set of components is pulled in, and always on
+  # the main branch and for tags.
+  collector_config_deprecation_check:
+    name: Collector Configuration Deprecation Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    needs: verify
+    if: always() && (needs.verify.result == 'skipped' || needs.verify.result == 'success')
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: check whether the collector build manifest has changed
+        id: relevant_changes
+        run: |
+          if [[ "$GITHUB_REF" == 'refs/heads/main' || "$GITHUB_REF" == *"refs/tags/"* ]]; then
+            echo "the deprecation check always runs on the main branch and for tags"
+            echo "run_check=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE_SHA" ]; then
+            # Without a base commit to compare against, run the check rather than skip it silently.
+            echo "no base commit available, running the deprecation check"
+            echo "run_check=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # || true prevents grep from failing the step when there is no match.
+          CHANGED_FILES=$(git diff --name-only --diff-filter=ACMRTUXB "$BASE_SHA" "$GITHUB_SHA" \
+            | grep -E "^images/collector/src/builder/config\.yaml$" || true)
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "the collector build manifest has not changed, skipping the deprecation check"
+            echo "run_check=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "the collector build manifest has changed, running the deprecation check"
+            echo "run_check=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        if: steps.relevant_changes.outputs.run_check == 'true'
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2
+        if: steps.relevant_changes.outputs.run_check == 'true'
+
+      - name: build collector image
+        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4
+        if: steps.relevant_changes.outputs.run_check == 'true'
+        with:
+          context: images
+          file: images/collector/Dockerfile
+          tags: collector-config-validation:local
+          platforms: 'linux/amd64'
+          load: true
+          push: false
+          cache-from: type=gha,scope=collector
+
+      - name: check collector configurations for deprecated settings
+        if: steps.relevant_changes.outputs.run_check == 'true'
+        run: |
+          make collector-config-deprecation-check COLLECTOR_IMAGE=collector-config-validation:local
+
   # Builds and potentially pushes all container images. For pushes to PRs/branches, we simply verify that the image
   # build still works, the resulting image will not be pushed to any target registry. For pushes to the main branch, the
   # images are tagged with "main-dev", but not with a version x.y.z. Finally, for pushes to a tag (or when a tag is

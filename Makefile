@@ -227,6 +227,21 @@ collector-config-validate: ## Validate all collector configurations the operator
 	go test ./internal/collectors/otelcolresources/ \
 	  -run TestCollectorConfigurationsAreAcceptedByTheCollector -count=1 -v
 
+# Starts a collector for every configuration the operator can render and fails on deprecation warnings that are not
+# tracked yet. The OpenTelemetry collector project deprecates a setting several releases before it removes it, so this
+# reports the settings that will break the collectors long before they do. Same requirements as
+# collector-config-validate.
+.PHONY: collector-config-deprecation-check
+collector-config-deprecation-check: ## Check all collector configurations the operator can render for deprecated settings.
+	@if ! docker image inspect $(COLLECTOR_IMAGE) > /dev/null 2>&1; then \
+	  echo "error: the collector image $(COLLECTOR_IMAGE) does not exist locally, build it via \`make image-collector\` or set COLLECTOR_IMAGE to an existing image."; \
+	  exit 1; \
+	fi
+	DASH0_COLLECTOR_IMAGE=$(COLLECTOR_IMAGE) \
+	DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE=$(COLLECTOR_CONFIG_VALIDATE_SIGNAL_CONTROL_IMAGE) \
+	go test ./internal/collectors/otelcolresources/ \
+	  -run TestCollectorConfigurationsUseNoDeprecatedSettings -count=1 -v -timeout 30m
+
 .PHONY: build-all-test-e2e
 build-all-test-e2e: all-images test-e2e ## Builds (but does not push) all container images, then runs the end-to-end tests.
 
