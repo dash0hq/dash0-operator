@@ -5,20 +5,20 @@ go 1.27.1
 require (
 	github.com/bep/debounce v1.2.1
 	github.com/cisco-open/k8s-objectmatcher v1.10.0
-	github.com/dash0hq/dash0-api-client-go v1.21.1
+	github.com/dash0hq/dash0-api-client-go v1.22.0
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-logr/logr v1.4.4
 	github.com/go-logr/zapr v1.3.0
 	github.com/google/uuid v1.6.0
 	github.com/h2non/gock v1.2.0
-	github.com/onsi/ginkgo/v2 v2.32.1
+	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.160.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.160.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.160.0
 	github.com/perses/perses-operator v0.5.0
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.93.1
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.94.0
 	go.opentelemetry.io/collector/component v1.66.0
 	go.opentelemetry.io/collector/confmap v1.66.0
 	go.opentelemetry.io/collector/pdata v1.66.0
@@ -32,7 +32,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.37.0
 	k8s.io/apimachinery v0.37.0
 	k8s.io/client-go v0.37.0
-	k8s.io/utils v0.0.0-20260626114624-be93311217bd
+	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/controller-runtime v0.25.0
 	sigs.k8s.io/yaml v1.6.0
 )
@@ -60,7 +60,7 @@ require (
 	github.com/evanphx/json-patch v5.9.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
@@ -184,7 +184,7 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
-	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
+	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
