@@ -129,6 +129,12 @@ type oTelColConfig struct {
 	EnableProfExtension            bool
 	ProfilingEnabled               bool
 	CompressConfigMap              bool
+	// DaemonSetCollectorMemoryLimit, DeploymentCollectorMemoryLimit and SignalControlCollectorMemoryLimit are the
+	// container memory limits of the three collectors, used to derive the memory_limiter thresholds. A zero value
+	// makes the templates fall back to the percentage-based memory_limiter configuration.
+	DaemonSetCollectorMemoryLimit     resource.Quantity
+	DeploymentCollectorMemoryLimit    resource.Quantity
+	SignalControlCollectorMemoryLimit resource.Quantity
 }
 
 func (c *oTelColConfig) usesOffsetStorageVolume() bool {
@@ -959,7 +965,7 @@ func assembleFileLogOffsetSyncContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
@@ -1297,7 +1303,7 @@ func assembleDaemonSetCollectorContainer(
 	probes util.CollectorProbes,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config, filelogOffsetsVolume, targetAllocatorMtlsConfig)
-	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, false)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.EffectiveGoMemLimit(), false)
 	if err != nil {
 		return corev1.Container{}, err
 	}
@@ -1414,7 +1420,7 @@ func assembleConfigurationReloaderContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CLUSTER_UID",
@@ -1468,7 +1474,7 @@ func assembleFileLogOffsetSyncInitContainer(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: resourceRequirements.GoMemLimit,
+				Value: resourceRequirements.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
@@ -1856,7 +1862,7 @@ func assembleDeploymentCollectorContainer(
 			collectorPidFileMountRW,
 		}
 	}
-	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, false)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.EffectiveGoMemLimit(), false)
 	if err != nil {
 		return corev1.Container{}, err
 	}
@@ -2172,7 +2178,7 @@ func assembleSignalControlCollectorContainer(
 		}
 	}
 
-	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit, true)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.EffectiveGoMemLimit(), true)
 	if err != nil {
 		return corev1.Container{}, err
 	}

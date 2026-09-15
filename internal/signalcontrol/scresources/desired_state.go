@@ -180,7 +180,7 @@ func assembleEdgeProxyDeployment(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: extraConfig.EdgeProxyContainerResources.GoMemLimit,
+				Value: extraConfig.EdgeProxyContainerResources.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			authTokenEnvVar,
 			{

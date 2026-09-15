@@ -125,6 +125,25 @@ var _ = Describe("The desired state of the OpenTelemetry TargetAllocator resourc
 		Expect(deploymentAffinityPref[0].Preference.MatchExpressions[0].Values[1]).To(Equal("affinity-key2-value2"))
 	})
 
+	It("derives GOMEMLIMIT from the memory limit when none is configured", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        TargetAllocatorPrefixTest,
+			Images:            TestImages,
+		}, nil, util.ExtraConfig{
+			TargetAllocatorContainerResources: util.ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("500Mi"),
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		container := getDeployment(desiredState).Spec.Template.Spec.Containers[0]
+		// 80% of 500Mi.
+		Expect(container.Env).To(ContainElement(MatchEnvVar(util.EnvVarGoMemLimit, "400MiB")))
+	})
+
 	It("should render additional labels and annotations on the workload and the pods", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&targetAllocatorConfig{
 			OperatorNamespace: OperatorNamespace,

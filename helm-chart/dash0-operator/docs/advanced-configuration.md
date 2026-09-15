@@ -247,18 +247,21 @@ The following Helm values control the resource settings, all nested under the to
 | `managerContainerResources` | operator manager | `cpu: 50m`, `memory: 128Mi`, `ephemeral-storage: 500Mi` | `cpu: 500m`, `memory: 256Mi`, `ephemeral-storage: 500Mi` |
 | `initContainerResources` | auto-instrumentation init container | none | none |
 | `collectors.daemonSetCollectorContainerResources` | DaemonSet collector container | `memory: 500Mi` | `memory: 500Mi` |
-| `collectors.daemonSetConfigurationReloaderContainerResources` | DaemonSet configuration reloader | `memory: 12Mi` | `memory: 24Mi` |
+| `collectors.daemonSetConfigurationReloaderContainerResources` | DaemonSet configuration reloader | `memory: 12Mi` | `memory: 26Mi` |
 | `collectors.daemonSetFileLogOffsetSyncContainerResources` | DaemonSet filelog offset sync | `memory: 32Mi` | `memory: 32Mi` |
 | `collectors.deploymentCollectorContainerResources` | cluster-metrics-collector container | `memory: 500Mi` | `memory: 500Mi` |
-| `collectors.deploymentConfigurationReloaderContainerResources` | cluster-metrics-collector configuration reloader | `memory: 12Mi` | `memory: 24Mi` |
+| `collectors.deploymentConfigurationReloaderContainerResources` | cluster-metrics-collector configuration reloader | `memory: 12Mi` | `memory: 26Mi` |
 | `collectors.signalControlCollectorContainerResources` | SignalControl collector container | `memory: 1Gi` | `memory: 1Gi` |
-| `collectors.signalControlCollectorConfigurationReloaderContainerResources` | SignalControl collector configuration reloader | `memory: 12Mi` | `memory: 24Mi` |
+| `collectors.signalControlCollectorConfigurationReloaderContainerResources` | SignalControl collector configuration reloader | `memory: 12Mi` | `memory: 26Mi` |
 | `targetAllocator.containerResources` | target-allocator container | `cpu: 200m`, `memory: 128Mi` | `cpu: 200m`, `memory: 500Mi` |
 | `agent0Connector.containerResources` | agent0-connector container | `memory: 32Mi` | `memory: 256Mi` |
 
-The agent0-connector container runs `kubectl` as a child process, whose memory counts towards the container's memory
-limit, but is not governed by `GOMEMLIMIT`. Its `gomemlimit` default is therefore about 60% of the memory limit,
-instead of the 80% recommended for the other containers.
+For every container above except the operator manager, `gomemlimit` is left empty by default and the operator derives it
+from the container's memory limit (about 80%, or about 60% for the agent0-connector, which also runs `kubectl` as a
+child process). For the three collector containers it additionally derives the internal `memory_limiter` thresholds,
+keeping `GOMEMLIMIT < memory_limiter soft limit < memory_limiter hard limit < memory limit`; keep their memory limit at
+or above the `500Mi` default to leave enough off-heap headroom. Set `gomemlimit` explicitly only to override the derived
+value; for a collector it must stay below the derived soft limit, or the operator logs a warning.
 
 The SignalControl collector only exists when SignalControl Edge is enabled. Unlike the other two collectors it
 processes the Dash0-bound telemetry of the whole cluster, so its memory requirement scales with total telemetry volume
@@ -305,17 +308,17 @@ operator:
         memory: 768Mi
       limits:
         memory: 768Mi
-      # approximately 80% of daemonSetCollectorContainerResources.limits.memory; use MiB or GiB here (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 614MiB
+      # gomemlimit is left empty: the operator derives GOMEMLIMIT and the memory_limiter thresholds from the limit above.
 ```
 
-> **Note:** Most of the operator's containers (the operator manager, the collectors, the configuration reloaders, the
-> filelog offset sync container, and the target-allocator) are Go processes, and their container resource settings have
-> a companion `gomemlimit` value (the
-> [`GOMEMLIMIT`](https://pkg.go.dev/runtime#hdr-Environment_Variables) environment variable, a soft memory limit for the
-> Go runtime's garbage collector). Whenever you raise or lower a memory limit, adjust the corresponding `gomemlimit` as
-> well; the recommended value is 80% of that container's memory limit. Note that `gomemlimit` uses different units than
-> Kubernetes resource settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
+> **Note:** Most of the operator's containers are Go processes whose `GOMEMLIMIT`
+> ([the environment variable](https://pkg.go.dev/runtime#hdr-Environment_Variables), a soft memory limit for the Go
+> runtime's garbage collector) is derived automatically from the container's memory limit when `gomemlimit` is left
+> empty: the three collectors (which also derive their `memory_limiter` thresholds), the target-allocator, edge-proxy,
+> agent0-connector, configuration reloaders and filelog offset sync container. For these you normally adjust only the
+> memory limit. The one exception is the operator manager (`managerContainerResources`), whose `gomemlimit` is set
+> statically — whenever you raise or lower its memory limit, adjust its `gomemlimit` as well (about 80% of the limit).
+> Note that `gomemlimit` uses different units than Kubernetes resource settings (`MiB`/`GiB` rather than `Mi`/`Gi`).
 
 Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
 similar to take effect.

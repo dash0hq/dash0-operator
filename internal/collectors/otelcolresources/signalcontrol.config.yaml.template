@@ -258,8 +258,13 @@ processors:
 
   memory_limiter:
     check_interval: 1s
+    {{- if .MemoryLimiterLimitMiB }}
+    limit_mib: {{ .MemoryLimiterLimitMiB }}
+    spike_limit_mib: {{ .MemoryLimiterSpikeLimitMiB }}
+    {{- else }}
     limit_percentage: 80
     spike_limit_percentage: 25
+    {{- end }}
 
   resource/signal_control_attributes:
     attributes:
