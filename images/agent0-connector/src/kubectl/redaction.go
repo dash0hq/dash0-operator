@@ -6,22 +6,21 @@
 // The stdout response of the kubectl invocation is parsed into a document, the credential values are replaced
 // within that document, and the document is rendered again.
 //
-// This is only possible for formats the connector can parse, reliably interprete, and render itself. Every response
-// rendered in such a format is walked, whatever resource type it holds: a third-party custom resource can hold a
-// credential just as well as a Dash0 one. The resource types that are known to hold credentials
-// (resourceTypesWithSecrets) are additionally restricted to exactly these output formats, so that their content can
-// never be rendered in a form the walk cannot reach (see safeOrRedactableOutputFormats in validation.go).
+// This is only possible for formats the connector can parse, reliably interprete, and render itself, so a request is
+// restricted to exactly those formats (see safeOrRedactableOutputFormats in validation.go). The restriction is not
+// bound to a resource type: any resource can hold a credential, a third-party custom resource just as well as a Dash0
+// one, so a response is either walked or not handed out.
 //
-//   - "-o json" and "-o yaml" render the resources as a document.
+//   - "-o json" and "-o yaml" render the resources as a document, which is walked.
 //   - the content-free formats ("-o name", "-o wide", the default table) do not expose the content of a resource at
 //     all and are passed through untouched.
-//   - "-o go-template", "-o jsonpath", "-o custom-columns" and "kubectl describe" are rejected for these resource
-//     types. The template formats can reshape the response and make it impossible to find the secret. kubectl describe
-//     renders a text format that is not meant to be parsed; in neither case can the credentials be located in the
-//     output. Furthermore, with go-template, individual secret characters could be exfiltrated via expresssions like
-//     {{printf "%.6s" .token}}' and similar, enabling exfiltrating a secret over multiple requests, piece by piece.
-//   - file-related output formats (go-template-file etc.) and --raw are disallowed outright for all resource types, so
-//     they do not require specific treatment with respect to secret redaction
+//   - "-o go-template", "-o jsonpath", "-o custom-columns" and "kubectl describe" are rejected. The template formats
+//     can reshape the response and make it impossible to find the secret. kubectl describe renders a text format that
+//     is not meant to be parsed; in neither case can the credentials be located in the output. Furthermore, with
+//     go-template, individual secret characters could be exfiltrated via expresssions like {{printf "%.6s" .token}}'
+//     and similar, enabling exfiltrating a secret over multiple requests, piece by piece.
+//   - file-related output formats (go-template-file etc.) and --raw are disallowed outright, so they do not require
+//     specific treatment with respect to secret redaction
 //
 // A response that cannot be parsed after all - output truncated at maxStdoutBytes, a multi-document YAML stream, or an
 // error message on stderr with nothing on stdout - is withheld rather than handed out, see withholdResponse.
@@ -114,124 +113,7 @@ var wellKnownNonSecretValues = map[string]struct{}{
 	"application/x-protobuf": {},
 }
 
-// dash0ResourceTypesWithSecrets lists the resource type names of the Dash0 custom resources whose content can contain
-// secrets: the Dash0 auth token and the header values of non-Dash0 exports (Dash0OperatorConfiguration,
-// Dash0Monitoring), the credentials of the third-party integrations of a notification channel
-// (Dash0NotificationChannel), and the credentials a synthetic check sends with its request (Dash0SyntheticCheck).
-// Singular and plural form are listed; none of these custom resources have short names, and kubectl also accepts the
-// kind (e.g. "Dash0Monitoring"), which normalizes to the singular form.
-var dash0ResourceTypesWithSecrets = map[string]struct{}{
-	"dash0operatorconfiguration":  {},
-	"dash0operatorconfigurations": {},
-	"dash0monitoring":             {},
-	"dash0monitorings":            {},
-	"dash0notificationchannel":    {},
-	"dash0notificationchannels":   {},
-	"dash0syntheticcheck":         {},
-	"dash0syntheticchecks":        {},
-}
-
-// workloadResourceTypes lists the resource type names of the Kubernetes resource types that carry a pod spec, and with
-// it the literal values of the environment variables of their containers. Any workload can hold a credential in an
-// environment variable. So the environment variable values of these resource types are redacted (see
-// redactEnvVarValues) and the output formats whose result cannot be redacted are rejected for them.
-//
-// Singular form, plural form and short name are listed for each type; kubectl also accepts the kind (e.g.
-// "Deployment"), which normalizes to the singular form. Additionally, "all" is the shorthand that expands to pods,
-// services, daemon sets, deployments, replica sets, stateful sets, jobs and cron jobs, so it renders pod specs as well.
-var workloadResourceTypes = map[string]struct{}{
-	"all":                    {},
-	"controllerrevision":     {},
-	"controllerrevisions":    {},
-	"cronjob":                {},
-	"cronjobs":               {},
-	"cj":                     {},
-	"daemonset":              {},
-	"daemonsets":             {},
-	"ds":                     {},
-	"deployment":             {},
-	"deployments":            {},
-	"deploy":                 {},
-	"job":                    {},
-	"jobs":                   {},
-	"pod":                    {},
-	"pods":                   {},
-	"po":                     {},
-	"podtemplate":            {},
-	"podtemplates":           {},
-	"replicaset":             {},
-	"replicasets":            {},
-	"rs":                     {},
-	"replicationcontroller":  {},
-	"replicationcontrollers": {},
-	"rc":                     {},
-	"statefulset":            {},
-	"statefulsets":           {},
-	"sts":                    {},
-}
-
-// configMapResourceTypes lists the resource type names of config maps. A config map is not meant to hold credentials,
-// but in practice it often does: the operator's own collector config maps carry the literal header values of the gRPC
-// and HTTP exports, and a third-party chart routinely renders a connection string or an API key into one. The values
-// of its data are therefore walked for credential fields (see redactConfigMapData) and the output formats whose result
-// cannot be redacted are rejected for it.
-//
-// Singular form, plural form and the short name are listed; kubectl also accepts the kind ("ConfigMap"), which
-// normalizes to the singular form.
-var configMapResourceTypes = map[string]struct{}{
-	"configmap":  {},
-	"configmaps": {},
-	"cm":         {},
-}
-
-// resourceTypeWithSecrets describes a category of resource types whose content can contain secrets, so that the
-// rejection messages of validation.go can name what is being protected and how to read the resource instead.
-type resourceTypeWithSecrets struct {
-	// description names the category in a rejection message, e.g. "a Dash0 custom resource".
-	description string
-	// secrets names what the content of such a resource can expose, e.g. "an authorization token".
-	secrets string
-	// redactedContent names what the connector replaces in a response it can redact, e.g. "its credentials".
-	redactedContent string
-}
-
-var (
-	dash0CustomResourceWithSecrets = resourceTypeWithSecrets{
-		description:     "a Dash0 custom resource",
-		secrets:         "an authorization token or third-party credentials",
-		redactedContent: "its credentials",
-	}
-	workloadResourceWithSecrets = resourceTypeWithSecrets{
-		description:     "a workload resource",
-		secrets:         "credentials in the values of its environment variables",
-		redactedContent: "the values of its environment variables",
-	}
-	configMapResourceWithSecrets = resourceTypeWithSecrets{
-		description:     "a config map",
-		secrets:         "credentials in the values of its data",
-		redactedContent: "the credentials in its data",
-	}
-)
-
-// resourceTypesWithSecrets maps every resource type name whose content can contain secrets to its category.
-var resourceTypesWithSecrets = func() map[string]resourceTypeWithSecrets {
-	types := make(
-		map[string]resourceTypeWithSecrets,
-		len(dash0ResourceTypesWithSecrets)+len(workloadResourceTypes)+len(configMapResourceTypes),
-	)
-	for resourceType := range dash0ResourceTypesWithSecrets {
-		types[resourceType] = dash0CustomResourceWithSecrets
-	}
-	for resourceType := range workloadResourceTypes {
-		types[resourceType] = workloadResourceWithSecrets
-	}
-	for resourceType := range configMapResourceTypes {
-		types[resourceType] = configMapResourceWithSecrets
-	}
-	return types
-}()
-
-// credentialFieldsPerConfigObject maps the name of a configuration object in a Dash0 custom resource to the fields
+// credentialFieldsPerConfigObject maps the name of an object in a Dash0 custom resource to the fields
 // within it that hold a credential. Keying on the enclosing object rather than on the field name alone keeps the
 // generic field names ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification
 // routing filters. The webhook URLs are credentials themselves: they contain an unguessable token that grants the
@@ -239,6 +121,10 @@ var resourceTypesWithSecrets = func() map[string]resourceTypeWithSecrets {
 //
 // A field may be given as a path of keys separated by ".", for a credential that sits in a nested object whose own
 // name is too generic to key on.
+//
+// Note that while credentialFieldsPerConfigObject primarily targets known Dash0 resource types, it is used on every
+// resource type when redacting. For example, a non-Dash0 resource type that has the path slackConfig.webhookURL
+// in its spec gets redacted in the same way as Dash0NotificationChannel.
 var credentialFieldsPerConfigObject = map[string][]string{
 	// Dash0NotificationChannel, spec.<type>Config
 	"slackConfig":             {"webhookURL"},
@@ -260,6 +146,10 @@ var credentialFieldsPerConfigObject = map[string][]string{
 // check is the target of the check and is what makes the resource comprehensible, but it can carry a password in its
 // user information and an API key in its query. The webhook URLs of the notification channels are the opposite case -
 // the URL as a whole is the credential - and are listed in credentialFieldsPerConfigObject instead.
+//
+// Note that while urlFieldsPerConfigObject primarily targets known Dash0 resource types, it is used on every resource
+// type when redacting. A non-Dash0 resource type that has the path request.url in its spec gets redacted in the same
+// way as Dash0SyntheticCheck.
 var urlFieldsPerConfigObject = map[string][]string{
 	// Dash0SyntheticCheck, spec.plugin.spec.request
 	"request": {"url"},
@@ -298,10 +188,9 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 
 	format, parseable := parsed.parseableOutputFormat()
 	if !parseable {
-		// Only reachable for a resource type of resourceTypesWithSecrets: for every other type
-		// responseHasToBeRedacted already reported false for a format that cannot be parsed. For those types validation
-		// leaves only the parseable and the content-free formats, so what remains here is an invocation that sets the
-		// output format more than once, which parseableOutputFormat refuses to resolve.
+		// Validation leaves only the parseable and the content-free formats, and responseHasToBeRedacted already ruled
+		// out the content-free ones, so what remains here is an invocation that sets the output format more than once,
+		// which parseableOutputFormat refuses to resolve. Such a response is withheld rather than handed out.
 		return fmt.Errorf("the output format of this command cannot be parsed for redaction")
 	}
 	if stdoutTruncated {
@@ -339,36 +228,21 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 // responseHasToBeRedacted reports whether the response of the given invocation renders resource content that has to be
 // walked for credentials.
 //
-// Any resource can hold a credential, not only the types of resourceTypesWithSecrets: a third-party custom resource the
-// default RBAC grants (a Perses dashboard carries the headers its datasource proxy sends) is as capable of holding one
-// as a Dash0 custom resource is. The walk is therefore not bound to a resource type; every response the connector can
-// parse is walked, and the resource type only decides what happens to a response it cannot parse:
-//
-//   - A resource type of resourceTypesWithSecrets is known to hold credentials, so its response has to be redacted
-//     whatever format it is rendered in. Validation already restricts it to the formats the connector can parse, and a
-//     response that cannot be parsed after all is withheld rather than handed out (see redactSecretsInResponse).
-//   - For every other resource type the content is walked whenever the connector can parse it, that is for "-o json"
-//     and "-o yaml". A format that reshapes the response (jsonpath, go-template, custom-columns) cannot be walked and
-//     is not withheld either: validation deliberately allows those formats for these resource types, and withholding
-//     them would take away a working part of kubectl in exchange for a credential the walk was never able to find.
+// The walk is not bound to a resource type. Any resource can hold a credential - a third-party custom resource the
+// default RBAC grants carries the headers its datasource proxy sends just as a Dash0 custom resource carries an auth
+// token - so every response that renders resource content is walked, and one that cannot be walked is not handed out:
+// validation rejects "kubectl describe" and every output format that could reshape a response before it gets here.
 func responseHasToBeRedacted(parsed kubectlArguments) bool {
 	//nolint:goconst
 	if parsed.kubectlCommand != "get" {
-		// No other allowed kubectl command renders resource content: "describe" is rejected for the resource types that
-		// are known to hold credentials (see describeOfResourceTypeWithSecretsRequested), "explain" only prints the
-		// schema, and the output of "logs" is the output of the workload itself, which is not a document that could be
-		// parsed and walked.
+		// No other allowed kubectl command renders resource content: "describe" is rejected outright (see
+		// describeRequested), "explain" only prints the schema, and the output of "logs" is the output of the workload
+		// itself, which is not a document that could be parsed and walked.
 		return false
 	}
-	if parsed.outputIsContentFree() {
-		// kubectl get -o name or similar, no actual resource content in the response.
-		return false
-	}
-	if _, hasSecrets := targetsResourceTypeWithSecrets(parsed); hasSecrets {
-		return true
-	}
-	_, parseable := parsed.parseableOutputFormat()
-	return parseable
+	// kubectl get -o name or similar renders no actual resource content. Everything else is "-o json" or "-o yaml",
+	// which validation is the only thing that leaves.
+	return !parsed.outputIsContentFree()
 }
 
 // parseResponseDocument parses a kubectl response that renders resources in the given output format. It reports false
@@ -494,20 +368,6 @@ func (r *redactor) valuesToScrubFromStderr() []string {
 		return strings.Compare(first, second)
 	})
 	return sorted
-}
-
-// targetsResourceTypeWithSecrets returns the category of the first resource type the kubectl arguments reference whose
-// content can contain secrets (see resourceTypesWithSecrets). Unlike responseHasToBeRedacted it does not look at the
-// kubectl command or the output format, since it answers whether a response could contain a secret at all, not whether
-// the response has to be redacted. It is the basis for rejecting the output formats whose rendering of a secret cannot
-// be redacted reliably, see unredactableOutputRequested in validation.go.
-func targetsResourceTypeWithSecrets(parsed kubectlArguments) (resourceTypeWithSecrets, bool) {
-	for _, resourceType := range parsed.resourceTypes {
-		if category, hasSecrets := resourceTypesWithSecrets[resourceType]; hasSecrets {
-			return category, true
-		}
-	}
-	return resourceTypeWithSecrets{}, false
 }
 
 // redactResourceList redacts the secrets of all resources in a parsed resource document, in place. Such a document

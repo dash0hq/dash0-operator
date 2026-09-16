@@ -74,108 +74,35 @@ const contentsNotReadable = "reading the contents of a secret is not allowed; li
 
 func outputFormatNotRedactable(format string) string {
 	return fmt.Sprintf(
-		"the output format %q cannot be redacted reliably for a Dash0 custom resource, which can contain an "+
-			"authorization token or third-party credentials; reading such a resource is supported with "+
-			"-o json/yaml/name/wide (or without an output format), but not with a format that can reshape its values "+
-			"(-o go-template/template/jsonpath/jsonpath-as-json/custom-columns or --template)",
+		"the output format %q cannot be redacted reliably, because it can reshape the values of a resource and the "+
+			"connector can then no longer find the credentials the resource may contain; reading a resource is "+
+			"supported with -o json/yaml/name/wide (or without an output format), but not with a format that can "+
+			"reshape its values (-o go-template/template/jsonpath/jsonpath-as-json/custom-columns or --template)",
 		format,
 	)
 }
 
-func outputFormatNotRedactableForWorkload(format string) string {
+func sortByNotAllowed(expression string) string {
 	return fmt.Sprintf(
-		"the output format %q cannot be redacted reliably for a workload resource, which can contain credentials in "+
-			"the values of its environment variables; reading such a resource is supported with "+
-			"-o json/yaml/name/wide (or without an output format), but not with a format that can reshape its values "+
-			"(-o go-template/template/jsonpath/jsonpath-as-json/custom-columns or --template)",
-		format,
-	)
-}
-
-func sortByNotAllowedForDash0Resource(expression string) string {
-	return fmt.Sprintf(
-		"the --sort-by expression %q is not allowed for a Dash0 custom resource, which can contain an authorization "+
-			"token or third-party credentials; kubectl evaluates the expression against the resources before the "+
-			"connector redacts them, so only a plain path below \"metadata\" or \"status\" may be sorted by, except "+
-			"\"metadata.annotations\" (e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
+		"the --sort-by expression %q is not allowed; kubectl evaluates the expression against the resources "+
+			"before the connector redacts them, so only a plain path below \"metadata\" or \"status\" may be sorted "+
+			"by, except \"metadata.annotations\" (e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
 		expression,
 	)
 }
 
-func sortByNotAllowedForWorkload(expression string) string {
-	return fmt.Sprintf(
-		"the --sort-by expression %q is not allowed for a workload resource, which can contain credentials in the "+
-			"values of its environment variables; kubectl evaluates the expression against the resources before the "+
-			"connector redacts them, so only a plain path below \"metadata\" or \"status\" may be sorted by, except "+
-			"\"metadata.annotations\" (e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
-		expression,
-	)
-}
+const kyamlNotRedactable = "the output format \"kyaml\" cannot be redacted reliably, because the connector does not " +
+	"redact this output format yet; reading a resource is supported with -o json/yaml/name/wide (or without an " +
+	"output format)"
 
-func outputFormatNotRedactableForConfigMap(format string) string {
-	return fmt.Sprintf(
-		"the output format %q cannot be redacted reliably for a config map, which can contain credentials in the "+
-			"values of its data; reading such a resource is supported with -o json/yaml/name/wide (or without an "+
-			"output format), but not with a format that can reshape its values "+
-			"(-o go-template/template/jsonpath/jsonpath-as-json/custom-columns or --template)",
-		format,
-	)
-}
-
-func sortByNotAllowedForConfigMap(expression string) string {
-	return fmt.Sprintf(
-		"the --sort-by expression %q is not allowed for a config map, which can contain credentials in the values of "+
-			"its data; kubectl evaluates the expression against the resources before the connector redacts them, so "+
-			"only a plain path below \"metadata\" or \"status\" may be sorted by, except \"metadata.annotations\" "+
-			"(e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
-		expression,
-	)
-}
-
-func sortByNotAllowedForSensitiveResource(expression string) string {
-	return fmt.Sprintf(
-		"the --sort-by expression %q is not allowed for a secret; kubectl evaluates the expression against the "+
-			"resources before the connector sees them, so an expression that addresses the contents of the secret "+
-			"would expose them; only a plain path below \"metadata\" or \"status\" may be sorted by, except "+
-			"\"metadata.annotations\" (e.g. --sort-by=.metadata.name or --sort-by=.metadata.creationTimestamp)",
-		expression,
-	)
-}
-
-const kyamlNotRedactableForDash0Resource = "the output format \"kyaml\" cannot be redacted reliably for a Dash0 " +
-	"custom resource, which can contain an authorization token or third-party credentials, because the connector " +
-	"does not redact this output format yet; reading such a resource is supported with -o json/yaml/name/wide " +
-	"(or without an output format)"
-
-const kyamlNotRedactableForWorkload = "the output format \"kyaml\" cannot be redacted reliably for a workload " +
-	"resource, which can contain credentials in the values of its environment variables, because the connector does " +
-	"not redact this output format yet; reading such a resource is supported with -o json/yaml/name/wide " +
-	"(or without an output format)"
-
-const describeOfDash0ResourceNotSupported = "describing a Dash0 custom resource is not supported, because it can " +
-	"contain an authorization token or third-party credentials which cannot be redacted from the output of " +
-	"\"kubectl describe\"; read the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns " +
-	"the same content with its credentials redacted, and its events with " +
-	"\"kubectl events --for <resource-type>/<name>\""
-
-const describeOfWorkloadNotSupported = "describing a workload resource is not supported, because it can contain " +
-	"credentials in the values of its environment variables which cannot be redacted from the output of " +
-	"\"kubectl describe\"; read the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns " +
-	"the same content with the values of its environment variables redacted, and its events with " +
-	"\"kubectl events --for <resource-type>/<name>\""
+const describeNotSupported = "\"kubectl describe\" is not supported, because it renders a resource in a text format " +
+	"the connector cannot parse, so the credentials a resource may contain cannot be redacted from its output; read " +
+	"the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns the same content with its " +
+	"credentials redacted, and its events with \"kubectl events --for <resource-type>/<name>\""
 
 const describeOfSecretNotSupported = "describing a secret is not allowed, because \"kubectl describe\" prints the " +
 	"exact length of every value; listing secrets or checking for the presence of a particular one with " +
 	"\"kubectl get secret <name>\" is supported"
-
-const kyamlNotRedactableForConfigMap = "the output format \"kyaml\" cannot be redacted reliably for a config map, " +
-	"which can contain credentials in the values of its data, because the connector does not redact this output " +
-	"format yet; reading such a resource is supported with -o json/yaml/name/wide (or without an output format)"
-
-const describeOfConfigMapNotSupported = "describing a config map is not supported, because it can contain " +
-	"credentials in the values of its data which cannot be redacted from the output of \"kubectl describe\"; read " +
-	"the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns the same content with the " +
-	"credentials in its data redacted, and its events with \"kubectl events --for <resource-type>/<name>\""
 
 //nolint:lll
 func TestValidateCommandRequest(t *testing.T) {
@@ -194,7 +121,8 @@ func TestValidateCommandRequest(t *testing.T) {
 
 		{name: "read-only get is allowed", command: "kubectl", arguments: []string{"get", "pods"}, allowed: true},
 		{name: "get with -n flag is allowed", command: "kubectl", arguments: []string{"get", "po", "-n", "x"}, allowed: true},
-		{name: "describe is allowed", command: "kubectl", arguments: []string{"describe", "node", "x"}, allowed: true},
+		{name: "describe is rejected", command: "kubectl", arguments: []string{"describe", "node", "x"}, allowed: false,
+			rejectionReason: describeNotSupported},
 		{name: "logs is allowed", command: "kubectl", arguments: []string{"logs", "x"}, allowed: true},
 		{name: "version is allowed", command: "kubectl", arguments: []string{"version"}, allowed: true},
 		{name: "explain is allowed", command: "kubectl", arguments: []string{"explain", "pods"}, allowed: true},
@@ -366,19 +294,25 @@ func TestValidateCommandRequest(t *testing.T) {
 		// allowlist rather than the restrictions for the resource types whose response has to be redacted.
 		{name: "-o json is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "json"}, allowed: true},
 		{name: "-o yaml is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "yaml"}, allowed: true},
-		{name: "-o kyaml is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "kyaml"}, allowed: true},
+		{name: "-o kyaml is rejected", command: "kubectl", arguments: []string{"get", "services", "-o", "kyaml"}, allowed: false,
+			rejectionReason: kyamlNotRedactable},
 		{name: "-o name is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "name"}, allowed: true},
 		{name: "-o wide is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "wide"}, allowed: true},
-		{name: "-o jsonpath is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "-o", "jsonpath={.items[*].metadata.name}"}, allowed: true},
-		{name: "-o jsonpath-as-json is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "-o", "jsonpath-as-json={.items[*].metadata.name}"}, allowed: true},
-		{name: "-o go-template is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "-o", "go-template={{.metadata.name}}"}, allowed: true},
-		{name: "-o template is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "-o", "template", "--template={{.metadata.name}}"}, allowed: true},
-		{name: "-o custom-columns is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "-o", "custom-columns=NAME:.metadata.name"}, allowed: true},
+		{name: "-o jsonpath is rejected",
+			command: "kubectl", arguments: []string{"get", "services", "-o", "jsonpath={.items[*].metadata.name}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
+		{name: "-o jsonpath-as-json is rejected",
+			command: "kubectl", arguments: []string{"get", "services", "-o", "jsonpath-as-json={.items[*].metadata.name}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("jsonpath-as-json")},
+		{name: "-o go-template is rejected",
+			command: "kubectl", arguments: []string{"get", "services", "-o", "go-template={{.metadata.name}}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("go-template")},
+		{name: "-o template is rejected",
+			command: "kubectl", arguments: []string{"get", "services", "-o", "template", "--template={{.metadata.name}}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("go-template")},
+		{name: "-o custom-columns is rejected",
+			command: "kubectl", arguments: []string{"get", "services", "-o", "custom-columns=NAME:.metadata.name"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("custom-columns")},
 		{name: "an output format is matched case-insensitively",
 			command: "kubectl", arguments: []string{"get", "services", "-o", "YAML"}, allowed: true},
 		{name: "a file output format is rejected case-insensitively",
@@ -413,7 +347,7 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "a Dash0 resource with kyaml is rejected",
 			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "kyaml"}, allowed: false,
-			rejectionReason: kyamlNotRedactableForDash0Resource},
+			rejectionReason: kyamlNotRedactable},
 		{name: "a Dash0 resource with an attached reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-ojsonpath={.items}"}, allowed: false,
 			rejectionReason: outputFormatNotRedactable("jsonpath")},
@@ -470,17 +404,19 @@ func TestValidateCommandRequest(t *testing.T) {
 		// describe renders a text format that cannot be parsed, so the credentials cannot be located in its output.
 		{name: "describe of a Dash0 resource is rejected",
 			command: "kubectl", arguments: []string{"describe", "dash0monitoring", "my-resource"}, allowed: false,
-			rejectionReason: describeOfDash0ResourceNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of Dash0 resources in all namespaces is rejected",
 			command: "kubectl", arguments: []string{"describe", "dash0monitorings", "-A"}, allowed: false,
-			rejectionReason: describeOfDash0ResourceNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a Dash0 resource via type/name is rejected",
 			command: "kubectl", arguments: []string{"describe", "dash0notificationchannel/my-channel"}, allowed: false,
-			rejectionReason: describeOfDash0ResourceNotSupported},
-		{name: "describe of a Dash0 resource type without secrets is allowed",
-			command: "kubectl", arguments: []string{"describe", "dash0views"}, allowed: true},
-		{name: "describe of a resource type that carries no pod spec is allowed",
-			command: "kubectl", arguments: []string{"describe", "node", "my-node"}, allowed: true},
+			rejectionReason: describeNotSupported},
+		{name: "describe of a Dash0 resource type without a credential field is rejected as well",
+			command: "kubectl", arguments: []string{"describe", "dash0views"}, allowed: false,
+			rejectionReason: describeNotSupported},
+		{name: "describe of a resource type that carries no pod spec is rejected as well",
+			command: "kubectl", arguments: []string{"describe", "node", "my-node"}, allowed: false,
+			rejectionReason: describeNotSupported},
 		{name: "events of a Dash0 resource are allowed",
 			command: "kubectl", arguments: []string{"events", "--for", "dash0monitoring/my-resource"}, allowed: true},
 		{name: "explain for a Dash0 resource is allowed",
@@ -490,62 +426,62 @@ func TestValidateCommandRequest(t *testing.T) {
 		// credential. They are restricted exactly like the Dash0 custom resources that can contain secrets.
 		{name: "a workload with -o go-template is rejected",
 			command: "kubectl", arguments: []string{"get", "deployments", "-o", "go-template={{.items}}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("go-template")},
+			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "a workload with -o jsonpath is rejected",
 			command: "kubectl", arguments: []string{"get", "pods", "-o", "jsonpath={.items[*].spec.containers[*].env}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "a workload with -o jsonpath-as-json is rejected",
 			command: "kubectl", arguments: []string{"get", "daemonsets", "-o", "jsonpath-as-json={.items}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath-as-json")},
+			rejectionReason: outputFormatNotRedactable("jsonpath-as-json")},
 		{name: "a workload with -o custom-columns is rejected",
 			command: "kubectl", arguments: []string{"get", "statefulsets", "-o", "custom-columns=E:.spec.template.spec.containers[*].env"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("custom-columns")},
+			rejectionReason: outputFormatNotRedactable("custom-columns")},
 		{name: "a workload with --template but no output format is rejected",
 			command: "kubectl", arguments: []string{"get", "jobs", "--template={{.items}}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("go-template")},
+			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "a workload with a truncating go-template is rejected",
 			command: "kubectl", arguments: []string{"get", "ds", "-o", `go-template={{printf "%.6s" (index .spec.template.spec.containers 0).env}}`}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("go-template")},
+			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "a workload with kyaml is rejected",
 			command: "kubectl", arguments: []string{"get", "deploy", "-o", "kyaml"}, allowed: false,
-			rejectionReason: kyamlNotRedactableForWorkload},
+			rejectionReason: kyamlNotRedactable},
 		{name: "the all shorthand with a reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "all", "-o", "jsonpath={.items}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		// A controller revision holds a copy of the pod template of the daemon set or stateful set it belongs to.
 		{name: "a controller revision with a reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "controllerrevisions", "-o", "jsonpath={.items[*].data}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "a cron job with a reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "cj", "-o", "jsonpath={.items}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "a pod template with a reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "podtemplates", "-o", "jsonpath={.items}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "a replication controller with a reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "rc", "-o", "jsonpath={.items}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "a replica set with a reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "rs", "-o", "jsonpath={.items}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "the workload kind form is covered",
 			command: "kubectl", arguments: []string{"get", "Deployment", "-o", "jsonpath={.items}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "the fully qualified workload resource type is covered",
 			command: "kubectl", arguments: []string{"get", "deployments.v1.apps", "-o", "jsonpath={.items}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "a workload in a type/name pair in a later slot is covered",
 			command: "kubectl", arguments: []string{"get", "service/a", "pod/b", "-o", "jsonpath={.spec}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForWorkload("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "describe of a workload is rejected",
 			command: "kubectl", arguments: []string{"describe", "pod", "my-pod"}, allowed: false,
-			rejectionReason: describeOfWorkloadNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of workloads in all namespaces is rejected",
 			command: "kubectl", arguments: []string{"describe", "deployments", "-A"}, allowed: false,
-			rejectionReason: describeOfWorkloadNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a workload via type/name is rejected",
 			command: "kubectl", arguments: []string{"describe", "ds/my-daemonset"}, allowed: false,
-			rejectionReason: describeOfWorkloadNotSupported},
+			rejectionReason: describeNotSupported},
 
 		// The formats the connector can redact stay available for workloads, and the commands that do not render a pod
 		// spec are unaffected.
@@ -568,17 +504,23 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "explain for a workload is allowed",
 			command: "kubectl", arguments: []string{"explain", "pods"}, allowed: true},
 
-		// Resource types without secrets keep every generally allowed output format.
-		{name: "a reshaping format for a resource type without secrets is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "-o", "jsonpath={.items[*].metadata.name}"}, allowed: true},
-		{name: "a go-template for a resource type without secrets is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "-o", "go-template={{.items}}"}, allowed: true},
-		{name: "--template for a resource type without secrets is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "--template={{.items}}"}, allowed: true},
-		{name: "kyaml for a resource type without secrets is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "-o", "kyaml"}, allowed: true},
-		{name: "a Dash0 resource type without secrets keeps the reshaping formats",
-			command: "kubectl", arguments: []string{"get", "dash0views", "-o", "jsonpath={.items}"}, allowed: true},
+		// No resource type keeps a format the connector cannot walk: a credential can sit in any resource, so a format
+		// that reshapes the response is rejected for all of them.
+		{name: "a reshaping format is rejected for a resource type without a credential field",
+			command: "kubectl", arguments: []string{"get", "services", "-o", "jsonpath={.items[*].metadata.name}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
+		{name: "a go-template is rejected for a resource type without a credential field",
+			command: "kubectl", arguments: []string{"get", "services", "-o", "go-template={{.items}}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("go-template")},
+		{name: "--template is rejected for a resource type without a credential field",
+			command: "kubectl", arguments: []string{"get", "services", "--template={{.items}}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("go-template")},
+		{name: "kyaml is rejected for a resource type without a credential field",
+			command: "kubectl", arguments: []string{"get", "services", "-o", "kyaml"}, allowed: false,
+			rejectionReason: kyamlNotRedactable},
+		{name: "a third-party custom resource is rejected the same way",
+			command: "kubectl", arguments: []string{"get", "persesdashboards", "-o", "jsonpath={.items}"}, allowed: false,
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 
 		// Secrets: listing and presence checks are allowed, reading their contents is not.
 		{name: "listing secrets is allowed",
@@ -707,25 +649,25 @@ func TestValidateCommandRequest(t *testing.T) {
 
 		{name: "config map with -o jsonpath is rejected",
 			command: "kubectl", arguments: []string{"get", "cm", "my-cm", "-o", "jsonpath={.data}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForConfigMap("jsonpath")},
+			rejectionReason: outputFormatNotRedactable("jsonpath")},
 		{name: "config map with -o custom-columns is rejected",
 			command: "kubectl", arguments: []string{"get", "cm", "-o", "custom-columns=D:.data"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForConfigMap("custom-columns")},
+			rejectionReason: outputFormatNotRedactable("custom-columns")},
 		{name: "config map with --template is rejected",
 			command: "kubectl", arguments: []string{"get", "cm", "--template={{.data}}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactableForConfigMap("go-template")},
+			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "config map with -o kyaml is rejected",
 			command: "kubectl", arguments: []string{"get", "cm", "-o", "kyaml"}, allowed: false,
-			rejectionReason: kyamlNotRedactableForConfigMap},
+			rejectionReason: kyamlNotRedactable},
 		{name: "describe configmap is rejected",
 			command: "kubectl", arguments: []string{"describe", "configmap", "my-cm"}, allowed: false,
-			rejectionReason: describeOfConfigMapNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe config map via type/name is rejected",
 			command: "kubectl", arguments: []string{"describe", "cm/my-cm"}, allowed: false,
-			rejectionReason: describeOfConfigMapNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "sort-by a data field of config maps is rejected",
 			command: "kubectl", arguments: []string{"get", "cm", "--sort-by", ".data.config"}, allowed: false,
-			rejectionReason: sortByNotAllowedForConfigMap(".data.config")},
+			rejectionReason: sortByNotAllowed(".data.config")},
 
 		// Non-sensitive resources are unaffected by the content check.
 		{name: "non-secret resource as yaml is allowed",
@@ -740,8 +682,9 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "pods", "-n", "cm", "-o", "yaml"}, allowed: true},
 		{name: "pod named cm as yaml is allowed",
 			command: "kubectl", arguments: []string{"get", "pods", "cm", "-o", "yaml"}, allowed: true},
-		{name: "describe node named cm is allowed",
-			command: "kubectl", arguments: []string{"describe", "node", "cm"}, allowed: true},
+		{name: "describe node named cm is rejected like every other describe",
+			command: "kubectl", arguments: []string{"describe", "node", "cm"}, allowed: false,
+			rejectionReason: describeNotSupported},
 
 		// Allowlisted flags keep working, in every spelling and combination.
 		{name: "all-namespaces and output shaping flags are allowed",
@@ -758,40 +701,41 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "pods", "--sort-by", ".status.containerStatuses[0].restartCount"}, allowed: true},
 		{name: "sort-by a spec field of a workload is rejected",
 			command: "kubectl", arguments: []string{"get", "pods", "--sort-by", ".spec.containers[0].env[0].value"}, allowed: false,
-			rejectionReason: sortByNotAllowedForWorkload(".spec.containers[0].env[0].value")},
+			rejectionReason: sortByNotAllowed(".spec.containers[0].env[0].value")},
 		{name: "sort-by a filter expression over a workload is rejected",
 			command: "kubectl", arguments: []string{"get", "pods", "-o", "name", "--sort-by", "{.spec.containers[0].env[?(@.value>\"S\")].name}"}, allowed: false,
-			rejectionReason: sortByNotAllowedForWorkload("{.spec.containers[0].env[?(@.value>\"S\")].name}")},
+			rejectionReason: sortByNotAllowed("{.spec.containers[0].env[?(@.value>\"S\")].name}")},
 		{name: "sort-by the last-applied-configuration annotation of a workload is rejected",
 			command: "kubectl", arguments: []string{"get", "deploy", "--sort-by", ".metadata.annotations"}, allowed: false,
-			rejectionReason: sortByNotAllowedForWorkload(".metadata.annotations")},
+			rejectionReason: sortByNotAllowed(".metadata.annotations")},
 		{name: "sort-by a wildcard over a workload is rejected",
 			command: "kubectl", arguments: []string{"get", "pods", "--sort-by", ".spec.containers[*].env"}, allowed: false,
-			rejectionReason: sortByNotAllowedForWorkload(".spec.containers[*].env")},
+			rejectionReason: sortByNotAllowed(".spec.containers[*].env")},
 		{name: "sort-by a recursive descent over a workload is rejected",
 			command: "kubectl", arguments: []string{"get", "pods", "--sort-by", ".metadata..value"}, allowed: false,
-			rejectionReason: sortByNotAllowedForWorkload(".metadata..value")},
+			rejectionReason: sortByNotAllowed(".metadata..value")},
 		{name: "sort-by a spec field of a Dash0 custom resource is rejected",
 			command: "kubectl", arguments: []string{"get", "dash0monitorings", "--sort-by", ".spec.export.dash0.authorization.token"}, allowed: false,
-			rejectionReason: sortByNotAllowedForDash0Resource(".spec.export.dash0.authorization.token")},
-		{name: "sort-by a spec field of a resource type without secrets is allowed",
-			command: "kubectl", arguments: []string{"get", "services", "--sort-by", ".spec.clusterIP"}, allowed: true},
+			rejectionReason: sortByNotAllowed(".spec.export.dash0.authorization.token")},
+		{name: "sort-by a spec field is rejected for a resource type without a credential field as well",
+			command: "kubectl", arguments: []string{"get", "services", "--sort-by", ".spec.clusterIP"}, allowed: false,
+			rejectionReason: sortByNotAllowed(".spec.clusterIP")},
 		// kubectl evaluates --sort-by before the connector sees the response, so for secrets, whose content the
 		// connector never serializes, the expression must not be able to address that content either.
 		{name: "sort-by a metadata field of secrets is allowed",
 			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".metadata.creationTimestamp"}, allowed: true},
 		{name: "sort-by a data field of secrets is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".data.password"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource(".data.password")},
+			rejectionReason: sortByNotAllowed(".data.password")},
 		{name: "sort-by a filter expression over secrets is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", "{.data[?(@>\"S\")]}"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource("{.data[?(@>\"S\")]}")},
+			rejectionReason: sortByNotAllowed("{.data[?(@>\"S\")]}")},
 		{name: "sort-by the last-applied-configuration annotation of secrets is rejected",
 			command: "kubectl", arguments: []string{"get", "secret", "my-secret", "--sort-by", ".metadata.annotations"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource(".metadata.annotations")},
+			rejectionReason: sortByNotAllowed(".metadata.annotations")},
 		{name: "sort-by a wildcard over secrets is rejected",
 			command: "kubectl", arguments: []string{"get", "secrets", "--sort-by", ".data[*]"}, allowed: false,
-			rejectionReason: sortByNotAllowedForSensitiveResource(".data[*]")},
+			rejectionReason: sortByNotAllowed(".data[*]")},
 		{name: "a value starting with a dash is not mistaken for a flag",
 			command: "kubectl", arguments: []string{"logs", "my-pod", "--tail", "-1"}, allowed: true},
 		{name: "logs flags are allowed",
@@ -852,16 +796,18 @@ func TestValidateCommandRequest(t *testing.T) {
 // TestEveryAllowedKubectlCommandHasARedactionRationale.
 var kubectlCommandRedactionRationale = map[string]string{
 	"get": "the only kubectl command whose response is redacted, see redactSecretsInResponse",
-	"describe": "renders resource content, but is rejected for the resource types that can contain secrets, see " +
-		"describeOfResourceTypeWithSecretsRequested, and for the sensitive resource types, see " +
-		"describeOfSensitiveResourceRequested",
+	"describe": "renders resource content in a text format that cannot be parsed, and is therefore rejected for " +
+		"every resource type, see describeRequested and describeOfSensitiveResourceRequested",
 	"cluster-info": "the bare form only prints the addresses of the control plane and of the cluster's services; its " +
 		"subcommands are rejected, see allowedSubcommandsPerKubectlCommand",
 	"api-resources": "prints the known resource types and their metadata, never the content of an instance",
 	"api-versions":  "prints the available API group/versions only",
 	"explain":       "prints the schema of a resource type, not the content of an instance",
-	"events": "renders Event objects; their messages are emitted by the kubelet and by controllers and do not " +
-		"carry the credential fields of a Dash0 custom resource",
+	"events": "renders Event objects, whose messages are emitted by the kubelet and by controllers rather than " +
+		"copied from the content of a resource. This is the one entry that is a judgement call rather than a " +
+		"guarantee: an admission webhook is free to quote what was submitted to it into a rejection message, which " +
+		"the connector cannot redact. Events are kept allowed because they are what makes a failing reconciliation " +
+		"diagnosable, and because the content a webhook echoes is content the submitter already had",
 	"top": "prints a CPU/memory usage table only",
 	"auth": "restricted to \"can-i\", see allowedSubcommandsPerKubectlCommand; it answers with yes/no or with the rule " +
 		"list of the agent0-connector's own service account, never with the content of a resource",

@@ -72,6 +72,11 @@ var allowedSubcommandsPerKubectlCommand = map[string][]string{
 // is arbitrary: any format not listed here is rejected, which keeps formats added by future kubectl releases from
 // widening what the connector accepts.
 //
+// It is the first of two gates, and the wider one: it only decides whether the connector knows the format at all.
+// Which of the known formats a request may actually use is decided by safeOrRedactableOutputFormats, which rejects the
+// reshaping formats listed here. They are kept here so that a request using one is rejected with the reason that names
+// the formats that do work, rather than with "unknown format", see unredactableOutputRequested.
+//
 // Absent (and therefore rejected) are the formats that take their template from a file: "go-template-file",
 // "templatefile", "jsonpath-file" and "custom-columns-file" render the referenced file. They could be abused to read
 // arbitrary files in the agent0-connector's container, such as its service account token or its environment. Plus,
@@ -107,29 +112,27 @@ var contentFreeOutputFormats = map[string]struct{}{
 // * can be parsed and rendered
 // * can be reliably redacted because they do not reshape the response
 //
-// Absent (and therefore rejected for those resource types) are the formats that let the request reshape the response:
-// "go-template" and its alias "template", "jsonpath", "jsonpath-as-json" and "custom-columns", as well as the
-// --template flag, which selects go-template output even without -o.
+// Absent (and therefore rejected) are the formats that let the request reshape the response: "go-template" and its
+// alias "template", "jsonpath", "jsonpath-as-json" and "custom-columns", as well as the --template flag, which selects
+// go-template output even without -o.
 //
 // "kyaml" is deliberately absent as well: it renders values verbatim and would be redacted correctly, but it is a
-// recent addition to kubectl that the redaction is not exercised against yet. It stays allowed for every other
-// resource type via allowedOutputFormats.
+// recent addition to kubectl that the redaction is not exercised against yet.
 var redactableOutputFormats = map[string]struct{}{
 	"json": {},
 	"yaml": {},
 }
 
-// unredactableOutputFormatReasons holds the output formats that are rejected for a resource type that can contain
-// secrets for a reason other than being able to reshape the response. Without it the rejection would tell the caller
-// that the format reshapes values, which is wrong for these and points them away from a format that would work.
+// unredactableOutputFormatReasons holds the output formats that are rejected for a reason other than being able to
+// reshape the response. Without it the rejection would tell the caller that the format reshapes values, which is wrong
+// for these and points them away from a format that would work.
 var unredactableOutputFormatReasons = map[string]string{
 	"kyaml": "the connector does not redact this output format yet",
 }
 
-// safeSortByPathPrefixes are the top-level fields a --sort-by expression may address when the request targets a
-// resource type that can contain secrets, or a sensitive resource type. Neither the metadata nor the status of such a
-// resource holds a credential, while its spec holds every field the response redacts, and the data of a secret sits
-// outside both prefixes.
+// safeSortByPathPrefixes are the top-level fields a --sort-by expression may address. Neither the metadata nor the
+// status of a resource holds a credential, while its spec holds every field the response redacts, and the data of a
+// secret sits outside both prefixes.
 var safeSortByPathPrefixes = []string{"metadata", "status"}
 
 var safeSortByPathPrefixesHumanReadable = func() string {
@@ -145,10 +148,10 @@ var safeSortByPathPrefixesHumanReadable = func() string {
 // "kubectl.kubernetes.io/last-applied-configuration" annotation, see redactAnnotationValues.
 const unsafeSortByPathPrefix = "metadata.annotations"
 
-// safeOrRedactableOutputFormats is the allowlist of output formats a command request may use when it targets a
-// resource type that can contain secrets (see resourceTypesWithSecrets). It lists the formats that never contain
-// resource content with secrets (e.g. "", "name", "wide") and the formats that can be reliably redacted because they
-// do not reshape the response ("json", "yaml").
+// safeOrRedactableOutputFormats is the allowlist of output formats a command request may use. It lists the formats that
+// never render resource content at all ("", "name", "wide") and the formats that can be reliably redacted because they
+// do not reshape the response ("json", "yaml"). Every other format would hand out content the connector cannot walk for
+// credentials, whatever resource type the request targets.
 var safeOrRedactableOutputFormats = func() map[string]struct{} {
 	formats := maps.Clone(contentFreeOutputFormats)
 	maps.Copy(formats, redactableOutputFormats)
@@ -208,13 +211,12 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments,
 	if reason, blocked := unsafeSortByRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
-	if reason, blocked := unsafeSortByOfSensitiveResourceRequested(arguments); blocked {
-		return kubectlArguments{}, errors.New(reason)
-	}
+	// Checked before describeRequested, so that describing a secret is rejected with the reason that names what makes
+	// it worse than describing any other resource.
 	if reason, blocked := describeOfSensitiveResourceRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
-	if reason, blocked := describeOfResourceTypeWithSecretsRequested(arguments); blocked {
+	if reason, blocked := describeRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	return arguments, nil
@@ -290,27 +292,22 @@ func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
 	), true
 }
 
-// describeOfResourceTypeWithSecretsRequested reports whether the kubectl arguments describe a resource that can
-// contain secrets, returning a human-readable reason when they do. The describer renders a resource in a text format
-// that is not meant to be parsed and for which no parser is available, so the connector cannot locate the credentials
-// in its output in order to redact them.
-func describeOfResourceTypeWithSecretsRequested(parsed kubectlArguments) (string, bool) {
+// describeRequested reports whether the kubectl arguments describe a resource, returning a human-readable reason when
+// they do. The describer renders a resource in a text format that is not meant to be parsed and for which no parser is
+// available, so the connector cannot locate the credentials in its output in order to redact them.
+//
+// This holds for every resource type, not only for the ones whose schema is known to have a credential field: a
+// third-party custom resource can carry a credential just as well, and "kubectl describe" prints the annotations of any
+// resource, including the verbatim copy of the applied manifest that "kubectl apply" leaves in
+// "kubectl.kubernetes.io/last-applied-configuration".
+func describeRequested(parsed kubectlArguments) (string, bool) {
 	if parsed.kubectlCommand != "describe" {
 		return "", false
 	}
-	category, hasSecrets := targetsResourceTypeWithSecrets(parsed)
-	if !hasSecrets {
-		return "", false
-	}
-	return fmt.Sprintf(
-		"describing %s is not supported, because it can contain %s which cannot be redacted from the output of "+
-			"\"kubectl describe\"; read the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which "+
-			"returns the same content with %s redacted, and its events with "+
-			"\"kubectl events --for <resource-type>/<name>\"",
-		category.description,
-		category.secrets,
-		category.redactedContent,
-	), true
+	return "\"kubectl describe\" is not supported, because it renders a resource in a text format the connector " +
+		"cannot parse, so the credentials a resource may contain cannot be redacted from its output; read the " +
+		"resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns the same content with its " +
+		"credentials redacted, and its events with \"kubectl events --for <resource-type>/<name>\"", true
 }
 
 // describeOfSensitiveResourceRequested reports whether the kubectl arguments describe a sensitive resource, returning a
@@ -397,31 +394,24 @@ func lookupSensitiveResourceType(resourceType string) (sensitiveResource, bool) 
 // occurrence of -o/--output is checked, not just the effective (last) one, and --template counts as go-template output
 // even without -o, mirroring outputIsContentFree.
 func unredactableOutputRequested(parsed kubectlArguments) (string, bool) {
-	category, hasSecrets := targetsResourceTypeWithSecrets(parsed)
-	if !hasSecrets {
-		return "", false
-	}
 	format, unredactable := unredactableOutputFormat(parsed)
 	if !unredactable {
 		return "", false
 	}
 	if reason, hasOwnReason := unredactableOutputFormatReasons[format]; hasOwnReason {
 		return fmt.Sprintf(
-			"the output format %q cannot be redacted reliably for %s, which can contain %s, because %s; reading such "+
-				"a resource is supported with -o json/yaml/name/wide (or without an output format)",
+			"the output format %q cannot be redacted reliably, because %s; reading a resource is supported with "+
+				"-o json/yaml/name/wide (or without an output format)",
 			format,
-			category.description,
-			category.secrets,
 			reason,
 		), true
 	}
 	return fmt.Sprintf(
-		"the output format %q cannot be redacted reliably for %s, which can contain %s; reading such a resource is "+
+		"the output format %q cannot be redacted reliably, because it can reshape the values of a resource and the "+
+			"connector can then no longer find the credentials the resource may contain; reading a resource is "+
 			"supported with -o json/yaml/name/wide (or without an output format), but not with a format that can "+
 			"reshape its values (-o go-template/template/jsonpath/jsonpath-as-json/custom-columns or --template)",
 		format,
-		category.description,
-		category.secrets,
 	), true
 }
 
@@ -432,52 +422,15 @@ func unredactableOutputRequested(parsed kubectlArguments) (string, bool) {
 // of a match into a comparison oracle that reveals the value character by character over several requests. Every
 // occurrence of the flag is checked, not just the effective (last) one, mirroring unredactableOutputRequested.
 func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
-	category, hasSecrets := targetsResourceTypeWithSecrets(parsed)
-	if !hasSecrets {
-		return "", false
-	}
 	for _, expression := range parsed.valuesOf("sort-by") {
 		if sortByExpressionIsSafe(expression) {
 			continue
 		}
 		return fmt.Sprintf(
-			"the --sort-by expression %q is not allowed for %s, which can contain %s; kubectl evaluates the "+
-				"expression against the resources before the connector redacts them, so only a plain path below "+
-				"%s may be sorted by, except %q (e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
+			"the --sort-by expression %q is not allowed; kubectl evaluates the expression against the resources "+
+				"before the connector redacts them, so only a plain path below %s may be sorted by, except %q "+
+				"(e.g. --sort-by=.metadata.name or --sort-by=.status.startTime)",
 			expression,
-			category.description,
-			category.secrets,
-			safeSortByPathPrefixesHumanReadable,
-			unsafeSortByPathPrefix,
-		), true
-	}
-	return "", false
-}
-
-// unsafeSortByOfSensitiveResourceRequested reports whether the kubectl arguments sort a sensitive resource by a field
-// that can expose its content, returning a human-readable reason when they do. Listing secrets is allowed while reading
-// their content is not (see sensitiveContentRequested), but kubectl evaluates a --sort-by expression against the
-// resources before the connector ever sees the response: sorting by a field of "data" leaks its order, and a filter
-// expression such as {.data[?(@>"S")]} turns the presence of a match into a comparison oracle that reveals the value
-// over several requests. Every occurrence of the flag is checked, not just the effective (last) one, mirroring
-// unsafeSortByRequested.
-func unsafeSortByOfSensitiveResourceRequested(parsed kubectlArguments) (string, bool) {
-	resource, targeted := targetedSensitiveResource(parsed)
-	if !targeted {
-		return "", false
-	}
-	for _, expression := range parsed.valuesOf("sort-by") {
-		if sortByExpressionIsSafe(expression) {
-			continue
-		}
-		return fmt.Sprintf(
-			"the --sort-by expression %q is not allowed for a %s; kubectl evaluates the expression against the "+
-				"resources before the connector sees them, so an expression that addresses the contents of the %s "+
-				"would expose them; only a plain path below %s may be sorted by, except %q "+
-				"(e.g. --sort-by=.metadata.name or --sort-by=.metadata.creationTimestamp)",
-			expression,
-			resource.displayName,
-			resource.displayName,
 			safeSortByPathPrefixesHumanReadable,
 			unsafeSortByPathPrefix,
 		), true

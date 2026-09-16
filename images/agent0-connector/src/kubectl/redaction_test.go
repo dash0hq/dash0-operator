@@ -69,58 +69,16 @@ func TestResponseHasToBeRedacted(t *testing.T) {
 		{name: "Dash0 resource types without credential fields", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: true},
 		{name: "a resource named like a Dash0 resource", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: true},
 
-		// A format that reshapes the response cannot be walked. It is only reachable for a resource type that is not
-		// known to hold credentials, since validation rejects it for the others; such a response is handed out as
-		// kubectl rendered it rather than being withheld.
-		{name: "reshaping format of an unlisted resource type", arguments: []string{"get", "services", "-o", "jsonpath={.items[*].metadata.name}"}, expected: false},
-		{name: "template flag of an unlisted resource type", arguments: []string{"get", "nodes", "--template", "{{.kind}}"}, expected: false},
-		// A resource type that is known to hold credentials has to be redacted whatever the format, so that a response
-		// the connector cannot parse is withheld instead of handed out. Validation leaves only a repeated output format
-		// to reach this.
-		{name: "repeated output format of a resource type with secrets", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
+		// A format that reshapes the response is rejected by validation for every resource type, so it never reaches
+		// redaction. Should one ever get here, it counts as content that has to be redacted and is withheld, since
+		// parseableOutputFormat cannot resolve it - the same outcome a repeated output format gets.
+		{name: "repeated output format", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := responseHasToBeRedacted(parseKubectlArguments(tt.arguments)); got != tt.expected {
 				t.Errorf("expected responseHasToBeRedacted=%t, got %t", tt.expected, got)
-			}
-		})
-	}
-}
-
-// TestTargetsResourceTypeWithSecrets pins the resource type detection that decides which invocations validation
-// restricts to a redactable output format. Unlike responseHasToBeRedacted it must not match a resource *name* that
-// happens to read like a resource type, since that would reject a legitimate request.
-//
-//nolint:lll
-func TestTargetsResourceTypeWithSecrets(t *testing.T) {
-	tests := []struct {
-		name      string
-		arguments []string
-		expected  bool
-	}{
-		{name: "Dash0 custom resource with secrets", arguments: []string{"get", "dash0monitorings", "-o", "yaml"}, expected: true},
-		{name: "fully qualified form", arguments: []string{"get", "dash0monitorings.v1beta1.operator.dash0.com", "-o", "yaml"}, expected: true},
-		{name: "workload resource", arguments: []string{"get", "deployments", "-o", "yaml"}, expected: true},
-		{name: "workload short name", arguments: []string{"get", "sts", "-o", "yaml"}, expected: true},
-		{name: "the all shorthand renders pod specs", arguments: []string{"get", "all", "-o", "yaml"}, expected: true},
-		{name: "config map short name", arguments: []string{"get", "cm", "-o", "yaml"}, expected: true},
-		{name: "type/name pair in a later positional slot", arguments: []string{"get", "pod/a", "dash0monitoring/b", "-o", "yaml"}, expected: true},
-
-		{name: "a resource named like a config map is not a resource type", arguments: []string{"get", "services", "cm", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a workload type is not a resource type", arguments: []string{"get", "services", "deployments", "-o", "yaml"}, expected: false},
-		{name: "Dash0 resource types without credential fields", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: false},
-		{name: "third-party custom resources", arguments: []string{"get", "persesdashboards", "-o", "yaml"}, expected: false},
-		{name: "other resources", arguments: []string{"get", "services", "-o", "yaml"}, expected: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, got := targetsResourceTypeWithSecrets(parseKubectlArguments(tt.arguments)); got != tt.expected {
-				t.Errorf("expected targetsResourceTypeWithSecrets=%t, got %t", tt.expected, got)
 			}
 		})
 	}
@@ -1610,39 +1568,6 @@ done
 		}
 	})
 
-	t.Run("hands out a truncated response the connector never walks", func(t *testing.T) {
-		// A format that reshapes the response is only allowed for a resource type that is not known to hold a
-		// credential, and its result is never walked, so truncating it keeps the existing behaviour: the truncated
-		// output is returned with a notice.
-		fakeKubectlOnPath(t, `#!/bin/sh
-s=0123456789012345678901234567890123456789012345678901234567890123
-s=$s$s$s$s
-s=$s$s$s$s
-s=$s$s$s$s
-s=$s$s$s$s
-i=0
-while [ $i -lt 200 ]; do
-  printf '%s' "$s"
-  i=$((i+1))
-done
-`)
-
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-truncated-services-jsonpath",
-			Command:   "kubectl",
-			Arguments: []string{"get", "services", "-o", "jsonpath={.items[*].metadata.name}"},
-		})
-
-		if resp.GetStdout() == "" {
-			t.Error("expected the truncated response to be handed out")
-		}
-		if !strings.Contains(resp.GetStdout(), "truncated the output") {
-			t.Error("expected a truncation notice on stdout")
-		}
-		if strings.Contains(resp.GetStderr(), "withheld the response") {
-			t.Errorf("expected the response to not be withheld, got %q", resp.GetStderr())
-		}
-	})
 }
 
 func TestRedactDash0SecretsWithEmptyStdout(t *testing.T) {

@@ -76,18 +76,18 @@ object schemas.
 
 ### Adding or changing a CRD: secret redaction in the agent0-connector
 
-The agent0-connector executes read-only kubectl commands on behalf of an upstream agent and redacts the credentials of
-Dash0 custom resources from the responses before they leave the cluster. Every response it can parse - that is, every
-`kubectl get -o json` and `-o yaml` - is walked for credentials, whatever resource type it renders, so the field lists
-below decide what is found rather than whether the walk runs at all. It knows which fields hold credentials from
-hardcoded lists in `images/agent0-connector/src/kubectl/redaction.go`, which are a copy of knowledge that actually lives
-in `api/operator`. CRD changes need to be checked against them:
+The agent0-connector executes read-only kubectl commands on behalf of an upstream agent and redacts credentials from the
+responses before they leave the cluster. It hands out only what it can walk for credentials: `kubectl describe` and the
+output formats that reshape a response (`-o go-template/template/jsonpath/jsonpath-as-json/custom-columns`,
+`--template`, `-o kyaml`) are rejected for every resource type. What is left is `kubectl get` with a content-free
+format (`-o name`, `-o wide`, the default table), which renders no content at all, or with `-o json`/`-o yaml`, which
+is parsed, walked and rendered again. This is not bound to a resource type: any resource can hold a credential, a
+third-party custom resource just as well as a Dash0 one.
 
-- `dash0ResourceTypesWithSecrets` - the resource types whose content is known to contain a credential, in singular and
-  plural form. A new CRD with a credential field has to be added here. This list no longer decides whether a response is
-  walked; it decides that a response of such a type is rendered only in a format the connector can parse, and is
-  withheld rather than handed out when it cannot be parsed after all (see `targetsResourceTypeWithSecrets`). A CRD
-  missing from it is still walked, but can be read via `kubectl describe` and the reshaping output formats.
+What a CRD change has to be checked against is therefore not a list of resource types but the list of credential *field
+names* in `images/agent0-connector/src/kubectl/redaction.go`, which is a copy of knowledge that actually lives in
+`api/operator`:
+
 - `credentialFieldsPerConfigObject` - the fields that only hold a credential within a particular configuration object,
   keyed by the name of that object (e.g. `slackConfig` -> `webhookURL`). Generic field names such as `url` or `key` are
   credentials in one object and harmless in another, which is why they are keyed this way.
@@ -107,20 +107,9 @@ against a list of fragments (`token`, `key`, `header`, ...) and only looks at fi
 string, or a map of strings. It does not see a credential inside a list of name/value pairs, nor one in a free-text
 field, so a new credential field whose name matches no fragment passes it unnoticed.
 
-The same list also drives what the connector allows at all (`targetsResourceTypeWithSecrets`, used in
-`images/agent0-connector/src/kubectl/validation.go`): for a resource type that can contain secrets, `kubectl describe`
-and the output formats that can reshape a value (`-o go-template/jsonpath/custom-columns`, `--template`) are rejected,
-because their output cannot be redacted. A credential-bearing CRD that is missing from the list therefore stays fully
-readable through those formats as well.
-
-`dash0ResourceTypesWithSecrets` is one of three lists behind `targetsResourceTypeWithSecrets`. The second is
-`workloadResourceTypes`, the Kubernetes resource types that carry a pod spec (pods, deployments, daemonsets, jobs,
-controller revisions, ...). The third is `configMapResourceTypes`.
-
-When adding or changing a CRD, check all four lists above - grep for `dash0ResourceTypesWithSecrets`,
-`credentialFieldsPerConfigObject` and `urlFieldsPerConfigObject`, and read the `case` clauses of
-`redactDocumentNodeRecursively` for the field names that are credentials wherever they occur - and extend the fixtures
-in `images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
+When adding or changing a CRD, grep for `credentialFieldsPerConfigObject` and `urlFieldsPerConfigObject`, read the
+`case` clauses of `redactDocumentNodeRecursively` for the field names that are credentials wherever they occur, and
+extend the fixtures in `images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
 `go test ./api/operator/... -run TestAgent0ConnectorRedactsEveryCredentialField` to check the CRDs against the lists.
 
 Note which of the lists a field belongs in: a field listed in `credentialFieldsPerConfigObject` is redacted
@@ -128,6 +117,10 @@ unconditionally, while a header or query parameter value - including a query par
 `urlFieldsPerConfigObject` - is only redacted when it does not look like a well-known non-secret value (see
 `wellKnownNonSecretValues`). A field that always holds a credential belongs in the former, even when it is a header -
 which is why `incidentioConfig` lists `headers`.
+
+Kubernetes secrets are the one resource type that is not redacted but blocked: listing them and checking for the
+presence of a particular one is allowed, serializing their data is not (see `sensitiveResourceTypes` and
+`sensitiveContentRequested` in `images/agent0-connector/src/kubectl/validation.go`).
 
 When adding a new Dash0 CRD, it also needs to be added to the two copies of the default RBAC rules of the
 agent0-connector's ClusterRole: helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml, from
