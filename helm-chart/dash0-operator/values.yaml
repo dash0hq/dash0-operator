@@ -1475,9 +1475,26 @@ operator:
       # accessible to anyone who has access to your Dash0 organization.
       #
       # The agent0-connector component uses a set of restrictions and redaction mechanisms to prevent leaking secrets.
-      # The following are redacted:
-      # * the environment variable values and probe headers of any workload,
-      # * all credential fields in any of the Dash0 custom resources.
+      #
+      # It only returns output that it is able to inspect for credentials. "kubectl describe" and the output formats
+      # that can reshape a response (-o go-template, -o template, -o jsonpath, -o jsonpath-as-json, -o custom-columns,
+      # --template, and -o kyaml) are therefore rejected for every resource type, since their output cannot be
+      # redacted. What remains is "kubectl get" without an output format or with -o name/-o wide, which does not render
+      # the content of a resource at all, and "kubectl get -o json"/"-o yaml", whose response is parsed, inspected and
+      # rendered again. A response that cannot be parsed after all, for example because it was truncated at the
+      # connector's output size limit, is withheld entirely rather than returned.
+      #
+      # Every "kubectl get -o json"/"-o yaml" response is inspected, whatever resource type it renders, so this covers
+      # resource types that are not part of the default rules as well. The following are redacted:
+      # * the values of the environment variables and of the command line (command, args) of any workload,
+      # * the header values of the probes and lifecycle hooks of any workload,
+      # * all credential fields in any of the Dash0 custom resources,
+      # * the values of the fields token and password, and header and query parameter values, wherever they occur,
+      # * the same fields in a copy of a resource that a tool embeds in its annotations, such as the copy
+      #   "kubectl apply" stores in kubectl.kubernetes.io/last-applied-configuration.
+      #
+      # A credential in a field the connector does not know about is returned unredacted. Granting access to a resource
+      # type that keeps a credential in a field of its own therefore remains your responsibility.
       #
       # Reading the *content* of Kubernetes secrets is rejected by the agent0-connector itself, independent of
       # the rules configured here. Listing secrets and checking for their presence is allowed, if the rules list the
@@ -1487,13 +1504,11 @@ operator:
       # granted via custom RBAC rules. ConfigMaps are inaccessible under the default RBAC rules. The redaction of
       # ConfigMap content is best-effort: the connector parses every value of data and binaryData that is a JSON or
       # YAML object or list, including a YAML value that holds several documents, and replaces the values of certain
-      # key names (token, password, headers, queryParameters, httpHeaders). The values of binaryData are base64 and are
-      # decoded before they are inspected and encoded again afterward. A credential in a format the connector cannot
-      # parse (a properties file, a shell script), or under a key name it does not know, is returned unredacted. That
-      # is to say, only allow access to ConfigMaps if they do not contain secrets, or if the redaction described here
-      # is sufficient.
-      #
-      # The content of every resource type outside the set mentioned above is returned verbatim, that is, unredacted.
+      # key names (token, password, headers, queryParameters, httpHeaders, env, command, args). The values of binaryData
+      # are base64 and are decoded before they are inspected and encoded again afterward. A credential in a format the
+      # connector cannot parse (a properties file, a shell script), or under a key name it does not know, is returned
+      # unredacted. That is to say, only allow access to ConfigMaps if they do not contain secrets, or if the redaction
+      # described here is sufficient.
       #
       # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
       # which are required for this component) to the group system:authenticated via the system:discovery cluster role
