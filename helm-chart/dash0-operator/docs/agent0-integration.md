@@ -60,7 +60,7 @@ Nothing is executed proactively or on a schedule: the connector is idle until Ag
   A service whose selector matches nothing, or a network policy that drops the traffic, produces no telemetry saying
   so — it is only visible in the resources themselves.
 * **No manual copy-and-paste.**
-  No more pasting `kubectl describe` output into a chat window to get help interpreting it.
+  No more pasting `kubectl` output into a chat window to get help interpreting it.
 * **No inbound access to your cluster.**
   The connection is established from inside your cluster, outbound only.
   Your API server stays private and no kubeconfig or API server credential ever leaves the cluster.
@@ -136,10 +136,14 @@ contract.
   No other executable can be invoked.
   There is no shell, no pipe, no redirection.
 * **Only read-only `kubectl` commands.**
-  The allowlist is `api-resources`, `api-versions`, `auth`, `cluster-info`, `describe`, `events`, `explain`, `get`,
-  `logs`, `top` and `version`.
+  The allowlist is `api-resources`, `api-versions`, `auth`, `cluster-info`, `events`, `explain`, `get`, `logs`, `top`
+  and `version`.
   Everything else — `apply`, `delete`, `edit`, `exec`, `port-forward`, `scale`, `patch`, and any command a future
   `kubectl` release might add — is rejected.
+  `kubectl describe` is rejected as well, although it only reads: it renders a resource in a text format that cannot be
+  parsed, so the credentials the resource may hold cannot be removed from its output.
+  Agent0 reads a resource with `kubectl get -o yaml` instead, which returns the same content with its credentials
+  redacted, and reads its events with `kubectl events --for`.
 * **Subcommands are restricted where needed.**
   `auth` is only allowed as `auth can-i`, never as `auth reconcile`, which would write roles and role bindings.
   `cluster-info` is only allowed bare, never as `cluster-info dump`.
@@ -150,51 +154,69 @@ contract.
   verbosity 8 and above; it is rejected at every level).
 * **Output formats are allowlisted.**
   The file-based template formats (`go-template-file`, `jsonpath-file`, `custom-columns-file`) are rejected outright.
+  So are the formats that can reshape a response and thereby hide a credential from the redaction (`-o go-template`,
+  `-o template`, `-o jsonpath`, `-o jsonpath-as-json`, `-o custom-columns` and `--template`), as well as `-o kyaml`,
+  which the connector does not redact yet.
+  What remains is `-o json` and `-o yaml`, whose response is redacted, and the formats that expose no resource content
+  at all (`-o name`, `-o wide`, the default table output).
+* **Sorting cannot be used to read a credential.**
+  `kubectl` evaluates a `--sort-by` expression against the resources before the connector sees them, so sorting by a
+  field that is redacted would leak the order of its values.
+  Only a plain path below `metadata` or `status` may be sorted by, and not `metadata.annotations`.
 * **Secret contents are refused by the connector itself**, independent of your RBAC rules.
   Listing secrets and checking whether a particular one exists is possible if you grant access to secrets; serializing
-  their data is not, and `kubectl describe secret` is rejected as well.
+  their data is not.
 * **Commands are bounded.**
   Each invocation has a timeout, and the captured output is capped, so a single command cannot exhaust the pod's
   memory.
 
 ### Secret Redaction
 
-For the resource types that can carry credentials, the connector parses the response and removes the credentials before
-it is sent back.
+The connector parses every response that renders resource content and removes the credentials before it is sent back.
+This is not limited to the resource types that are known to carry credentials: any resource can hold one, a third-party
+custom resource just as well as a Dash0 one, so every `kubectl get -o json` and `kubectl get -o yaml` response is
+inspected, whatever resource type it renders.
 Redacted are:
 
 * the literal values of the environment variables of every container of any workload (pods, deployments, daemon sets,
   stateful sets, replica sets, jobs, cron jobs, controller revisions, …),
+* the command line of every container — `command` and `args` — where a credential is passed as routinely as it is in an
+  environment variable,
 * the header values of HTTP probes and lifecycle hooks of any workload,
 * all credential fields of the Dash0 custom resources — the Dash0 authorization token, exporter headers, the
   credentials of notification channel integrations, and the credentials a synthetic check sends with its request,
+* the fields `token` and `password`, and header and query parameter values, wherever they occur — which is what covers
+  a resource type the connector has no specific knowledge of,
 * the `kubectl.kubernetes.io/last-applied-configuration` annotation, which holds a verbatim copy of the applied
-  manifest,
+  manifest, and the equivalent copies other tools embed in annotations, wherever in the resource they sit,
 * the JSON and YAML content of ConfigMaps, if you granted access to ConfigMaps via custom RBAC rules (best effort, see
   the caveats below).
 
 Redaction is fail-closed.
-For those resource types, the connector only accepts output formats it can reliably redact — `-o json`, `-o yaml`, and
-the formats that expose no content at all (`-o name`, `-o wide`, the default table output).
-Formats that could reshape the response and hide a credential in the process (`-o go-template`, `-o jsonpath`,
-`-o custom-columns`, `--template`) are rejected for them, and so is `kubectl describe`, whose text output cannot be
-parsed reliably.
-Likewise, a response that turns out not to be parseable — for example because it hit the output size cap and was
-truncated — is withheld entirely rather than handed out unredacted.
+The connector only returns output it can inspect: the output formats and the `kubectl` commands whose result cannot be
+redacted are rejected for every resource type (see [Command Validation](#command-validation) above).
+A response that turns out not to be parseable — for example because it hit the output size cap and was truncated — is
+withheld entirely rather than handed out unredacted.
 
 The redaction of ConfigMap content is best-effort.
 The connector inspects every `data` and `binaryData` value that parses as a JSON or YAML object or list and replaces
-the values of the key names it knows (`token`, `password`, `headers`, `queryParameters`, `httpHeaders`).
+the values of the key names it knows (`token`, `password`, `headers`, `queryParameters`, `httpHeaders`, `env`,
+`command`, `args`).
 A credential in a format it cannot parse — a properties file, a shell script — or under a key name it does not know
 is returned unredacted.
 Only grant access to ConfigMaps if they do not contain secrets, or if this redaction is sufficient for your setup.
 
 #### What Is Not Redacted
 
-Redaction covers the resource types listed above.
-The content of every other resource type is returned as-is, and so are **pod logs**, which the default rules grant
-access to.
-If your applications log credentials, those log lines are visible to Agent0.
+Redaction matches credentials by field name, so a credential a resource keeps under a name the connector does not know
+is returned as-is.
+This is the limit of what it can do for a resource type it has no specific knowledge of: the fields listed above are
+covered everywhere, but a custom resource that stores an API key in a field of its own is not.
+
+**Pod logs** are not redacted at all, and the default rules grant access to them.
+The output of `kubectl logs` is whatever your application wrote, not a resource document that could be parsed and
+inspected, so if your applications log credentials, those log lines are visible to Agent0.
+
 Likewise, if you grant access to additional resource types via custom RBAC rules, consider whether those resources can
 hold sensitive values — anything that leaves the cluster is accessible to everyone who has access to your Dash0
 organization and can use Agent0.
