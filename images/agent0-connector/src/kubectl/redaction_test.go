@@ -427,6 +427,52 @@ func nestedObject(t *testing.T, node map[string]any, path ...string) map[string]
 	return node
 }
 
+// TestRedactWorkloadCommandLines covers the command line of a container, which can carry a credential the same way an
+// environment variable can.
+func TestRedactWorkloadCommandLines(t *testing.T) {
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "my-pod"
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "app",
+                "image": "app:1.0.0",
+                "command": ["/bin/sh", "-c"],
+                "args": ["exporter --api-key=my-command-line-secret"],
+                "livenessProbe": {
+                    "exec": {
+                        "command": ["check", "--token=my-probe-command-secret"]
+                    }
+                }
+            }
+        ]
+    }
+}`
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, value := range []string{"my-command-line-secret", "my-probe-command-secret", "/bin/sh"} {
+		if strings.Contains(rendered, value) {
+			t.Errorf("expected the command line element %q to be redacted, got %q", value, rendered)
+		}
+	}
+	// The rest of the container stays readable, which is what makes the response useful for diagnosing it.
+	for _, preserved := range []string{"my-pod", "app:1.0.0"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
+	}
+	// The elements are replaced in the document only. Scrubbing them from stderr as well would replace ordinary words
+	// in unrelated output, see redactArgumentValues.
+	if len(replaced) > 0 {
+		t.Errorf("expected no command line element to be scrubbed from stderr, got %v", replaced)
+	}
+}
+
 // TestRedactWorkloadEnvVars covers the environment variables of a pod spec, wherever the pod spec sits.
 func TestRedactWorkloadEnvVars(t *testing.T) {
 	t.Run("redacts the literal value of every environment variable", func(t *testing.T) {

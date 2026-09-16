@@ -710,7 +710,8 @@ func isWalkableNode(node any) bool {
 //   - the credentials of the third-party integration of a notification channel and the request body of a synthetic
 //     check (see credentialFieldsPerConfigObject),
 //   - the credential-bearing parts of the URL a synthetic check requests (see urlFieldsPerConfigObject),
-//   - the literal values of the environment variables of every container of a pod spec (see redactEnvVarValues),
+//   - the literal values of the environment variables of every container of a pod spec (see redactEnvVarValues), and
+//     the elements of its command line (see redactArgumentValues),
 //   - the header values of the HTTP probes and lifecycle hooks of a pod spec, which have the same shape as the header
 //     values of an export,
 //   - the credentials within the values of the data of a config map (see redactConfigMapData).
@@ -738,6 +739,8 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 				redactHeaderValues(typedNode, key, redacted)
 			case "env":
 				redactEnvVarValues(typedNode, key, redacted)
+			case "command", "args":
+				redactArgumentValues(typedNode, key, redacted)
 			default:
 				if credentialFields, hasCredentials := credentialFieldsPerConfigObject[key]; hasCredentials {
 					redactCredentialFields(value, credentialFields, redacted)
@@ -804,6 +807,30 @@ func redactEnvVarValues(node map[string]any, key string, redacted *redactor) {
 // words that would garble unrelated stderr output if they were replaced there.
 func redactEnvVarValue(node map[string]any, redacted *redactor) {
 	if _, replaced := replaceValueOf(node, "value"); replaced {
+		redacted.addWithoutStderrScrub()
+	}
+}
+
+// redactArgumentValues redacts the command line held by the given key of node, that is, the "command" or "args" of one
+// container of a pod spec, or the "command" of an exec probe or lifecycle hook. A credential is passed on a command
+// line as routinely as it is passed in an environment variable ("--api-key=...", "curl -H 'Authorization: ...'"), and
+// the two are indistinguishable from an innocuous argument, so every element is replaced rather than only the ones that
+// look like a credential - the same treatment the environment variable values get, see redactEnvVarValues.
+//
+// The replaced values are not recorded for the stderr scrub, for the reason redactEnvVarValue gives: kubectl renders a
+// command line on stdout and never quotes it in an error message, while its elements are ordinary words that would
+// garble unrelated stderr output.
+func redactArgumentValues(node map[string]any, key string, redacted *redactor) {
+	arguments, isList := node[key].([]any)
+	if !isList {
+		return
+	}
+	for i, argument := range arguments {
+		value, isString := argument.(string)
+		if !isString || value == "" || value == redactedValue {
+			continue
+		}
+		arguments[i] = redactedValue
 		redacted.addWithoutStderrScrub()
 	}
 }

@@ -95,7 +95,9 @@ in `api/operator`. CRD changes need to be checked against them:
   sensitive parts of the URL are redacted. A URL that is a credential as a whole, such as a webhook URL, belongs in
   `credentialFieldsPerConfigObject` instead.
 - The field names that are credentials wherever they occur are handled in `redactDocumentNodeRecursively`: `token`,
-  `password`, and the header/query parameter values under `headers` and `queryParameters`.
+  `password`, the header/query parameter values under `headers`, `queryParameters` and `httpHeaders`, and the values
+  under `env`, `command` and `args`, which are replaced in full because a credential cannot be told apart from an
+  innocuous value there.
 
 Missing that step can be silent: the new credential is simply not matched, the response is still considered fully
 redacted, and the credential is sent to the backend in plaintext. The test
