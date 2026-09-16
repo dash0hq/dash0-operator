@@ -87,7 +87,7 @@ apply_args_env() {
   ]" >/dev/null
 }
 
-# shellcheck disable=SC2329  # invoked via 'trap restore EXIT'
+# shellcheck disable=SC2317,SC2329  # invoked via 'trap restore EXIT'
 restore() {
   info "restoring the manager Deployment to its original args and env"
   apply_args_env "$orig_args" "$orig_env"
@@ -127,7 +127,7 @@ manager_logs() {
 }
 
 applied_has_flag() { manager_logs | grep -F "$applied_msg" | grep -qF "$1"; }
-# shellcheck disable=SC2329  # invoked indirectly via 'retry'
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via 'retry'
 logs_have() { manager_logs | grep -qF "$1"; }
 
 retry() {
