@@ -451,6 +451,40 @@ func TestRedactNestedAnnotations(t *testing.T) {
 	}
 }
 
+// TestRedactYamlAnnotations covers an annotation whose value is a YAML document rather than a JSON one. Not every tool
+// embeds its copy of a manifest as JSON the way kubectl apply does, and a credential in such a copy is no less a
+// credential.
+func TestRedactYamlAnnotations(t *testing.T) {
+	const yamlAnnotationToken = "auth_yaml-annotation-token"
+	const document = `{
+    "apiVersion": "operator.dash0.com/v1beta1",
+    "kind": "Dash0Monitoring",
+    "metadata": {
+        "name": "my-monitoring",
+        "annotations": {
+            "my-tool/applied": "spec:\n  exports:\n    - dash0:\n        authorization:\n          token: ` +
+		yamlAnnotationToken + `\n",
+            "my-tool/revision": "17",
+            "my-tool/managed-by": "my-tool"
+        }
+    }
+}`
+
+	rendered, _ := redactDocument(t, document)
+
+	if strings.Contains(rendered, yamlAnnotationToken) {
+		t.Errorf("expected the token of a YAML-valued annotation to be redacted, got %q", rendered)
+	}
+	if !strings.Contains(rendered, redactedValue) {
+		t.Errorf("expected the redacted YAML annotation to hold the placeholder, got %q", rendered)
+	}
+	for _, untouched := range []string{`"my-tool/revision": "17"`, `"my-tool/managed-by": "my-tool"`} {
+		if !strings.Contains(rendered, untouched) {
+			t.Errorf("expected the annotation %s to be handed out unchanged, got %q", untouched, rendered)
+		}
+	}
+}
+
 // TestRedactWorkloadCommandLines covers the command line of a container, which can carry a credential the same way an
 // environment variable can.
 func TestRedactWorkloadCommandLines(t *testing.T) {

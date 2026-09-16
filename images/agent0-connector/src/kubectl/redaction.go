@@ -506,6 +506,21 @@ func renderConfigMapValue(format string, documents []any) (string, error) {
 	return strings.Join(rendered, yamlDocumentSeparator+"\n"), nil
 }
 
+// renderAnnotationValue renders the documents of one annotation value again, see redactAnnotationValues. JSON is
+// rendered compactly rather than indented, which is the shape kubectl apply writes the
+// "kubectl.kubernetes.io/last-applied-configuration" annotation in, so that a redacted annotation stays a single line
+// like every other one.
+func renderAnnotationValue(format string, documents []any) (string, error) {
+	if format == outputFormatJson && len(documents) == 1 {
+		rendered, err := json.Marshal(documents[0])
+		if err != nil {
+			return "", err
+		}
+		return string(rendered), nil
+	}
+	return renderConfigMapValue(format, documents)
+}
+
 // parseConfigMapValue parses one value of the data of a config map into its documents and reports the format they were
 // parsed from, so that they can be rendered again in the same format. JSON is tried first, since sigs.k8s.io/yaml
 // accepts JSON as well and would otherwise turn a JSON value into YAML. JSON has no notion of several documents, so
@@ -907,9 +922,10 @@ func redactUrlPart(rawPart string, decodedPart string, redacted *redactor) strin
 // redactAnnotationValues redacts the secrets in the resource copies that tools embed in an annotations map. kubectl
 // apply stores a verbatim copy of the applied manifest - including the plaintext auth token, potentially an older one
 // than the one in the current spec - in the "kubectl.kubernetes.io/last-applied-configuration" annotation. Every
-// annotation value that parses as JSON is walked, so that equivalent annotations of other tools are covered as well,
-// and is rendered again only when the walk actually replaced something, so that an unrelated annotation is handed out
-// exactly as kubectl rendered it.
+// annotation value that parses as a JSON or YAML object or list is walked, so that equivalent annotations of other
+// tools are covered as well no matter which of the two formats they embed the copy in, and is rendered again in the
+// format it was parsed from, only when the walk actually replaced something, so that an unrelated annotation is handed
+// out exactly as kubectl rendered it.
 //
 // It is reached from redactDocumentNodeRecursively rather than from the resource root, so that every annotations map is
 // covered wherever it sits: on the resource itself, on the pod template of a workload, on a resource nested in a list,
@@ -925,21 +941,23 @@ func redactAnnotationValues(node any, redacted *redactor) {
 		if !isString {
 			continue
 		}
-		var embeddedResource any
-		if err := unmarshalPreservingNumbers(annotationString, &embeddedResource); err != nil {
+		documents, format, parsed := parseConfigMapValue(annotationString)
+		if !parsed {
 			continue
 		}
 		countBefore := redacted.count
-		redactDocumentNodeRecursively(embeddedResource, redacted)
+		for _, document := range documents {
+			redactDocumentNodeRecursively(document, redacted)
+		}
 		if redacted.count == countBefore {
 			continue
 		}
-		rendered, err := json.Marshal(embeddedResource)
+		rendered, err := renderAnnotationValue(format, documents)
 		if err != nil {
 			redacted.fail(fmt.Errorf("the redacted %q annotation could not be rendered: %w", name, err))
 			continue
 		}
-		annotations[name] = string(rendered)
+		annotations[name] = rendered
 	}
 }
 
