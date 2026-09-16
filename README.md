@@ -22,7 +22,7 @@ runtimes, automatic log collection and metrics.
 
 Auto-instrumentation is supported for the following runtimes:
 
-* Node.js 16+, using
+* Node.js 18.19+, using
   [Dash0 Node.js OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-js-distribution)
 * Java 8+, using the [OpenTelemetry Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation)
 * .NET, using the
