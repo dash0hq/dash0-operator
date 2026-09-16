@@ -903,7 +903,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should not add the -processor.resourcedetection.propagateerrors feature gate to any collector, since none of "+
-		"them runs the resourcedetection processor on the Signal Control image", func() {
+		"them runs the resource_detection processor on the Signal Control image", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
