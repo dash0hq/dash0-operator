@@ -1448,7 +1448,8 @@ operator:
     clusterRole:
 
       # Custom RBAC rules for the cluster role of the agent0-connector. By default, this list is empty and the operator
-      # grants read-only access to a fixed set of well-known resource types.
+      # grants read-only access to a fixed set of well-known resource types. The default rules are listed in
+      # helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml.
       #
       # The rules configured here replace the default rules for the agent0-connector cluster role, they are not merged
       # with the defaults. Configuring custom rules can also be used to restrict agent0-connector's access in the
@@ -1467,33 +1468,32 @@ operator:
       # "kubectl auth can-i" requires and which cannot modify cluster state. Any other verb, in particular a write verb
       # like "create", "update", "patch" or "delete", as well as the wildcard "*", makes the Helm installation fail.
       #
-      # Allowing access to additional resources can have security implications. Only grant access to additional
-      # resources types when you are confident that it cannot be used to exfiltrate sensitive data (auth tokens,
-      # credentials, API secrets etc.) from the cluster. Failure to do so makes these secrets accessible to anyone who
-      # has access to your Dash0 organization. The agent0-connector component uses a set of restrictions and redaction
-      # mechanisms to prevent leaking secrets. The following are redacted:
+      # **IMPORTANT:** Allowing access to additional resources can have security implications. When you set up custom
+      # rules here, it becomes your responsibility to make sure they still match your security needs. Only grant access
+      # to additional resources types when you are confident that it cannot be used to access sensitive data (auth
+      # tokens, credentials, API secrets, PII etc.) in the cluster. Failure to do so makes that sensitive data
+      # accessible to anyone who has access to your Dash0 organization.
+      #
+      # The agent0-connector component uses a set of restrictions and redaction mechanisms to prevent leaking secrets.
+      # The following are redacted:
       # * the environment variable values and probe headers of any workload,
       # * all credential fields in any of the Dash0 custom resources.
+      #
+      # Reading the *content* of Kubernetes secrets is rejected by the agent0-connector itself, independent of
+      # the rules configured here. Listing secrets and checking for their presence is allowed, if the rules list the
+      # secrets resource type. The default rules do not include access to secrets.
+      #
       # Automatic redaction is also applied to the JSON or YAML content of ConfigMaps, if access to ConfigMaps is
-      # granted via custom RBAC rules. (ConfigMaps are inaccessible under the default RBAC rules.) The redaction of
+      # granted via custom RBAC rules. ConfigMaps are inaccessible under the default RBAC rules. The redaction of
       # ConfigMap content is best-effort: the connector parses every value of data and binaryData that is a JSON or
       # YAML object or list, including a YAML value that holds several documents, and replaces the values of certain
       # key names (token, password, headers, queryParameters, httpHeaders). The values of binaryData are base64 and are
-      # decoded before they are inspected and encoded again afterwards. A credential in a format the connector cannot
+      # decoded before they are inspected and encoded again afterward. A credential in a format the connector cannot
       # parse (a properties file, a shell script), or under a key name it does not know, is returned unredacted. That
       # is to say, only allow access to ConfigMaps if they do not contain secrets, or if the redaction described here
       # is sufficient.
       #
-      # Note that a ConfigMap value the connector did redact something in is re-rendered as a whole, which drops its
-      # comments and normalizes its key order and scalar notation. A value nothing was redacted from is returned byte
-      # for byte.
-      #
-      # The content of every resource type outside the set mentioned above (standard Kubernetes workload resources,
-      # Dash0 custom resources, and JSON/YAML ConfigMap content) is returned verbatim, i.e. unredacted.
-      #
-      # Reading the *content* of Kubernetes secrets is rejected by the agent0-connector itself, independent of
-      # the rules configured here. (Listing secrets and checking for their presence is allowed, if the rules list the
-      # secrets resource type - the default rules do not include access to secrets).
+      # The content of every resource type outside the set mentioned above is returned verbatim, that is, unredacted.
       #
       # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
       # which are required for this component) to the group system:authenticated via the system:discovery cluster role
