@@ -427,6 +427,72 @@ func nestedObject(t *testing.T, node map[string]any, path ...string) map[string]
 	return node
 }
 
+// TestRedactNestedAnnotations covers the annotations that do not sit on the resource the response lists, but deeper in
+// the document: on the pod template of a workload, or on a resource nested in a list. A tool embeds the same verbatim
+// copy of a manifest there that "kubectl apply" embeds on the resource itself.
+func TestRedactNestedAnnotations(t *testing.T) {
+	const podTemplateToken = "auth_pod-template-annotation-token"
+	const nestedListToken = "auth_nested-list-annotation-token"
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "List",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "name": "my-deployment"
+            },
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "my-tool/applied": "{\"spec\":{\"exports\":[{\"dash0\":{\"authorization\":{\"token\":\"` +
+		podTemplateToken + `\"}}}]}}"
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "app"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "List",
+            "items": [
+                {
+                    "apiVersion": "operator.dash0.com/v1beta1",
+                    "kind": "Dash0Monitoring",
+                    "metadata": {
+                        "name": "nested",
+                        "annotations": {
+                            "kubectl.kubernetes.io/last-applied-configuration": "{\"spec\":{\"exports\":[{\"dash0\":{\"authorization\":{\"token\":\"` +
+		nestedListToken + `\"}}}]}}"
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}`
+
+	rendered, _ := redactDocument(t, document)
+
+	for _, token := range []string{podTemplateToken, nestedListToken} {
+		if strings.Contains(rendered, token) {
+			t.Errorf("expected the token %q of a nested annotation to be redacted, got %q", token, rendered)
+		}
+	}
+	if !strings.Contains(rendered, "my-deployment") {
+		t.Errorf("expected the rest of the document to be preserved, got %q", rendered)
+	}
+}
+
 // TestRedactWorkloadCommandLines covers the command line of a container, which can carry a credential the same way an
 // environment variable can.
 func TestRedactWorkloadCommandLines(t *testing.T) {

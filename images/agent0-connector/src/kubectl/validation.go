@@ -142,7 +142,7 @@ var safeSortByPathPrefixesHumanReadable = func() string {
 
 // unsafeSortByPathPrefix is the one field below safeSortByPathPrefixes that a --sort-by expression may not address:
 // kubectl apply stores a verbatim copy of the applied manifest, credentials included, in the
-// "kubectl.kubernetes.io/last-applied-configuration" annotation, see redactAnnotations.
+// "kubectl.kubernetes.io/last-applied-configuration" annotation, see redactAnnotationValues.
 const unsafeSortByPathPrefix = "metadata.annotations"
 
 // safeOrRedactableOutputFormats is the allowlist of output formats a command request may use when it targets a

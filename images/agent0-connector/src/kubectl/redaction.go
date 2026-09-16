@@ -444,10 +444,16 @@ func hasYamlDocumentSeparator(stdout string) bool {
 
 // redactor replaces the credential values of a document with redactedValue and collects the values it replaced. The
 // count is tracked separately from the set of values, so that a caller can tell whether a node changed even when it
-// held a value that had already been replaced elsewhere (see redactAnnotations).
+// held a value that had already been replaced elsewhere (see redactAnnotationValues).
 type redactor struct {
 	values map[string]struct{}
 	count  int
+
+	// err holds the first failure that leaves a credential in the document, e.g. an annotation that was redacted but
+	// could not be rendered again. The walk cannot return an error - it recurses through every node of a document - so
+	// the failure is recorded here and checked once the walk is done, see redactResourceItem. A non-nil err means the
+	// response must not be handed out.
+	err error
 }
 
 func (r *redactor) add(value string) {
@@ -456,9 +462,17 @@ func (r *redactor) add(value string) {
 }
 
 // addWithoutStderrScrub records a replacement whose replaced value must not be scrubbed from stderr, see
-// redactEnvVarValue. Only the count is tracked, so that redactAnnotations still notices that the node changed.
+// redactEnvVarValue. Only the count is tracked, so that redactAnnotationValues still notices that the node changed.
 func (r *redactor) addWithoutStderrScrub() {
 	r.count++
+}
+
+// fail records that a credential could not be removed from the document. The first failure is kept: it is the one that
+// describes what went wrong, and every later one is reported against a document that is already being withheld.
+func (r *redactor) fail(err error) {
+	if r.err == nil {
+		r.err = err
+	}
 }
 
 // valuesToScrubFromStderr returns the redacted values that are worth replacing in stderr as well, ordered from longest
@@ -483,7 +497,7 @@ func (r *redactor) valuesToScrubFromStderr() []string {
 }
 
 // targetsResourceTypeWithSecrets returns the category of the first resource type the kubectl arguments reference whose
-// content can contain secrets (see resourceTypesWithSecrets). Unlike responseCanContainSecrets it does not look at the
+// content can contain secrets (see resourceTypesWithSecrets). Unlike responseHasToBeRedacted it does not look at the
 // kubectl command or the output format, since it answers whether a response could contain a secret at all, not whether
 // the response has to be redacted. It is the basis for rejecting the output formats whose rendering of a secret cannot
 // be redacted reliably, see unredactableOutputRequested in validation.go.
@@ -522,10 +536,10 @@ func redactResourceList(document any, redacted *redactor) error {
 }
 
 // redactResourceItem redacts the secrets of a single resource, both in its own content and in the copies of it that
-// tools embed in its annotations.
+// tools embed in its annotations, which the walk reaches wherever they sit (see redactAnnotationValues).
 func redactResourceItem(resource any, redacted *redactor) error {
 	redactDocumentNodeRecursively(resource, redacted)
-	return redactAnnotations(resource, redacted)
+	return redacted.err
 }
 
 // redactConfigMapData redacts the credentials in the values of the data of a config map. Each value is a string that
@@ -720,7 +734,7 @@ func isWalkableNode(node any) bool {
 // sourced via valueFrom are ignored. Apart from the fields that are only credentials within a particular
 // configuration object, the walk is not bound to specific paths, so it covers any future location of these fields as
 // well. It is applied to the resources themselves as well as to the copies of them that are embedded in annotations
-// (see redactResourceItem).
+// (see redactAnnotationValues).
 //
 // Every redaction is reached from this one walk, so that a node is redacted the same way wherever it occurs: at the
 // root of the response, inside the copy of a resource that a tool embedded in an annotation, or nested in the content
@@ -741,6 +755,8 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 				redactEnvVarValues(typedNode, key, redacted)
 			case "command", "args":
 				redactArgumentValues(typedNode, key, redacted)
+			case "annotations":
+				redactAnnotationValues(value, redacted)
 			default:
 				if credentialFields, hasCredentials := credentialFieldsPerConfigObject[key]; hasCredentials {
 					redactCredentialFields(value, credentialFields, redacted)
@@ -1028,24 +1044,21 @@ func redactUrlPart(rawPart string, decodedPart string, redacted *redactor) strin
 	return redactedValue
 }
 
-// redactAnnotations redacts the secrets in the resource copies that tools embed in the metadata.annotations of a
-// resource. kubectl apply stores a verbatim copy of the applied manifest - including the plaintext auth token,
-// potentially an older one than the one in the current spec - in the
-// "kubectl.kubernetes.io/last-applied-configuration" annotation. Every annotation value that parses as JSON is walked,
-// so that equivalent annotations of other tools are covered as well, and is rendered again only when the walk actually
-// replaced something, so that an unrelated annotation is handed out exactly as kubectl rendered it.
-func redactAnnotations(resource any, redacted *redactor) error {
-	resourceMap, isMap := resource.(map[string]any)
+// redactAnnotationValues redacts the secrets in the resource copies that tools embed in an annotations map. kubectl
+// apply stores a verbatim copy of the applied manifest - including the plaintext auth token, potentially an older one
+// than the one in the current spec - in the "kubectl.kubernetes.io/last-applied-configuration" annotation. Every
+// annotation value that parses as JSON is walked, so that equivalent annotations of other tools are covered as well,
+// and is rendered again only when the walk actually replaced something, so that an unrelated annotation is handed out
+// exactly as kubectl rendered it.
+//
+// It is reached from redactDocumentNodeRecursively rather than from the resource root, so that every annotations map is
+// covered wherever it sits: on the resource itself, on the pod template of a workload, on a resource nested in a list,
+// or on one embedded in the value of a config map. An annotation that was redacted but could not be rendered again
+// still holds its credential, so that failure is recorded on the redactor and withholds the whole response.
+func redactAnnotationValues(node any, redacted *redactor) {
+	annotations, isMap := node.(map[string]any)
 	if !isMap {
-		return nil
-	}
-	metadata, isMap := resourceMap["metadata"].(map[string]any)
-	if !isMap {
-		return nil
-	}
-	annotations, isMap := metadata["annotations"].(map[string]any)
-	if !isMap {
-		return nil
+		return
 	}
 	for name, annotationValue := range annotations {
 		annotationString, isString := annotationValue.(string)
@@ -1063,12 +1076,11 @@ func redactAnnotations(resource any, redacted *redactor) error {
 		}
 		rendered, err := json.Marshal(embeddedResource)
 		if err != nil {
-			// The annotation still holds the credential in plaintext, so the response must not be handed out.
-			return fmt.Errorf("the redacted %q annotation could not be rendered: %w", name, err)
+			redacted.fail(fmt.Errorf("the redacted %q annotation could not be rendered: %w", name, err))
+			continue
 		}
 		annotations[name] = string(rendered)
 	}
-	return nil
 }
 
 // redactAllSecrets replaces every occurrence of every secret in text with redactedValue.
