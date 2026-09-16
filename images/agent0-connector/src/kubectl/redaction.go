@@ -6,9 +6,11 @@
 // The stdout response of the kubectl invocation is parsed into a document, the credential values are replaced
 // within that document, and the document is rendered again.
 //
-// This is only possible for formats the connector can parse, reliably interprete, and render itself. Requests that
-// target a Dash0 custom resource which can contain secrets, or a workload resource, are restricted to output formats
-// that satisfy these constraints (see safeOrRedactableOutputFormats in validation.go).
+// This is only possible for formats the connector can parse, reliably interprete, and render itself. Every response
+// rendered in such a format is walked, whatever resource type it holds: a third-party custom resource can hold a
+// credential just as well as a Dash0 one. The resource types that are known to hold credentials
+// (resourceTypesWithSecrets) are additionally restricted to exactly these output formats, so that their content can
+// never be rendered in a form the walk cannot reach (see safeOrRedactableOutputFormats in validation.go).
 //
 //   - "-o json" and "-o yaml" render the resources as a document.
 //   - the content-free formats ("-o name", "-o wide", the default table) do not expose the content of a resource at
@@ -275,9 +277,11 @@ var parseableOutputFormats = map[string]struct{}{
 // "kubectl.kubernetes.io/last-applied-configuration" annotation - and the document is rendered again in the format the
 // request asked for.
 //
-// Only responses that render a Dash0 custom resource which can contain secrets, or a workload resource are redacted;
-// for those, validation.go has already restricted the request to an output format the connector can parse and render
-// (see safeOrRedactableOutputFormats).
+// Every response the connector can parse is redacted, whatever resource type it renders, since any resource can hold a
+// credential (see responseHasToBeRedacted). For the resource types that are known to hold one, validation.go has
+// already restricted the request to an output format the connector can parse and render (see
+// safeOrRedactableOutputFormats), so a response of such a type that cannot be parsed is withheld rather than handed
+// out.
 //
 // A non-nil error means the response could not be redacted and must not be sent to the backend, see withholdResponse.
 func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, stdoutTruncated bool) error {
@@ -285,16 +289,19 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 	if resp.GetStdout() == "" && resp.GetStderr() == "" {
 		return nil
 	}
-	if !responseCanContainSecrets(parsed) {
-		// The response either does not target a resource type that can contain secrets, or it uses an output format that
-		// does not render details (e.g. default table, name, wide). No redaction is required.
+	if !responseHasToBeRedacted(parsed) {
+		// The response either renders no resource content at all (e.g. default table, name, wide), or it uses an output
+		// format the connector cannot parse for a resource type that is not known to hold credentials. No redaction is
+		// required.
 		return nil
 	}
 
 	format, parseable := parsed.parseableOutputFormat()
 	if !parseable {
-		// Unreachable for a validated request: the only other formats left for these resource types are the
-		// content-free ones, which responseCanContainSecrets already ruled out. (Or requests with multiple output formats.)
+		// Only reachable for a resource type of resourceTypesWithSecrets: for every other type
+		// responseHasToBeRedacted already reported false for a format that cannot be parsed. For those types validation
+		// leaves only the parseable and the content-free formats, so what remains here is an invocation that sets the
+		// output format more than once, which parseableOutputFormat refuses to resolve.
 		return fmt.Errorf("the output format of this command cannot be parsed for redaction")
 	}
 	if stdoutTruncated {
@@ -329,21 +336,39 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 	return nil
 }
 
-// responseCanContainSecrets reports whether the response of the given invocation renders the content of a resource
-// that can contain secrets, and therefore has to be redacted.
-func responseCanContainSecrets(parsed kubectlArguments) bool {
+// responseHasToBeRedacted reports whether the response of the given invocation renders resource content that has to be
+// walked for credentials.
+//
+// Any resource can hold a credential, not only the types of resourceTypesWithSecrets: a third-party custom resource the
+// default RBAC grants (a Perses dashboard carries the headers its datasource proxy sends) is as capable of holding one
+// as a Dash0 custom resource is. The walk is therefore not bound to a resource type; every response the connector can
+// parse is walked, and the resource type only decides what happens to a response it cannot parse:
+//
+//   - A resource type of resourceTypesWithSecrets is known to hold credentials, so its response has to be redacted
+//     whatever format it is rendered in. Validation already restricts it to the formats the connector can parse, and a
+//     response that cannot be parsed after all is withheld rather than handed out (see redactSecretsInResponse).
+//   - For every other resource type the content is walked whenever the connector can parse it, that is for "-o json"
+//     and "-o yaml". A format that reshapes the response (jsonpath, go-template, custom-columns) cannot be walked and
+//     is not withheld either: validation deliberately allows those formats for these resource types, and withholding
+//     them would take away a working part of kubectl in exchange for a credential the walk was never able to find.
+func responseHasToBeRedacted(parsed kubectlArguments) bool {
 	//nolint:goconst
 	if parsed.kubectlCommand != "get" {
-		// No other allowed kubectl command renders the content of such a resource: "describe" is rejected for these
-		// resource types (see describeOfResourceTypeWithSecretsRequested), and "explain" only prints the schema.
+		// No other allowed kubectl command renders resource content: "describe" is rejected for the resource types that
+		// are known to hold credentials (see describeOfResourceTypeWithSecretsRequested), "explain" only prints the
+		// schema, and the output of "logs" is the output of the workload itself, which is not a document that could be
+		// parsed and walked.
 		return false
 	}
 	if parsed.outputIsContentFree() {
 		// kubectl get -o name or similar, no actual resource content in the response.
 		return false
 	}
-	_, hasSecrets := targetsResourceTypeWithSecrets(parsed)
-	return hasSecrets
+	if _, hasSecrets := targetsResourceTypeWithSecrets(parsed); hasSecrets {
+		return true
+	}
+	_, parseable := parsed.parseableOutputFormat()
+	return parseable
 }
 
 // parseResponseDocument parses a kubectl response that renders resources in the given output format. It reports false

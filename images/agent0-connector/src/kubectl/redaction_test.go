@@ -16,7 +16,7 @@ import (
 )
 
 //nolint:lll
-func TestResponseCanContainSecrets(t *testing.T) {
+func TestResponseHasToBeRedacted(t *testing.T) {
 	tests := []struct {
 		name      string
 		arguments []string
@@ -60,19 +60,67 @@ func TestResponseCanContainSecrets(t *testing.T) {
 		{name: "events do not reference the resource positionally", arguments: []string{"events", "--for", "dash0monitoring/my-resource"}, expected: false},
 		{name: "workload table output has no resource content", arguments: []string{"get", "deployments", "-o", "wide"}, expected: false},
 		{name: "config map table output has no resource content", arguments: []string{"get", "configmaps", "-o", "wide"}, expected: false},
-		{name: "a resource named like a config map is not a resource type", arguments: []string{"get", "services", "cm", "-o", "yaml"}, expected: false},
-		{name: "other resources are unaffected", arguments: []string{"get", "services", "-o", "yaml"}, expected: false},
-		{name: "Dash0 resource types without secrets are unaffected", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a workload type is not a resource type", arguments: []string{"get", "services", "deployments", "-o", "yaml"}, expected: false},
 		{name: "no kubectl command", arguments: []string{"--help"}, expected: false},
+
+		// Any resource can hold a credential, so a response the connector can parse is walked whatever type it renders.
+		{name: "other resources as yaml", arguments: []string{"get", "services", "-o", "yaml"}, expected: true},
+		{name: "other resources as json", arguments: []string{"get", "nodes", "-o", "json"}, expected: true},
+		{name: "third-party custom resources granted by the default RBAC", arguments: []string{"get", "persesdashboards", "-o", "yaml"}, expected: true},
+		{name: "Dash0 resource types without credential fields", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: true},
+		{name: "a resource named like a Dash0 resource", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: true},
+
+		// A format that reshapes the response cannot be walked. It is only reachable for a resource type that is not
+		// known to hold credentials, since validation rejects it for the others; such a response is handed out as
+		// kubectl rendered it rather than being withheld.
+		{name: "reshaping format of an unlisted resource type", arguments: []string{"get", "services", "-o", "jsonpath={.items[*].metadata.name}"}, expected: false},
+		{name: "template flag of an unlisted resource type", arguments: []string{"get", "nodes", "--template", "{{.kind}}"}, expected: false},
+		// A resource type that is known to hold credentials has to be redacted whatever the format, so that a response
+		// the connector cannot parse is withheld instead of handed out. Validation leaves only a repeated output format
+		// to reach this.
+		{name: "repeated output format of a resource type with secrets", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := responseCanContainSecrets(parseKubectlArguments(tt.arguments)); got != tt.expected {
-				t.Errorf("expected responseCanContainSecrets=%t, got %t", tt.expected, got)
+			if got := responseHasToBeRedacted(parseKubectlArguments(tt.arguments)); got != tt.expected {
+				t.Errorf("expected responseHasToBeRedacted=%t, got %t", tt.expected, got)
+			}
+		})
+	}
+}
+
+// TestTargetsResourceTypeWithSecrets pins the resource type detection that decides which invocations validation
+// restricts to a redactable output format. Unlike responseHasToBeRedacted it must not match a resource *name* that
+// happens to read like a resource type, since that would reject a legitimate request.
+//
+//nolint:lll
+func TestTargetsResourceTypeWithSecrets(t *testing.T) {
+	tests := []struct {
+		name      string
+		arguments []string
+		expected  bool
+	}{
+		{name: "Dash0 custom resource with secrets", arguments: []string{"get", "dash0monitorings", "-o", "yaml"}, expected: true},
+		{name: "fully qualified form", arguments: []string{"get", "dash0monitorings.v1beta1.operator.dash0.com", "-o", "yaml"}, expected: true},
+		{name: "workload resource", arguments: []string{"get", "deployments", "-o", "yaml"}, expected: true},
+		{name: "workload short name", arguments: []string{"get", "sts", "-o", "yaml"}, expected: true},
+		{name: "the all shorthand renders pod specs", arguments: []string{"get", "all", "-o", "yaml"}, expected: true},
+		{name: "config map short name", arguments: []string{"get", "cm", "-o", "yaml"}, expected: true},
+		{name: "type/name pair in a later positional slot", arguments: []string{"get", "pod/a", "dash0monitoring/b", "-o", "yaml"}, expected: true},
+
+		{name: "a resource named like a config map is not a resource type", arguments: []string{"get", "services", "cm", "-o", "yaml"}, expected: false},
+		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: false},
+		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
+		{name: "a resource named like a workload type is not a resource type", arguments: []string{"get", "services", "deployments", "-o", "yaml"}, expected: false},
+		{name: "Dash0 resource types without credential fields", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: false},
+		{name: "third-party custom resources", arguments: []string{"get", "persesdashboards", "-o", "yaml"}, expected: false},
+		{name: "other resources", arguments: []string{"get", "services", "-o", "yaml"}, expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, got := targetsResourceTypeWithSecrets(parseKubectlArguments(tt.arguments)); got != tt.expected {
+				t.Errorf("expected targetsResourceTypeWithSecrets=%t, got %t", tt.expected, got)
 			}
 		})
 	}
@@ -1147,19 +1195,44 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("leaves the response of a request for other resources untouched", func(t *testing.T) {
-		// The fake kubectl echoes a token-like value for any request; a request that targets neither a Dash0 resource nor
-		// a workload resource must not be post-processed at all.
-		fakeKubectlEchoing(t, monitoringToken)
+	t.Run("redacts a credential of a resource type that is not known to hold one", func(t *testing.T) {
+		// A third-party custom resource the default RBAC grants can hold a credential just as well as a Dash0 one: the
+		// proxy of a Perses datasource carries the headers it sends verbatim.
+		fakeKubectlEchoing(t, persesDashboardJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-perses-dashboard",
+			Command:   "kubectl",
+			Arguments: []string{"get", "persesdashboards", "-o", "json"},
+		})
+
+		if strings.Contains(resp.GetStdout(), persesProxyToken) {
+			t.Errorf("expected the proxy header value to be redacted, got %q", resp.GetStdout())
+		}
+		// The rest of the dashboard stays readable, which is what makes the response useful for diagnosing it.
+		for _, preserved := range []string{"my-dashboard", "https://prometheus.example.com"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("preserves the content of a credential-free response of another resource type", func(t *testing.T) {
+		fakeKubectlEchoing(t, serviceJson)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
 			RequestId: "req-other-resource",
 			Command:   "kubectl",
-			Arguments: []string{"get", "services", "-o", "yaml"},
+			Arguments: []string{"get", "services", "-o", "json"},
 		})
 
-		if strings.TrimSpace(resp.GetStdout()) != monitoringToken {
-			t.Errorf("expected the response to be passed through unchanged, got %q", resp.GetStdout())
+		for _, preserved := range []string{"my-service", "ClusterIP", "10.0.0.1"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+		if strings.Contains(resp.GetStdout(), redactedValue) {
+			t.Errorf("expected nothing to be redacted in a credential-free response, got %q", resp.GetStdout())
 		}
 	})
 
@@ -1323,9 +1396,9 @@ done
 		}
 	})
 
-	t.Run("hands out a truncated response for a resource type without secrets", func(t *testing.T) {
-		// Truncation only withholds where redaction is required. A resource type that cannot contain a credential keeps
-		// the existing behaviour: the truncated output is returned with a notice.
+	t.Run("withholds a truncated response of a resource type that is not known to hold a credential", func(t *testing.T) {
+		// Every response the connector can parse is walked, so a truncated one is withheld whatever resource type it
+		// renders: the walk cannot tell a credential-free document from one whose credential sits past the cut.
 		fakeKubectlOnPath(t, `#!/bin/sh
 s=0123456789012345678901234567890123456789012345678901234567890123
 s=$s$s$s$s
@@ -1343,6 +1416,37 @@ done
 			RequestId: "req-truncated-services",
 			Command:   "kubectl",
 			Arguments: []string{"get", "services", "-o", "json"},
+		})
+
+		if resp.GetStdout() != "" {
+			t.Errorf("expected the truncated response to be withheld, got %q", resp.GetStdout())
+		}
+		if !strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected the response to be withheld, got %q", resp.GetStderr())
+		}
+	})
+
+	t.Run("hands out a truncated response the connector never walks", func(t *testing.T) {
+		// A format that reshapes the response is only allowed for a resource type that is not known to hold a
+		// credential, and its result is never walked, so truncating it keeps the existing behaviour: the truncated
+		// output is returned with a notice.
+		fakeKubectlOnPath(t, `#!/bin/sh
+s=0123456789012345678901234567890123456789012345678901234567890123
+s=$s$s$s$s
+s=$s$s$s$s
+s=$s$s$s$s
+s=$s$s$s$s
+i=0
+while [ $i -lt 200 ]; do
+  printf '%s' "$s"
+  i=$((i+1))
+done
+`)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-truncated-services-jsonpath",
+			Command:   "kubectl",
+			Arguments: []string{"get", "services", "-o", "jsonpath={.items[*].metadata.name}"},
 		})
 
 		if resp.GetStdout() == "" {
@@ -1435,7 +1539,66 @@ OUTPUT
 `)
 }
 
+// persesDashboardJson is a third-party custom resource the default RBAC grants and that no redaction list names. The
+// proxy of its datasource carries the headers it sends verbatim, so the response has to be walked even though the
+// resource type is not one of resourceTypesWithSecrets.
+const persesDashboardJson = `{
+    "apiVersion": "perses.dev/v1alpha1",
+    "kind": "PersesDashboard",
+    "metadata": {
+        "name": "my-dashboard",
+        "namespace": "perses-dev"
+    },
+    "spec": {
+        "display": {
+            "name": "my-dashboard"
+        },
+        "datasources": {
+            "my-datasource": {
+                "plugin": {
+                    "kind": "PrometheusDatasource",
+                    "spec": {
+                        "proxy": {
+                            "kind": "HTTPProxy",
+                            "spec": {
+                                "url": "https://prometheus.example.com",
+                                "headers": {
+                                    "Authorization": "` + persesProxyToken + `"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}`
+
+// serviceJson is a resource that holds no credential at all, to pin that walking every response leaves such a response
+// with its content intact.
+const serviceJson = `{
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+        "name": "my-service",
+        "namespace": "my-namespace"
+    },
+    "spec": {
+        "clusterIP": "10.0.0.1",
+        "ports": [
+            {
+                "name": "http",
+                "port": 80,
+                "targetPort": 8080
+            }
+        ],
+        "type": "ClusterIP"
+    }
+}`
+
 const (
+	persesProxyToken = "Bearer my-perses-proxy-secret"
+
 	operatorConfigurationToken = "auth_operator-configuration-token"
 	monitoringToken            = "auth_monitoring-token"
 	lastAppliedToken           = "auth_last-applied-token"

@@ -846,7 +846,7 @@ func TestValidateCommandRequest(t *testing.T) {
 }
 
 // kubectlCommandRedactionRationale records, for every kubectl command in allowedKubectlCommands, why its response
-// cannot be used to exfiltrate secrets. Only "get" is routed through redaction (see responseCanContainSecrets, which
+// cannot be used to exfiltrate secrets. Only "get" is routed through redaction (see responseHasToBeRedacted, which
 // returns false for every other kubectl command). Therefor every other entry has to justify itself by not rendering the
 // content of a resource at all. Adding a kubectl command to the allowlist without recording a rationale here fails
 // TestEveryAllowedKubectlCommandHasARedactionRationale.
@@ -879,7 +879,7 @@ func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
 		if _, hasRationale := kubectlCommandRedactionRationale[kubectlCmd]; !hasRationale {
 			t.Errorf(
 				"the kubectl command %q is allowed, but no rationale records why its response cannot expose a credential; "+
-					"redaction only runs for \"get\" (see responseCanContainSecrets), so either confirm that this command "+
+					"redaction only runs for \"get\" (see responseHasToBeRedacted), so either confirm that this command "+
 					"cannot render resource content and add a rationale to kubectlCommandRedactionRationale, or restrict it in "+
 					"validation.go",
 				kubectlCmd,
@@ -896,12 +896,12 @@ func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
 	}
 }
 
-// TestOnlyGetIsRoutedThroughRedaction pins the invariant the rationales above rely on: responseCanContainSecrets
+// TestOnlyGetIsRoutedThroughRedaction pins the invariant the rationales above rely on: responseHasToBeRedacted
 // redacts the response of "get" only.
 func TestOnlyGetIsRoutedThroughRedaction(t *testing.T) {
 	for kubectlCmd := range allowedKubectlCommands {
 		parsed := parseKubectlArguments([]string{kubectlCmd, "dash0monitorings", "-o", "yaml"})
-		canContainSecrets := responseCanContainSecrets(parsed)
+		canContainSecrets := responseHasToBeRedacted(parsed)
 		if kubectlCmd == "get" && !canContainSecrets {
 			t.Errorf("expected the response of %q to be routed through redaction", kubectlCmd)
 		}

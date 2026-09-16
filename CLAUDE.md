@@ -77,12 +77,17 @@ object schemas.
 ### Adding or changing a CRD: secret redaction in the agent0-connector
 
 The agent0-connector executes read-only kubectl commands on behalf of an upstream agent and redacts the credentials of
-Dash0 custom resources from the responses before they leave the cluster. It knows which resource types and which fields
-hold credentials from hardcoded lists in `images/agent0-connector/src/kubectl/redaction.go`, which are a copy of
-knowledge that actually lives in `api/operator`. CRD changes need to be checked against them:
+Dash0 custom resources from the responses before they leave the cluster. Every response it can parse - that is, every
+`kubectl get -o json` and `-o yaml` - is walked for credentials, whatever resource type it renders, so the field lists
+below decide what is found rather than whether the walk runs at all. It knows which fields hold credentials from
+hardcoded lists in `images/agent0-connector/src/kubectl/redaction.go`, which are a copy of knowledge that actually lives
+in `api/operator`. CRD changes need to be checked against them:
 
-- `dash0ResourceTypesWithSecrets` - the resource types whose content can contain a credential, in singular and plural
-  form. A new CRD with a credential field has to be added here.
+- `dash0ResourceTypesWithSecrets` - the resource types whose content is known to contain a credential, in singular and
+  plural form. A new CRD with a credential field has to be added here. This list no longer decides whether a response is
+  walked; it decides that a response of such a type is rendered only in a format the connector can parse, and is
+  withheld rather than handed out when it cannot be parsed after all (see `targetsResourceTypeWithSecrets`). A CRD
+  missing from it is still walked, but can be read via `kubectl describe` and the reshaping output formats.
 - `credentialFieldsPerConfigObject` - the fields that only hold a credential within a particular configuration object,
   keyed by the name of that object (e.g. `slackConfig` -> `webhookURL`). Generic field names such as `url` or `key` are
   credentials in one object and harmless in another, which is why they are keyed this way.
