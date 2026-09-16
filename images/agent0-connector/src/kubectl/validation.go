@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -441,8 +442,8 @@ func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
 // sortByExpressionIsSafe reports whether a --sort-by JSONPath expression addresses only fields that cannot hold a
 // credential. It fails closed: anything it does not recognize as a plain path below safeSortByPathPrefixes is unsafe.
 func sortByExpressionIsSafe(expression string) bool {
-	path := normalizeSortByPath(expression)
-	if path == "" {
+	path, normalized := normalizeSortByPath(expression)
+	if !normalized || path == "" {
 		return false
 	}
 	// A filter expression, a wildcard, a recursive descent or a second path can address any field of the resource,
@@ -465,13 +466,37 @@ func isSortByPathBelow(path string, prefix string) bool {
 		strings.HasPrefix(path, prefix+"[")
 }
 
-// normalizeSortByPath strips the optional surrounding braces and the leading dot of a --sort-by expression, so that
-// "{.metadata.name}", ".metadata.name" and "metadata.name" all yield "metadata.name".
-func normalizeSortByPath(expression string) string {
+// quotedSortByBracketSegment matches a quoted bracket segment of a JSONPath expression, e.g. ['annotations'] or
+// ["annotations"], so that it can be rewritten to its dotted form.
+var quotedSortByBracketSegment = regexp.MustCompile(`\[\s*'([^']*)'\s*\]|\[\s*"([^"]*)"\s*\]`)
+
+// numericSortByIndexSegment matches a plain numeric index segment of a JSONPath expression, e.g. [0]. Such a segment
+// selects an element of a list and cannot widen which field the expression addresses.
+var numericSortByIndexSegment = regexp.MustCompile(`\[\d+\]`)
+
+// normalizeSortByPath reduces a --sort-by expression to a plain dotted path: it strips the optional surrounding braces
+// and the leading dot, and rewrites the quoted bracket segments of the JSONPath notation to their dotted form. So
+// "{.metadata.name}", ".metadata.name" and "metadata.name" all yield "metadata.name", and "metadata['annotations']"
+// yields "metadata.annotations".
+//
+// The bracket form has to be resolved because kubectl accepts it: it hands the expression to client-go's JSONPath
+// parser (see RelaxedJSONPathExpression), which treats ['annotations'] and .annotations as the same step. Comparing
+// only the dotted form let the bracket form address a field the dotted form is rejected for -
+// "{.metadata['annotations']['kubectl.kubernetes.io/last-applied-configuration']}" passed the check for
+// "metadata.annotations" and sorted by the very annotation that guard exists for.
+//
+// It reports false for an expression holding a bracket segment that is neither a quoted key nor a numeric index, since
+// such a segment can address anything and the prefix comparison would not see what it resolves to.
+func normalizeSortByPath(expression string) (string, bool) {
 	path := strings.TrimSpace(expression)
 	path = strings.TrimPrefix(path, "{")
 	path = strings.TrimSuffix(path, "}")
-	return strings.TrimPrefix(path, ".")
+	path = quotedSortByBracketSegment.ReplaceAllString(path, ".$1$2")
+	path = strings.TrimPrefix(path, ".")
+	if strings.ContainsAny(numericSortByIndexSegment.ReplaceAllString(path, ""), "[]") {
+		return "", false
+	}
+	return path, true
 }
 
 // unredactableOutputFormat returns the first output format that is not in the safeOrRedactableOutputFormats allowlist.

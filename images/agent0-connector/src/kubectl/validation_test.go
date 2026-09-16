@@ -714,6 +714,9 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "sort-by a recursive descent over a workload is rejected",
 			command: "kubectl", arguments: []string{"get", "pods", "--sort-by", ".metadata..value"}, allowed: false,
 			rejectionReason: sortByNotAllowed(".metadata..value")},
+		{name: "sort-by the annotations in bracket notation is rejected",
+			command: "kubectl", arguments: []string{"get", "pods", "--sort-by", "{.metadata['annotations']['kubectl.kubernetes.io/last-applied-configuration']}"}, allowed: false,
+			rejectionReason: sortByNotAllowed("{.metadata['annotations']['kubectl.kubernetes.io/last-applied-configuration']}")},
 		{name: "sort-by a spec field of a Dash0 custom resource is rejected",
 			command: "kubectl", arguments: []string{"get", "dash0monitorings", "--sort-by", ".spec.export.dash0.authorization.token"}, allowed: false,
 			rejectionReason: sortByNotAllowed(".spec.export.dash0.authorization.token")},
@@ -887,6 +890,55 @@ func TestLookupSensitiveResourceType(t *testing.T) {
 			}
 			if resource.displayName != tt.displayName {
 				t.Errorf("expected display name %q, got %q", tt.displayName, resource.displayName)
+			}
+		})
+	}
+}
+
+// TestSortByExpressionIsSafe covers the --sort-by guard directly, in particular the JSONPath notations kubectl accepts
+// for the same path. kubectl hands the expression to client-go's JSONPath parser, which treats ['annotations'] and
+// .annotations as the same step, so the guard has to resolve the bracket form before it compares prefixes.
+func TestSortByExpressionIsSafe(t *testing.T) {
+	tests := []struct {
+		expression string
+		safe       bool
+	}{
+		{expression: ".metadata.name", safe: true},
+		{expression: "{.metadata.name}", safe: true},
+		{expression: "metadata.name", safe: true},
+		{expression: ".status.startTime", safe: true},
+		{expression: ".status.containerStatuses[0].name", safe: true},
+		{expression: ".metadata['name']", safe: true},
+		{expression: "{.metadata[\"name\"]}", safe: true},
+		{expression: "{['metadata']['name']}", safe: true},
+
+		// The annotations hold the verbatim copy of the applied manifest, credentials included, in every notation.
+		{expression: ".metadata.annotations", safe: false},
+		{expression: ".metadata.annotations.foo", safe: false},
+		{expression: ".metadata['annotations']", safe: false},
+		{expression: ".metadata[\"annotations\"]", safe: false},
+		{expression: ".metadata[ 'annotations' ]", safe: false},
+		{expression: "{.metadata['annotations']['kubectl.kubernetes.io/last-applied-configuration']}", safe: false},
+		{expression: "{['metadata']['annotations']}", safe: false},
+
+		// Anything outside metadata and status, and anything that can address more than one plain field.
+		{expression: ".spec.export.dash0.authorization.token", safe: false},
+		{expression: ".spec['containers']", safe: false},
+		{expression: ".data", safe: false},
+		{expression: ".metadata..name", safe: false},
+		{expression: ".metadata.*", safe: false},
+		{expression: "{.spec.containers[?(@.name=='x')].image}", safe: false},
+		// A bracket segment that is neither a quoted key nor a numeric index is not resolvable, so it fails closed
+		// rather than matching the "metadata" prefix through its opening bracket.
+		{expression: ".metadata[annotations]", safe: false},
+		{expression: ".metadata[*]", safe: false},
+		{expression: "", safe: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expression, func(t *testing.T) {
+			if got := sortByExpressionIsSafe(tt.expression); got != tt.safe {
+				t.Errorf("expected sortByExpressionIsSafe(%q)=%t, got %t", tt.expression, tt.safe, got)
 			}
 		})
 	}
