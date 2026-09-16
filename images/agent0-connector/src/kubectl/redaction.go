@@ -379,7 +379,7 @@ func parseResponseDocument(format string, stdout string) (any, bool) {
 	var document any
 	switch format {
 	case outputFormatJson:
-		if err := json.Unmarshal([]byte(stdout), &document); err != nil {
+		if err := unmarshalPreservingNumbers(stdout, &document); err != nil {
 			return nil, false
 		}
 	case outputFormatYaml:
@@ -391,13 +391,43 @@ func parseResponseDocument(format string, stdout string) (any, bool) {
 			// unreachable for validated requests. kubectl's prints multiple objects into one v1.List for -o yaml/-o json.
 			return nil, false
 		}
-		if err := yaml.Unmarshal([]byte(stdout), &document); err != nil {
+		if err := unmarshalYamlPreservingNumbers(stdout, &document); err != nil {
 			return nil, false
 		}
 	default:
 		return nil, false
 	}
 	return document, true
+}
+
+// unmarshalPreservingNumbers unmarshals a JSON document, decoding every number as a json.Number rather than as a
+// float64. The document is rendered again after the walk, and a float64 does not survive that round trip: an integer
+// beyond 2^53 loses precision, so a resource version or a large port number would come back altered. json.Number keeps
+// the literal notation of the number, which encoding/json and sigs.k8s.io/yaml both render verbatim again.
+//
+// Trailing content after the document is rejected, the way json.Unmarshal rejects it: a decoder reads one value and
+// ignores the rest, which would hand out everything after the first document unredacted.
+func unmarshalPreservingNumbers(document string, target *any) error {
+	decoder := json.NewDecoder(strings.NewReader(document))
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("unexpected content after the JSON document")
+	}
+	return nil
+}
+
+// unmarshalYamlPreservingNumbers is unmarshalPreservingNumbers for a YAML document. The document takes the same detour
+// through JSON that sigs.k8s.io/yaml takes internally, so that both formats yield the same types, with the numbers
+// preserved (see unmarshalPreservingNumbers).
+func unmarshalYamlPreservingNumbers(document string, target *any) error {
+	asJson, err := yaml.YAMLToJSON([]byte(document))
+	if err != nil {
+		return err
+	}
+	return unmarshalPreservingNumbers(string(asJson), target)
 }
 
 // hasYamlDocumentSeparator reports whether the output contains a line that starts a new YAML document. A separator
@@ -611,7 +641,7 @@ func renderConfigMapValue(format string, documents []any) (string, error) {
 // walk could match.
 func parseConfigMapValue(value string) ([]any, string, bool) {
 	var content any
-	if err := json.Unmarshal([]byte(value), &content); err == nil {
+	if err := unmarshalPreservingNumbers(value, &content); err == nil {
 		return []any{content}, outputFormatJson, isWalkableNode(content)
 	}
 	documents, parsed := parseYamlDocuments(value)
@@ -647,7 +677,7 @@ func parseYamlDocuments(value string) ([]any, bool) {
 			return nil, false
 		}
 		var document any
-		if err := yaml.Unmarshal(normalized, &document); err != nil {
+		if err := unmarshalYamlPreservingNumbers(string(normalized), &document); err != nil {
 			return nil, false
 		}
 		documents = append(documents, document)
@@ -996,7 +1026,7 @@ func redactAnnotations(resource any, redacted *redactor) error {
 			continue
 		}
 		var embeddedResource any
-		if err := json.Unmarshal([]byte(annotationString), &embeddedResource); err != nil {
+		if err := unmarshalPreservingNumbers(annotationString, &embeddedResource); err != nil {
 			continue
 		}
 		countBefore := redacted.count

@@ -839,6 +839,78 @@ func TestRedactConfigMapData(t *testing.T) {
 	})
 }
 
+// TestRedactionPreservesNumbers pins that the parse/render round trip every response now goes through does not alter
+// the numbers of a resource. Decoding into float64 would re-render a large integer in float notation and lose its
+// precision beyond 2^53.
+func TestRedactionPreservesNumbers(t *testing.T) {
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "my-pod",
+        "generation": 9007199254740993
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "app",
+                "ports": [
+                    {
+                        "containerPort": 8080
+                    }
+                ],
+                "env": [
+                    {
+                        "name": "TOKEN",
+                        "value": "` + monitoringToken + `"
+                    }
+                ]
+            }
+        ]
+    }
+}`
+
+	for _, format := range []string{outputFormatJson, outputFormatYaml} {
+		t.Run(format, func(t *testing.T) {
+			parsed, parsedSuccessfully := parseResponseDocument(outputFormatJson, document)
+			if !parsedSuccessfully {
+				t.Fatal("cannot parse the test document")
+			}
+			redacted := &redactor{values: make(map[string]struct{})}
+			if err := redactResourceList(parsed, redacted); err != nil {
+				t.Fatalf("cannot redact the test document: %v", err)
+			}
+			rendered, err := renderResponseDocument(format, parsed)
+			if err != nil {
+				t.Fatalf("cannot render the redacted test document: %v", err)
+			}
+
+			for _, number := range []string{"9007199254740993", "8080"} {
+				if !strings.Contains(rendered, number) {
+					t.Errorf("expected the number %s to be preserved, got %q", number, rendered)
+				}
+			}
+			if strings.Contains(rendered, "e+") || strings.Contains(rendered, "9007199254740992") {
+				t.Errorf("expected no number to be re-rendered as a float, got %q", rendered)
+			}
+			if strings.Contains(rendered, monitoringToken) {
+				t.Errorf("expected the environment variable value to be redacted, got %q", rendered)
+			}
+		})
+	}
+}
+
+// TestParseResponseDocumentRejectsTrailingContent pins that a response holding more than one JSON document is not
+// parsed, so that everything after the first document cannot be handed out unwalked.
+func TestParseResponseDocumentRejectsTrailingContent(t *testing.T) {
+	if _, parsed := parseResponseDocument(outputFormatJson, `{"kind":"Pod"}{"kind":"Pod"}`); parsed {
+		t.Error("expected a response with a trailing document to not be parsed")
+	}
+	if _, parsed := parseResponseDocument(outputFormatJson, `{"kind":"Pod"}`); !parsed {
+		t.Error("expected a single document to be parsed")
+	}
+}
+
 func TestRedactSecrets(t *testing.T) {
 	secrets := []string{"auth_token-value", "Bearer header-secret"}
 
