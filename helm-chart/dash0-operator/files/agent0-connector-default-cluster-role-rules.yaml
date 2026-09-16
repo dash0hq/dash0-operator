@@ -219,7 +219,8 @@
 # Access to the self subject review API, required by "kubectl auth can-i" and "kubectl auth can-i --list", which let
 # the agent0-connector report its own permissions. This is the only rule where "create" is allowed. Creating a
 # SelfSubjectAccessReview or a SelfSubjectRulesReview does not persist an object, the API server evaluates the request
-# and answers it, and both reviews always report on the caller's own service account.
+# and answers it, and both reviews always report on the caller's own service account. Creating a self subject review
+# object does not modify cluster state.
 - apiGroups:
   - authorization.k8s.io
   resources:
