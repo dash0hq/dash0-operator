@@ -209,6 +209,24 @@ collector-telemetry-unit-tests: ## Run the Go unit tests for the collector image
 helm-unit-tests: ## Run the Helm chart unit tests.
 	cd helm-chart/dash0-operator && helm unittest -f 'tests/**/*.yaml' .
 
+# Validates every collector configuration the operator can render against the collector binary, which rejects settings
+# the OpenTelemetry collector project has removed or renamed. Requires the collector image, build it via
+# `make image-collector` or point COLLECTOR_IMAGE at an existing image. The configurations of the Signal Control
+# collector are skipped unless COLLECTOR_CONFIG_VALIDATE_SIGNAL_CONTROL_IMAGE names an available image of that
+# collector, which is built outside of this repository.
+COLLECTOR_CONFIG_VALIDATE_SIGNAL_CONTROL_IMAGE ?=
+
+.PHONY: collector-config-validate
+collector-config-validate: ## Validate all collector configurations the operator can render against the collector binary.
+	@if ! docker image inspect $(COLLECTOR_IMAGE) > /dev/null 2>&1; then \
+	  echo "error: the collector image $(COLLECTOR_IMAGE) does not exist locally, build it via \`make image-collector\` or set COLLECTOR_IMAGE to an existing image."; \
+	  exit 1; \
+	fi
+	DASH0_COLLECTOR_IMAGE=$(COLLECTOR_IMAGE) \
+	DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE=$(COLLECTOR_CONFIG_VALIDATE_SIGNAL_CONTROL_IMAGE) \
+	go test ./internal/collectors/otelcolresources/ \
+	  -run TestCollectorConfigurationsAreAcceptedByTheCollector -count=1 -v
+
 .PHONY: build-all-test-e2e
 build-all-test-e2e: all-images test-e2e ## Builds (but does not push) all container images, then runs the end-to-end tests.
 
