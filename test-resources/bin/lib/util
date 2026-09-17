@@ -611,6 +611,9 @@ run_helm() {
   if [[ "${COLLECTOR_ENABLE_PPROF:-}" = "true" ]]; then
     helm_install_command+=" --set operator.collectors.enablePprof=true"
   fi
+  if [[ "${EDGE_PROXY_ENABLE_PPROF:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.signalControl.edgeProxy.enablePprof=true"
+  fi
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchSize=$OTEL_COLLECTOR_SEND_BATCH_SIZE"
   fi

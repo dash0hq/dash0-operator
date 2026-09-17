@@ -9,6 +9,7 @@ This guide covers common troubleshooting procedures for the Dash0 operator.
   - [Collector Daemonset Heap Profile](#collector-daemonset-heap-profile)
   - [Collector Deployment Heap Profile](#collector-deployment-heap-profile)
   - [SignalControl Collector Heap Profile](#signalcontrol-collector-heap-profile)
+  - [Edge Proxy Heap Profile](#edge-proxy-heap-profile)
   - [Auxiliary Container Heap Profiles](#auxiliary-container-heap-profiles)
 
 ## Create Heap Profiles
@@ -61,6 +62,22 @@ To get a heap profile from the SignalControl collector (only present when Signal
 
 * Follow the same steps as for the collector daemonset, but use
   `-l app.kubernetes.io/component=signal-control-collector` in step (3).
+
+### Edge Proxy Heap Profile
+
+To get a heap profile from the Edge Proxy (only present when SignalControl is enabled):
+
+1. Deploy the operator manager with the additional Helm value `operator.signalControl.edgeProxy.enablePprof=true`.
+   Note that this will restart the Edge Proxy pods.
+2. Take note of the namespace the operator is deployed in (default: `dash0-system`).
+3. Run `kubectl top pod -n <operator-namespace> -l app.kubernetes.io/component=edge-proxy` to get the name of an Edge
+   Proxy pod that has high memory usage.
+4. Using the information from the previous two steps, run
+   `kubectl port-forward -n <operator-namespace> <edge-proxy-pod-name> 8012`.
+5. In a separate shell, while the `kubectl port-forward` command from the previous step is still running, run
+   `curl http://localhost:8012/debug/pprof/heap > dash0-edge-proxy.out`.
+6. Terminate the `kubectl port-forward` command.
+7. Redeploy the operator without the Helm setting `operator.signalControl.edgeProxy.enablePprof=true`.
 
 ### Auxiliary Container Heap Profiles
 
