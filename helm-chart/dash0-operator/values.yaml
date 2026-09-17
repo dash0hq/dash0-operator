@@ -1272,6 +1272,13 @@ operator:
       # cross zones.
       replicas: 2
 
+      # If set to true, pprof will be enabled for the Edge Proxy pods. Each container serves pprof on the loopback
+      # address 127.0.0.1:8012, reachable via kubectl port-forward, see
+      # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/troubleshooting#edge-proxy-heap-profile.
+      # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
+      # after the Edge Proxy troubleshooting is finished. Changing the flag will restart the Edge Proxy pods.
+      enablePprof: false
+
       # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.
       containerResources:
         limits:
