@@ -357,6 +357,12 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		Verbs: allowedVerbs,
 	},
 	{
+		// Dash0 CRDs
+		APIGroups: []string{"openslo.com"},
+		Resources: []string{"slos"},
+		Verbs:     allowedVerbs,
+	},
+	{
 		// The third-party resource types the operator itself reconciles, so that the agent0-connector can diagnose the
 		// corresponding operator features.
 		APIGroups: []string{"monitoring.coreos.com"},

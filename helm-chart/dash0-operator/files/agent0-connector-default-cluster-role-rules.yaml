@@ -254,6 +254,13 @@
   verbs:
   - get
   - list
+- apiGroups:
+  - openslo.com
+  resources:
+  - slos
+  verbs:
+  - get
+  - list
 
 # Read-only access to the third-party resource types the operator itself reconciles, so that the agent0-connector can
 # diagnose the corresponding operator features.
