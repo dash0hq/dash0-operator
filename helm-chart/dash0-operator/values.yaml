@@ -1474,18 +1474,11 @@ operator:
       # tokens, credentials, API secrets, PII etc.) in the cluster. Failure to do so makes that sensitive data
       # accessible to anyone who has access to your Dash0 organization.
       #
-      # The agent0-connector component uses a set of restrictions and redaction mechanisms to prevent leaking secrets.
-      #
-      # It only returns output that it is able to inspect for credentials. "kubectl describe" and the output formats
-      # that can reshape a response (-o go-template, -o template, -o jsonpath, -o jsonpath-as-json, -o custom-columns,
-      # --template, and -o kyaml) are therefore rejected for every resource type, since their output cannot be
-      # redacted. What remains is "kubectl get" without an output format or with -o name/-o wide, which does not render
-      # the content of a resource at all, and "kubectl get -o json"/"-o yaml", whose response is parsed, inspected and
-      # rendered again. A response that cannot be parsed after all, for example because it was truncated at the
-      # connector's output size limit, is withheld entirely rather than returned.
-      #
-      # Every "kubectl get -o json"/"-o yaml" response is inspected, whatever resource type it renders, so this covers
-      # resource types that are not part of the default rules as well. The following are redacted:
+      # The agent0-connector uses a set of restrictions and redaction mechanisms to prevent leaking secrets.
+      # * It only returns output that it is able to inspect for credentials. "kubectl describe" and output formats that
+      # can reshape a response (-o go-template, -o template, -o jsonpath, -o jsonpath-as-json, -o custom-columns,
+      # --template, and -o kyaml) are rejected, for "kubectl get" only "-o name"/"-o wide"/"-o json"/"-o yaml" are
+      # allowed. The output for -o json/yaml is processed by secret redaction. The following are redacted:
       # * the values of the environment variables and of the command line (command, args) of any workload,
       # * the header values of the probes and lifecycle hooks of any workload,
       # * all credential fields in any of the Dash0 custom resources,
@@ -1494,7 +1487,8 @@ operator:
       #   "kubectl apply" stores in kubectl.kubernetes.io/last-applied-configuration.
       #
       # A credential in a field the connector does not know about is returned unredacted. Granting access to a resource
-      # type that keeps a credential in a field of its own therefore remains your responsibility.
+      # type that keeps a credential in a field that is not subject to the redaction as listed above therefore remains
+      # your responsibility.
       #
       # Reading the *content* of Kubernetes secrets is rejected by the agent0-connector itself, independent of
       # the rules configured here. Listing secrets and checking for their presence is allowed, if the rules list the
