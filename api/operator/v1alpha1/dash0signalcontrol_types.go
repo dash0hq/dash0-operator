@@ -85,6 +85,14 @@ type Dash0SignalControlSpec struct {
 	// +kubebuilder:validation:Optional
 	OperationProcessor OperationProcessorConfig `json:"operationProcessor,omitempty"`
 
+	// Configuration for log enrichment, which applies centrally learned log patterns to this cluster's
+	// logs: it sets the OTLP severity, a normalized dash0.log.message, and the dash0.log.pattern that the
+	// record matched. Enrichment runs before the spam filter, so spam filter rules can match on the
+	// pattern and severity it adds. This setting is optional.
+	//
+	// +kubebuilder:validation:Optional
+	LogEnrichment LogEnrichmentConfig `json:"logEnrichment,omitempty"`
+
 	// The Dash0 API endpoint used by the dash0settingsonedge extension to fetch settings and rules (it queries
 	// {endpoint}/api/edge/settings on the region-bound Dash0 public API). This setting is optional. When not set,
 	// it defaults to the Dash0 API endpoint configured in the operator configuration resource as-is
@@ -420,6 +428,35 @@ type OperationMatcher struct {
 	//
 	// +kubebuilder:validation:Optional
 	Literal *bool `json:"literal,omitempty"`
+}
+
+// LogEnrichmentConfig configures log enrichment. Learned log patterns are applied to this cluster's
+// logs to set the OTLP severity, a normalized dash0.log.message, and the dash0.log.pattern the record
+// matched. Enrichment runs before the spam filter, so spam filter rules can match on what it adds.
+type LogEnrichmentConfig struct {
+	// Whether to enrich logs with centrally learned log patterns. This setting is optional, it defaults
+	// to false.
+	//
+	// +kubebuilder:default=false
+	Enabled *bool `json:"enabled"`
+
+	// How often learned log patterns are fetched from Dash0. Go duration syntax (e.g. "60s", "5m"). Must
+	// be between 10s and 1h. This setting is optional; when unset, the settings refresh interval applies.
+	//
+	// +kubebuilder:validation:Optional
+	PatternRefreshInterval *metav1.Duration `json:"patternRefreshInterval,omitempty"`
+
+	// How long fetched log patterns are cached before they are re-read. Go duration syntax. Must be
+	// between 10s and 1h. This setting is optional, it defaults to 1m.
+	//
+	// +kubebuilder:validation:Optional
+	ParserCacheExpiration *metav1.Duration `json:"parserCacheExpiration,omitempty"`
+
+	// How long fetched log templates are cached before they are re-read. Go duration syntax. Must be
+	// between 10s and 1h. This setting is optional, it defaults to 1m.
+	//
+	// +kubebuilder:validation:Optional
+	GroupingCacheExpiration *metav1.Duration `json:"groupingCacheExpiration,omitempty"`
 }
 
 // Dash0SignalControlStatus defines the observed state of the Dash0SignalControl resource.

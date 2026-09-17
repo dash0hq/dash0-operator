@@ -188,6 +188,42 @@ var _ = Describe("The Signal Control validation webhook (cacheExpiration bounds)
 			ContainSubstring("edgeProxy.settingsRefreshInterval must be between 10s and 1h"))
 	})
 
+	It("should deny a resource with an out-of-range logEnrichment.patternRefreshInterval", func() {
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{
+			LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+				PatternRefreshInterval: &metav1.Duration{Duration: 5 * time.Second},
+			},
+		})
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeFalse())
+		Expect(response.Result.Message).To(
+			ContainSubstring("logEnrichment.patternRefreshInterval must be between 10s and 1h"))
+	})
+
+	It("should deny a resource with an out-of-range logEnrichment.parserCacheExpiration", func() {
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{
+			LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+				ParserCacheExpiration: &metav1.Duration{Duration: 2 * time.Hour},
+			},
+		})
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeFalse())
+		Expect(response.Result.Message).To(
+			ContainSubstring("logEnrichment.parserCacheExpiration must be between 10s and 1h"))
+	})
+
+	It("should deny a resource with an out-of-range logEnrichment.groupingCacheExpiration", func() {
+		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{
+			LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+				GroupingCacheExpiration: &metav1.Duration{Duration: 2 * time.Hour},
+			},
+		})
+		response := handler.Handle(ctx, request)
+		Expect(response.Allowed).To(BeFalse())
+		Expect(response.Result.Message).To(
+			ContainSubstring("logEnrichment.groupingCacheExpiration must be between 10s and 1h"))
+	})
+
 	It("should allow a resource with in-range cacheExpiration and settingsRefreshInterval values", func() {
 		request := signalControlAdmissionRequest(dash0v1alpha1.Dash0SignalControlSpec{
 			SignalToMetrics: dash0v1alpha1.SignalToMetricsConfig{
@@ -198,6 +234,11 @@ var _ = Describe("The Signal Control validation webhook (cacheExpiration bounds)
 			},
 			EdgeProxy: dash0v1alpha1.EdgeProxyConfig{
 				SettingsRefreshInterval: &metav1.Duration{Duration: 45 * time.Second},
+			},
+			LogEnrichment: dash0v1alpha1.LogEnrichmentConfig{
+				PatternRefreshInterval:  &metav1.Duration{Duration: 30 * time.Second},
+				ParserCacheExpiration:   &metav1.Duration{Duration: 1 * time.Minute},
+				GroupingCacheExpiration: &metav1.Duration{Duration: 1 * time.Minute},
 			},
 		})
 		response := handler.Handle(ctx, request)
