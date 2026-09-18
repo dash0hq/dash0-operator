@@ -1683,9 +1683,8 @@ OUTPUT
 `)
 }
 
-// persesDashboardJson is a third-party custom resource the default RBAC grants and that no redaction list names. The
-// proxy of its datasource carries the headers it sends verbatim, so the response has to be walked even though the
-// resource type is not one of resourceTypesWithSecrets.
+// persesDashboardJson is a third-party custom resource which is included in the default RBAC rules. The proxy of its
+// datasource can potentially carry the headers it sends, hence it needs redaction.
 const persesDashboardJson = `{
     "apiVersion": "perses.dev/v1alpha1",
     "kind": "PersesDashboard",
@@ -1718,8 +1717,7 @@ const persesDashboardJson = `{
     }
 }`
 
-// serviceJson is a resource that holds no credential at all, to pin that walking every response leaves such a response
-// with its content intact.
+// serviceJson is an example for a resource that holds no credential at all.
 const serviceJson = `{
     "apiVersion": "v1",
     "kind": "Service",

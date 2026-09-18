@@ -69,10 +69,9 @@ var knownUnredactedFields = map[string]string{
 // copy of implicit knowledge about the custom resource types of this package. This test is a best-effort attempt to
 // bind the CRDs to the redaction lists.
 //
-// The connector keys its redaction on field names and on the name of the configuration object a field sits in, never on
-// the resource type a response renders, so that is the granularity this test checks at: every credential-like field of
-// a custom resource has to be covered by one of the lists, or to be listed in knownUnredactedFields with the reason why
-// it holds no credential.
+// The connector keys its redaction on field names and on the name of the configuration object a field sits in, so that
+// is what this test uses: every credential-like field of a custom resource has to be covered by one of the lists, or to
+// be listed in knownUnredactedFields with the reason why it holds no credential.
 func TestAgent0ConnectorRedactsEveryCredentialField(t *testing.T) {
 	coveredFieldsPerConfigObject, fieldsThatAreRedactedEverywhere := parseRedactionLists(t)
 

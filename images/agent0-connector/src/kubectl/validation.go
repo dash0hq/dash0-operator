@@ -72,8 +72,8 @@ var allowedSubcommandsPerKubectlCommand = map[string][]string{
 type outputFormatHandling int
 
 const (
-	// outputFormatUnknown is the zero value, so that an output format that is not in knownOutputFormats is handled as
-	// unknown, rather than accidentally being treated as content free.
+	// outputFormatUnknown is the zero value, so that an output format that is not listed in knownOutputFormats is treated
+	// as unknown (i.e. it is rejected), rather than accidentally being treated as content free.
 	outputFormatUnknown outputFormatHandling = iota
 
 	// outputFormatContentFree renders no resource content at all, hence there is nothing to redact. Such a request

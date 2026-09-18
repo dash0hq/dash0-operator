@@ -8,10 +8,9 @@
 //
 // This is only possible for formats the connector can parse, reliably interprete, and render itself, so a request is
 // restricted to exactly those formats (see knownOutputFormats in validation.go). The restriction is not
-// bound to a resource type: any resource can hold a credential, a third-party custom resource just as well as a Dash0
-// one, so a response is either walked or not handed out.
+// bound to a resource type: any resource can hold a credential, so a response is either redacted or not handed out.
 //
-//   - "-o json" and "-o yaml" render the resources as a document, which is walked.
+//   - "-o json" and "-o yaml" render the resources as a document, subject to redaction.
 //   - the content-free formats ("-o name", "-o wide", the default table) do not expose the content of a resource at
 //     all and are passed through untouched.
 //   - "-o go-template", "-o jsonpath", "-o custom-columns" and "kubectl describe" are rejected. The template formats
@@ -179,9 +178,9 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 		return nil
 	}
 	if !responseHasToBeRedacted(parsed) {
-		// The response either renders no resource content at all (e.g. default table, name, wide), or it uses an output
-		// format the connector cannot parse for a resource type that is not known to hold credentials. No redaction is
-		// required.
+		// The response renders no resource content: either the command is not "kubectl get" ("kubectl explain" for example
+		// only prints a schema), or it is a "get" with a content-free output format (default table, -o name,
+		// -o wide). No redaction is required.
 		return nil
 	}
 
@@ -189,7 +188,7 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 	if !parseable {
 		// Validation leaves only the parseable and the content-free formats, and responseHasToBeRedacted already ruled
 		// out the content-free ones, so what remains here is an invocation that sets the output format more than once,
-		// which parseableOutputFormat refuses to resolve. Such a response is withheld rather than handed out.
+		// which parseableOutputFormat refuses to resolve. Withhold response.
 		return fmt.Errorf("the output format of this command cannot be parsed for redaction")
 	}
 	if stdoutTruncated {
@@ -225,7 +224,7 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 }
 
 // responseHasToBeRedacted reports whether the response of the given invocation renders resource content that has to be
-// walked for credentials.
+// redacted (walked for credentials).
 //
 // The walk is not bound to a resource type. Any resource can hold a credential - a third-party custom resource the
 // default RBAC grants carries the headers its datasource proxy sends just as a Dash0 custom resource carries an auth
@@ -235,8 +234,7 @@ func responseHasToBeRedacted(parsed kubectlArguments) bool {
 	//nolint:goconst
 	if parsed.kubectlCommand != "get" {
 		// No other allowed kubectl command renders resource content: "describe" is rejected outright (see
-		// describeRequested), "explain" only prints the schema, and the output of "logs" is the output of the workload
-		// itself, which is not a document that could be parsed and walked.
+		// describeRequested), "explain" only prints the schema.
 		return false
 	}
 	// kubectl get -o name or similar renders no actual resource content. Everything else is "-o json" or "-o yaml",
@@ -340,8 +338,8 @@ func (r *redactor) addWithoutStderrScrub() {
 	r.count++
 }
 
-// fail records that a credential could not be removed from the document. The first failure is kept: it is the one that
-// describes what went wrong, and every later one is reported against a document that is already being withheld.
+// fail records that a credential could not be removed from the document. The first failure is kept. It is the one that
+// describes what went wrong.
 func (r *redactor) fail(err error) {
 	if r.err == nil {
 		r.err = err
@@ -395,7 +393,7 @@ func redactResourceList(document any, redacted *redactor) error {
 }
 
 // redactResourceItem redacts the secrets of a single resource, both in its own content and in the copies of it that
-// tools embed in its annotations, which the walk reaches wherever they sit (see redactAnnotationValues).
+// tools embed in its annotations (see redactAnnotationValues).
 func redactResourceItem(resource any, redacted *redactor) error {
 	redactDocumentNodeRecursively(resource, redacted)
 	return redacted.err

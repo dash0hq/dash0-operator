@@ -69,14 +69,10 @@ const (
 // commandTimeout bounds the execution time of a single kubectl invocation.
 var commandTimeout = defaultCommandTimeout
 
-// kubectlEnvPassThrough names the environment variables of this process that the kubectl subprocess inherits, see
-// kubectlEnv. Everything else is dropped, most notably the Dash0 auth token of this workload
-// (DASH0_AGENT0_CONNECTOR_AUTH_TOKEN): kubectl does not need it, and a variable a subprocess never receives cannot be
-// rendered back out of it. No accepted command request can print the environment today - the output formats that read
-// a file and --raw are rejected - so this is a second line of defense rather than a fix for a reachable leak.
-//
-// KUBECONFIG is deliberately absent: the connector talks to the API server of its own cluster through the in-cluster
-// configuration, and nothing should be able to point it elsewhere through the workload's environment.
+// kubectlEnvPassThrough names the environment variables of this process that the kubectl subprocess inherits,
+// everything else is dropped (e.g. DASH0_AGENT0_CONNECTOR_AUTH_TOKEN). kubectl only receives the env vars it actually
+// needs. KUBECONFIG is deliberately absent, the connector talks to the API server of its own cluster through the
+// in-cluster configuration.
 var kubectlEnvPassThrough = []string{
 	// The API server address of the in-cluster configuration. Without these two, kubectl has no cluster to talk to.
 	"KUBERNETES_SERVICE_HOST",

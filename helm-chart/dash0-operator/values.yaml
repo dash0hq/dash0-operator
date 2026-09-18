@@ -1486,9 +1486,10 @@ operator:
       # * the same fields in a copy of a resource that a tool embeds in its annotations, such as the copy
       #   "kubectl apply" stores in kubectl.kubernetes.io/last-applied-configuration.
       #
-      # A credential in a field the connector does not know about is returned unredacted. Granting access to a resource
-      # type that keeps a credential in a field that is not subject to the redaction as listed above therefore remains
-      # your responsibility.
+      # The redaction of resource types that are not accessible under the default RBAC rules is best-effort: A
+      # credential in a field of a resource type the connector does not know about is returned unredacted. Granting
+      # access to a resource type that keeps a credential in a field that is not subject to the redaction as listed
+      # above is strongly recommended against.
       #
       # Reading the *content* of Kubernetes secrets is rejected by the agent0-connector itself, independent of
       # the rules configured here. Listing secrets and checking for their presence is allowed, if the rules list the

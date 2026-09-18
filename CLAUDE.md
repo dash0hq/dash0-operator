@@ -79,13 +79,12 @@ object schemas.
 The agent0-connector executes read-only kubectl commands on behalf of an upstream agent and redacts credentials from the
 responses before they leave the cluster. It hands out only what it can walk for credentials: `kubectl describe` and the
 output formats that reshape a response (`-o go-template/template/jsonpath/jsonpath-as-json/custom-columns`,
-`--template`, `-o kyaml`) are rejected for every resource type. What is left is `kubectl get` with a content-free
-format (`-o name`, `-o wide`, the default table), which renders no content at all, or with `-o json`/`-o yaml`, which
-is parsed, walked and rendered again. This is not bound to a resource type: any resource can hold a credential, a
-third-party custom resource just as well as a Dash0 one.
+`--template`, `-o kyaml`) are rejected for every resource type. Allowed commands are
+* `kubectl get` with a content-free format (`-o name`, `-o wide`, the default table), which renders no content at all
+* `kubectl get` with `-o json`/`-o yaml`, for which the response is parsed, redacted and rendered again.
 
-What a CRD change has to be checked against is therefore not a list of resource types but the list of credential *field
-names* in `images/agent0-connector/src/kubectl/redaction.go`, which is a copy of knowledge that actually lives in
+A CRD change has to be checked against the list of credential *field names* in
+`images/agent0-connector/src/kubectl/redaction.go`, which is a copy of knowledge that actually lives in
 `api/operator`:
 
 - `credentialFieldsPerConfigObject` - the fields that only hold a credential within a particular configuration object,
@@ -119,7 +118,8 @@ unconditionally, while a header or query parameter value - including a query par
 which is why `incidentioConfig` lists `headers`.
 
 Kubernetes secrets are the one resource type that is not redacted but blocked: listing them and checking for the
-presence of a particular one is allowed, serializing their data is not (see `sensitiveResourceTypes` and
+presence of a particular one is allowed (assuming custom RBAC rules have been applied via
+`operator.agent0Connector.clusterRole.rules`), serializing their data is not (see `sensitiveResourceTypes` and
 `sensitiveContentRequested` in `images/agent0-connector/src/kubectl/validation.go`).
 
 When adding a new Dash0 CRD, it also needs to be added to the two copies of the default RBAC rules of the
