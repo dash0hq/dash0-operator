@@ -416,13 +416,20 @@ func unsupportedOutputFormatRequested(parsed kubectlArguments) (string, bool) {
 	return "", false
 }
 
-// unsafeSortByRequested reports whether the kubectl arguments sort a resource that can contain secrets by a field the
-// response redacts, returning a human-readable reason when they do. kubectl evaluates a --sort-by expression against
-// the unredacted resources, so the connector cannot redact what the expression exposes: sorting by a redacted field
-// leaks its order, and a filter expression such as {.spec.containers[0].env[?(@.value>"S")].name} turns the presence
-// of a match into a comparison oracle that reveals the value character by character over several requests. Every
-// occurrence of the flag is checked, not just the effective (last) one, mirroring unsupportedOutputFormatRequested.
+// unsafeSortByRequested reports whether the "kubectl get" arguments sort a resource that can contain secrets by a field
+// the response redacts, returning a human-readable reason when they do. kubectl evaluates a --sort-by expression
+// against the unredacted resources, so the connector cannot redact what the expression exposes: sorting by a redacted
+// field leaks its order, and a filter expression such as {.spec.containers[0].env[?(@.value>"S")].name} turns the
+// presence of a match into a comparison oracle that reveals the value character by character over several requests.
+// Every occurrence of the flag is checked, not just the effective (last) one, mirroring
+// unsupportedOutputFormatRequested. The check only applies to kubectl subcommand whose response is redacted
+// (i.e. kubectl get).
 func unsafeSortByRequested(parsed kubectlArguments) (string, bool) {
+	if parsed.kubectlCommand != "get" {
+		// "get" is the only command whose response is redacted, so it is the only one where the --sort-by length oracle
+		// matters.
+		return "", false
+	}
 	for _, expression := range parsed.valuesOf("sort-by") {
 		if sortByExpressionIsSafe(expression) {
 			continue
