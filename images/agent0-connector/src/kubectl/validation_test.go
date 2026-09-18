@@ -96,8 +96,7 @@ func sortByNotAllowed(expression string) string {
 
 const describeNotSupported = "\"kubectl describe\" is not supported, because it renders a resource in a text format " +
 	"the connector cannot parse, so the credentials a resource may contain cannot be redacted from its output; read " +
-	"the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns the same content with its " +
-	"credentials redacted, and its events with \"kubectl events --for <resource-type>/<name>\""
+	"the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead"
 
 const describeOfSecretNotSupported = "describing a secret is not allowed, because \"kubectl describe\" prints the " +
 	"exact length of every value; listing secrets or checking for the presence of a particular one with " +

@@ -314,8 +314,7 @@ func describeRequested(parsed kubectlArguments) (string, bool) {
 	}
 	return "\"kubectl describe\" is not supported, because it renders a resource in a text format the connector " +
 		"cannot parse, so the credentials a resource may contain cannot be redacted from its output; read the " +
-		"resource with \"kubectl get ... -o yaml\" or \"-o json\" instead, which returns the same content with its " +
-		"credentials redacted, and its events with \"kubectl events --for <resource-type>/<name>\"", true
+		"resource with \"kubectl get ... -o yaml\" or \"-o json\" instead", true
 }
 
 // describeOfSensitiveResourceRequested reports whether the kubectl arguments describe a sensitive resource, returning a
