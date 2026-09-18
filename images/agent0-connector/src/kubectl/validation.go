@@ -100,7 +100,7 @@ const supportedOutputFormatsHint = "reading a resource is supported with -o json
 // knownOutputFormats lists every output format the connector knows. The key is the normalized base type (see
 // normalizeOutputFormat). The map contains output formats that the connector allows in kubectl get commands, and
 // rejected formats for which it returns a specific rejection message. Formats not listed here are rejeced with a
-// general purpose message. This might be fine for some formats, so deliberatly not listing a kubectl get format here
+// general purpose message. This might be fine for some formats, so deliberately not listing a kubectl get format here
 // can also be a valid decision. This also makes sure that formats added by future kubectl releases do not widen what
 // the connector accepts.
 //
@@ -114,7 +114,7 @@ const supportedOutputFormatsHint = "reading a resource is supported with -o json
 // agent0-connector's container, such as its service account token or its environment. Plus, these would refer to a
 // file that exists in agent0's local file system, not in the local file system of agent0-connector, hence none of these
 // formats would work anyway.
-// - "kyaml": it renders values verbatim and could be parsed and redacted like YAML, but we currently do not suport it.
+// - "kyaml": it renders values verbatim and could be parsed and redacted like YAML, but we currently do not support it.
 // It offers no real benefit to an agent over "-o yaml" or "-o json".
 var knownOutputFormats = map[string]outputFormatHandling{
 	"":     outputFormatContentFree, // the default, human-readable table output
