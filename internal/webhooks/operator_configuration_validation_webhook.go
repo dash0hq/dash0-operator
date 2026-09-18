@@ -9,6 +9,8 @@ import (
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -298,9 +300,16 @@ func validateTelemetryCollectionDisabledConsistency(
 // hasEnabledSignalControl reports whether an enabled Dash0SignalControl resource exists in the cluster. It returns the
 // name of the first such resource for logging. Signal Control requires a Dash0 export, so the operator configuration
 // must not drop its Dash0 export while Signal Control is enabled.
+//
+// The Dash0SignalControl custom resource definition is only installed when the Helm value operator.signalControl.enabled
+// is true. Listing the resources then fails with a no-match error, which means no Signal Control resource can exist,
+// not that the check failed.
 func (h *OperatorConfigurationValidationWebhookHandler) hasEnabledSignalControl(ctx context.Context) (bool, string, error) {
 	allSignalControlResources := &dash0v1alpha1.Dash0SignalControlList{}
 	if err := h.Client.List(ctx, allSignalControlResources); err != nil {
+		if meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
+			return false, "", nil
+		}
 		return false, "", fmt.Errorf("failed to list all Dash0 Signal Control resources: %w", err)
 	}
 	for _, signalControlResource := range allSignalControlResources.Items {
