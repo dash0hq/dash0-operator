@@ -7,7 +7,7 @@
 // within that document, and the document is rendered again.
 //
 // This is only possible for formats the connector can parse, reliably interprete, and render itself, so a request is
-// restricted to exactly those formats (see safeOrRedactableOutputFormats in validation.go). The restriction is not
+// restricted to exactly those formats (see knownOutputFormats in validation.go). The restriction is not
 // bound to a resource type: any resource can hold a credential, a third-party custom resource just as well as a Dash0
 // one, so a response is either walked or not handed out.
 //
@@ -168,10 +168,9 @@ var parseableOutputFormats = map[string]struct{}{
 // request asked for.
 //
 // Every response the connector can parse is redacted, whatever resource type it renders, since any resource can hold a
-// credential (see responseHasToBeRedacted). For the resource types that are known to hold one, validation.go has
-// already restricted the request to an output format the connector can parse and render (see
-// safeOrRedactableOutputFormats), so a response of such a type that cannot be parsed is withheld rather than handed
-// out.
+// credential (see responseHasToBeRedacted). The valdiation in validation.go has already restricted the request to an
+// output format that is either content-free (and needs no redaction) or to a parseable and redactable format
+// (see knownOutputFormats).
 //
 // A non-nil error means the response could not be redacted and must not be sent to the backend, see withholdResponse.
 func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, stdoutTruncated bool) error {

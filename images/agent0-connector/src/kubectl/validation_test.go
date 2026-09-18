@@ -65,7 +65,11 @@ func kubctlCommandOnlyAllowedWithoutSubcommand(kubectlCommand string, requestedS
 }
 
 func outputFormatNotAllowed(format string) string {
-	return fmt.Sprintf("the kubectl output format %q is not allowed", format)
+	return fmt.Sprintf(
+		"the kubectl output format %q is not allowed; reading a resource is supported with -o json/yaml/name/wide "+
+			"(or without an output format)",
+		format,
+	)
 }
 
 const contentsNotReadable = "reading the contents of a secret is not allowed; listing secrets or checking for the " +
@@ -74,10 +78,8 @@ const contentsNotReadable = "reading the contents of a secret is not allowed; li
 
 func outputFormatNotRedactable(format string) string {
 	return fmt.Sprintf(
-		"the output format %q cannot be redacted reliably, because it can reshape the values of a resource and the "+
-			"connector can then no longer find the credentials the resource may contain; reading a resource is "+
-			"supported with -o json/yaml/name/wide (or without an output format), but not with a format that can "+
-			"reshape its values (-o go-template/template/jsonpath/jsonpath-as-json/custom-columns or --template)",
+		"the output format %q cannot be redacted reliably; reading a resource is supported with "+
+			"-o json/yaml/name/wide (or without an output format)",
 		format,
 	)
 }
@@ -90,10 +92,6 @@ func sortByNotAllowed(expression string) string {
 		expression,
 	)
 }
-
-const kyamlNotRedactable = "the output format \"kyaml\" cannot be redacted reliably, because the connector does not " +
-	"redact this output format yet; reading a resource is supported with -o json/yaml/name/wide (or without an " +
-	"output format)"
 
 const describeNotSupported = "\"kubectl describe\" is not supported, because it renders a resource in a text format " +
 	"the connector cannot parse, so the credentials a resource may contain cannot be redacted from its output; read " +
@@ -295,7 +293,7 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "-o json is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "json"}, allowed: true},
 		{name: "-o yaml is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "yaml"}, allowed: true},
 		{name: "-o kyaml is rejected", command: "kubectl", arguments: []string{"get", "services", "-o", "kyaml"}, allowed: false,
-			rejectionReason: kyamlNotRedactable},
+			rejectionReason: outputFormatNotAllowed("kyaml")},
 		{name: "-o name is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "name"}, allowed: true},
 		{name: "-o wide is allowed", command: "kubectl", arguments: []string{"get", "services", "-o", "wide"}, allowed: true},
 		{name: "-o jsonpath is rejected",
@@ -309,7 +307,7 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "-o template is rejected",
 			command: "kubectl", arguments: []string{"get", "services", "-o", "template", "--template={{.metadata.name}}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactable("go-template")},
+			rejectionReason: outputFormatNotRedactable("template")},
 		{name: "-o custom-columns is rejected",
 			command: "kubectl", arguments: []string{"get", "services", "-o", "custom-columns=NAME:.metadata.name"}, allowed: false,
 			rejectionReason: outputFormatNotRedactable("custom-columns")},
@@ -326,7 +324,7 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "a Dash0 resource with -o template is rejected",
 			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "template", "--template={{.spec}}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactable("go-template")},
+			rejectionReason: outputFormatNotRedactable("template")},
 		{name: "a Dash0 resource with -o jsonpath is rejected",
 			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "jsonpath={.items[*].spec}"}, allowed: false,
 			rejectionReason: outputFormatNotRedactable("jsonpath")},
@@ -347,7 +345,7 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "a Dash0 resource with kyaml is rejected",
 			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-o", "kyaml"}, allowed: false,
-			rejectionReason: kyamlNotRedactable},
+			rejectionReason: outputFormatNotAllowed("kyaml")},
 		{name: "a Dash0 resource with an attached reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "dash0monitorings", "-ojsonpath={.items}"}, allowed: false,
 			rejectionReason: outputFormatNotRedactable("jsonpath")},
@@ -444,7 +442,7 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "a workload with kyaml is rejected",
 			command: "kubectl", arguments: []string{"get", "deploy", "-o", "kyaml"}, allowed: false,
-			rejectionReason: kyamlNotRedactable},
+			rejectionReason: outputFormatNotAllowed("kyaml")},
 		{name: "the all shorthand with a reshaping format is rejected",
 			command: "kubectl", arguments: []string{"get", "all", "-o", "jsonpath={.items}"}, allowed: false,
 			rejectionReason: outputFormatNotRedactable("jsonpath")},
@@ -517,7 +515,7 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "kyaml is rejected for a resource type without a credential field",
 			command: "kubectl", arguments: []string{"get", "services", "-o", "kyaml"}, allowed: false,
-			rejectionReason: kyamlNotRedactable},
+			rejectionReason: outputFormatNotAllowed("kyaml")},
 		{name: "a third-party custom resource is rejected the same way",
 			command: "kubectl", arguments: []string{"get", "persesdashboards", "-o", "jsonpath={.items}"}, allowed: false,
 			rejectionReason: outputFormatNotRedactable("jsonpath")},
@@ -596,6 +594,14 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "secret with --template in front of the resource is rejected",
 			command: "kubectl", arguments: []string{"get", "--template", "{{.data}}", "secret"}, allowed: false,
 			rejectionReason: contentsNotReadable},
+		// The secret is checked before the output format, so that the rejection names what makes the secret special
+		// rather than the format, whatever format the request asks for.
+		{name: "secret with an unknown output format is rejected as a secret",
+			command: "kubectl", arguments: []string{"get", "secret", "-o", "bogusformat"}, allowed: false,
+			rejectionReason: contentsNotReadable},
+		{name: "secret with a file output format is rejected as a secret",
+			command: "kubectl", arguments: []string{"get", "secret", "-o", "jsonpath-file=/etc/passwd"}, allowed: false,
+			rejectionReason: contentsNotReadable},
 
 		// "kubectl describe" prints the token of a service account token secret verbatim, and the size of every other
 		// value, and its output cannot be redacted.
@@ -658,7 +664,7 @@ func TestValidateCommandRequest(t *testing.T) {
 			rejectionReason: outputFormatNotRedactable("go-template")},
 		{name: "config map with -o kyaml is rejected",
 			command: "kubectl", arguments: []string{"get", "cm", "-o", "kyaml"}, allowed: false,
-			rejectionReason: kyamlNotRedactable},
+			rejectionReason: outputFormatNotAllowed("kyaml")},
 		{name: "describe configmap is rejected",
 			command: "kubectl", arguments: []string{"describe", "configmap", "my-cm"}, allowed: false,
 			rejectionReason: describeNotSupported},
