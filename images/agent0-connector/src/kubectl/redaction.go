@@ -655,14 +655,12 @@ func redactValueOf(node map[string]any, key string, redacted *redactor) {
 	}
 }
 
-// replaceValueOf replaces the value the given key holds in node with redactedValue and returns the value it replaced.
-// Non-string and empty values are left alone; a value sourced via valueFrom is an object rather than a string and is
-// therefore not a credential the response exposes.
-//
-// A value that already is the placeholder is left alone as well.
+// replaceValueOf replaces the value the given key holds in node with the redactedValue placeholder. It also returns the
+// value it replaced, rendered as a string (for the purpose of stderr scrubbing). It reports false when the key holds no
+// value that could be a credential, see scalarValue.
 func replaceValueOf(node map[string]any, key string) (string, bool) {
-	value, isString := node[key].(string)
-	if !isString || value == "" || value == redactedValue {
+	value, isScalar := scalarValue(node[key])
+	if !isScalar {
 		return "", false
 	}
 	node[key] = redactedValue
@@ -714,8 +712,7 @@ func redactArgumentValues(node map[string]any, key string, redacted *redactor) {
 		return
 	}
 	for i, argument := range arguments {
-		value, isString := argument.(string)
-		if !isString || value == "" || value == redactedValue {
+		if _, isScalar := scalarValue(argument); !isScalar {
 			continue
 		}
 		arguments[i] = redactedValue
@@ -741,7 +738,9 @@ func redactHeaderValues(node map[string]any, key string, redacted *redactor) {
 		for name := range typedValue {
 			redactHeaderValueIfPlausible(typedValue, name, redacted)
 		}
-	case string:
+	default:
+		// A single header value, which redactHeaderValueIfPlausible replaces if it is a scalar and leaves alone
+		// otherwise.
 		redactHeaderValueIfPlausible(node, key, redacted)
 	}
 }
@@ -752,8 +751,8 @@ func redactHeaderValues(node map[string]any, key string, redacted *redactor) {
 // encoding - and rendering those as the placeholder would hide harmless information from the reader without protecting
 // anything.
 func redactHeaderValueIfPlausible(node map[string]any, key string, redacted *redactor) {
-	value, isString := node[key].(string)
-	if !isString {
+	value, isScalar := scalarValue(node[key])
+	if !isScalar {
 		return
 	}
 	if _, isWellKnown := wellKnownNonSecretValues[strings.ToLower(value)]; isWellKnown {
@@ -964,6 +963,31 @@ func redactAllSecrets(text string, secrets []string) string {
 		text = strings.ReplaceAll(text, secret, redactedValue)
 	}
 	return text
+}
+
+// scalarValue checks whether the gives part of a document is a scalar (string, number, bool) and returns its value
+// in string form. A value that has already been replaced by the redactedValue placeholder is skipped, i.e. the method
+// returns false.
+func scalarValue(value any) (string, bool) {
+	switch typedValue := value.(type) {
+	case string:
+		if typedValue == "" || typedValue == redactedValue {
+			return "", false
+		}
+		return typedValue, true
+	case json.Number:
+		// numbers can potentially be secrets too, e.g. { "token": 12345678 }
+		return typedValue.String(), true
+	case bool:
+		// Very unlikely to be a secret, but treated the same for consistency here. (Note: The HTTP  header plausibility
+		// check keeps bools readable, "true" and "false" are among the well-known non-secret values.
+		if typedValue {
+			return "true", true
+		}
+		return "false", true
+	default:
+		return "", false
+	}
 }
 
 // renderResponseDocument renders the redacted document in the output format the request asked for. It tries to emulate

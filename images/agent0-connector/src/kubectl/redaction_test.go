@@ -96,7 +96,7 @@ func redactDocumentAs(t *testing.T, document string, format string) (string, []s
 	t.Helper()
 
 	var parsed any
-	if err := json.Unmarshal([]byte(document), &parsed); err != nil {
+	if err := unmarshalPreservingNumbers(document, &parsed); err != nil {
 		t.Fatalf("cannot parse the test document: %v", err)
 	}
 	redacted := &redactor{values: make(map[string]struct{})}
@@ -529,6 +529,50 @@ func TestRedactWorkloadCommandLines(t *testing.T) {
 	// in unrelated output, see redactArgumentValues.
 	if len(replaced) > 0 {
 		t.Errorf("expected no command line element to be scrubbed from stderr, got %v", replaced)
+	}
+}
+
+// TestRedactNonStringCredentialValues covers a credential that is written without quotes and is therefore not a string
+// in the parsed document. The walk reaches documents no schema validates - the parsed content of a config map value,
+// the copy of a manifest in an annotation, a custom resource that preserves unknown fields - so a credential can arrive
+// as a number or a boolean rather than as a string, see scalarValue.
+func TestRedactNonStringCredentialValues(t *testing.T) {
+	const configMapValue = "token: 9007199254740993\n" +
+		"password: 1234567890\n" +
+		"headers:\n" +
+		"  x-api-key: 987654321\n" +
+		"  accept: application/json\n" +
+		"port: 8080\n"
+
+	encodedValue, err := json.Marshal(configMapValue)
+	if err != nil {
+		t.Fatalf("cannot encode the test value: %v", err)
+	}
+	document := fmt.Sprintf(`{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map"
+    },
+    "data": {
+        "config.yaml": %s
+    }
+}`, encodedValue)
+
+	rendered, _ := redactDocument(t, document)
+
+	for _, value := range []string{"9007199254740993", "1234567890", "987654321"} {
+		if strings.Contains(rendered, value) {
+			t.Errorf("expected the numeric credential %q to be redacted, got %q", value, rendered)
+		}
+	}
+	// A header value that is a well-known non-secret stays readable, whatever its type, and a field that is not a
+	// credential position keeps its value - redacting those would hide harmless information without protecting
+	// anything.
+	for _, preserved := range []string{"application/json", "8080"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
 	}
 }
 
