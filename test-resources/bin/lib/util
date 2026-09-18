@@ -757,7 +757,13 @@ run_helm() {
 
   # Deploy an operator configuration right away.
   if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != "false" ]]; then
-    if [[ "${USE_OTLP_SINK:-}" = "true" ]]; then
+    if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT:-}" = "true" ]]; then
+      # Configure a plain OTLP/gRPC export via operator.exports instead of a Dash0 export; the operator manager creates
+      # the operator configuration resource from that list just as it does for operator.dash0Export.*.
+      # The http:// prefix marks the endpoint as insecure, for the collectors as well as for the self-monitoring
+      # telemetry of the operator manager itself.
+      helm_install_command+=" --set operator.exports[0].grpc.endpoint=http://otlp-sink.otlp-sink.svc.cluster.local:4317"
+    elif [[ "${USE_OTLP_SINK:-}" = "true" ]]; then
       helm_install_command+=" --set operator.dash0Export.enabled=true"
       helm_install_command+=" --set operator.dash0Export.endpoint=http://otlp-sink.otlp-sink.svc.cluster.local:4317"
       helm_install_command+=" --set operator.dash0Export.token=dummy-token"

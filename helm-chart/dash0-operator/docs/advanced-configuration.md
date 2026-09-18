@@ -585,6 +585,40 @@ spec:
             value: my-value
 ```
 
+### Configuring Other Backends Via Helm
+
+The same exports can be configured via the Helm value `operator.exports`, which lets the operator create the operator
+configuration resource for you instead of applying it with `kubectl`. The value is a list with exactly the structure of
+`spec.exports` shown above:
+
+```yaml
+operator:
+  exports:
+    - grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+        headers:
+          - name: X-My-Header
+            value: my-value
+```
+
+Setting `operator.exports` to a non-empty list makes the operator create the operator configuration resource at startup,
+just like `operator.dash0Export.enabled=true` does; see
+[Notes on Creating the Operator Configuration Resource Via Helm](configuration.md#notes-on-creating-the-operator-configuration-resource-via-helm).
+Both can be combined: the Dash0 export configured via `operator.dash0Export.*` comes first, followed by the exports
+listed in `operator.exports`. Configuring a `dash0` export in `operator.exports` while `operator.dash0Export.enabled` is
+`true` is an error; use one of the two, not both.
+
+The order matters for the operator's self-monitoring telemetry, which is only sent to the first export. Self-monitoring
+is not supported for an `http` export with `encoding: json` and is silently disabled in that case.
+
+Note that the values of `operator.exports` are rendered verbatim into a Kubernetes ConfigMap. For header values that
+contain sensitive data, use `valueFrom.secretKeyRef` (see the next section) instead of a literal `value`.
+
+Two operator features require a Dash0 export and are therefore not available with `http` or `grpc` exports alone:
+synchronizing dashboards, check rules, synthetic checks, views, notification channels, spam filters and
+signal-to-metrics rules (which needs `dash0.apiEndpoint`), and Signal Control (which needs a Dash0 export with an auth
+token).
+
 ### Providing Header Values via a Kubernetes Secret
 
 Header values often contain sensitive data, such as authorization tokens or API keys. Instead of providing such a value

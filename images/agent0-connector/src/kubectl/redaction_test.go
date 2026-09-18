@@ -547,6 +547,19 @@ const (
 		}
 	}`
 
+	// The operator's extra config map carries the exports of the automatically created operator configuration resource
+	// (Helm value operator.exports). Their headers use the name/value shape of the custom resources, not the map shape
+	// of a collector configuration.
+	extraConfigMapJson = `{
+		"apiVersion": "v1",
+		"kind": "ConfigMap",
+		"metadata": {"name": "dash0-operator-extra-config", "namespace": "dash0-system"},
+		"data": {
+			"extra.yaml": "exports:\n  - grpc:\n      endpoint: otlp.example.com:4317\n      headers:\n` +
+		`      - name: authorization\n        value: Bearer extra-cm-token\n"
+		}
+	}`
+
 	rootCaConfigMapJson = `{
 		"apiVersion": "v1",
 		"kind": "ConfigMap",
@@ -596,6 +609,22 @@ func TestRedactConfigMapData(t *testing.T) {
 			}
 		}
 		if !slices.Contains(replaced, "Bearer collector-cm-token") {
+			t.Errorf("expected the header value to be scrubbed from stderr as well, got %q", replaced)
+		}
+	})
+
+	t.Run("redacts a header value of an export in the operator's extra config map", func(t *testing.T) {
+		rendered, replaced := redactDocument(t, extraConfigMapJson)
+
+		if strings.Contains(rendered, "extra-cm-token") {
+			t.Errorf("expected the export header value to be redacted, got %q", rendered)
+		}
+		for _, preserved := range []string{"otlp.example.com:4317", "authorization"} {
+			if !strings.Contains(rendered, preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+			}
+		}
+		if !slices.Contains(replaced, "Bearer extra-cm-token") {
 			t.Errorf("expected the header value to be scrubbed from stderr as well, got %q", replaced)
 		}
 	})

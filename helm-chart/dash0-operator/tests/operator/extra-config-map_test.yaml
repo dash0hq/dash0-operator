@@ -1432,3 +1432,110 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.autoMonitorNamespaces.monitoringTemplate is not a valid setting. The monitoring template is a top-level operator setting; please use operator.monitoringTemplate instead."
+
+  - it: should render exports
+    set:
+      operator:
+        exports:
+          - grpc:
+              endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+              insecure: true
+              balancer_name: pick_first
+              headers:
+                - name: x-tenant
+                  value: tenant-1
+          - http:
+              endpoint: https://otlp.example.com
+              encoding: json
+              headers:
+                - name: authorization
+                  valueFrom:
+                    secretKeyRef:
+                      name: my-backend-secret
+                      key: token
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            .*
+            exports:
+              - grpc:
+                  balancer_name: pick_first
+                  endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+                  headers:
+                  - name: x-tenant
+                    value: tenant-1
+                  insecure: true
+              - http:
+                  encoding: json
+                  endpoint: https://otlp.example.com
+                  headers:
+                  - name: authorization
+                    valueFrom:
+                      secretKeyRef:
+                        key: token
+                        name: my-backend-secret
+
+  - it: should not render exports by default
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: "exports:"
+
+  - it: should disallow an export with none of dash0, grpc or http
+    set:
+      operator:
+        exports:
+          - grpc:
+              endpoint: otelcol:4317
+          - {}
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[1] has none of dash0, grpc or http set, at least one of them is required."
+
+  - it: should disallow a dash0 export in operator.exports when operator.dash0Export.enabled is true
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: ingress.dash0.com:4317
+          token: very-secret-dash0-auth-token
+        exports:
+          - dash0:
+              endpoint: ingress.dash0.com:4317
+              authorization:
+                token: another-token
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[0] defines a dash0 export while operator.dash0Export.enabled is true. Please configure the Dash0 export either via operator.dash0Export.* or via operator.exports, but not via both."
+
+  - it: should disallow a dash0 export without an endpoint
+    set:
+      operator:
+        exports:
+          - dash0:
+              authorization:
+                token: token
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[0].dash0 has no endpoint."
+
+  - it: should disallow a grpc export without an endpoint
+    set:
+      operator:
+        exports:
+          - grpc:
+              insecure: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[0].grpc has no endpoint."
+
+  - it: should disallow an http export without an endpoint
+    set:
+      operator:
+        exports:
+          - http:
+              encoding: proto
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.exports[0].http has no endpoint."
