@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # download the opentelemetry-injector binary for the target architecture
-FROM alpine:3.24.1 AS download-injector-binary
+FROM alpine:3.24.2 AS download-injector-binary
 
 RUN apk add --no-cache curl jq wget
 
@@ -47,7 +47,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   && find node_modules/@opentelemetry -type d \( -name esm -o -name esnext \) -path '*/build/*' -exec rm -rf {} +
 
 # download .NET auto instrumentation
-FROM alpine:3.24.1 AS build-dotnet
+FROM alpine:3.24.2 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
 		unzip
@@ -59,7 +59,7 @@ RUN ./download-instrumentation.sh
 # (images/instrumentation/python/dash0-python-distribution-version) holds a bare git ref of
 # github.com/dash0hq/opentelemetry-python-distribution — no comments, since it is inlined into the tarball URL. Prefer
 # a release tag (`vX.Y.Z`); use a commit SHA only when the operator needs to consume unreleased upstream work.
-FROM alpine:3.24.1 AS download-dash0-python-distribution
+FROM alpine:3.24.2 AS download-dash0-python-distribution
 RUN apk add --no-cache curl tar
 COPY python/dash0-python-distribution-version /tmp/dash0-python-distribution-version
 RUN distribution_version=$(cat /tmp/dash0-python-distribution-version) && \
@@ -109,7 +109,7 @@ RUN pip install --quiet --root-user-action ignore --target . \
 # (images/instrumentation/ruby/dash0-ruby-distribution-version) holds a bare git ref of
 # github.com/dash0hq/opentelemetry-ruby-distribution — no comments, since it is inlined into the tarball URL. Prefer a
 # release tag (`vX.Y.Z`); use a commit SHA only when the operator needs to consume unreleased upstream work.
-FROM alpine:3.24.1 AS download-dash0-ruby-distribution
+FROM alpine:3.24.2 AS download-dash0-ruby-distribution
 RUN apk add --no-cache curl tar
 COPY ruby/dash0-ruby-distribution-version /tmp/dash0-ruby-distribution-version
 RUN distribution_version=$(cat /tmp/dash0-ruby-distribution-version) && \
@@ -136,7 +136,7 @@ COPY ruby/install-bundle.sh /tmp/install-bundle.sh
 RUN /tmp/install-bundle.sh /tmp/dash0-ruby-distribution /dash0-instrumentation/ruby
 
 # build the final instrumentation image
-FROM alpine:3.24.1
+FROM alpine:3.24.2
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
