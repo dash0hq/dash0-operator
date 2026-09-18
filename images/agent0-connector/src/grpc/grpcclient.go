@@ -12,12 +12,14 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/kubectl"
+	"github.com/dash0hq/dash0-operator/images/agent0-connector/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/images/agent0-connector/tracecontext"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -71,6 +73,10 @@ const (
 	// process, most of it for parsing the output in order to redact credentials from it. Two of those fit into the
 	// default memory limit of the pod.
 	defaultMaxConcurrentCommands = 2
+
+	// exitCodePanicked is reported for a command request whose execution panicked, mirroring the exit code the kubectl
+	// package reports for a request it rejects: the connector returns no output either way.
+	exitCodePanicked int32 = 1
 
 	// commandQueueCapacity is how many received command requests wait for a free worker. (A queued request holds only
 	// the command and its arguments, so items in the queue are cheap with regard to memory consumption.)
@@ -423,7 +429,7 @@ func listenToCommandRequests(
 		go func() {
 			defer workers.Done()
 			for req := range requests {
-				responses <- execute(workerCtx, logger, kubectlTmpDir, req)
+				responses <- executeWithPanicBoundary(workerCtx, logger, kubectlTmpDir, req, execute)
 			}
 		}()
 	}
@@ -481,6 +487,44 @@ func listenToCommandRequests(
 		return sendErr
 	}
 	return recvErr
+}
+
+// executeWithPanicBoundary executes a single CommandRequest in a panic-safe way. It turns a panic of the executor
+// into a response, instead of letting it end the process. The executor runs in a worker goroutine, where an unrecovered
+// panic is fatal: one malformed response of one request results in a termination of the connector, which loses every
+// command in flight.
+//
+// The response in case of a panic is synthesized here, it does not use any result from the actual execution.
+func executeWithPanicBoundary(
+	ctx context.Context,
+	logger *slog.Logger,
+	kubectlTmpDir string,
+	req *pb.CommandRequest,
+	execute commandExecutor,
+) (resp *pb.CommandResponse) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		// The kubectl command is not known here - resolving it is part of what may have panicked - so the error is
+		// recorded without one.
+		selfmonitoring.RecordCommandError(ctx, selfmonitoring.CommandUnknown, selfmonitoring.ErrorTypePanicked)
+		logger.ErrorContext(
+			ctx,
+			"recovered from a panic while executing a command request",
+			"requestId", req.GetRequestId(),
+			"panic", fmt.Sprintf("%v", recovered),
+			"stack", string(debug.Stack()),
+		)
+		resp = &pb.CommandResponse{
+			RequestId: req.GetRequestId(),
+			ExitCode:  exitCodePanicked,
+			Stderr: "dash0 agent0-connector could not execute the command: it failed in a way the connector does " +
+				"not handle",
+		}
+	}()
+	return execute(ctx, logger, kubectlTmpDir, req)
 }
 
 // receiveCommandRequests reads CommandRequests from the stream and hands them to the worker queue, until the stream is

@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -581,6 +582,84 @@ func TestResolveMaxConcurrentCommands(t *testing.T) {
 			if got := resolveMaxConcurrentCommands(logger); got != defaultMaxConcurrentCommands {
 				t.Errorf("expected the default %d for the value %q, got %d", defaultMaxConcurrentCommands, value, got)
 			}
+		}
+	})
+}
+
+// TestWorkerSurvivesAPanickingExecutor pins the boundary around the command executor: the workers run in goroutines of
+// their own, where an unrecovered panic would end the process and every command in flight with it.
+func TestWorkerSurvivesAPanickingExecutor(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("answers the request that panicked and keeps taking the next one", func(t *testing.T) {
+		stream := &fakeStream{requests: []*pb.CommandRequest{
+			{RequestId: "req-panics", Command: "kubectl", Arguments: []string{"get", "pods"}},
+			{RequestId: "req-succeeds", Command: "kubectl", Arguments: []string{"get", "pods"}},
+		}}
+		execute := func(
+			_ context.Context,
+			_ *slog.Logger,
+			_ string,
+			req *pb.CommandRequest,
+		) *pb.CommandResponse {
+			if req.GetRequestId() == "req-panics" {
+				panic("the redaction walk fell over")
+			}
+			return &pb.CommandResponse{RequestId: req.GetRequestId(), Stdout: "fine"}
+		}
+
+		// A single worker, so that the second request is necessarily handled by the one that just panicked.
+		if err := listen(t, logger, stream, 1, execute); err != nil {
+			t.Fatalf("expected a nil error on clean stream close, got %v", err)
+		}
+
+		sent := stream.sentResponses()
+		if !slices.Equal(requestIDs(sent), []string{"req-panics", "req-succeeds"}) {
+			t.Fatalf("expected both requests to be answered, got %v", requestIDs(sent))
+		}
+		for _, resp := range sent {
+			if resp.GetRequestId() != "req-panics" {
+				continue
+			}
+			if resp.GetStdout() != "" {
+				t.Errorf("expected no output for the request that panicked, got %q", resp.GetStdout())
+			}
+			if resp.GetExitCode() != exitCodePanicked {
+				t.Errorf("expected exit code %d, got %d", exitCodePanicked, resp.GetExitCode())
+			}
+			if !strings.Contains(resp.GetStderr(), "could not execute the command") {
+				t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+			}
+		}
+	})
+
+	t.Run("does not hand out the output the executor had produced before it panicked", func(t *testing.T) {
+		stream := &fakeStream{requests: []*pb.CommandRequest{
+			{RequestId: "req-half-redacted", Command: "kubectl", Arguments: []string{"get", "pods", "-o", "json"}},
+		}}
+		execute := func(
+			_ context.Context,
+			_ *slog.Logger,
+			_ string,
+			resp *pb.CommandRequest,
+		) *pb.CommandResponse {
+			// What a panic in the middle of the redaction walk leaves behind: a response that still holds the
+			// credential the walk had not reached yet.
+			_ = resp
+			panic("panicked while holding my-unredacted-token")
+		}
+
+		if err := listen(t, logger, stream, 1, execute); err != nil {
+			t.Fatalf("expected a nil error on clean stream close, got %v", err)
+		}
+
+		sent := stream.sentResponses()
+		if len(sent) != 1 {
+			t.Fatalf("expected one response, got %d", len(sent))
+		}
+		if strings.Contains(sent[0].GetStdout(), "my-unredacted-token") ||
+			strings.Contains(sent[0].GetStderr(), "my-unredacted-token") {
+			t.Errorf("expected the panic value to be kept out of the response, got %v", sent[0])
 		}
 	})
 }
