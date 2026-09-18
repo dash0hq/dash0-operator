@@ -429,7 +429,8 @@ func TestRedactNestedAnnotations(t *testing.T) {
                     "metadata": {
                         "name": "nested",
                         "annotations": {
-                            "kubectl.kubernetes.io/last-applied-configuration": "{\"spec\":{\"exports\":[{\"dash0\":{\"authorization\":{\"token\":\"` +
+                            "kubectl.kubernetes.io/last-applied-configuration":
+                                "{\"spec\":{\"exports\":[{\"dash0\":{\"authorization\":{\"token\":\"` +
 		nestedListToken + `\"}}}]}}"
                         }
                     }
