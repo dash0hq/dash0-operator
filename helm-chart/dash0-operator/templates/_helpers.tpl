@@ -55,6 +55,17 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{ include "dash0-operator.chartName" . }}-extra-config
 {{- end }}
 
+{{/*
+Renders the string "true" if the operator manager is supposed to create and update the operator configuration resource
+from the values provided via Helm, and the empty string otherwise. Used by the operator manager deployment and by the
+post-install hook which waits for that resource, so both cannot drift apart.
+*/}}
+{{- define "dash0-operator.createOperatorConfigurationResource" -}}
+{{- if or .Values.operator.dash0Export.enabled .Values.operator.exports -}}
+true
+{{- end }}
+{{- end }}
+
 {{- define "dash0-operator.deploymentName" -}}
 {{ include "dash0-operator.chartName" . }}-controller
 {{- end }}

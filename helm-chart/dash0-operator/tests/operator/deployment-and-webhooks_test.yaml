@@ -2115,3 +2115,66 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.agent0Connector.enabled is set to true, but neither operator.agent0Connector.token nor operator.agent0Connector.secretRef.name & operator.agent0Connector.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator."
+
+  - it: should not add the operator-configuration args if neither dash0Export nor exports are set
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-managed-via-helm=true
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-self-monitoring-enabled=true
+
+  - it: should add the operator-configuration args if only operator.exports is set
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        exports:
+          - grpc:
+              endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+              insecure: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-managed-via-helm=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-self-monitoring-enabled=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-instrumentation-delivery=init-container
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-endpoint=
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-dataset=default
+
+  - it: should add the operator-configuration args for a combination of dash0Export and exports
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        exports:
+          - http:
+              endpoint: https://otlp.example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-endpoint=https://ingress.dash0.com
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-token=very-secret-dash0-auth-token
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-managed-via-helm=true

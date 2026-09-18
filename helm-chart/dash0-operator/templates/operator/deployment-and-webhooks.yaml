@@ -112,6 +112,7 @@ spec:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
+{{- if include "dash0-operator.createOperatorConfigurationResource" . }}
 {{- if .Values.operator.dash0Export.enabled }}
 {{- if not .Values.operator.dash0Export.endpoint }}
 {{- fail "Error: operator.dash0Export.enabled is set to true, but you did not provide a value for operator.dash0Export.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
@@ -128,6 +129,7 @@ spec:
 {{- if .Values.operator.dash0Export.apiEndpoint }}
         - --operator-configuration-api-endpoint={{ .Values.operator.dash0Export.apiEndpoint }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.apiEndpoint" */}}
+{{- end }}{{/*closes the first "if .Values.operator.dash0Export.enabled" */}}
         - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
         - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
         - --operator-configuration-collect-pod-labels-and-annotations-enabled={{ .Values.operator.collectPodLabelsAndAnnotationsEnabled }}
@@ -138,6 +140,7 @@ spec:
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
 {{- end }}{{/*closes "if .Values.operator.clusterName" */}}
+{{- if .Values.operator.dash0Export.enabled }}
 {{- if .Values.operator.dash0Export.dataset }}
         - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.dataset" */}}
@@ -150,13 +153,15 @@ spec:
 {{- if .Values.operator.dash0Export.keepalive.permit_without_stream }}
         - --operator-configuration-keepalive-permit-without-stream={{ .Values.operator.dash0Export.keepalive.permit_without_stream }}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.keepalive.permit_without_stream" */}}
+{{- end }}{{/*closes the second "if .Values.operator.dash0Export.enabled" */}}
         - --operator-configuration-auto-monitor-namespaces-enabled={{ .Values.operator.autoMonitorNamespaces.enabled }}
         - --operator-configuration-auto-monitor-namespaces-label-selector={{ .Values.operator.autoMonitorNamespaces.labelSelector }}
 {{- if not (or (eq .Values.operator.instrumentation.delivery "auto") (eq .Values.operator.instrumentation.delivery "image-volume") (eq .Values.operator.instrumentation.delivery "init-container")) }}
 {{- fail (printf "Error: operator.instrumentation.delivery must be one of \"auto\", \"image-volume\" or \"init-container\", but was %q." .Values.operator.instrumentation.delivery) -}}
 {{- end }}
         - --operator-configuration-instrumentation-delivery={{ .Values.operator.instrumentation.delivery }}
-{{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
+        - --operator-configuration-managed-via-helm=true
+{{- end }}{{/*closes "if include dash0-operator.createOperatorConfigurationResource" */}}
         - --dash0-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
 {{- if .Values.operator.signalControl.enabled }}
         - --dash0-feature-signal-control-enabled=true
