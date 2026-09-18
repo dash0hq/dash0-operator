@@ -79,7 +79,7 @@ object schemas.
 The agent0-connector executes read-only kubectl commands on behalf of an upstream agent and redacts credentials from the
 responses before they leave the cluster. It hands out only what it can walk for credentials: `kubectl describe` and the
 output formats that reshape a response (`-o go-template/template/jsonpath/jsonpath-as-json/custom-columns`,
-`--template`, `-o kyaml`) are rejected for every resource type. Allowed commands are
+`--template`) are rejected for every resource type, as is `-o kyaml`. Allowed commands are
 * `kubectl get` with a content-free format (`-o name`, `-o wide`, the default table), which renders no content at all
 * `kubectl get` with `-o json`/`-o yaml`, for which the response is parsed, redacted and rendered again.
 

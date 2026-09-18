@@ -5,6 +5,7 @@ package kubectl
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
@@ -32,7 +33,7 @@ func flagNotAllowed(flag string) string {
 func kubectlCommandNotAllowed(kubectlCommand string) string {
 	return fmt.Sprintf(
 		"the kubectl command %q is not an allowed read-only command, the only allowed kubectl commands are "+
-			"\"api-resources\", \"api-versions\", \"auth\", \"cluster-info\", \"describe\", \"events\", \"explain\", "+
+			"\"api-resources\", \"api-versions\", \"auth\", \"cluster-info\", \"events\", \"explain\", "+
 			"\"get\", \"logs\", \"top\" and \"version\"",
 		kubectlCommand,
 	)
@@ -56,11 +57,11 @@ func subcommandNotAllowed(kubectlCommand string, allowedSubcommands string, requ
 	)
 }
 
-func kubctlCommandOnlyAllowedWithoutSubcommand(kubectlCommand string, requestedSubcommand string) string {
+func subcommandMissing(kubectlCommand string, allowedSubcommands string) string {
 	return fmt.Sprintf(
-		"the kubectl command %q is only allowed without a subcommand, but the subcommand was %q",
+		"the kubectl command %q is only allowed with the subcommand %q, but no subcommand was given",
 		kubectlCommand,
-		requestedSubcommand,
+		allowedSubcommands,
 	)
 }
 
@@ -154,7 +155,7 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "auth whoami is rejected", command: "kubectl", arguments: []string{"auth", "whoami"}, allowed: false,
 			rejectionReason: subcommandNotAllowed("auth", "can-i", "whoami")},
 		{name: "bare auth is rejected", command: "kubectl", arguments: []string{"auth"}, allowed: false,
-			rejectionReason: kubctlCommandOnlyAllowedWithoutSubcommand("auth", "can-i")},
+			rejectionReason: subcommandMissing("auth", "can-i")},
 		{name: "events is allowed", command: "kubectl", arguments: []string{"events"}, allowed: true},
 
 		{name: "non-kubectl command is rejected", command: "helm", arguments: []string{"list"}, allowed: false,
@@ -829,6 +830,26 @@ var kubectlCommandRedactionRationale = map[string]string{
 // "kubectl cluster-info dump" hand out pod specs etc. unredacted. This checks for the kubectl command that are on the
 // allowlist without their response being redacted. Whenever allowedKubectlCommands grows, the new command has to be
 // classified deliberately.
+// TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally pins that allowedKubectlCommandsHumanReadable, which
+// rejection messages hand to the calling agent as the list of commands it may use, names no command that a later check
+// rejects for every invocation. Advertising such a command sends the agent into a retry that cannot succeed.
+func TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally(t *testing.T) {
+	for kubectlCmd := range unconditionallyRejectedKubectlCommands {
+		if _, allowed := allowedKubectlCommands[kubectlCmd]; !allowed {
+			t.Errorf(
+				"unconditionallyRejectedKubectlCommands has a stale entry for %q, which is not on the allowlist any more",
+				kubectlCmd,
+			)
+		}
+		if strings.Contains(allowedKubectlCommandsHumanReadable, fmt.Sprintf("%q", kubectlCmd)) {
+			t.Errorf(
+				"the kubectl command %q is rejected for every invocation, but rejection messages advertise it as allowed",
+				kubectlCmd,
+			)
+		}
+	}
+}
+
 func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
 	for kubectlCmd := range allowedKubectlCommands {
 		if _, hasRationale := kubectlCommandRedactionRationale[kubectlCmd]; !hasRationale {

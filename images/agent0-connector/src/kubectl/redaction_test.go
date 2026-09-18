@@ -977,7 +977,7 @@ func TestRedactionPreservesNumbers(t *testing.T) {
 
 	for _, format := range []string{outputFormatJson, outputFormatYaml} {
 		t.Run(format, func(t *testing.T) {
-			parsed, parsedSuccessfully := parseResponseDocument(outputFormatJson, document)
+			parsed, parsedSuccessfully := parseResponseDocument(format, document)
 			if !parsedSuccessfully {
 				t.Fatal("cannot parse the test document")
 			}

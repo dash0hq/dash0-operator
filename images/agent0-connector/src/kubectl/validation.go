@@ -22,13 +22,16 @@ import (
 // is additional defense-in-depth on top of the read-only RBAC (get & list only) granted to the agent0-connector service
 // account.
 //
+// It also (despite the name) lists rejected kubectl commands that need a more specific rejection message
+// (e.g. kubectl describe)
+//
 // Allowed kubectl commands can be further restricted via allowedSubcommandsPerKubectlCommand.
 var allowedKubectlCommands = map[string]struct{}{
 	"api-resources": {},
 	"auth":          {},
 	"api-versions":  {},
 	"cluster-info":  {},
-	"describe":      {},
+	"describe":      {}, // describe is not actually allowed, see unconditionallyRejectedKubectlCommands
 	"events":        {},
 	"explain":       {},
 	"get":           {},
@@ -37,8 +40,23 @@ var allowedKubectlCommands = map[string]struct{}{
 	"version":       {},
 }
 
+// unconditionallyRejectedKubectlCommands are kubectl commands that are listed in allowedKubectlCommands so that a later
+// check can reject them with a more specific reason rather than with the generic "not an allowed read-only command".
+// They are left out of allowedKubectlCommandsHumanReadable so that no rejection message advertises a command the
+// connector never runs.
+var unconditionallyRejectedKubectlCommands = map[string]struct{}{
+	// see describeRequested
+	"describe": {},
+}
+
 var allowedKubectlCommandsHumanReadable = func() string {
-	allCmds := slices.Sorted(maps.Keys(allowedKubectlCommands))
+	allCmds := slices.DeleteFunc(
+		slices.Sorted(maps.Keys(allowedKubectlCommands)),
+		func(kubectlCmd string) bool {
+			_, rejected := unconditionallyRejectedKubectlCommands[kubectlCmd]
+			return rejected
+		},
+	)
 	allowedCmdsString := fmt.Sprintf("%q", allCmds[0])
 	for idx, kubectlCmd := range allCmds {
 		if idx > 0 && idx < len(allCmds)-1 {
@@ -269,7 +287,7 @@ func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
 	}
 	if requestedSubcommand == "" {
 		return fmt.Sprintf(
-			"the kubectl command %q is only allowed without a subcommand, but the subcommand was %q",
+			"the kubectl command %q is only allowed with the subcommand %q, but no subcommand was given",
 			parsed.kubectlCommand,
 			strings.Join(allowedSubcommands, "\" or \""),
 		), true

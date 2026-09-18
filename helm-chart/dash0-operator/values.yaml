@@ -1475,10 +1475,14 @@ operator:
       # accessible to anyone who has access to your Dash0 organization.
       #
       # The agent0-connector uses a set of restrictions and redaction mechanisms to prevent leaking secrets.
-      # * It only returns output that it is able to inspect for credentials. "kubectl describe" and output formats that
-      # can reshape a response (-o go-template, -o template, -o jsonpath, -o jsonpath-as-json, -o custom-columns,
-      # --template, and -o kyaml) are rejected, for "kubectl get" only "-o name"/"-o wide"/"-o json"/"-o yaml" are
-      # allowed. The output for -o json/yaml is processed by secret redaction. The following are redacted:
+      # * It only returns "kubectl get" output that it is able to inspect for credentials. "kubectl describe" and output
+      #   formats that can reshape a response (-o go-template, -o template, -o jsonpath, -o jsonpath-as-json,
+      #   -o custom-columns, --template, and -o kyaml) are rejected, for "kubectl get" only "-o name"/"-o wide"/
+      #   "-o json"/"-o yaml" are allowed. The output for -o json/yaml is processed by secret redaction.
+      # * The output of "kubectl logs" or "kubectl events" is returned as kubectl produced it, it is not inspected for
+      #   credentials: a credential that a workload writes to its own log, or that a controller quotes into an event
+      #   message, is not redacted.
+      # The following are redacted in kubectl get responses:
       # * the values of the environment variables and of the command line (command, args) of any workload,
       # * the header values of the probes and lifecycle hooks of any workload,
       # * all credential fields in any of the Dash0 custom resources,
