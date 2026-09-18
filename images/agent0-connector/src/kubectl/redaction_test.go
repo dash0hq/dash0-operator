@@ -576,6 +576,56 @@ func TestRedactNonStringCredentialValues(t *testing.T) {
 	}
 }
 
+// TestRedactEnvAndCommandInOtherShapes covers the shapes "env", "command" and "args" take outside a pod spec. The walk
+// reaches documents no schema validates, where an environment is a map of name to value or a list of "NAME=value"
+// entries, and a command line is one string rather than a list of elements.
+func TestRedactEnvAndCommandInOtherShapes(t *testing.T) {
+	const configMapValue = "env:\n" +
+		"  DB_PASSWORD: my-map-env-secret\n" +
+		"command: server --api-key=my-string-command-secret\n" +
+		"sidecar:\n" +
+		"  env:\n" +
+		"    - SMTP_TOKEN=my-list-env-secret\n" +
+		"  args: --flag=my-list-arg-secret\n"
+
+	encodedValue, err := json.Marshal(configMapValue)
+	if err != nil {
+		t.Fatalf("cannot encode the test value: %v", err)
+	}
+	document := fmt.Sprintf(`{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map"
+    },
+    "data": {
+        "config.yaml": %s
+    }
+}`, encodedValue)
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, secret := range []string{
+		"my-map-env-secret",
+		"my-string-command-secret",
+		"my-list-env-secret",
+		"my-list-arg-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+	}
+	// The name of an environment variable stays readable wherever it is a key of its own, which is what makes the
+	// response useful for diagnosing the workload.
+	if !strings.Contains(rendered, "DB_PASSWORD") {
+		t.Errorf("expected the name of the environment variable to be preserved, got %q", rendered)
+	}
+	// Replaced in the document only, see redactEnvVarValue.
+	if len(replaced) > 0 {
+		t.Errorf("expected no value to be scrubbed from stderr, got %v", replaced)
+	}
+}
+
 // TestRedactWorkloadEnvVars covers the environment variables of a pod spec, wherever the pod spec sits.
 func TestRedactWorkloadEnvVars(t *testing.T) {
 	t.Run("redacts the literal value of every environment variable", func(t *testing.T) {
@@ -654,16 +704,24 @@ func TestRedactWorkloadEnvVars(t *testing.T) {
 				expected: `{"env":[{"name":"A","value":""}]}`,
 			},
 			{
-				// Not the env var list of a pod spec: the walk only replaces a string held by the "value" key of a list
-				// entry, so a field that happens to be called "env" is left alone.
-				name:     "an env field that is not a list",
+				// Not the env var list of a pod spec, but the map of name to value that a config map value or a
+				// third-party resource uses. The name stays readable, the value is replaced like any other.
+				name:     "an env map of name to value",
 				document: `{"env":{"A":"a"}}`,
-				expected: `{"env":{"A":"a"}}`,
+				expected: `{"env":{"A":"(redacted)"}}`,
 			},
 			{
+				// A "NAME=value" entry is replaced in full: the name cannot be told from the value without assuming a
+				// separator the shape does not guarantee.
 				name:     "an env list of strings",
 				document: `{"env":["A=a"]}`,
-				expected: `{"env":["A=a"]}`,
+				expected: `{"env":["(redacted)"]}`,
+			},
+			{
+				// A single scalar names an environment rather than holding the value of one.
+				name:     "an env field that is a scalar",
+				document: `{"env":"production"}`,
+				expected: `{"env":"production"}`,
 			},
 		}
 
@@ -1652,26 +1710,33 @@ done
 func TestRedactDash0SecretsWithEmptyStdout(t *testing.T) {
 	logger := discardLogger()
 
-	t.Run("withholds a response that only has content on stderr", func(t *testing.T) {
-		// kubectl reports some errors by formatting the offending value - for a template or jsonpath error even the
-		// whole object - into a message on stderr while stdout stays empty. There is no document to redact then, so the
-		// response has to be withheld rather than handed out.
+	t.Run("hands out an error message that only has content on stderr", func(t *testing.T) {
+		// kubectl rendered no resource and only reported why. There is no document to redact, and the message is the
+		// answer to the request rather than a failure of the redaction: withholding it would leave the caller unable to
+		// tell a resource that does not exist from one it may not read, with nothing to correct.
+		//
+		// The formats that make kubectl format an object into a message on stderr - a template, jsonpath,
+		// custom-columns - are rejected for every resource type before the command runs, see knownOutputFormats, so
+		// what reaches this point is an error message rendered by kubectl itself.
 		fakeKubectlOnPath(t, `#!/bin/sh
-echo "error: the object given to the engine was map[token:`+monitoringToken+`]" >&2
+echo 'Error from server (NotFound): dash0monitorings.operator.dash0.com "my-resource" not found' >&2
 exit 1
 `)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-secret-on-stderr",
+			RequestId: "req-error-on-stderr",
 			Command:   "kubectl",
-			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
+			Arguments: []string{"get", "dash0monitorings", "my-resource", "-o", "yaml"},
 		})
 
-		if strings.Contains(resp.GetStderr(), monitoringToken) {
-			t.Errorf("expected the token to be withheld, got %q", resp.GetStderr())
+		if strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected the error message to be handed out, got %q", resp.GetStderr())
 		}
-		if !strings.Contains(resp.GetStderr(), "withheld the response") {
-			t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+		if !strings.Contains(resp.GetStderr(), "NotFound") {
+			t.Errorf("expected kubectl's own error message on stderr, got %q", resp.GetStderr())
+		}
+		if resp.GetExitCode() != 1 {
+			t.Errorf("expected kubectl's exit code 1, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
 		}
 	})
 

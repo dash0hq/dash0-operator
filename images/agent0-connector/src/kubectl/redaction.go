@@ -21,8 +21,9 @@
 //   - file-related output formats (go-template-file etc.) and --raw are disallowed outright, so they do not require
 //     specific treatment with respect to secret redaction
 //
-// A response that cannot be parsed after all - output truncated at maxStdoutBytes, a multi-document YAML stream, or an
-// error message on stderr with nothing on stdout - is withheld rather than handed out, see withholdResponse.
+// A response that cannot be parsed after all - output truncated at maxStdoutBytes, or a multi-document YAML stream -
+// is withheld rather than handed out, see withholdResponse. An invocation that rendered no resource at all and only
+// wrote an error message to stderr has nothing to redact and is handed out as it is.
 //
 // stderr is scrubbed by replacing the values that were redacted from the document, since kubectl formats an error
 // with Go's %v verbs rather than as a document.
@@ -200,8 +201,11 @@ func redactSecretsInResponse(parsed kubectlArguments, resp *pb.CommandResponse, 
 		)
 	}
 	if resp.GetStdout() == "" {
-		// Only stderr carries content, which is not a document (kubectl formats an error message, not a resource).
-		return fmt.Errorf("the command produced no output that could be parsed for redaction")
+		// Only stderr carries content: kubectl wrote an error message or a warning and rendered no resource at all.
+		// There is nothing to redact, and withholding the response would destroy the one thing that lets the caller
+		// correct its request - "Error from server (NotFound)" and "Error from server (Forbidden)" are the answer to
+		// the question it asked, not a failure of the redaction.
+		return nil
 	}
 	document, parsedSuccessfully := parseResponseDocument(format, resp.GetStdout())
 	if !parsedSuccessfully {
@@ -673,17 +677,35 @@ func replaceValueOf(node map[string]any, key string) (string, bool) {
 // auth token that way - and there is no way to tell a credential from an innocuous value. An environment variable that
 // sources its value via valueFrom has no "value" field and is left untouched, since the reference it holds is not a
 // credential.
+//
+// Three shapes are covered:
+// - the list of name/value pairs of a pod spec
+// - a list of "NAME=value" entries
+// - the map of name to value that a config map value or a third-party resource might use.
+//
+// The name of the env entry stays readable, only the value is replaced.
+//
+// A key that holds a single scalar (e.g. "env: production") is left alone.
 func redactEnvVarValues(node map[string]any, key string, redacted *redactor) {
-	envVars, isList := node[key].([]any)
-	if !isList {
-		return
-	}
-	for _, envVar := range envVars {
-		envVarMap, isMap := envVar.(map[string]any)
-		if !isMap {
-			continue
+	switch typedValue := node[key].(type) {
+	case []any:
+		for i, envVar := range typedValue {
+			if envVarMap, isMap := envVar.(map[string]any); isMap {
+				redactEnvVarValue(envVarMap, "value", redacted)
+				continue
+			}
+			// A "NAME=value" entry, which has to be replaced in full: the name cannot be told from the value without
+			// assuming a separator the shape does not guarantee.
+			if _, isScalar := scalarValue(envVar); !isScalar {
+				continue
+			}
+			typedValue[i] = redactedValue
+			redacted.addWithoutStderrScrub()
 		}
-		redactEnvVarValue(envVarMap, redacted)
+	case map[string]any:
+		for name := range typedValue {
+			redactEnvVarValue(typedValue, name, redacted)
+		}
 	}
 }
 
@@ -691,8 +713,8 @@ func redactEnvVarValues(node map[string]any, key string, redacted *redactor) {
 // record the replaced value for the stderr scrub: kubectl renders the environment variables of a resource on stdout
 // and never quotes them in an error message, while a single response can carry hundreds of them, many of them ordinary
 // words that would garble unrelated stderr output if they were replaced there.
-func redactEnvVarValue(node map[string]any, redacted *redactor) {
-	if _, replaced := replaceValueOf(node, "value"); replaced {
+func redactEnvVarValue(node map[string]any, key string, redacted *redactor) {
+	if _, replaced := replaceValueOf(node, key); replaced {
 		redacted.addWithoutStderrScrub()
 	}
 }
@@ -706,17 +728,25 @@ func redactEnvVarValue(node map[string]any, redacted *redactor) {
 // The replaced values are not recorded for the stderr scrub, for the reason redactEnvVarValue gives: kubectl renders a
 // command line on stdout and never quotes it in an error message, while its elements are ordinary words that would
 // garble unrelated stderr output.
+//
+// Two shapes are covered:
+// - the list of elements a pod spec uses
+// - the single string a config map value or a third-party resource holds ("command: server --api-key=...")
 func redactArgumentValues(node map[string]any, key string, redacted *redactor) {
-	arguments, isList := node[key].([]any)
-	if !isList {
-		return
-	}
-	for i, argument := range arguments {
-		if _, isScalar := scalarValue(argument); !isScalar {
-			continue
+	switch typedValue := node[key].(type) {
+	case []any:
+		for i, argument := range typedValue {
+			if _, isScalar := scalarValue(argument); !isScalar {
+				continue
+			}
+			typedValue[i] = redactedValue
+			redacted.addWithoutStderrScrub()
 		}
-		arguments[i] = redactedValue
-		redacted.addWithoutStderrScrub()
+	default:
+		// A command line given as one scalar, replaced in full. replaceValueOf leaves an object or a list alone.
+		if _, replaced := replaceValueOf(node, key); replaced {
+			redacted.addWithoutStderrScrub()
+		}
 	}
 }
 
