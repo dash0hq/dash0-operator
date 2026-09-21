@@ -8,8 +8,6 @@
 // CRD group without a dot. The Dash0 API accepts both and canonicalizes to "openslo.com/v1", so the custom resource
 // and the API body share one apiVersion.
 //
-// TODO(phase3): confirm the group choice with Michele.
-//
 // +kubebuilder:object:generate=true
 // +groupName=openslo.com
 package v1
