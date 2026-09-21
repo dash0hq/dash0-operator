@@ -174,12 +174,12 @@ func (in *SLOObjective) DeepCopyInto(out *SLOObjective) {
 	*out = *in
 	if in.Target != nil {
 		in, out := &in.Target, &out.Target
-		*out = new(float64)
+		*out = new(float32)
 		**out = **in
 	}
 	if in.TargetPercent != nil {
 		in, out := &in.TargetPercent, &out.TargetPercent
-		*out = new(float64)
+		*out = new(float32)
 		**out = **in
 	}
 }

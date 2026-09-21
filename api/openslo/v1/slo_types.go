@@ -165,7 +165,7 @@ type SLOObjective struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=1
 	// +kubebuilder:validation:ExclusiveMaximum=true
-	Target *float64 `json:"target,omitempty"`
+	Target *float32 `json:"target,omitempty"`
 
 	// TargetPercent is the budget target for this objective as a percentage in the range [0.0, 100.0) (for example,
 	// 99 for a 99 percent target). Mutually exclusive with target.
@@ -173,7 +173,7 @@ type SLOObjective struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=100
 	// +kubebuilder:validation:ExclusiveMaximum=true
-	TargetPercent *float64 `json:"targetPercent,omitempty"`
+	TargetPercent *float32 `json:"targetPercent,omitempty"`
 }
 
 // SLOStatus defines the observed state of an SLO, in the same shape as Dash0SyntheticCheckStatus.

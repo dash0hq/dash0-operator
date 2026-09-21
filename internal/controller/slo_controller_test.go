@@ -317,7 +317,7 @@ var _ = Describe(
 						sloResource := createSLOResource()
 						Expect(k8sClient.Create(ctx, sloResource)).To(Succeed())
 
-						sloResource.Spec.Objectives[0].Target = ptr.To(0.995)
+						sloResource.Spec.Objectives[0].Target = ptr.To(float32(0.995))
 						Expect(k8sClient.Update(ctx, sloResource)).To(Succeed())
 
 						result, err := sloReconciler.Reconcile(
@@ -718,7 +718,7 @@ var _ = Describe(
 					"accepts an objective that uses targetPercent instead of target", func() {
 						sloResource := createSLOResource()
 						sloResource.Spec.Objectives[0].Target = nil
-						sloResource.Spec.Objectives[0].TargetPercent = ptr.To(99.0)
+						sloResource.Spec.Objectives[0].TargetPercent = ptr.To(float32(99.0))
 						Expect(k8sClient.Create(ctx, sloResource)).To(Succeed())
 					},
 				)
@@ -726,7 +726,7 @@ var _ = Describe(
 				It(
 					"rejects an objective that sets both target and targetPercent", func() {
 						sloResource := createSLOResource()
-						sloResource.Spec.Objectives[0].TargetPercent = ptr.To(99.0)
+						sloResource.Spec.Objectives[0].TargetPercent = ptr.To(float32(99.0))
 						Expect(k8sClient.Create(ctx, sloResource)).To(
 							MatchError(ContainSubstring("exactly one of target or targetPercent must be set")))
 					},
@@ -901,7 +901,7 @@ func createSLOResource() *openslov1.SLO {
 			Objectives: []openslov1.SLOObjective{
 				{
 					DisplayName: "99% availability",
-					Target:      ptr.To(0.99),
+					Target:      ptr.To(float32(0.99)),
 				},
 			},
 		},
