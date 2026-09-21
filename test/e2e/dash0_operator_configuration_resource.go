@@ -260,32 +260,102 @@ func undeployDash0OperatorConfigurationResource() {
 		))).To(Succeed())
 }
 
-// verifyAgent0ConnectorIsReportedAsDeployed verifies that the operator reports the agent0-connector as deployed, both
-// in the status of the operator configuration resource and via a Kubernetes event. The status is written on every
-// reconciliation, the event only when the outcome changes.
-func verifyAgent0ConnectorIsReportedAsDeployed(operatorConfigurationResourceName string) {
-	By("verifying that the operator configuration resource reports the agent0-connector as deployed")
+// workloadDeployStatus normalizes Agent0ConnectorStatus and SyntheticsWorkerStatus, which are structurally
+// identical but distinct generated types, so verifyOptionalWorkloadIsReportedAsDeployed/Disabled can handle both.
+type workloadDeployStatus struct {
+	deployed bool
+	reason   string
+	message  string
+}
+
+// verifyOptionalWorkloadIsReportedAsDeployed verifies that the operator reports an optional, operator-managed
+// workload (agent0-connector, synthetics-worker) as deployed, both in the status of the operator configuration
+// resource and via a Kubernetes event. The status is written on every reconciliation, the event only when the
+// outcome changes.
+func verifyOptionalWorkloadIsReportedAsDeployed(
+	operatorConfigurationResourceName string,
+	workloadName string,
+	statusFieldName string,
+	getStatus func(dash0v1alpha1.Dash0OperatorConfiguration) *workloadDeployStatus,
+	expectedReason string,
+	eventReasons func(g Gomega, operatorConfigurationResourceUid string) []string,
+	deployedEventReason string,
+) {
+	By(fmt.Sprintf("verifying that the operator configuration resource reports the %s as deployed", workloadName))
 	Eventually(func(g Gomega) {
 		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
-		agent0ConnectorStatus := operatorConfiguration.Status.Agent0Connector
-		g.Expect(agent0ConnectorStatus).ToNot(BeNil(),
-			"the operator configuration resource has no status.agent0Connector entry")
-		g.Expect(agent0ConnectorStatus.Deployed).To(BeTrue(),
-			"the agent0-connector is reported as not deployed: %s", agent0ConnectorStatus.Message)
-		g.Expect(agent0ConnectorStatus.Reason).To(Equal(agent0connector.StatusReasonDeployed))
+		status := getStatus(operatorConfiguration)
+		g.Expect(status).ToNot(BeNil(),
+			fmt.Sprintf("the operator configuration resource has no status.%s entry", statusFieldName))
+		g.Expect(status.deployed).To(BeTrue(),
+			"the %s is reported as not deployed: %s", workloadName, status.message)
+		g.Expect(status.reason).To(Equal(expectedReason))
 
-		// An issue with the agent0-connector must not affect the availability of the operator configuration resource,
-		// and neither must the absence of one.
+		// An issue with the workload must not affect the availability of the operator configuration resource, and
+		// neither must the absence of one.
 		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
 		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
 	}, 60*time.Second, pollingInterval).Should(Succeed())
 
-	By("verifying that the operator has written the agent0-connector deployed event")
+	By(fmt.Sprintf("verifying that the operator has written the %s deployed event", workloadName))
 	Eventually(func(g Gomega) {
 		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
-		g.Expect(agent0ConnectorEventReasons(g, string(operatorConfiguration.UID))).To(
-			ContainElement(string(util.ReasonAgent0ConnectorDeployed)))
+		g.Expect(eventReasons(g, string(operatorConfiguration.UID))).To(ContainElement(deployedEventReason))
 	}, 60*time.Second, pollingInterval).Should(Succeed())
+}
+
+// verifyOptionalWorkloadIsReportedAsDisabled verifies that the operator reports an optional, operator-managed
+// workload (agent0-connector, synthetics-worker) as not deployed because it has been disabled in the operator
+// configuration resource, both in the status of that resource and via a Kubernetes event.
+func verifyOptionalWorkloadIsReportedAsDisabled(
+	operatorConfigurationResourceName string,
+	workloadName string,
+	statusFieldName string,
+	getStatus func(dash0v1alpha1.Dash0OperatorConfiguration) *workloadDeployStatus,
+	expectedReason string,
+	eventReasons func(g Gomega, operatorConfigurationResourceUid string) []string,
+	disabledEventReason string,
+) {
+	By(fmt.Sprintf("verifying that the operator configuration resource reports the %s as disabled", workloadName))
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		status := getStatus(operatorConfiguration)
+		g.Expect(status).ToNot(BeNil(),
+			fmt.Sprintf("the operator configuration resource has no status.%s entry", statusFieldName))
+		g.Expect(status.deployed).To(BeFalse())
+		g.Expect(status.reason).To(Equal(expectedReason),
+			"the %s is not reported as disabled: %s", workloadName, status.message)
+
+		// Disabling the workload must not affect the availability of the operator configuration resource.
+		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
+		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+
+	By(fmt.Sprintf("verifying that the operator has written the %s disabled event", workloadName))
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		g.Expect(eventReasons(g, string(operatorConfiguration.UID))).To(ContainElement(disabledEventReason))
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+}
+
+func agent0ConnectorDeployStatus(operatorConfiguration dash0v1alpha1.Dash0OperatorConfiguration) *workloadDeployStatus {
+	s := operatorConfiguration.Status.Agent0Connector
+	if s == nil {
+		return nil
+	}
+	return &workloadDeployStatus{deployed: s.Deployed, reason: s.Reason, message: s.Message}
+}
+
+func verifyAgent0ConnectorIsReportedAsDeployed(operatorConfigurationResourceName string) {
+	verifyOptionalWorkloadIsReportedAsDeployed(
+		operatorConfigurationResourceName,
+		"agent0-connector",
+		"agent0Connector",
+		agent0ConnectorDeployStatus,
+		agent0connector.StatusReasonDeployed,
+		agent0ConnectorEventReasons,
+		string(util.ReasonAgent0ConnectorDeployed),
+	)
 }
 
 // verifyNoAgent0ConnectorStatusOrEvent verifies that the operator reports nothing about the agent0-connector, which is
@@ -299,31 +369,16 @@ func verifyNoAgent0ConnectorStatusOrEvent(operatorConfigurationResourceName stri
 	}, 10*time.Second, pollingInterval).Should(Succeed())
 }
 
-// verifyAgent0ConnectorIsReportedAsDisabled verifies that the operator reports the agent0-connector as not deployed
-// because it has been disabled in the operator configuration resource, both in the status of that resource and via a
-// Kubernetes event.
 func verifyAgent0ConnectorIsReportedAsDisabled(operatorConfigurationResourceName string) {
-	By("verifying that the operator configuration resource reports the agent0-connector as disabled")
-	Eventually(func(g Gomega) {
-		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
-		agent0ConnectorStatus := operatorConfiguration.Status.Agent0Connector
-		g.Expect(agent0ConnectorStatus).ToNot(BeNil(),
-			"the operator configuration resource has no status.agent0Connector entry")
-		g.Expect(agent0ConnectorStatus.Deployed).To(BeFalse())
-		g.Expect(agent0ConnectorStatus.Reason).To(Equal(agent0connector.StatusReasonDisabled),
-			"the agent0-connector is not reported as disabled: %s", agent0ConnectorStatus.Message)
-
-		// Disabling the agent0-connector must not affect the availability of the operator configuration resource.
-		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
-		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
-	}, 60*time.Second, pollingInterval).Should(Succeed())
-
-	By("verifying that the operator has written the agent0-connector disabled event")
-	Eventually(func(g Gomega) {
-		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
-		g.Expect(agent0ConnectorEventReasons(g, string(operatorConfiguration.UID))).To(
-			ContainElement(string(util.ReasonAgent0ConnectorDisabled)))
-	}, 60*time.Second, pollingInterval).Should(Succeed())
+	verifyOptionalWorkloadIsReportedAsDisabled(
+		operatorConfigurationResourceName,
+		"agent0-connector",
+		"agent0Connector",
+		agent0ConnectorDeployStatus,
+		agent0connector.StatusReasonDisabled,
+		agent0ConnectorEventReasons,
+		string(util.ReasonAgent0ConnectorDisabled),
+	)
 }
 
 // updateOperatorConfigurationAgent0ConnectorEnabled sets spec.agent0Connector.enabled on the given operator
@@ -375,58 +430,38 @@ func agent0ConnectorEventReasons(g Gomega, operatorConfigurationResourceUid stri
 	return reasons
 }
 
-// verifySyntheticsWorkerIsReportedAsDeployed verifies that the operator reports the synthetics-worker as deployed,
-// both in the status of the operator configuration resource and via a Kubernetes event.
-func verifySyntheticsWorkerIsReportedAsDeployed(operatorConfigurationResourceName string) {
-	By("verifying that the operator configuration resource reports the synthetics-worker as deployed")
-	Eventually(func(g Gomega) {
-		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
-		syntheticsWorkerStatus := operatorConfiguration.Status.SyntheticsWorker
-		g.Expect(syntheticsWorkerStatus).ToNot(BeNil(),
-			"the operator configuration resource has no status.syntheticsWorker entry")
-		g.Expect(syntheticsWorkerStatus.Deployed).To(BeTrue(),
-			"the synthetics-worker is reported as not deployed: %s", syntheticsWorkerStatus.Message)
-		g.Expect(syntheticsWorkerStatus.Reason).To(Equal(syntheticsworker.StatusReasonDeployed))
-
-		// An issue with the synthetics-worker must not affect the availability of the operator configuration
-		// resource.
-		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
-		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
-	}, 60*time.Second, pollingInterval).Should(Succeed())
-
-	By("verifying that the operator has written the synthetics-worker deployed event")
-	Eventually(func(g Gomega) {
-		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
-		g.Expect(syntheticsWorkerEventReasons(g, string(operatorConfiguration.UID))).To(
-			ContainElement(string(util.ReasonSyntheticsWorkerDeployed)))
-	}, 60*time.Second, pollingInterval).Should(Succeed())
+func syntheticsWorkerDeployStatus(
+	operatorConfiguration dash0v1alpha1.Dash0OperatorConfiguration,
+) *workloadDeployStatus {
+	s := operatorConfiguration.Status.SyntheticsWorker
+	if s == nil {
+		return nil
+	}
+	return &workloadDeployStatus{deployed: s.Deployed, reason: s.Reason, message: s.Message}
 }
 
-// verifySyntheticsWorkerIsReportedAsDisabled verifies that the operator reports the synthetics-worker as not
-// deployed because it has been disabled in the operator configuration resource, both in the status of that resource
-// and via a Kubernetes event.
+func verifySyntheticsWorkerIsReportedAsDeployed(operatorConfigurationResourceName string) {
+	verifyOptionalWorkloadIsReportedAsDeployed(
+		operatorConfigurationResourceName,
+		"synthetics-worker",
+		"syntheticsWorker",
+		syntheticsWorkerDeployStatus,
+		syntheticsworker.StatusReasonDeployed,
+		syntheticsWorkerEventReasons,
+		string(util.ReasonSyntheticsWorkerDeployed),
+	)
+}
+
 func verifySyntheticsWorkerIsReportedAsDisabled(operatorConfigurationResourceName string) {
-	By("verifying that the operator configuration resource reports the synthetics-worker as disabled")
-	Eventually(func(g Gomega) {
-		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
-		syntheticsWorkerStatus := operatorConfiguration.Status.SyntheticsWorker
-		g.Expect(syntheticsWorkerStatus).ToNot(BeNil(),
-			"the operator configuration resource has no status.syntheticsWorker entry")
-		g.Expect(syntheticsWorkerStatus.Deployed).To(BeFalse())
-		g.Expect(syntheticsWorkerStatus.Reason).To(Equal(syntheticsworker.StatusReasonDisabled),
-			"the synthetics-worker is not reported as disabled: %s", syntheticsWorkerStatus.Message)
-
-		// Disabling the synthetics-worker must not affect the availability of the operator configuration resource.
-		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
-		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
-	}, 60*time.Second, pollingInterval).Should(Succeed())
-
-	By("verifying that the operator has written the synthetics-worker disabled event")
-	Eventually(func(g Gomega) {
-		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
-		g.Expect(syntheticsWorkerEventReasons(g, string(operatorConfiguration.UID))).To(
-			ContainElement(string(util.ReasonSyntheticsWorkerDisabled)))
-	}, 60*time.Second, pollingInterval).Should(Succeed())
+	verifyOptionalWorkloadIsReportedAsDisabled(
+		operatorConfigurationResourceName,
+		"synthetics-worker",
+		"syntheticsWorker",
+		syntheticsWorkerDeployStatus,
+		syntheticsworker.StatusReasonDisabled,
+		syntheticsWorkerEventReasons,
+		string(util.ReasonSyntheticsWorkerDisabled),
+	)
 }
 
 // updateOperatorConfigurationSyntheticsWorkerEnabled sets spec.syntheticsWorker.enabled on the given operator
@@ -449,7 +484,11 @@ func updateOperatorConfigurationSyntheticsWorkerEnabled(operatorConfigurationRes
 // authorization.token on the given operator configuration resource. Unlike the agent0-connector's server address and
 // token, which are Helm-level settings, the synthetics-worker's location ID and authorization live on the CRD
 // resource so that they can be changed per-cluster without a Helm re-install.
-func configureSyntheticsWorkerLocationAndToken(operatorConfigurationResourceName string, locationId string, token string) {
+func configureSyntheticsWorkerLocationAndToken(
+	operatorConfigurationResourceName string,
+	locationId string,
+	token string,
+) {
 	Expect(
 		runAndIgnoreOutput(exec.Command(
 			"kubectl",
