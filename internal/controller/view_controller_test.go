@@ -904,6 +904,9 @@ var _ = Describe(
 					"maps views", func(testConfig viewToRequestTestConfig) {
 						view := map[string]any{}
 						Expect(yaml.Unmarshal([]byte(testConfig.view), &view)).To(Succeed())
+						// Mimic production: a typed Get leaves TypeMeta empty, so the resource map has no kind/apiVersion.
+						delete(view, "kind")
+						delete(view, "apiVersion")
 						apiConfig := ApiConfig{
 							Endpoint: ApiEndpointTest,
 							Dataset:  DatasetCustomTest,
@@ -939,6 +942,7 @@ var _ = Describe(
 
 						Expect(resultingViewInRequest["metadata"]).ToNot(BeNil())
 						Expect(ReadFromMap(resultingViewInRequest, []string{"metadata", "name"})).To(Equal("dash0-view"))
+						Expect(ReadFromMap(resultingViewInRequest, []string{"kind"})).To(Equal("Dash0View"))
 
 						if testConfig.expectedAnnotations != nil {
 							annotationsRaw := ReadFromMap(resultingViewInRequest, []string{"metadata", "annotations"})

@@ -570,6 +570,9 @@ var _ = Describe(
 					"maps time series aggregations", func(testConfig timeSeriesAggregationToRequestTestConfig) {
 						timeSeriesAggregation := map[string]any{}
 						Expect(yaml.Unmarshal([]byte(testConfig.timeSeriesAggregation), &timeSeriesAggregation)).To(Succeed())
+						// Mimic production: a typed Get leaves TypeMeta empty, so the resource map has no kind/apiVersion.
+						delete(timeSeriesAggregation, "kind")
+						delete(timeSeriesAggregation, "apiVersion")
 						apiConfig := ApiConfig{
 							Endpoint: ApiEndpointTest,
 							Dataset:  DatasetCustomTest,
@@ -601,6 +604,8 @@ var _ = Describe(
 						Expect(err).ToNot(HaveOccurred())
 						resultingTimeSeriesAggregationInRequest := map[string]any{}
 						Expect(json.Unmarshal(body, &resultingTimeSeriesAggregationInRequest)).To(Succeed())
+						Expect(ReadFromMap(resultingTimeSeriesAggregationInRequest, []string{"kind"})).
+							To(Equal("Dash0TimeSeriesAggregation"))
 						Expect(resultingTimeSeriesAggregationInRequest["spec"]).ToNot(BeNil())
 
 						Expect(resultingTimeSeriesAggregationInRequest["metadata"]).ToNot(BeNil())

@@ -5,7 +5,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -392,6 +394,52 @@ var _ = Describe(
 						Expect(gock.IsDone()).To(BeTrue())
 					},
 				)
+			},
+		)
+	},
+)
+
+var _ = Describe(
+	"mapping signal-to-metrics resources to http requests", func() {
+		It(
+			"sets the endpoint-specific kind on the upsert payload", func() {
+				logger := logd.FromContext(context.Background())
+				unstructuredResource, err := structToMap(
+					createSignalToMetricsResource(TestNamespaceName, signalToMetricsName))
+				Expect(err).ToNot(HaveOccurred())
+				// A real controller-runtime typed Get leaves TypeMeta empty (unlike this test helper), so strip
+				// kind/apiVersion to mimic production; the reconciler must re-add the endpoint-specific kind.
+				delete(unstructuredResource.Object, "kind")
+				delete(unstructuredResource.Object, "apiVersion")
+
+				apiConfig := ApiConfig{
+					Endpoint: ApiEndpointTest,
+					Dataset:  DatasetCustomTest,
+					Token:    AuthorizationTokenTest,
+				}
+				resourceToRequestsResult := (&SignalToMetricsReconciler{}).MapResourceToHttpRequests(
+					&preconditionValidationResult{
+						k8sName:      signalToMetricsName,
+						k8sNamespace: TestNamespaceName,
+						resource:     unstructuredResource.Object,
+						validatedApiConfigs: []ValidatedApiConfigAndToken{
+							*NewValidatedApiConfigAndToken(apiConfig.Endpoint, apiConfig.Dataset, apiConfig.Token),
+						},
+					},
+					apiConfig,
+					upsertAction,
+					logger,
+				)
+				Expect(resourceToRequestsResult.ApiRequests).To(HaveLen(1))
+				req := resourceToRequestsResult.ApiRequests[0].Request
+				defer func() {
+					_ = req.Body.Close()
+				}()
+				body, err := io.ReadAll(req.Body)
+				Expect(err).ToNot(HaveOccurred())
+				payload := map[string]any{}
+				Expect(json.Unmarshal(body, &payload)).To(Succeed())
+				Expect(payload["kind"]).To(Equal("Dash0SignalToMetrics"))
 			},
 		)
 	},
