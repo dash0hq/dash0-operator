@@ -691,7 +691,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			},
 		}))
 
-		DescribeTable("when dash0.com/enabled=true is set on a workload that had previously opted out", func(config WorkloadTestConfig) {
+		DescribeTable("when dash0.com/enable=true is set on a workload that had previously opted out", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
