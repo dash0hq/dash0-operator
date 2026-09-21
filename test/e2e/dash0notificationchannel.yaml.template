@@ -4,9 +4,6 @@ metadata:
   name: notification-channel-e2e-test
   labels:
     app.kubernetes.io/name: notification-channel-e2e-test
-{{- if .Dash0ComEnabled }}
-    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
-{{- end }}
 spec:
   display:
     name: E2E test notification channel
