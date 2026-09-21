@@ -525,6 +525,19 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
+  # the container image to use for the synthetics-worker component (there should usually be no reason to override
+  # this)
+  syntheticsWorkerImage:
+    repository: "ghcr.io/dash0hq/dash0-synthetics-worker"
+    # The synthetics-worker is versioned independently of the operator, so this tag is pinned to that component
+    # version; it does not track the chart appVersion.
+    # TODO bump this once the first synthetics-worker-X.Y.Z tag has been published.
+    tag: "0.1.0"
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
   # the image pull secrets to pull the container images
   imagePullSecrets: []
 
@@ -1513,3 +1526,29 @@ operator:
       #     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
       #     verbs: ["create"]
       rules: []
+
+  # Settings related to the synthetics-worker, the private-location runner that dials outbound to Dash0 and executes
+  # synthetic checks assigned to this cluster's private location (experimental).
+  syntheticsWorker:
+
+    # All other settings in operator.syntheticsWorker will be ignored if operator.syntheticsWorker.enabled is false.
+    #
+    # The synthetics-worker also needs to be enabled on the Dash0OperatorConfiguration resource
+    # (spec.syntheticsWorker.enabled, defaults to true) and configured with a private location ID and an
+    # authorization token there, since those are per-cluster settings that can be changed at runtime without a Helm
+    # re-install.
+    #
+    # If the operator is installed with syntheticsWorker.enabled=true, and the flag is later flipped to false via
+    # helm upgrade, the operator will not remove the synthetics-worker deployment, nor its service account, from the
+    # cluster. The recommended resolution is to uninstall the operator from the cluster entirely, then re-install
+    # with syntheticsWorker.enabled=false.
+    enabled: false
+
+    # The address (host:port) of the Dash0 backend service the synthetics-worker pod connects to. This value is
+    # mandatory when operator.syntheticsWorker.enabled is true; the Helm installation will fail if it is left empty
+    # in that case. If operator.syntheticsWorker.enabled is false, this value will be ignored.
+    serverAddress: ""
+
+    # Disables TLS for the synthetics-worker's connection to the Dash0 backend, connecting via plaintext instead.
+    # This is only intended for local development.
+    insecure: false

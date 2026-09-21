@@ -17,6 +17,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/agent0connector"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -368,6 +369,131 @@ func agent0ConnectorEventReasons(g Gomega, operatorConfigurationResourceUid stri
 			continue
 		}
 		if slices.Contains(agent0ConnectorReasons, reason) {
+			reasons = append(reasons, reason)
+		}
+	}
+	return reasons
+}
+
+// verifySyntheticsWorkerIsReportedAsDeployed verifies that the operator reports the synthetics-worker as deployed,
+// both in the status of the operator configuration resource and via a Kubernetes event.
+func verifySyntheticsWorkerIsReportedAsDeployed(operatorConfigurationResourceName string) {
+	By("verifying that the operator configuration resource reports the synthetics-worker as deployed")
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		syntheticsWorkerStatus := operatorConfiguration.Status.SyntheticsWorker
+		g.Expect(syntheticsWorkerStatus).ToNot(BeNil(),
+			"the operator configuration resource has no status.syntheticsWorker entry")
+		g.Expect(syntheticsWorkerStatus.Deployed).To(BeTrue(),
+			"the synthetics-worker is reported as not deployed: %s", syntheticsWorkerStatus.Message)
+		g.Expect(syntheticsWorkerStatus.Reason).To(Equal(syntheticsworker.StatusReasonDeployed))
+
+		// An issue with the synthetics-worker must not affect the availability of the operator configuration
+		// resource.
+		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
+		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+
+	By("verifying that the operator has written the synthetics-worker deployed event")
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		g.Expect(syntheticsWorkerEventReasons(g, string(operatorConfiguration.UID))).To(
+			ContainElement(string(util.ReasonSyntheticsWorkerDeployed)))
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+}
+
+// verifySyntheticsWorkerIsReportedAsDisabled verifies that the operator reports the synthetics-worker as not
+// deployed because it has been disabled in the operator configuration resource, both in the status of that resource
+// and via a Kubernetes event.
+func verifySyntheticsWorkerIsReportedAsDisabled(operatorConfigurationResourceName string) {
+	By("verifying that the operator configuration resource reports the synthetics-worker as disabled")
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		syntheticsWorkerStatus := operatorConfiguration.Status.SyntheticsWorker
+		g.Expect(syntheticsWorkerStatus).ToNot(BeNil(),
+			"the operator configuration resource has no status.syntheticsWorker entry")
+		g.Expect(syntheticsWorkerStatus.Deployed).To(BeFalse())
+		g.Expect(syntheticsWorkerStatus.Reason).To(Equal(syntheticsworker.StatusReasonDisabled),
+			"the synthetics-worker is not reported as disabled: %s", syntheticsWorkerStatus.Message)
+
+		// Disabling the synthetics-worker must not affect the availability of the operator configuration resource.
+		g.Expect(operatorConfiguration.IsAvailable()).To(BeTrue())
+		g.Expect(operatorConfiguration.IsDegraded()).To(BeFalse())
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+
+	By("verifying that the operator has written the synthetics-worker disabled event")
+	Eventually(func(g Gomega) {
+		operatorConfiguration := loadOperatorConfigurationResource(g, operatorConfigurationResourceName)
+		g.Expect(syntheticsWorkerEventReasons(g, string(operatorConfiguration.UID))).To(
+			ContainElement(string(util.ReasonSyntheticsWorkerDisabled)))
+	}, 60*time.Second, pollingInterval).Should(Succeed())
+}
+
+// updateOperatorConfigurationSyntheticsWorkerEnabled sets spec.syntheticsWorker.enabled on the given operator
+// configuration resource, which is how a user opts out of the synthetics-worker and back in again.
+func updateOperatorConfigurationSyntheticsWorkerEnabled(operatorConfigurationResourceName string, enabled bool) {
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"patch",
+			"Dash0OperatorConfiguration",
+			operatorConfigurationResourceName,
+			"--type",
+			"merge",
+			"-p",
+			fmt.Sprintf(`{"spec":{"syntheticsWorker":{"enabled":%t}}}`, enabled),
+		))).To(Succeed())
+}
+
+// configureSyntheticsWorkerLocationAndToken sets spec.syntheticsWorker.locationId and spec.syntheticsWorker.
+// authorization.token on the given operator configuration resource. Unlike the agent0-connector's server address and
+// token, which are Helm-level settings, the synthetics-worker's location ID and authorization live on the CRD
+// resource so that they can be changed per-cluster without a Helm re-install.
+func configureSyntheticsWorkerLocationAndToken(operatorConfigurationResourceName string, locationId string, token string) {
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"patch",
+			"Dash0OperatorConfiguration",
+			operatorConfigurationResourceName,
+			"--type",
+			"merge",
+			"-p",
+			fmt.Sprintf(
+				`{"spec":{"syntheticsWorker":{"locationId":%q,"authorization":{"token":%q}}}}`,
+				locationId,
+				token,
+			),
+		))).To(Succeed())
+}
+
+// syntheticsWorkerEventReasons returns the reasons of the synthetics-worker events the operator has written for the
+// operator configuration resource with the given UID. The events are matched by UID rather than by name, so that
+// events left behind by an earlier test which used an equally named resource are ignored. The events are attached to
+// the cluster-scoped operator configuration resource, hence they are not confined to a single namespace.
+func syntheticsWorkerEventReasons(g Gomega, operatorConfigurationResourceUid string) []string {
+	output, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"events.events.k8s.io",
+		"--all-namespaces",
+		"-o",
+		"jsonpath={range .items[*]}{.regarding.uid}{\" \"}{.reason}{\"\\n\"}{end}",
+	), false)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	syntheticsWorkerReasons := []string{
+		string(util.ReasonSyntheticsWorkerDeployed),
+		string(util.ReasonSyntheticsWorkerNotDeployed),
+		string(util.ReasonSyntheticsWorkerDisabled),
+	}
+	var reasons []string
+	for _, line := range strings.Split(output, "\n") {
+		uid, reason, found := strings.Cut(strings.TrimSpace(line), " ")
+		if !found || uid != operatorConfigurationResourceUid {
+			continue
+		}
+		if slices.Contains(syntheticsWorkerReasons, reason) {
 			reasons = append(reasons, reason)
 		}
 	}

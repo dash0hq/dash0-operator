@@ -1786,6 +1786,123 @@ custom resource definition for operator configuration should match snapshot:
                       required:
                         - enabled
                       type: object
+                    syntheticsWorker:
+                      description: Settings for the synthetics-worker.
+                      properties:
+                        authorization:
+                          description: |-
+                            Authorization holds the Dash0 authorization token for the synthetics-worker workload, either as a literal token
+                            or as a reference to a Kubernetes secret. Required when the synthetics-worker is enabled. This is a pointer so
+                            that the field can be omitted entirely; the Authorization type itself requires at least one of its own
+                            properties to be set, which would reject an explicit empty object.
+                          maxProperties: 1
+                          minProperties: 1
+                          properties:
+                            secretRef:
+                              description: |-
+                                A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
+                                ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
+                                https://app.dash0.com -> organization settings -> "Auth Tokens".
+                              properties:
+                                key:
+                                  default: token
+                                  description: The key of the value which contains the Dash0 authorization token. Defaults to "token"
+                                  type: string
+                                name:
+                                  default: dash0-authorization-secret
+                                  description: The name of the secret containing the Dash0 authorization token. Defaults to "dash0-authorization-secret".
+                                  type: string
+                              required:
+                                - key
+                                - name
+                              type: object
+                            token:
+                              description: |-
+                                The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
+                                to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
+                                token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
+                                "Auth Tokens".
+                              type: string
+                          type: object
+                        enabled:
+                          description: |-
+                            An opt-out switch for the synthetics-worker deployment. This setting is optional. Setting it to `false` prevents
+                            the operator from deploying the synthetics-worker, even when the synthetics-worker is enabled via the Helm
+                            chart. It is a validation error to set it to `true` when the synthetics-worker is disabled via the Helm chart.
+                          type: boolean
+                        locationId:
+                          description: |-
+                            LocationID is the customer-chosen identifier of the private location that this cluster's synthetics-worker
+                            executes checks for. Dash0 resolves it to the location's identity. Required when the synthetics-worker is
+                            enabled.
+                          type: string
+                        replicas:
+                          default: 1
+                          description: Replicas is the number of synthetics-worker pods the operator runs. This setting is optional, it defaults to 1.
+                          format: int32
+                          type: integer
+                        resources:
+                          description: |-
+                            Resources describes the compute resource requirements for the synthetics-worker container. This setting is
+                            optional.
+                          properties:
+                            claims:
+                              description: |-
+                                Claims lists the names of resources, defined in spec.resourceClaims,
+                                that are used by this container.
+
+                                This field depends on the
+                                DynamicResourceAllocation feature gate.
+
+                                This field is immutable. It can only be set for containers.
+                              items:
+                                description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name must match the name of one entry in pod.spec.resourceClaims of
+                                      the Pod where this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                  request:
+                                    description: |-
+                                      Request is the name chosen for a request in the referenced claim.
+                                      If empty, everything from the claim is made available, otherwise
+                                      only the result of this request.
+                                    type: string
+                                required:
+                                  - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                                - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                  - type: integer
+                                  - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Limits describes the maximum amount of compute resources allowed.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                  - type: integer
+                                  - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Requests describes the minimum amount of compute resources required.
+                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                          type: object
+                      type: object
                     telemetryCollection:
                       default:
                         enabled: true
@@ -2898,6 +3015,32 @@ custom resource definition for operator configuration should match snapshot:
                             - synchronizePersesDashboards
                             - synchronizePrometheusRules
                           type: object
+                      type: object
+                    syntheticsWorker:
+                      description: |-
+                        SyntheticsWorker reports whether the operator has deployed the synthetics-worker, and why not if it hasn't. A
+                        disabled synthetics-worker is reported with deployed=false and reason=Disabled, which is what distinguishes it
+                        from one that failed to deploy. This is absent until the operator reconciles the synthetics-worker for the
+                        first time, which it only does when the synthetics-worker is enabled via the Helm chart
+                        (operator.syntheticsWorker.enabled).
+                      properties:
+                        deployed:
+                          description: |-
+                            Deployed reports whether the operator has successfully created or updated the synthetics-worker resources the
+                            last time it tried.
+                          type: boolean
+                        lastTransitionTime:
+                          description: LastTransitionTime is the time at which Deployed last changed.
+                          format: date-time
+                          type: string
+                        message:
+                          description: Message describes the last outcome in a human-readable form.
+                          type: string
+                        reason:
+                          description: Reason is a programmatic identifier for the last negative outcome, e.g. "NoAuthorizationToken".
+                          type: string
+                      required:
+                        - deployed
                       type: object
                   type: object
               type: object

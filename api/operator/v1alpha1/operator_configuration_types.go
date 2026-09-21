@@ -6,6 +6,7 @@ package v1alpha1
 import (
 	"encoding/json"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -168,6 +169,11 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	Agent0Connector Agent0Connector `json:"agent0Connector,omitempty"`
+
+	// Settings for the synthetics-worker.
+	//
+	// +kubebuilder:validation:Optional
+	SyntheticsWorker SyntheticsWorker `json:"syntheticsWorker,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
@@ -219,6 +225,51 @@ type Agent0Connector struct {
 // follows the Helm value.
 func (a Agent0Connector) IsEnabled(enabledViaHelm bool) bool {
 	return enabledViaHelm && pointers.ReadBoolPointerWithDefault(a.Enabled, true)
+}
+
+// SyntheticsWorker contains settings for the synthetics-worker, the private-location runner that dials outbound to
+// Dash0 and executes the synthetic checks assigned to this cluster's private location.
+type SyntheticsWorker struct {
+	// An opt-out switch for the synthetics-worker deployment. This setting is optional. Setting it to `false` prevents
+	// the operator from deploying the synthetics-worker, even when the synthetics-worker is enabled via the Helm
+	// chart. It is a validation error to set it to `true` when the synthetics-worker is disabled via the Helm chart.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// LocationID is the customer-chosen identifier of the private location that this cluster's synthetics-worker
+	// executes checks for. Dash0 resolves it to the location's identity. Required when the synthetics-worker is
+	// enabled.
+	//
+	// +kubebuilder:validation:Optional
+	LocationID string `json:"locationId,omitempty"`
+
+	// Authorization holds the Dash0 authorization token for the synthetics-worker workload, either as a literal token
+	// or as a reference to a Kubernetes secret. Required when the synthetics-worker is enabled. This is a pointer so
+	// that the field can be omitted entirely; the Authorization type itself requires at least one of its own
+	// properties to be set, which would reject an explicit empty object.
+	//
+	// +kubebuilder:validation:Optional
+	Authorization *dash0common.Authorization `json:"authorization,omitempty"`
+
+	// Replicas is the number of synthetics-worker pods the operator runs. This setting is optional, it defaults to 1.
+	//
+	// +kubebuilder:default=1
+	Replicas *int32 `json:"replicas,omitempty"`
+
+	// Resources describes the compute resource requirements for the synthetics-worker container. This setting is
+	// optional.
+	//
+	// +kubebuilder:validation:Optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+}
+
+// IsEnabled reports whether the operator deploys the synthetics-worker. The parameter enabledViaHelm is the value of
+// the Helm value operator.syntheticsWorker.enabled, which the operator holds for the lifetime of the process. The
+// synthetics-worker requires that Helm value; this resource can only opt out of it, which is why an unset Enabled
+// flag follows the Helm value.
+func (s SyntheticsWorker) IsEnabled(enabledViaHelm bool) bool {
+	return enabledViaHelm && pointers.ReadBoolPointerWithDefault(s.Enabled, true)
 }
 
 // InstrumentationDelivery selects how the Dash0 instrumentation files (the OpenTelemetry injector and the
@@ -415,6 +466,15 @@ type Dash0OperatorConfigurationStatus struct {
 	//
 	// +kubebuilder:validation:Optional
 	Agent0Connector *Agent0ConnectorStatus `json:"agent0Connector,omitempty"`
+
+	// SyntheticsWorker reports whether the operator has deployed the synthetics-worker, and why not if it hasn't. A
+	// disabled synthetics-worker is reported with deployed=false and reason=Disabled, which is what distinguishes it
+	// from one that failed to deploy. This is absent until the operator reconciles the synthetics-worker for the
+	// first time, which it only does when the synthetics-worker is enabled via the Helm chart
+	// (operator.syntheticsWorker.enabled).
+	//
+	// +kubebuilder:validation:Optional
+	SyntheticsWorker *SyntheticsWorkerStatus `json:"syntheticsWorker,omitempty"`
 }
 
 func (d *Dash0OperatorConfiguration) IsMarkedForDeletion() bool {
@@ -716,6 +776,61 @@ func (d *Dash0OperatorConfiguration) SetAgent0ConnectorStatus(deployed bool, rea
 		lastTransitionTime = previous.LastTransitionTime
 	}
 	d.Status.Agent0Connector = &Agent0ConnectorStatus{
+		Deployed:           deployed,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: lastTransitionTime,
+	}
+	return changed
+}
+
+// SyntheticsWorkerStatus reports whether the operator has deployed the synthetics-worker, that is, whether it has
+// successfully created or updated the synthetics-worker's service account and deployment. It does not report whether
+// the synthetics-worker's pod is up: a successful deployment can still fail to start, which the deployment resource
+// itself reports.
+//
+// This is deliberately not a status condition: the synthetics-worker is an optional feature, and an issue with it
+// neither makes the operator configuration resource unavailable nor degraded.
+type SyntheticsWorkerStatus struct {
+	// Deployed reports whether the operator has successfully created or updated the synthetics-worker resources the
+	// last time it tried.
+	Deployed bool `json:"deployed"`
+
+	// Reason is a programmatic identifier for the last negative outcome, e.g. "NoAuthorizationToken".
+	//
+	// +kubebuilder:validation:Optional
+	Reason string `json:"reason,omitempty"`
+
+	// Message describes the last outcome in a human-readable form.
+	//
+	// +kubebuilder:validation:Optional
+	Message string `json:"message,omitempty"`
+
+	// LastTransitionTime is the time at which Deployed last changed.
+	//
+	// +kubebuilder:validation:Optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// SetSyntheticsWorkerStatus records the outcome of the last attempt to create or update the synthetics-worker
+// resources. It reports whether the recorded state changed, so that the caller only queues a Kubernetes event on a
+// transition instead of on every reconciliation.
+//
+// A change is the value of Deployed flipping, the status appearing for the first time, or the reason changing while
+// the synthetics-worker is not deployed - an operator who fixes one misconfiguration and runs into the next one has
+// to learn about the second one as well. LastTransitionTime only advances when Deployed flips, mirroring the
+// semantics of a status condition.
+func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(deployed bool, reason string, message string) bool {
+	previous := d.Status.SyntheticsWorker
+	changed := previous == nil ||
+		previous.Deployed != deployed ||
+		(!deployed && previous.Reason != reason)
+
+	lastTransitionTime := metav1.Now()
+	if previous != nil && previous.Deployed == deployed {
+		lastTransitionTime = previous.LastTransitionTime
+	}
+	d.Status.SyntheticsWorker = &SyntheticsWorkerStatus{
 		Deployed:           deployed,
 		Reason:             reason,
 		Message:            message,

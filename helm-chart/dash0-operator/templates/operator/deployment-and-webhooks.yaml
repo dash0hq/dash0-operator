@@ -297,6 +297,25 @@ spec:
           value: "true"
         {{- end }}{{/* closes "if .Values.operator.agent0Connector.insecure" */}}
         {{- end }}{{/* closes "if .Values.operator.agent0Connector.enabled" */}}
+        - name: DASH0_SYNTHETICS_WORKER_IMAGE
+          value: {{ include "dash0-operator.syntheticsWorkerImage" . | quote }}
+        {{- if .Values.operator.syntheticsWorkerImage.pullPolicy }}
+        - name: DASH0_SYNTHETICS_WORKER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.syntheticsWorkerImage.pullPolicy }}
+        {{- end }}
+        {{- if .Values.operator.syntheticsWorker.enabled }}
+        {{- if not .Values.operator.syntheticsWorker.serverAddress }}
+        {{- fail "Error: operator.syntheticsWorker.enabled is set to true, but you did not provide a value for operator.syntheticsWorker.serverAddress. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+        {{- end }}{{/* closes "not .Values.operator.syntheticsWorker.serverAddress" */}}
+        - name: DASH0_SYNTHETICS_WORKER_ENABLED
+          value: "true"
+        - name: DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS
+          value: {{ .Values.operator.syntheticsWorker.serverAddress | quote }}
+        {{- if .Values.operator.syntheticsWorker.insecure }}
+        - name: DASH0_SYNTHETICS_WORKER_INSECURE
+          value: "true"
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.insecure" */}}
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.enabled" */}}
         {{- if .Values.operator.developmentMode }}
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}

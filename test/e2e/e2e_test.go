@@ -22,6 +22,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/startup"
+	"github.com/dash0hq/dash0-operator/internal/syntheticsworker/swresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -1148,6 +1149,21 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				// A disabled agent0-connector is reported nowhere: neither the status entry nor an event exists.
 				verifyNoAgent0ConnectorStatusOrEvent(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 			})
+
+			It("should not deploy the synthetics-worker since the default for syntheticsWorker.enabled is `false`",
+				func() {
+					syntheticsWorkerDeployment := swresources.DeploymentName(operatorHelmReleaseName)
+					By("verifying that the synthetics-worker deployment does not exist")
+					Expect(runAndIgnoreOutput(
+						exec.Command(
+							"kubectl",
+							"get",
+							"deployment",
+							"--namespace",
+							operatorNamespace,
+							syntheticsWorkerDeployment,
+						), false, false, false)).ToNot(Succeed())
+				})
 
 		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
 		// Dash0 monitoring resource"
@@ -2606,6 +2622,56 @@ spec:
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceManuallyManagedName)
 		})
 	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
+
+	Context("with the synthetics-worker enabled", Ordered, func() {
+		BeforeAll(func() {
+			By("deploying the Dash0 operator with the synthetics-worker enabled")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				"",
+				&images,
+				false,
+				map[string]string{
+					"operator.syntheticsWorker.enabled":       "true",
+					"operator.syntheticsWorker.serverAddress": "synthetics.dash0.com:443",
+				},
+			)
+
+			// The location ID and the authorization token are per-cluster settings that live on the operator
+			// configuration resource (kubectl-editable at runtime), not on the Helm chart.
+			configureSyntheticsWorkerLocationAndToken(
+				dash0OperatorConfigurationResourceAutomaticallyManagedName,
+				"e2e-test-location",
+				"auth_e2e-synthetics-worker-dummy-token",
+			)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		It("deploys the synthetics-worker, and removes/redeploys it as the operator configuration resource opts "+
+			"out and back in", func() {
+			waitForSyntheticsWorkerDeploymentToBecomeAvailable()
+			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
+
+			By("opting out of the synthetics-worker via the operator configuration resource")
+			updateOperatorConfigurationSyntheticsWorkerEnabled(
+				dash0OperatorConfigurationResourceAutomaticallyManagedName, false)
+
+			verifySyntheticsWorkerResourcesDoNotExist()
+			verifySyntheticsWorkerIsReportedAsDisabled(dash0OperatorConfigurationResourceAutomaticallyManagedName)
+
+			By("revoking the opt-out via the operator configuration resource")
+			updateOperatorConfigurationSyntheticsWorkerEnabled(
+				dash0OperatorConfigurationResourceAutomaticallyManagedName, true)
+
+			waitForSyntheticsWorkerDeploymentToBecomeAvailable()
+			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
+		})
+	}) // end of suite "with the synthetics-worker enabled"
 
 	Context("with the agent0-connector and a custom cluster role", Ordered, func() {
 		var pseudoClusterUid string

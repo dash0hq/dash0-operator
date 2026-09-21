@@ -117,6 +117,11 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.agent0ConnectorImage "context" .) -}}
 {{- end }}
 
+{{/* the synthetics-worker image */}}
+{{- define "dash0-operator.syntheticsWorkerImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.syntheticsWorkerImage "context" .) -}}
+{{- end }}
+
 {{- define "dash0-operator.imageRef" -}}
 {{- if .image.digest -}}
 {{- printf "%s@%s" .image.repository .image.digest }}

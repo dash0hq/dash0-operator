@@ -1378,6 +1378,7 @@ func createReconcilerWithAgent0ConnectorManager(
 		targetallocatorManager,
 		agent0ConnectorManager,
 		nil,
+		nil,
 		util.NewClusterInstrumentationConfig(
 			TestImages,
 			PossibleCollectorUrlsTest,
