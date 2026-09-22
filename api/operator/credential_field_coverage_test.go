@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	openslov1 "github.com/dash0hq/dash0-operator/api/openslo/v1"
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	operatorv1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 )
@@ -122,6 +123,7 @@ func allPotentialCredentialFields(t *testing.T) []potentialCredentialField {
 		operatorv1alpha1.AddToScheme,
 		operatorv1beta1.AddToScheme,
 		dash0v1alpha1.AddToScheme,
+		openslov1.AddToScheme,
 	} {
 		if err := addToScheme(scheme); err != nil {
 			t.Fatalf("cannot build the scheme: %v", err)

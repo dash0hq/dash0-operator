@@ -18,6 +18,7 @@ import (
 
 const (
 	syntheticCheckName        = "synthetic-check-e2e-test"
+	sloName                   = "slo-e2e-test"
 	viewName                  = "view-e2e-test"
 	persesDashboardNamePrefix = "perses-dashboard-e2e-test"
 	persesDashboardV1Alpha1   = "v1alpha1"
@@ -35,6 +36,10 @@ var (
 	//go:embed dash0syntheticcheck.yaml.template
 	syntheticCheckSource   string
 	syntheticCheckTemplate *template.Template
+
+	//go:embed dash0slo.yaml.template
+	sloSource   string
+	sloTemplate *template.Template
 
 	//go:embed dash0view.yaml.template
 	viewSource   string
@@ -167,6 +172,61 @@ func removeSyntheticCheckResource(namespace string) {
 		namespace,
 		"Dash0SyntheticCheck",
 		syntheticCheckName,
+	))
+}
+
+func renderSLOTemplate() string {
+	sloTemplate = initTemplateOnce(
+		sloTemplate,
+		sloSource,
+		"slo",
+	)
+	return renderResourceTemplate(sloTemplate, nil, "slo")
+}
+
+func deploySLOResource(namespace string) {
+	renderedResourceFileName := renderSLOTemplate()
+	defer func() {
+		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
+	}()
+
+	By(fmt.Sprintf(
+		"deploying an SLO resource to namespace %s", namespace))
+	Expect(runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"apply",
+		"-n",
+		namespace,
+		"-f",
+		renderedResourceFileName,
+	))).To(Succeed())
+}
+
+func setOptOutLabelInSLO(namespace string, value string) {
+	By(fmt.Sprintf("setting the opt-out label in the SLO with value %s", value))
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"label",
+			"-n",
+			namespace,
+			"--overwrite",
+			"SLO",
+			sloName,
+			fmt.Sprintf("dash0.com/enable=%s", value),
+		)),
+	).To(Succeed())
+}
+
+func removeSLOResource(namespace string) {
+	_ = runAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"delete",
+		"--ignore-not-found",
+		"-n",
+		namespace,
+		"SLO",
+		sloName,
 	))
 }
 
@@ -685,6 +745,7 @@ func removeSignalToMetricsResource(namespace string) {
 
 func removeDash0ApiSyncResources(namespace string) {
 	removeSyntheticCheckResource(namespace)
+	removeSLOResource(namespace)
 	removePersesDashboardResource(namespace, persesDashboardV1Alpha1)
 	removePersesDashboardResource(namespace, persesDashboardV1Alpha2)
 	removePrometheusRuleResource(namespace)

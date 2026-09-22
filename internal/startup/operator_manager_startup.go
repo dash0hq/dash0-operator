@@ -42,6 +42,7 @@ import (
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0dashv1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	openslov1 "github.com/dash0hq/dash0-operator/api/openslo/v1"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
@@ -280,6 +281,7 @@ func init() {
 	utilruntime.Must(dash0v1alpha1.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0dashv1alpha1.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1beta1.AddToScheme(runtimeScheme))
+	utilruntime.Must(openslov1.AddToScheme(runtimeScheme))
 
 	// required for Perses dashboard controller and Prometheus rules controller.
 	utilruntime.Must(apiextensionsv1.AddToScheme(runtimeScheme))
@@ -1238,6 +1240,7 @@ func setupTimeSeriesAggregationReconciler(
 func allOwnedIacResourceSynchronizationControllers(
 	notificationChannelReconciler *controller.NotificationChannelReconciler,
 	signalToMetricsReconciler *controller.SignalToMetricsReconciler,
+	sloReconciler *controller.SLOReconciler,
 	spamFilterReconciler *controller.SpamFilterReconciler,
 	syntheticCheckReconciler *controller.SyntheticCheckReconciler,
 	teamReconciler *controller.TeamReconciler,
@@ -1248,6 +1251,7 @@ func allOwnedIacResourceSynchronizationControllers(
 	controllers := []controller.OwnedIacResourceSynchronizationController{
 		notificationChannelReconciler,
 		signalToMetricsReconciler,
+		sloReconciler,
 		spamFilterReconciler,
 		syntheticCheckReconciler,
 		teamReconciler,
@@ -1258,6 +1262,54 @@ func allOwnedIacResourceSynchronizationControllers(
 		controllers = append(controllers, samplingRuleReconciler)
 	}
 	return controllers
+}
+
+// setupSyntheticCheckReconciler constructs and wires the synthetic check reconciler with the manager and the
+// leader-election-aware runnable. Companion to setupSpamFilterReconciler; see its godoc for the rationale.
+func setupSyntheticCheckReconciler(
+	mgr manager.Manager,
+	k8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+) (*controller.SyntheticCheckReconciler, error) {
+	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(syntheticCheckReconciler)
+	return syntheticCheckReconciler, nil
+}
+
+// setupSLOReconciler constructs and wires the SLO reconciler with the manager and the leader-election-aware runnable.
+// Companion to setupSpamFilterReconciler; see its godoc for the rationale. It also takes the uncached startup client,
+// see SLOReconciler.SetupWithManager.
+func setupSLOReconciler(
+	ctx context.Context,
+	mgr manager.Manager,
+	k8sClient client.Client,
+	startupK8sClient client.Client,
+	clusterUid types.UID,
+	leaderElectionAwareRunnable *util.LeaderElectionAwareRunnable,
+	httpClient *http.Client,
+	logger logd.Logger,
+) (*controller.SLOReconciler, error) {
+	sloReconciler := controller.NewSLOReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := sloReconciler.SetupWithManager(ctx, mgr, startupK8sClient, logger); err != nil {
+		return nil, fmt.Errorf("unable to set up the SLO reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(sloReconciler)
+	return sloReconciler, nil
 }
 
 // setupSynchronizationRetryRunnable adds the periodic synchronization retry runnable to the manager, unless it has been
@@ -1863,16 +1915,30 @@ func startDash0Controllers(
 		setupLog.Info("The Signal Control reconciler has been started.")
 	} // closes else (Signal Control enabled)
 
-	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
+	syntheticCheckReconciler, err := setupSyntheticCheckReconciler(
+		mgr,
 		k8sClient,
 		clusterUid,
 		leaderElectionAwareRunnable,
 		httpClient,
 	)
-	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
+	if err != nil {
+		return err
 	}
-	leaderElectionAwareRunnable.AddLeaderElectionClient(syntheticCheckReconciler)
+
+	sloReconciler, err := setupSLOReconciler(
+		ctx,
+		mgr,
+		k8sClient,
+		startupTasksK8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+		setupLog,
+	)
+	if err != nil {
+		return err
+	}
 
 	viewReconciler := controller.NewViewReconciler(
 		k8sClient,
@@ -2001,6 +2067,7 @@ func startDash0Controllers(
 		allOwnedIacResourceSynchronizationControllers(
 			notificationChannelReconciler,
 			signalToMetricsReconciler,
+			sloReconciler,
 			spamFilterReconciler,
 			syntheticCheckReconciler,
 			teamReconciler,
@@ -2018,6 +2085,7 @@ func startDash0Controllers(
 	setupLog.Info("Creating the operator configuration resource reconciler.")
 	apiClients := []controller.ApiClient{
 		syntheticCheckReconciler,
+		sloReconciler,
 		viewReconciler,
 		notificationChannelReconciler,
 		spamFilterReconciler,
@@ -2058,6 +2126,7 @@ func startDash0Controllers(
 	namespacedApiClients := appendSamplingRuleNamespacedApiClient(
 		[]controller.NamespacedApiClient{
 			syntheticCheckReconciler,
+			sloReconciler,
 			viewReconciler,
 			notificationChannelReconciler,
 			spamFilterReconciler,
@@ -2134,6 +2203,7 @@ func startDash0Controllers(
 		notificationChannelReconciler,
 		syntheticCheckReconciler,
 		teamReconciler,
+		sloReconciler,
 		viewReconciler,
 		spamFilterReconciler,
 		timeSeriesAggregationReconciler,
