@@ -4199,7 +4199,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		)
 	})
 
-	XDescribe("should enable/disable the replicaset informer", func() {
+	Describe("should enable/disable the replicaset informer", func() {
 		DescribeTable("should configure the k8s_attributes processor to not start the replicaset informer if disabled", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:                      OperatorNamespace,
