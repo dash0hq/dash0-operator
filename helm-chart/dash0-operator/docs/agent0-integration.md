@@ -116,11 +116,23 @@ You can replace that list entirely with the Helm value `operator.agent0Connector
 access to fewer resource types, or to add a resource type the defaults do not cover.
 See [Restricting or Widening the Permissions](#restricting-or-widening-the-permissions) below.
 
-The default rules grant no access to non-resource URLs, since `kubectl`'s API discovery is normally covered by the
-`system:discovery` cluster role, which is bound to the group `system:authenticated`.
+`kubectl`'s API discovery is normally covered by the `system:discovery` cluster role, which is bound to the group
+`system:authenticated`.
 On a cluster where that binding has been removed (a common hardening step), API discovery fails and no command works at
-all — with the default rules just as much as with custom ones.
-The fix in that case is to provide custom rules that include a rule with `nonResourceURLs: ["*"]` and `verbs: ["get"]`.
+all.
+The default rules therefore grant `get` on exactly the non-resource URLs that `system:discovery` covers:
+
+```yaml
+- nonResourceURLs:
+    ["/api", "/api/*", "/apis", "/apis/*", "/healthz", "/livez", "/openapi", "/openapi/*", "/readyz", "/version",
+     "/version/"]
+  verbs: ["get"]
+```
+
+Custom rules replace the default rules entirely, so they have to carry that rule as well.
+Prefer the explicit list over the wildcard `nonResourceURLs: ["*"]`: the wildcard also grants the API server's own
+`/metrics` and `/debug/pprof` endpoints, and a heap profile of the API server exposes whatever it holds in memory,
+secret material included.
 
 > **Note:** The default rules allow read-only access to RBAC-related resources, such as `Clusterroles`,
 > `ClusterRoleBindings`, `Roles`, `RoleBindings`, and `ServiceAccounts`.
@@ -319,6 +331,10 @@ operator:
         - apiGroups: ["authorization.k8s.io"]
           resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
           verbs: ["create"]
+        - nonResourceURLs:
+            ["/api", "/api/*", "/apis", "/apis/*", "/healthz", "/livez", "/openapi", "/openapi/*", "/readyz",
+             "/version", "/version/"]
+          verbs: ["get"]
 ```
 
 > **Important:** Allowing access to additional resources can have security implications.
@@ -337,8 +353,9 @@ A few things to keep in mind:
 * Widening access can have security implications.
   Only grant access to a resource type when you are confident that it cannot be used to read credentials out of the
   cluster; see [Secret Redaction](#secret-redaction) for what the connector does and does not redact.
-* On a cluster where the group `system:authenticated` has been removed from the `system:discovery` cluster role binding,
-  add a rule with `nonResourceURLs: ["*"]` and `verbs: ["get"]`
+* Custom rules replace the default rules entirely, which includes the rule for the non-resource URLs `kubectl` needs for
+  API discovery.
+  Carry that rule over, listing the URLs explicitly rather than granting `nonResourceURLs: ["*"]`.
   See [Customizable RBAC Rules](#customizable-rbac-rules) above.
 
 ### Concurrency and Sizing
