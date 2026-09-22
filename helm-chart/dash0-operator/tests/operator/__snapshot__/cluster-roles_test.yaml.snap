@@ -1443,7 +1443,17 @@ cluster roles should match snapshot with agent0-connector enabled:
           - get
           - list
       - nonResourceURLs:
-          - '*'
+          - /api
+          - /api/*
+          - /apis
+          - /apis/*
+          - /healthz
+          - /livez
+          - /openapi
+          - /openapi/*
+          - /readyz
+          - /version
+          - /version/
         verbs:
           - get
   6: |

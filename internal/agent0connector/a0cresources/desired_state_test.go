@@ -141,7 +141,20 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 				}
 				if len(rule.NonResourceURLs) > 0 {
 					hasNonResourceURLs = true
-					Expect(rule.NonResourceURLs).To(ContainElement("*"))
+					Expect(rule.NonResourceURLs).To(ConsistOf(
+						"/api",
+						"/api/*",
+						"/apis",
+						"/apis/*",
+						"/healthz",
+						"/livez",
+						"/openapi",
+						"/openapi/*",
+						"/readyz",
+						"/version",
+						"/version/",
+					), "the non-resource URLs must stay restricted to the ones system:discovery covers; the wildcard "+
+						"also grants the API server's /metrics and /debug/pprof endpoints")
 					Expect(rule.Verbs).To(ConsistOf("get"))
 				}
 			}
