@@ -53,11 +53,6 @@ const (
 	defaultGroup int64 = 0
 )
 
-var deploymentMatchLabels = map[string]string{
-	util.AppKubernetesIoNameLabel:     appKubernetesIoNameValue,
-	util.AppKubernetesIoInstanceLabel: appKubernetesIoInstanceValue,
-}
-
 // This type just exists to ensure all created objects go through addCommonMetadata.
 type clientObject struct {
 	object client.Object
@@ -226,7 +221,7 @@ func assembleDeployment(
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To(replicas),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: deploymentMatchLabels,
+				MatchLabels: matchLabels(),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -282,4 +277,13 @@ func labels() map[string]string {
 		util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
 		util.AppKubernetesIoManagedByLabel: appKubernetesIoManagedByValue,
 	}
+}
+
+// matchLabels returns the subset of labels() that identifies the synthetics-worker pods, for use in a selector.
+// Selector labels must never change for an existing deployment, so this deliberately excludes
+// AppKubernetesIoManagedByLabel even though it is currently also constant.
+func matchLabels() map[string]string {
+	l := labels()
+	delete(l, util.AppKubernetesIoManagedByLabel)
+	return l
 }

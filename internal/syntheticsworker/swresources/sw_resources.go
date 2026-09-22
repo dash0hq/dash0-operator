@@ -12,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -75,10 +76,7 @@ func (m *SyntheticsWorkerResourceManager) CreateOrUpdateSyntheticsWorkerResource
 		return false, false, ErrNoLocationID
 	}
 
-	authorization := dash0common.Authorization{}
-	if spec.Authorization != nil {
-		authorization = *spec.Authorization
-	}
+	authorization := ptr.Deref(spec.Authorization, dash0common.Authorization{})
 	authTokenEnvVar, err := util.CreateEnvVarForAuthorization(authorization, authTokenEnvVarName)
 	if err != nil {
 		logger.ErrorTelemetryCollectionIssue(err, "no Dash0 authorization token is available for the "+
