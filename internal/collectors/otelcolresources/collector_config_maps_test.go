@@ -4722,7 +4722,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
 			metric := scopeMetrics.Metrics().AppendEmpty()
-			tCtx := ottlmetric.NewTransformContextPtr(resourceMetrics, scopeMetrics, metric)
+			tCtx := ottlmetric.NewTransformContext(resourceMetrics, scopeMetrics, metric)
 			defer tCtx.Close()
 
 			result, err := condSeq.Eval(context.Background(), tCtx)
