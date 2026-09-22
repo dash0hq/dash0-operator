@@ -2160,6 +2160,7 @@ func startDash0Controllers(
 		cliArgs.telemetryCollectionEnabled,
 		cliArgs.featureSignalControlEnabled,
 		envVars.agent0ConnectorEnabled,
+		envVars.syntheticsWorkerEnabled,
 	); err != nil {
 		return err
 	}
@@ -2613,11 +2614,14 @@ func setupResourceWebhooks(
 	telemetryCollectionEnabled bool,
 	signalControlEnabled bool,
 	agent0ConnectorEnabled bool,
+	syntheticsWorkerEnabled bool,
 ) error {
 	if err := webhooks.NewOperatorConfigurationMutatingWebhookHandler(k8sClient).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration mutating webhook: %w", err)
 	}
-	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(k8sClient, telemetryCollectionEnabled, agent0ConnectorEnabled).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewOperatorConfigurationValidationWebhookHandler(
+		k8sClient, telemetryCollectionEnabled, agent0ConnectorEnabled, syntheticsWorkerEnabled,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
 	if signalControlEnabled {

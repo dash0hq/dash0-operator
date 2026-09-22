@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -29,6 +30,12 @@ const ErrorMessageAgent0ConnectorDisabledViaHelm = "The agent0-connector has bee
 	"agent0Connector.enabled=true. The agent0-connector cannot be enabled via the operator configuration resource " +
 	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
 	"operator.agent0Connector.enabled: true via the Helm chart."
+
+const ErrorMessageSyntheticsWorkerDisabledViaHelm = "The synthetics-worker has been disabled via the Helm chart " +
+	"(operator.syntheticsWorker.enabled: false), but the provided Dash0 operator configuration resource has " +
+	"syntheticsWorker.enabled=true. The synthetics-worker cannot be enabled via the operator configuration resource " +
+	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
+	"operator.syntheticsWorker.enabled: true via the Helm chart."
 
 const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
 	"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
@@ -58,17 +65,20 @@ type OperatorConfigurationValidationWebhookHandler struct {
 	Client                            client.Client
 	telemetryCollectionEnabledViaHelm bool
 	agent0ConnectorEnabledViaHelm     bool
+	syntheticsWorkerEnabledViaHelm    bool
 }
 
 func NewOperatorConfigurationValidationWebhookHandler(
 	k8sClient client.Client,
 	telemetryCollectionEnabledViaHelm bool,
 	agent0ConnectorEnabledViaHelm bool,
+	syntheticsWorkerEnabledViaHelm bool,
 ) *OperatorConfigurationValidationWebhookHandler {
 	return &OperatorConfigurationValidationWebhookHandler{
 		Client:                            k8sClient,
 		telemetryCollectionEnabledViaHelm: telemetryCollectionEnabledViaHelm,
 		agent0ConnectorEnabledViaHelm:     agent0ConnectorEnabledViaHelm,
+		syntheticsWorkerEnabledViaHelm:    syntheticsWorkerEnabledViaHelm,
 	}
 }
 
@@ -113,6 +123,10 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			logger.Warn(ErrorMessageAgent0ConnectorDisabledViaHelm)
 			return admission.Denied(ErrorMessageAgent0ConnectorDisabledViaHelm)
 		}
+	}
+
+	if response, denied := h.validateSyntheticsWorkerEnabledConsistency(spec, request, logger); denied {
+		return response
 	}
 
 	// Reject if both the deprecated export and the new exports field are set.
@@ -228,6 +242,57 @@ func isAgent0ConnectorNewlyEnabled(
 	return !pointers.ReadBoolPointerWithDefault(oldResource.Spec.Agent0Connector.Enabled, false), nil
 }
 
+// isSyntheticsWorkerNewlyEnabled reports whether the request itself enables the synthetics-worker, as opposed to
+// carrying over a value the resource already had. Returns true for CREATE operations and for UPDATE operations where
+// the stored resource did not have spec.syntheticsWorker.enabled=true. Without this distinction, a resource that was
+// stored with spec.syntheticsWorker.enabled=true before the synthetics-worker was disabled via the Helm chart could
+// no longer be updated at all, not even to change unrelated fields. Returns an error response if the OldObject
+// cannot be decoded.
+func isSyntheticsWorkerNewlyEnabled(
+	request admission.Request,
+	logger logd.Logger,
+) (bool, *admission.Response) {
+	if request.Operation != admissionv1.Update {
+		return true, nil
+	}
+	if request.OldObject.Raw == nil {
+		return true, nil
+	}
+	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
+	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
+		msg := "could not decode OldObject for the synthetics-worker validation"
+		logger.Error(err, msg)
+		errResponse := admission.Errored(
+			http.StatusBadRequest,
+			fmt.Errorf("%s: %w", msg, err),
+		)
+		return false, &errResponse
+	}
+	return !pointers.ReadBoolPointerWithDefault(oldResource.Spec.SyntheticsWorker.Enabled, false), nil
+}
+
+// validateSyntheticsWorkerEnabledConsistency rejects enabling the synthetics-worker via the operator configuration
+// resource when it has been disabled via the Helm chart. It returns denied=true together with the denial response
+// when that is the case.
+func (h *OperatorConfigurationValidationWebhookHandler) validateSyntheticsWorkerEnabledConsistency(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	request admission.Request,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if h.syntheticsWorkerEnabledViaHelm || !pointers.ReadBoolPointerWithDefault(spec.SyntheticsWorker.Enabled, false) {
+		return admission.Response{}, false
+	}
+	newlyEnabled, errorResponse := isSyntheticsWorkerNewlyEnabled(request, logger)
+	if errorResponse != nil {
+		return *errorResponse, true
+	}
+	if !newlyEnabled {
+		return admission.Response{}, false
+	}
+	logger.Warn(ErrorMessageSyntheticsWorkerDisabledViaHelm)
+	return admission.Denied(ErrorMessageSyntheticsWorkerDisabledViaHelm), true
+}
+
 // validateTelemetryCollectionDisabledConsistency rejects operator configuration resources that keep individual
 // collection features explicitly enabled while telemetry collection as a whole is disabled. It returns denied=true
 // together with the denial response when such an invalid combination is detected.
@@ -301,6 +366,11 @@ func validateTelemetryCollectionDisabledConsistency(
 func (h *OperatorConfigurationValidationWebhookHandler) hasEnabledSignalControl(ctx context.Context) (bool, string, error) {
 	allSignalControlResources := &dash0v1alpha1.Dash0SignalControlList{}
 	if err := h.Client.List(ctx, allSignalControlResources); err != nil {
+		// The chart only installs the Dash0SignalControl CRD when Signal Control is enabled, so on a default install
+		// the kind is unknown -- which means no Signal Control resource can exist.
+		if meta.IsNoMatchError(err) {
+			return false, "", nil
+		}
 		return false, "", fmt.Errorf("failed to list all Dash0 Signal Control resources: %w", err)
 	}
 	for _, signalControlResource := range allSignalControlResources.Items {

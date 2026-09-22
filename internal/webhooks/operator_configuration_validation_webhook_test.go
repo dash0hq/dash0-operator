@@ -690,4 +690,133 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			})
 		})
 	})
+
+	Describe("synthetics-worker", func() {
+		It("should reject enabling the synthetics-worker when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+							Enabled: new(true),
+						},
+					},
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The " +
+					"synthetics-worker has been disabled via the Helm chart (operator.syntheticsWorker.enabled: false), " +
+					"but the provided Dash0 operator configuration resource has syntheticsWorker.enabled=true. The " +
+					"synthetics-worker cannot be enabled via the operator configuration resource when it has been " +
+					"disabled via the Helm chart. Instead, run helm upgrade --install to set " +
+					"operator.syntheticsWorker.enabled: true via the Helm chart.")))
+		})
+
+		It("should allow disabling the synthetics-worker when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+							Enabled: new(false),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should reject an update that enables the synthetics-worker when it is disabled via Helm", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.SyntheticsWorker.Enabled = new(true)
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(
+				MatchError(ContainSubstring(ErrorMessageSyntheticsWorkerDisabledViaHelm)))
+		})
+
+		It("should allow an unrelated update when the synthetics-worker has been disabled via Helm after the fact", func() {
+			// Store syntheticsWorker.enabled=true while the synthetics-worker is still enabled via Helm, ...
+			operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = true
+			DeferCleanup(func() {
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = false
+			})
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+						SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+							Enabled: new(true),
+						},
+					},
+				})
+			Expect(err).ToNot(HaveOccurred())
+
+			// ... then disable it via Helm and update an unrelated field.
+			operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = false
+			operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			operatorConfigurationResource.Spec.ClusterName = "cluster-name-set-after-the-fact"
+
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+		})
+
+		Describe("with the synthetics-worker enabled via Helm", Ordered, func() {
+			BeforeAll(func() {
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = true
+			})
+
+			AfterAll(func() {
+				operatorConfigurationValidationWebhookHandler.syntheticsWorkerEnabledViaHelm = false
+			})
+
+			It("should allow enabling the synthetics-worker", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+								Enabled: new(true),
+							},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should allow disabling the synthetics-worker", func() {
+				_, err := CreateOperatorConfigurationResource(
+					ctx,
+					k8sClient,
+					&dash0v1alpha1.Dash0OperatorConfiguration{
+						ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+						Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+							SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
+								Enabled: new(false),
+							},
+						},
+					})
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+	})
 })
