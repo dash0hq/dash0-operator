@@ -624,7 +624,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize a synthetic check to the Dash0 API", func() {
 					deploySyntheticCheckResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
@@ -664,7 +663,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize an SLO to the Dash0 API", func() {
 					deploySLOResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
@@ -704,7 +702,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize a Dash0SignalToMetrics to the Dash0 API", func() {
 					deploySignalToMetricsResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
@@ -745,7 +742,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize a view to the Dash0 API", func() {
 					deployViewResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
@@ -785,7 +781,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize a notification channel to the Dash0 API", func() {
 					deployNotificationChannelResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					// Notification channels are org-level, so the URL has no dataset query parameter.
@@ -827,7 +822,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize a team to the Dash0 API", func() {
 					deployTeamResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					// Teams are org-level, so the URL has no dataset query parameter.
@@ -867,7 +861,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize a spam filter to the Dash0 API", func() {
 					deploySpamFilterResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
@@ -907,7 +900,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize a time series aggregation to the Dash0 API", func() {
 					deployTimeSeriesAggregationResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
@@ -951,7 +943,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					deployPersesDashboardResource(
 						applicationUnderTestNamespace,
 						persesDashboardCrdVersion,
-						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
@@ -998,7 +989,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 				It("should synchronize Prometheus rules to the Dash0 API", func() {
 					deployPrometheusRuleResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					listRouteRegexes := []string{
@@ -1100,7 +1090,6 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 					By("deploying a PrometheusRule resource while sync is disabled")
 					deployPrometheusRuleResource(
 						applicationUnderTestNamespace,
-						dash0ApiResourceValues{},
 					)
 
 					By("verifying no API requests are made while sync is disabled")
@@ -1917,7 +1906,7 @@ log_statements:
 			)
 			defer undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
-			deploySamplingRuleResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+			deploySamplingRuleResource(applicationUnderTestNamespace)
 			defer removeSamplingRuleResource(applicationUnderTestNamespace)
 
 			//nolint:lll
@@ -4478,7 +4467,7 @@ spec:
 					Times:          apiMockFailTimesForOneSyncAttempt,
 				})
 
-				deployPrometheusRuleResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+				deployPrometheusRuleResource(applicationUnderTestNamespace)
 
 				//nolint:lll
 				crashRulePutRegex := "^/api/alerting/check-rules/dash0-operator_.*_default_e2e-test-ns_prometheus-rules-e2e-test_.*crash.*\\?dataset=default$"
@@ -4512,7 +4501,7 @@ spec:
 					Times:          apiMockFailTimesForOneSyncAttempt,
 				})
 
-				deployPersesDashboardResource(applicationUnderTestNamespace, persesDashboardV1Alpha2, dash0ApiResourceValues{})
+				deployPersesDashboardResource(applicationUnderTestNamespace, persesDashboardV1Alpha2)
 
 				//nolint:lll
 				dashboardPutRegex := "^/api/dashboards/dash0-operator_.*_default_e2e-test-ns_perses-dashboard-e2e-test-v1alpha2\\?dataset=default$"
@@ -4535,7 +4524,7 @@ spec:
 					Times:          apiMockFailTimesForOneSyncAttempt,
 				})
 
-				deploySpamFilterResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+				deploySpamFilterResource(applicationUnderTestNamespace)
 
 				//nolint:lll
 				spamFilterPutRegex := "^/api/spam-filters/dash0-operator_.*_default_e2e-test-ns_spam-filter-e2e-test\\?dataset=default$"
@@ -4558,7 +4547,7 @@ spec:
 					Times:          apiMockFailTimesForOneSyncAttempt,
 				})
 
-				deployTimeSeriesAggregationResource(applicationUnderTestNamespace, dash0ApiResourceValues{})
+				deployTimeSeriesAggregationResource(applicationUnderTestNamespace)
 
 				//nolint:lll
 				timeSeriesAggregationPutRegex := "^/api/time-series-aggregations/dash0-operator_.*_default_e2e-test-ns_time-series-aggregation-e2e-test\\?dataset=default$"

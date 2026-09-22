@@ -16,10 +16,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-type dash0ApiResourceValues struct {
-	Dash0ComEnabled string
-}
-
 const (
 	syntheticCheckName        = "synthetic-check-e2e-test"
 	sloName                   = "slo-e2e-test"
@@ -124,26 +120,23 @@ func removeThirdPartyCrds(cleanupSteps *neccessaryCleanupSteps) {
 	))).To(Succeed())
 }
 
-func renderSyntheticCheckTemplate(values dash0ApiResourceValues) string {
+func renderSyntheticCheckTemplate() string {
 	syntheticCheckTemplate = initTemplateOnce(
 		syntheticCheckTemplate,
 		syntheticCheckSource,
 		"syntheticcheck",
 	)
-	return renderResourceTemplate(syntheticCheckTemplate, values, "syntheticcheck")
+	return renderResourceTemplate(syntheticCheckTemplate, nil, "syntheticcheck")
 }
 
-func deploySyntheticCheckResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderSyntheticCheckTemplate(values)
+func deploySyntheticCheckResource(namespace string) {
+	renderedResourceFileName := renderSyntheticCheckTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a SyntheticCheck resource to namespace %s with values %v", namespace, values))
+		"deploying a SyntheticCheck resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -182,26 +175,23 @@ func removeSyntheticCheckResource(namespace string) {
 	))
 }
 
-func renderSLOTemplate(values dash0ApiResourceValues) string {
+func renderSLOTemplate() string {
 	sloTemplate = initTemplateOnce(
 		sloTemplate,
 		sloSource,
 		"slo",
 	)
-	return renderResourceTemplate(sloTemplate, values, "slo")
+	return renderResourceTemplate(sloTemplate, nil, "slo")
 }
 
-func deploySLOResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderSLOTemplate(values)
+func deploySLOResource(namespace string) {
+	renderedResourceFileName := renderSLOTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying an SLO resource to namespace %s with values %v", namespace, values))
+		"deploying an SLO resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -240,26 +230,23 @@ func removeSLOResource(namespace string) {
 	))
 }
 
-func renderViewTemplate(values dash0ApiResourceValues) string {
+func renderViewTemplate() string {
 	viewTemplate = initTemplateOnce(
 		viewTemplate,
 		viewSource,
 		"dash0view",
 	)
-	return renderResourceTemplate(viewTemplate, values, "dash0view")
+	return renderResourceTemplate(viewTemplate, nil, "dash0view")
 }
 
-func deployViewResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderViewTemplate(values)
+func deployViewResource(namespace string) {
+	renderedResourceFileName := renderViewTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0View resource to namespace %s with values %v", namespace, values))
+		"deploying a Dash0View resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -298,7 +285,7 @@ func removeViewResource(namespace string) {
 	))
 }
 
-func renderPersesDashboardTemplate(version string, values dash0ApiResourceValues) string {
+func renderPersesDashboardTemplate(version string) string {
 	switch version {
 	case persesDashboardV1Alpha1:
 		persesDashboardV1Alpha1Template = initTemplateOnce(
@@ -306,33 +293,29 @@ func renderPersesDashboardTemplate(version string, values dash0ApiResourceValues
 			persesDashboardV1Alpha1Source,
 			"persesdashboard-v1alpha1",
 		)
-		return renderResourceTemplate(persesDashboardV1Alpha1Template, values, "persesdashboard-v1alpha1")
+		return renderResourceTemplate(persesDashboardV1Alpha1Template, nil, "persesdashboard-v1alpha1")
 	case persesDashboardV1Alpha2:
 		persesDashboardV1Alpha2Template = initTemplateOnce(
 			persesDashboardV1Alpha2Template,
 			persesDashboardV1Alpha2Source,
 			"persesdashboard-v1alpha2",
 		)
-		return renderResourceTemplate(persesDashboardV1Alpha2Template, values, "persesdashboard-v1alpha2")
+		return renderResourceTemplate(persesDashboardV1Alpha2Template, nil, "persesdashboard-v1alpha2")
 	default:
 		Fail(fmt.Sprintf("unsupported PersesDashboard template version %q (must be v1alpha1 or v1alpha2)", version))
 		return ""
 	}
 }
 
-func deployPersesDashboardResource(
-	namespace string,
-	version string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderPersesDashboardTemplate(version, values)
+func deployPersesDashboardResource(namespace string, version string) {
+	renderedResourceFileName := renderPersesDashboardTemplate(version)
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a PersesDashboard %s resource to namespace %s with values %v",
-		version, namespace, values))
+		"deploying a PersesDashboard %s resource to namespace %s",
+		version, namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -375,26 +358,23 @@ func persesDashboardName(version string) string {
 	return fmt.Sprintf("%s-%s", persesDashboardNamePrefix, version)
 }
 
-func renderPrometheusRuleTemplate(values dash0ApiResourceValues) string {
+func renderPrometheusRuleTemplate() string {
 	prometheusRuleTemplate = initTemplateOnce(
 		prometheusRuleTemplate,
 		prometheusRuleSource,
 		"prometheusrule",
 	)
-	return renderResourceTemplate(prometheusRuleTemplate, values, "prometheusrule")
+	return renderResourceTemplate(prometheusRuleTemplate, nil, "prometheusrule")
 }
 
-func deployPrometheusRuleResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderPrometheusRuleTemplate(values)
+func deployPrometheusRuleResource(namespace string) {
+	renderedResourceFileName := renderPrometheusRuleTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a PrometheusRule resource to namespace %s with values %v", namespace, values))
+		"deploying a PrometheusRule resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -433,26 +413,23 @@ func removePrometheusRuleResource(namespace string) {
 	))
 }
 
-func renderNotificationChannelTemplate(values dash0ApiResourceValues) string {
+func renderNotificationChannelTemplate() string {
 	notificationChannelTemplate = initTemplateOnce(
 		notificationChannelTemplate,
 		notificationChannelSource,
 		"dash0notificationchannel",
 	)
-	return renderResourceTemplate(notificationChannelTemplate, values, "dash0notificationchannel")
+	return renderResourceTemplate(notificationChannelTemplate, nil, "dash0notificationchannel")
 }
 
-func deployNotificationChannelResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderNotificationChannelTemplate(values)
+func deployNotificationChannelResource(namespace string) {
+	renderedResourceFileName := renderNotificationChannelTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0NotificationChannel resource to namespace %s with values %v", namespace, values))
+		"deploying a Dash0NotificationChannel resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -491,26 +468,23 @@ func removeNotificationChannelResource(namespace string) {
 	))
 }
 
-func renderSamplingRuleTemplate(values dash0ApiResourceValues) string {
+func renderSamplingRuleTemplate() string {
 	samplingRuleTemplate = initTemplateOnce(
 		samplingRuleTemplate,
 		samplingRuleSource,
 		"dash0samplingrule",
 	)
-	return renderResourceTemplate(samplingRuleTemplate, values, "dash0samplingrule")
+	return renderResourceTemplate(samplingRuleTemplate, nil, "dash0samplingrule")
 }
 
-func deploySamplingRuleResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderSamplingRuleTemplate(values)
+func deploySamplingRuleResource(namespace string) {
+	renderedResourceFileName := renderSamplingRuleTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0SamplingRule resource to namespace %s with values %v", namespace, values))
+		"deploying a Dash0SamplingRule resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -521,26 +495,23 @@ func deploySamplingRuleResource(
 	))).To(Succeed())
 }
 
-func renderSpamFilterTemplate(values dash0ApiResourceValues) string {
+func renderSpamFilterTemplate() string {
 	spamFilterTemplate = initTemplateOnce(
 		spamFilterTemplate,
 		spamFilterSource,
 		"dash0spamfilter",
 	)
-	return renderResourceTemplate(spamFilterTemplate, values, "dash0spamfilter")
+	return renderResourceTemplate(spamFilterTemplate, nil, "dash0spamfilter")
 }
 
-func deploySpamFilterResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderSpamFilterTemplate(values)
+func deploySpamFilterResource(namespace string) {
+	renderedResourceFileName := renderSpamFilterTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0SpamFilter resource to namespace %s with values %v", namespace, values))
+		"deploying a Dash0SpamFilter resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -583,26 +554,23 @@ func setOptOutLabelInSpamFilter(namespace string, value string) {
 	).To(Succeed())
 }
 
-func renderTimeSeriesAggregationTemplate(values dash0ApiResourceValues) string {
+func renderTimeSeriesAggregationTemplate() string {
 	timeSeriesAggregationTemplate = initTemplateOnce(
 		timeSeriesAggregationTemplate,
 		timeSeriesAggregationSource,
 		"dash0timeseriesaggregation",
 	)
-	return renderResourceTemplate(timeSeriesAggregationTemplate, values, "dash0timeseriesaggregation")
+	return renderResourceTemplate(timeSeriesAggregationTemplate, nil, "dash0timeseriesaggregation")
 }
 
-func deployTimeSeriesAggregationResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderTimeSeriesAggregationTemplate(values)
+func deployTimeSeriesAggregationResource(namespace string) {
+	renderedResourceFileName := renderTimeSeriesAggregationTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0TimeSeriesAggregation resource to namespace %s with values %v", namespace, values))
+		"deploying a Dash0TimeSeriesAggregation resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -665,26 +633,23 @@ func removeTimeSeriesAggregationResource(namespace string) {
 	))
 }
 
-func renderTeamTemplate(values dash0ApiResourceValues) string {
+func renderTeamTemplate() string {
 	teamTemplate = initTemplateOnce(
 		teamTemplate,
 		teamSource,
 		"dash0team",
 	)
-	return renderResourceTemplate(teamTemplate, values, "dash0team")
+	return renderResourceTemplate(teamTemplate, nil, "dash0team")
 }
 
-func deployTeamResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderTeamTemplate(values)
+func deployTeamResource(namespace string) {
+	renderedResourceFileName := renderTeamTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0Team resource to namespace %s with values %v", namespace, values))
+		"deploying a Dash0Team resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
@@ -723,26 +688,23 @@ func removeTeamResource(namespace string) {
 	))
 }
 
-func renderSignalToMetricsTemplate(values dash0ApiResourceValues) string {
+func renderSignalToMetricsTemplate() string {
 	signalToMetricsTemplate = initTemplateOnce(
 		signalToMetricsTemplate,
 		signalToMetricsSource,
 		"signaltometrics",
 	)
-	return renderResourceTemplate(signalToMetricsTemplate, values, "signaltometrics")
+	return renderResourceTemplate(signalToMetricsTemplate, nil, "signaltometrics")
 }
 
-func deploySignalToMetricsResource(
-	namespace string,
-	values dash0ApiResourceValues,
-) {
-	renderedResourceFileName := renderSignalToMetricsTemplate(values)
+func deploySignalToMetricsResource(namespace string) {
+	renderedResourceFileName := renderSignalToMetricsTemplate()
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
 	By(fmt.Sprintf(
-		"deploying a Dash0SignalToMetrics resource to namespace %s with values %v", namespace, values))
+		"deploying a Dash0SignalToMetrics resource to namespace %s", namespace))
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",

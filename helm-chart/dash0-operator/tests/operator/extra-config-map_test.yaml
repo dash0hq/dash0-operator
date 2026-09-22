@@ -932,7 +932,7 @@ tests:
           path: data['extra.yaml']
           pattern: |-
             agent0ConnectorContainerResources:
-              gomemlimit: 150MiB
+              gomemlimit: ""
               limits:
                 memory: 256Mi
               requests:
@@ -1264,15 +1264,15 @@ tests:
                 timeoutSeconds: 1
             signalControlCollectorReplicas: 2
             signalControlCollectorContainerResources:
-              gomemlimit: 800MiB
+              gomemlimit: ""
               limits:
                 memory: 1Gi
               requests:
                 memory: 1Gi
             signalControlCollectorConfigurationReloaderContainerResources:
-              gomemlimit: 18MiB
+              gomemlimit: ""
               limits:
-                memory: 24Mi
+                memory: 26Mi
               requests:
                 memory: 12Mi
             signalControlCollectorTolerations:
@@ -1310,7 +1310,7 @@ tests:
             targetAllocatorMtlsClientCertSecretName: ""
             targetAllocatorAllowInsecureAuthSecrets: false
             targetAllocatorContainerResources:
-              gomemlimit: 400MiB
+              gomemlimit: ""
               limits:
                 cpu: 200m
                 memory: 500Mi

@@ -587,7 +587,7 @@ func assembleDeployment(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: extraConfig.Agent0ConnectorContainerResources.GoMemLimit,
+				Value: extraConfig.Agent0ConnectorContainerResources.EffectiveGoMemLimitPercent(util.Agent0ConnectorGoMemLimitPercent),
 			},
 			{
 				// The agent0-connector workload uses the pseudo cluster UID as its client ID when connecting to the

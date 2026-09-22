@@ -4,9 +4,6 @@ metadata:
   name: slo-e2e-test
   labels:
     app.kubernetes.io/name: slo-e2e-test
-{{- if .Dash0ComEnabled }}
-    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
-{{- end }}
 spec:
   description: E2E test SLO for synchronizing SLOs with the Dash0 Operator.
   budgetingMethod: Occurrences

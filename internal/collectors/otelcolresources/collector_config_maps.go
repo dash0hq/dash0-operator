@@ -14,6 +14,7 @@ import (
 	"text/template"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -130,6 +131,11 @@ type collectorConfigurationTemplateValues struct {
 	SignalControlGatewayActive                       bool
 	SignalControlCollectorServiceName                string
 	SignalControlCollectorDeploymentName             string
+	// MemoryLimiterLimitMiB and MemoryLimiterSpikeLimitMiB are the memory_limiter limit_mib / spike_limit_mib
+	// derived from the collector container memory limit. When MemoryLimiterLimitMiB is zero (no limit set), the
+	// template falls back to the percentage-based memory_limiter configuration.
+	MemoryLimiterLimitMiB      int
+	MemoryLimiterSpikeLimitMiB int
 }
 
 var (
@@ -226,6 +232,7 @@ func assembleDaemonSetCollectorConfigMap(
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
+		config.DaemonSetCollectorMemoryLimit,
 		daemonSetCollectorConfigurationTemplate,
 		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
 		targetAllocatorMtlsConfig,
@@ -249,6 +256,7 @@ func assembleDeploymentCollectorConfigMap(
 		nil, // namespacesWithPrometheusScraping is not used when rendering the deployment config map
 		filters,
 		transforms,
+		config.DeploymentCollectorMemoryLimit,
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
 		TargetAllocatorMtlsConfig{}, // target-allocator mTLS config is not used when rendering the deployment config map
@@ -273,6 +281,7 @@ func assembleSignalControlCollectorConfigMap(
 		nil, // namespacesWithPrometheusScraping is not used when rendering the Signal Control collector config map
 		nil, // custom filters are applied upstream, in the daemonset and deployment collectors
 		nil, // custom transforms are applied upstream, in the daemonset and deployment collectors
+		config.SignalControlCollectorMemoryLimit,
 		signalControlCollectorConfigurationTemplate,
 		SignalControlCollectorConfigConfigMapName(config.NamePrefix),
 		TargetAllocatorMtlsConfig{}, // target-allocator mTLS config is not used for the Signal Control collector
@@ -288,6 +297,7 @@ func assembleCollectorConfigMap(
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
+	collectorMemoryLimit resource.Quantity,
 	template *template.Template,
 	configMapName string,
 	targetAllocatorMtlsConfig TargetAllocatorMtlsConfig,
@@ -331,6 +341,13 @@ func assembleCollectorConfigMap(
 		)
 
 	targetAllocatorServiceName := taresources.ServiceName(config.TargetAllocatorNamePrefix)
+
+	memoryLimiterLimitMiB := 0
+	memoryLimiterSpikeMiB := 0
+	if settings, ok := util.DeriveCollectorMemorySettings(collectorMemoryLimit); ok {
+		memoryLimiterLimitMiB = settings.LimitMiB
+		memoryLimiterSpikeMiB = settings.SpikeMiB
+	}
 
 	collectorConfiguration, err := renderCollectorConfiguration(template,
 		&collectorConfigurationTemplateValues{
@@ -380,6 +397,8 @@ func assembleCollectorConfigMap(
 			SignalControlGatewayActive:                       config.signalControlGatewayActive(),
 			SignalControlCollectorServiceName:                SignalControlCollectorServiceName(config.NamePrefix),
 			SignalControlCollectorDeploymentName:             SignalControlCollectorDeploymentName(config.NamePrefix),
+			MemoryLimiterLimitMiB:                            memoryLimiterLimitMiB,
+			MemoryLimiterSpikeLimitMiB:                       memoryLimiterSpikeMiB,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)

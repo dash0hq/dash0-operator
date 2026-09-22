@@ -111,7 +111,7 @@ func (p kubectlArguments) outputIsContentFree() bool {
 		return false
 	}
 	for _, format := range p.outputFormats() {
-		if _, contentFree := contentFreeOutputFormats[format]; !contentFree {
+		if knownOutputFormats[format] != outputFormatContentFree {
 			return false
 		}
 	}

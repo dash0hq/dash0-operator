@@ -11,10 +11,10 @@ exports to Dash0. It is the only collector workload that runs SC components and,
 exports to Dash0; the two producer collectors keep only their non-SC components and export passthrough (non-Dash0)
 telemetry themselves.
 
-All enrichment that depends on the sending node or pod (resourcedetection, k8s_attributes,
+All enrichment that depends on the sending node or pod (resource_detection, k8s_attributes,
 resource/dash0_operator_attributes, custom filters and transforms, batching) has already been applied upstream and must
 NOT be repeated here: k8s_attributes' "from: connection" pod association would resolve every record to the sending
-collector's pod, and the resourcedetection k8snode/eks detectors would report this collector's node.
+collector's pod, and the resource_detection k8s_api/eks detectors would report this collector's node.
 
 The producers route on k8s.namespace.name, keep the passthrough copies locally and forward one copy of the Dash0-bound
 telemetry here. This collector applies the same k8s.namespace.name routing again to pick the (namespace, dataset)
@@ -258,8 +258,13 @@ processors:
 
   memory_limiter:
     check_interval: 1s
+    {{- if .MemoryLimiterLimitMiB }}
+    limit_mib: {{ .MemoryLimiterLimitMiB }}
+    spike_limit_mib: {{ .MemoryLimiterSpikeLimitMiB }}
+    {{- else }}
     limit_percentage: 80
     spike_limit_percentage: 25
+    {{- end }}
 
   resource/signal_control_attributes:
     attributes:

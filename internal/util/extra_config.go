@@ -146,16 +146,16 @@ var (
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
-			GoMemLimit: "400MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
 		},
 		CollectorDaemonSetConfigurationReloaderContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("12Mi"),
+				corev1.ResourceMemory: resource.MustParse("26Mi"),
 			},
-			GoMemLimit: "8MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
@@ -164,7 +164,7 @@ var (
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("32Mi"),
 			},
-			GoMemLimit: "24MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("32Mi"),
 			},
@@ -173,16 +173,16 @@ var (
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
-			GoMemLimit: "400MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
 		},
 		CollectorDeploymentConfigurationReloaderContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("12Mi"),
+				corev1.ResourceMemory: resource.MustParse("26Mi"),
 			},
-			GoMemLimit: "8MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
@@ -193,16 +193,16 @@ var (
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			},
-			GoMemLimit: "800MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			},
 		},
 		SignalControlCollectorConfigurationReloaderContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("12Mi"),
+				corev1.ResourceMemory: resource.MustParse("26Mi"),
 			},
-			GoMemLimit: "8MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
@@ -211,7 +211,7 @@ var (
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("256Mi"),
 			},
-			GoMemLimit: "150MiB",
+			GoMemLimit: "",
 			Requests: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("64Mi"),
 			},

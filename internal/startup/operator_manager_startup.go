@@ -295,8 +295,12 @@ func Start() {
 
 	developmentMode := readBooleanEnvVar(developmentModeEnvVarName)
 
-	cliArgs := defineCommandLineArguments()
-	opts := parseCommandLineOptions(cliArgs, developmentMode)
+	cliArgs := defineCommandLineArguments(flag.CommandLine)
+	opts, appliedEnvVars, parseErr := parseCommandLineOptions(cliArgs, developmentMode)
+	if parseErr != nil {
+		fmt.Fprintln(os.Stderr, parseErr.Error())
+		os.Exit(1)
+	}
 	crZapOpts := crzap.UseFlagOptions(&opts)
 
 	// Maintenance note: setupLog is not yet initialized before the call to setUpLogging.
@@ -304,6 +308,7 @@ func Start() {
 	// setupLog is initialized after this point and can be used
 
 	setupLog.Debug("development/debug mode enabled")
+	logAppliedEnvVarDefaults(appliedEnvVars)
 
 	common.StartPprofServerIfConfigured(pprofLogger{logger: setupLog})
 
@@ -385,6 +390,7 @@ func Start() {
 		setupLog.Error(err, "cannot read extra config map file at startup")
 		os.Exit(1)
 	}
+	util.WarnOnCollectorGoMemLimitInversion(extraConfig, setupLog)
 	if err = extraConfigMapWatcher.StartWatch(setupLog); err != nil {
 		setupLog.Error(err, "cannot establish file watch for extra config map")
 		os.Exit(1)
@@ -463,9 +469,9 @@ func Start() {
 	}
 }
 
-func defineCommandLineArguments() *commandLineArguments {
+func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 	cliArgs := &commandLineArguments{}
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.isUninstrumentAll,
 		"uninstrument-all",
 		false,
@@ -473,166 +479,166 @@ func defineCommandLineArguments() *commandLineArguments {
 			"exit. This will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will "+
 			"revert the instrumentation of all workloads in all namespaces.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.autoOperatorConfigurationResourceAvailableCheck,
 		"auto-operator-configuration-resource-available-check",
 		false,
 		"If set, the process will only wait until the Dash0 operator configuration resource has been created and "+
 			"becomes available, then exit.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.webhookEndpointReadyCheck,
 		"dash0-webhook-endpoint-ready-check",
 		false,
 		"If set, the process will only wait until the Dash0 operator's webhook service endpoint has a port assigned "+
 			"and is marked as ready (that is, until the API server is actually able to reach the webhook), then exit.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.allowlistSynchronizerReadyCheck,
 		"allowlist-synchronizer-ready-check",
 		false,
 		"If set, the process will wait until the GKE Autopilot AllowlistSynchronizer resource is ready, then exit.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.allowlistVersion,
 		"allowlist-version",
 		"",
 		"The version of the Dash0 operator allowlist to wait for (e.g. v1.0.3). Used with --allowlist-synchronizer-ready-check.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.deleteAllowlistSynchronizer,
 		"delete-allowlist-synchronizer",
 		false,
 		"If set, the process will remove the GKE Autopilot AllowlistSynchronizer resource from the cluster, then "+
 			"exit.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationEndpoint,
 		"operator-configuration-endpoint",
 		"",
 		"The Dash0 endpoint gRPC URL for creating an operator configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationToken,
 		"operator-configuration-token",
 		"",
 		"The Dash0 auth token for creating an operator configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationSecretRefName,
 		"operator-configuration-secret-ref-name",
 		"",
 		"The name of an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
 			"configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationSecretRefKey,
 		"operator-configuration-secret-ref-key",
 		"",
 		"The key in an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
 			"configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationDataset,
 		"operator-configuration-dataset",
 		"default",
 		"The Dash0 dataset into which telemetry will be reported and which will be used for API access.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationApiEndpoint,
 		"operator-configuration-api-endpoint",
 		"",
 		"The Dash0 API endpoint for managing dashboards, check rules, synthetic checks and views via the operator.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationKeepaliveTime,
 		"operator-configuration-keepalive-time",
 		"",
 		"The keepalive time for the gRPC connection to the Dash0 backend; will be ignored if "+
 			"operator-configuration-endpoint is not set.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationKeepaliveTimeout,
 		"operator-configuration-keepalive-timeout",
 		"",
 		"The keepalive timeout for the gRPC connection to the Dash0 backend; will be ignored if "+
 			"operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationKeepalivePermitWithoutStream,
 		"operator-configuration-keepalive-permit-without-stream",
 		false,
 		"Whether to allow keepalive pings when there are no active gRPC streams; will be ignored if "+
 			"operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationSelfMonitoringEnabled,
 		"operator-configuration-self-monitoring-enabled",
 		true,
 		"Whether to set selfMonitoring.enabled on the operator configuration resource; will be ignored if "+
 			"operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
 		"operator-configuration-kubernetes-infrastructure-metrics-collection-enabled",
 		true,
 		"The value for kubernetesInfrastructureMetricsCollection.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-pod-labels-and-annotations-enabled",
 		true,
 		"The value for collectPodLabelsAndAnnotations.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationCollectNamespaceLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-namespace-labels-and-annotations-enabled",
 		true,
 		"The value for collectNamespaceLabelsAndAnnotations.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationCollectNodeLabelsAndAnnotationsEnabled,
 		"operator-configuration-collect-node-labels-and-annotations-enabled",
 		true,
 		"The value for collectNodeLabelsAndAnnotations.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationPrometheusCrdSupportEnabled,
 		"operator-configuration-prometheus-crd-support-enabled",
 		false,
 		"The value for prometheusCrdSupport.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationProfilingEnabled,
 		"operator-configuration-profiling-enabled",
 		false,
 		"The value for profiling.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.telemetryCollectionEnabled,
 		"dash0-telemetry-collection-enabled",
 		true,
 		"The value for telemetryCollection.enabled on the operator configuration resource.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.logLevel,
 		"dash0-log-level",
 		"info",
 		"The log level for the operator manager (debug, info, warn, error). Ignored when development mode is active.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.featureSignalControlEnabled,
 		"dash0-feature-signal-control-enabled",
 		false,
 		"Enable Signal Control features (sampling, RED metrics, Edge Proxy).",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationClusterName,
 		"operator-configuration-cluster-name",
 		"",
@@ -640,21 +646,21 @@ func defineCommandLineArguments() *commandLineArguments {
 			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
 			"k8s.cluster.name to all telemetry.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.operatorConfigurationAutoMonitorNamespacesEnabled,
 		"operator-configuration-auto-monitor-namespaces-enabled",
 		false,
 		"The value for autoMonitorNamespaces.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.operatorConfigurationAutoMonitorNamespacesLabelSelector,
 		"operator-configuration-auto-monitor-namespaces-label-selector",
 		"",
 		"The value for autoMonitorNamespaces.labelSelector on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.",
 	)
-	flag.Func(
+	fs.Func(
 		"operator-configuration-instrumentation-delivery",
 		"The value for spec.instrumentWorkloads.instrumentationDelivery on the operator configuration resource. "+
 			"Allowed values are \"auto\", \"image-volume\" and \"init-container\". Will be ignored if "+
@@ -664,40 +670,40 @@ func defineCommandLineArguments() *commandLineArguments {
 			return nil
 		},
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"dash0-force-use-otel-collector-service-url",
 		false,
 		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
 			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.isGkeAutopilot,
 		"dash0-gke-autopilot",
 		false,
 		"Whether the operator is running on GKE Autopilot.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.isOpenShift,
 		"dash0-openshift",
 		false,
 		"Whether the operator is running on Red Hat OpenShift.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.disableOpenTelemetryCollectorHostPorts,
 		"dash0-disable-otel-collector-host-ports",
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
 			"--dash0-force-use-otel-collector-service-url.",
 	)
-	flag.IntVar(
+	fs.IntVar(
 		&cliArgs.otlpGrpcHostPort,
 		"dash0-otel-collector-otlp-grpc-host-port",
 		otelcolresources.DefaultOtlpGrpcHostPort,
 		"The host port used by the gRPC OTLP receiver of the OpenTelemetry collector pods managed by the operator. "+
 			"Only takes effect when host ports are not disabled.",
 	)
-	flag.IntVar(
+	fs.IntVar(
 		&cliArgs.otlpHttpHostPort,
 		"dash0-otel-collector-otlp-http-host-port",
 		otelcolresources.DefaultOtlpHttpHostPort,
@@ -705,7 +711,7 @@ func defineCommandLineArguments() *commandLineArguments {
 			"Only takes effect when host ports are not disabled.",
 	)
 	cliArgs.instrumentationDelays = &util.DelayConfig{}
-	flag.Uint64Var(
+	fs.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachWorkloadMillis,
 		"instrumentation-delay-after-each-workload-millis",
 		0,
@@ -713,7 +719,7 @@ func defineCommandLineArguments() *commandLineArguments {
 			"operator startup or when enabling instrumentation for a new namespace via Dash0Monitoring resource. This "+
 			"delay will be applied after each individual workload.",
 	)
-	flag.Uint64Var(
+	fs.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachNamespaceMillis,
 		"instrumentation-delay-after-each-namespace-millis",
 		0,
@@ -721,32 +727,32 @@ func defineCommandLineArguments() *commandLineArguments {
 			"instrumentation of) existing workloads at operator startup. This delay will be applied each time all "+
 			"workloads in a namespace have been processed, before starting with the next namespace.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.metricsAddr,
 		"metrics-bind-address",
 		":8080",
 		"The address the metric endpoint binds to.",
 	)
-	flag.StringVar(
+	fs.StringVar(
 		&cliArgs.probeAddr,
 		"health-probe-bind-address",
 		":8081",
 		"The address the probe endpoint binds to.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.enableLeaderElection,
 		"leader-elect",
 		false,
 		"Enable leader election for operator manager. "+
 			"Enabling this will ensure there is only one active operator manager.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.secureMetrics,
 		"metrics-secure",
 		false,
 		"If set, the metrics endpoint is served securely.",
 	)
-	flag.BoolVar(
+	fs.BoolVar(
 		&cliArgs.enableHTTP2,
 		"enable-http2",
 		false,
@@ -755,7 +761,7 @@ func defineCommandLineArguments() *commandLineArguments {
 	return cliArgs
 }
 
-func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool) crzap.Options {
+func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool) (crzap.Options, []appliedEnvVar, error) {
 	var opts crzap.Options
 	if developmentMode {
 		opts = crzap.Options{
@@ -768,6 +774,11 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	appliedEnvVars, err := applyEnvironmentVariableDefaults(flag.CommandLine)
+	if err != nil {
+		return opts, nil, err
+	}
 
 	if !developmentMode {
 		var level zapcore.Level
@@ -783,7 +794,7 @@ func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool
 		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl = true
 	}
-	return opts
+	return opts, appliedEnvVars, nil
 }
 
 func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
