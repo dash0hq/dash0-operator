@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	. "github.com/onsi/gomega"
 )
 
@@ -50,6 +52,9 @@ const (
 
 	serviceAccountDirectory = "/var/run/secrets/kubernetes.io/serviceaccount"
 	serviceAccountToken     = "dash0-collector-config-validation"
+
+	// helmChartValuesFile is the path to the Helm chart's values.yaml, relative to this package's directory.
+	helmChartValuesFile = "../../../helm-chart/dash0-operator/values.yaml"
 )
 
 // collectorWorkloadUser is the user the collector containers run as in a cluster, see the pod security context in
@@ -104,8 +109,16 @@ func TestCollectorConfigurationsAreAcceptedByTheCollector(t *testing.T) {
 	}
 	signalControlCollectorImage := os.Getenv(signalControlCollectorImageEnvVarName)
 	if signalControlCollectorImage == "" {
-		t.Fatalf("%s is set, but %s does not name a collector image to validate against",
-			runValidationEnvVarName, signalControlCollectorImageEnvVarName)
+		var err error
+		signalControlCollectorImage, err = signalControlCollectorImageFromHelmChart()
+		if err != nil {
+			t.Fatalf("cannot determine the SignalControl Edge collector image to validate against (set %s to "+
+				"override the image from the Helm chart's values.yaml): %v",
+				signalControlCollectorImageEnvVarName, err)
+		}
+	}
+	if err := pullImageIfMissing(signalControlCollectorImage); err != nil {
+		t.Fatalf("%v", err)
 	}
 	RegisterTestingT(t)
 
@@ -143,6 +156,56 @@ func TestCollectorConfigurationsAreAcceptedByTheCollector(t *testing.T) {
 func collectorConfigValidationIsEnabled() bool {
 	enabled, err := strconv.ParseBool(os.Getenv(runValidationEnvVarName))
 	return err == nil && enabled
+}
+
+// signalControlCollectorImageFromHelmChart derives the SignalControl Edge collector image from the Helm chart's
+// values.yaml. That image is not built in this repository, it is pinned in the chart, and the pinned image is the one
+// every user runs, hence it is the one the configurations need to be valid for.
+func signalControlCollectorImageFromHelmChart() (string, error) {
+	content, err := os.ReadFile(helmChartValuesFile)
+	if err != nil {
+		return "", fmt.Errorf("cannot read %s: %w", helmChartValuesFile, err)
+	}
+
+	var values struct {
+		Operator struct {
+			SignalControlCollectorImage struct {
+				Repository string `yaml:"repository"`
+				Tag        string `yaml:"tag"`
+				Digest     string `yaml:"digest"`
+			} `yaml:"signalControlCollectorImage"`
+		} `yaml:"operator"`
+	}
+	if err = yaml.Unmarshal(content, &values); err != nil {
+		return "", fmt.Errorf("cannot parse %s: %w", helmChartValuesFile, err)
+	}
+
+	image := values.Operator.SignalControlCollectorImage
+	if image.Repository == "" {
+		return "", fmt.Errorf("%s has no value for operator.signalControlCollectorImage.repository",
+			helmChartValuesFile)
+	}
+	if image.Digest != "" {
+		return fmt.Sprintf("%s@%s", image.Repository, image.Digest), nil
+	}
+	if image.Tag == "" {
+		return "", fmt.Errorf("%s has neither a tag nor a digest for operator.signalControlCollectorImage",
+			helmChartValuesFile)
+	}
+	return fmt.Sprintf("%s:%s", image.Repository, image.Tag), nil
+}
+
+// pullImageIfMissing pulls an image that is not present locally. The validation runs several containers concurrently,
+// which would otherwise all start by pulling the same image.
+func pullImageIfMissing(image string) error {
+	if err := exec.Command("docker", "image", "inspect", image).Run(); err == nil {
+		return nil
+	}
+	output, err := exec.Command("docker", "pull", image).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("cannot pull the image %s: %w\n%s", image, err, string(output))
+	}
+	return nil
 }
 
 // renderCollectorConfigurationMatrix renders all configurations of the matrix. When
