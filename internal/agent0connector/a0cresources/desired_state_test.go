@@ -153,8 +153,8 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 						"/readyz",
 						"/version",
 						"/version/",
-					), "the non-resource URLs must stay restricted to the ones system:discovery covers; the wildcard "+
-						"also grants the API server's /metrics and /debug/pprof endpoints")
+					), "the non-resource URLs must stay restricted to the ones system:discovery covers (no wildcard, no "+
+						"additional permissions")
 					Expect(rule.Verbs).To(ConsistOf("get"))
 				}
 			}

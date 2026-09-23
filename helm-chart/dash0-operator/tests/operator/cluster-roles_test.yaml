@@ -259,8 +259,6 @@ tests:
         documentSelector:
           path: metadata.name
           value: dash0-operator-manager-agent0-connector-ro
-      # The default rules must grant exactly the non-resource URLs of system:discovery: the wildcard would also grant
-      # the API server's /metrics and /debug/pprof endpoints.
       - contains:
           path: rules
           content:

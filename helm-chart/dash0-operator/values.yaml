@@ -1520,11 +1520,9 @@ operator:
       # which are required for this component) to the group system:authenticated via the system:discovery cluster role
       # binding. The default rules grant the same URLs explicitly, so that the agent0-connector also works on a cluster
       # where system:authenticated has been removed from that binding (e.g. for hardening etc.). Custom rules replace
-      # the default rules entirely, so they need to carry that rule as well, see the example below. Without it,
-      # kubectl's API discovery fails on such a cluster and no kubectl command works.
-      # Prefer listing these URLs over the wildcard nonResourceURLs: ["*"]: the wildcard also grants the API server's
-      # /metrics and /debug/pprof endpoints, and a heap profile of the API server exposes whatever it holds in memory,
-      # Secret material included.
+      # the default rules, so they need to list this nonResourceURLs rule as well for clusters where that default
+      # binding has been revoked. Without it, kubectl's API discovery fails on such a cluster and no kubectl command
+      # works.
       #
       # Example:
       # rules:
