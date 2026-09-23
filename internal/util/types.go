@@ -183,9 +183,12 @@ type SyntheticsWorkerConfig struct {
 	// Insecure disables TLS for the synthetics-worker workload's connection to the Dash0 backend. It is set from the
 	// Helm value operator.syntheticsWorker.insecure and passed to the workload via the SYNTHETICS_INSECURE
 	// environment variable. It is only intended for local development.
-	Insecure        bool
-	IsOpenShift     bool
-	DevelopmentMode bool
+	Insecure bool
+	// PriorityClassName is the priority class applied to every synthetics-worker pod, regardless of instance. It is
+	// set from the Helm value operator.syntheticsWorker.priorityClassName.
+	PriorityClassName string
+	IsOpenShift       bool
+	DevelopmentMode   bool
 }
 
 type Images struct {

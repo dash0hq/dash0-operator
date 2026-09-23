@@ -1933,123 +1933,384 @@ spec:
               syntheticsWorker:
                 description: Settings for the synthetics-worker.
                 properties:
-                  authorization:
-                    description: |-
-                      Authorization holds the Dash0 authorization token for the synthetics-worker workload, either as a literal token
-                      or as a reference to a Kubernetes secret. Required when the synthetics-worker is enabled. This is a pointer so
-                      that the field can be omitted entirely; the Authorization type itself requires at least one of its own
-                      properties to be set, which would reject an explicit empty object.
-                    maxProperties: 1
-                    minProperties: 1
-                    properties:
-                      secretRef:
-                        description: |-
-                          A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
-                          ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-                          https://app.dash0.com -> organization settings -> "Auth Tokens".
-                        properties:
-                          key:
-                            default: token
-                            description: The key of the value which contains the Dash0
-                              authorization token. Defaults to "token"
-                            type: string
-                          name:
-                            default: dash0-authorization-secret
-                            description: The name of the secret containing the Dash0
-                              authorization token. Defaults to "dash0-authorization-secret".
-                            type: string
-                        required:
-                        - key
-                        - name
-                        type: object
-                      token:
-                        description: |-
-                          The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
-                          to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-                          token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
-                          "Auth Tokens".
-                        type: string
-                    type: object
                   enabled:
                     description: |-
-                      An opt-out switch for the synthetics-worker deployment. This setting is optional. Setting it to `false` prevents
-                      the operator from deploying the synthetics-worker, even when the synthetics-worker is enabled via the Helm
-                      chart. It is a validation error to set it to `true` when the synthetics-worker is disabled via the Helm chart.
+                      An opt-out switch for the synthetics-worker feature. This setting is optional. Setting it to `false` prevents
+                      the operator from deploying any synthetics-worker instance, even when the synthetics-worker is enabled via the
+                      Helm chart. It is a validation error to set it to `true` when the synthetics-worker is disabled via the Helm
+                      chart.
                     type: boolean
-                  locationId:
+                  instances:
                     description: |-
-                      LocationID is the customer-chosen identifier of the private location that this cluster's synthetics-worker
-                      executes checks for. Dash0 resolves it to the location's identity. Required when the synthetics-worker is
-                      enabled.
-                    type: string
-                  replicas:
-                    default: 1
-                    description: Replicas is the number of synthetics-worker pods
-                      the operator runs. This setting is optional, it defaults to
-                      1.
-                    format: int32
-                    type: integer
-                  resources:
-                    description: |-
-                      Resources describes the compute resource requirements for the synthetics-worker container. This setting is
-                      optional.
-                    properties:
-                      claims:
-                        description: |-
-                          Claims lists the names of resources, defined in spec.resourceClaims,
-                          that are used by this container.
-
-                          This field depends on the
-                          DynamicResourceAllocation feature gate.
-
-                          This field is immutable. It can only be set for containers.
-                        items:
-                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                      Instances lists the synthetics-worker deployments the operator manages, one per Dash0 private location. Each
+                      instance's LocationID must be unique within this list; it is also used to derive the names of that instance's
+                      Kubernetes resources. At least one instance is required when the synthetics-worker is enabled.
+                    items:
+                      description: SyntheticsWorkerInstance describes a single synthetics-worker
+                        Deployment, pinned to one Dash0 private location.
+                      properties:
+                        authorization:
+                          description: |-
+                            Authorization holds the Dash0 authorization token for this instance's workload, either as a literal token or as
+                            a reference to a Kubernetes secret. Required when the synthetics-worker is enabled. This is a pointer so that
+                            the field can be omitted entirely; the Authorization type itself requires at least one of its own properties to
+                            be set, which would reject an explicit empty object.
+                          maxProperties: 1
+                          minProperties: 1
                           properties:
-                            name:
+                            secretRef:
                               description: |-
-                                Name must match the name of one entry in pod.spec.resourceClaims of
-                                the Pod where this field is used. It makes that resource available
-                                inside a container.
-                              type: string
-                            request:
+                                A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
+                                ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
+                                https://app.dash0.com -> organization settings -> "Auth Tokens".
+                              properties:
+                                key:
+                                  default: token
+                                  description: The key of the value which contains
+                                    the Dash0 authorization token. Defaults to "token"
+                                  type: string
+                                name:
+                                  default: dash0-authorization-secret
+                                  description: The name of the secret containing the
+                                    Dash0 authorization token. Defaults to "dash0-authorization-secret".
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              type: object
+                            token:
                               description: |-
-                                Request is the name chosen for a request in the referenced claim.
-                                If empty, everything from the claim is made available, otherwise
-                                only the result of this request.
+                                The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
+                                to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
+                                token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
+                                "Auth Tokens".
                               type: string
-                          required:
-                          - name
                           type: object
-                        type: array
-                        x-kubernetes-list-map-keys:
-                        - name
-                        x-kubernetes-list-type: map
-                      limits:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        description: |-
-                          Limits describes the maximum amount of compute resources allowed.
-                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-                        type: object
-                      requests:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        description: |-
-                          Requests describes the minimum amount of compute resources required.
-                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
-                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
-                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-                        type: object
-                    type: object
+                        locationId:
+                          description: |-
+                            LocationID is the customer-chosen identifier of the private location that this instance executes checks for.
+                            Dash0 resolves it to the location's identity. It must be unique within spec.syntheticsWorker.instances, and is
+                            used to derive the names of this instance's Kubernetes resources.
+                          maxLength: 40
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        nodeAffinity:
+                          description: |-
+                            NodeAffinity constrains which nodes this instance's pods can be scheduled on, e.g. to pin a private location's
+                            worker to nodes in a particular region or zone. This setting is optional.
+                          properties:
+                            preferredDuringSchedulingIgnoredDuringExecution:
+                              description: |-
+                                The scheduler will prefer to schedule pods to nodes that satisfy
+                                the affinity expressions specified by this field, but it may choose
+                                a node that violates one or more of the expressions. The node that is
+                                most preferred is the one with the greatest sum of weights, i.e.
+                                for each node that meets all of the scheduling requirements (resource
+                                request, requiredDuringScheduling affinity expressions, etc.),
+                                compute a sum by iterating through the elements of this field and adding
+                                "weight" to the sum if the node matches the corresponding matchExpressions; the
+                                node(s) with the highest sum are the most preferred.
+                              items:
+                                description: |-
+                                  An empty preferred scheduling term matches all objects with implicit weight 0
+                                  (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                                properties:
+                                  preference:
+                                    description: A node selector term, associated
+                                      with the corresponding weight.
+                                    properties:
+                                      matchExpressions:
+                                        description: A list of node selector requirements
+                                          by node's labels.
+                                        items:
+                                          description: |-
+                                            A node selector requirement is a selector that contains values, a key, and an operator
+                                            that relates the key and values.
+                                          properties:
+                                            key:
+                                              description: The label key that the
+                                                selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                Represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                An array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. If the operator is Gt or Lt, the values
+                                                array must have a single element, which will be interpreted as an integer.
+                                                This array is replaced during a strategic merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                      matchFields:
+                                        description: A list of node selector requirements
+                                          by node's fields.
+                                        items:
+                                          description: |-
+                                            A node selector requirement is a selector that contains values, a key, and an operator
+                                            that relates the key and values.
+                                          properties:
+                                            key:
+                                              description: The label key that the
+                                                selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                Represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                An array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. If the operator is Gt or Lt, the values
+                                                array must have a single element, which will be interpreted as an integer.
+                                                This array is replaced during a strategic merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  weight:
+                                    description: Weight associated with matching the
+                                      corresponding nodeSelectorTerm, in the range
+                                      1-100.
+                                    format: int32
+                                    type: integer
+                                required:
+                                - preference
+                                - weight
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            requiredDuringSchedulingIgnoredDuringExecution:
+                              description: |-
+                                If the affinity requirements specified by this field are not met at
+                                scheduling time, the pod will not be scheduled onto the node.
+                                If the affinity requirements specified by this field cease to be met
+                                at some point during pod execution (e.g. due to an update), the system
+                                may or may not try to eventually evict the pod from its node.
+                              properties:
+                                nodeSelectorTerms:
+                                  description: Required. A list of node selector terms.
+                                    The terms are ORed.
+                                  items:
+                                    description: |-
+                                      A null or empty node selector term matches no objects. The requirements of
+                                      them are ANDed.
+                                      The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                    properties:
+                                      matchExpressions:
+                                        description: A list of node selector requirements
+                                          by node's labels.
+                                        items:
+                                          description: |-
+                                            A node selector requirement is a selector that contains values, a key, and an operator
+                                            that relates the key and values.
+                                          properties:
+                                            key:
+                                              description: The label key that the
+                                                selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                Represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                An array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. If the operator is Gt or Lt, the values
+                                                array must have a single element, which will be interpreted as an integer.
+                                                This array is replaced during a strategic merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                      matchFields:
+                                        description: A list of node selector requirements
+                                          by node's fields.
+                                        items:
+                                          description: |-
+                                            A node selector requirement is a selector that contains values, a key, and an operator
+                                            that relates the key and values.
+                                          properties:
+                                            key:
+                                              description: The label key that the
+                                                selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                Represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                An array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. If the operator is Gt or Lt, the values
+                                                array must have a single element, which will be interpreted as an integer.
+                                                This array is replaced during a strategic merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                              required:
+                              - nodeSelectorTerms
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                        replicas:
+                          default: 1
+                          description: Replicas is the number of pods this instance
+                            runs. This setting is optional, it defaults to 1.
+                          format: int32
+                          type: integer
+                        resources:
+                          description: Resources describes the compute resource requirements
+                            for this instance's container. This setting is optional.
+                          properties:
+                            claims:
+                              description: |-
+                                Claims lists the names of resources, defined in spec.resourceClaims,
+                                that are used by this container.
+
+                                This field depends on the
+                                DynamicResourceAllocation feature gate.
+
+                                This field is immutable. It can only be set for containers.
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name must match the name of one entry in pod.spec.resourceClaims of
+                                      the Pod where this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                  request:
+                                    description: |-
+                                      Request is the name chosen for a request in the referenced claim.
+                                      If empty, everything from the claim is made available, otherwise
+                                      only the result of this request.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Limits describes the maximum amount of compute resources allowed.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Requests describes the minimum amount of compute resources required.
+                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                          type: object
+                        tolerations:
+                          description: Tolerations allow this instance's pods to be
+                            scheduled on nodes with matching taints. This setting
+                            is optional.
+                          items:
+                            description: |-
+                              The pod this Toleration is attached to tolerates any taint that matches
+                              the triple <key,value,effect> using the matching operator <operator>.
+                            properties:
+                              effect:
+                                description: |-
+                                  Effect indicates the taint effect to match. Empty means match all taint effects.
+                                  When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                                type: string
+                              key:
+                                description: |-
+                                  Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                  If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                                type: string
+                              operator:
+                                description: |-
+                                  Operator represents a key's relationship to the value.
+                                  Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                                  Exists is equivalent to wildcard for value, so that a pod can
+                                  tolerate all taints of a particular category.
+                                  Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                                type: string
+                              tolerationSeconds:
+                                description: |-
+                                  TolerationSeconds represents the period of time the toleration (which must be
+                                  of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                                  it is not set, which means tolerate the taint forever (do not evict). Zero and
+                                  negative values will be treated as 0 (evict immediately) by the system.
+                                format: int64
+                                type: integer
+                              value:
+                                description: |-
+                                  Value is the taint value the toleration matches to.
+                                  If the operator is Exists, the value should be empty, otherwise just a regular string.
+                                type: string
+                            type: object
+                          type: array
+                      required:
+                      - locationId
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - locationId
+                    x-kubernetes-list-type: map
                 type: object
               telemetryCollection:
                 default:
@@ -3259,9 +3520,46 @@ spec:
                 properties:
                   deployed:
                     description: |-
-                      Deployed reports whether the operator has successfully created or updated the synthetics-worker resources the
-                      last time it tried.
+                      Deployed reports whether every configured instance was successfully created or updated the last time the
+                      operator tried. It is false if the feature is disabled, or if any single instance failed.
                     type: boolean
+                  instances:
+                    description: Instances reports the individual outcome for each
+                      configured synthetics-worker instance.
+                    items:
+                      description: SyntheticsWorkerInstanceStatus reports whether
+                        the operator has deployed one synthetics-worker instance.
+                      properties:
+                        deployed:
+                          description: |-
+                            Deployed reports whether the operator has successfully created or updated this instance's resources the last
+                            time it tried.
+                          type: boolean
+                        lastTransitionTime:
+                          description: LastTransitionTime is the time at which Deployed
+                            last changed for this instance.
+                          format: date-time
+                          type: string
+                        locationId:
+                          description: LocationID identifies the instance this status
+                            refers to, matching spec.syntheticsWorker.instances[].locationId.
+                          type: string
+                        message:
+                          description: Message describes the last outcome in a human-readable
+                            form.
+                          type: string
+                        reason:
+                          description: Reason is a programmatic identifier for the
+                            last negative outcome, e.g. "NoAuthorizationToken".
+                          type: string
+                      required:
+                      - deployed
+                      - locationId
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - locationId
+                    x-kubernetes-list-type: map
                   lastTransitionTime:
                     description: LastTransitionTime is the time at which Deployed
                       last changed.
@@ -3272,8 +3570,10 @@ spec:
                       form.
                     type: string
                   reason:
-                    description: Reason is a programmatic identifier for the last
-                      negative outcome, e.g. "NoAuthorizationToken".
+                    description: |-
+                      Reason is a programmatic identifier for the last negative outcome, e.g. "NoAuthorizationToken". When multiple
+                      instances fail for different reasons, this reports "PartiallyDeployed"; see Instances for the per-instance
+                      reasons.
                     type: string
                 required:
                 - deployed

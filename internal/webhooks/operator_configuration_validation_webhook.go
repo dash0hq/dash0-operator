@@ -37,6 +37,10 @@ const ErrorMessageSyntheticsWorkerDisabledViaHelm = "The synthetics-worker has b
 	"when it has been disabled via the Helm chart. Instead, run helm upgrade --install to set " +
 	"operator.syntheticsWorker.enabled: true via the Helm chart."
 
+const ErrorMessageSyntheticsWorkerEnabledWithoutInstances = "The synthetics-worker is enabled, but " +
+	"spec.syntheticsWorker.instances is empty. Configure at least one instance (locationId and authorization), or " +
+	"disable the synthetics-worker."
+
 const ErrorMessageOperatorConfigurationPrometheusCrdSupportInvalid = "The provided Dash0 operator configuration resource has Prometheus CRD support " +
 	"explicitly enabled, although telemetry collection is disabled. This is an invalid combination. " +
 	"Please either set telemetryCollection.enabled=true or " +
@@ -115,7 +119,10 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	if !h.agent0ConnectorEnabledViaHelm && pointers.ReadBoolPointerWithDefault(spec.Agent0Connector.Enabled, false) {
-		newlyEnabled, errorResponse := isAgent0ConnectorNewlyEnabled(request, logger)
+		newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "agent0-connector",
+			func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+				return pointers.ReadBoolPointerWithDefault(r.Spec.Agent0Connector.Enabled, false)
+			})
 		if errorResponse != nil {
 			return *errorResponse
 		}
@@ -127,6 +134,11 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 
 	if response, denied := h.validateSyntheticsWorkerEnabledConsistency(spec, request, logger); denied {
 		return response
+	}
+
+	if spec.SyntheticsWorker.IsEnabled(h.syntheticsWorkerEnabledViaHelm) && len(spec.SyntheticsWorker.Instances) == 0 {
+		logger.Warn(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)
+		return admission.Denied(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)
 	}
 
 	// Reject if both the deprecated export and the new exports field are set.
@@ -214,14 +226,16 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	return admission.Allowed("")
 }
 
-// isAgent0ConnectorNewlyEnabled reports whether the request itself enables the agent0-connector, as opposed to carrying
-// over a value the resource already had. Returns true for CREATE operations and for UPDATE operations where the stored
-// resource did not have spec.agent0Connector.enabled=true. Without this distinction, a resource that was stored with
-// spec.agent0Connector.enabled=true before the agent0-connector was disabled via the Helm chart could no longer be
-// updated at all, not even to change unrelated fields. Returns an error response if the OldObject cannot be decoded.
-func isAgent0ConnectorNewlyEnabled(
+// isFeatureNewlyEnabled reports whether the request itself sets the given feature's enabled flag to true, as opposed
+// to carrying over a value the resource already had. Returns true for CREATE operations and for UPDATE operations
+// where wasEnabled reports false for the stored resource. Without this distinction, a resource that was stored with
+// the feature enabled before it was disabled via the Helm chart could no longer be updated at all, not even to change
+// unrelated fields. Returns an error response if the OldObject cannot be decoded.
+func isFeatureNewlyEnabled(
 	request admission.Request,
 	logger logd.Logger,
+	featureName string,
+	wasEnabled func(*dash0v1alpha1.Dash0OperatorConfiguration) bool,
 ) (bool, *admission.Response) {
 	if request.Operation != admissionv1.Update {
 		return true, nil
@@ -231,7 +245,7 @@ func isAgent0ConnectorNewlyEnabled(
 	}
 	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
-		msg := "could not decode OldObject for the agent0-connector validation"
+		msg := fmt.Sprintf("could not decode OldObject for the %s validation", featureName)
 		logger.Error(err, msg)
 		errResponse := admission.Errored(
 			http.StatusBadRequest,
@@ -239,36 +253,7 @@ func isAgent0ConnectorNewlyEnabled(
 		)
 		return false, &errResponse
 	}
-	return !pointers.ReadBoolPointerWithDefault(oldResource.Spec.Agent0Connector.Enabled, false), nil
-}
-
-// isSyntheticsWorkerNewlyEnabled reports whether the request itself enables the synthetics-worker, as opposed to
-// carrying over a value the resource already had. Returns true for CREATE operations and for UPDATE operations where
-// the stored resource did not have spec.syntheticsWorker.enabled=true. Without this distinction, a resource that was
-// stored with spec.syntheticsWorker.enabled=true before the synthetics-worker was disabled via the Helm chart could
-// no longer be updated at all, not even to change unrelated fields. Returns an error response if the OldObject
-// cannot be decoded.
-func isSyntheticsWorkerNewlyEnabled(
-	request admission.Request,
-	logger logd.Logger,
-) (bool, *admission.Response) {
-	if request.Operation != admissionv1.Update {
-		return true, nil
-	}
-	if request.OldObject.Raw == nil {
-		return true, nil
-	}
-	oldResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
-	if _, _, err := decoder.Decode(request.OldObject.Raw, nil, oldResource); err != nil {
-		msg := "could not decode OldObject for the synthetics-worker validation"
-		logger.Error(err, msg)
-		errResponse := admission.Errored(
-			http.StatusBadRequest,
-			fmt.Errorf("%s: %w", msg, err),
-		)
-		return false, &errResponse
-	}
-	return !pointers.ReadBoolPointerWithDefault(oldResource.Spec.SyntheticsWorker.Enabled, false), nil
+	return !wasEnabled(oldResource), nil
 }
 
 // validateSyntheticsWorkerEnabledConsistency rejects enabling the synthetics-worker via the operator configuration
@@ -282,7 +267,10 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateSyntheticsWorker
 	if h.syntheticsWorkerEnabledViaHelm || !pointers.ReadBoolPointerWithDefault(spec.SyntheticsWorker.Enabled, false) {
 		return admission.Response{}, false
 	}
-	newlyEnabled, errorResponse := isSyntheticsWorkerNewlyEnabled(request, logger)
+	newlyEnabled, errorResponse := isFeatureNewlyEnabled(request, logger, "synthetics-worker",
+		func(r *dash0v1alpha1.Dash0OperatorConfiguration) bool {
+			return pointers.ReadBoolPointerWithDefault(r.Spec.SyntheticsWorker.Enabled, false)
+		})
 	if errorResponse != nil {
 		return *errorResponse, true
 	}

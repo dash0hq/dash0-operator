@@ -85,7 +85,6 @@ var _ = Describe("The synthetics-worker failure reason", func() {
 		func(err error, expectedReason string) {
 			Expect(syntheticsWorkerFailureReason(err)).To(Equal(expectedReason))
 		},
-		Entry("missing location ID", swresources.ErrNoLocationID, StatusReasonNoLocationID),
 		Entry("missing authorization token", swresources.ErrNoAuthorizationToken, StatusReasonNoAuthorizationToken),
 		Entry("the API server rejecting the deployment", forbidden, StatusReasonOperatorMissingPermissions),
 		// The error travels through the resource manager, so the check has to survive wrapping.
@@ -105,6 +104,18 @@ var _ = Describe("The synthetics-worker failure reason", func() {
 		err := errors.New("connection refused")
 		Expect(syntheticsWorkerFailureMessage(StatusReasonReconcileFailed, err)).To(Equal("connection refused"))
 	})
+
+	DescribeTable(
+		"reports whether a reconcile error must not cause a reconcile retry",
+		func(err error, expectedNonBlocking bool) {
+			Expect(isNonBlockingSyntheticsWorkerError(err)).To(Equal(expectedNonBlocking))
+		},
+		Entry("a misconfiguration", swresources.ErrNoAuthorizationToken, true),
+		Entry("the API server rejecting the deployment", forbidden, true),
+		// The error travels through the resource manager, so the check has to survive wrapping.
+		Entry("a wrapped rejection", fmt.Errorf("cannot create the deployment: %w", forbidden), true),
+		Entry("any other error", errors.New("connection refused"), false),
+	)
 })
 
 var _ = Describe("The synthetics-worker manager", Ordered, func() {
@@ -181,21 +192,21 @@ var _ = Describe("The synthetics-worker manager", Ordered, func() {
 	})
 
 	It("does not report an error when the synthetics-worker is misconfigured", func() {
-		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingLocationID())
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingAuthorization())
 		manager := newManager()
 
 		hasBeenReconciled, err := manager.ReconcileSyntheticsWorker(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 
 		// Reporting an error would make the caller requeue the reconcile request, which cannot fix a missing
-		// location ID (it requires a user to edit the resource), and it would abort the caller's remaining
+		// authorization token (it requires a user to edit the resource), and it would abort the caller's remaining
 		// reconciliation steps.
 		Expect(err).ToNot(HaveOccurred())
-		Expect(hasBeenReconciled).To(BeFalse())
+		Expect(hasBeenReconciled).To(BeTrue())
 		expectSyntheticsWorkerResourcesToNotExist(ctx)
 	})
 
 	It("reports a misconfiguration in the status and queues a warning event", func() {
-		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingLocationID())
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingAuthorization())
 		manager := newManager()
 
 		_, err := manager.ReconcileSyntheticsWorker(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
@@ -203,14 +214,14 @@ var _ = Describe("The synthetics-worker manager", Ordered, func() {
 
 		status := expectSyntheticsWorkerStatus(ctx)
 		Expect(status.Deployed).To(BeFalse())
-		Expect(status.Reason).To(Equal(StatusReasonNoLocationID))
+		Expect(status.Reason).To(Equal(StatusReasonNoAuthorizationToken))
 		Expect(status.LastTransitionTime).ToNot(BeZero())
 
 		Expect(recordedEvents()).To(ConsistOf(ContainSubstring("SyntheticsWorkerNotDeployed")))
 	})
 
 	It("keeps the operator configuration resource available while the synthetics-worker is misconfigured", func() {
-		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingLocationID())
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingAuthorization())
 		operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 		operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 		Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
@@ -228,16 +239,17 @@ var _ = Describe("The synthetics-worker manager", Ordered, func() {
 	})
 
 	It("reports the recovery in the status and queues a normal event", func() {
-		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingLocationID())
+		CreateOperatorConfigurationResourceWithSpec(ctx, k8sClient, operatorConfigurationSpecWithMissingAuthorization())
 		manager := newManager()
 		_, err := manager.ReconcileSyntheticsWorker(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(expectSyntheticsWorkerStatus(ctx).Deployed).To(BeFalse())
 		Expect(recordedEvents()).To(HaveLen(1))
 
-		// The operator of the cluster fixes the resource by adding a location ID.
+		// The operator of the cluster fixes the resource by adding an authorization token.
 		operatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-		operatorConfigurationResource.Spec.SyntheticsWorker.LocationID = "test-location"
+		token := "synthetics-worker-test-token"
+		operatorConfigurationResource.Spec.SyntheticsWorker.Instances[0].Authorization = &dash0common.Authorization{Token: &token}
 		Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
 
 		hasBeenReconciled, err := manager.ReconcileSyntheticsWorker(ctx, TriggeredByDash0OperatorConfigurationResourceReconcile)
@@ -279,27 +291,29 @@ var _ = Describe("The synthetics-worker manager", Ordered, func() {
 	})
 })
 
-// operatorConfigurationSpecWithSyntheticsWorker returns the default operator configuration spec with
-// spec.syntheticsWorker configured with a location ID, a literal authorization token, and the given explicit value
-// for enabled (nil leaves it unset, following the Helm-level default).
+const syntheticsWorkerTestLocationID = "test-location"
+
+// operatorConfigurationSpecWithSyntheticsWorker returns the default operator configuration spec with a single
+// spec.syntheticsWorker instance configured with a location ID, a literal authorization token, and the given explicit
+// value for enabled (nil leaves it unset, following the Helm-level default).
 func operatorConfigurationSpecWithSyntheticsWorker(enabled *bool) dash0v1alpha1.Dash0OperatorConfigurationSpec {
 	spec := OperatorConfigurationResourceDefaultSpec
 	token := "synthetics-worker-test-token"
 	spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
-		Enabled:       enabled,
-		LocationID:    "test-location",
-		Authorization: &dash0common.Authorization{Token: &token},
+		Enabled: enabled,
+		Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+			{LocationID: syntheticsWorkerTestLocationID, Authorization: &dash0common.Authorization{Token: &token}},
+		},
 	}
 	return spec
 }
 
-// operatorConfigurationSpecWithMissingLocationID returns the default operator configuration spec with
-// spec.syntheticsWorker configured with an authorization token but without a location ID.
-func operatorConfigurationSpecWithMissingLocationID() dash0v1alpha1.Dash0OperatorConfigurationSpec {
+// operatorConfigurationSpecWithMissingAuthorization returns the default operator configuration spec with a single
+// spec.syntheticsWorker instance configured with a location ID but without an authorization token.
+func operatorConfigurationSpecWithMissingAuthorization() dash0v1alpha1.Dash0OperatorConfigurationSpec {
 	spec := OperatorConfigurationResourceDefaultSpec
-	token := "synthetics-worker-test-token"
 	spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
-		Authorization: &dash0common.Authorization{Token: &token},
+		Instances: []dash0v1alpha1.SyntheticsWorkerInstance{{LocationID: syntheticsWorkerTestLocationID}},
 	}
 	return spec
 }
@@ -316,19 +330,19 @@ func disableSyntheticsWorkerInOperatorConfigurationResource(ctx context.Context)
 func expectSyntheticsWorkerResourcesToExist(ctx context.Context) {
 	GinkgoHelper()
 	Expect(k8sClient.Get(ctx,
-		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.ServiceAccountName(syntheticsWorkerTestNamePrefix)},
+		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.ServiceAccountName(syntheticsWorkerTestNamePrefix, syntheticsWorkerTestLocationID)},
 		&corev1.ServiceAccount{})).To(Succeed())
 	Expect(k8sClient.Get(ctx,
-		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.DeploymentName(syntheticsWorkerTestNamePrefix)},
+		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.DeploymentName(syntheticsWorkerTestNamePrefix, syntheticsWorkerTestLocationID)},
 		&appsv1.Deployment{})).To(Succeed())
 }
 
 func expectSyntheticsWorkerResourcesToNotExist(ctx context.Context) {
 	GinkgoHelper()
 	Expect(apierrors.IsNotFound(k8sClient.Get(ctx,
-		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.ServiceAccountName(syntheticsWorkerTestNamePrefix)},
+		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.ServiceAccountName(syntheticsWorkerTestNamePrefix, syntheticsWorkerTestLocationID)},
 		&corev1.ServiceAccount{}))).To(BeTrue())
 	Expect(apierrors.IsNotFound(k8sClient.Get(ctx,
-		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.DeploymentName(syntheticsWorkerTestNamePrefix)},
+		client.ObjectKey{Namespace: OperatorNamespace, Name: swresources.DeploymentName(syntheticsWorkerTestNamePrefix, syntheticsWorkerTestLocationID)},
 		&appsv1.Deployment{}))).To(BeTrue())
 }

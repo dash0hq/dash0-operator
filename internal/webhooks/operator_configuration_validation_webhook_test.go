@@ -764,6 +764,9 @@ var _ = Describe("The validation webhook for the operator configuration resource
 						Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 						SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
 							Enabled: new(true),
+							Instances: []dash0v1alpha1.SyntheticsWorkerInstance{{
+								LocationID: "test-location",
+							}},
 						},
 					},
 				})
@@ -796,6 +799,9 @@ var _ = Describe("The validation webhook for the operator configuration resource
 							Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
 							SyntheticsWorker: dash0v1alpha1.SyntheticsWorker{
 								Enabled: new(true),
+								Instances: []dash0v1alpha1.SyntheticsWorkerInstance{{
+									LocationID: "test-location",
+								}},
 							},
 						},
 					})

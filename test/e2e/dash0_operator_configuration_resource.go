@@ -480,10 +480,10 @@ func updateOperatorConfigurationSyntheticsWorkerEnabled(operatorConfigurationRes
 		))).To(Succeed())
 }
 
-// configureSyntheticsWorkerLocationAndToken sets spec.syntheticsWorker.locationId and spec.syntheticsWorker.
-// authorization.token on the given operator configuration resource. Unlike the agent0-connector's server address and
-// token, which are Helm-level settings, the synthetics-worker's location ID and authorization live on the CRD
-// resource so that they can be changed per-cluster without a Helm re-install.
+// configureSyntheticsWorkerLocationAndToken sets spec.syntheticsWorker.instances to a single instance with the given
+// locationId and authorization.token on the given operator configuration resource. Unlike the agent0-connector's
+// server address and token, which are Helm-level settings, the synthetics-worker's instances live on the CRD resource
+// so that they can be changed per-cluster without a Helm re-install.
 func configureSyntheticsWorkerLocationAndToken(
 	operatorConfigurationResourceName string,
 	locationId string,
@@ -499,7 +499,7 @@ func configureSyntheticsWorkerLocationAndToken(
 			"merge",
 			"-p",
 			fmt.Sprintf(
-				`{"spec":{"syntheticsWorker":{"locationId":%q,"authorization":{"token":%q}}}}`,
+				`{"spec":{"syntheticsWorker":{"instances":[{"locationId":%q,"authorization":{"token":%q}}]}}}`,
 				locationId,
 				token,
 			),

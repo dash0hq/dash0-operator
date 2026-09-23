@@ -110,6 +110,7 @@ type environmentVariables struct {
 	syntheticsWorkerEnabled                     bool
 	syntheticsWorkerServerAddress               string
 	syntheticsWorkerInsecure                    bool
+	syntheticsWorkerPriorityClassName           string
 	nodeIp                                      string
 	nodeName                                    string
 	podIp                                       string
@@ -231,6 +232,7 @@ const (
 	syntheticsWorkerEnabledEnvVarName                     = "DASH0_SYNTHETICS_WORKER_ENABLED"
 	syntheticsWorkerServerAddressEnvVarName               = "DASH0_SYNTHETICS_WORKER_SERVER_ADDRESS"
 	syntheticsWorkerInsecureEnvVarName                    = "DASH0_SYNTHETICS_WORKER_INSECURE"
+	syntheticsWorkerPriorityClassNameEnvVarName           = "DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME"
 	k8sNodeIpEnvVarName                                   = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
@@ -955,6 +957,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 	syntheticsWorkerEnabled := readOptionalBoolFromEnvironmentVariable(syntheticsWorkerEnabledEnvVarName, false)
 	syntheticsWorkerServerAddress, _ := os.LookupEnv(syntheticsWorkerServerAddressEnvVarName)
 	syntheticsWorkerInsecure := readBooleanEnvVar(syntheticsWorkerInsecureEnvVarName)
+	syntheticsWorkerPriorityClassName, _ := os.LookupEnv(syntheticsWorkerPriorityClassNameEnvVarName)
 
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
@@ -1050,6 +1053,7 @@ func readEnvironmentVariables(logger logd.Logger) error {
 		syntheticsWorkerEnabled:                     syntheticsWorkerEnabled,
 		syntheticsWorkerServerAddress:               syntheticsWorkerServerAddress,
 		syntheticsWorkerInsecure:                    syntheticsWorkerInsecure,
+		syntheticsWorkerPriorityClassName:           syntheticsWorkerPriorityClassName,
 		nodeIp:                                      nodeIp,
 		nodeName:                                    nodeName,
 		podIp:                                       podIp,
@@ -2409,6 +2413,7 @@ func setupSyntheticsWorkerManager(
 		NamePrefix:        envVars.oTelCollectorNamePrefix,
 		ServerAddress:     envVars.syntheticsWorkerServerAddress,
 		Insecure:          envVars.syntheticsWorkerInsecure,
+		PriorityClassName: envVars.syntheticsWorkerPriorityClassName,
 		IsOpenShift:       isOpenShift,
 		DevelopmentMode:   developmentMode,
 	}

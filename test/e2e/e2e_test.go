@@ -1152,7 +1152,7 @@ var _ = Describe("Dash0 Operator", Ordered, ContinueOnFailure, func() {
 
 			It("should not deploy the synthetics-worker since the default for syntheticsWorker.enabled is `false`",
 				func() {
-					syntheticsWorkerDeployment := swresources.DeploymentName(operatorHelmReleaseName)
+					syntheticsWorkerDeployment := swresources.DeploymentName(operatorHelmReleaseName, "e2e-test-location")
 					By("verifying that the synthetics-worker deployment does not exist")
 					Expect(runAndIgnoreOutput(
 						exec.Command(
@@ -2654,21 +2654,21 @@ spec:
 
 		It("deploys the synthetics-worker, and removes/redeploys it as the operator configuration resource opts "+
 			"out and back in", func() {
-			waitForSyntheticsWorkerDeploymentToBecomeAvailable()
+			waitForSyntheticsWorkerDeploymentToBecomeAvailable("e2e-test-location")
 			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 
 			By("opting out of the synthetics-worker via the operator configuration resource")
 			updateOperatorConfigurationSyntheticsWorkerEnabled(
 				dash0OperatorConfigurationResourceAutomaticallyManagedName, false)
 
-			verifySyntheticsWorkerResourcesDoNotExist()
+			verifySyntheticsWorkerResourcesDoNotExist("e2e-test-location")
 			verifySyntheticsWorkerIsReportedAsDisabled(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 
 			By("revoking the opt-out via the operator configuration resource")
 			updateOperatorConfigurationSyntheticsWorkerEnabled(
 				dash0OperatorConfigurationResourceAutomaticallyManagedName, true)
 
-			waitForSyntheticsWorkerDeploymentToBecomeAvailable()
+			waitForSyntheticsWorkerDeploymentToBecomeAvailable("e2e-test-location")
 			verifySyntheticsWorkerIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
 		})
 	}) // end of suite "with the synthetics-worker enabled"

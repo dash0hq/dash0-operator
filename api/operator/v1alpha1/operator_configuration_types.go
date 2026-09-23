@@ -227,41 +227,67 @@ func (a Agent0Connector) IsEnabled(enabledViaHelm bool) bool {
 	return enabledViaHelm && pointers.ReadBoolPointerWithDefault(a.Enabled, true)
 }
 
-// SyntheticsWorker contains settings for the synthetics-worker, the private-location runner that dials outbound to
-// Dash0 and executes the synthetic checks assigned to this cluster's private location.
+// SyntheticsWorker contains settings for the synthetics-worker feature, the private-location runner that dials
+// outbound to Dash0 and executes synthetic checks. A cluster can shard checks across multiple Dash0 private
+// locations by configuring multiple Instances, each running as its own Kubernetes Deployment.
 type SyntheticsWorker struct {
-	// An opt-out switch for the synthetics-worker deployment. This setting is optional. Setting it to `false` prevents
-	// the operator from deploying the synthetics-worker, even when the synthetics-worker is enabled via the Helm
-	// chart. It is a validation error to set it to `true` when the synthetics-worker is disabled via the Helm chart.
+	// An opt-out switch for the synthetics-worker feature. This setting is optional. Setting it to `false` prevents
+	// the operator from deploying any synthetics-worker instance, even when the synthetics-worker is enabled via the
+	// Helm chart. It is a validation error to set it to `true` when the synthetics-worker is disabled via the Helm
+	// chart.
 	//
 	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// LocationID is the customer-chosen identifier of the private location that this cluster's synthetics-worker
-	// executes checks for. Dash0 resolves it to the location's identity. Required when the synthetics-worker is
-	// enabled.
+	// Instances lists the synthetics-worker deployments the operator manages, one per Dash0 private location. Each
+	// instance's LocationID must be unique within this list; it is also used to derive the names of that instance's
+	// Kubernetes resources. At least one instance is required when the synthetics-worker is enabled.
 	//
 	// +kubebuilder:validation:Optional
-	LocationID string `json:"locationId,omitempty"`
+	// +listType=map
+	// +listMapKey=locationId
+	Instances []SyntheticsWorkerInstance `json:"instances,omitempty"`
+}
 
-	// Authorization holds the Dash0 authorization token for the synthetics-worker workload, either as a literal token
-	// or as a reference to a Kubernetes secret. Required when the synthetics-worker is enabled. This is a pointer so
-	// that the field can be omitted entirely; the Authorization type itself requires at least one of its own
-	// properties to be set, which would reject an explicit empty object.
+// SyntheticsWorkerInstance describes a single synthetics-worker Deployment, pinned to one Dash0 private location.
+type SyntheticsWorkerInstance struct {
+	// LocationID is the customer-chosen identifier of the private location that this instance executes checks for.
+	// Dash0 resolves it to the location's identity. It must be unique within spec.syntheticsWorker.instances, and is
+	// used to derive the names of this instance's Kubernetes resources.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=40
+	LocationID string `json:"locationId"`
+
+	// Authorization holds the Dash0 authorization token for this instance's workload, either as a literal token or as
+	// a reference to a Kubernetes secret. Required when the synthetics-worker is enabled. This is a pointer so that
+	// the field can be omitted entirely; the Authorization type itself requires at least one of its own properties to
+	// be set, which would reject an explicit empty object.
 	//
 	// +kubebuilder:validation:Optional
 	Authorization *dash0common.Authorization `json:"authorization,omitempty"`
 
-	// Replicas is the number of synthetics-worker pods the operator runs. This setting is optional, it defaults to 1.
+	// Replicas is the number of pods this instance runs. This setting is optional, it defaults to 1.
 	//
 	// +kubebuilder:default=1
 	Replicas *int32 `json:"replicas,omitempty"`
 
-	// Resources describes the compute resource requirements for the synthetics-worker container. This setting is
-	// optional.
+	// Resources describes the compute resource requirements for this instance's container. This setting is optional.
 	//
 	// +kubebuilder:validation:Optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// NodeAffinity constrains which nodes this instance's pods can be scheduled on, e.g. to pin a private location's
+	// worker to nodes in a particular region or zone. This setting is optional.
+	//
+	// +kubebuilder:validation:Optional
+	NodeAffinity *corev1.NodeAffinity `json:"nodeAffinity,omitempty"`
+
+	// Tolerations allow this instance's pods to be scheduled on nodes with matching taints. This setting is optional.
+	//
+	// +kubebuilder:validation:Optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
 // IsEnabled reports whether the operator deploys the synthetics-worker. The parameter enabledViaHelm is the value of
@@ -784,19 +810,21 @@ func (d *Dash0OperatorConfiguration) SetAgent0ConnectorStatus(deployed bool, rea
 	return changed
 }
 
-// SyntheticsWorkerStatus reports whether the operator has deployed the synthetics-worker, that is, whether it has
-// successfully created or updated the synthetics-worker's service account and deployment. It does not report whether
-// the synthetics-worker's pod is up: a successful deployment can still fail to start, which the deployment resource
-// itself reports.
+// SyntheticsWorkerStatus reports the aggregate and per-instance state of the synthetics-worker feature, that is,
+// whether the operator has successfully created or updated each instance's service account and deployment. It does
+// not report whether an instance's pod is up: a successful deployment can still fail to start, which the deployment
+// resource itself reports.
 //
 // This is deliberately not a status condition: the synthetics-worker is an optional feature, and an issue with it
 // neither makes the operator configuration resource unavailable nor degraded.
 type SyntheticsWorkerStatus struct {
-	// Deployed reports whether the operator has successfully created or updated the synthetics-worker resources the
-	// last time it tried.
+	// Deployed reports whether every configured instance was successfully created or updated the last time the
+	// operator tried. It is false if the feature is disabled, or if any single instance failed.
 	Deployed bool `json:"deployed"`
 
-	// Reason is a programmatic identifier for the last negative outcome, e.g. "NoAuthorizationToken".
+	// Reason is a programmatic identifier for the last negative outcome, e.g. "NoAuthorizationToken". When multiple
+	// instances fail for different reasons, this reports "PartiallyDeployed"; see Instances for the per-instance
+	// reasons.
 	//
 	// +kubebuilder:validation:Optional
 	Reason string `json:"reason,omitempty"`
@@ -810,28 +838,138 @@ type SyntheticsWorkerStatus struct {
 	//
 	// +kubebuilder:validation:Optional
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+
+	// Instances reports the individual outcome for each configured synthetics-worker instance.
+	//
+	// +kubebuilder:validation:Optional
+	// +listType=map
+	// +listMapKey=locationId
+	Instances []SyntheticsWorkerInstanceStatus `json:"instances,omitempty"`
 }
 
-// SetSyntheticsWorkerStatus records the outcome of the last attempt to create or update the synthetics-worker
-// resources. It reports whether the recorded state changed, so that the caller only queues a Kubernetes event on a
+// SyntheticsWorkerInstanceStatus reports whether the operator has deployed one synthetics-worker instance.
+type SyntheticsWorkerInstanceStatus struct {
+	// LocationID identifies the instance this status refers to, matching spec.syntheticsWorker.instances[].locationId.
+	LocationID string `json:"locationId"`
+
+	// Deployed reports whether the operator has successfully created or updated this instance's resources the last
+	// time it tried.
+	Deployed bool `json:"deployed"`
+
+	// Reason is a programmatic identifier for the last negative outcome, e.g. "NoAuthorizationToken".
+	//
+	// +kubebuilder:validation:Optional
+	Reason string `json:"reason,omitempty"`
+
+	// Message describes the last outcome in a human-readable form.
+	//
+	// +kubebuilder:validation:Optional
+	Message string `json:"message,omitempty"`
+
+	// LastTransitionTime is the time at which Deployed last changed for this instance.
+	//
+	// +kubebuilder:validation:Optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// SetSyntheticsWorkerStatus records the outcome of the last attempt to create or update every synthetics-worker
+// instance. It reports whether the recorded state changed, so that the caller only queues a Kubernetes event on a
 // transition instead of on every reconciliation.
 //
-// A change is the value of Deployed flipping, the status appearing for the first time, or the reason changing while
-// the synthetics-worker is not deployed - an operator who fixes one misconfiguration and runs into the next one has
-// to learn about the second one as well. LastTransitionTime only advances when Deployed flips, mirroring the
-// semantics of a status condition.
-func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(deployed bool, reason string, message string) bool {
+// The aggregate Deployed is true only if every instance deployed. A change is the aggregate Deployed flipping, the
+// status appearing for the first time, the aggregate reason changing while not deployed, or any single instance's
+// Deployed/Reason changing - an operator who fixes one misconfiguration and runs into the next one has to learn about
+// the second one as well. LastTransitionTime (aggregate and per-instance) only advances when that entry's Deployed
+// flips, mirroring the semantics of a status condition.
+func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(instances []SyntheticsWorkerInstanceStatus) bool {
 	previous := d.Status.SyntheticsWorker
-	changed := previous == nil ||
-		previous.Deployed != deployed ||
-		(!deployed && previous.Reason != reason)
 
-	lastTransitionTime := metav1.Now()
-	if previous != nil && previous.Deployed == deployed {
+	now := metav1.Now()
+	previousByLocationID := map[string]SyntheticsWorkerInstanceStatus{}
+	if previous != nil {
+		for _, instance := range previous.Instances {
+			previousByLocationID[instance.LocationID] = instance
+		}
+	}
+
+	changed := previous == nil || len(previous.Instances) != len(instances)
+	aggregateDeployed := len(instances) > 0
+	firstFailureReason := ""
+	firstFailureMessage := ""
+	for i, instance := range instances {
+		if previousInstance, ok := previousByLocationID[instance.LocationID]; ok {
+			if previousInstance.Deployed == instance.Deployed {
+				instance.LastTransitionTime = previousInstance.LastTransitionTime
+			} else {
+				changed = true
+			}
+			if !instance.Deployed && previousInstance.Reason != instance.Reason {
+				changed = true
+			}
+		} else {
+			changed = true
+			instance.LastTransitionTime = now
+		}
+		instances[i] = instance
+
+		if !instance.Deployed {
+			aggregateDeployed = false
+			if firstFailureReason == "" {
+				firstFailureReason = instance.Reason
+				firstFailureMessage = instance.Message
+			} else if firstFailureReason != instance.Reason {
+				firstFailureReason = "PartiallyDeployed"
+				firstFailureMessage = "some synthetics-worker instances failed to deploy for different reasons"
+			}
+		}
+	}
+
+	aggregateReason := "Deployed"
+	aggregateMessage := "The operator has deployed the synthetics-worker."
+	switch {
+	case len(instances) == 0:
+		aggregateReason = "NoInstancesConfigured"
+		aggregateMessage = "The synthetics-worker is enabled but spec.syntheticsWorker.instances is empty."
+	case !aggregateDeployed:
+		aggregateReason = firstFailureReason
+		aggregateMessage = firstFailureMessage
+	}
+
+	previousDeployed := previous != nil && previous.Deployed
+	if previousDeployed != aggregateDeployed {
+		changed = true
+	}
+	if previous != nil && !aggregateDeployed && previous.Reason != aggregateReason {
+		changed = true
+	}
+
+	lastTransitionTime := now
+	if previous != nil && previousDeployed == aggregateDeployed {
 		lastTransitionTime = previous.LastTransitionTime
 	}
 	d.Status.SyntheticsWorker = &SyntheticsWorkerStatus{
-		Deployed:           deployed,
+		Deployed:           aggregateDeployed,
+		Reason:             aggregateReason,
+		Message:            aggregateMessage,
+		LastTransitionTime: lastTransitionTime,
+		Instances:          instances,
+	}
+	return changed
+}
+
+// SetSyntheticsWorkerDisabledStatus records that the synthetics-worker feature itself is disabled (as opposed to
+// enabled but partially or fully failing to deploy, which is reported via SetSyntheticsWorkerStatus). It reports
+// whether the recorded state changed, using the same semantics as SetSyntheticsWorkerStatus.
+func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerDisabledStatus(reason string, message string) bool {
+	previous := d.Status.SyntheticsWorker
+	changed := previous == nil || previous.Deployed || previous.Reason != reason || len(previous.Instances) != 0
+
+	lastTransitionTime := metav1.Now()
+	if previous != nil && !previous.Deployed {
+		lastTransitionTime = previous.LastTransitionTime
+	}
+	d.Status.SyntheticsWorker = &SyntheticsWorkerStatus{
+		Deployed:           false,
 		Reason:             reason,
 		Message:            message,
 		LastTransitionTime: lastTransitionTime,

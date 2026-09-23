@@ -315,6 +315,10 @@ spec:
         - name: DASH0_SYNTHETICS_WORKER_INSECURE
           value: "true"
         {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.insecure" */}}
+        {{- if .Values.operator.syntheticsWorker.priorityClassName }}
+        - name: DASH0_SYNTHETICS_WORKER_PRIORITY_CLASS_NAME
+          value: {{ .Values.operator.syntheticsWorker.priorityClassName | quote }}
+        {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.priorityClassName" */}}
         {{- end }}{{/* closes "if .Values.operator.syntheticsWorker.enabled" */}}
         {{- if .Values.operator.developmentMode }}
         - name: DASH0_DEVELOPMENT_MODE

@@ -779,3 +779,54 @@ rules:
   - watch
 
 {{ end }}
+
+{{ if .Values.operator.syntheticsWorker.enabled }}
+---
+{{/*
+The -manager-synthetics-worker cluster role holds the permissions the operator needs to manage the synthetics-worker
+resources (service account and deployment). Unlike the agent0-connector, the synthetics-worker does not need any
+Kubernetes API permissions delegated to its own service account, so there is no corresponding -ro cluster role. This
+cluster role (and its binding) only exist when the synthetics-worker feature is enabled
+(operator.syntheticsWorker.enabled).
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-manager-synthetics-worker
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: cluster-role-synthetics-worker
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+rules:
+
+# Permissions required to manage the synthetics-worker service account:
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+# Permissions required to manage the synthetics-worker deployment:
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+{{ end }}

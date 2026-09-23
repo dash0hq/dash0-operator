@@ -1552,3 +1552,8 @@ operator:
     # Disables TLS for the synthetics-worker's connection to the Dash0 backend, connecting via plaintext instead.
     # This is only intended for local development.
     insecure: false
+
+    # The priority class name applied to every synthetics-worker pod, regardless of instance. If set, these pods will
+    # be scheduled with the specified priority class. See
+    # https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # priorityClassName:

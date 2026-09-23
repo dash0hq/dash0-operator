@@ -76,10 +76,6 @@ type Dash0Configuration struct {
 
 // Authorization contains the authorization settings for Dash0.
 //
-// MinProperties=1 rejects the zero value, so a struct field of this type that is itself optional (e.g. a
-// spec.<workload>.authorization the CRD lets a user omit entirely) must be declared as *Authorization, not
-// Authorization, to let the field be absent instead of an empty object.
-//
 // +kubebuilder:validation:MinProperties=1
 // +kubebuilder:validation:MaxProperties=1
 type Authorization struct {
