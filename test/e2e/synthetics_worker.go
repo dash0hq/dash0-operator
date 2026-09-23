@@ -15,28 +15,28 @@ import (
 )
 
 // waitForSyntheticsWorkerDeploymentToBecomeAvailable waits for the synthetics-worker deployment the operator manages
-// to report the Available condition.
-func waitForSyntheticsWorkerDeploymentToBecomeAvailable() {
+// for the given location ID to report the Available condition.
+func waitForSyntheticsWorkerDeploymentToBecomeAvailable(locationId string) {
 	By("waiting for the synthetics-worker deployment to become available")
 	Eventually(func(g Gomega) {
 		g.Expect(runAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"-n", operatorNamespace,
 			"wait", "--for=condition=Available",
-			"deployment/"+swresources.DeploymentName(operatorHelmReleaseName),
+			"deployment/"+swresources.DeploymentName(operatorHelmReleaseName, locationId),
 			"--timeout=30s",
 		))).To(Succeed())
 	}, 120*time.Second, 2*time.Second).Should(Succeed())
 }
 
 // verifySyntheticsWorkerResourcesDoNotExist verifies that the operator has removed every Kubernetes resource it
-// manages for the synthetics-worker. Unlike the agent0-connector, there is no ClusterRole/ClusterRoleBinding, the
-// synthetics-worker only dials outbound and needs no cluster-wide read access.
-func verifySyntheticsWorkerResourcesDoNotExist() {
+// manages for the synthetics-worker instance with the given location ID. Unlike the agent0-connector, there is no
+// ClusterRole/ClusterRoleBinding, the synthetics-worker only dials outbound and needs no cluster-wide read access.
+func verifySyntheticsWorkerResourcesDoNotExist(locationId string) {
 	By("verifying that the synthetics-worker Kubernetes resources have been removed")
 	namespacedResources := map[string]string{
-		"deployment":     swresources.DeploymentName(operatorHelmReleaseName),
-		"serviceaccount": swresources.ServiceAccountName(operatorHelmReleaseName),
+		"deployment":     swresources.DeploymentName(operatorHelmReleaseName, locationId),
+		"serviceaccount": swresources.ServiceAccountName(operatorHelmReleaseName, locationId),
 	}
 	Eventually(func(g Gomega) {
 		for resourceType, resourceName := range namespacedResources {

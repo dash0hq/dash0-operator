@@ -63,7 +63,7 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		_, err := manager.DeleteResources(ctx, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Eventually(func(g Gomega) {
-			verifySyntheticsWorkerResourcesDoNotExist(ctx, g)
+			verifyNoSyntheticsWorkerResourcesExist(ctx, g)
 		}, 500*time.Millisecond, 20*time.Millisecond).Should(Succeed())
 		Expect(k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(OperatorNamespace))).To(Succeed())
 	})
@@ -78,7 +78,7 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		})
 
 		It("should update a single object", func() {
-			err := manager.createResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
+			_, _, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			updated := syntheticsWorkerTestResource.DeepCopy()
@@ -92,7 +92,7 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		})
 
 		It("should report that nothing has changed for a single object", func() {
-			err := manager.createResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
+			_, _, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			isNew, isChanged, err := manager.createOrUpdateResource(ctx, syntheticsWorkerTestResource.DeepCopy(), logger)
@@ -106,56 +106,108 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 
 	Context("when creating all synthetics-worker resources", func() {
 		It("should create the service account and deployment", func() {
-			created, updated, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
 				ctx,
 				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			created, updated := aggregateResults(results)
 			Expect(created).To(BeTrue())
 			Expect(updated).To(BeFalse())
 
-			verifySyntheticsWorkerResourcesExist(ctx)
+			verifySyntheticsWorkerResourcesExist(ctx, testLocationID)
+		})
+
+		It("creates one deployment and service account per instance, and does not let one instance's "+
+			"misconfiguration block the others", func() {
+			resource := DefaultOperatorConfigurationResource()
+			brokenToken := ""
+			resource.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
+				Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-a", Authorization: &dash0common.Authorization{Token: &syntheticsWorkerAuthToken}},
+					{LocationID: "location-b", Authorization: &dash0common.Authorization{Token: &brokenToken}},
+				},
+			}
+
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results).To(HaveLen(2))
+
+			var okResult, brokenResult InstanceResult
+			for _, result := range results {
+				switch result.LocationID {
+				case "location-a":
+					okResult = result
+				case "location-b":
+					brokenResult = result
+				}
+			}
+			Expect(okResult.Err).ToNot(HaveOccurred())
+			Expect(okResult.Created).To(BeTrue())
+			Expect(errors.Is(brokenResult.Err, ErrNoAuthorizationToken)).To(BeTrue())
+
+			VerifyResourceExists(ctx, k8sClient, OperatorNamespace, ServiceAccountName(testNamePrefix, "location-a"), &corev1.ServiceAccount{})
+			VerifyResourceExists(ctx, k8sClient, OperatorNamespace, DeploymentName(testNamePrefix, "location-a"), &appsv1.Deployment{})
+			Expect(k8sClient.Get(
+				ctx,
+				client.ObjectKey{Name: DeploymentName(testNamePrefix, "location-b"), Namespace: OperatorNamespace},
+				&appsv1.Deployment{},
+			)).To(MatchError(ContainSubstring("not found")))
+		})
+
+		It("deletes the resources of an instance that has been removed from the instance list", func() {
+			resource := DefaultOperatorConfigurationResource()
+			resource.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
+				Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{LocationID: "location-a", Authorization: &dash0common.Authorization{Token: &syntheticsWorkerAuthToken}},
+					{LocationID: "location-b", Authorization: &dash0common.Authorization{Token: &syntheticsWorkerAuthToken}},
+				},
+			}
+			_, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+			Expect(err).ToNot(HaveOccurred())
+			VerifyResourceExists(ctx, k8sClient, OperatorNamespace, DeploymentName(testNamePrefix, "location-b"), &appsv1.Deployment{})
+
+			resource.Spec.SyntheticsWorker.Instances = resource.Spec.SyntheticsWorker.Instances[:1]
+			_, err = manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			VerifyResourceExists(ctx, k8sClient, OperatorNamespace, DeploymentName(testNamePrefix, "location-a"), &appsv1.Deployment{})
+			Expect(k8sClient.Get(
+				ctx,
+				client.ObjectKey{Name: DeploymentName(testNamePrefix, "location-b"), Namespace: OperatorNamespace},
+				&appsv1.Deployment{},
+			)).To(MatchError(ContainSubstring("not found")))
+			Expect(k8sClient.Get(
+				ctx,
+				client.ObjectKey{Name: ServiceAccountName(testNamePrefix, "location-b"), Namespace: OperatorNamespace},
+				&corev1.ServiceAccount{},
+			)).To(MatchError(ContainSubstring("not found")))
 		})
 	})
 
 	Context("when the Dash0OperatorConfiguration resource is missing", func() {
 		It("aborts and returns an error", func() {
-			created, updated, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, nil, logger)
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, nil, logger)
 
 			Expect(err).To(HaveOccurred())
 			Expect(errors.Is(err, ErrMisconfigured)).To(BeTrue())
-			Expect(created).To(BeFalse())
-			Expect(updated).To(BeFalse())
-		})
-	})
-
-	Context("when no private location ID is configured", func() {
-		It("aborts and returns an error", func() {
-			resource := operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken)
-			resource.Spec.SyntheticsWorker.LocationID = ""
-
-			created, updated, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
-
-			Expect(err).To(HaveOccurred())
-			Expect(errors.Is(err, ErrNoLocationID)).To(BeTrue())
-			Expect(created).To(BeFalse())
-			Expect(updated).To(BeFalse())
-			verifySyntheticsWorkerResourcesDoNotExist(ctx, Default)
+			Expect(results).To(BeEmpty())
 		})
 	})
 
 	Context("when resolving the authorization for the synthetics-worker workload", func() {
 		It("passes a literal token via the DASH0_SYNTHETICS_WORKER_AUTH_TOKEN environment variable", func() {
-			created, _, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
 				ctx,
 				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
-			container := getDeployedSyntheticsWorkerContainer(ctx)
+			container := getDeployedSyntheticsWorkerContainer(ctx, testLocationID)
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: authTokenEnvVarName, Value: syntheticsWorkerAuthToken}))
 			Expect(container.Env).To(ContainElement(
@@ -165,19 +217,24 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		It("resolves a secret ref into the DASH0_SYNTHETICS_WORKER_AUTH_TOKEN environment variable", func() {
 			resource := DefaultOperatorConfigurationResource()
 			resource.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
-				LocationID: "test-location",
-				Authorization: &dash0common.Authorization{
-					SecretRef: &dash0common.SecretRef{
-						Name: "dash0-synthetics-worker-authorization-secret",
-						Key:  "token",
+				Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+					{
+						LocationID: testLocationID,
+						Authorization: &dash0common.Authorization{
+							SecretRef: &dash0common.SecretRef{
+								Name: "dash0-synthetics-worker-authorization-secret",
+								Key:  "token",
+							},
+						},
 					},
 				},
 			}
-			created, _, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
 			Expect(err).ToNot(HaveOccurred())
+			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
-			container := getDeployedSyntheticsWorkerContainer(ctx)
+			container := getDeployedSyntheticsWorkerContainer(ctx, testLocationID)
 			tokenEnvVar := util.GetEnvVar(&container, authTokenEnvVarName)
 			Expect(tokenEnvVar).ToNot(BeNil())
 			Expect(tokenEnvVar.Value).To(BeEmpty())
@@ -187,32 +244,35 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			Expect(tokenEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal("token"))
 		})
 
-		It("aborts and returns an error when no authorization token is available", func() {
+		It("reports the instance as misconfigured, without a top-level error, when no authorization token is available", func() {
 			resource := DefaultOperatorConfigurationResource()
-			resource.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{LocationID: "test-location"}
+			resource.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
+				Instances: []dash0v1alpha1.SyntheticsWorkerInstance{{LocationID: testLocationID}},
+			}
 
-			created, updated, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
 
-			Expect(err).To(HaveOccurred())
-			Expect(errors.Is(err, ErrMisconfigured)).To(BeTrue())
-			Expect(errors.Is(err, ErrNoAuthorizationToken)).To(BeTrue())
-			Expect(created).To(BeFalse())
-			Expect(updated).To(BeFalse())
-			verifySyntheticsWorkerResourcesDoNotExist(ctx, Default)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results).To(HaveLen(1))
+			Expect(errors.Is(results[0].Err, ErrMisconfigured)).To(BeTrue())
+			Expect(errors.Is(results[0].Err, ErrNoAuthorizationToken)).To(BeTrue())
+			Expect(results[0].Created).To(BeFalse())
+			verifySyntheticsWorkerResourcesDoNotExist(ctx, Default, testLocationID)
 		})
 	})
 
 	Context("when self-monitoring is enabled in the Dash0OperatorConfiguration resource", func() {
 		It("sets the environment variables of the OTel SDK on the deployed container", func() {
-			created, _, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
 				ctx,
 				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
-			container := getDeployedSyntheticsWorkerContainer(ctx)
+			container := getDeployedSyntheticsWorkerContainer(ctx, testLocationID)
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "SELF_MONITORING_AUTH_TOKEN", Value: AuthorizationTokenTest}))
 			Expect(container.Env).To(ContainElement(
@@ -226,11 +286,12 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			resource := operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken)
 			resource.Spec.Export = nil
 			resource.Spec.Exports = nil
-			created, _, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(ctx, resource, logger)
 			Expect(err).ToNot(HaveOccurred())
+			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
-			container := getDeployedSyntheticsWorkerContainer(ctx)
+			container := getDeployedSyntheticsWorkerContainer(ctx, testLocationID)
 			for _, envVar := range container.Env {
 				Expect(envVar.Name).ToNot(HavePrefix("OTEL_"))
 			}
@@ -239,37 +300,39 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 
 	Context("when synthetics-worker resources have been modified externally", func() {
 		It("should reconcile the resources back into the desired state", func() {
-			created, _, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
 				ctx,
 				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
 			deployment := &appsv1.Deployment{}
 			Expect(k8sClient.Get(
 				ctx,
-				client.ObjectKey{Name: DeploymentName(testNamePrefix), Namespace: OperatorNamespace},
+				client.ObjectKey{Name: DeploymentName(testNamePrefix, testLocationID), Namespace: OperatorNamespace},
 				deployment,
 			)).To(Succeed())
 			var changedReplicas int32 = 5
 			deployment.Spec.Replicas = &changedReplicas
 			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
 
-			created, updated, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+			results, err = manager.CreateOrUpdateSyntheticsWorkerResources(
 				ctx,
 				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			created, updated := aggregateResults(results)
 			Expect(created).To(BeFalse())
 			Expect(updated).To(BeTrue())
 
 			reconciled := &appsv1.Deployment{}
 			Expect(k8sClient.Get(
 				ctx,
-				client.ObjectKey{Name: DeploymentName(testNamePrefix), Namespace: OperatorNamespace},
+				client.ObjectKey{Name: DeploymentName(testNamePrefix, testLocationID), Namespace: OperatorNamespace},
 				reconciled,
 			)).To(Succeed())
 			Expect(*reconciled.Spec.Replicas).To(Equal(int32(1)))
@@ -278,43 +341,45 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 
 	Context("when all synthetics-worker resources are up to date", func() {
 		It("should report that nothing has changed", func() {
-			created, updated, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+			results, err := manager.CreateOrUpdateSyntheticsWorkerResources(
 				ctx,
 				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			created, updated := aggregateResults(results)
 			Expect(created).To(BeTrue())
 			Expect(updated).To(BeFalse())
 
-			created, updated, err = manager.CreateOrUpdateSyntheticsWorkerResources(
+			results, err = manager.CreateOrUpdateSyntheticsWorkerResources(
 				ctx,
 				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			created, updated = aggregateResults(results)
 			Expect(created).To(BeFalse())
 			Expect(updated).To(BeFalse())
 
-			verifySyntheticsWorkerResourcesExist(ctx)
+			verifySyntheticsWorkerResourcesExist(ctx, testLocationID)
 		})
 	})
 
 	Context("when deleting all synthetics-worker resources", func() {
 		It("should delete the resources", func() {
-			_, _, err := manager.CreateOrUpdateSyntheticsWorkerResources(
+			_, err := manager.CreateOrUpdateSyntheticsWorkerResources(
 				ctx,
 				operatorConfigurationResourceWithSyntheticsWorker(syntheticsWorkerAuthToken),
 				logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			verifySyntheticsWorkerResourcesExist(ctx)
+			verifySyntheticsWorkerResourcesExist(ctx, testLocationID)
 
 			deleted, err := manager.DeleteResources(ctx, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(deleted).To(BeTrue())
 
-			verifySyntheticsWorkerResourcesDoNotExist(ctx, Default)
+			verifySyntheticsWorkerResourcesDoNotExist(ctx, Default, testLocationID)
 
 			// Deletion must be idempotent: deleting again must not error, but must report that nothing was deleted.
 			deleted, err = manager.DeleteResources(ctx, logger)
@@ -323,6 +388,16 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 		})
 	})
 })
+
+// aggregateResults folds a slice of InstanceResult into the created/updated summary the pre-multi-instance tests
+// asserted on.
+func aggregateResults(results []InstanceResult) (created bool, updated bool) {
+	for _, result := range results {
+		created = created || result.Created
+		updated = updated || result.Updated
+	}
+	return created, updated
+}
 
 func newSyntheticsWorkerResourceManager() *SyntheticsWorkerResourceManager {
 	return NewSyntheticsWorkerResourceManager(
@@ -342,46 +417,62 @@ func newSyntheticsWorkerResourceManager() *SyntheticsWorkerResourceManager {
 	)
 }
 
-// operatorConfigurationResourceWithSyntheticsWorker returns the default operator configuration resource with
-// spec.syntheticsWorker populated with a location ID and the given literal authorization token.
+const testLocationID = "test-location"
+
+// operatorConfigurationResourceWithSyntheticsWorker returns the default operator configuration resource with a single
+// spec.syntheticsWorker instance populated with a location ID and the given literal authorization token.
 func operatorConfigurationResourceWithSyntheticsWorker(token string) *dash0v1alpha1.Dash0OperatorConfiguration {
 	resource := DefaultOperatorConfigurationResource()
 	resource.Spec.SyntheticsWorker = dash0v1alpha1.SyntheticsWorker{
-		LocationID:    "test-location",
-		Authorization: &dash0common.Authorization{Token: &token},
+		Instances: []dash0v1alpha1.SyntheticsWorkerInstance{
+			{LocationID: testLocationID, Authorization: &dash0common.Authorization{Token: &token}},
+		},
 	}
 	return resource
 }
 
-func getDeployedSyntheticsWorkerContainer(ctx context.Context) corev1.Container {
+func getDeployedSyntheticsWorkerContainer(ctx context.Context, locationID string) corev1.Container {
 	GinkgoHelper()
 	deployment := &appsv1.Deployment{}
 	Expect(k8sClient.Get(
 		ctx,
-		client.ObjectKey{Name: DeploymentName(testNamePrefix), Namespace: OperatorNamespace},
+		client.ObjectKey{Name: DeploymentName(testNamePrefix, locationID), Namespace: OperatorNamespace},
 		deployment,
 	)).To(Succeed())
 	Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
 	return deployment.Spec.Template.Spec.Containers[0]
 }
 
-func verifySyntheticsWorkerResourcesExist(ctx context.Context) {
+func verifySyntheticsWorkerResourcesExist(ctx context.Context, locationID string) {
 	GinkgoHelper()
-	VerifyResourceExists(ctx, k8sClient, OperatorNamespace, ServiceAccountName(testNamePrefix), &corev1.ServiceAccount{})
-	VerifyResourceExists(ctx, k8sClient, OperatorNamespace, DeploymentName(testNamePrefix), &appsv1.Deployment{})
+	VerifyResourceExists(ctx, k8sClient, OperatorNamespace, ServiceAccountName(testNamePrefix, locationID), &corev1.ServiceAccount{})
+	VerifyResourceExists(ctx, k8sClient, OperatorNamespace, DeploymentName(testNamePrefix, locationID), &appsv1.Deployment{})
 }
 
-func verifySyntheticsWorkerResourcesDoNotExist(ctx context.Context, g Gomega) {
+func verifySyntheticsWorkerResourcesDoNotExist(ctx context.Context, g Gomega, locationID string) {
 	g.Expect(k8sClient.Get(
 		ctx,
-		client.ObjectKey{Name: ServiceAccountName(testNamePrefix), Namespace: OperatorNamespace},
+		client.ObjectKey{Name: ServiceAccountName(testNamePrefix, locationID), Namespace: OperatorNamespace},
 		&corev1.ServiceAccount{},
 	)).To(MatchError(ContainSubstring("not found")))
 	g.Expect(k8sClient.Get(
 		ctx,
-		client.ObjectKey{Name: DeploymentName(testNamePrefix), Namespace: OperatorNamespace},
+		client.ObjectKey{Name: DeploymentName(testNamePrefix, locationID), Namespace: OperatorNamespace},
 		&appsv1.Deployment{},
 	)).To(MatchError(ContainSubstring("not found")))
+}
+
+// verifyNoSyntheticsWorkerResourcesExist checks, by label rather than by name, that no Deployment or ServiceAccount of
+// any synthetics-worker instance remains - used in AfterEach, where the set of instance names a given test used is
+// not known generically.
+func verifyNoSyntheticsWorkerResourcesExist(ctx context.Context, g Gomega) {
+	var deployments appsv1.DeploymentList
+	g.Expect(k8sClient.List(ctx, &deployments, client.InNamespace(OperatorNamespace), client.MatchingLabels(FeatureLabelSelector()))).To(Succeed())
+	g.Expect(deployments.Items).To(BeEmpty())
+
+	var serviceAccounts corev1.ServiceAccountList
+	g.Expect(k8sClient.List(ctx, &serviceAccounts, client.InNamespace(OperatorNamespace), client.MatchingLabels(FeatureLabelSelector()))).To(Succeed())
+	g.Expect(serviceAccounts.Items).To(BeEmpty())
 }
 
 func verifyConfigMap(ctx context.Context, testObject *corev1.ConfigMap) {

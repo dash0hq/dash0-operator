@@ -5,7 +5,6 @@ package syntheticsworker
 
 import (
 	"context"
-	"slices"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -48,48 +47,43 @@ func (r *SyntheticsWorkerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&corev1.ServiceAccount{},
 			&handler.EnqueueRequestForObject{},
-			builder.WithPredicates(
-				r.createNameFilterPredicate([]string{
-					swresources.ServiceAccountName(r.namePrefix),
-				}))).
+			builder.WithPredicates(r.createFeatureFilterPredicate())).
 		Watches(
 			&appsv1.Deployment{},
 			&handler.EnqueueRequestForObject{},
-			builder.WithPredicates(
-				r.createNameFilterPredicate([]string{
-					swresources.DeploymentName(r.namePrefix),
-				}), generationOrLabelChangePredicate)).
+			builder.WithPredicates(r.createFeatureFilterPredicate(), generationOrLabelChangePredicate)).
 		Complete(r)
 }
 
 var generationOrLabelChangePredicate = predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{})
 
-// createNameFilterPredicate restricts the watch to the given resource names in the operator namespace. Every resource
-// the synthetics-worker controller watches (ServiceAccount, Deployment) is namespaced, unlike the agent0-connector's
-// cluster-scoped RBAC resources, so there is no need for a namespaced/cluster-scoped switch here.
-func (r *SyntheticsWorkerReconciler) createNameFilterPredicate(resourceNames []string) predicate.Funcs {
+// createFeatureFilterPredicate restricts the watch to synthetics-worker resources (identified by label, since the set
+// of instance names is dynamic) in the operator namespace. Every resource the synthetics-worker controller watches
+// (ServiceAccount, Deployment) is namespaced, unlike the agent0-connector's cluster-scoped RBAC resources, so there is
+// no need for a namespaced/cluster-scoped switch here.
+func (r *SyntheticsWorkerReconciler) createFeatureFilterPredicate() predicate.Funcs {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			return resourceMatches(e.Object, r.operatorNamespace, resourceNames)
+			return resourceMatches(e.Object, r.operatorNamespace)
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return resourceMatches(e.ObjectOld, r.operatorNamespace, resourceNames) ||
-				resourceMatches(e.ObjectNew, r.operatorNamespace, resourceNames)
+			return resourceMatches(e.ObjectOld, r.operatorNamespace) ||
+				resourceMatches(e.ObjectNew, r.operatorNamespace)
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			return resourceMatches(e.Object, r.operatorNamespace, resourceNames)
+			return resourceMatches(e.Object, r.operatorNamespace)
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
-			return resourceMatches(e.Object, r.operatorNamespace, resourceNames)
+			return resourceMatches(e.Object, r.operatorNamespace)
 		},
 	}
 }
 
-func resourceMatches(object client.Object, resourceNamespace string, resourceNames []string) bool {
+func resourceMatches(object client.Object, resourceNamespace string) bool {
 	if object.GetNamespace() != resourceNamespace {
 		return false
 	}
-	return slices.Contains(resourceNames, object.GetName())
+	return swresources.IsSyntheticsWorkerResource(object)
 }
 
 func (r *SyntheticsWorkerReconciler) Reconcile(

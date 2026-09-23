@@ -103,3 +103,47 @@ tests:
           apiVersion: rbac.authorization.k8s.io/v1
           name: dash0-operator-manager-agent0-connector
         documentIndex: 3
+
+  - it: should not bind synthetics-worker permissions by default
+    asserts:
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-synthetics-worker
+        not: true
+
+  - it: should bind synthetics-worker permissions if the synthetics-worker is enabled
+    set:
+      operator:
+        syntheticsWorker:
+          enabled: true
+    asserts:
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-synthetics-worker
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-synthetics-worker
+
+  - it: should bind synthetics-worker management permissions independently of telemetry collection
+    set:
+      operator:
+        telemetryCollectionEnabled: false
+        syntheticsWorker:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-collector
+        not: true
+      - containsDocument:
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: dash0-operator-manager-synthetics-worker
+        documentSelector:
+          path: metadata.name
+          value: dash0-operator-manager-synthetics-worker

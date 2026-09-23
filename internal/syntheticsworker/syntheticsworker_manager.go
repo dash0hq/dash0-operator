@@ -113,15 +113,20 @@ func (m *SyntheticsWorkerManager) reconcileSyntheticsWorker(ctx context.Context,
 		return true, nil
 	}
 
-	hasBeenReconciled, err := m.createOrUpdateSyntheticsWorker(ctx, operatorConfigurationResource, logger)
-	m.reportSyntheticsWorkerStatus(ctx, operatorConfigurationResource, err, logger)
-	if errors.Is(err, swresources.ErrMisconfigured) {
-		// Requeuing the reconcile request cannot fix a misconfiguration of the CRD resource, and synthetics-worker
-		// deployment must not block the remaining reconciliation steps for the Dash0OperatorConfiguration resource.
-		// The status and the Kubernetes event above report it instead.
+	results, hasBeenReconciled, err := m.createOrUpdateSyntheticsWorker(ctx, operatorConfigurationResource, logger)
+	m.reportSyntheticsWorkerStatus(ctx, operatorConfigurationResource, results, logger)
+	if isNonBlockingSyntheticsWorkerError(err) {
 		return false, nil
 	}
 	return hasBeenReconciled, err
+}
+
+// isNonBlockingSyntheticsWorkerError reports whether a reconcile error must not cause a reconcile retry. Requeuing
+// cannot fix a misconfiguration of the CRD resource (it requires a user to edit the resource) or a permission the
+// operator itself does not hold (it requires a Helm upgrade), and either must not block the remaining reconciliation
+// steps for the Dash0OperatorConfiguration resource. The status and a Kubernetes event report it instead.
+func isNonBlockingSyntheticsWorkerError(err error) bool {
+	return errors.Is(err, swresources.ErrMisconfigured) || apierrors.IsForbidden(err)
 }
 
 // syntheticsWorkerEnabled reports whether the optional synthetics-worker deployment should be managed. The
@@ -134,28 +139,43 @@ func (m *SyntheticsWorkerManager) syntheticsWorkerEnabled(
 	return pointers.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.SyntheticsWorker.Enabled, true)
 }
 
-// reportSyntheticsWorkerStatus records the outcome of the last attempt to create or update the synthetics-worker
-// resources in the status of the Dash0OperatorConfiguration resource and queues a Kubernetes event when the outcome
-// changed.
+// reportSyntheticsWorkerStatus records the outcome of the last attempt to create or update every synthetics-worker
+// instance in the status of the Dash0OperatorConfiguration resource and queues a Kubernetes event when the aggregate
+// outcome changed. A per-instance failure is reflected in the corresponding InstanceResult; the caller has already
+// logged a feature-wide reconcileErr, if any.
 func (m *SyntheticsWorkerManager) reportSyntheticsWorkerStatus(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	reconcileErr error,
+	results []swresources.InstanceResult,
 	logger logd.Logger,
 ) {
-	deployed := reconcileErr == nil
-	reason := StatusReasonDeployed
-	message := "The operator has deployed the synthetics-worker."
-	if !deployed {
-		reason = syntheticsWorkerFailureReason(reconcileErr)
-		message = syntheticsWorkerFailureMessage(reason, reconcileErr)
+	instanceStatuses := make([]dash0v1alpha1.SyntheticsWorkerInstanceStatus, 0, len(results))
+	for _, result := range results {
+		deployed := result.Err == nil
+		reason := StatusReasonDeployed
+		message := "The operator has deployed this synthetics-worker instance."
+		if !deployed {
+			reason = syntheticsWorkerFailureReason(result.Err)
+			message = syntheticsWorkerFailureMessage(reason, result.Err)
+		}
+		instanceStatuses = append(instanceStatuses, dash0v1alpha1.SyntheticsWorkerInstanceStatus{
+			LocationID: result.LocationID,
+			Deployed:   deployed,
+			Reason:     reason,
+			Message:    message,
+		})
 	}
 
+	var aggregateDeployed bool
+	var aggregateMessage string
 	changed, err := m.updateSyntheticsWorkerStatus(
 		ctx,
 		operatorConfigurationResource,
 		func(resource *dash0v1alpha1.Dash0OperatorConfiguration) bool {
-			return resource.SetSyntheticsWorkerStatus(deployed, reason, message)
+			changed := resource.SetSyntheticsWorkerStatus(instanceStatuses)
+			aggregateDeployed = resource.Status.SyntheticsWorker.Deployed
+			aggregateMessage = resource.Status.SyntheticsWorker.Message
+			return changed
 		},
 	)
 	if err != nil {
@@ -165,10 +185,10 @@ func (m *SyntheticsWorkerManager) reportSyntheticsWorkerStatus(
 	if !changed {
 		return
 	}
-	if deployed {
+	if aggregateDeployed {
 		util.QueueSyntheticsWorkerDeployedEvent(m.eventRecorder, operatorConfigurationResource)
 	} else {
-		util.QueueSyntheticsWorkerNotDeployedEvent(m.eventRecorder, operatorConfigurationResource, message)
+		util.QueueSyntheticsWorkerNotDeployedEvent(m.eventRecorder, operatorConfigurationResource, aggregateMessage)
 	}
 }
 
@@ -183,7 +203,7 @@ func (m *SyntheticsWorkerManager) reportSyntheticsWorkerDisabled(
 		ctx,
 		operatorConfigurationResource,
 		func(resource *dash0v1alpha1.Dash0OperatorConfiguration) bool {
-			return resource.SetSyntheticsWorkerStatus(false, StatusReasonDisabled, syntheticsWorkerDisabledMessage)
+			return resource.SetSyntheticsWorkerDisabledStatus(StatusReasonDisabled, syntheticsWorkerDisabledMessage)
 		},
 	)
 	if err != nil {
@@ -230,7 +250,6 @@ func (m *SyntheticsWorkerManager) updateSyntheticsWorkerStatus(
 const (
 	StatusReasonDeployed                   = "Deployed"
 	StatusReasonDisabled                   = "Disabled"
-	StatusReasonNoLocationID               = "NoLocationID"
 	StatusReasonNoAuthorizationToken       = "NoAuthorizationToken"
 	StatusReasonOperatorMissingPermissions = "OperatorMissingPermissions"
 	StatusReasonReconcileFailed            = "ReconcileFailed"
@@ -239,8 +258,6 @@ const (
 // syntheticsWorkerFailureReason maps a reconcile error to the programmatic identifier reported in the status.
 func syntheticsWorkerFailureReason(err error) string {
 	switch {
-	case errors.Is(err, swresources.ErrNoLocationID):
-		return StatusReasonNoLocationID
 	case errors.Is(err, swresources.ErrNoAuthorizationToken):
 		return StatusReasonNoAuthorizationToken
 	case apierrors.IsForbidden(err):
@@ -263,26 +280,32 @@ func syntheticsWorkerFailureMessage(reason string, err error) string {
 	)
 }
 
-// createOrUpdateSyntheticsWorker creates or updates the synthetics-worker resources. The returned flag reports
-// whether the resources have been reconciled. Every error is passed on, including a misconfiguration, which the
-// caller reports via the status and a Kubernetes event before it stops the error from reaching its own caller.
+// createOrUpdateSyntheticsWorker creates or updates the resources of every configured synthetics-worker instance. The
+// returned flag reports whether the reconciliation has been performed. The returned error is feature-wide (e.g. the
+// orphan cleanup failed), not a single instance's misconfiguration, which is reported per-instance in the returned
+// results instead and does not prevent the other instances from being reconciled.
 func (m *SyntheticsWorkerManager) createOrUpdateSyntheticsWorker(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger logd.Logger,
-) (bool, error) {
-	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
-		m.syntheticsWorkerResourceManager.CreateOrUpdateSyntheticsWorkerResources(
-			ctx,
-			operatorConfigurationResource,
-			logger,
-		)
+) ([]swresources.InstanceResult, bool, error) {
+	results, err := m.syntheticsWorkerResourceManager.CreateOrUpdateSyntheticsWorkerResources(
+		ctx,
+		operatorConfigurationResource,
+		logger,
+	)
 	if err != nil {
 		if !errors.Is(err, swresources.ErrMisconfigured) {
-			// The resource manager has already logged the details of a misconfiguration.
-			logger.Error(err, "failed to create one or more of the synthetics-worker resources")
+			logger.Error(err, "failed to create/update the synthetics-worker resources")
 		}
-		return false, err
+		return results, false, err
+	}
+
+	resourcesHaveBeenCreated := false
+	resourcesHaveBeenUpdated := false
+	for _, result := range results {
+		resourcesHaveBeenCreated = resourcesHaveBeenCreated || result.Created
+		resourcesHaveBeenUpdated = resourcesHaveBeenUpdated || result.Updated
 	}
 
 	if resourcesHaveBeenCreated && resourcesHaveBeenUpdated {
@@ -295,7 +318,7 @@ func (m *SyntheticsWorkerManager) createOrUpdateSyntheticsWorker(
 		logger.Debug("synthetics-worker Kubernetes resources are already up to date, no changes required")
 	}
 
-	return true, nil
+	return results, true, nil
 }
 
 func (m *SyntheticsWorkerManager) removeSyntheticsWorker(

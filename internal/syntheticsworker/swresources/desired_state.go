@@ -5,6 +5,7 @@ package swresources
 
 import (
 	"fmt"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -42,10 +43,14 @@ const (
 	livenessServiceName  = "liveness"
 	readinessServiceName = "readiness"
 
-	// label values
 	appKubernetesIoNameValue      = syntheticsWorker
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
+
+	// locationIDLabel identifies which synthetics-worker instance (that is, which Dash0 private location) a
+	// Deployment/ServiceAccount belongs to. It is part of matchLabels() so that each instance's Deployment gets its
+	// own, non-overlapping pod selector.
+	locationIDLabel = "synthetics-worker.dash0.com/location-id"
 
 	defaultReplicas int32 = 1
 
@@ -66,43 +71,46 @@ type selfMonitoringInput struct {
 	clusterName   string
 }
 
+// assembleDesiredState assembles the desired Kubernetes resources (one ServiceAccount, one Deployment) for a single
+// synthetics-worker instance. A nil authTokenEnvVar assembles the instance without an authorization token (used by
+// DeleteResources, where the token is irrelevant).
 func assembleDesiredState(
 	config *util.SyntheticsWorkerConfig,
-	spec dash0v1alpha1.SyntheticsWorker,
+	instance dash0v1alpha1.SyntheticsWorkerInstance,
 	authTokenEnvVar *corev1.EnvVar,
 	selfMonitoring selfMonitoringInput,
 ) ([]clientObject, error) {
-	deployment, err := assembleDeployment(config, spec, authTokenEnvVar, selfMonitoring)
+	deployment, err := assembleDeployment(config, instance, authTokenEnvVar, selfMonitoring)
 	if err != nil {
 		return nil, err
 	}
-	desiredState := make([]clientObject, 0, 2)
-	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccount(config)))
-	desiredState = append(desiredState, addCommonMetadata(deployment))
-	return desiredState, nil
+	return []clientObject{
+		addCommonMetadata(assembleServiceAccount(config, instance.LocationID)),
+		addCommonMetadata(deployment),
+	}, nil
 }
 
-func assembleServiceAccount(c *util.SyntheticsWorkerConfig) *corev1.ServiceAccount {
+func assembleServiceAccount(c *util.SyntheticsWorkerConfig, locationID string) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: util.K8sApiVersionCoreV1,
 			Kind:       "ServiceAccount",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ServiceAccountName(c.NamePrefix),
+			Name:      ServiceAccountName(c.NamePrefix, locationID),
 			Namespace: c.OperatorNamespace,
-			Labels:    labels(),
+			Labels:    labels(locationID),
 		},
 	}
 }
 
 func assembleDeployment(
 	c *util.SyntheticsWorkerConfig,
-	spec dash0v1alpha1.SyntheticsWorker,
+	spec dash0v1alpha1.SyntheticsWorkerInstance,
 	authTokenEnvVar *corev1.EnvVar,
 	selfMonitoring selfMonitoringInput,
 ) (*appsv1.Deployment, error) {
-	deploymentName := DeploymentName(c.NamePrefix)
+	deploymentName := DeploymentName(c.NamePrefix, spec.LocationID)
 
 	replicas := ptr.Deref(spec.Replicas, defaultReplicas)
 
@@ -116,12 +124,10 @@ func assembleDeployment(
 		Image: c.Images.SyntheticsWorkerImage,
 		Env: []corev1.EnvVar{
 			{
-				// The address of the Dash0 backend service the synthetics-worker workload connects to.
 				Name:  "SYNTHETICS_ADDRESS",
 				Value: c.ServerAddress,
 			},
 			{
-				// The private location this cluster's synthetics-worker executes checks for.
 				Name:  "SYNTHETICS_LOCATIONID",
 				Value: spec.LocationID,
 			},
@@ -183,7 +189,6 @@ func assembleDeployment(
 
 	if c.Insecure {
 		container.Env = append(container.Env, corev1.EnvVar{
-			// Disables TLS for the connection to the Dash0 backend; only intended for local development.
 			Name:  "SYNTHETICS_INSECURE",
 			Value: "true",
 		})
@@ -194,7 +199,7 @@ func assembleDeployment(
 	}
 
 	podSpec := corev1.PodSpec{
-		ServiceAccountName: ServiceAccountName(c.NamePrefix),
+		ServiceAccountName: ServiceAccountName(c.NamePrefix, spec.LocationID),
 		Containers: []corev1.Container{
 			container,
 		},
@@ -206,6 +211,17 @@ func assembleDeployment(
 			RunAsUser:  util.RunAsID(c.IsOpenShift, defaultUser),
 			RunAsGroup: util.RunAsID(c.IsOpenShift, defaultGroup),
 		},
+		Tolerations: spec.Tolerations,
+	}
+
+	if spec.NodeAffinity != nil {
+		podSpec.Affinity = &corev1.Affinity{
+			NodeAffinity: spec.NodeAffinity,
+		}
+	}
+
+	if priorityClassName := strings.TrimSpace(c.PriorityClassName); priorityClassName != "" {
+		podSpec.PriorityClassName = priorityClassName
 	}
 
 	deployment := &appsv1.Deployment{
@@ -216,16 +232,16 @@ func assembleDeployment(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentName,
 			Namespace: c.OperatorNamespace,
-			Labels:    labels(),
+			Labels:    labels(spec.LocationID),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To(replicas),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: matchLabels(),
+				MatchLabels: matchLabels(spec.LocationID),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels(),
+					Labels: labels(spec.LocationID),
 				},
 				Spec: podSpec,
 			},
@@ -249,13 +265,14 @@ func assembleDeployment(
 
 // ---utils---
 
-func ServiceAccountName(namePrefix string) string {
-	return resources.RenderName(namePrefix, syntheticsWorkerNameSuffix, "sa")
+func ServiceAccountName(namePrefix string, locationID string) string {
+	return resources.RenderName(namePrefix, syntheticsWorkerNameSuffix, locationID, "sa")
 }
 
-// DeploymentName returns the name of the synthetics-worker deployment, which is "<namePrefix>-synthetics-worker".
-func DeploymentName(namePrefix string) string {
-	return resources.RenderName(namePrefix, syntheticsWorkerNameSuffix)
+// DeploymentName returns the name of a synthetics-worker instance's deployment, which is
+// "<namePrefix>-synthetics-worker-<locationID>".
+func DeploymentName(namePrefix string, locationID string) string {
+	return resources.RenderName(namePrefix, syntheticsWorkerNameSuffix, locationID)
 }
 
 func addCommonMetadata(object client.Object) clientObject {
@@ -271,19 +288,35 @@ func addCommonMetadata(object client.Object) clientObject {
 	}
 }
 
-func labels() map[string]string {
+func labels(locationID string) map[string]string {
 	return map[string]string{
 		util.AppKubernetesIoNameLabel:      appKubernetesIoNameValue,
 		util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
 		util.AppKubernetesIoManagedByLabel: appKubernetesIoManagedByValue,
+		locationIDLabel:                    locationID,
 	}
 }
 
-// matchLabels returns the subset of labels() that identifies the synthetics-worker pods, for use in a selector.
-// Selector labels must never change for an existing deployment, so this deliberately excludes
+// matchLabels returns the subset of labels() that identifies one instance's synthetics-worker pods, for use in a
+// selector. Selector labels must never change for an existing deployment, so this deliberately excludes
 // AppKubernetesIoManagedByLabel even though it is currently also constant.
-func matchLabels() map[string]string {
-	l := labels()
+func matchLabels(locationID string) map[string]string {
+	l := labels(locationID)
 	delete(l, util.AppKubernetesIoManagedByLabel)
 	return l
+}
+
+// FeatureLabelSelector selects every ServiceAccount/Deployment belonging to any synthetics-worker instance,
+// regardless of which private location it runs. Used to watch for and clean up resources without needing to know the
+// current set of instance names.
+func FeatureLabelSelector() map[string]string {
+	return map[string]string{
+		util.AppKubernetesIoNameLabel: appKubernetesIoNameValue,
+	}
+}
+
+// IsSyntheticsWorkerResource reports whether the given object is one of the resources the synthetics-worker feature
+// manages.
+func IsSyntheticsWorkerResource(object client.Object) bool {
+	return object.GetLabels()[util.AppKubernetesIoNameLabel] == appKubernetesIoNameValue
 }

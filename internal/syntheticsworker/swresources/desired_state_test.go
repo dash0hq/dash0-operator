@@ -33,7 +33,7 @@ var (
 		Value: "dummy-token",
 	}
 
-	testSpec = dash0v1alpha1.SyntheticsWorker{
+	testSpec = dash0v1alpha1.SyntheticsWorkerInstance{
 		LocationID: "test-location",
 	}
 )
@@ -55,9 +55,8 @@ var _ = Describe("The desired state of the synthetics-worker resources", func() 
 		desiredState := assembleDesiredStateOrFail(testConfig(), testSpec, testAuthTokenEnvVar)
 
 		Expect(desiredState).To(HaveLen(2))
-		Expect(getServiceAccount(desiredState).Name).To(Equal(testNamePrefix + "-synthetics-worker-sa"))
-		// The deployment name must be exactly "<namePrefix>-synthetics-worker".
-		Expect(getDeployment(desiredState).Name).To(Equal(testNamePrefix + "-synthetics-worker"))
+		Expect(getServiceAccount(desiredState).Name).To(Equal(testNamePrefix + "-synthetics-worker-test-location-sa"))
+		Expect(getDeployment(desiredState).Name).To(Equal(testNamePrefix + "-synthetics-worker-test-location"))
 	})
 
 	It("deploys the resources into the operator namespace", func() {
@@ -315,7 +314,12 @@ func deploymentContainer(selfMonitoring selfMonitoringInput) corev1.Container {
 	GinkgoHelper()
 	config := testConfig()
 	config.Images.OperatorImage = OperatorImageTest
-	desiredState, err := assembleDesiredState(config, testSpec, testAuthTokenEnvVar, selfMonitoring)
+	desiredState, err := assembleDesiredState(
+		config,
+		testSpec,
+		testAuthTokenEnvVar,
+		selfMonitoring,
+	)
 	Expect(err).ToNot(HaveOccurred())
 	containers := getDeployment(desiredState).Spec.Template.Spec.Containers
 	Expect(containers).To(HaveLen(1))
@@ -361,11 +365,16 @@ func indexOfEnvVar(envVars []corev1.EnvVar, name string) int {
 
 func assembleDesiredStateOrFail(
 	config *util.SyntheticsWorkerConfig,
-	spec dash0v1alpha1.SyntheticsWorker,
+	spec dash0v1alpha1.SyntheticsWorkerInstance,
 	authTokenEnvVar *corev1.EnvVar,
 ) []clientObject {
 	GinkgoHelper()
-	desiredState, err := assembleDesiredState(config, spec, authTokenEnvVar, selfMonitoringInput{})
+	desiredState, err := assembleDesiredState(
+		config,
+		spec,
+		authTokenEnvVar,
+		selfMonitoringInput{},
+	)
 	Expect(err).ToNot(HaveOccurred())
 	return desiredState
 }
