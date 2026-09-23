@@ -23,7 +23,6 @@
   resources:
   - componentstatuses
   - endpoints
-  - events
   - limitranges
   - namespaces
   - nodes
@@ -31,7 +30,6 @@
   - persistentvolumes
   - podtemplates
   - pods
-  - pods/log
   - replicationcontrollers
   - resourcequotas
   - serviceaccounts
@@ -155,13 +153,6 @@
   - resourceclaims
   - resourceclaimtemplates
   - resourceslices
-  verbs:
-  - get
-  - list
-- apiGroups:
-  - events.k8s.io
-  resources:
-  - events
   verbs:
   - get
   - list
