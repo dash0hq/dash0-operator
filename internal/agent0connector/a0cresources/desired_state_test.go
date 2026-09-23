@@ -161,15 +161,16 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 
 			Expect(resourcesPerApiGroup[""]).To(ContainElements(
 				"endpoints",
-				"events",
 				"namespaces",
 				"nodes",
 				"persistentvolumeclaims",
 				"persistentvolumes",
 				"pods",
-				"pods/log",
 				"services",
 			))
+			Expect(resourcesPerApiGroup[""]).ToNot(ContainElement("events"))
+			Expect(resourcesPerApiGroup[""]).ToNot(ContainElement("pods/log"))
+			Expect(resourcesPerApiGroup).ToNot(HaveKey("events.k8s.io"))
 			Expect(resourcesPerApiGroup["apps"]).To(ContainElements("daemonsets", "deployments", "replicasets", "statefulsets"))
 			Expect(resourcesPerApiGroup["batch"]).To(ContainElements("cronjobs", "jobs"))
 			Expect(resourcesPerApiGroup["metrics.k8s.io"]).To(ContainElements("nodes", "pods"))

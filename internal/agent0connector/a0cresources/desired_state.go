@@ -162,7 +162,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		Resources: []string{
 			"componentstatuses",
 			"endpoints",
-			"events",
 			"limitranges",
 			"namespaces",
 			"nodes",
@@ -170,8 +169,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 			"persistentvolumes",
 			"podtemplates",
 			"pods",
-			// required by "kubectl logs"
-			"pods/log",
 			"replicationcontrollers",
 			"resourcequotas",
 			"serviceaccounts",
@@ -274,11 +271,6 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 			"resourceslices",
 		},
 		Verbs: allowedVerbs,
-	},
-	{
-		APIGroups: []string{"events.k8s.io"},
-		Resources: []string{"events"},
-		Verbs:     allowedVerbs,
 	},
 	{
 		// required by "kubectl top"
