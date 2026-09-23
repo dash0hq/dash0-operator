@@ -48,9 +48,9 @@ var credentialNameFragments = []string{
 // knownUnredactedFields are the fields that credentialNameFragments flags, although they actually hold no credential.
 // The key is "<enclosing object>.<field>".
 //
-// A field named "url" needs an entry here unless the URL as a whole is a credential and listed in
-// credentialFieldsPerConfigObject: for a field that isUrlField matches, only the user information and the query
-// parameters of the URL are redacted, so being matched by it says nothing about the rest of the value.
+// Note: A field whose name isUrlField matches needs an entry here unless the URL as a whole is a credential and listed
+// in credentialFieldsPerConfigObject. For isUrlField matches, only the user information and the query parameters of the
+// URL are redacted, but that might not be sufficient for some URLs.
 var knownUnredactedFields = map[string]string{
 	// The endpoint a PagerDuty integration posts to. Unlike the webhook URLs of the other channel types it carries no
 	// token; the credential of this channel is pagerdutyConfig.key, which is redacted.
