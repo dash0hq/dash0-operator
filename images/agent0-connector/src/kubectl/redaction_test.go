@@ -1784,6 +1784,34 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 		}
 	})
 
+	t.Run("redacts the scrape parameters and the OAuth2 endpoint parameters of a probe", func(t *testing.T) {
+		fakeKubectlEchoing(t, probeJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-probe",
+			Command:   "kubectl",
+			Arguments: []string{"get", "probes", "-o", "json"},
+		})
+
+		for _, value := range []string{probeScrapeApiKey, probeOauth2ClientSecret} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		for _, preserved := range []string{
+			"api_key",
+			"verbose",
+			"true",
+			"client_secret",
+			"https://oauth.example.com/token",
+			"blackbox.example.com:9115",
+		} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
 	t.Run("preserves a params field of a resource kind that does not hold query parameters", func(t *testing.T) {
 		fakeKubectlEchoing(t, configMapWithParamsJson)
 
@@ -2173,6 +2201,43 @@ const scrapeConfigJson = `{
     }
 }`
 
+// probeJson holds its query parameters as a list of name/values pairs, unlike the other Prometheus Operator resources,
+// which hold them as a map. It also carries the parameters of an OAuth2 token request, which are redacted wherever they
+// occur rather than per resource kind.
+const probeJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "Probe",
+    "metadata": {
+        "name": "my-probe",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "params": [
+            {
+                "name": "api_key",
+                "values": [
+                    "` + probeScrapeApiKey + `"
+                ]
+            },
+            {
+                "name": "verbose",
+                "values": [
+                    "true"
+                ]
+            }
+        ],
+        "oauth2": {
+            "tokenUrl": "https://oauth.example.com/token",
+            "endpointParams": {
+                "client_secret": "` + probeOauth2ClientSecret + `"
+            }
+        },
+        "prober": {
+            "url": "blackbox.example.com:9115"
+        }
+    }
+}`
+
 // configMapWithParamsJson has a field named "params", but is not a resource kind whose query parameters are known, so
 // its values stay readable, see queryParameterFieldsPerResourceKind.
 const configMapWithParamsJson = `{
@@ -2248,6 +2313,8 @@ const (
 	podMonitorProxyPassword      = "my-pod-monitor-proxy-password"
 	scrapeConfigParamToken       = "my-scrape-config-param-token"
 	scrapeConfigProxyQueryApiKey = "my-scrape-config-proxy-query-api-key"
+	probeScrapeApiKey            = "my-probe-scrape-api-key"
+	probeOauth2ClientSecret      = "my-probe-oauth2-client-secret"
 	unrelatedParamsValue         = "not-a-credential"
 
 	scrapeConfigScalewayAccessKey      = "my-scrape-config-scaleway-access-key"

@@ -175,6 +175,8 @@ var queryParameterFieldsPerResourceKind = map[string][]string{
 	"ServiceMonitor": {"spec.endpoints.params"},
 	"PodMonitor":     {"spec.podMetricsEndpoints.params"},
 	"ScrapeConfig":   {"spec.params"},
+	// Unlike the other three, a Probe holds its parameters as a list of name/values pairs rather than as a map.
+	"Probe": {"spec.params"},
 }
 
 // parseableOutputFormats are the output formats whose response the connector can parse itself.
@@ -624,7 +626,7 @@ func isWalkableNode(node any) bool {
 //   - the credential-bearing parts of the URL a synthetic check requests and of the URL of an HTTP proxy (see
 //     urlFields),
 //   - the query parameter values of the requests that a scrape configuration configures (see
-//     queryParameterFieldsPerResourceKind),
+//     queryParameterFieldsPerResourceKind), and the parameters its OAuth2 token request appends (endpointParams),
 //   - the literal values of the environment variables of every container of a pod spec (see redactEnvVarValues), and
 //     the elements of its command line (see redactArgumentValues),
 //   - the header values of the HTTP probes and lifecycle hooks of a pod spec, which have the same shape as the header
@@ -651,7 +653,7 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 			switch key {
 			case "token", "password":
 				redactValueOf(typedNode, key, redacted)
-			case "headers", "queryParameters", "httpHeaders":
+			case "headers", "queryParameters", "httpHeaders", "endpointParams":
 				redactHeaderValues(typedNode, key, redacted)
 			case "env":
 				redactEnvVarValues(typedNode, key, redacted)
@@ -782,10 +784,12 @@ func redactHeaderValues(node map[string]any, key string, redacted *redactor) {
 	case []any:
 		// Examples:
 		// - "headers": [{"name": "Authorization", "value": "Bearer secret"}] - list of key-value pairs
+		// - "params": [{"name": "api_key", "values": ["secret"]}] - a list of values per pair (Probe)
 		// - "headers": ["Authorization: Bearer secret"] - list of strings
 		for i, header := range typedValue {
 			if headerMap, isMap := header.(map[string]any); isMap {
 				redactHeaderValueIfPlausible(headerMap, "value", redacted)
+				redactHeaderValueIfPlausible(headerMap, "values", redacted)
 				continue
 			}
 			redactListElementIfPlausible(typedValue, i, redacted)
