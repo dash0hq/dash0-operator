@@ -161,8 +161,7 @@ var urlFields = map[string]struct{}{
 
 // queryParameterFieldsPerResourceKind maps a resource kind to the paths within it that hold the query parameters of a
 // request the resource configures, as a map of a parameter name to its values. A scrape query string carrying an API
-// key is a common pattern, so these values are redacted with the same plausibility check as a header value (see
-// redactQueryParameterMap).
+// key is a common pattern, so these values are redacted exactly like header values (see redactHeaderValues).
 //
 // The scope is bound to the kind rather than to the key name: "params" is a generic field that other resource types
 // carry with an unrelated meaning. The consequence is that a credential-bearing "params" of a resource type that is not
@@ -776,27 +775,30 @@ func redactArgumentValues(node map[string]any, key string, redacted *redactor) {
 	}
 }
 
-// redactHeaderValues redacts the literal header or query parameter values held by the given key of node. Three shapes
-// occur in the Dash0 custom resources: the list of name/value pairs of the exports and of the request of a synthetic
-// check, the map of the generic webhook notification channel, and the single header value of the Incident.io
-// notification channel, which is why the enclosing node is passed rather than the value itself.
+// redactHeaderValues redacts the literal header or query parameter values held by the given key of node.
 func redactHeaderValues(node map[string]any, key string, redacted *redactor) {
 	switch typedValue := node[key].(type) {
 	case []any:
-		for _, header := range typedValue {
-			headerMap, isMap := header.(map[string]any)
-			if !isMap {
+		// Examples:
+		// - "headers": [{"name": "Authorization", "value": "Bearer secret"}] - list of key-value pairs
+		// - "headers": ["Authorization: Bearer secret"] - list of strings
+		for i, header := range typedValue {
+			if headerMap, isMap := header.(map[string]any); isMap {
+				redactHeaderValueIfPlausible(headerMap, "value", redacted)
 				continue
 			}
-			redactHeaderValueIfPlausible(headerMap, "value", redacted)
+			redactListElementIfPlausible(typedValue, i, redacted)
 		}
 	case map[string]any:
+		// Example:
+		// - "headers": {"Authorization": "Bearer secret"} - single key-value pair
+		// - "params": {"foobar": ["secret"]} - a list of values per name (the name itself is not inspected)
 		for name := range typedValue {
 			redactHeaderValueIfPlausible(typedValue, name, redacted)
 		}
 	default:
-		// A single header value, which redactHeaderValueIfPlausible replaces if it is a scalar and leaves alone
-		// otherwise.
+		// Examples:
+		// - "headers": "Bearer secret" - a single header value
 		redactHeaderValueIfPlausible(node, key, redacted)
 	}
 }
@@ -804,9 +806,18 @@ func redactHeaderValues(node map[string]any, key string, redacted *redactor) {
 // redactHeaderValueIfPlausible redacts a header or query parameter value, unless it is a well-known non-secret value.
 // Unlike the fields that are credentials by definition (a token, a password, the credential of a notification
 // channel), a header is a position that also carries values which are not credentials at all - a content type, an
-// encoding - and rendering those as the placeholder would hide harmless information from the reader without protecting
+// encoding. Rendering those as the placeholder would hide harmless information from the reader without protecting
 // anything.
+//
+// A header or query parameter that holds a list of values (e.g. params of the Prometheus Operator CRDs, or a
+// multivalued HTTP header) is redacted element by element.
 func redactHeaderValueIfPlausible(node map[string]any, key string, redacted *redactor) {
+	if values, isList := node[key].([]any); isList {
+		for i := range values {
+			redactListElementIfPlausible(values, i, redacted)
+		}
+		return
+	}
 	value, isScalar := scalarValue(node[key])
 	if !isScalar {
 		return
@@ -815,6 +826,20 @@ func redactHeaderValueIfPlausible(node map[string]any, key string, redacted *red
 		return
 	}
 	redactValueOf(node, key, redacted)
+}
+
+// redactListElementIfPlausible redacts the element at the given index of a list of header or query parameter values,
+// unless it is a well-known non-secret value. A list element is replaced in place, since it has no key to redact it by.
+func redactListElementIfPlausible(values []any, index int, redacted *redactor) {
+	value, isScalar := scalarValue(values[index])
+	if !isScalar {
+		return
+	}
+	if isWellKnownNonSecretValue(value) {
+		return
+	}
+	values[index] = redactedValue
+	redacted.add(value)
 }
 
 // redactQueryParameterFields redacts the query parameters of the requests a resource configures, for Prometheus
@@ -827,33 +852,8 @@ func redactQueryParameterFields(resource map[string]any, redacted *redactor) {
 	for _, field := range queryParameterFieldsPerResourceKind[kind] {
 		path := strings.Split(field, ".")
 		resolveFieldPath(resource, path[:len(path)-1], func(enclosingObject map[string]any) {
-			parameters, isMap := enclosingObject[path[len(path)-1]].(map[string]any)
-			if !isMap {
-				return
-			}
-			redactQueryParameterMap(parameters, redacted)
+			redactHeaderValues(enclosingObject, path[len(path)-1], redacted)
 		})
-	}
-}
-
-// redactQueryParameterMap redacts the values of a map of a query parameter name to its values, applying the same
-// plausibility check as for a header value (see redactHeaderValueIfPlausible). A parameter holding a list of values -
-// the shape the Prometheus Operator CRDs use - is redacted element by element.
-func redactQueryParameterMap(parameters map[string]any, redacted *redactor) {
-	for name, value := range parameters {
-		values, isList := value.([]any)
-		if !isList {
-			redactHeaderValueIfPlausible(parameters, name, redacted)
-			continue
-		}
-		for i, item := range values {
-			scalar, isScalar := scalarValue(item)
-			if !isScalar || isWellKnownNonSecretValue(scalar) {
-				continue
-			}
-			values[i] = redactedValue
-			redacted.add(scalar)
-		}
 	}
 }
 

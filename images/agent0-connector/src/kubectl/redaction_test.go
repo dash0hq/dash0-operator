@@ -576,6 +576,75 @@ func TestRedactNonStringCredentialValues(t *testing.T) {
 	}
 }
 
+// TestRedactMultiValuedHeaders covers a header or query parameter that holds a list of values rather than a single
+// one. Examples: Prometheus Operator CRDs, multivalued HTTP headers.
+func TestRedactMultiValuedHeaders(t *testing.T) {
+	document := `{
+        "kind": "SomeCustomResource",
+        "spec": {
+            "headers": {
+                "X-Api-Key": ["my-multi-header-secret", "my-second-header-secret"],
+                "Accept-Encoding": ["gzip", "identity"]
+            },
+            "queryParameters": {
+                "token": ["my-multi-query-secret"]
+            }
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, secret := range []string{
+		"my-multi-header-secret",
+		"my-second-header-secret",
+		"my-multi-query-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+		if !slices.Contains(replaced, secret) {
+			t.Errorf("expected %q to be reported as replaced, got %q", secret, replaced)
+		}
+	}
+	// The well-known non-secret values keep their place, as they do for a single-valued header.
+	for _, preserved := range []string{"gzip", "identity", "X-Api-Key"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
+	}
+}
+
+// TestRedactHeaderListOfScalars covers the third list shape a header field takes: a list of literal values, as opposed
+// to the list of name/value pairs of the Dash0 custom resources and the map of a name to its values.
+func TestRedactHeaderListOfScalars(t *testing.T) {
+	document := `{
+        "kind": "SomeCustomResource",
+        "spec": {
+            "headers": ["Bearer my-scalar-header-secret", "application/json"],
+            "queryParameters": ["my-scalar-query-secret"]
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	// The whole element is replaced, since it has no key to redact it by, and the whole element is what has to be
+	// scrubbed from stderr.
+	for _, secret := range []string{
+		"Bearer my-scalar-header-secret",
+		"my-scalar-query-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+		if !slices.Contains(replaced, secret) {
+			t.Errorf("expected %q to be reported as replaced, got %q", secret, replaced)
+		}
+	}
+	if !strings.Contains(rendered, "application/json") {
+		t.Errorf("expected %q to be preserved, got %q", "application/json", rendered)
+	}
+}
+
 // TestRedactEnvAndCommandInOtherShapes covers the shapes "env", "command" and "args" take outside a pod spec. The walk
 // reaches documents no schema validates, where an environment is a map of name to value or a list of "NAME=value"
 // entries, and a command line is one string rather than a list of elements.
