@@ -664,15 +664,18 @@ func cmTestMultipleExportsWithNamespacedMultiExporters() otlpExporters {
 
 var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
+	cmTypeDefDaemonSet := configMapTypeDefinition{
+		cmType:                    configMapTypeDaemonSet,
+		assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapForTest,
+	}
+	cmTypeDefDeployment := configMapTypeDefinition{
+		cmType:                    configMapTypeDeployment,
+		assembleConfigMapFunction: assembleDeploymentCollectorConfigMapForTest,
+	}
+
 	configMapTypeDefinitions := []configMapTypeDefinition{
-		{
-			cmType:                    configMapTypeDaemonSet,
-			assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapForTest,
-		},
-		{
-			cmType:                    configMapTypeDeployment,
-			assembleConfigMapFunction: assembleDeploymentCollectorConfigMapForTest,
-		},
+		cmTypeDefDaemonSet,
+		cmTypeDefDeployment,
 	}
 
 	daemonSetAndDeployment := make([]TableEntry, 0, len(configMapTypeDefinitions))
@@ -4199,47 +4202,77 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		)
 	})
 
-	Describe("should enable/disable the replicaset informer", func() {
-		DescribeTable("should configure the k8s_attributes processor to not start the replicaset informer if disabled", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:                      OperatorNamespace,
-				NamePrefix:                             namePrefix,
-				Exporters:                              cmTestSingleDefaultOtlpExporter(),
-				K8sAttributesDisableReplicasetInformer: true,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
-			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
-			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
-			Expect(deploymentNameFromReplicasetRaw).To(BeNil())
-			metadataListRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
-			Expect(metadataListRaw).ToNot(BeNil())
-			metadataList := metadataListRaw.([]any)
-			Expect(metadataList).ToNot(ContainElement("k8s.deployment.uid"))
-		}, daemonSetAndDeployment)
+	type deploymentNameFromReplicasetTest struct {
+		cmTypeDef                              configMapTypeDefinition
+		k8sAttributesDisableReplicasetInformer bool
+		profilingEnabled                       bool
+		k8sAttributesProcessorName             string
+	}
 
-		DescribeTable("should configure the k8s_attributes processor to use the replicaset informer by default", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:                      OperatorNamespace,
-				NamePrefix:                             namePrefix,
-				Exporters:                              cmTestSingleDefaultOtlpExporter(),
-				K8sAttributesDisableReplicasetInformer: false,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
-			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
-			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
-			Expect(deploymentNameFromReplicasetRaw).To(BeNil())
-			metadataListRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
-			Expect(metadataListRaw).ToNot(BeNil())
-			metadataList := metadataListRaw.([]any)
+	DescribeTable("should enable/disable the replicaset informer", func(testConfig deploymentNameFromReplicasetTest) {
+		configMap, err := testConfig.cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace:                      OperatorNamespace,
+			NamePrefix:                             namePrefix,
+			Exporters:                              cmTestSingleDefaultOtlpExporter(),
+			K8sAttributesDisableReplicasetInformer: testConfig.k8sAttributesDisableReplicasetInformer,
+			ProfilingEnabled:                       testConfig.profilingEnabled,
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", testConfig.k8sAttributesProcessorName})
+		Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+		k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
+		// No matter how k8sAttributesDisableReplicasetInformer is set, deployment_name_from_replicaset is no longer valid
+		// and should never be set.
+		deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
+		Expect(deploymentNameFromReplicasetRaw).To(BeNil())
+		metadataListRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
+		Expect(metadataListRaw).ToNot(BeNil())
+		metadataList := metadataListRaw.([]any)
+
+		// The K8sAttributesDisableReplicasetInformer flag informs whether k8s.deployment.uid is extracted; this implicitly
+		// makes the k8s_attributes processor start the replicaset informer.
+		if testConfig.k8sAttributesDisableReplicasetInformer {
+			Expect(metadataList).ToNot(ContainElement("k8s.deployment.uid"))
+		} else {
 			Expect(metadataList).To(ContainElement("k8s.deployment.uid"))
-		}, daemonSetAndDeployment)
-	})
+		}
+	},
+		Entry("daemonset/replicaset informer disabled/k8s_attributes", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDaemonSet,
+			k8sAttributesDisableReplicasetInformer: true,
+			k8sAttributesProcessorName:             "k8s_attributes",
+		}),
+		Entry("deployment/replicaset informer disabled/k8s_attributes", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDeployment,
+			k8sAttributesDisableReplicasetInformer: true,
+			k8sAttributesProcessorName:             "k8s_attributes",
+		}),
+		Entry("daemonset/replicaset informer enabled/k8s_attributes", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDaemonSet,
+			k8sAttributesDisableReplicasetInformer: false,
+			k8sAttributesProcessorName:             "k8s_attributes",
+		}),
+		Entry("deployment/replicaset informer enabled/k8s_attributes", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDeployment,
+			k8sAttributesDisableReplicasetInformer: false,
+			k8sAttributesProcessorName:             "k8s_attributes",
+		}),
+
+		// k8s_attributes/profiles is a separate configuration of the k8s_attributes, hence it gets its own dedicated tests
+		Entry("daemonset/replicaset informer disabled/k8s_attributes/profiling", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDaemonSet,
+			k8sAttributesDisableReplicasetInformer: true,
+			profilingEnabled:                       true,
+			k8sAttributesProcessorName:             "k8s_attributes/profiles",
+		}),
+		Entry("daemonset/replicaset informer enabled/k8s_attributes/profiling", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDaemonSet,
+			k8sAttributesDisableReplicasetInformer: false,
+			profilingEnabled:                       true,
+			k8sAttributesProcessorName:             "k8s_attributes/profiles",
+		}),
+	)
 
 	Describe("should enable/disable wait_for_metadata", func() {
 		DescribeTable("should configure the k8s_attributes processor to wait for metadata if enabled", func(cmTypeDef configMapTypeDefinition) {
