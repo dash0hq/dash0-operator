@@ -345,9 +345,11 @@ func (m *OTelColResourceManager) updateResource(
 	// environment variable, and modifying the containers will automatically restart them.
 	m.amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource, desiredResource)
 
+	desiredResourceForComparison := desiredResource.DeepCopyObject().(client.Object)
+	resources.AdoptGkeAutopilotResourceAdjustments(existingResource, desiredResourceForComparison)
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
 		existingResource,
-		desiredResource,
+		desiredResourceForComparison,
 		patch.IgnoreField("kind"),
 		patch.IgnoreField("apiVersion"),
 	)
