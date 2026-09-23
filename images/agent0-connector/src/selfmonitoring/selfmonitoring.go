@@ -30,6 +30,7 @@ const (
 	ErrorTypeTimedOut        = "TimedOut"
 	ErrorTypeNonZeroExitCode = "NonZeroExitCode"
 	ErrorTypeWithheld        = "Withheld"
+	ErrorTypePanicked        = "Panicked"
 
 	errorTypeAttributeKey = "error.type"
 

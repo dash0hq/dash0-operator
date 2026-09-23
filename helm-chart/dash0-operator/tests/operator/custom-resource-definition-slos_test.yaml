@@ -1,0 +1,7 @@
+suite: test SLO CRD
+templates:
+  - operator/custom-resource-definition-slos.yaml
+tests:
+  - it: custom resource definition for SLOs should match snapshot
+    asserts:
+      - matchSnapshot: {}
