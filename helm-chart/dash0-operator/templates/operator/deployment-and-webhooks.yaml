@@ -113,6 +113,7 @@ spec:
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
 {{- if include "dash0-operator.createOperatorConfigurationResource" . }}
+        - --operator-configuration-managed-via-helm=true
 {{- if .Values.operator.dash0Export.enabled }}
 {{- if not .Values.operator.dash0Export.endpoint }}
 {{- fail "Error: operator.dash0Export.enabled is set to true, but you did not provide a value for operator.dash0Export.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
@@ -160,7 +161,6 @@ spec:
 {{- fail (printf "Error: operator.instrumentation.delivery must be one of \"auto\", \"image-volume\" or \"init-container\", but was %q." .Values.operator.instrumentation.delivery) -}}
 {{- end }}
         - --operator-configuration-instrumentation-delivery={{ .Values.operator.instrumentation.delivery }}
-        - --operator-configuration-managed-via-helm=true
 {{- end }}{{/*closes "if include dash0-operator.createOperatorConfigurationResource" */}}
         - --dash0-telemetry-collection-enabled={{ .Values.operator.telemetryCollectionEnabled }}
 {{- if .Values.operator.signalControl.enabled }}
