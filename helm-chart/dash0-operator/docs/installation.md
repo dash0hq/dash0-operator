@@ -86,38 +86,6 @@ For **production use**, we strongly recommend tweaking a couple of settings:
   [Tuning Resource Requests and Limits](advanced-configuration.md#tuning-resource-requests-and-limits).
   The defaults are a reasonable baseline, but may not be optimal for every cluster.
 
-## Installation with a Non-Dash0 Backend
-
-To send telemetry to an arbitrary OTLP-compatible backend instead of (or in addition to) Dash0, use the Helm value
-`operator.exports`. Since it is a list of objects, it is easiest to provide it via a values file:
-
-```yaml
-# other-backend.yaml
-operator:
-  exports:
-    - grpc:
-        endpoint: REPLACE THIS WITH THE OTLP/gRPC ENDPOINT OF YOUR BACKEND
-        headers:
-          - name: authorization
-            valueFrom:
-              secretKeyRef:
-                name: REPLACE THIS WITH THE NAME OF AN EXISTING KUBERNETES SECRET
-                key: REPLACE THIS WITH THE PROPERTY KEY IN THAT SECRET
-```
-
-```console
-helm install \
-  --wait \
-  --namespace dash0-system \
-  --create-namespace \
-  --values other-backend.yaml \
-  dash0-operator \
-  dash0-operator/dash0-operator
-```
-
-See [Exporting Data to Other Observability Backends](advanced-configuration.md#exporting-data-to-other-observability-backends)
-for the full list of settings of an `http` or `grpc` export.
-
 ## Installation with Secret Reference
 
 Instead of providing the auth token directly, you can also use a secret reference:

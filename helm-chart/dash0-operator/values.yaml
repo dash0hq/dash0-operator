@@ -93,9 +93,11 @@ operator:
   # https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/docs/advanced-configuration.md#exporting-data-to-other-observability-backends
   #
   # Setting this to a non-empty list makes the operator manager create the Dash0OperatorConfiguration resource at
-  # startup, exactly like setting operator.dash0Export.enabled to true does. Both can be combined; the Dash0 export
-  # configured via operator.dash0Export.* always comes first, followed by the entries listed here. It is an error to
-  # configure a dash0 export here while operator.dash0Export.enabled is true.
+  # startup, exactly like setting operator.dash0Export.enabled to true does. For any setup with more than one export,
+  # we recommend configuring all exports here, including the dash0 export(s), instead of spreading them over
+  # operator.dash0Export.* and operator.exports. Combining both is possible nonetheless; the Dash0 export configured via
+  # operator.dash0Export.* then always comes first, followed by the entries listed here. It is an error to configure a
+  # dash0 export here while operator.dash0Export.enabled is true.
   #
   # Note that the order matters for self-monitoring: the operator's own telemetry is sent to the first export only.
   # Self-monitoring is not supported for an HTTP export with encoding "json"; it is silently disabled in that case.
@@ -106,6 +108,14 @@ operator:
   #
   # Example:
   # exports:
+  #   - dash0:
+  #       endpoint: ingress... # the OTLP/gRPC endpoint of your Dash0 organization
+  #       authorization:
+  #         secretRef:
+  #           name: dash0-authorization-secret
+  #           key: token
+  #       dataset: default
+  #       apiEndpoint: https://api... # the API endpoint of your Dash0 organization
   #   - grpc:
   #       endpoint: otel-collector.other-namespace.svc.cluster.local:4317
   #       insecure: true

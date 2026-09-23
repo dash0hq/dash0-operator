@@ -604,9 +604,26 @@ operator:
 Setting `operator.exports` to a non-empty list makes the operator create the operator configuration resource at startup,
 just like `operator.dash0Export.enabled=true` does; see
 [Notes on Creating the Operator Configuration Resource Via Helm](configuration.md#notes-on-creating-the-operator-configuration-resource-via-helm).
-Both can be combined: the Dash0 export configured via `operator.dash0Export.*` comes first, followed by the exports
-listed in `operator.exports`. Configuring a `dash0` export in `operator.exports` while `operator.dash0Export.enabled` is
-`true` is an error; use one of the two, not both.
+For any setup with more than one export, we recommend configuring all exports via `operator.exports`, including the
+`dash0` export(s), so that all exports are defined in one place:
+
+```yaml
+operator:
+  exports:
+    - dash0:
+        endpoint: ... # provide the OTLP gRPC endpoint of your Dash0 organization here
+        authorization:
+          secretRef:
+            name: dash0-authorization-secret
+            key: token
+        apiEndpoint: ... # provide the API endpoint of your Dash0 organization here
+    - grpc:
+        endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+```
+
+Combining `operator.dash0Export.*` with `operator.exports` is also possible: the Dash0 export configured via
+`operator.dash0Export.*` comes first, followed by the exports listed in `operator.exports`. Configuring a `dash0` export
+in `operator.exports` while `operator.dash0Export.enabled` is `true` is an error; use one of the two, not both.
 
 The order matters for the operator's self-monitoring telemetry, which is only sent to the first export. Self-monitoring
 is not supported for an `http` export with `encoding: json` and is silently disabled in that case.

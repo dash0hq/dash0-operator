@@ -229,6 +229,8 @@ express; see
 [Configuring Other Backends Via Helm](advanced-configuration.md#configuring-other-backends-via-helm).
 Both settings can be combined: the Dash0 export derived from `operator.dash0Export.*` becomes the first entry of
 `spec.exports`, the entries of `operator.exports` follow.
+However, for any setup with more than one export, we recommend configuring all exports via `operator.exports`,
+including the `dash0` export(s), instead of spreading them over two different Helm values.
 Note that the entries of `operator.exports` are transported to the operator manager via a Kubernetes ConfigMap, that is,
 unlike the `operator.dash0Export.*` values, they are applied without restarting the operator manager pod when you change
 them via `helm upgrade`.
