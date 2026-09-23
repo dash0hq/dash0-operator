@@ -297,6 +297,9 @@ tests:
         agent0Connector:
           enabled: true
           maxConcurrentCommands: 4
+          allowedKubectlCommands:
+            get: false
+            logs: true
           containerResources:
             limits:
               cpu: 300m
@@ -672,6 +675,17 @@ tests:
                 cpu: 20m
                 memory: 64Mi
             agent0ConnectorMaxConcurrentCommands: 4
+            agent0ConnectorAllowedKubectlCommands:
+              api-resources: true
+              api-versions: true
+              auth: true
+              cluster-info: true
+              events: false
+              explain: true
+              get: false
+              logs: true
+              top: true
+              version: true
             agent0ConnectorTolerations:
               - effect: NoSchedule
                 key: key6
@@ -1068,6 +1082,60 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.clusterRole.rules\[0\]: the verb "patch" is not allowed'
+
+  - it: should render the default allowed kubectl commands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern: |-
+            agent0ConnectorAllowedKubectlCommands:
+              api-resources: true
+              api-versions: true
+              auth: true
+              cluster-info: true
+              events: false
+              explain: true
+              get: true
+              logs: false
+              top: true
+              version: true
+
+  - it: should not render the allowed kubectl commands for the agent0-connector when they are unset
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands: null
+    asserts:
+      - notMatchRegex:
+          path: data['extra.yaml']
+          pattern: agent0ConnectorAllowedKubectlCommands
+
+  - it: should reject an unknown kubectl command in the allowed kubectl commands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands:
+            foo: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands.foo: "foo" is not a kubectl command supported by the agent0-connector'
+
+  - it: should reject a non-boolean value in the allowed kubectl commands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands:
+            logs: "yes"
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands.logs: the value must be true or false, but it is "yes"'
 
   - it: should render the default agent0-connector tolerations and node affinity
     set:
