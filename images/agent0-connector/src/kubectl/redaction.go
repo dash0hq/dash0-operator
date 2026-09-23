@@ -113,18 +113,14 @@ var wellKnownNonSecretValues = map[string]struct{}{
 	"application/x-protobuf": {},
 }
 
-// credentialFieldsPerConfigObject maps the name of an object in a Dash0 custom resource to the fields
-// within it that hold a credential. Keying on the enclosing object rather than on the field name alone keeps the
-// generic field names ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification
-// routing filters. The webhook URLs are credentials themselves: they contain an unguessable token that grants the
-// right to post to the channel.
+// credentialFieldsPerConfigObject maps the name of an object in a resource to the fields within it that hold a
+// credential. Keying on the enclosing object rather than on the field name alone keeps the generic field names
+// ("url", "key") from matching unrelated values, e.g. the attribute keys of the notification routing filters.
+// Webhook URLs are credentials themselves: they contain an unguessable token that grants the right to post to the
+// channel.
 //
 // A field may be given as a path of keys separated by ".", for a credential that sits in a nested object whose own
 // name is too generic to key on.
-//
-// Note that while credentialFieldsPerConfigObject primarily targets known Dash0 resource types, it is used on every
-// resource type when redacting. For example, a non-Dash0 resource type that has the path slackConfig.webhookURL
-// in its spec gets redacted in the same way as Dash0NotificationChannel.
 var credentialFieldsPerConfigObject = map[string][]string{
 	// Dash0NotificationChannel, spec.<type>Config
 	"slackConfig":             {"webhookURL"},
@@ -138,6 +134,11 @@ var credentialFieldsPerConfigObject = map[string][]string{
 	"ilertConfig":             {"url"},
 	"allQuietConfig":          {"url"},
 	"body":                    {"spec.content"},
+
+	// Prometheus Operator ScrapeConfig, spec.<provider>SDConfigs, both allow providing credentials as literal
+	// strings.
+	"scalewaySDConfigs": {"accessKey"},
+	"ovhcloudSDConfigs": {"applicationKey"},
 }
 
 // urlFields are the field names that hold a URL whose credential-bearing parts have to be redacted, while the rest of
@@ -880,21 +881,18 @@ func resolveFieldPath(node any, path []string, onEnclosingObject func(map[string
 
 // redactCredentialFields redacts the given fields of a configuration object, see credentialFieldsPerConfigObject. A
 // field given as a path of keys separated by "." is resolved through the nested objects it names; a path that does not
-// resolve to an object is skipped.
+// resolve to an object is skipped. A configuration object that is a list is redacted element by element (relevant for
+// the service discovery configurations of a ScrapeConfig, e.g. scalewaySDConfigs.accessKey etc.)
 func redactCredentialFields(node any, credentialFields []string, redacted *redactor) {
 	for _, field := range credentialFields {
 		path := strings.Split(field, ".")
-		enclosingObject, isMap := node.(map[string]any)
-		for _, key := range path[:len(path)-1] {
-			if !isMap {
-				break
-			}
-			enclosingObject, isMap = enclosingObject[key].(map[string]any)
-		}
-		if !isMap {
-			continue
-		}
-		redactValueOf(enclosingObject, path[len(path)-1], redacted)
+		// Resolve all segments but the last of the path to the object(s) holding the credential, following lists into every
+		// element. Then redact the value of the last segment in each of them. For "spec.content", that is the key
+		// "content" in the object at "spec"; for a single-segment field like "accessKey", the parent path is empty, so
+		// the configuration object itself (or, if it is a list, each of its elements) holds the credential.
+		resolveFieldPath(node, path[:len(path)-1], func(enclosingObject map[string]any) {
+			redactValueOf(enclosingObject, path[len(path)-1], redacted)
+		})
 	}
 }
 

@@ -1757,12 +1757,27 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 			Arguments: []string{"get", "scrapeconfigs", "-o", "json"},
 		})
 
-		for _, value := range []string{scrapeConfigParamToken, scrapeConfigProxyQueryApiKey} {
+		for _, value := range []string{
+			scrapeConfigParamToken,
+			scrapeConfigProxyQueryApiKey,
+			scrapeConfigScalewayAccessKey,
+			scrapeConfigOvhcloudApplicationKey,
+		} {
 			if strings.Contains(resp.GetStdout(), value) {
 				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
 			}
 		}
-		for _, preserved := range []string{"apiKey", "proxy.example.com:3128", "my-target.example.com:9100"} {
+		// The names of the referenced Kubernetes secrets are not credentials and stay readable, and so does everything
+		// that makes the service discovery configuration comprehensible.
+		for _, preserved := range []string{
+			"apiKey",
+			"proxy.example.com:3128",
+			"my-target.example.com:9100",
+			"my-project-id",
+			"my-scaleway-secret",
+			"my-ovhcloud-secret",
+			"VPS",
+		} {
 			if !strings.Contains(resp.GetStdout(), preserved) {
 				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
 			}
@@ -2111,7 +2126,9 @@ const podMonitorJson = `{
 }`
 
 // scrapeConfigJson holds its query parameters at the root of its spec, unlike a ServiceMonitor, and carries the
-// credential in the query of its proxy URL rather than in its user information.
+// credential in the query of its proxy URL rather than in its user information. Its service discovery configurations
+// are lists of configuration objects, and the two below hold a credential as a literal string rather than as a
+// reference to a Kubernetes secret.
 const scrapeConfigJson = `{
     "apiVersion": "monitoring.coreos.com/v1alpha1",
     "kind": "ScrapeConfig",
@@ -2126,6 +2143,26 @@ const scrapeConfigJson = `{
             ]
         },
         "proxyUrl": "http://proxy.example.com:3128?apiKey=` + scrapeConfigProxyQueryApiKey + `",
+        "scalewaySDConfigs": [
+            {
+                "accessKey": "` + scrapeConfigScalewayAccessKey + `",
+                "projectID": "my-project-id",
+                "secretKey": {
+                    "name": "my-scaleway-secret",
+                    "key": "secret-key"
+                }
+            }
+        ],
+        "ovhcloudSDConfigs": [
+            {
+                "applicationKey": "` + scrapeConfigOvhcloudApplicationKey + `",
+                "service": "VPS",
+                "applicationSecret": {
+                    "name": "my-ovhcloud-secret",
+                    "key": "application-secret"
+                }
+            }
+        ],
         "staticConfigs": [
             {
                 "targets": [
@@ -2212,6 +2249,9 @@ const (
 	scrapeConfigParamToken       = "my-scrape-config-param-token"
 	scrapeConfigProxyQueryApiKey = "my-scrape-config-proxy-query-api-key"
 	unrelatedParamsValue         = "not-a-credential"
+
+	scrapeConfigScalewayAccessKey      = "my-scrape-config-scaleway-access-key"
+	scrapeConfigOvhcloudApplicationKey = "my-scrape-config-ovhcloud-application-key"
 
 	operatorConfigurationToken = "auth_operator-configuration-token"
 	monitoringToken            = "auth_monitoring-token"
