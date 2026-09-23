@@ -207,7 +207,7 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
-			container := getDeployedSyntheticsWorkerContainer(ctx, testLocationID)
+			container := getDeployedSyntheticsWorkerContainer(ctx)
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: authTokenEnvVarName, Value: syntheticsWorkerAuthToken}))
 			Expect(container.Env).To(ContainElement(
@@ -234,7 +234,7 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
-			container := getDeployedSyntheticsWorkerContainer(ctx, testLocationID)
+			container := getDeployedSyntheticsWorkerContainer(ctx)
 			tokenEnvVar := util.GetEnvVar(&container, authTokenEnvVarName)
 			Expect(tokenEnvVar).ToNot(BeNil())
 			Expect(tokenEnvVar.Value).To(BeEmpty())
@@ -272,7 +272,7 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
-			container := getDeployedSyntheticsWorkerContainer(ctx, testLocationID)
+			container := getDeployedSyntheticsWorkerContainer(ctx)
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "SELF_MONITORING_AUTH_TOKEN", Value: AuthorizationTokenTest}))
 			Expect(container.Env).To(ContainElement(
@@ -291,7 +291,7 @@ var _ = Describe("The synthetics-worker resource manager", Ordered, func() {
 			created, _ := aggregateResults(results)
 			Expect(created).To(BeTrue())
 
-			container := getDeployedSyntheticsWorkerContainer(ctx, testLocationID)
+			container := getDeployedSyntheticsWorkerContainer(ctx)
 			for _, envVar := range container.Env {
 				Expect(envVar.Name).ToNot(HavePrefix("OTEL_"))
 			}
@@ -431,12 +431,12 @@ func operatorConfigurationResourceWithSyntheticsWorker(token string) *dash0v1alp
 	return resource
 }
 
-func getDeployedSyntheticsWorkerContainer(ctx context.Context, locationID string) corev1.Container {
+func getDeployedSyntheticsWorkerContainer(ctx context.Context) corev1.Container {
 	GinkgoHelper()
 	deployment := &appsv1.Deployment{}
 	Expect(k8sClient.Get(
 		ctx,
-		client.ObjectKey{Name: DeploymentName(testNamePrefix, locationID), Namespace: OperatorNamespace},
+		client.ObjectKey{Name: DeploymentName(testNamePrefix, testLocationID), Namespace: OperatorNamespace},
 		deployment,
 	)).To(Succeed())
 	Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))

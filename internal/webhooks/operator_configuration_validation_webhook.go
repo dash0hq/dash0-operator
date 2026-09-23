@@ -136,9 +136,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		return response
 	}
 
-	if spec.SyntheticsWorker.IsEnabled(h.syntheticsWorkerEnabledViaHelm) && len(spec.SyntheticsWorker.Instances) == 0 {
-		logger.Warn(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)
-		return admission.Denied(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)
+	if response, denied := validateSyntheticsWorkerHasInstances(spec, h.syntheticsWorkerEnabledViaHelm, logger); denied {
+		return response
 	}
 
 	// Reject if both the deprecated export and the new exports field are set.
@@ -279,6 +278,20 @@ func (h *OperatorConfigurationValidationWebhookHandler) validateSyntheticsWorker
 	}
 	logger.Warn(ErrorMessageSyntheticsWorkerDisabledViaHelm)
 	return admission.Denied(ErrorMessageSyntheticsWorkerDisabledViaHelm), true
+}
+
+// validateSyntheticsWorkerHasInstances rejects an enabled synthetics-worker with no configured instances: enabling
+// the feature without at least one instance would otherwise only fail later, at reconcile time.
+func validateSyntheticsWorkerHasInstances(
+	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	syntheticsWorkerEnabledViaHelm bool,
+	logger logd.Logger,
+) (admission.Response, bool) {
+	if !spec.SyntheticsWorker.IsEnabled(syntheticsWorkerEnabledViaHelm) || len(spec.SyntheticsWorker.Instances) > 0 {
+		return admission.Response{}, false
+	}
+	logger.Warn(ErrorMessageSyntheticsWorkerEnabledWithoutInstances)
+	return admission.Denied(ErrorMessageSyntheticsWorkerEnabledWithoutInstances), true
 }
 
 // validateTelemetryCollectionDisabledConsistency rejects operator configuration resources that keep individual
