@@ -69,8 +69,6 @@ const (
 	// configMapKind is the kind the data of a config map is redacted for, see redactConfigMapData.
 	configMapKind = "ConfigMap"
 
-	proxyUrlField = "proxyUrl"
-
 	// yamlDocumentSeparator starts a new document in a YAML stream.
 	yamlDocumentSeparator = "---"
 )
@@ -142,19 +140,23 @@ var credentialFieldsPerConfigObject = map[string][]string{
 	"body":                    {"spec.content"},
 }
 
-// urlFieldsPerConfigObject maps the name of a configuration object in a Dash0 custom resource to the fields within it
-// that hold a URL whose credential-bearing parts have to be redacted, while the rest of the URL stays readable, see
-// redactUrlParts. This is the treatment for a URL that is not a credential itself: the URL of a synthetic
-// check is the target of the check and is what makes the resource comprehensible, but it can carry a password in its
-// user information and an API key in its query. The webhook URLs of the notification channels are the opposite case -
-// the URL as a whole is the credential - and are listed in credentialFieldsPerConfigObject instead.
+// urlFields are the field names that hold a URL whose credential-bearing parts have to be redacted, while the rest of
+// the URL stays readable, see redactUrlParts. This is the treatment for a URL that is not a credential itself: the URL
+// of a synthetic check is the target of the check and is what makes the resource comprehensible, but it can carry a
+// password in its user information and an API key in its query; the URL of an HTTP proxy is the same case.
 //
-// Note that while urlFieldsPerConfigObject primarily targets known Dash0 resource types, it is used on every resource
-// type when redacting. A non-Dash0 resource type that has the path request.url in its spec gets redacted in the same
-// way as Dash0SyntheticCheck.
-var urlFieldsPerConfigObject = map[string][]string{
-	// Dash0SyntheticCheck, spec.plugin.spec.request
-	"request": {"url"},
+// Unlike the generic names of credentialFieldsPerConfigObject, these names mean a URL wherever they occur, so they are
+// not keyed on the enclosing object and cover any resource type.
+//
+// The webhook URLs of the notification channels are the opposite case - the URL as a whole is the credential, since its
+// path holds an unguessable token - and are listed in credentialFieldsPerConfigObject instead. Those are reached from
+// their configuration object one level above and are already replaced by the time the walk descends to the "url" key
+// itself, where redactUrlParts leaves the placeholder alone. The stronger rule therefore keeps winning over this one.
+var urlFields = map[string]struct{}{
+	// Dash0SyntheticCheck, spec.plugin.spec.request.url
+	"url": {},
+	// The URL of an HTTP proxy, e.g. of the scrape endpoints of the Prometheus Operator CRDs.
+	"proxyUrl": {},
 }
 
 // queryParameterFieldsPerResourceKind maps a resource kind to the paths within it that hold the query parameters of a
@@ -619,8 +621,8 @@ func isWalkableNode(node any) bool {
 //     of a synthetic check, as well as its query parameter values,
 //   - the credentials of the third-party integration of a notification channel and the request body of a synthetic
 //     check (see credentialFieldsPerConfigObject),
-//   - the credential-bearing parts of the URL a synthetic check requests (see urlFieldsPerConfigObject) and of the URL
-//     of an HTTP proxy (proxyUrl),
+//   - the credential-bearing parts of the URL a synthetic check requests and of the URL of an HTTP proxy (see
+//     urlFields),
 //   - the query parameter values of the requests that a scrape configuration configures (see
 //     queryParameterFieldsPerResourceKind),
 //   - the literal values of the environment variables of every container of a pod spec (see redactEnvVarValues), and
@@ -649,8 +651,6 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 			switch key {
 			case "token", "password":
 				redactValueOf(typedNode, key, redacted)
-			case proxyUrlField:
-				redactUrlParts(typedNode, key, redacted)
 			case "headers", "queryParameters", "httpHeaders":
 				redactHeaderValues(typedNode, key, redacted)
 			case "env":
@@ -660,11 +660,11 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 			case "annotations":
 				redactAnnotationValues(value, redacted)
 			default:
+				if _, isUrl := urlFields[key]; isUrl {
+					redactUrlParts(typedNode, key, redacted)
+				}
 				if credentialFields, hasCredentials := credentialFieldsPerConfigObject[key]; hasCredentials {
 					redactCredentialFields(value, credentialFields, redacted)
-				}
-				if urlFields, hasUrls := urlFieldsPerConfigObject[key]; hasUrls {
-					redactUrlFields(value, urlFields, redacted)
 				}
 			}
 			redactDocumentNodeRecursively(value, redacted)
@@ -895,18 +895,6 @@ func redactCredentialFields(node any, credentialFields []string, redacted *redac
 			continue
 		}
 		redactValueOf(enclosingObject, path[len(path)-1], redacted)
-	}
-}
-
-// redactUrlFields redacts the credential-bearing parts of the URLs held by the given fields of a configuration object,
-// see urlFieldsPerConfigObject.
-func redactUrlFields(node any, urlFields []string, redacted *redactor) {
-	configObject, isMap := node.(map[string]any)
-	if !isMap {
-		return
-	}
-	for _, field := range urlFields {
-		redactUrlParts(configObject, field, redacted)
 	}
 }
 

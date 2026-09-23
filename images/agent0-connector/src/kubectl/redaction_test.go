@@ -1332,6 +1332,45 @@ func TestRedactCredentialsInUrl(t *testing.T) {
 	}
 }
 
+// TestWholeUrlCredentialWinsOverUrlFields pins the rule that lets "url" be listed in urlFields without weakening the
+// notification channels: a URL that is a credential as a whole carries its secret in its path, where redactUrlParts
+// would leave it in place. The configuration object that holds it is redacted one level above, before the walk
+// descends to the "url" key itself, so the whole value is already the placeholder when the weaker rule sees it.
+func TestWholeUrlCredentialWinsOverUrlFields(t *testing.T) {
+	const secretInPath = "https://api.incident.io/v2/alert_events/http/whole-url-credential-secret"
+	document := `{
+        "kind": "Dash0NotificationChannel",
+        "spec": {
+            "incidentioConfig": {
+                "url": "` + secretInPath + `"
+            },
+            "plugin": {
+                "spec": {
+                    "request": {
+                        "url": "https://target.example.com/health?apiKey=request-url-secret"
+                    }
+                }
+            }
+        }
+    }`
+
+	rendered, replaced := redactDocument(t, document)
+
+	if strings.Contains(rendered, secretInPath) || strings.Contains(rendered, "alert_events") {
+		t.Errorf("expected the whole webhook URL to be redacted, got %q", rendered)
+	}
+	if !slices.Contains(replaced, secretInPath) {
+		t.Errorf("expected the whole webhook URL to be reported as replaced, got %q", replaced)
+	}
+	// The URL that is not a credential itself keeps everything but its query parameter value.
+	if !strings.Contains(rendered, "https://target.example.com/health?apiKey=") {
+		t.Errorf("expected the request URL to stay readable apart from its query, got %q", rendered)
+	}
+	if strings.Contains(rendered, "request-url-secret") {
+		t.Errorf("expected the query parameter value of the request URL to be redacted, got %q", rendered)
+	}
+}
+
 func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 	logger := discardLogger()
 
