@@ -2889,8 +2889,9 @@ spec:
 						"operator.exports[0].grpc.endpoint": defaultEndpoint,
 						"operator.exports[0].grpc.insecure": "true",
 						"operator.clusterName":              e2eKubernetesContext,
-						// Self-monitoring metrics are namespace-scoped, but this test verifies that only
-						// non-namespace-scoped metrics arrive, so self-monitoring is disabled deliberately.
+						// Self-monitoring would send the operator's own, namespace-scoped metrics to the same
+						// gRPC endpoint, which would break the assertion that only non-namespace-scoped metrics
+						// arrive.
 						"operator.selfMonitoringEnabled": "false",
 					},
 				)).To(Succeed())
