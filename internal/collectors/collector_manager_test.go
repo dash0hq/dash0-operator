@@ -566,6 +566,56 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 	})
 
+	Describe("when handling concurrent reconciliation requests", func() {
+		BeforeEach(func() {
+			CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
+			resource := EnsureMonitoringResourceExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, resource)
+		})
+
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		It("does not reconcile when a reconciliation is already in progress, but does not lose the trigger", func() {
+			// Occupy the manager's reconcile guard and trigger a reconciliation from within it, the way a watch event
+			// or an extra config map update would arrive while a reconciliation is running.
+			executions := 0
+			var skippedHasBeenReconciled bool
+			var skippedErr error
+			_, err := collectorManager.reconcileGuard.Run(func() (bool, error) {
+				executions++
+				if executions == 1 {
+					skippedHasBeenReconciled, skippedErr = collectorManager.ReconcileOpenTelemetryCollector(ctx)
+				}
+				return true, nil
+			}, nil)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(skippedErr).ToNot(HaveOccurred())
+			Expect(skippedHasBeenReconciled).To(BeFalse())
+			// The reconciliation was not executed, so no resources were created ...
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			// ... but the trigger was recorded and the guard repeated the reconciliation once, instead of dropping it.
+			Expect(executions).To(Equal(2))
+
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationDefaultEnvVar, AuthorizationTokenTest)
+		})
+	})
+
 	Describe("when updating the extra config map", func() {
 		BeforeEach(func() {
 			// Create operator configuration resource - required for collector creation
