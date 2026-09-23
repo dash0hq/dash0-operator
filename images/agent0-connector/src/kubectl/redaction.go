@@ -141,24 +141,15 @@ var credentialFieldsPerConfigObject = map[string][]string{
 	"ovhcloudSDConfigs": {"applicationKey"},
 }
 
-// urlFields are the field names that hold a URL whose credential-bearing parts have to be redacted, while the rest of
-// the URL stays readable, see redactUrlParts. This is the treatment for a URL that is not a credential itself: the URL
-// of a synthetic check is the target of the check and is what makes the resource comprehensible, but it can carry a
-// password in its user information and an API key in its query; the URL of an HTTP proxy is the same case.
+// urlFieldNameSuffix marks a field name as holding a URL whose credential-bearing parts have to be redacted, while the
+// rest of the URL stays readable, see redactUrlParts. This is the treatment for a URL that is not a credential itself:
+// the URL of a synthetic check is the target of the check and is what makes the resource comprehensible, but it can
+// carry a password in its user information and an API key in its query; the URL of an HTTP proxy and the token endpoint
+// of an OAuth2 configuration are the same case.
 //
-// Unlike the generic names of credentialFieldsPerConfigObject, these names mean a URL wherever they occur, so they are
-// not keyed on the enclosing object and cover any resource type.
-//
-// The webhook URLs of the notification channels are the opposite case - the URL as a whole is the credential, since its
-// path holds an unguessable token - and are listed in credentialFieldsPerConfigObject instead. Those are reached from
-// their configuration object one level above and are already replaced by the time the walk descends to the "url" key
-// itself, where redactUrlParts leaves the placeholder alone. The stronger rule therefore keeps winning over this one.
-var urlFields = map[string]struct{}{
-	// Dash0SyntheticCheck, spec.plugin.spec.request.url
-	"url": {},
-	// The URL of an HTTP proxy, e.g. of the scrape endpoints of the Prometheus Operator CRDs.
-	"proxyUrl": {},
-}
+// This matches on the suffix rather than on a list of exact names, so this matches "url", "proxyUrl", "proxyURL",
+// "tokenUrl", "apiURL" etc.
+const urlFieldNameSuffix = "url"
 
 // queryParameterFieldsPerResourceKind maps a resource kind to the paths within it that hold the query parameters of a
 // request the resource configures, as a map of a parameter name to its values. A scrape query string carrying an API
@@ -623,8 +614,8 @@ func isWalkableNode(node any) bool {
 //     of a synthetic check, as well as its query parameter values,
 //   - the credentials of the third-party integration of a notification channel and the request body of a synthetic
 //     check (see credentialFieldsPerConfigObject),
-//   - the credential-bearing parts of the URL a synthetic check requests and of the URL of an HTTP proxy (see
-//     urlFields),
+//   - the credential-bearing parts of every field that holds a URL, e.g. the target of a synthetic check, the URL of an
+//     HTTP proxy or an OAuth2 token endpoint (see isUrlField),
 //   - the query parameter values of the requests that a scrape configuration configures (see
 //     queryParameterFieldsPerResourceKind), and the parameters its OAuth2 token request appends (endpointParams),
 //   - the literal values of the environment variables of every container of a pod spec (see redactEnvVarValues), and
@@ -662,7 +653,7 @@ func redactDocumentNodeRecursively(node any, redacted *redactor) {
 			case "annotations":
 				redactAnnotationValues(value, redacted)
 			default:
-				if _, isUrl := urlFields[key]; isUrl {
+				if isUrlField(key) {
 					redactUrlParts(typedNode, key, redacted)
 				}
 				if credentialFields, hasCredentials := credentialFieldsPerConfigObject[key]; hasCredentials {
@@ -898,6 +889,41 @@ func redactCredentialFields(node any, credentialFields []string, redacted *redac
 			redactValueOf(enclosingObject, path[len(path)-1], redacted)
 		})
 	}
+}
+
+// isUrlField reports whether a field of the given name holds a URL whose credential-bearing parts are redacted. Unlike
+// the generic names of credentialFieldsPerConfigObject, such a field is probably a URL no matter where it occurs in
+// the document.
+//
+// The webhook URLs of the notification channels is a different case - the URL as a whole is the credential, since its
+// path holds an unguessable token. Therefore, it is listed in credentialFieldsPerConfigObject instead. Those cases are
+// reached from their configuration object one level above and are already replaced by the time the walk descends to the
+// "url" key itself, where redactUrlParts leaves the placeholder alone. The stronger rule therefore keeps winning over
+// this one.
+func isUrlField(key string) bool {
+	if len(key) < len(urlFieldNameSuffix) {
+		return false
+	}
+	suffix := key[len(key)-len(urlFieldNameSuffix):]
+	if !strings.EqualFold(suffix, urlFieldNameSuffix) {
+		return false
+	}
+	if len(key) == len(urlFieldNameSuffix) {
+		return true
+	}
+	// The suffix has to start a word of the name, so that "proxyUrl", "proxyURL" and "proxy_url" are URL fields while
+	// a name that merely ends in those three letters, e.g. "curl", is not.
+	if suffix[0] == 'U' {
+		return true
+	}
+	precedingCharacter := key[len(key)-len(urlFieldNameSuffix)-1]
+	return !isAsciiLetterOrDigit(precedingCharacter)
+}
+
+func isAsciiLetterOrDigit(character byte) bool {
+	return character >= 'a' && character <= 'z' ||
+		character >= 'A' && character <= 'Z' ||
+		character >= '0' && character <= '9'
 }
 
 // redactUrlParts redacts the potential credential-bearing parts of the URL the given key holds in node (user

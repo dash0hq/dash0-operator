@@ -95,19 +95,20 @@ against a list of fragments (`token`, `key`, `header`, ...) and only looks at fi
 string, or a map of strings. It does not see a credential inside a list of name/value pairs, nor one in a free-text
 field, so a new credential field whose name matches no fragment passes it unnoticed.
 
-When adding or changing a CRD, grep for `credentialFieldsPerConfigObject` and `urlFields`, read the
-`case` clauses of `redactDocumentNodeRecursively` for the field names that are credentials wherever they occur, and
-extend the fixtures in `images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
+When adding or changing a CRD, grep for `credentialFieldsPerConfigObject`, `isUrlField` and
+`queryParameterFieldsPerResourceKind`, read the `case` clauses of `redactDocumentNodeRecursively` for the field names
+that are credentials wherever they occur, and extend the fixtures in
+`images/agent0-connector/src/kubectl/redaction_test.go` for any new credential field. Then run
 `go test ./api/operator/... -run TestAgent0ConnectorRedactsEveryCredentialField` to check the CRDs against the lists.
 
 Note which of the lists a field belongs in: a field listed in `credentialFieldsPerConfigObject` is redacted
 unconditionally, while a header or query parameter value - including a query parameter of a URL whose field name is
-listed in `urlFields` - is only redacted when it does not look like a well-known non-secret value (see
+recognized as a URL by `isUrlField` - is only redacted when it does not look like a well-known non-secret value (see
 `wellKnownNonSecretValues`). A field that always holds a credential belongs in the former, even when it is a header -
 which is why `incidentioConfig` lists `headers`.
 
 A URL that is a credential as a whole belongs in `credentialFieldsPerConfigObject` even though its field is named
-`url`, which `urlFields` also matches. The two do not collide: the configuration object is redacted one level above,
+`url`, which `isUrlField` also matches. The two do not collide: the configuration object is redacted one level above,
 before the walk descends to the `url` key, and `redactUrlParts` leaves the placeholder alone, so the unconditional
 rule wins. `TestWholeUrlCredentialWinsOverUrlFields` pins that ordering.
 

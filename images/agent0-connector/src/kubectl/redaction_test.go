@@ -1401,8 +1401,26 @@ func TestRedactCredentialsInUrl(t *testing.T) {
 	}
 }
 
-// TestWholeUrlCredentialWinsOverUrlFields pins the rule that lets "url" be listed in urlFields without weakening the
-// notification channels: a URL that is a credential as a whole carries its secret in its path, where redactUrlParts
+// TestIsUrlField pins which field names the connector treats as a URL: the suffix has to start a word of the name, in
+// any of the spellings a resource type might use, so that a name that merely ends in those three letters is not run
+// through redactUrlParts.
+func TestIsUrlField(t *testing.T) {
+	for _, name := range []string{
+		"url", "URL", "proxyUrl", "proxyURL", "tokenUrl", "apiURL", "proxy_url", "proxy-url", "webhook.url",
+	} {
+		if !isUrlField(name) {
+			t.Errorf("expected %q to be recognized as a URL field", name)
+		}
+	}
+	for _, name := range []string{"curl", "urls", "u", "ur", "hurl", ""} {
+		if isUrlField(name) {
+			t.Errorf("expected %q not to be recognized as a URL field", name)
+		}
+	}
+}
+
+// TestWholeUrlCredentialWinsOverUrlFields pins the rule that lets "url" be recognized as a URL field without weakening
+// the notification channels: a URL that is a credential as a whole carries its secret in its path, where redactUrlParts
 // would leave it in place. The configuration object that holds it is redacted one level above, before the walk
 // descends to the "url" key itself, so the whole value is already the placeholder when the weaker rule sees it.
 func TestWholeUrlCredentialWinsOverUrlFields(t *testing.T) {
@@ -1784,7 +1802,8 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 		}
 	})
 
-	t.Run("redacts the scrape parameters and the OAuth2 endpoint parameters of a probe", func(t *testing.T) {
+	t.Run("redacts the scrape parameters, the OAuth2 endpoint parameters and the query of the OAuth2 token URL of a "+
+		"probe", func(t *testing.T) {
 		fakeKubectlEchoing(t, probeJson)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
@@ -1793,7 +1812,7 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 			Arguments: []string{"get", "probes", "-o", "json"},
 		})
 
-		for _, value := range []string{probeScrapeApiKey, probeOauth2ClientSecret} {
+		for _, value := range []string{probeScrapeApiKey, probeOauth2ClientSecret, probeOauth2TokenUrlSecret} {
 			if strings.Contains(resp.GetStdout(), value) {
 				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
 			}
@@ -1836,18 +1855,27 @@ func TestRedactThirdPartyCustomResources(t *testing.T) {
 			Arguments: []string{"get", "somecustomresources.example.com", "-o", "json"},
 		})
 
-		for _, value := range []string{unknownResourceToken, unknownResourcePassword, unknownResourceHeaderValue} {
+		for _, value := range []string{
+			unknownResourceToken,
+			unknownResourcePassword,
+			unknownResourceHeaderValue,
+			unknownResourceProxyPassword,
+		} {
 			if strings.Contains(resp.GetStdout(), value) {
 				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
 			}
 		}
-		// The rest of the resource stays readable, including the well-known non-secret header value.
+		// The rest of the resource stays readable, including the well-known non-secret header value, the readable parts
+		// of the proxy URL and a field that merely ends in those three letters without holding a URL.
 		for _, preserved := range []string{
 			"my-custom-resource",
 			"https://upstream.example.com",
 			"db.example.com",
 			"db-user",
 			"application/json",
+			"proxy-user",
+			"proxy.example.com:3128",
+			unrelatedCurlValue,
 		} {
 			if !strings.Contains(resp.GetStdout(), preserved) {
 				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
@@ -2203,7 +2231,8 @@ const scrapeConfigJson = `{
 
 // probeJson holds its query parameters as a list of name/values pairs, unlike the other Prometheus Operator resources,
 // which hold them as a map. It also carries the parameters of an OAuth2 token request, which are redacted wherever they
-// occur rather than per resource kind.
+// occur rather than per resource kind, and the token endpoint of that OAuth2 configuration, whose field name ends in
+// "url" without being named "url".
 const probeJson = `{
     "apiVersion": "monitoring.coreos.com/v1",
     "kind": "Probe",
@@ -2227,7 +2256,7 @@ const probeJson = `{
             }
         ],
         "oauth2": {
-            "tokenUrl": "https://oauth.example.com/token",
+            "tokenUrl": "https://oauth.example.com/token?client_secret=` + probeOauth2TokenUrlSecret + `",
             "endpointParams": {
                 "client_secret": "` + probeOauth2ClientSecret + `"
             }
@@ -2275,7 +2304,9 @@ const unknownCustomResourceJson = `{
             "host": "db.example.com",
             "user": "db-user",
             "password": "` + unknownResourcePassword + `"
-        }
+        },
+        "proxyURL": "http://proxy-user:` + unknownResourceProxyPassword + `@proxy.example.com:3128",
+        "curl": "` + unrelatedCurlValue + `"
     }
 }`
 
@@ -2307,6 +2338,9 @@ const (
 	unknownResourcePassword    = "my-unknown-resource-password"
 	unknownResourceHeaderValue = "Bearer my-unknown-resource-header-secret"
 
+	unknownResourceProxyPassword = "my-unknown-resource-proxy-password"
+	unrelatedCurlValue           = "curl -sS https://upstream.example.com/health"
+
 	serviceMonitorScrapeApiKey   = "my-service-monitor-scrape-api-key"
 	serviceMonitorProxyPassword  = "my-service-monitor-proxy-password"
 	podMonitorScrapeApiKey       = "my-pod-monitor-scrape-api-key"
@@ -2315,6 +2349,7 @@ const (
 	scrapeConfigProxyQueryApiKey = "my-scrape-config-proxy-query-api-key"
 	probeScrapeApiKey            = "my-probe-scrape-api-key"
 	probeOauth2ClientSecret      = "my-probe-oauth2-client-secret"
+	probeOauth2TokenUrlSecret    = "my-probe-oauth2-token-url-secret"
 	unrelatedParamsValue         = "not-a-credential"
 
 	scrapeConfigScalewayAccessKey      = "my-scrape-config-scaleway-access-key"
