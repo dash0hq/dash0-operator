@@ -227,6 +227,24 @@ else
 	cd test/e2e && go run github.com/onsi/ginkgo/v2/ginkgo -v .
 endif
 
+# Validates every collector configuration the operator can render against the collector binary, which rejects settings
+# the OpenTelemetry collector project has removed or renamed. Requires the operator's custom collector image, build it
+# with `make image-collector` beforehand or point COLLECTOR_IMAGE at an existing image. The SignalControl Edge collector
+# image is not built in this repository: by default the test uses the image pinned in the Helm chart's values.yaml
+# (operator.signalControlCollectorImage) and pulls it if it is missing, since that is the image all users run. Set
+# SIGNAL_CONTROL_COLLECTOR_IMAGE_OVERRIDE to validate against a different one.
+.PHONY: collector-configs-validate
+collector-configs-validate: ## Validate the collector configurations the operator can render against their respective collector binaries.
+	@if ! docker image inspect $(COLLECTOR_IMAGE) > /dev/null 2>&1; then \
+	  echo "error: the collector image $(COLLECTOR_IMAGE) does not exist locally, build it via \`make image-collector\` or set COLLECTOR_IMAGE to an existing image."; \
+	  exit 1; \
+	fi
+	RUN_COLLECTOR_CONFIGS_VALIDATION=true \
+	DASH0_COLLECTOR_IMAGE=$(COLLECTOR_IMAGE) \
+	DASH0_SIGNAL_CONTROL_COLLECTOR_IMAGE=$(SIGNAL_CONTROL_COLLECTOR_IMAGE_OVERRIDE) \
+	go test ./internal/collectors/otelcolresources/ \
+	  -run TestCollectorConfigurationsAreAcceptedByTheCollector -count=1 -v
+
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.13.1
 golangci-lint-install:
