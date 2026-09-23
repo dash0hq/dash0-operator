@@ -300,13 +300,11 @@ func validateTelemetryCollectionDisabledConsistency(
 // hasEnabledSignalControl reports whether an enabled Dash0SignalControl resource exists in the cluster. It returns the
 // name of the first such resource for logging. Signal Control requires a Dash0 export, so the operator configuration
 // must not drop its Dash0 export while Signal Control is enabled.
-//
-// The Dash0SignalControl custom resource definition is only installed when the Helm value operator.signalControl.enabled
-// is true. Listing the resources then fails with a no-match error, which means no Signal Control resource can exist,
-// not that the check failed.
 func (h *OperatorConfigurationValidationWebhookHandler) hasEnabledSignalControl(ctx context.Context) (bool, string, error) {
 	allSignalControlResources := &dash0v1alpha1.Dash0SignalControlList{}
 	if err := h.Client.List(ctx, allSignalControlResources); err != nil {
+		// The Dash0SignalControl CRD is only installed when operator.signalControl.enabled is true. Without it, listing
+		// fails with a no-match error, which means no Signal Control resource can exist, not that the check failed.
 		if meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
 			return false, "", nil
 		}
