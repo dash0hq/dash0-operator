@@ -1474,28 +1474,6 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("redacts a credential of a resource type that is not known to hold one", func(t *testing.T) {
-		// A third-party custom resource the default RBAC grants can hold a credential just as well as a Dash0 one: the
-		// proxy of a Perses datasource carries the headers it sends verbatim.
-		fakeKubectlEchoing(t, persesDashboardJson)
-
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-perses-dashboard",
-			Command:   "kubectl",
-			Arguments: []string{"get", "persesdashboards", "-o", "json"},
-		})
-
-		if strings.Contains(resp.GetStdout(), persesProxyToken) {
-			t.Errorf("expected the proxy header value to be redacted, got %q", resp.GetStdout())
-		}
-		// The rest of the dashboard stays readable, which is what makes the response useful for diagnosing it.
-		for _, preserved := range []string{"my-dashboard", "https://prometheus.example.com"} {
-			if !strings.Contains(resp.GetStdout(), preserved) {
-				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
-			}
-		}
-	})
-
 	t.Run("preserves the content of a credential-free response of another resource type", func(t *testing.T) {
 		fakeKubectlEchoing(t, serviceJson)
 
@@ -1593,6 +1571,138 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRedactThirdPartyCustomResources covers the third-party custom resource types that the default RBAC rules of
+// agent0-connector grant access to, as well as an arbitrary one that only custom RBAC rules make reachable.
+func TestRedactThirdPartyCustomResources(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("redacts the proxy headers of a Perses dashboard", func(t *testing.T) {
+		fakeKubectlEchoing(t, persesDashboardJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-perses-dashboard",
+			Command:   "kubectl",
+			Arguments: []string{"get", "persesdashboards", "-o", "json"},
+		})
+
+		if strings.Contains(resp.GetStdout(), persesProxyToken) {
+			t.Errorf("expected the proxy header value to be redacted, got %q", resp.GetStdout())
+		}
+		for _, preserved := range []string{"my-dashboard", "https://prometheus.example.com"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL of a service monitor", func(t *testing.T) {
+		fakeKubectlEchoing(t, serviceMonitorJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-service-monitor",
+			Command:   "kubectl",
+			Arguments: []string{"get", "servicemonitors", "-o", "json"},
+		})
+
+		for _, value := range []string{serviceMonitorScrapeApiKey, serviceMonitorProxyPassword} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The parameter names, the well-known parameter value and the rest of the proxy URL stay readable.
+		for _, preserved := range []string{"api_key", "verbose", "true", "proxy-user", "proxy.example.com:3128"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL of a pod monitor", func(t *testing.T) {
+		fakeKubectlEchoing(t, podMonitorJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-pod-monitor",
+			Command:   "kubectl",
+			Arguments: []string{"get", "podmonitors", "-o", "json"},
+		})
+
+		for _, value := range []string{podMonitorScrapeApiKey, podMonitorProxyPassword} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		for _, preserved := range []string{"api_key", "verbose", "true", "proxy-user", "proxy.example.com:3128"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("redacts the scrape parameters and the proxy URL query of a scrape config", func(t *testing.T) {
+		fakeKubectlEchoing(t, scrapeConfigJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-scrape-config",
+			Command:   "kubectl",
+			Arguments: []string{"get", "scrapeconfigs", "-o", "json"},
+		})
+
+		for _, value := range []string{scrapeConfigParamToken, scrapeConfigProxyQueryApiKey} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		for _, preserved := range []string{"apiKey", "proxy.example.com:3128", "my-target.example.com:9100"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("preserves a params field of a resource kind that does not hold query parameters", func(t *testing.T) {
+		fakeKubectlEchoing(t, configMapWithParamsJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-config-map-params",
+			Command:   "kubectl",
+			Arguments: []string{"get", "configmaps", "-o", "json"},
+		})
+
+		if !strings.Contains(resp.GetStdout(), unrelatedParamsValue) {
+			t.Errorf("expected %q to be preserved, got %q", unrelatedParamsValue, resp.GetStdout())
+		}
+	})
+
+	t.Run("redacts the credentials of a resource type that is not known at all", func(t *testing.T) {
+		// Fields like "token", "password" etc. are always redacted.
+		fakeKubectlEchoing(t, unknownCustomResourceJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-unknown-custom-resource",
+			Command:   "kubectl",
+			Arguments: []string{"get", "somecustomresources.example.com", "-o", "json"},
+		})
+
+		for _, value := range []string{unknownResourceToken, unknownResourcePassword, unknownResourceHeaderValue} {
+			if strings.Contains(resp.GetStdout(), value) {
+				t.Errorf("expected %q to be redacted, got %q", value, resp.GetStdout())
+			}
+		}
+		// The rest of the resource stays readable, including the well-known non-secret header value.
+		for _, preserved := range []string{
+			"my-custom-resource",
+			"https://upstream.example.com",
+			"db.example.com",
+			"db-user",
+			"application/json",
+		} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
 }
 
 func TestRedactDash0SecretsWithTruncatedStdout(t *testing.T) {
@@ -1826,6 +1936,139 @@ const persesDashboardJson = `{
     }
 }`
 
+// serviceMonitorJson is a third-party custom resource which is included in the default RBAC rules. The query
+// parameters of its scrape endpoints and the URL of the proxy they go through can both carry a credential.
+const serviceMonitorJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "ServiceMonitor",
+    "metadata": {
+        "name": "my-service-monitor",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "endpoints": [
+            {
+                "path": "/metrics",
+                "port": "http",
+                "params": {
+                    "api_key": [
+                        "` + serviceMonitorScrapeApiKey + `"
+                    ],
+                    "verbose": [
+                        "true"
+                    ]
+                },
+                "proxyUrl": "http://proxy-user:` + serviceMonitorProxyPassword + `@proxy.example.com:3128"
+            }
+        ],
+        "selector": {
+            "matchLabels": {
+                "app": "my-app"
+            }
+        }
+    }
+}`
+
+// podMonitorJson holds its query parameters under a different path than a ServiceMonitor
+// (spec.podMetricsEndpoints rather than spec.endpoints), see queryParameterFieldsPerResourceKind.
+const podMonitorJson = `{
+    "apiVersion": "monitoring.coreos.com/v1",
+    "kind": "PodMonitor",
+    "metadata": {
+        "name": "my-pod-monitor",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "podMetricsEndpoints": [
+            {
+                "path": "/metrics",
+                "port": "http",
+                "params": {
+                    "api_key": [
+                        "` + podMonitorScrapeApiKey + `"
+                    ],
+                    "verbose": [
+                        "true"
+                    ]
+                },
+                "proxyUrl": "http://proxy-user:` + podMonitorProxyPassword + `@proxy.example.com:3128"
+            }
+        ],
+        "selector": {
+            "matchLabels": {
+                "app": "my-app"
+            }
+        }
+    }
+}`
+
+// scrapeConfigJson holds its query parameters at the root of its spec, unlike a ServiceMonitor, and carries the
+// credential in the query of its proxy URL rather than in its user information.
+const scrapeConfigJson = `{
+    "apiVersion": "monitoring.coreos.com/v1alpha1",
+    "kind": "ScrapeConfig",
+    "metadata": {
+        "name": "my-scrape-config",
+        "namespace": "monitoring"
+    },
+    "spec": {
+        "params": {
+            "token": [
+                "` + scrapeConfigParamToken + `"
+            ]
+        },
+        "proxyUrl": "http://proxy.example.com:3128?apiKey=` + scrapeConfigProxyQueryApiKey + `",
+        "staticConfigs": [
+            {
+                "targets": [
+                    "my-target.example.com:9100"
+                ]
+            }
+        ]
+    }
+}`
+
+// configMapWithParamsJson has a field named "params", but is not a resource kind whose query parameters are known, so
+// its values stay readable, see queryParameterFieldsPerResourceKind.
+const configMapWithParamsJson = `{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map",
+        "namespace": "my-namespace"
+    },
+    "data": {
+        "params": "` + unrelatedParamsValue + `"
+    }
+}`
+
+// unknownCustomResourceJson is a custom resource of a type the connector knows nothing about: it is neither a Dash0
+// resource type nor one the default RBAC rules grant, so it is only reachable with custom RBAC rules.
+const unknownCustomResourceJson = `{
+    "apiVersion": "example.com/v1",
+    "kind": "SomeCustomResource",
+    "metadata": {
+        "name": "my-custom-resource",
+        "namespace": "my-namespace"
+    },
+    "spec": {
+        "replicas": 3,
+        "upstream": {
+            "endpoint": "https://upstream.example.com",
+            "token": "` + unknownResourceToken + `",
+            "headers": {
+                "Authorization": "` + unknownResourceHeaderValue + `",
+                "Content-Type": "application/json"
+            }
+        },
+        "database": {
+            "host": "db.example.com",
+            "user": "db-user",
+            "password": "` + unknownResourcePassword + `"
+        }
+    }
+}`
+
 // serviceJson is an example for a resource that holds no credential at all.
 const serviceJson = `{
     "apiVersion": "v1",
@@ -1849,6 +2092,18 @@ const serviceJson = `{
 
 const (
 	persesProxyToken = "Bearer my-perses-proxy-secret"
+
+	unknownResourceToken       = "my-unknown-resource-token"
+	unknownResourcePassword    = "my-unknown-resource-password"
+	unknownResourceHeaderValue = "Bearer my-unknown-resource-header-secret"
+
+	serviceMonitorScrapeApiKey   = "my-service-monitor-scrape-api-key"
+	serviceMonitorProxyPassword  = "my-service-monitor-proxy-password"
+	podMonitorScrapeApiKey       = "my-pod-monitor-scrape-api-key"
+	podMonitorProxyPassword      = "my-pod-monitor-proxy-password"
+	scrapeConfigParamToken       = "my-scrape-config-param-token"
+	scrapeConfigProxyQueryApiKey = "my-scrape-config-proxy-query-api-key"
+	unrelatedParamsValue         = "not-a-credential"
 
 	operatorConfigurationToken = "auth_operator-configuration-token"
 	monitoringToken            = "auth_monitoring-token"

@@ -85,18 +85,7 @@ output formats that reshape a response (`-o go-template/template/jsonpath/jsonpa
 
 A CRD change has to be checked against the list of credential *field names* in
 `images/agent0-connector/src/kubectl/redaction.go`, which is a copy of knowledge that actually lives in
-`api/operator`:
-
-- `credentialFieldsPerConfigObject` - the fields that only hold a credential within a particular configuration object,
-  keyed by the name of that object (e.g. `slackConfig` -> `webhookURL`). Generic field names such as `url` or `key` are
-  credentials in one object and harmless in another, which is why they are keyed this way.
-- `urlFieldsPerConfigObject` - the fields that hold a URL which is not a credential itself, but can contain one. Only
-  sensitive parts of the URL are redacted. A URL that is a credential as a whole, such as a webhook URL, belongs in
-  `credentialFieldsPerConfigObject` instead.
-- The field names that are credentials wherever they occur are handled in `redactDocumentNodeRecursively`: `token`,
-  `password`, the header/query parameter values under `headers`, `queryParameters` and `httpHeaders`, and the values
-  under `env`, `command` and `args`, which are replaced in full because a credential cannot be told apart from an
-  innocuous value there.
+`api/operator`.
 
 Missing that step can be silent: the new credential is simply not matched, the response is still considered fully
 redacted, and the credential is sent to the backend in plaintext. The test
