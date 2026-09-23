@@ -6,7 +6,9 @@
 set -euo pipefail
 
 # Deploys the operator with an OTLP/gRPC export configured via the Helm value operator.exports (instead of
-# operator.dash0Export.*), pointing at the otlp-sink. Verify the result with
+# operator.dash0Export.*). The export points at OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT (with the headers
+# from OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS), or at the otlp-sink if no endpoint is set. Verify the result
+# with
 # kubectl get dash0operatorconfiguration dash0-operator-configuration-auto-resource -o yaml
 # and by watching the logs of the otlp-sink collector.
 
@@ -28,13 +30,16 @@ kind="${2:-$default_workload_kind}"
 runtime_under_test="${3:-$default_runtime}"
 additional_namespaces="false"
 
-export USE_OTLP_SINK=true
-export OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT=true
-
 # shellcheck source=./lib/util
 source "$scripts_lib/util"
 
 load_env_file
+
+if [[ -z "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT:-}" ]]; then
+  export USE_OTLP_SINK=true
+  # The http:// prefix marks the endpoint as insecure, for the collectors as well as for the operator's self-monitoring.
+  export OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT=http://otlp-sink.otlp-sink.svc.cluster.local:4317
+fi
 verify_kubectx
 setup_test_environment "$target_namespace"
 

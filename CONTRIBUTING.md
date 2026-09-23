@@ -271,6 +271,14 @@ Moving beyond the quickstart instructions, here are more details on the test scr
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `OPERATOR_CONFIGURATION_VIA_HELM_DATASET`: Use this to set a custom dataset in the auto operator configuration
       resource.
+    * `OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT`: Set this to an OTLP/gRPC endpoint to configure a gRPC
+      export via the Helm value `operator.exports` instead of a Dash0 export via `operator.dash0Export.*`. Prefix the
+      endpoint with `http://` for an insecure connection.
+      Test scenario 11 defaults this to the OTLP sink (and sets `USE_OTLP_SINK=true`) if it is not set.
+      This defaults to being empty, which means a Dash0 export is configured.
+    * `OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS`: A comma-separated list of `name=value` pairs, which are
+      added as headers to the gRPC export configured via `OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT`, e.g.
+      `authorization=Bearer my-token,X-My-Header=my-value`. Header values must not contain commas.
     * `OPERATOR_HELM_CHART_VERSION`: Set this to use a specific version of the Helm chart. This is meant to be used
       together with `OPERATOR_HELM_CHART=dash0-operator/dash0-operator` or similar, where `OPERATOR_HELM_CHART` refers
       to an already installed remote Helm repository (e.g. https://dash0hq.github.io/dash0-operator) that contains the
