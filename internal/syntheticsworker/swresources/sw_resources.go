@@ -18,6 +18,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	commonotel "github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
@@ -336,6 +337,14 @@ func (m *SyntheticsWorkerResourceManager) createSelfMonitoringInput(
 	// environment variables of its container.
 	selfMonitoringConfiguration.Token = nil
 	selfMonitoringConfiguration.ResolvedSecretHeaderValues = nil
+
+	protocol := selfmonitoringapiaccess.ConvertExportConfigurationToEnvVarSettings(selfMonitoringConfiguration.Export).Protocol
+	// The synthetics-worker only builds gRPC OTel exporters.
+	if selfMonitoringConfiguration.SelfMonitoringEnabled && protocol == commonotel.ProtocolHttpProtobuf {
+		selfMonitoringConfiguration.SelfMonitoringEnabled = false
+		logger.Info("self-monitoring is disabled for the synthetics-worker: the resolved export protocol " +
+			"(http/protobuf) is not supported, only grpc is")
+	}
 
 	return selfMonitoringInput{
 		configuration: selfMonitoringConfiguration,
