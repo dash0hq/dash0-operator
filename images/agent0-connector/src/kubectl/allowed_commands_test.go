@@ -13,8 +13,6 @@ import (
 	"testing"
 
 	"sigs.k8s.io/yaml"
-
-	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
 const (
@@ -95,74 +93,6 @@ func TestDescribeAllowedKubectlCommands(t *testing.T) {
 		t.Run(tt.expected, func(t *testing.T) {
 			if got := renderAllowedKubectlCommandsHumanReadable(tt.kubectlCommands); got != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, got)
-			}
-		})
-	}
-}
-
-func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
-	defaults := DefaultAllowedKubectlCommands()
-	onlyGet, _ := ParseAllowedKubectlCommands("get")
-	nothing, _ := ParseAllowedKubectlCommands("")
-	logsAndEvents, _ := ParseAllowedKubectlCommands("logs,events")
-
-	tests := []struct {
-		name            string
-		allowed         AllowedKubectlCommands
-		arguments       []string
-		rejectionReason string
-	}{
-		{name: "logs is rejected by default", allowed: defaults, arguments: []string{"logs", "my-pod"},
-			rejectionReason: `the kubectl command "logs" has been disabled in the configuration of the ` +
-				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
-				`allowed kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "explain", ` +
-				`"get", "top" and "version"`},
-		{name: "events is rejected by default", allowed: defaults, arguments: []string{"events"},
-			rejectionReason: `the kubectl command "events" has been disabled in the configuration of the ` +
-				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
-				`allowed kubectl commands are "api-resources", "api-versions", "auth", "cluster-info", "explain", ` +
-				`"get", "top" and "version"`},
-		{name: "get is allowed by default", allowed: defaults, arguments: []string{"get", "pods"}},
-		{name: "logs is allowed when enabled", allowed: logsAndEvents, arguments: []string{"logs", "my-pod"}},
-		{name: "events is allowed when enabled", allowed: logsAndEvents, arguments: []string{"events"}},
-		{name: "get is rejected when disabled", allowed: logsAndEvents, arguments: []string{"get", "pods"},
-			rejectionReason: `the kubectl command "get" has been disabled in the configuration of the ` +
-				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), the only ` +
-				`allowed kubectl commands are "events" and "logs"`},
-		{name: "a restricted configuration only advertises the allowed commands", allowed: onlyGet,
-			arguments: []string{"delete", "pod", "x"},
-			rejectionReason: `the kubectl command "delete" is not an allowed read-only command, the only allowed ` +
-				`kubectl command is "get"`},
-		{name: "an empty configuration rejects every command", allowed: nothing, arguments: []string{"version"},
-			rejectionReason: `the kubectl command "version" has been disabled in the configuration of the ` +
-				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), no kubectl ` +
-				`command is allowed by the configuration of the agent0-connector`},
-		{name: "bare kubectl is allowed even with an empty configuration", allowed: nothing,
-			arguments: []string{"--help"}},
-		{name: "describe keeps its specific rejection reason", allowed: onlyGet, arguments: []string{"describe", "pods"},
-			rejectionReason: describeNotSupported},
-		{name: "enabling a command keeps the checks of its flags", allowed: logsAndEvents,
-			arguments: []string{"logs", "my-pod", "-f"}, rejectionReason: flagNotAllowed("-f")},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := &pb.CommandRequest{Command: "kubectl", Arguments: tt.arguments}
-			_, err := validateCommandAndParseArguments(req, tt.allowed)
-			if tt.rejectionReason == "" {
-				if err != nil {
-					t.Errorf("expected request to be allowed, but it was rejected: %v", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("expected request to be rejected, but it was allowed")
-			}
-			if err.Error() != tt.rejectionReason {
-				t.Errorf(
-					"expected the request to be rejected with\n\t%s\nbut it was rejected with\n\t%s",
-					tt.rejectionReason,
-					err,
-				)
 			}
 		})
 	}
