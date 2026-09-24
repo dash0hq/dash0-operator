@@ -863,7 +863,7 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 var kubectlCommandRedactionRationale = map[string]string{
 	"get": "the only kubectl command whose response is redacted, see redactSecretsInResponse",
 	"describe": "renders resource content in a text format that cannot be parsed, and is therefore rejected for " +
-		"every resource type, see describeRequested and describeOfSensitiveResourceRequested",
+		"every resource type, see unconditionallyRejectedKubectlCommands",
 	"cluster-info": "the bare form only prints the addresses of the control plane and of the cluster's services; its " +
 		"subcommands are rejected, see allowedSubcommandsPerKubectlCommand",
 	"api-resources": "prints the known resource types and their metadata, never the content of an instance",
