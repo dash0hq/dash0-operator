@@ -890,6 +890,28 @@ var kubectlCommandRedactionRationale = map[string]string{
 // "kubectl cluster-info dump" hand out pod specs etc. unredacted. This checks for the kubectl command that are on the
 // allowlist without their response being redacted. Whenever supportedKubectlCommands grows, the new command has to be
 // classified deliberately.
+func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
+	for kubectlCmd := range supportedKubectlCommands {
+		if _, hasRationale := kubectlCommandRedactionRationale[kubectlCmd]; !hasRationale {
+			t.Errorf(
+				"the kubectl command %q is allowed, but no rationale records why its response cannot expose a credential; "+
+					"redaction only runs for \"get\" (see responseHasToBeRedacted), so either confirm that this command "+
+					"cannot render resource content and add a rationale to kubectlCommandRedactionRationale, or restrict it in "+
+					"validation.go",
+				kubectlCmd,
+			)
+		}
+	}
+	for kubectlCmd := range kubectlCommandRedactionRationale {
+		if _, supported := supportedKubectlCommands[kubectlCmd]; !supported {
+			t.Errorf(
+				"kubectlCommandRedactionRationale has a stale entry for %q, which is not an allowed kubectl command any more",
+				kubectlCmd,
+			)
+		}
+	}
+}
+
 // TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally pins that the list of allowed kubectl commands, which
 // rejection messages hand to the calling agent as the list of commands it may use, names no command that a later check
 // rejects for every invocation, even when the configuration lists it. Advertising such a command sends the agent into
@@ -909,28 +931,6 @@ func TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally(t *testing.T) {
 		if strings.Contains(allowed.humanReadable, fmt.Sprintf("%q", kubectlCmd)) {
 			t.Errorf(
 				"the kubectl command %q is rejected for every invocation, but rejection messages advertise it as allowed",
-				kubectlCmd,
-			)
-		}
-	}
-}
-
-func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
-	for kubectlCmd := range supportedKubectlCommands {
-		if _, hasRationale := kubectlCommandRedactionRationale[kubectlCmd]; !hasRationale {
-			t.Errorf(
-				"the kubectl command %q is allowed, but no rationale records why its response cannot expose a credential; "+
-					"redaction only runs for \"get\" (see responseHasToBeRedacted), so either confirm that this command "+
-					"cannot render resource content and add a rationale to kubectlCommandRedactionRationale, or restrict it in "+
-					"validation.go",
-				kubectlCmd,
-			)
-		}
-	}
-	for kubectlCmd := range kubectlCommandRedactionRationale {
-		if _, supported := supportedKubectlCommands[kubectlCmd]; !supported {
-			t.Errorf(
-				"kubectlCommandRedactionRationale has a stale entry for %q, which is not an allowed kubectl command any more",
 				kubectlCmd,
 			)
 		}
