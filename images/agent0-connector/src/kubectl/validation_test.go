@@ -792,6 +792,11 @@ func TestValidateCommandRequest(t *testing.T) {
 	}
 }
 
+// getEventsDisabled is the reason with which "kubectl get events" is rejected while "kubectl events" is disabled.
+const getEventsDisabled = `reading events via "kubectl get" is not allowed, because the kubectl command "events" has ` +
+	`been disabled in the configuration of the agent0-connector (via the Helm value ` +
+	`operator.agent0Connector.allowedKubectlCommands)`
+
 func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 	defaults := defaultKubectlCommands
 	onlyGet := mustParseAllowedKubectlCommands("get")
@@ -830,6 +835,26 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 			rejectionReason: describeNotSupported},
 		{name: "enabling a command keeps the checks of its flags", allowed: logsAndEvents,
 			arguments: []string{"logs", "my-pod", "-f"}, rejectionReason: flagNotAllowed("-f")},
+		{name: "get events is rejected by default", allowed: defaults, arguments: []string{"get", "events"},
+			rejectionReason: getEventsDisabled},
+		{name: "get event is rejected by default", allowed: defaults, arguments: []string{"get", "event", "x"},
+			rejectionReason: getEventsDisabled},
+		{name: "get ev is rejected by default", allowed: defaults, arguments: []string{"get", "ev", "-A"},
+			rejectionReason: getEventsDisabled},
+		{name: "get events with -o name is rejected by default", allowed: defaults,
+			arguments: []string{"get", "events", "-o", "name"}, rejectionReason: getEventsDisabled},
+		{name: "get events.events.k8s.io is rejected by default", allowed: defaults,
+			arguments: []string{"get", "events.events.k8s.io", "-o", "yaml"}, rejectionReason: getEventsDisabled},
+		{name: "get events.v1.events.k8s.io is rejected by default", allowed: defaults,
+			arguments: []string{"get", "Events.v1.events.k8s.io"}, rejectionReason: getEventsDisabled},
+		{name: "get events in a list of resource types is rejected by default", allowed: defaults,
+			arguments: []string{"get", "pods,events"}, rejectionReason: getEventsDisabled},
+		{name: "get events in a type/name pair is rejected by default", allowed: defaults,
+			arguments: []string{"get", "pod/a", "event/b"}, rejectionReason: getEventsDisabled},
+		{name: "get of a resource named events is allowed by default", allowed: defaults,
+			arguments: []string{"get", "configmap", "events"}},
+		{name: "get events is allowed when events is enabled", allowed: everySupportedKubectlCommandAllowed(),
+			arguments: []string{"get", "events", "-o", "yaml"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
