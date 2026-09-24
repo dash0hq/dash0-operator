@@ -1545,7 +1545,8 @@ operator:
     # the agent0-connector. This setting can only restrict the set of commands the agent0-connector supports, it cannot
     # add new ones: kubectl commands that the agent0-connector always rejects (e.g. "kubectl describe", or any command
     # that modifies the cluster state) cannot be enabled here. Listing any other key than the ones below fails the
-    # installation. Allowing a command does not automatically grant the RBAC permissions it needs, see
+    # installation. Disabling all commands also fails the installation - set operator.agent0Connector.enabled=false
+    # instead. Allowing a command does not automatically grant the RBAC permissions it needs, see
     # operator.agent0Connector.clusterRole.rules.
     allowedKubectlCommands:
       api-resources: true

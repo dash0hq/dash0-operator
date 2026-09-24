@@ -1104,16 +1104,35 @@ tests:
               top: true
               version: true
 
-  - it: should not render the allowed kubectl commands for the agent0-connector when they are unset
+  - it: should reject unsetting allowedKubectlCommands for the agent0-connector
     set:
       operator:
         agent0Connector:
           enabled: true
           allowedKubectlCommands: null
     asserts:
-      - notMatchRegex:
-          path: data['extra.yaml']
-          pattern: agent0ConnectorAllowedKubectlCommands
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands must not be empty, at least one kubectl command needs to be enabled'
+
+  - it: should reject configurations where all kubectl commands are disabled
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands:
+            api-resources: false
+            api-versions: false
+            auth: false
+            cluster-info: false
+            events: false
+            explain: false
+            get: false
+            logs: false
+            top: false
+            version: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands does not enable any kubectl command, at least one kubectl command needs to be set to true'
 
   - it: should reject an unknown kubectl command in the allowed kubectl commands for the agent0-connector
     set:
@@ -1136,6 +1155,17 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'operator.agent0Connector.allowedKubectlCommands.logs: the value must be true or false, but it is "yes"'
+
+  - it: should reject enabling "kubectl describe" in the allowed kubectl commands for the agent0-connector
+    set:
+      operator:
+        agent0Connector:
+          enabled: true
+          allowedKubectlCommands:
+            describe: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'operator.agent0Connector.allowedKubectlCommands.describe: "kubectl describe" cannot be enabled'
 
   - it: should render the default agent0-connector tolerations and node affinity
     set:

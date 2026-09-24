@@ -548,15 +548,6 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS", Value: "6"}))
 		})
 
-		It("does not set the allowed kubectl commands when the extra config has no value", func() {
-			container := getDeployment(
-				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
-			).Spec.Template.Spec.Containers[0]
-			for _, envVar := range container.Env {
-				Expect(envVar.Name).ToNot(Equal("DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"))
-			}
-		})
-
 		It("passes the enabled kubectl commands from the extra config as a sorted list", func() {
 			extraConfig := util.ExtraConfig{Agent0ConnectorAllowedKubectlCommands: map[string]bool{
 				"version": true,
@@ -569,6 +560,14 @@ var _ = Describe("The desired state of the agent0-connector resources", func() {
 			).Spec.Template.Spec.Containers[0]
 			Expect(container.Env).To(ContainElement(
 				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS", Value: "events,get,version"}))
+		})
+
+		It("passes an empty list when the extra config has no value", func() {
+			container := getDeployment(
+				assembleDesiredStateOrFail(testConfig(), authTokenEnvVar, util.ExtraConfig{}),
+			).Spec.Template.Spec.Containers[0]
+			Expect(container.Env).To(ContainElement(
+				corev1.EnvVar{Name: "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS", Value: ""}))
 		})
 
 		It("passes an empty list when every kubectl command is disabled", func() {

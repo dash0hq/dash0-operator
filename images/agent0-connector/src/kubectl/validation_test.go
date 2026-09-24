@@ -793,10 +793,9 @@ func TestValidateCommandRequest(t *testing.T) {
 }
 
 func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
-	defaults := DefaultAllowedKubectlCommands()
-	onlyGet, _ := ParseAllowedKubectlCommands("get")
-	nothing, _ := ParseAllowedKubectlCommands("")
-	logsAndEvents, _ := ParseAllowedKubectlCommands("logs,events")
+	defaults := defaultKubectlCommands
+	onlyGet := mustParseAllowedKubectlCommands("get")
+	logsAndEvents := mustParseAllowedKubectlCommands("logs,events")
 
 	tests := []struct {
 		name            string
@@ -825,11 +824,7 @@ func TestValidationHonorsTheAllowedKubectlCommands(t *testing.T) {
 			arguments: []string{"delete", "pod", "x"},
 			rejectionReason: `the kubectl command "delete" is not an allowed read-only command, the only allowed ` +
 				`kubectl command is "get"`},
-		{name: "an empty configuration rejects every command", allowed: nothing, arguments: []string{"version"},
-			rejectionReason: `the kubectl command "version" has been disabled in the configuration of the ` +
-				`agent0-connector (via the Helm value operator.agent0Connector.allowedKubectlCommands), no kubectl ` +
-				`command is allowed by the configuration of the agent0-connector`},
-		{name: "bare kubectl is allowed even with an empty configuration", allowed: nothing,
+		{name: "bare kubectl is allowed with a restricted configuration", allowed: onlyGet,
 			arguments: []string{"--help"}},
 		{name: "describe keeps its specific rejection reason", allowed: onlyGet, arguments: []string{"describe", "pods"},
 			rejectionReason: describeNotSupported},
@@ -877,13 +872,15 @@ var kubectlCommandRedactionRationale = map[string]string{
 	"events": "Renders Event objects, whose messages are emitted by the kubelet and by controllers rather than " +
 		"copied from the content of a resource. Allowing access to events is a judgement: an admission webhook is free " +
 		"to quote what was submitted to it into a rejection message, which the connector cannot reliably redact. Events " +
-		"are supported, but disabled by default (see disabledByDefaultKubectlCommands). Users have to explicitly opt-in.",
+		"are supported, but disabled by default (see operator.agent0Connector.allowedKubectlCommands in the Helm " +
+		"chart's values.yaml). Users have to explicitly opt-in.",
 	"top": "prints a CPU/memory usage table only",
 	"auth": "restricted to \"can-i\", see allowedSubcommandsPerKubectlCommand; it answers with yes/no or with the rule " +
 		"list of the agent0-connector's own service account, never with the content of a resource",
 	"version": "prints the client and server version only",
 	"logs": "Streams the raw log output of a container. Logs cannot be reliably redacted. Logs are supported, but " +
-		"disabled by default (see disabledByDefaultKubectlCommands). Users have to explicitly opt-in.",
+		"disabled by default (see operator.agent0Connector.allowedKubectlCommands in the Helm chart's values.yaml). " +
+		"Users have to explicitly opt-in.",
 }
 
 // TestEveryAllowedKubectlCommandHasARedactionRationale guards against the drift that would for example let

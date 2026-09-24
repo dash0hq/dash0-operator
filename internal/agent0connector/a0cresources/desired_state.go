@@ -37,8 +37,9 @@ const (
 
 	// allowedKubectlCommandsEnvVarName is the environment variable through which the agent0-connector workload
 	// receives the comma-separated list of kubectl commands it may execute (see the Helm value
-	// operator.agent0Connector.allowedKubectlCommands). The variable is required, agent0-connector terminates with an
-	// error if it is absent, empty, when it cannot be parsed, or when it contains no known commands.
+	// operator.agent0Connector.allowedKubectlCommands). The variable is required, the agent0-connector terminates with
+	// an error if it is absent, empty, cannot be parsed, or contains a kubectl command the agent0-connector does not
+	// support.
 	allowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
 
 	// defaultMaxConcurrentCommands is the number of command requests the agent0-connector executes at the same time when
@@ -578,8 +579,7 @@ func assembleClusterRoleBinding(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRo
 	}
 }
 
-// joinAllowedKubectlCommands renders the allowed kubectl commands as a sorted, comma-separated list. The
-// agent0-connector ignores any entry that is not a kubectl command it supports.
+// joinAllowedKubectlCommands renders the enabled kubectl commands as a sorted, comma-separated list.
 func joinAllowedKubectlCommands(allowedKubectlCommands map[string]bool) string {
 	enabled := make([]string, 0, len(allowedKubectlCommands))
 	for kubectlCommand, allowed := range allowedKubectlCommands {
@@ -674,12 +674,10 @@ func assembleDeployment(
 		container.Env = append(container.Env, *authTokenEnvVar)
 	}
 
-	if len(extraConfig.Agent0ConnectorAllowedKubectlCommands) > 0 {
-		container.Env = append(container.Env, corev1.EnvVar{
-			Name:  allowedKubectlCommandsEnvVarName,
-			Value: joinAllowedKubectlCommands(extraConfig.Agent0ConnectorAllowedKubectlCommands),
-		})
-	}
+	container.Env = append(container.Env, corev1.EnvVar{
+		Name:  allowedKubectlCommandsEnvVarName,
+		Value: joinAllowedKubectlCommands(extraConfig.Agent0ConnectorAllowedKubectlCommands),
+	})
 
 	if c.Insecure {
 		container.Env = append(container.Env, corev1.EnvVar{
