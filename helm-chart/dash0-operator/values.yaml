@@ -1557,7 +1557,8 @@ operator:
       # credentials, API tokens, secrets or customer PII is leaked into event bodies. If in doubt, leave it disabled.
       # Kubernetes events can also be collected as normal telemetry via the operator, which is also available to
       # Agent0 then. If you want to allow access to events, you also need to allow RBAC access to events (core API
-      # group) and events.events.k8s.io via operator.agent0Connector.clusterRole.rules.
+      # group) and events.events.k8s.io via operator.agent0Connector.clusterRole.rules. While events is disabled, reading
+      # events via "kubectl get events" is rejected as well.
       events: false
       explain: true
       # kubectl get is the main kubectl command that Agent0 uses. Disabling it will likely render the agent0-connector

@@ -171,6 +171,19 @@ var sensitiveResourceTypes = map[string]sensitiveResource{
 	"secrets": secretResource,
 }
 
+const (
+	kubectlCommandGet    = "get"
+	kubectlCommandEvents = "events"
+)
+
+// eventResourceTypes are the normalized resource types under which "kubectl get" reads Kubernetes events, from the core
+// API group as well as from events.k8s.io, in singular, plural and short form.
+var eventResourceTypes = map[string]struct{}{
+	"event":  {},
+	"events": {},
+	"ev":     {},
+}
+
 // validateCommandAndParseArguments parses the request's argument list and ensures the request invokes an allowed
 // read-only kubectl command, and only uses allowed flags. It returns the parsed argument list, which the caller may
 // reuse for further processing (e.g. redacting the response). If the request is allowed, the returned error is nil.
@@ -199,6 +212,9 @@ func validateCommandAndParseArguments(
 		return kubectlArguments{}, errors.New(reason)
 	}
 	if reason, blocked := disallowedSubcommandRequested(arguments); blocked {
+		return kubectlArguments{}, errors.New(reason)
+	}
+	if reason, blocked := eventsReadViaGetRequested(arguments, allowedKubectlCommands); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	// Checked before the output format, so that a request reading a secret is rejected with the reason that names what
@@ -297,6 +313,23 @@ func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
 		strings.Join(allowedSubcommands, "\" or \""),
 		requestedSubcommand,
 	), true
+}
+
+// eventsReadViaGetRequested reports whether the kubectl arguments read events via "kubectl get" while the kubectl
+// command "events" has been disabled in the configuration, returning a human-readable reason when they do. Disabling
+// "kubectl events" would be pointless otherwise, since "kubectl get events" hands out the same content.
+func eventsReadViaGetRequested(parsed kubectlArguments, allowedKubectlCommands AllowedKubectlCommands) (string, bool) {
+	if parsed.kubectlCommand != kubectlCommandGet || allowedKubectlCommands.Allows(kubectlCommandEvents) {
+		return "", false
+	}
+	for _, resourceType := range parsed.resourceTypes {
+		if _, isEvent := eventResourceTypes[resourceType]; isEvent {
+			return "reading events via \"kubectl get\" is not allowed, because the kubectl command \"events\" has " +
+				"been disabled in the configuration of the agent0-connector (via the Helm value " +
+				"operator.agent0Connector.allowedKubectlCommands)", true
+		}
+	}
+	return "", false
 }
 
 // sensitiveContentRequested reports whether the kubectl arguments would read the contents of a sensitive resource,
