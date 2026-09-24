@@ -736,8 +736,9 @@ var _ = Describe(
 					}
 				}
 
-				// Mimics the collector containers, including the configuration-reloader which does not carry the
-				// data-pipeline header env vars, so the self-monitoring path must inject its own.
+				// Mimics the containers of a collector pod: the collector container itself, which is configured via
+				// the collector configuration, and the configuration-reloader sidecar, which runs the OTel Go SDK and
+				// does not carry the data-pipeline header env vars, so the self-monitoring path must inject its own.
 				collectorContainers := func() []corev1.Container {
 					return []corev1.Container{
 						{Name: "opentelemetry-collector"},
@@ -745,9 +746,27 @@ var _ = Describe(
 					}
 				}
 
-				It("should wire secret-backed headers for an HTTP export in every collector container", func() {
+				// verifyNoSdkEnvVars asserts that the container has none of the environment variables that only the
+				// OTel Go SDK reads. The collector container is configured via the service::telemetry section of the
+				// collector configuration instead.
+				verifyNoSdkEnvVars := func(container corev1.Container, protocol string) {
+					for _, envVarName := range []string{
+						otelExporterOtlpEndpointEnvVarName,
+						otelExporterOtlpProtocolEnvVarName,
+						otelExporterOtlpHeadersEnvVarName,
+						util.OtelResourceAttributesEnvVarName,
+						exporters.HeaderSecretEnvVarName(protocol, "self_monitoring", 1),
+					} {
+						Expect(slices.IndexFunc(container.Env, matchEnvVar(envVarName))).To(
+							Equal(-1),
+							fmt.Sprintf("container %s should not have the env var %s", container.Name, envVarName),
+						)
+					}
+				}
+
+				It("should wire secret-backed headers for an HTTP export in the Go SDK containers", func() {
 					containers := collectorContainers()
-					err := enableSelfMonitoringInAllContainers(
+					err := enableSelfMonitoringInContainers(
 						containers,
 						SelfMonitoringConfiguration{
 							SelfMonitoringEnabled: true,
@@ -761,16 +780,16 @@ var _ = Describe(
 						},
 						"1.2.3",
 						false,
+						"opentelemetry-collector",
 					)
 					Expect(err).NotTo(HaveOccurred())
-					for _, container := range containers {
-						verifySecretBackedHeaderWiring(container, "HTTP")
-					}
+					verifyNoSdkEnvVars(containers[0], "HTTP")
+					verifySecretBackedHeaderWiring(containers[1], "HTTP")
 				})
 
-				It("should wire secret-backed headers for a gRPC export in every collector container", func() {
+				It("should wire secret-backed headers for a gRPC export in the Go SDK containers", func() {
 					containers := collectorContainers()
-					err := enableSelfMonitoringInAllContainers(
+					err := enableSelfMonitoringInContainers(
 						containers,
 						SelfMonitoringConfiguration{
 							SelfMonitoringEnabled: true,
@@ -783,11 +802,11 @@ var _ = Describe(
 						},
 						"1.2.3",
 						false,
+						"opentelemetry-collector",
 					)
 					Expect(err).NotTo(HaveOccurred())
-					for _, container := range containers {
-						verifySecretBackedHeaderWiring(container, "GRPC")
-					}
+					verifyNoSdkEnvVars(containers[0], "GRPC")
+					verifySecretBackedHeaderWiring(containers[1], "GRPC")
 				})
 			},
 		)

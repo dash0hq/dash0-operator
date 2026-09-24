@@ -357,6 +357,12 @@ var defaultAgent0ConnectorRbacRules = []rbacv1.PolicyRule{
 		Verbs: allowedVerbs,
 	},
 	{
+		// Dash0 CRDs
+		APIGroups: []string{"openslo.com"},
+		Resources: []string{"slos"},
+		Verbs:     allowedVerbs,
+	},
+	{
 		// The third-party resource types the operator itself reconciles, so that the agent0-connector can diagnose the
 		// corresponding operator features.
 		APIGroups: []string{"monitoring.coreos.com"},
@@ -581,7 +587,7 @@ func assembleDeployment(
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: extraConfig.Agent0ConnectorContainerResources.GoMemLimit,
+				Value: extraConfig.Agent0ConnectorContainerResources.EffectiveGoMemLimitPercent(util.Agent0ConnectorGoMemLimitPercent),
 			},
 			{
 				// The agent0-connector workload uses the pseudo cluster UID as its client ID when connecting to the
@@ -719,6 +725,7 @@ func assembleDeployment(
 			selfMonitoring.configuration,
 			c.Images.GetOperatorVersion(),
 			c.DevelopmentMode,
+			"",
 		); err != nil {
 			return nil, err
 		}

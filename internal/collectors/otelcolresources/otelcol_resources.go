@@ -212,6 +212,9 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
+	config.DaemonSetCollectorMemoryLimit = *extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory()
+	config.DeploymentCollectorMemoryLimit = *extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory()
+	config.SignalControlCollectorMemoryLimit = *extraConfig.SignalControlCollectorContainerResources.Limits.Memory()
 	if config.signalControlGatewayActive() {
 		logger.Debug(fmt.Sprintf("Deploying the Signal Control collector (image %s), since Signal Control is enabled "+
 			"via the Dash0SignalControl resource. The daemonset and the cluster-metrics collector export their "+

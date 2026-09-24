@@ -611,6 +611,9 @@ run_helm() {
   if [[ "${COLLECTOR_ENABLE_PPROF:-}" = "true" ]]; then
     helm_install_command+=" --set operator.collectors.enablePprof=true"
   fi
+  if [[ "${EDGE_PROXY_ENABLE_PPROF:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.signalControl.edgeProxy.enablePprof=true"
+  fi
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchSize=$OTEL_COLLECTOR_SEND_BATCH_SIZE"
   fi
@@ -1140,7 +1143,7 @@ helm_install_test_application() {
 
 install_third_party_crds() {
   kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.5.0/config/crd/bases/perses.dev_persesdashboards.yaml
-  kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.93.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.94.0/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
   install_prometheus_crds
 }
 
@@ -1185,6 +1188,11 @@ deploy_dash0_api_sync_resources() {
   if [[ "${DEPLOY_SYNTHETIC_CHECK:-}" = "true" ]]; then
     echo "STEP $step_counter: deploy a Dash0 synthetic check resource to namespace ${target_namespace}"
     kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml
+    finish_step
+  fi
+  if [[ "${DEPLOY_SLO:-}" = "true" ]]; then
+    echo "STEP $step_counter: deploy an SLO resource to namespace ${target_namespace}"
+    kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0slo/dash0slo.yaml
     finish_step
   fi
   if [[ "${DEPLOY_VIEW:-}" = "true" ]]; then

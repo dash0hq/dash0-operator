@@ -700,10 +700,13 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the collector container, the recommended value is 80% of
-      # daemonSetCollectorContainerResources.limits.memory. Note that valid units are different from Kubernetes
-      # resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 400MiB
+      # The GOMEMLIMIT environment variable value for the collector container. Leaving this empty is recommended: the
+      # operator then derives GOMEMLIMIT and the memory_limiter thresholds from
+      # daemonSetCollectorContainerResources.limits.memory, keeping GOMEMLIMIT < memory_limiter soft limit <
+      # memory_limiter hard limit < limits.memory. Set a value only to override the derived default; it must stay below
+      # the memory_limiter soft limit. Valid units differ from Kubernetes resource settings, use MiB or GiB
+      # (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 500Mi
@@ -714,12 +717,12 @@ operator:
     daemonSetConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
-        memory: 24Mi
+        memory: 26Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
-      # of daemonSetConfigurationReloaderContainerResources.limits.memory. Note that valid units are different from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 18MiB
+      # The GOMEMLIMIT environment variable value for the configuration reloader container. Leaving this empty is
+      # recommended; the operator then derives it from the memory limit above. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
@@ -732,10 +735,10 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 32Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the filelog offset sync container, the recommended value is 80%
-      # of daemonSetFileLogOffsetSyncContainerResources.limits.memory. Note that valid units are different from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 24MiB
+      # The GOMEMLIMIT environment variable value for the filelog offset sync container. Leaving this empty is
+      # recommended; the operator then derives it from the memory limit above. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 32Mi
@@ -836,10 +839,13 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the collector container, the recommended value is 80% of
-      # deploymentCollectorContainerResources.limits.memory. Note that valid units are different from Kubernetes
-      # resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 400MiB
+      # The GOMEMLIMIT environment variable value for the collector container. Leaving this empty is recommended: the
+      # operator then derives GOMEMLIMIT and the memory_limiter thresholds from
+      # deploymentCollectorContainerResources.limits.memory, keeping GOMEMLIMIT < memory_limiter soft limit <
+      # memory_limiter hard limit < limits.memory. Set a value only to override the derived default; it must stay below
+      # the memory_limiter soft limit. Valid units differ from Kubernetes resource settings, use MiB or GiB
+      # (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 500Mi
@@ -850,12 +856,12 @@ operator:
     deploymentConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
-        memory: 24Mi
+        memory: 26Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
-      # of deploymentConfigurationReloaderContainerResources.limits.memory. Note that valid units are different from
-      # Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 18MiB
+      # The GOMEMLIMIT environment variable value for the configuration reloader container. Leaving this empty is
+      # recommended; the operator then derives it from the memory limit above. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
@@ -960,10 +966,13 @@ operator:
         # cpu: (no cpu limit by default)
         memory: 1Gi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the collector container, the recommended value is 80% of
-      # signalControlCollectorContainerResources.limits.memory. Note that valid units are different from Kubernetes
-      # resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 800MiB
+      # The GOMEMLIMIT environment variable value for the collector container. Leaving this empty is recommended: the
+      # operator then derives GOMEMLIMIT and the memory_limiter thresholds from
+      # signalControlCollectorContainerResources.limits.memory, keeping GOMEMLIMIT < memory_limiter soft limit <
+      # memory_limiter hard limit < limits.memory. Set a value only to override the derived default; it must stay below
+      # the memory_limiter soft limit. Valid units differ from Kubernetes resource settings, use MiB or GiB
+      # (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 1Gi
@@ -975,13 +984,12 @@ operator:
     signalControlCollectorConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
-        memory: 24Mi
+        memory: 26Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      # The GOMEMLIMIT environment variable value for the configuration reloader container, the recommended value is 80%
-      # of signalControlCollectorConfigurationReloaderContainerResources.limits.memory. Note that valid units are
-      # different from Kubernetes resource settings, use MiB or GiB (see
-      # https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      gomemlimit: 18MiB
+      # The GOMEMLIMIT environment variable value for the configuration reloader container. Leaving this empty is
+      # recommended; the operator then derives it from the memory limit above. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
@@ -1136,7 +1144,10 @@ operator:
       limits:
         cpu: 200m
         memory: 500Mi
-      gomemlimit: 400MiB
+      # The GOMEMLIMIT environment variable value for the target-allocator container. Leaving this empty is recommended;
+      # the operator then derives it from containerResources.limits.memory. Set a value only to override it. Valid units
+      # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+      gomemlimit: ""
       requests:
         cpu: 200m
         memory: 128Mi
@@ -1261,15 +1272,22 @@ operator:
       # cross zones.
       replicas: 2
 
+      # If set to true, pprof will be enabled for the Edge Proxy pods. Each container serves pprof on the loopback
+      # address 127.0.0.1:8012, reachable via kubectl port-forward, see
+      # https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/troubleshooting#edge-proxy-heap-profile.
+      # The default is false, do not override this unless explicitly instructed by Dash0 support. Remove the override
+      # after the Edge Proxy troubleshooting is finished. Changing the flag will restart the Edge Proxy pods.
+      enablePprof: false
+
       # Resource settings for the Edge Proxy container of the Edge Proxy deployment managed by the operator.
       containerResources:
         limits:
           cpu: 500m
           memory: 512Mi
-        # The GOMEMLIMIT environment variable value for the Edge Proxy container, the recommended value is 80% of
-        # containerResources.limits.memory. Note that valid units are different from Kubernetes resource settings, use
-        # MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
-        gomemlimit: 400MiB
+        # The GOMEMLIMIT environment variable value for the Edge Proxy container. Leaving this empty is recommended; the
+        # operator then derives it from containerResources.limits.memory. Set a value only to override it. Valid units
+        # differ from Kubernetes resource settings, use MiB or GiB (see https://pkg.go.dev/runtime#hdr-Environment_Variables).
+        gomemlimit: ""
         requests:
           cpu: 50m
           memory: 128Mi
@@ -1366,13 +1384,13 @@ operator:
     containerResources:
       limits:
         memory: 256Mi
-      # The GOMEMLIMIT environment variable value for the agent0-connector container. Note that valid units are
-      # different from Kubernetes resource settings, use MiB or GiB (see
+      # The GOMEMLIMIT environment variable value for the agent0-connector container. Leaving this empty is recommended;
+      # the operator then derives it from containerResources.limits.memory. It is derived at about 60%, lower than the
+      # ~80% for other containers, because the agent0-connector also runs kubectl as a child process, whose memory counts
+      # towards the container's memory limit but is not governed by GOMEMLIMIT. Set a value only to override it. Valid
+      # units differ from Kubernetes resource settings, use MiB or GiB (see
       # https://pkg.go.dev/runtime#hdr-Environment_Variables).
-      # The value is deliberately set to about 60% of containerResources.limits.memory, and not to the 80% recommended
-      # for other containers: the agent0-connector container also runs kubectl as a child process, whose memory is not
-      # governed by GOMEMLIMIT but counts towards the container's memory limit.
-      gomemlimit: 150MiB
+      gomemlimit: ""
       requests:
         memory: 64Mi
 
@@ -1437,7 +1455,8 @@ operator:
     clusterRole:
 
       # Custom RBAC rules for the cluster role of the agent0-connector. By default, this list is empty and the operator
-      # grants read-only access to a fixed set of well-known resource types.
+      # grants read-only access to a fixed set of well-known resource types. The default rules are listed in
+      # helm-chart/dash0-operator/files/agent0-connector-default-cluster-role-rules.yaml.
       #
       # The rules configured here replace the default rules for the agent0-connector cluster role, they are not merged
       # with the defaults. Configuring custom rules can also be used to restrict agent0-connector's access in the
@@ -1456,33 +1475,46 @@ operator:
       # "kubectl auth can-i" requires and which cannot modify cluster state. Any other verb, in particular a write verb
       # like "create", "update", "patch" or "delete", as well as the wildcard "*", makes the Helm installation fail.
       #
-      # Allowing access to additional resources can have security implications. Only grant access to additional
-      # resources types when you are confident that it cannot be used to exfiltrate sensitive data (auth tokens,
-      # credentials, API secrets etc.) from the cluster. Failure to do so makes these secrets accessible to anyone who
-      # has access to your Dash0 organization. The agent0-connector component uses a set of restrictions and redaction
-      # mechanisms to prevent leaking secrets. The following are redacted:
-      # * the environment variable values and probe headers of any workload,
-      # * all credential fields in any of the Dash0 custom resources.
-      # Automatic redaction is also applied to the JSON or YAML content of ConfigMaps, if access to ConfigMaps is
-      # granted via custom RBAC rules. (ConfigMaps are inaccessible under the default RBAC rules.) The redaction of
-      # ConfigMap content is best-effort: the connector parses every value of data and binaryData that is a JSON or
-      # YAML object or list, including a YAML value that holds several documents, and replaces the values of certain
-      # key names (token, password, headers, queryParameters, httpHeaders). The values of binaryData are base64 and are
-      # decoded before they are inspected and encoded again afterwards. A credential in a format the connector cannot
-      # parse (a properties file, a shell script), or under a key name it does not know, is returned unredacted. That
-      # is to say, only allow access to ConfigMaps if they do not contain secrets, or if the redaction described here
-      # is sufficient.
+      # **IMPORTANT:** Allowing access to additional resources can have security implications. When you set up custom
+      # rules here, it becomes your responsibility to make sure they still match your security needs. Only grant access
+      # to additional resources types when you are confident that it cannot be used to access sensitive data (auth
+      # tokens, credentials, API secrets, PII etc.) in the cluster. Failure to do so makes that sensitive data
+      # accessible to anyone who has access to your Dash0 organization.
       #
-      # Note that a ConfigMap value the connector did redact something in is re-rendered as a whole, which drops its
-      # comments and normalizes its key order and scalar notation. A value nothing was redacted from is returned byte
-      # for byte.
+      # The agent0-connector uses a set of restrictions and redaction mechanisms to prevent leaking secrets.
+      # * It only returns "kubectl get" output that it is able to inspect for credentials. "kubectl describe" and output
+      #   formats that can reshape a response (-o go-template, -o template, -o jsonpath, -o jsonpath-as-json,
+      #   -o custom-columns, --template, and -o kyaml) are rejected, for "kubectl get" only "-o name"/"-o wide"/
+      #   "-o json"/"-o yaml" are allowed. The output for -o json/yaml is processed by secret redaction.
+      # * The output of "kubectl logs" or "kubectl events" is returned as kubectl produced it, it is not inspected for
+      #   credentials: a credential that a workload writes to its own log, or that a controller quotes into an event
+      #   message, is not redacted.
+      # The following are redacted in kubectl get responses:
+      # * the values of the environment variables and of the command line (command, args) of any workload,
+      # * the header values of the probes and lifecycle hooks of any workload,
+      # * all credential fields in any of the Dash0 custom resources,
+      # * the values of the fields token and password, and header and query parameter values, wherever they occur,
+      # * the same fields in a copy of a resource that a tool embeds in its annotations, such as the copy
+      #   "kubectl apply" stores in kubectl.kubernetes.io/last-applied-configuration.
       #
-      # The content of every resource type outside the set mentioned above (standard Kubernetes workload resources,
-      # Dash0 custom resources, and JSON/YAML ConfigMap content) is returned verbatim, i.e. unredacted.
+      # The redaction of resource types that are not accessible under the default RBAC rules is best-effort: A
+      # credential in a field of a resource type the connector does not know about is returned unredacted. Granting
+      # access to a resource type that keeps a credential in a field that is not subject to the redaction as listed
+      # above is strongly recommended against.
       #
       # Reading the *content* of Kubernetes secrets is rejected by the agent0-connector itself, independent of
-      # the rules configured here. (Listing secrets and checking for their presence is allowed, if the rules list the
-      # secrets resource type - the default rules do not include access to secrets).
+      # the rules configured here. Listing secrets and checking for their presence is allowed, if the rules list the
+      # secrets resource type. The default rules do not include access to secrets.
+      #
+      # Automatic redaction is also applied to the JSON or YAML content of ConfigMaps, if access to ConfigMaps is
+      # granted via custom RBAC rules. ConfigMaps are inaccessible under the default RBAC rules. The redaction of
+      # ConfigMap content is best-effort: the connector parses every value of data and binaryData that is a JSON or
+      # YAML object or list, including a YAML value that holds several documents, and replaces the values of certain
+      # key names (token, password, headers, queryParameters, httpHeaders, env, command, args). The values of binaryData
+      # are base64 and are decoded before they are inspected and encoded again afterward. A credential in a format the
+      # connector cannot parse (a properties file, a shell script), or under a key name it does not know, is returned
+      # unredacted. That is to say, only allow access to ConfigMaps if they do not contain secrets, or if the redaction
+      # described here is sufficient.
       #
       # By default, Kubernetes grants the verb "get" for the API discovery URLs (/api, /apis, /openapi/v3, ..., all of
       # which are required for this component) to the group system:authenticated via the system:discovery cluster role

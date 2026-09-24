@@ -136,6 +136,46 @@ func expectSelfMonitoringEnvVarsPresent(container corev1.Container, operatorVers
 	))
 }
 
+var _ = Describe("Edge Proxy deployment pprof", func() {
+	findPortByName := func(container corev1.Container, name string) *corev1.ContainerPort {
+		for i := range container.Ports {
+			if container.Ports[i].Name == name {
+				return &container.Ports[i]
+			}
+		}
+		return nil
+	}
+
+	It("keeps the pprof/internal admin server disabled by default", func() {
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort, util.ExtraConfig{}, false, logd.Discard(),
+		)
+
+		container := dep.Spec.Template.Spec.Containers[0]
+		listenAddressInternal := FindEnvVarByName(container.Env, "LISTENADDRESSINTERNAL")
+		Expect(listenAddressInternal).NotTo(BeNil())
+		Expect(listenAddressInternal.Value).To(BeEmpty())
+		Expect(findPortByName(container, "internal")).To(BeNil())
+	})
+
+	It("enables the pprof/internal admin server on loopback when opted in", func() {
+		dep := assembleEdgeProxyDeployment(
+			OperatorNamespace, "test-prefix", minimalSignalControl, operatorConfigWithDash0Export,
+			"edge-proxy:latest", corev1.PullIfNotPresent, testOperatorVersion, testOtlpGrpcHostPort,
+			util.ExtraConfig{EdgeProxyEnablePprof: true}, false, logd.Discard(),
+		)
+
+		container := dep.Spec.Template.Spec.Containers[0]
+		listenAddressInternal := FindEnvVarByName(container.Env, "LISTENADDRESSINTERNAL")
+		Expect(listenAddressInternal).NotTo(BeNil())
+		Expect(listenAddressInternal.Value).To(Equal("127.0.0.1:8012"))
+		internalPort := findPortByName(container, "internal")
+		Expect(internalPort).NotTo(BeNil())
+		Expect(internalPort.ContainerPort).To(Equal(int32(8012)))
+	})
+})
+
 var _ = Describe("Edge Proxy deployment scheduling and resources", func() {
 	It("renders container resources, GOMEMLIMIT, tolerations, and node affinity from extraConfig", func() {
 		extraConfig := util.ExtraConfig{

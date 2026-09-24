@@ -151,6 +151,14 @@ func assembleEdgeProxyDeployment(
 	}
 	authTokenEnvVar := assembleAuthTokenEnvVar(authorization, logger)
 
+	// The Edge Proxy serves pprof on its internal admin server, gated by LISTENADDRESSINTERNAL: an empty value keeps
+	// the server off. When opted in, bind loopback only, so it is reachable via kubectl port-forward but not from
+	// other pods.
+	listenAddressInternal := ""
+	if extraConfig.EdgeProxyEnablePprof {
+		listenAddressInternal = fmt.Sprintf("127.0.0.1:%d", edgeProxyInternalPort)
+	}
+
 	edgeProxyContainer := corev1.Container{
 		Name:  edgeProxyComponentName,
 		Image: edgeProxyImage,
@@ -171,16 +179,11 @@ func assembleEdgeProxyDeployment(
 				ContainerPort: edgeProxyGrpcPort,
 				Protocol:      corev1.ProtocolTCP,
 			},
-			{
-				Name:          "internal",
-				ContainerPort: edgeProxyInternalPort,
-				Protocol:      corev1.ProtocolTCP,
-			},
 		},
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: extraConfig.EdgeProxyContainerResources.GoMemLimit,
+				Value: extraConfig.EdgeProxyContainerResources.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			authTokenEnvVar,
 			{
@@ -195,7 +198,7 @@ func assembleEdgeProxyDeployment(
 			},
 			{
 				Name:  "LISTENADDRESSINTERNAL",
-				Value: fmt.Sprintf(":%d", edgeProxyInternalPort),
+				Value: listenAddressInternal,
 			},
 		},
 		Resources: extraConfig.EdgeProxyContainerResources.ToResourceRequirements(),
@@ -232,6 +235,14 @@ func assembleEdgeProxyDeployment(
 
 	if edgeProxyImagePullPolicy != "" {
 		edgeProxyContainer.ImagePullPolicy = edgeProxyImagePullPolicy
+	}
+
+	if extraConfig.EdgeProxyEnablePprof {
+		edgeProxyContainer.Ports = append(edgeProxyContainer.Ports, corev1.ContainerPort{
+			Name:          "internal",
+			ContainerPort: edgeProxyInternalPort,
+			Protocol:      corev1.ProtocolTCP,
+		})
 	}
 
 	if tailSamplingEnabled {

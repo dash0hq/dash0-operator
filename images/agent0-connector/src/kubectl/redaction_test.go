@@ -16,7 +16,7 @@ import (
 )
 
 //nolint:lll
-func TestResponseCanContainSecrets(t *testing.T) {
+func TestResponseHasToBeRedacted(t *testing.T) {
 	tests := []struct {
 		name      string
 		arguments []string
@@ -60,19 +60,25 @@ func TestResponseCanContainSecrets(t *testing.T) {
 		{name: "events do not reference the resource positionally", arguments: []string{"events", "--for", "dash0monitoring/my-resource"}, expected: false},
 		{name: "workload table output has no resource content", arguments: []string{"get", "deployments", "-o", "wide"}, expected: false},
 		{name: "config map table output has no resource content", arguments: []string{"get", "configmaps", "-o", "wide"}, expected: false},
-		{name: "a resource named like a config map is not a resource type", arguments: []string{"get", "services", "cm", "-o", "yaml"}, expected: false},
-		{name: "other resources are unaffected", arguments: []string{"get", "services", "-o", "yaml"}, expected: false},
-		{name: "Dash0 resource types without secrets are unaffected", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a namespace named like a Dash0 resource is not a resource type", arguments: []string{"get", "services", "-n", "dash0monitorings", "-o", "yaml"}, expected: false},
-		{name: "a resource named like a workload type is not a resource type", arguments: []string{"get", "services", "deployments", "-o", "yaml"}, expected: false},
 		{name: "no kubectl command", arguments: []string{"--help"}, expected: false},
+
+		// Any resource can hold a credential, so a response the connector can parse is walked whatever type it renders.
+		{name: "other resources as yaml", arguments: []string{"get", "services", "-o", "yaml"}, expected: true},
+		{name: "other resources as json", arguments: []string{"get", "nodes", "-o", "json"}, expected: true},
+		{name: "third-party custom resources granted by the default RBAC", arguments: []string{"get", "persesdashboards", "-o", "yaml"}, expected: true},
+		{name: "Dash0 resource types without credential fields", arguments: []string{"get", "dash0views,dash0teams,dash0samplingrules", "-o", "yaml"}, expected: true},
+		{name: "a resource named like a Dash0 resource", arguments: []string{"get", "services", "dash0monitorings", "-o", "yaml"}, expected: true},
+
+		// A format that reshapes the response is rejected by validation for every resource type, so it never reaches
+		// redaction. Should one ever get here, it counts as content that has to be redacted and is withheld, since
+		// parseableOutputFormat cannot resolve it - the same outcome a repeated output format gets.
+		{name: "repeated output format", arguments: []string{"get", "dash0monitorings", "-o", "yaml", "-o", "yaml"}, expected: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := responseCanContainSecrets(parseKubectlArguments(tt.arguments)); got != tt.expected {
-				t.Errorf("expected responseCanContainSecrets=%t, got %t", tt.expected, got)
+			if got := responseHasToBeRedacted(parseKubectlArguments(tt.arguments)); got != tt.expected {
+				t.Errorf("expected responseHasToBeRedacted=%t, got %t", tt.expected, got)
 			}
 		})
 	}
@@ -90,7 +96,7 @@ func redactDocumentAs(t *testing.T, document string, format string) (string, []s
 	t.Helper()
 
 	var parsed any
-	if err := json.Unmarshal([]byte(document), &parsed); err != nil {
+	if err := unmarshalPreservingNumbers(document, &parsed); err != nil {
 		t.Fatalf("cannot parse the test document: %v", err)
 	}
 	redacted := &redactor{values: make(map[string]struct{})}
@@ -379,6 +385,247 @@ func nestedObject(t *testing.T, node map[string]any, path ...string) map[string]
 	return node
 }
 
+// TestRedactNestedAnnotations covers the annotations that do not sit on the resource the response lists, but deeper in
+// the document: on the pod template of a workload, or on a resource nested in a list. A tool embeds the same verbatim
+// copy of a manifest there that "kubectl apply" embeds on the resource itself.
+func TestRedactNestedAnnotations(t *testing.T) {
+	const podTemplateToken = "auth_pod-template-annotation-token"
+	const nestedListToken = "auth_nested-list-annotation-token"
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "List",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "name": "my-deployment"
+            },
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "my-tool/applied": "{\"spec\":{\"exports\":[{\"dash0\":{\"authorization\":{\"token\":\"` +
+		podTemplateToken + `\"}}}]}}"
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "app"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "List",
+            "items": [
+                {
+                    "apiVersion": "operator.dash0.com/v1beta1",
+                    "kind": "Dash0Monitoring",
+                    "metadata": {
+                        "name": "nested",
+                        "annotations": {
+                            "kubectl.kubernetes.io/last-applied-configuration":
+                                "{\"spec\":{\"exports\":[{\"dash0\":{\"authorization\":{\"token\":\"` +
+		nestedListToken + `\"}}}]}}"
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}`
+
+	rendered, _ := redactDocument(t, document)
+
+	for _, token := range []string{podTemplateToken, nestedListToken} {
+		if strings.Contains(rendered, token) {
+			t.Errorf("expected the token %q of a nested annotation to be redacted, got %q", token, rendered)
+		}
+	}
+	if !strings.Contains(rendered, "my-deployment") {
+		t.Errorf("expected the rest of the document to be preserved, got %q", rendered)
+	}
+}
+
+// TestRedactYamlAnnotations covers an annotation whose value is a YAML document rather than a JSON one. Not every tool
+// embeds its copy of a manifest as JSON the way kubectl apply does, and a credential in such a copy is no less a
+// credential.
+func TestRedactYamlAnnotations(t *testing.T) {
+	const yamlAnnotationToken = "auth_yaml-annotation-token"
+	const document = `{
+    "apiVersion": "operator.dash0.com/v1beta1",
+    "kind": "Dash0Monitoring",
+    "metadata": {
+        "name": "my-monitoring",
+        "annotations": {
+            "my-tool/applied": "spec:\n  exports:\n    - dash0:\n        authorization:\n          token: ` +
+		yamlAnnotationToken + `\n",
+            "my-tool/revision": "17",
+            "my-tool/managed-by": "my-tool"
+        }
+    }
+}`
+
+	rendered, _ := redactDocument(t, document)
+
+	if strings.Contains(rendered, yamlAnnotationToken) {
+		t.Errorf("expected the token of a YAML-valued annotation to be redacted, got %q", rendered)
+	}
+	if !strings.Contains(rendered, redactedValue) {
+		t.Errorf("expected the redacted YAML annotation to hold the placeholder, got %q", rendered)
+	}
+	for _, untouched := range []string{`"my-tool/revision": "17"`, `"my-tool/managed-by": "my-tool"`} {
+		if !strings.Contains(rendered, untouched) {
+			t.Errorf("expected the annotation %s to be handed out unchanged, got %q", untouched, rendered)
+		}
+	}
+}
+
+// TestRedactWorkloadCommandLines covers the command line of a container, which can carry a credential the same way an
+// environment variable can.
+func TestRedactWorkloadCommandLines(t *testing.T) {
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "my-pod"
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "app",
+                "image": "app:1.0.0",
+                "command": ["/bin/sh", "-c"],
+                "args": ["exporter --api-key=my-command-line-secret"],
+                "livenessProbe": {
+                    "exec": {
+                        "command": ["check", "--token=my-probe-command-secret"]
+                    }
+                }
+            }
+        ]
+    }
+}`
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, value := range []string{"my-command-line-secret", "my-probe-command-secret", "/bin/sh"} {
+		if strings.Contains(rendered, value) {
+			t.Errorf("expected the command line element %q to be redacted, got %q", value, rendered)
+		}
+	}
+	// The rest of the container stays readable, which is what makes the response useful for diagnosing it.
+	for _, preserved := range []string{"my-pod", "app:1.0.0"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
+	}
+	// The elements are replaced in the document only. Scrubbing them from stderr as well would replace ordinary words
+	// in unrelated output, see redactArgumentValues.
+	if len(replaced) > 0 {
+		t.Errorf("expected no command line element to be scrubbed from stderr, got %v", replaced)
+	}
+}
+
+// TestRedactNonStringCredentialValues covers a credential that is written without quotes and is therefore not a string
+// in the parsed document. The walk reaches documents no schema validates - the parsed content of a config map value,
+// the copy of a manifest in an annotation, a custom resource that preserves unknown fields - so a credential can arrive
+// as a number or a boolean rather than as a string, see scalarValue.
+func TestRedactNonStringCredentialValues(t *testing.T) {
+	const configMapValue = "token: 9007199254740993\n" +
+		"password: 1234567890\n" +
+		"headers:\n" +
+		"  x-api-key: 987654321\n" +
+		"  accept: application/json\n" +
+		"port: 8080\n"
+
+	encodedValue, err := json.Marshal(configMapValue)
+	if err != nil {
+		t.Fatalf("cannot encode the test value: %v", err)
+	}
+	document := fmt.Sprintf(`{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map"
+    },
+    "data": {
+        "config.yaml": %s
+    }
+}`, encodedValue)
+
+	rendered, _ := redactDocument(t, document)
+
+	for _, value := range []string{"9007199254740993", "1234567890", "987654321"} {
+		if strings.Contains(rendered, value) {
+			t.Errorf("expected the numeric credential %q to be redacted, got %q", value, rendered)
+		}
+	}
+	// A header value that is a well-known non-secret stays readable, whatever its type, and a field that is not a
+	// credential position keeps its value - redacting those would hide harmless information without protecting
+	// anything.
+	for _, preserved := range []string{"application/json", "8080"} {
+		if !strings.Contains(rendered, preserved) {
+			t.Errorf("expected %q to be preserved, got %q", preserved, rendered)
+		}
+	}
+}
+
+// TestRedactEnvAndCommandInOtherShapes covers the shapes "env", "command" and "args" take outside a pod spec. The walk
+// reaches documents no schema validates, where an environment is a map of name to value or a list of "NAME=value"
+// entries, and a command line is one string rather than a list of elements.
+func TestRedactEnvAndCommandInOtherShapes(t *testing.T) {
+	const configMapValue = "env:\n" +
+		"  DB_PASSWORD: my-map-env-secret\n" +
+		"command: server --api-key=my-string-command-secret\n" +
+		"sidecar:\n" +
+		"  env:\n" +
+		"    - SMTP_TOKEN=my-list-env-secret\n" +
+		"  args: --flag=my-list-arg-secret\n"
+
+	encodedValue, err := json.Marshal(configMapValue)
+	if err != nil {
+		t.Fatalf("cannot encode the test value: %v", err)
+	}
+	document := fmt.Sprintf(`{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "my-config-map"
+    },
+    "data": {
+        "config.yaml": %s
+    }
+}`, encodedValue)
+
+	rendered, replaced := redactDocument(t, document)
+
+	for _, secret := range []string{
+		"my-map-env-secret",
+		"my-string-command-secret",
+		"my-list-env-secret",
+		"my-list-arg-secret",
+	} {
+		if strings.Contains(rendered, secret) {
+			t.Errorf("expected %q to be redacted, got %q", secret, rendered)
+		}
+	}
+	// The name of an environment variable stays readable wherever it is a key of its own, which is what makes the
+	// response useful for diagnosing the workload.
+	if !strings.Contains(rendered, "DB_PASSWORD") {
+		t.Errorf("expected the name of the environment variable to be preserved, got %q", rendered)
+	}
+	// Replaced in the document only, see redactEnvVarValue.
+	if len(replaced) > 0 {
+		t.Errorf("expected no value to be scrubbed from stderr, got %v", replaced)
+	}
+}
+
 // TestRedactWorkloadEnvVars covers the environment variables of a pod spec, wherever the pod spec sits.
 func TestRedactWorkloadEnvVars(t *testing.T) {
 	t.Run("redacts the literal value of every environment variable", func(t *testing.T) {
@@ -457,16 +704,24 @@ func TestRedactWorkloadEnvVars(t *testing.T) {
 				expected: `{"env":[{"name":"A","value":""}]}`,
 			},
 			{
-				// Not the env var list of a pod spec: the walk only replaces a string held by the "value" key of a list
-				// entry, so a field that happens to be called "env" is left alone.
-				name:     "an env field that is not a list",
+				// Not the env var list of a pod spec, but the map of name to value that a config map value or a
+				// third-party resource uses. The name stays readable, the value is replaced like any other.
+				name:     "an env map of name to value",
 				document: `{"env":{"A":"a"}}`,
-				expected: `{"env":{"A":"a"}}`,
+				expected: `{"env":{"A":"(redacted)"}}`,
 			},
 			{
+				// A "NAME=value" entry is replaced in full: the name cannot be told from the value without assuming a
+				// separator the shape does not guarantee.
 				name:     "an env list of strings",
 				document: `{"env":["A=a"]}`,
-				expected: `{"env":["A=a"]}`,
+				expected: `{"env":["(redacted)"]}`,
+			},
+			{
+				// A single scalar names an environment rather than holding the value of one.
+				name:     "an env field that is a scalar",
+				document: `{"env":"production"}`,
+				expected: `{"env":"production"}`,
 			},
 		}
 
@@ -789,6 +1044,78 @@ func TestRedactConfigMapData(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestRedactionPreservesNumbers pins that the parse/render round trip every response now goes through does not alter
+// the numbers of a resource. Decoding into float64 would re-render a large integer in float notation and lose its
+// precision beyond 2^53.
+func TestRedactionPreservesNumbers(t *testing.T) {
+	const document = `{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "name": "my-pod",
+        "generation": 9007199254740993
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "app",
+                "ports": [
+                    {
+                        "containerPort": 8080
+                    }
+                ],
+                "env": [
+                    {
+                        "name": "TOKEN",
+                        "value": "` + monitoringToken + `"
+                    }
+                ]
+            }
+        ]
+    }
+}`
+
+	for _, format := range []string{outputFormatJson, outputFormatYaml} {
+		t.Run(format, func(t *testing.T) {
+			parsed, parsedSuccessfully := parseResponseDocument(format, document)
+			if !parsedSuccessfully {
+				t.Fatal("cannot parse the test document")
+			}
+			redacted := &redactor{values: make(map[string]struct{})}
+			if err := redactResourceList(parsed, redacted); err != nil {
+				t.Fatalf("cannot redact the test document: %v", err)
+			}
+			rendered, err := renderResponseDocument(format, parsed)
+			if err != nil {
+				t.Fatalf("cannot render the redacted test document: %v", err)
+			}
+
+			for _, number := range []string{"9007199254740993", "8080"} {
+				if !strings.Contains(rendered, number) {
+					t.Errorf("expected the number %s to be preserved, got %q", number, rendered)
+				}
+			}
+			if strings.Contains(rendered, "e+") || strings.Contains(rendered, "9007199254740992") {
+				t.Errorf("expected no number to be re-rendered as a float, got %q", rendered)
+			}
+			if strings.Contains(rendered, monitoringToken) {
+				t.Errorf("expected the environment variable value to be redacted, got %q", rendered)
+			}
+		})
+	}
+}
+
+// TestParseResponseDocumentRejectsTrailingContent pins that a response holding more than one JSON document is not
+// parsed, so that everything after the first document cannot be handed out unwalked.
+func TestParseResponseDocumentRejectsTrailingContent(t *testing.T) {
+	if _, parsed := parseResponseDocument(outputFormatJson, `{"kind":"Pod"}{"kind":"Pod"}`); parsed {
+		t.Error("expected a response with a trailing document to not be parsed")
+	}
+	if _, parsed := parseResponseDocument(outputFormatJson, `{"kind":"Pod"}`); !parsed {
+		t.Error("expected a single document to be parsed")
+	}
 }
 
 func TestRedactSecrets(t *testing.T) {
@@ -1147,19 +1474,44 @@ func TestRedactDash0SecretsInCommandResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("leaves the response of a request for other resources untouched", func(t *testing.T) {
-		// The fake kubectl echoes a token-like value for any request; a request that targets neither a Dash0 resource nor
-		// a workload resource must not be post-processed at all.
-		fakeKubectlEchoing(t, monitoringToken)
+	t.Run("redacts a credential of a resource type that is not known to hold one", func(t *testing.T) {
+		// A third-party custom resource the default RBAC grants can hold a credential just as well as a Dash0 one: the
+		// proxy of a Perses datasource carries the headers it sends verbatim.
+		fakeKubectlEchoing(t, persesDashboardJson)
+
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+			RequestId: "req-perses-dashboard",
+			Command:   "kubectl",
+			Arguments: []string{"get", "persesdashboards", "-o", "json"},
+		})
+
+		if strings.Contains(resp.GetStdout(), persesProxyToken) {
+			t.Errorf("expected the proxy header value to be redacted, got %q", resp.GetStdout())
+		}
+		// The rest of the dashboard stays readable, which is what makes the response useful for diagnosing it.
+		for _, preserved := range []string{"my-dashboard", "https://prometheus.example.com"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+	})
+
+	t.Run("preserves the content of a credential-free response of another resource type", func(t *testing.T) {
+		fakeKubectlEchoing(t, serviceJson)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
 			RequestId: "req-other-resource",
 			Command:   "kubectl",
-			Arguments: []string{"get", "services", "-o", "yaml"},
+			Arguments: []string{"get", "services", "-o", "json"},
 		})
 
-		if strings.TrimSpace(resp.GetStdout()) != monitoringToken {
-			t.Errorf("expected the response to be passed through unchanged, got %q", resp.GetStdout())
+		for _, preserved := range []string{"my-service", "ClusterIP", "10.0.0.1"} {
+			if !strings.Contains(resp.GetStdout(), preserved) {
+				t.Errorf("expected %q to be preserved, got %q", preserved, resp.GetStdout())
+			}
+		}
+		if strings.Contains(resp.GetStdout(), redactedValue) {
+			t.Errorf("expected nothing to be redacted in a credential-free response, got %q", resp.GetStdout())
 		}
 	})
 
@@ -1323,9 +1675,9 @@ done
 		}
 	})
 
-	t.Run("hands out a truncated response for a resource type without secrets", func(t *testing.T) {
-		// Truncation only withholds where redaction is required. A resource type that cannot contain a credential keeps
-		// the existing behaviour: the truncated output is returned with a notice.
+	t.Run("withholds a truncated response of a resource type that is not known to hold a credential", func(t *testing.T) {
+		// Every response the connector can parse is walked, so a truncated one is withheld whatever resource type it
+		// renders: the walk cannot tell a credential-free document from one whose credential sits past the cut.
 		fakeKubectlOnPath(t, `#!/bin/sh
 s=0123456789012345678901234567890123456789012345678901234567890123
 s=$s$s$s$s
@@ -1345,41 +1697,46 @@ done
 			Arguments: []string{"get", "services", "-o", "json"},
 		})
 
-		if resp.GetStdout() == "" {
-			t.Error("expected the truncated response to be handed out")
+		if resp.GetStdout() != "" {
+			t.Errorf("expected the truncated response to be withheld, got %q", resp.GetStdout())
 		}
-		if !strings.Contains(resp.GetStdout(), "truncated the output") {
-			t.Error("expected a truncation notice on stdout")
-		}
-		if strings.Contains(resp.GetStderr(), "withheld the response") {
-			t.Errorf("expected the response to not be withheld, got %q", resp.GetStderr())
+		if !strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected the response to be withheld, got %q", resp.GetStderr())
 		}
 	})
+
 }
 
 func TestRedactDash0SecretsWithEmptyStdout(t *testing.T) {
 	logger := discardLogger()
 
-	t.Run("withholds a response that only has content on stderr", func(t *testing.T) {
-		// kubectl reports some errors by formatting the offending value - for a template or jsonpath error even the
-		// whole object - into a message on stderr while stdout stays empty. There is no document to redact then, so the
-		// response has to be withheld rather than handed out.
+	t.Run("hands out an error message that only has content on stderr", func(t *testing.T) {
+		// kubectl rendered no resource and only reported why. There is no document to redact, and the message is the
+		// answer to the request rather than a failure of the redaction: withholding it would leave the caller unable to
+		// tell a resource that does not exist from one it may not read, with nothing to correct.
+		//
+		// The formats that make kubectl format an object into a message on stderr - a template, jsonpath,
+		// custom-columns - are rejected for every resource type before the command runs, see knownOutputFormats, so
+		// what reaches this point is an error message rendered by kubectl itself.
 		fakeKubectlOnPath(t, `#!/bin/sh
-echo "error: the object given to the engine was map[token:`+monitoringToken+`]" >&2
+echo 'Error from server (NotFound): dash0monitorings.operator.dash0.com "my-resource" not found' >&2
 exit 1
 `)
 
 		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
-			RequestId: "req-secret-on-stderr",
+			RequestId: "req-error-on-stderr",
 			Command:   "kubectl",
-			Arguments: []string{"get", "dash0monitorings", "-o", "yaml"},
+			Arguments: []string{"get", "dash0monitorings", "my-resource", "-o", "yaml"},
 		})
 
-		if strings.Contains(resp.GetStderr(), monitoringToken) {
-			t.Errorf("expected the token to be withheld, got %q", resp.GetStderr())
+		if strings.Contains(resp.GetStderr(), "withheld the response") {
+			t.Errorf("expected the error message to be handed out, got %q", resp.GetStderr())
 		}
-		if !strings.Contains(resp.GetStderr(), "withheld the response") {
-			t.Errorf("expected an explanation on stderr, got %q", resp.GetStderr())
+		if !strings.Contains(resp.GetStderr(), "NotFound") {
+			t.Errorf("expected kubectl's own error message on stderr, got %q", resp.GetStderr())
+		}
+		if resp.GetExitCode() != 1 {
+			t.Errorf("expected kubectl's exit code 1, got %d (stderr: %q)", resp.GetExitCode(), resp.GetStderr())
 		}
 	})
 
@@ -1435,7 +1792,64 @@ OUTPUT
 `)
 }
 
+// persesDashboardJson is a third-party custom resource which is included in the default RBAC rules. The proxy of its
+// datasource can potentially carry the headers it sends, hence it needs redaction.
+const persesDashboardJson = `{
+    "apiVersion": "perses.dev/v1alpha1",
+    "kind": "PersesDashboard",
+    "metadata": {
+        "name": "my-dashboard",
+        "namespace": "perses-dev"
+    },
+    "spec": {
+        "display": {
+            "name": "my-dashboard"
+        },
+        "datasources": {
+            "my-datasource": {
+                "plugin": {
+                    "kind": "PrometheusDatasource",
+                    "spec": {
+                        "proxy": {
+                            "kind": "HTTPProxy",
+                            "spec": {
+                                "url": "https://prometheus.example.com",
+                                "headers": {
+                                    "Authorization": "` + persesProxyToken + `"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}`
+
+// serviceJson is an example for a resource that holds no credential at all.
+const serviceJson = `{
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+        "name": "my-service",
+        "namespace": "my-namespace"
+    },
+    "spec": {
+        "clusterIP": "10.0.0.1",
+        "ports": [
+            {
+                "name": "http",
+                "port": 80,
+                "targetPort": 8080
+            }
+        ],
+        "type": "ClusterIP"
+    }
+}`
+
 const (
+	persesProxyToken = "Bearer my-perses-proxy-secret"
+
 	operatorConfigurationToken = "auth_operator-configuration-token"
 	monitoringToken            = "auth_monitoring-token"
 	lastAppliedToken           = "auth_last-applied-token"

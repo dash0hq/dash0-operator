@@ -173,7 +173,7 @@ receivers:
         endpoint: "{{ .SelfIpReference }}:4318"
 
   {{- if .KubeletStatsReceiverConfig.Enabled }}
-  kubeletstats:
+  kubelet_stats:
     endpoint: '{{ .KubeletStatsReceiverConfig.Endpoint }}'
     auth_type: "{{ .KubeletStatsReceiverConfig.AuthType }}"
     collection_interval: 30s
@@ -258,7 +258,7 @@ receivers:
   {{- end }}{{/* if .KubeletStatsReceiverConfig.Enabled */}}
 
   {{- if .UseHostMetricsReceiver }}
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     root_path: /hostfs
     scrapers:
@@ -613,7 +613,7 @@ processors:
   batch: {}
   {{- end }}
 
-  resourcedetection:
+  resource_detection:
     fail_on_missing_metadata: false
     detectors:
     # Note: Later detectors do *not* overwrite attributes provided by earlier detectors, hence more specific detectors
@@ -624,12 +624,12 @@ processors:
     - gcp
     - azure
     - aks
-    - k8snode
+    - k8s_api
     - system
     timeout: 2s
     eks:
       node_from_env_var: K8S_NODE_NAME
-    k8snode:
+    k8s_api:
       node_from_env_var: K8S_NODE_NAME
     system:
       resource_attributes:
@@ -640,9 +640,6 @@ processors:
 
   k8s_attributes:
     extract:
-      {{- if .K8sAttributesDisableReplicasetInformer }}
-      deployment_name_from_replicaset: true
-      {{- end }}
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
@@ -727,9 +724,6 @@ processors:
 {{- if .ProfilingEnabled }}
   k8s_attributes/profiles:
     extract:
-      {{- if .K8sAttributesDisableReplicasetInformer }}
-      deployment_name_from_replicaset: true
-      {{- end }}
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
@@ -1109,8 +1103,13 @@ processors:
 
   memory_limiter:
     check_interval: 1s
+    {{- if .MemoryLimiterLimitMiB }}
+    limit_mib: {{ .MemoryLimiterLimitMiB }}
+    spike_limit_mib: {{ .MemoryLimiterSpikeLimitMiB }}
+    {{- else }}
     limit_percentage: 80
     spike_limit_percentage: 25
+    {{- end }}
 
 {{ template "exporters" . }}
 {{- if $gwActive }}
@@ -1137,7 +1136,7 @@ service:
         - forward/traces-processors
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
@@ -1240,10 +1239,10 @@ service:
       receivers:
         - otlp
         {{- if .KubeletStatsReceiverConfig.Enabled }}
-        - kubeletstats
+        - kubelet_stats
         {{- end }}
         {{- if .UseHostMetricsReceiver }}
-        - hostmetrics
+        - host_metrics
         {{- end }}
       processors:
         - memory_limiter
@@ -1265,7 +1264,7 @@ service:
       receivers:
         - forward/metrics-processors
       processors:
-        - resourcedetection
+        - resource_detection
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
@@ -1402,7 +1401,7 @@ service:
       receivers:
         - forward/logs-processors
       processors:
-        - resourcedetection
+        - resource_detection
         - k8s_attributes
         {{- if .NamespacesWithLogCollection }}
         - transform/logs/filelog_service_attributes
@@ -1516,7 +1515,7 @@ service:
         - forward/profiles-processors
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8s_attributes/profiles
         {{- if .ClusterName }}
         - resource/clustername
@@ -1575,6 +1574,13 @@ service:
   telemetry:
     resource:
       attributes:
+        {{- /*
+        service.name (dash0-operator-collector), service.version (the collector distribution's version, see
+        images/collector/src/builder/config.yaml) and service.instance.id (a random UUID) are provided automatically
+        from the collector's build info, hence they are not listed here.
+        */}}
+        - name: service.namespace
+          value: dash0-operator
         - name: k8s.cluster.uid
           value: "{{ .PseudoClusterUid }}"
         {{- if .ClusterName }}

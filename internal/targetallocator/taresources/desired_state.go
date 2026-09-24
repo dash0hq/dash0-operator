@@ -398,7 +398,7 @@ func assembleDeployment(c *targetAllocatorConfig, taConfigMap *corev1.ConfigMap,
 		Env: []corev1.EnvVar{
 			{
 				Name:  util.EnvVarGoMemLimit,
-				Value: extraConfig.TargetAllocatorContainerResources.GoMemLimit,
+				Value: extraConfig.TargetAllocatorContainerResources.EffectiveGoMemLimitPercent(util.GoMemLimitDefaultPercent),
 			},
 			{
 				Name:  "OTELCOL_NAMESPACE",

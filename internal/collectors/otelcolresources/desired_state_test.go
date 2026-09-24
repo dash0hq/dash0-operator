@@ -638,7 +638,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetConfigReloaderContainer).NotTo(BeNil())
 		Expect(daemonSetConfigReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
 		Expect(daemonSetConfigReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-		Expect(daemonSetConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("12Mi"))
+		Expect(daemonSetConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("26Mi"))
 		Expect(daemonSetConfigReloaderContainer.Resources.Requests.Memory().String()).To(Equal("12Mi"))
 		configReloaderContainerArgs := daemonSetConfigReloaderContainer.Args
 		Expect(configReloaderContainerArgs).To(HaveLen(3))
@@ -692,7 +692,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(deploymentConfigReloaderContainer).NotTo(BeNil())
 		Expect(deploymentConfigReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
 		Expect(deploymentConfigReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-		Expect(deploymentConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("12Mi"))
+		Expect(deploymentConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("26Mi"))
 		Expect(deploymentConfigReloaderContainer.Resources.Requests.Memory().String()).To(Equal("12Mi"))
 		deploymentConfigReloaderContainerArgs := deploymentConfigReloaderContainer.Args
 		Expect(deploymentConfigReloaderContainerArgs).To(HaveLen(3))
@@ -903,7 +903,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should not add the -processor.resourcedetection.propagateerrors feature gate to any collector, since none of "+
-		"them runs the resourcedetection processor on the Signal Control image", func() {
+		"them runs the resource_detection processor on the Signal Control image", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -2834,7 +2834,29 @@ func verifySelfMonitoringSettings(
 	expectations collectorSelfMonitoringExpectations,
 ) {
 	for _, container := range collectorDaemonSet.Spec.Template.Spec.Containers {
+		if container.Name == openTelemetryCollector {
+			verifySelfMonitoringEnvVarsForOtelCollectorContainer(&container, expectations)
+			continue
+		}
 		verifySelfMonitoringEnvVarsForContainer(&container, expectations)
+	}
+}
+
+// verifySelfMonitoringEnvVarsForOtelCollectorContainer verifies the container running the OpenTelemetry collector,
+// which is configured via the service::telemetry section of the collector configuration and only needs the auth token
+// env var, but none of the env vars that only the OTel Go SDK reads.
+func verifySelfMonitoringEnvVarsForOtelCollectorContainer(
+	container *corev1.Container,
+	expectations collectorSelfMonitoringExpectations,
+) {
+	envVars := container.Env
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpEndpointEnvVar)).To(Equal(-1))
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpProtocolEnvVar)).To(Equal(-1))
+	Expect(slices.IndexFunc(envVars, matchOtelExporterOtlpHeadersEnvVar)).To(Equal(-1))
+	Expect(FindEnvVarByName(envVars, util.OtelResourceAttributesEnvVarName)).To(BeNil())
+
+	if expectations.exportIsDash0 {
+		verifyDash0SelfMonitoringEnvVars(envVars, expectations)
 	}
 }
 

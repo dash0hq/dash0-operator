@@ -123,7 +123,7 @@ processors:
   # cloud.region). Deliberately not adding node- or host-related attributes (k8s.node.*, host.*,
   # cloud.availability_zone, GCE/Azure instance identifiers) here, since that would incorrectly include node attribtues
   # from the collector deployment's node to the telemetry.
-  resourcedetection:
+  resource_detection:
     fail_on_missing_metadata: false
     detectors:
     # Note: Later detectors do *not* overwrite attributes provided by earlier detectors, hence more specific detectors
@@ -187,9 +187,6 @@ processors:
 
   k8s_attributes:
     extract:
-      {{- if .K8sAttributesDisableReplicasetInformer }}
-      deployment_name_from_replicaset: true
-      {{- end }}
       metadata:
       - k8s.cluster.uid
       - k8s.cronjob.name
@@ -517,8 +514,13 @@ processors:
 
   memory_limiter:
     check_interval: 1s
+    {{- if .MemoryLimiterLimitMiB }}
+    limit_mib: {{ .MemoryLimiterLimitMiB }}
+    spike_limit_mib: {{ .MemoryLimiterSpikeLimitMiB }}
+    {{- else }}
     limit_percentage: 80
     spike_limit_percentage: 25
+    {{- end }}
 
 {{ template "exporters" . }}
 {{- if $gwActive }}
@@ -541,7 +543,7 @@ service:
         - k8s_cluster
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8s_attributes
         {{- if .ClusterName }}
         - resource/clustername
@@ -651,7 +653,7 @@ service:
         - k8s_events
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - transform/k8s_events
         - k8s_attributes
         {{- if .ClusterName }}
@@ -750,6 +752,13 @@ service:
   telemetry:
     resource:
       attributes:
+        {{- /*
+        service.name (dash0-operator-collector), service.version (the collector distribution's version, see
+        images/collector/src/builder/config.yaml) and service.instance.id (a random UUID) are provided automatically
+        from the collector's build info, hence they are not listed here.
+        */}}
+        - name: service.namespace
+          value: dash0-operator
         - name: k8s.cluster.uid
           value: "{{ .PseudoClusterUid }}"
         {{- if .ClusterName }}

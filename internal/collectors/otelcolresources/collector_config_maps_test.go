@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -663,15 +664,18 @@ func cmTestMultipleExportsWithNamespacedMultiExporters() otlpExporters {
 
 var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
+	cmTypeDefDaemonSet := configMapTypeDefinition{
+		cmType:                    configMapTypeDaemonSet,
+		assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapForTest,
+	}
+	cmTypeDefDeployment := configMapTypeDefinition{
+		cmType:                    configMapTypeDeployment,
+		assembleConfigMapFunction: assembleDeploymentCollectorConfigMapForTest,
+	}
+
 	configMapTypeDefinitions := []configMapTypeDefinition{
-		{
-			cmType:                    configMapTypeDaemonSet,
-			assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapForTest,
-		},
-		{
-			cmType:                    configMapTypeDeployment,
-			assembleConfigMapFunction: assembleDeploymentCollectorConfigMapForTest,
-		},
+		cmTypeDefDaemonSet,
+		cmTypeDefDeployment,
 	}
 
 	daemonSetAndDeployment := make([]TableEntry, 0, len(configMapTypeDefinitions))
@@ -1415,6 +1419,35 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(logsExportDefaultExporters).To(ContainElement("otlp_http/default_2/proto"))
 		})
 
+		It("derives the memory_limiter thresholds from the collector memory limit [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace:             OperatorNamespace,
+				NamePrefix:                    namePrefix,
+				Exporters:                     cmTestMultipleExportsDefaultMixed(),
+				DaemonSetCollectorMemoryLimit: resource.MustParse("500Mi"),
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			config := configMap.Data["config.yaml"]
+			Expect(config).To(ContainSubstring("limit_mib: 404"))
+			Expect(config).To(ContainSubstring("spike_limit_mib: 32"))
+			Expect(config).NotTo(ContainSubstring("limit_percentage"))
+		})
+
+		It("falls back to the percentage memory_limiter when no memory limit is set [DaemonSet]", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestMultipleExportsDefaultMixed(),
+			}, monitoredNamespaces, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			config := configMap.Data["config.yaml"]
+			Expect(config).To(ContainSubstring("limit_percentage: 80"))
+			Expect(config).To(ContainSubstring("spike_limit_percentage: 25"))
+			Expect(config).NotTo(ContainSubstring("limit_mib"))
+		})
+
 		It("should list all default exporters in the default export pipeline [Deployment]", func() {
 			configMap, err := assembleDeploymentCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
@@ -1674,7 +1707,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			// Verify the profiles/common-processors pipeline
 			commonProcessors := readPipelineProcessors(pipelines, "profiles/common-processors")
 			Expect(commonProcessors).To(ContainElement("memory_limiter"))
-			Expect(commonProcessors).To(ContainElement("resourcedetection"))
+			Expect(commonProcessors).To(ContainElement("resource_detection"))
 			Expect(commonProcessors).To(ContainElement("k8s_attributes/profiles"))
 			Expect(commonProcessors).ToNot(ContainElement("k8s_attributes"))
 			Expect(commonProcessors).To(ContainElement("transform/resources"))
@@ -3976,7 +4009,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(metricsProcessors).To(ContainElement("resource/clustername"))
 	}, daemonSetAndDeployment)
 
-	Context("the resourcedetection processor", func() {
+	Context("the resource_detection processor", func() {
 		DescribeTable("should render fail_on_missing_metadata: false if Signal Control is disabled",
 			func(cmTypeDef configMapTypeDefinition) {
 				configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -3990,7 +4023,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(err).ToNot(HaveOccurred())
 				collectorConfig := parseConfigMapContent(configMap)
 				resourceDetectionProcessor :=
-					ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})
+					ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})
 				Expect(resourceDetectionProcessor).ToNot(BeNil())
 				Expect(resourceDetectionProcessor).To(HaveKeyWithValue("fail_on_missing_metadata", false))
 			}, daemonSetAndDeployment)
@@ -4014,12 +4047,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(err).ToNot(HaveOccurred())
 				collectorConfig := parseConfigMapContent(configMap)
 				resourceDetectionProcessor :=
-					ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})
+					ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})
 				Expect(resourceDetectionProcessor).ToNot(BeNil())
 				Expect(resourceDetectionProcessor).To(HaveKeyWithValue("fail_on_missing_metadata", false))
 			}, daemonSetAndDeployment)
 
-		It("should not render the resourcedetection processor at all for the Signal Control collector, since all "+
+		It("should not render the resource_detection processor at all for the Signal Control collector, since all "+
 			"resource detection has already happened upstream", func() {
 			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
@@ -4036,14 +4069,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			processors := collectorConfig["processors"].(map[string]interface{})
-			Expect(processors).ToNot(HaveKey("resourcedetection"))
+			Expect(processors).ToNot(HaveKey("resource_detection"))
 			Expect(processors).ToNot(HaveKey("k8s_attributes"))
 			Expect(processors).ToNot(HaveKey("resource/dash0_operator_attributes"))
 		})
 	})
 
-	Describe("should enable/disable kubernetes infrastructure metrics collection and the hostmetrics receiver", func() {
-		It("should not render the kubeletstats receiver and hostmetrics if kubernetes infrastructure metrics collection is disabled", func() {
+	Describe("should enable/disable kubernetes infrastructure metrics collection and the host_metrics receiver", func() {
+		It("should not render the kubelet_stats receiver and host_metrics if kubernetes infrastructure metrics collection is disabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
@@ -4054,17 +4087,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}, nil, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			kubeletstatsReceiver := ReadFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
-			Expect(kubeletstatsReceiver).To(BeNil())
-			hostmetricsReceiver := ReadFromMap(collectorConfig, []string{"receivers", "hostmetrics"})
-			Expect(hostmetricsReceiver).To(BeNil())
+			kubeletStatsReceiver := ReadFromMap(collectorConfig, []string{"receivers", "kubelet_stats"})
+			Expect(kubeletStatsReceiver).To(BeNil())
+			hostMetricsReceiver := ReadFromMap(collectorConfig, []string{"receivers", "host_metrics"})
+			Expect(hostMetricsReceiver).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
 			metricsReceivers := readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")
 			Expect(metricsReceivers).ToNot(BeNil())
 			Expect(metricsReceivers).To(ContainElement("otlp"))
-			Expect(metricsReceivers).ToNot(ContainElement("kubeletstats"))
-			Expect(metricsReceivers).ToNot(ContainElement("hostmetrics"))
+			Expect(metricsReceivers).ToNot(ContainElement("kubelet_stats"))
+			Expect(metricsReceivers).ToNot(ContainElement("host_metrics"))
 			defaultMetricsExporters := readPipelineExporters(pipelines, "metrics/otlp-to-forwarder")
 			Expect(defaultMetricsExporters).To(ContainElement("forward/metrics-processors"))
 		})
@@ -4080,7 +4113,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			wanted                     kubeletStatsReceiverConfigTestWanted
 		}
 
-		DescribeTable("should render the kubeletstats and hostmetrics receiver if kubernetes infrastructure metrics collection is enabled",
+		DescribeTable("should render the kubelet_stats and host_metrics receiver if kubernetes infrastructure metrics collection is enabled",
 			func(testConfig kubeletStatsReceiverConfigTest) {
 				configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
@@ -4092,14 +4125,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				}, nil, nil, nil, nil, nil, emptyTargetAllocatorMtlsConfig, false)
 				Expect(err).ToNot(HaveOccurred())
 				collectorConfig := parseConfigMapContent(configMap)
-				kubeletstatsReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
-				Expect(kubeletstatsReceiverRaw).ToNot(BeNil())
-				kubeletstatsReceiver := kubeletstatsReceiverRaw.(map[string]any)
-				endpoint := kubeletstatsReceiver["endpoint"]
+				kubeletStatsReceiverRaw := ReadFromMap(collectorConfig, []string{"receivers", "kubelet_stats"})
+				Expect(kubeletStatsReceiverRaw).ToNot(BeNil())
+				kubeletStatsReceiver := kubeletStatsReceiverRaw.(map[string]any)
+				endpoint := kubeletStatsReceiver["endpoint"]
 				Expect(endpoint).To(Equal(testConfig.wanted.endpoint))
-				authType := kubeletstatsReceiver["auth_type"]
+				authType := kubeletStatsReceiver["auth_type"]
 				Expect(authType).To(Equal(testConfig.wanted.authType))
-				insecureSkipVerifyPropertyValue, hasInsecureSkipVerifyProperty := kubeletstatsReceiver["insecure_skip_verify"]
+				insecureSkipVerifyPropertyValue, hasInsecureSkipVerifyProperty := kubeletStatsReceiver["insecure_skip_verify"]
 				if testConfig.wanted.insecureSkipVerify {
 					Expect(hasInsecureSkipVerifyProperty).To(BeTrue())
 					Expect(insecureSkipVerifyPropertyValue).To(BeTrue())
@@ -4107,15 +4140,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Expect(hasInsecureSkipVerifyProperty).To(BeFalse())
 				}
 
-				hostmetricsReceiver := ReadFromMap(collectorConfig, []string{"receivers", "hostmetrics"})
-				Expect(hostmetricsReceiver).ToNot(BeNil())
+				hostMetricsReceiver := ReadFromMap(collectorConfig, []string{"receivers", "host_metrics"})
+				Expect(hostMetricsReceiver).ToNot(BeNil())
 
 				pipelines := readPipelines(collectorConfig)
 				metricsReceivers := readPipelineReceivers(pipelines, "metrics/otlp-to-forwarder")
 				Expect(metricsReceivers).ToNot(BeNil())
 				Expect(metricsReceivers).To(ContainElement("otlp"))
-				Expect(metricsReceivers).To(ContainElement("kubeletstats"))
-				Expect(metricsReceivers).To(ContainElement("hostmetrics"))
+				Expect(metricsReceivers).To(ContainElement("kubelet_stats"))
+				Expect(metricsReceivers).To(ContainElement("host_metrics"))
 				defaultMetricsExporters := readPipelineExporters(pipelines, "metrics/otlp-to-forwarder")
 				Expect(defaultMetricsExporters).To(ContainElement("forward/metrics-processors"))
 			},
@@ -4169,49 +4202,77 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		)
 	})
 
-	Describe("should enable/disable the replicaset informer", func() {
-		DescribeTable("should configure the k8s_attributes processor to not start the replicaset informer if disabled", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:                      OperatorNamespace,
-				NamePrefix:                             namePrefix,
-				Exporters:                              cmTestSingleDefaultOtlpExporter(),
-				K8sAttributesDisableReplicasetInformer: true,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
-			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
-			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
-			Expect(deploymentNameFromReplicasetRaw).ToNot(BeNil())
-			deploymentNameFromReplicaset := deploymentNameFromReplicasetRaw.(bool)
-			Expect(deploymentNameFromReplicaset).To(BeTrue())
-			metadataListRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
-			Expect(metadataListRaw).ToNot(BeNil())
-			metadataList := metadataListRaw.([]any)
-			Expect(metadataList).ToNot(ContainElement("k8s.deployment.uid"))
-		}, daemonSetAndDeployment)
+	type deploymentNameFromReplicasetTest struct {
+		cmTypeDef                              configMapTypeDefinition
+		k8sAttributesDisableReplicasetInformer bool
+		profilingEnabled                       bool
+		k8sAttributesProcessorName             string
+	}
 
-		DescribeTable("should configure the k8s_attributes processor to use the replicaset informer by default", func(cmTypeDef configMapTypeDefinition) {
-			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
-				OperatorNamespace:                      OperatorNamespace,
-				NamePrefix:                             namePrefix,
-				Exporters:                              cmTestSingleDefaultOtlpExporter(),
-				K8sAttributesDisableReplicasetInformer: false,
-			}, monitoredNamespaces, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", "k8s_attributes"})
-			Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
-			k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
-			deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
-			Expect(deploymentNameFromReplicasetRaw).To(BeNil())
-			metadataListRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
-			Expect(metadataListRaw).ToNot(BeNil())
-			metadataList := metadataListRaw.([]any)
+	DescribeTable("should enable/disable the replicaset informer", func(testConfig deploymentNameFromReplicasetTest) {
+		configMap, err := testConfig.cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			OperatorNamespace:                      OperatorNamespace,
+			NamePrefix:                             namePrefix,
+			Exporters:                              cmTestSingleDefaultOtlpExporter(),
+			K8sAttributesDisableReplicasetInformer: testConfig.k8sAttributesDisableReplicasetInformer,
+			ProfilingEnabled:                       testConfig.profilingEnabled,
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		k8sAttributesProcessorRaw := ReadFromMap(collectorConfig, []string{"processors", testConfig.k8sAttributesProcessorName})
+		Expect(k8sAttributesProcessorRaw).ToNot(BeNil())
+		k8sAttributesProcessor := k8sAttributesProcessorRaw.(map[string]any)
+		// No matter how k8sAttributesDisableReplicasetInformer is set, deployment_name_from_replicaset is no longer valid
+		// and should never be set.
+		deploymentNameFromReplicasetRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "deployment_name_from_replicaset"})
+		Expect(deploymentNameFromReplicasetRaw).To(BeNil())
+		metadataListRaw := ReadFromMap(k8sAttributesProcessor, []string{"extract", "metadata"})
+		Expect(metadataListRaw).ToNot(BeNil())
+		metadataList := metadataListRaw.([]any)
+
+		// The K8sAttributesDisableReplicasetInformer flag informs whether k8s.deployment.uid is extracted; this implicitly
+		// makes the k8s_attributes processor start the replicaset informer.
+		if testConfig.k8sAttributesDisableReplicasetInformer {
+			Expect(metadataList).ToNot(ContainElement("k8s.deployment.uid"))
+		} else {
 			Expect(metadataList).To(ContainElement("k8s.deployment.uid"))
-		}, daemonSetAndDeployment)
-	})
+		}
+	},
+		Entry("daemonset/replicaset informer disabled/k8s_attributes", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDaemonSet,
+			k8sAttributesDisableReplicasetInformer: true,
+			k8sAttributesProcessorName:             "k8s_attributes",
+		}),
+		Entry("deployment/replicaset informer disabled/k8s_attributes", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDeployment,
+			k8sAttributesDisableReplicasetInformer: true,
+			k8sAttributesProcessorName:             "k8s_attributes",
+		}),
+		Entry("daemonset/replicaset informer enabled/k8s_attributes", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDaemonSet,
+			k8sAttributesDisableReplicasetInformer: false,
+			k8sAttributesProcessorName:             "k8s_attributes",
+		}),
+		Entry("deployment/replicaset informer enabled/k8s_attributes", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDeployment,
+			k8sAttributesDisableReplicasetInformer: false,
+			k8sAttributesProcessorName:             "k8s_attributes",
+		}),
+
+		// k8s_attributes/profiles is a separate configuration of the k8s_attributes, hence it gets its own dedicated tests
+		Entry("daemonset/replicaset informer disabled/k8s_attributes/profiling", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDaemonSet,
+			k8sAttributesDisableReplicasetInformer: true,
+			profilingEnabled:                       true,
+			k8sAttributesProcessorName:             "k8s_attributes/profiles",
+		}),
+		Entry("daemonset/replicaset informer enabled/k8s_attributes/profiling", deploymentNameFromReplicasetTest{
+			cmTypeDef:                              cmTypeDefDaemonSet,
+			k8sAttributesDisableReplicasetInformer: false,
+			profilingEnabled:                       true,
+			k8sAttributesProcessorName:             "k8s_attributes/profiles",
+		}),
+	)
 
 	Describe("should enable/disable wait_for_metadata", func() {
 		DescribeTable("should configure the k8s_attributes processor to wait for metadata if enabled", func(cmTypeDef configMapTypeDefinition) {
@@ -4694,7 +4755,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 			scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
 			metric := scopeMetrics.Metrics().AppendEmpty()
-			tCtx := ottlmetric.NewTransformContextPtr(resourceMetrics, scopeMetrics, metric)
+			tCtx := ottlmetric.NewTransformContext(resourceMetrics, scopeMetrics, metric)
 			defer tCtx.Close()
 
 			result, err := condSeq.Eval(context.Background(), tCtx)
@@ -5342,7 +5403,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(pipelines["metrics/common-processors"]).To(BeNil())
 		})
 
-		It("should not render the resourcedetection processor if neither cluster metrics nor event collection is enabled", func() {
+		It("should not render the resource_detection processor if neither cluster metrics nor event collection is enabled", func() {
 			configMap, err := assembleDeploymentCollectorConfigMap(
 				&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
@@ -5358,7 +5419,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).To(BeNil())
+			Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).To(BeNil())
 		})
 
 		DescribeTable("should render the k8s_cluster receiver and the associated pipeline if Kubernetes infrastructure metrics collection is enabled",
@@ -5391,11 +5452,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"processors",
 					"filter/drop-replicaset-metrics-zero-value",
 				})).ToNot(BeNil())
-				Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).ToNot(BeNil())
+				Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).ToNot(BeNil())
 				pipelines := readPipelines(collectorConfig)
 				Expect(pipelines["metrics/common-processors"]).NotTo(BeNil())
 				Expect(readPipelineProcessors(pipelines, "metrics/common-processors")).
-					To(ContainElement("resourcedetection"))
+					To(ContainElement("resource_detection"))
 			},
 			Entry("without K8s event collection", false),
 			Entry("together with K8s event collection", true),
@@ -5452,12 +5513,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(namespaces).To(ContainElement("namespace-2"))
 
 				Expect(ReadFromMap(collectorConfig, []string{"processors", "transform/k8s_events"})).ToNot(BeNil())
-				Expect(ReadFromMap(collectorConfig, []string{"processors", "resourcedetection"})).ToNot(BeNil())
+				Expect(ReadFromMap(collectorConfig, []string{"processors", "resource_detection"})).ToNot(BeNil())
 
 				pipelines := readPipelines(collectorConfig)
 				Expect(pipelines["logs/k8sevents"]).NotTo(BeNil())
 				Expect(readPipelineProcessors(pipelines, "logs/k8sevents")).
-					To(ContainElement("resourcedetection"))
+					To(ContainElement("resource_detection"))
 			},
 			Entry("without Kubernetes infra metrics collection", false),
 			Entry("together with Kubernetes infra metrics collection", true),
@@ -7325,6 +7386,48 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readSelfMonitoringTelemetry(collectorConfig)).To(BeNil())
 		}, daemonSetAndDeployment)
 
+		DescribeTable("should render service.namespace on the internal telemetry resource",
+			func(cmTypeDef configMapTypeDefinition) {
+				configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+					OperatorNamespace: OperatorNamespace,
+					NamePrefix:        namePrefix,
+					Exporters:         cmTestSingleDefaultOtlpExporter(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+						SelfMonitoringEnabled: true,
+						Export:                *Dash0ExportWithEndpointAndToken(),
+					},
+				}, monitoredNamespaces, nil, nil, false)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				Expect(readSelfMonitoringResourceAttribute(collectorConfig, "service.namespace")).
+					To(Equal("dash0-operator"))
+			}, daemonSetAndDeployment)
+
+		It("should render service.namespace on the internal telemetry resource of the signal control collector "+
+			"[SignalControl]", func() {
+			configMap, err := assembleSignalControlCollectorConfigMap(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Exporters:         cmTestSingleDefaultOtlpExporter(),
+				SignalControl: SignalControlConfig{
+					Enabled:     true,
+					Endpoint:    "decision-maker.example.com:443",
+					ApiEndpoint: "https://control-plane-api.dash0.com",
+					Dataset:     "default",
+				},
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+					Export:                *Dash0ExportWithEndpointAndToken(),
+				},
+			}, monitoredNamespaces, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(readSelfMonitoringResourceAttribute(collectorConfig, "service.namespace")).
+				To(Equal("dash0-operator"))
+		})
+
 		DescribeTable("should render metrics & logs pipelines for a Dash0 export", func(cmTypeDef configMapTypeDefinition) {
 			export := Dash0ExportWithEndpointAndToken()
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -7653,6 +7756,30 @@ func readSelfMonitoringTelemetry(collectorConfig map[string]any) any {
 			"service",
 			"telemetry",
 		})
+}
+
+// readSelfMonitoringResourceAttribute returns the value of the resource attribute with the given name from the
+// service::telemetry::resource section, or nil if there is no such attribute.
+func readSelfMonitoringResourceAttribute(collectorConfig map[string]any, name string) any {
+	attributesRaw := ReadFromMap(
+		collectorConfig,
+		[]string{
+			"service",
+			"telemetry",
+			"resource",
+			"attributes",
+		})
+	Expect(attributesRaw).ToNot(BeNil())
+	attributes, ok := attributesRaw.([]any)
+	Expect(ok).To(BeTrue())
+	for _, attributeRaw := range attributes {
+		attribute, ok := attributeRaw.(map[string]any)
+		Expect(ok).To(BeTrue())
+		if attribute["name"] == name {
+			return attribute["value"]
+		}
+	}
+	return nil
 }
 
 func readSelfMonitoringMetricsPipeline(collectorConfig map[string]any) any {

@@ -147,7 +147,7 @@ There are two ways to achieve this:
 
 1. Install the Prometheus rules custom resource definition with the following command:
    ```console
-   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.93.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.94.0/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
    ```
 2. Alternatively, install the full kube-prometheus stack Helm chart: Go to
    <https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack> and follow the
@@ -987,6 +987,102 @@ Kind: Dash0Team
 Status:
   Synchronization Status: successful
   Synchronized At:        2026-07-16T12:00:00Z
+```
+
+### Managing SLOs
+
+You can manage your Dash0 service level objectives (SLOs) via the Dash0 operator.
+
+**Pre-requisites for this feature:**
+
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have at least one Dash0 export configured with authorization (either `token`
+  or `secret-ref`).
+* The operator will only pick up SLO resources in namespaces that have a Dash0 monitoring resource deployed.
+* Optional: In addition to the global/default API endpoint and authorization described above, it is possible to define
+  namespace-specific overrides by providing one or more Dash0 export(s) with an API endpoint and token in the Dash0
+  monitoring resource.
+
+With the prerequisites in place, the Dash0 operator will watch for SLO resources in all namespaces that have a Dash0
+monitoring resource deployed, and synchronize them with the Dash0 backend:
+
+* When a new SLO resource is created, the operator will create a corresponding SLO via Dash0's API.
+* When an SLO resource is changed, the operator will update the corresponding SLO via Dash0's API.
+* When an SLO resource is deleted, the operator will delete the corresponding SLO via Dash0's API.
+
+The SLOs created by the operator will be in read-only mode in Dash0.
+
+The custom resource definition for SLOs can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-slos.yaml).
+The operator supports the Dash0 subset of [OpenSLO](https://openslo.com) v1: a single objective, an inline
+`ratioMetric` indicator over `good` and `total` Prometheus sources, `Occurrences` budgeting, and a rolling `28d`
+window, which is also the default when `timeWindow` is omitted.
+Queries must be bare PromQL vector selectors, so no `rate()` and no `sum()`.
+See [Create SLOs](https://dash0.com/docs/dash0/monitoring/alerting/create-slos) for the full document format and
+[Manage SLOs as Code](https://dash0.com/docs/dash0/monitoring/alerting/manage-slos-as-code) for the other ways to
+apply it.
+
+The API group is `openslo.com`, not the bare `openslo` that OpenSLO documents use, because Kubernetes requires a dot in
+custom resource definition groups.
+The Dash0 API accepts both, so the same document also works with the Dash0 CLI (`dash0 slos`) and the
+[Terraform provider](https://registry.terraform.io/providers/dash0hq/dash0/latest/docs/resources/slo).
+
+```yaml
+apiVersion: openslo.com/v1
+kind: SLO
+metadata:
+  name: checkout-availability
+  annotations:
+    dash0.com/display-name: Checkout availability
+    dash0.com/enabled: "true"
+spec:
+  description: 99 percent of checkout HTTP requests succeed over a rolling 28-day window.
+  service: checkout
+  budgetingMethod: Occurrences
+  timeWindow:
+    - duration: 28d
+      isRolling: true
+  indicator:
+    metadata:
+      name: checkout-success-ratio
+    spec:
+      ratioMetric:
+        counter: true
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout",http_response_status_code!~"5.."}'
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: 'http_server_request_duration_seconds_count{service_name="checkout"}'
+  objectives:
+    - displayName: 99% availability
+      target: 0.99
+```
+
+If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the SLOs in that
+dataset, otherwise they will be created in the `default` dataset.
+
+You can opt out of synchronization for individual SLO resources by adding the Kubernetes label `dash0.com/enable: false`
+to the SLO resource.
+If this label is added to an SLO which has previously been synchronized to Dash0, the operator will delete the
+corresponding SLO in Dash0.
+
+When an SLO resource has been synchronized to Dash0, the operator will write a summary of that synchronization operation
+to the SLO resource status directly.
+The status will also show whether an error occurred during synchronization.
+
+```yaml
+apiVersion: openslo.com/v1
+kind: SLO
+...
+Status:
+  Synchronization Status: successful
+  Synchronized At:        2026-01-15T10:00:00Z
 ```
 
 ### Infrastructure-as-Code Only Mode (Disable Telemetry Collection)
