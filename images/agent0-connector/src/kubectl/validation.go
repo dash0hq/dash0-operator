@@ -39,7 +39,7 @@ var supportedKubectlCommands = map[string]struct{}{
 	"auth":          {},
 	"api-versions":  {},
 	"cluster-info":  {},
-	"describe":      {}, // describe is not actually allowed, see unconditionallyRejectedKubectlCommands
+	"describe":      {}, // describe is not actually supported, see unconditionallyRejectedKubectlCommands
 	"events":        {},
 	"explain":       {},
 	"get":           {},
@@ -51,10 +51,10 @@ var supportedKubectlCommands = map[string]struct{}{
 // unconditionallyRejectedKubectlCommands are kubectl commands that are listed in supportedKubectlCommands so that a
 // later check can reject them with a more specific reason rather than with the generic "not an allowed read-only
 // command". They can never be enabled via the configuration (see AllowedKubectlCommands). They are also not included in
-// the list of allowed commands that rejection messages advertise.
-var unconditionallyRejectedKubectlCommands = map[string]struct{}{
-	// see describeRequested
-	"describe": {},
+// the list of allowed commands that rejection messages advertise. The map value is the rejection message.
+var unconditionallyRejectedKubectlCommands = map[string]string{
+	"describe": "\"kubectl describe\" is not supported, because its output cannot be redacted reliably; read the " +
+		"resource with \"kubectl get ... -o yaml\" or \"-o json\" instead",
 }
 
 // allowedSubcommandsPerKubectlCommand lists the allowed kubectl commands that may only be invoked with one of the
@@ -212,14 +212,6 @@ func validateCommandAndParseArguments(
 	if reason, blocked := unsafeSortByRequested(arguments); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
-	// Checked before describeRequested, so that describing a secret is rejected with the reason that names what makes
-	// it worse than describing any other resource.
-	if reason, blocked := describeOfSensitiveResourceRequested(arguments); blocked {
-		return kubectlArguments{}, errors.New(reason)
-	}
-	if reason, blocked := describeRequested(arguments); blocked {
-		return kubectlArguments{}, errors.New(reason)
-	}
 	return arguments, nil
 }
 
@@ -256,9 +248,8 @@ func disallowedKubectlCommandRequested(
 			allowedKubectlCommands.humanReadable,
 		), true
 	}
-	if _, rejected := unconditionallyRejectedKubectlCommands[parsed.kubectlCommand]; rejected {
-		// Rejected by a later check, with a more specific reason, see
-		return "", false
+	if rejectionMessage, rejected := unconditionallyRejectedKubectlCommands[parsed.kubectlCommand]; rejected {
+		return rejectionMessage, true
 	}
 	if !allowedKubectlCommands.Allows(parsed.kubectlCommand) {
 		return fmt.Sprintf(
@@ -305,45 +296,6 @@ func disallowedSubcommandRequested(parsed kubectlArguments) (string, bool) {
 		parsed.kubectlCommand,
 		strings.Join(allowedSubcommands, "\" or \""),
 		requestedSubcommand,
-	), true
-}
-
-// describeRequested reports whether the kubectl arguments describe a resource, returning a human-readable reason when
-// they do. The describer renders a resource in a text format that is not meant to be parsed and for which no parser is
-// available, so the connector cannot locate the credentials in its output in order to redact them.
-//
-// This holds for every resource type, not only for the ones whose schema is known to have a credential field: a
-// third-party custom resource can carry a credential just as well, and "kubectl describe" prints the annotations of any
-// resource, including the verbatim copy of the applied manifest that "kubectl apply" leaves in
-// "kubectl.kubernetes.io/last-applied-configuration".
-func describeRequested(parsed kubectlArguments) (string, bool) {
-	if parsed.kubectlCommand != "describe" {
-		return "", false
-	}
-	return "\"kubectl describe\" is not supported, because it renders a resource in a text format the connector " +
-		"cannot parse, so the credentials a resource may contain cannot be redacted from its output; read the " +
-		"resource with \"kubectl get ... -o yaml\" or \"-o json\" instead", true
-}
-
-// describeOfSensitiveResourceRequested reports whether the kubectl arguments describe a sensitive resource, returning a
-// human-readable reason when they do. Listing a secret and checking for the presence of a particular one are allowed
-// (see sensitiveContentRequested), but describing one potentially exposes its content over:
-// 1. kubectl describe secret prints the token of a "kubernetes.io/service-account-token" secret verbatim
-// 2. kubectl describe secret prints the exact size of every other value, which is a length oracle over the value.
-func describeOfSensitiveResourceRequested(parsed kubectlArguments) (string, bool) {
-	if parsed.kubectlCommand != "describe" {
-		return "", false
-	}
-	resource, targeted := targetedSensitiveResource(parsed)
-	if !targeted {
-		return "", false
-	}
-	return fmt.Sprintf(
-		"describing a %s is not allowed, because \"kubectl describe\" prints the exact length of every value; "+
-			"listing %ss or checking for the presence of a particular one with \"kubectl get %s <name>\" is supported",
-		resource.displayName,
-		resource.displayName,
-		resource.displayName,
 	), true
 }
 

@@ -94,13 +94,8 @@ func sortByNotAllowed(expression string) string {
 	)
 }
 
-const describeNotSupported = "\"kubectl describe\" is not supported, because it renders a resource in a text format " +
-	"the connector cannot parse, so the credentials a resource may contain cannot be redacted from its output; read " +
-	"the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead"
-
-const describeOfSecretNotSupported = "describing a secret is not allowed, because \"kubectl describe\" prints the " +
-	"exact length of every value; listing secrets or checking for the presence of a particular one with " +
-	"\"kubectl get secret <name>\" is supported"
+const describeNotSupported = "\"kubectl describe\" is not supported, because its output cannot be redacted reliably; " +
+	"read the resource with \"kubectl get ... -o yaml\" or \"-o json\" instead"
 
 //nolint:lll
 func TestValidateCommandRequest(t *testing.T) {
@@ -384,9 +379,6 @@ func TestValidateCommandRequest(t *testing.T) {
 		{name: "synthetic checks are covered",
 			command: "kubectl", arguments: []string{"get", "dash0syntheticchecks", "-o", "custom-columns=T:.spec"}, allowed: false,
 			rejectionReason: outputFormatNotRedactable("custom-columns")},
-		{name: "describe of a Dash0 resource with --template is rejected",
-			command: "kubectl", arguments: []string{"describe", "dash0monitorings", "--template={{.spec}}"}, allowed: false,
-			rejectionReason: outputFormatNotRedactable("go-template")},
 
 		// The formats the connector can redact stay available for Dash0 resources.
 		{name: "a Dash0 resource with -o yaml is allowed",
@@ -603,37 +595,35 @@ func TestValidateCommandRequest(t *testing.T) {
 			command: "kubectl", arguments: []string{"get", "secret", "-o", "jsonpath-file=/etc/passwd"}, allowed: false,
 			rejectionReason: contentsNotReadable},
 
-		// "kubectl describe" prints the token of a service account token secret verbatim, and the size of every other
-		// value, and its output cannot be redacted.
 		{name: "describe of a secret is rejected",
 			command: "kubectl", arguments: []string{"describe", "secret", "my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of secrets in all namespaces is rejected",
 			command: "kubectl", arguments: []string{"describe", "secrets", "-A"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a secret via type/name is rejected",
 			command: "kubectl", arguments: []string{"describe", "secret/my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "the secret kind form is covered by describe",
 			command: "kubectl", arguments: []string{"describe", "Secret", "my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "the fully qualified secret resource type is covered by describe",
 			command: "kubectl", arguments: []string{"describe", "secrets.v1."}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a secret with a leading flag is rejected",
 			command: "kubectl", arguments: []string{"-n", "x", "describe", "secret", "my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		// The secret restriction takes precedence over the one for resource types that can contain secrets, so that the
 		// rejection names the stronger of the two.
 		{name: "describe of a secret in a later slot is rejected as a secret",
 			command: "kubectl", arguments: []string{"describe", "pod/a", "secret/b"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a multi-resource list including secrets is rejected as a secret",
 			command: "kubectl", arguments: []string{"describe", "configmap,secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 		{name: "describe of a padded secret resource type is rejected",
 			command: "kubectl", arguments: []string{"describe", " secret ", "my-secret"}, allowed: false,
-			rejectionReason: describeOfSecretNotSupported},
+			rejectionReason: describeNotSupported},
 
 		// Config maps: whether they can be read at all is decided by RBAC alone, but the connector walks their content
 		// for credentials (see redactConfigMapData), so they are restricted to the output formats it can redact,
