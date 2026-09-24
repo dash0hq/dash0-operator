@@ -253,7 +253,7 @@ func responseHasToBeRedacted(parsed kubectlArguments) bool {
 	//nolint:goconst
 	if parsed.kubectlCommand != "get" {
 		// No other allowed kubectl command renders resource content: "describe" is rejected outright (see
-		// describeRequested), "explain" only prints the schema.
+		// unconditionallyRejectedKubectlCommands), "explain" only prints the schema.
 		return false
 	}
 	// kubectl get -o name or similar renders no actual resource content. Everything else is "-o json" or "-o yaml",
