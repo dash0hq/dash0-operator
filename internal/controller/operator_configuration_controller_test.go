@@ -131,7 +131,7 @@ var _ = Describe(
 							config.operatorConfigurationResourceSpec,
 						)
 
-						expectedDataset := "default"
+						expectedDataset := ""
 						if config.dataset != "" {
 							operatorConfigurationResource.Spec.Exports[0].Dash0.Dataset = config.dataset
 							Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
@@ -1036,7 +1036,7 @@ var _ = Describe(
 							Expect(apiClient.defaultApiConfigs[0].Dataset).To(Equal(DatasetCustomTest))
 							Expect(apiClient.defaultApiConfigs[0].Token).To(Equal(AuthorizationTokenTestAlternative))
 							Expect(apiClient.defaultApiConfigs[1].Endpoint).To(Equal(ApiEndpointTest))
-							Expect(apiClient.defaultApiConfigs[1].Dataset).To(Equal("default"))
+							Expect(apiClient.defaultApiConfigs[1].Dataset).To(BeEmpty())
 							Expect(apiClient.defaultApiConfigs[1].Token).To(Equal(AuthorizationTokenTest))
 						}
 					},

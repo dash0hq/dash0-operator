@@ -218,7 +218,7 @@ func convertExportConfigurationToOTelSDKConfig(
 				Value: util.RenderAuthorizationHeader(*oTelSdkConfigInput.token),
 			},
 		}
-		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
+		if dash0Export.Dataset != "" {
 			headers = append(
 				headers, dash0common.Header{
 					Name:  util.Dash0DatasetHeaderName,

@@ -214,10 +214,10 @@ spec:
                             type: string
                         type: object
                       dataset:
-                        default: default
                         description: |-
-                          The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                          dataset "default" will be used.
+                          The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, no
+                          dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token.
+                          API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                         type: string
                       endpoint:
                         description: |-
@@ -491,10 +491,10 @@ spec:
                               type: string
                           type: object
                         dataset:
-                          default: default
                           description: |-
-                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                            dataset "default" will be used.
+                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, no
+                            dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token.
+                            API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-
@@ -1424,10 +1424,10 @@ spec:
                             type: string
                         type: object
                       dataset:
-                        default: default
                         description: |-
-                          The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                          dataset "default" will be used.
+                          The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, no
+                          dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token.
+                          API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                         type: string
                       endpoint:
                         description: |-
@@ -1701,10 +1701,10 @@ spec:
                               type: string
                           type: object
                         dataset:
-                          default: default
                           description: |-
-                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-                            dataset "default" will be used.
+                            The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, no
+                            dataset is sent along with the telemetry, and Dash0 selects the dataset based on the authorization token.
+                            API access (dashboards, check rules, etc.) uses the dataset "default" in that case.
                           type: string
                         endpoint:
                           description: |-

@@ -165,6 +165,18 @@ func Dash0ExportWithEndpointTokenAndCustomDataset() *dash0common.Export {
 	}
 }
 
+func Dash0ExportWithEndpointTokenAndExplicitDefaultDataset() *dash0common.Export {
+	return &dash0common.Export{
+		Dash0: &dash0common.Dash0Configuration{
+			Endpoint: EndpointDash0Test,
+			Dataset:  util.DatasetDefault,
+			Authorization: dash0common.Authorization{
+				Token: &AuthorizationTokenTest,
+			},
+		},
+	}
+}
+
 func Dash0ExportWithEndpointTokenAndCustomDatasetAndApiEndpoint() *dash0common.Export {
 	return &dash0common.Export{
 		Dash0: &dash0common.Dash0Configuration{
