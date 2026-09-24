@@ -54,7 +54,7 @@ func main() {
 	defer stop()
 
 	// Subscribe to command requests and execute them until a termination signal is received.
-	grpc.RunSubscriber(signalCtx, logger)
+	grpc.NewSubscriber(logger).RunSubscriber(signalCtx, logger)
 
 	logger.Info("dash0 agent0-connector received a termination signal, shutting down")
 }

@@ -100,38 +100,48 @@ const (
 // passthrough:, unix:), which grpc.NewClient understands.
 var toleratedSchemePrefixes = []string{"https://", "http://"}
 
+// Subscriber subscribes to command requests from the Dash0 backend and executes them. Create it with NewSubscriber.
+type Subscriber struct {
+	serverAddress          string
+	transportCredentials   credentials.TransportCredentials
+	clientID               string
+	authToken              string
+	kubectlTmpDir          string
+	maxConcurrentCommands  int
+	allowedKubectlCommands kubectl.AllowedKubectlCommands
+	execute                commandExecutor
+}
+
+// NewSubscriber creates a Subscriber, resolving its configuration from the environment. It exits the process if a
+// mandatory environment variable is not set.
+func NewSubscriber(logger *slog.Logger) *Subscriber {
+	return &Subscriber{
+		serverAddress:          resolveServerAddress(logger),
+		transportCredentials:   resolveTransportCredentials(logger),
+		clientID:               resolveClientID(logger),
+		authToken:              resolveAuthToken(logger),
+		kubectlTmpDir:          resolveKubectlTmpDir(logger),
+		maxConcurrentCommands:  resolveMaxConcurrentCommands(logger),
+		allowedKubectlCommands: resolveAllowedKubectlCommands(logger),
+		execute:                kubectl.ExecuteCommandRequest,
+	}
+}
+
 // RunSubscriber opens the SubscribeToCommandRequests stream to the backend and keeps it open, reconnecting
 // whenever the stream drops, until the provided context is cancelled (e.g. on shutdown).
-func RunSubscriber(ctx context.Context, logger *slog.Logger) {
-	serverAddress := resolveServerAddress(logger)
-	transportCredentials := resolveTransportCredentials(logger)
-	clientID := resolveClientID(logger)
-	authToken := resolveAuthToken(logger)
-	kubectlTmpDir := resolveKubectlTmpDir(logger)
-	maxConcurrentCommands := resolveMaxConcurrentCommands(logger)
-	allowedKubectlCommands := resolveAllowedKubectlCommands(logger)
+func (s *Subscriber) RunSubscriber(ctx context.Context, logger *slog.Logger) {
 	logger.Info(
 		"connecting to the Dash0 backend",
-		"address", serverAddress,
-		"clientId", clientID,
-		"maxConcurrentCommands", maxConcurrentCommands,
-		"allowedKubectlCommands", allowedKubectlCommands.String(),
+		"address", s.serverAddress,
+		"clientId", s.clientID,
+		"maxConcurrentCommands", s.maxConcurrentCommands,
+		"allowedKubectlCommands", s.allowedKubectlCommands.String(),
 	)
 
 	reconnectDelay := initialReconnectDelay
 	for ctx.Err() == nil {
 		streamStart := time.Now()
-		err := runStream(
-			ctx,
-			logger,
-			serverAddress,
-			transportCredentials,
-			clientID,
-			authToken,
-			kubectlTmpDir,
-			allowedKubectlCommands,
-			maxConcurrentCommands,
-		)
+		err := s.runStream(ctx, logger)
 		if ctx.Err() != nil {
 			return
 		}
@@ -351,20 +361,10 @@ func resolveAllowedKubectlCommands(logger *slog.Logger) kubectl.AllowedKubectlCo
 // runStream opens a single SubscribeToCommandRequests stream and listens to incoming CommandRequest, until the stream
 // fails or the context is cancelled. For every received CommandRequest it executes the requested (read-only) kubectl
 // command and sends back the CommandResponse.
-func runStream(
-	ctx context.Context,
-	logger *slog.Logger,
-	serverAddress string,
-	transportCredentials credentials.TransportCredentials,
-	clientID string,
-	authToken string,
-	kubectlTmpDir string,
-	allowedKubectlCommands kubectl.AllowedKubectlCommands,
-	maxConcurrentCommands int,
-) error {
+func (s *Subscriber) runStream(ctx context.Context, logger *slog.Logger) error {
 	conn, err := grpc.NewClient(
-		serverAddress,
-		grpc.WithTransportCredentials(transportCredentials),
+		s.serverAddress,
+		grpc.WithTransportCredentials(s.transportCredentials),
 		// The command request stream is mostly idle (commands arrive sporadically). Without keepalive, cloud NAT
 		// gateways and load balancers might silently drop the idle TCP connection after their idle timeout; stream.Recv
 		// would then block indefinitely and commands would never be delivered. Keepalive pings keep the connection alive
@@ -386,8 +386,8 @@ func runStream(
 
 	streamCtx := metadata.AppendToOutgoingContext(
 		ctx,
-		metadataClientID, clientID,
-		metadataAuthorization, "Bearer "+authToken,
+		metadataClientID, s.clientID,
+		metadataAuthorization, "Bearer "+s.authToken,
 	)
 	stream, err := client.SubscribeToCommandRequests(streamCtx)
 	if err != nil {
@@ -396,15 +396,7 @@ func runStream(
 
 	logger.Info("subscribed to command requests")
 
-	return listenToCommandRequests(
-		ctx,
-		logger,
-		stream,
-		kubectlTmpDir,
-		allowedKubectlCommands,
-		maxConcurrentCommands,
-		kubectl.ExecuteCommandRequest,
-	)
+	return s.listenToCommandRequests(ctx, logger, stream)
 }
 
 // commandRequestStream is the subset of the gRPC bidirectional stream that listenToCommandRequests needs: receiving
@@ -432,14 +424,10 @@ type commandExecutor func(
 //
 // It returns nil when the backend closed the stream cleanly (io.EOF) and a wrapped error on any receive or send
 // failure.
-func listenToCommandRequests(
+func (s *Subscriber) listenToCommandRequests(
 	ctx context.Context,
 	logger *slog.Logger,
 	stream commandRequestStream,
-	kubectlTmpDir string,
-	allowedKubectlCommands kubectl.AllowedKubectlCommands,
-	maxConcurrentCommands int,
-	execute commandExecutor,
 ) error {
 	workerCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
@@ -451,19 +439,12 @@ func listenToCommandRequests(
 	responses := make(chan *pb.CommandResponse)
 
 	var workers sync.WaitGroup
-	for range maxConcurrentCommands {
+	for range s.maxConcurrentCommands {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
 			for req := range requests {
-				responses <- executeWithPanicBoundary(
-					workerCtx,
-					logger,
-					kubectlTmpDir,
-					allowedKubectlCommands,
-					req,
-					execute,
-				)
+				responses <- s.executeWithPanicBoundary(workerCtx, req, logger)
 			}
 		}()
 	}
@@ -529,13 +510,10 @@ func listenToCommandRequests(
 // command in flight.
 //
 // The response in case of a panic is synthesized here, it does not use any result from the actual execution.
-func executeWithPanicBoundary(
+func (s *Subscriber) executeWithPanicBoundary(
 	ctx context.Context,
-	logger *slog.Logger,
-	kubectlTmpDir string,
-	allowedKubectlCommands kubectl.AllowedKubectlCommands,
 	req *pb.CommandRequest,
-	execute commandExecutor,
+	logger *slog.Logger,
 ) (resp *pb.CommandResponse) {
 	defer func() {
 		recovered := recover()
@@ -559,7 +537,7 @@ func executeWithPanicBoundary(
 				"not handle",
 		}
 	}()
-	return execute(ctx, logger, kubectlTmpDir, allowedKubectlCommands, req)
+	return s.execute(ctx, logger, s.kubectlTmpDir, s.allowedKubectlCommands, req)
 }
 
 // receiveCommandRequests reads CommandRequests from the stream and hands them to the worker queue, until the stream is

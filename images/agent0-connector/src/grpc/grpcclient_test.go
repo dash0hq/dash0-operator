@@ -283,15 +283,13 @@ func startListeningWithContext(
 ) <-chan error {
 	listenDone := make(chan error, 1)
 	go func() {
-		listenDone <- listenToCommandRequests(
-			ctx,
-			logger,
-			stream,
-			"/tmp",
-			kubectl.DefaultAllowedKubectlCommands(),
-			maxConcurrentCommands,
-			execute,
-		)
+		subscriber := &Subscriber{
+			kubectlTmpDir:          "/tmp",
+			maxConcurrentCommands:  maxConcurrentCommands,
+			allowedKubectlCommands: kubectl.DefaultAllowedKubectlCommands(),
+			execute:                execute,
+		}
+		listenDone <- subscriber.listenToCommandRequests(ctx, logger, stream)
 	}()
 	return listenDone
 }
