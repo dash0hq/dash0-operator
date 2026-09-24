@@ -20,70 +20,80 @@ const (
 	helmChartHelpersFile = "../../../../helm-chart/dash0-operator/templates/_helpers.tpl"
 )
 
-// defaultKubectlCommands is the configuration the connector uses when the operator does not pass one.
-var defaultKubectlCommands = DefaultAllowedKubectlCommands()
-
-// everySupportedKubectlCommandAllowed returns the configuration that enables every kubectl command the configuration
-// can enable, so that tests of the individual checks do not depend on the defaults.
-func everySupportedKubectlCommandAllowed() AllowedKubectlCommands {
-	allowed, _ := ParseAllowedKubectlCommands(strings.Join(slices.Sorted(maps.Keys(supportedKubectlCommands)), ","))
-	return allowed
-}
-
-func TestDefaultAllowedKubectlCommands(t *testing.T) {
-	allowed := DefaultAllowedKubectlCommands()
-	assertAllowedKubectlCommands(
-		t,
-		allowed,
-		[]string{"api-resources", "api-versions", "auth", "cluster-info", "explain", "get", "top", "version"},
-		"",
-	)
-	for _, kubectlCmd := range []string{"logs", "events", "describe"} {
-		if allowed.Allows(kubectlCmd) {
-			t.Errorf("expected the kubectl command %q to be disabled by default", kubectlCmd)
-		}
-	}
-}
+// defaultKubectlCommands are the kubectl commands the Helm chart allows by default, read from
+// operator.agent0Connector.allowedKubectlCommands in helm-chart/dash0-operator/values.yaml.
+var defaultKubectlCommands = mustParseAllowedKubectlCommands(strings.Join(helmChartDefaultKubectlCommands(true), ","))
 
 func TestParseAllowedKubectlCommands(t *testing.T) {
 	tests := []struct {
 		name            string
 		value           string
 		expectedAllowed []string
-		expectedIgnored []string
 	}{
-		{name: "empty value allows nothing", value: "", expectedAllowed: nil},
 		{name: "single command", value: "get", expectedAllowed: []string{"get"}},
 		{name: "several commands", value: "logs,get,events", expectedAllowed: []string{"events", "get", "logs"}},
-		{name: "whitespace and empty entries are tolerated", value: " get , ,logs,",
+		{name: "whitespace around entries is tolerated", value: " get , logs\t",
 			expectedAllowed: []string{"get", "logs"}},
-		{name: "describe cannot be enabled", value: "get,describe", expectedAllowed: []string{"get"},
-			expectedIgnored: []string{"describe"}},
-		{name: "unknown commands are ignored", value: "get,delete,exec,cluster-info dump",
-			expectedAllowed: []string{"get"}, expectedIgnored: []string{"delete", "exec", "cluster-info dump"}},
+		{name: "duplicates are tolerated", value: "get,get", expectedAllowed: []string{"get"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			allowed, ignored := ParseAllowedKubectlCommands(tt.value)
-			assertAllowedKubectlCommands(
-				t,
-				allowed,
-				tt.expectedAllowed,
-				"",
-			)
-			if !slices.Equal(ignored, tt.expectedIgnored) {
-				t.Errorf("expected the ignored entries %v, got %v", tt.expectedIgnored, ignored)
+			allowed, err := ParseAllowedKubectlCommands(tt.value)
+			if err != nil {
+				t.Fatalf("expected the value %q to be parsed, but it was rejected: %v", tt.value, err)
+			}
+			assertAllowedKubectlCommands(t, allowed, tt.expectedAllowed, "")
+		})
+	}
+}
+
+func TestParseAllowedKubectlCommandsRejectsInvalidValues(t *testing.T) {
+	notSetOrEmpty := "the environment variable DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS is not set or empty, " +
+		"at least one kubectl command needs to be allowed"
+	emptyEntry := func(value string) string {
+		return fmt.Sprintf(
+			"the environment variable DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS contains an empty entry: %q",
+			value,
+		)
+	}
+	unsupported := func(kubectlCommands string) string {
+		return "the environment variable DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS contains kubectl commands " +
+			"that the agent0-connector does not support: " + kubectlCommands
+	}
+	tests := []struct {
+		name          string
+		value         string
+		expectedError string
+	}{
+		{name: "empty value", value: "", expectedError: notSetOrEmpty},
+		{name: "only whitespace", value: " \t ", expectedError: notSetOrEmpty},
+		{name: "only a comma", value: ",", expectedError: emptyEntry(",")},
+		{name: "empty entry", value: "get,,logs", expectedError: emptyEntry("get,,logs")},
+		{name: "trailing comma", value: "get,", expectedError: emptyEntry("get,")},
+		{name: "blank entry", value: "get, ,logs", expectedError: emptyEntry("get, ,logs")},
+		{name: "describe", value: "get,describe", expectedError: unsupported("describe")},
+		{name: "only unsupported commands", value: "delete", expectedError: unsupported("delete")},
+		{name: "every invalid command is listed", value: "get,delete,describe,exec,cluster-info dump",
+			expectedError: unsupported("delete, describe, exec, cluster-info dump")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseAllowedKubectlCommands(tt.value)
+			if err == nil {
+				t.Fatalf("expected the value %q to be rejected, but it was parsed", tt.value)
+			}
+			if err.Error() != tt.expectedError {
+				t.Errorf("expected the error\n\t%s\ngot\n\t%s", tt.expectedError, err)
 			}
 		})
 	}
 }
 
-func TestDescribeAllowedKubectlCommands(t *testing.T) {
+func TestRenderAllowedKubectlCommandsHumanReadable(t *testing.T) {
 	tests := []struct {
 		kubectlCommands []string
 		expected        string
 	}{
-		{kubectlCommands: nil, expected: "no kubectl command is allowed by the configuration of the agent0-connector"},
 		{kubectlCommands: []string{"get"}, expected: `the only allowed kubectl command is "get"`},
 		{kubectlCommands: []string{"get", "top"}, expected: `the only allowed kubectl commands are "get" and "top"`},
 		{kubectlCommands: []string{"auth", "get", "top"},
@@ -99,34 +109,13 @@ func TestDescribeAllowedKubectlCommands(t *testing.T) {
 }
 
 // TestHelmChartListsEverySupportedKubectlCommand guards against drift between the kubectl commands the connector
-// supports and the ones the Helm chart accepts in operator.agent0Connector.allowedKubectlCommands, as well as between
-// the defaults of that Helm value and DefaultAllowedKubectlCommands.
+// supports and the ones the Helm chart lists and accepts in operator.agent0Connector.allowedKubectlCommands. A command
+// that the Helm chart accepts but the connector does not support makes the connector terminate on startup.
 func TestHelmChartListsEverySupportedKubectlCommand(t *testing.T) {
-	var configurable []string
-	for kubectlCmd := range supportedKubectlCommands {
-		if _, rejected := unconditionallyRejectedKubectlCommands[kubectlCmd]; !rejected {
-			configurable = append(configurable, kubectlCmd)
-		}
-	}
-	slices.Sort(configurable)
+	configurable := configurableKubectlCommands()
 
 	t.Run("the default values", func(t *testing.T) {
-		content, err := os.ReadFile(helmChartValuesFile)
-		if err != nil {
-			t.Fatalf("cannot read %s: %v", helmChartValuesFile, err)
-		}
-		var values struct {
-			Operator struct {
-				Agent0Connector struct {
-					AllowedKubectlCommands map[string]bool `json:"allowedKubectlCommands"`
-				} `json:"agent0Connector"`
-			} `json:"operator"`
-		}
-		if err := yaml.Unmarshal(content, &values); err != nil {
-			t.Fatalf("cannot parse %s: %v", helmChartValuesFile, err)
-		}
-		defaults := values.Operator.Agent0Connector.AllowedKubectlCommands
-		if listed := slices.Sorted(maps.Keys(defaults)); !slices.Equal(listed, configurable) {
+		if listed := helmChartDefaultKubectlCommands(false); !slices.Equal(listed, configurable) {
 			t.Errorf(
 				"operator.agent0Connector.allowedKubectlCommands in %s lists %v, but the configurable kubectl commands are %v",
 				helmChartValuesFile,
@@ -134,22 +123,6 @@ func TestHelmChartListsEverySupportedKubectlCommand(t *testing.T) {
 				configurable,
 			)
 		}
-		var enabledByDefault []string
-		for kubectlCmd, enabled := range defaults {
-			if enabled {
-				enabledByDefault = append(enabledByDefault, kubectlCmd)
-			}
-		}
-		slices.Sort(enabledByDefault)
-		assertAllowedKubectlCommands(
-			t,
-			DefaultAllowedKubectlCommands(),
-			enabledByDefault,
-			fmt.Sprintf(
-				"Drift test: DefaultAllowedKubectlCommands vs. the defaults of operator.agent0Connector.allowedKubectlCommands in %s",
-				helmChartValuesFile,
-			),
-		)
 	})
 
 	t.Run("the validation of the Helm value", func(t *testing.T) {
@@ -207,4 +180,59 @@ func assertAllowedKubectlCommands(
 			t.Errorf("%sexpected the kubectl command %q to not be allowed", messagePrefix, kubectlCmd)
 		}
 	}
+}
+
+// everySupportedKubectlCommandAllowed returns the configuration that enables every kubectl command the configuration
+// can enable, so that tests of the individual checks do not depend on the defaults.
+func everySupportedKubectlCommandAllowed() AllowedKubectlCommands {
+	return mustParseAllowedKubectlCommands(strings.Join(configurableKubectlCommands(), ","))
+}
+
+// configurableKubectlCommands returns the sorted list of supported kubectl commands that are not rejected
+// unconditionally.
+func configurableKubectlCommands() []string {
+	var configurable []string
+	for kubectlCmd := range supportedKubectlCommands {
+		if _, rejected := unconditionallyRejectedKubectlCommands[kubectlCmd]; !rejected {
+			configurable = append(configurable, kubectlCmd)
+		}
+	}
+	slices.Sort(configurable)
+	return configurable
+}
+
+func mustParseAllowedKubectlCommands(value string) AllowedKubectlCommands {
+	allowed, err := ParseAllowedKubectlCommands(value)
+	if err != nil {
+		panic(err)
+	}
+	return allowed
+}
+
+// helmChartDefaultKubectlCommands returns the sorted keys of operator.agent0Connector.allowedKubectlCommands in the
+// default values of the Helm chart. With onlyEnabled, only the kubectl commands that are enabled by default are
+// returned.
+func helmChartDefaultKubectlCommands(onlyEnabled bool) []string {
+	content, err := os.ReadFile(helmChartValuesFile)
+	if err != nil {
+		panic(fmt.Sprintf("cannot read %s: %v", helmChartValuesFile, err))
+	}
+	var values struct {
+		Operator struct {
+			Agent0Connector struct {
+				AllowedKubectlCommands map[string]bool `json:"allowedKubectlCommands"`
+			} `json:"agent0Connector"`
+		} `json:"operator"`
+	}
+	if err := yaml.Unmarshal(content, &values); err != nil {
+		panic(fmt.Sprintf("cannot parse %s: %v", helmChartValuesFile, err))
+	}
+	var kubectlCommands []string
+	for kubectlCmd, enabled := range values.Operator.Agent0Connector.AllowedKubectlCommands {
+		if enabled || !onlyEnabled {
+			kubectlCommands = append(kubectlCommands, kubectlCmd)
+		}
+	}
+	slices.Sort(kubectlCommands)
+	return kubectlCommands
 }

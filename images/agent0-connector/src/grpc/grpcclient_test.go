@@ -21,10 +21,6 @@ import (
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
-func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
-
 func TestResolveAuthToken(t *testing.T) {
 	logger := discardLogger()
 	t.Setenv(authTokenEnvVarName, "agent0-connector-auth-token")
@@ -286,7 +282,7 @@ func startListeningWithContext(
 		subscriber := &Subscriber{
 			kubectlTmpDir:          "/tmp",
 			maxConcurrentCommands:  maxConcurrentCommands,
-			allowedKubectlCommands: kubectl.DefaultAllowedKubectlCommands(),
+			allowedKubectlCommands: allowOnlyGet(),
 			execute:                execute,
 		}
 		listenDone <- subscriber.listenToCommandRequests(ctx, logger, stream)
@@ -671,38 +667,124 @@ func TestWorkerSurvivesAPanickingExecutor(t *testing.T) {
 }
 
 func TestResolveAllowedKubectlCommands(t *testing.T) {
-	logger := discardLogger()
+	exitRecorder := mockExit(t)
+	t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, " logs, get ")
+	if got := resolveAllowedKubectlCommands(discardLogger()).String(); got != "get,logs" {
+		t.Errorf("expected the allowed kubectl commands from the environment variable, got %q", got)
+	}
+	exitRecorder.assertNotExited(t)
+}
 
-	t.Run("falls back to the defaults when the environment variable is absent", func(t *testing.T) {
-		// t.Setenv registers the restoration of the original value, so that unsetting it does not leak into other tests.
-		t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "")
-		if err := os.Unsetenv(kubectl.AllowedKubectlCommandsEnvVarName); err != nil {
-			t.Fatal(err)
-		}
-		got := resolveAllowedKubectlCommands(logger)
-		if expected := kubectl.DefaultAllowedKubectlCommands().String(); got.String() != expected {
-			t.Errorf("expected the default allowed kubectl commands %q, got %q", expected, got.String())
-		}
-	})
+func TestNewSubscriberTerminatesOnMissingOrInvalidValues(t *testing.T) {
+	tests := []struct {
+		name          string
+		envVarName    string
+		value         *string
+		expectedError string
+	}{
+		{name: "server address is not set", envVarName: serverAddressEnvVarName,
+			expectedError: "the server address environment variable is not set"},
+		{name: "server address has no host", envVarName: serverAddressEnvVarName, value: new("https://"),
+			expectedError: "the server address environment variable has no host"},
+		{name: "cluster UID is not set", envVarName: clusterUidEnvVarName,
+			expectedError: "the cluster UID environment variable is not set"},
+		{name: "auth token is not set", envVarName: authTokenEnvVarName,
+			expectedError: "the authorization token environment variable is not set"},
+		{name: "kubectl tmp directory is not set", envVarName: kubectl.KubectlTmpEnvVarName,
+			expectedError: "the kubectl tmp directory environment variable is not set"},
+		{name: "allowed kubectl commands are not set", envVarName: kubectl.AllowedKubectlCommandsEnvVarName,
+			expectedError: "is not set or empty"},
+		{name: "allowed kubectl commands are empty", envVarName: kubectl.AllowedKubectlCommandsEnvVarName,
+			value: new(""), expectedError: "is not set or empty"},
+		{name: "allowed kubectl commands contain an empty entry", envVarName: kubectl.AllowedKubectlCommandsEnvVarName,
+			value: new("get,,logs"), expectedError: "contains an empty entry"},
+		{name: "allowed kubectl commands contain unsupported commands",
+			envVarName:    kubectl.AllowedKubectlCommandsEnvVarName,
+			value:         new("get,describe,delete"),
+			expectedError: "contains kubectl commands that the agent0-connector does not support: describe, delete"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setValidSubscriberEnvironment(t)
+			if tt.value != nil {
+				t.Setenv(tt.envVarName, *tt.value)
+			} else if err := os.Unsetenv(tt.envVarName); err != nil {
+				t.Fatal(err)
+			}
+			exitRecorder := mockExit(t)
+			var logOutput strings.Builder
 
-	t.Run("uses the value from the environment", func(t *testing.T) {
-		t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "logs,get")
-		if got := resolveAllowedKubectlCommands(logger).String(); got != "get,logs" {
-			t.Errorf("expected the allowed kubectl commands from the environment variable, got %q", got)
-		}
-	})
+			NewSubscriber(slog.New(slog.NewTextHandler(&logOutput, nil)))
 
-	t.Run("allows no kubectl command when the environment variable is empty", func(t *testing.T) {
-		t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "")
-		if got := resolveAllowedKubectlCommands(logger).String(); got != "" {
-			t.Errorf("expected no allowed kubectl command, got %q", got)
-		}
-	})
+			exitRecorder.assertExitedOnce(t, 1)
+			if !strings.Contains(logOutput.String(), "level=ERROR") ||
+				!strings.Contains(logOutput.String(), tt.expectedError) {
+				t.Errorf("expected an error log containing %q, got:\n%s", tt.expectedError, logOutput.String())
+			}
+		})
+	}
+}
 
-	t.Run("ignores kubectl commands the connector does not support", func(t *testing.T) {
-		t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "get,describe,delete")
-		if got := resolveAllowedKubectlCommands(logger).String(); got != "get" {
-			t.Errorf("expected only the supported kubectl command to be allowed, got %q", got)
-		}
-	})
+func TestNewSubscriberDoesNotTerminateWithAValidEnvironment(t *testing.T) {
+	setValidSubscriberEnvironment(t)
+	exitRecorder := mockExit(t)
+
+	NewSubscriber(discardLogger())
+
+	exitRecorder.assertNotExited(t)
+}
+
+// setValidSubscriberEnvironment sets every environment variable that NewSubscriber requires to a valid value. t.Setenv
+// restores the original values when the test ends, which also covers variables that the test unsets afterwards.
+func setValidSubscriberEnvironment(t *testing.T) {
+	t.Helper()
+	t.Setenv(serverAddressEnvVarName, "outbound-connector.eu-west-1.aws.dash0.com:4317")
+	t.Setenv(clusterUidEnvVarName, "cluster-uid")
+	t.Setenv(authTokenEnvVarName, "agent0-connector-auth-token")
+	t.Setenv(kubectl.KubectlTmpEnvVarName, "/tmp")
+	t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "get")
+}
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func allowOnlyGet() kubectl.AllowedKubectlCommands {
+	allowed, err := kubectl.ParseAllowedKubectlCommands("get")
+	if err != nil {
+		panic(err)
+	}
+	return allowed
+}
+
+// exitRecorder records the calls of the exit function that mockExit installs.
+type exitRecorder struct {
+	exitCodes []int
+}
+
+// mockExit replaces exit with a function that records its calls instead of terminating the test process, and restores
+// the original function when the test ends.
+func mockExit(t *testing.T) *exitRecorder {
+	t.Helper()
+	recorder := &exitRecorder{}
+	original := exit
+	exit = func(exitCode int) {
+		recorder.exitCodes = append(recorder.exitCodes, exitCode)
+	}
+	t.Cleanup(func() { exit = original })
+	return recorder
+}
+
+func (r *exitRecorder) assertExitedOnce(t *testing.T, expectedExitCode int) {
+	t.Helper()
+	if !slices.Equal(r.exitCodes, []int{expectedExitCode}) {
+		t.Errorf("expected the process to exit once with exit code %d, got the exit codes %v", expectedExitCode, r.exitCodes)
+	}
+}
+
+func (r *exitRecorder) assertNotExited(t *testing.T) {
+	t.Helper()
+	if len(r.exitCodes) > 0 {
+		t.Errorf("expected the process to not exit, but it exited with the exit codes %v", r.exitCodes)
+	}
 }

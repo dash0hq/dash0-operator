@@ -12,68 +12,64 @@ import (
 
 // AllowedKubectlCommandsEnvVarName is the environment variable through which the operator passes the comma-separated
 // list of kubectl commands the connector may execute (set from the Helm value
-// operator.agent0Connector.allowedKubectlCommands). When the variable is absent, DefaultAllowedKubectlCommands applies.
+// operator.agent0Connector.allowedKubectlCommands). The variable is required.
 const AllowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
 
-// disabledByDefaultKubectlCommands lists the supported kubectl commands that are only allowed when the configuration
-// enables them explicitly. This mirrors the defaults of
-// operator.agent0Connector.allowedKubectlCommands in helm-chart/dash0-operator/values.yaml.
-var disabledByDefaultKubectlCommands = map[string]struct{}{
-	"events": {},
-	"logs":   {},
-}
-
-// AllowedKubectlCommands is the set of kubectl commands the connector may execute. It is always a subset of
-// supportedKubectlCommands and never contains a command listed in unconditionallyRejectedKubectlCommands.
+// AllowedKubectlCommands is the set of kubectl commands the connector may execute. It is never empty, always a subset
+// of supportedKubectlCommands and never contains a command listed in unconditionallyRejectedKubectlCommands.
 type AllowedKubectlCommands struct {
 	commands      map[string]struct{}
 	humanReadable string
 }
 
-// DefaultAllowedKubectlCommands returns the kubectl commands the connector executes when the configuration does not
-// list them explicitly: every supported kubectl command except for the ones in disabledByDefaultKubectlCommands.
-func DefaultAllowedKubectlCommands() AllowedKubectlCommands {
-	var kubectlCommands []string
-	for kubectlCmd := range supportedKubectlCommands {
-		if _, disabledByDefault := disabledByDefaultKubectlCommands[kubectlCmd]; !disabledByDefault {
-			kubectlCommands = append(kubectlCommands, kubectlCmd)
-		}
-	}
-	allowed, _ := newAllowedKubectlCommands(kubectlCommands)
-	return allowed
-}
-
 // ParseAllowedKubectlCommands parses a comma-separated list of kubectl commands, as passed via
-// DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS. An empty value allows no kubectl command at all. Entries that are
-// not a supported kubectl command, or that name a command the connector rejects unconditionally (e.g. "describe"), are
-// left out of the result and returned as the second return value.
-func ParseAllowedKubectlCommands(value string) (AllowedKubectlCommands, []string) {
-	var kubectlCommands []string
-	for entry := range strings.SplitSeq(value, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry != "" {
-			kubectlCommands = append(kubectlCommands, entry)
-		}
+// DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS. Whitespace around an entry is ignored. It returns an error if the
+// value is empty, if it contains an empty entry, or if an entry is not a supported kubectl command or names a command
+// the connector rejects unconditionally (e.g. "describe"); the error lists every such entry.
+func ParseAllowedKubectlCommands(value string) (AllowedKubectlCommands, error) {
+	if strings.TrimSpace(value) == "" {
+		return AllowedKubectlCommands{}, fmt.Errorf(
+			"the environment variable %s is not set or empty, at least one kubectl command needs to be allowed",
+			AllowedKubectlCommandsEnvVarName,
+		)
 	}
-	return newAllowedKubectlCommands(kubectlCommands)
-}
-
-func newAllowedKubectlCommands(kubectlCommands []string) (AllowedKubectlCommands, []string) {
-	commands := make(map[string]struct{}, len(kubectlCommands))
-	var ignored []string
-	for _, kubectlCmd := range kubectlCommands {
+	commands := make(map[string]struct{})
+	var invalid []string
+	for entry := range strings.SplitSeq(value, ",") {
+		kubectlCmd := strings.TrimSpace(entry)
+		if kubectlCmd == "" {
+			return AllowedKubectlCommands{}, fmt.Errorf(
+				"the environment variable %s contains an empty entry: %q",
+				AllowedKubectlCommandsEnvVarName,
+				value,
+			)
+		}
 		_, supported := supportedKubectlCommands[kubectlCmd]
 		_, rejected := unconditionallyRejectedKubectlCommands[kubectlCmd]
 		if !supported || rejected {
-			ignored = append(ignored, kubectlCmd)
+			invalid = append(invalid, kubectlCmd)
 			continue
 		}
 		commands[kubectlCmd] = struct{}{}
 	}
+	if len(invalid) > 0 {
+		return AllowedKubectlCommands{}, fmt.Errorf(
+			"the environment variable %s contains kubectl commands that the agent0-connector does not support: %s",
+			AllowedKubectlCommandsEnvVarName,
+			strings.Join(invalid, ", "),
+		)
+	}
+	if len(commands) == 0 {
+		return AllowedKubectlCommands{}, fmt.Errorf(
+			"the environment variable %s does not contain any kubectl command, at least one kubectl command needs to "+
+				"be allowed",
+			AllowedKubectlCommandsEnvVarName,
+		)
+	}
 	return AllowedKubectlCommands{
 		commands:      commands,
 		humanReadable: renderAllowedKubectlCommandsHumanReadable(slices.Sorted(maps.Keys(commands))),
-	}, ignored
+	}, nil
 }
 
 // Allows reports whether the given kubectl command may be executed.
@@ -90,10 +86,7 @@ func (a AllowedKubectlCommands) String() string {
 // renderAllowedKubectlCommandsHumanReadable renders the phrase that rejection messages use to tell the calling agent
 // which kubectl commands it may use instead.
 func renderAllowedKubectlCommandsHumanReadable(sortedKubectlCommands []string) string {
-	switch len(sortedKubectlCommands) {
-	case 0:
-		return "no kubectl command is allowed by the configuration of the agent0-connector"
-	case 1:
+	if len(sortedKubectlCommands) == 1 {
 		return fmt.Sprintf("the only allowed kubectl command is %q", sortedKubectlCommands[0])
 	}
 	quoted := make([]string, 0, len(sortedKubectlCommands))

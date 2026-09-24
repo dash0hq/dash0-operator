@@ -95,6 +95,10 @@ const (
 	healthyStreamThreshold = 1 * time.Minute
 )
 
+// exit terminates the process with the given exit code. Tests replace it to observe the termination without ending the
+// test process.
+var exit = os.Exit
+
 // toleratedSchemePrefixes are the protocol prefixes that resolveServerAddress accepts and removes from the configured
 // server address. Any other scheme is left alone, in particular the schemes of gRPC's own target syntax (dns://,
 // passthrough:, unix:), which grpc.NewClient understands.
@@ -201,7 +205,8 @@ func resolveServerAddress(logger *slog.Logger) string {
 			"the server address environment variable is not set, cannot connect to the Dash0 backend",
 			"envVar", serverAddressEnvVarName,
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
 	}
 	serverAddress = normalizeServerAddress(logger, serverAddress)
 	if serverAddress == "" {
@@ -210,7 +215,8 @@ func resolveServerAddress(logger *slog.Logger) string {
 			"envVar", serverAddressEnvVarName,
 			"value", os.Getenv(serverAddressEnvVarName),
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
 	}
 	return serverAddress
 }
@@ -277,7 +283,8 @@ func resolveClientID(logger *slog.Logger) string {
 			"the cluster UID environment variable is not set, cannot connect to the Dash0 backend",
 			"envVar", clusterUidEnvVarName,
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
 	}
 	return clientID
 }
@@ -294,7 +301,8 @@ func resolveAuthToken(logger *slog.Logger) string {
 			"the authorization token environment variable is not set, cannot connect to the Dash0 backend",
 			"envVar", authTokenEnvVarName,
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
 	}
 	return authToken
 }
@@ -312,7 +320,8 @@ func resolveKubectlTmpDir(logger *slog.Logger) string {
 			"the kubectl tmp directory environment variable is not set, cannot run kubectl with a writable cache directory",
 			"envVar", kubectl.KubectlTmpEnvVarName,
 		)
-		os.Exit(1)
+		exit(1)
+		return ""
 	}
 	return tmpDir
 }
@@ -339,21 +348,20 @@ func resolveMaxConcurrentCommands(logger *slog.Logger) int {
 }
 
 // resolveAllowedKubectlCommands returns the kubectl commands the connector executes, read from the
-// DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS environment variable. An absent variable falls back to
-// kubectl.DefaultAllowedKubectlCommands. Entries that the connector does not support, or that it rejects
-// unconditionally, are ignored.
+// DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS environment variable. The variable is mandatory; if it is not set,
+// cannot be parsed, contains a kubectl command the connector does not support or rejects unconditionally, or does not
+// allow any kubectl command, the process logs an error and exits. (When the operator deploys this workload, the
+// variable is always provided, from the Helm value operator.agent0Connector.allowedKubectlCommands.)
 func resolveAllowedKubectlCommands(logger *slog.Logger) kubectl.AllowedKubectlCommands {
-	value, isSet := os.LookupEnv(kubectl.AllowedKubectlCommandsEnvVarName)
-	if !isSet {
-		return kubectl.DefaultAllowedKubectlCommands()
-	}
-	allowedKubectlCommands, ignored := kubectl.ParseAllowedKubectlCommands(value)
-	if len(ignored) > 0 {
-		logger.Warn(
-			"ignoring kubectl commands from the list of allowed kubectl commands which the connector does not support",
+	allowedKubectlCommands, err := kubectl.ParseAllowedKubectlCommands(os.Getenv(kubectl.AllowedKubectlCommandsEnvVarName))
+	if err != nil {
+		logger.Error(
+			"invalid list of allowed kubectl commands",
 			"envVar", kubectl.AllowedKubectlCommandsEnvVarName,
-			"ignored", strings.Join(ignored, ","),
+			"error", err,
 		)
+		exit(1)
+		return kubectl.AllowedKubectlCommands{}
 	}
 	return allowedKubectlCommands
 }
