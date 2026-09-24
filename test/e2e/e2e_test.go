@@ -2646,7 +2646,7 @@ spec:
 		})
 	}) // end of suite "with the agent0-connector enabled and a manually managed operator configuration resource"
 
-	Context("with the agent0-connector and a custom cluster role", Ordered, func() {
+	Context("with the agent0-connector, a custom cluster role and command allowlist", Ordered, func() {
 		var pseudoClusterUid string
 
 		BeforeAll(func() {
@@ -2668,7 +2668,8 @@ spec:
 			applyConfigMapCmd.Stdin = strings.NewReader(configMapWithCredentialManifest)
 			Expect(runAndIgnoreOutput(applyConfigMapCmd)).To(Succeed())
 
-			By("deploying the Dash0 operator with a custom cluster role for the agent0-connector")
+			By("deploying the Dash0 operator with a custom cluster role and a custom command allowlist for the " +
+				"agent0-connector")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -2683,17 +2684,28 @@ spec:
 					"operator.agent0Connector.insecure":      "true",
 
 					// The custom rules replace the operator's default rules entirely: they grant read access to config
-					// maps, which the default rules deliberately exclude, and they do not grant access to pods, which
-					// the default rules do cover. The empty API group of the core resource types has to be set via the
-					// index syntax; "{\"\"}" would render as a list holding the two quote characters.
+					// maps and pod logs, which the default rules deliberately exclude, and they do not grant access to
+					// namespaces, which the default rules do cover.
 					"operator.agent0Connector.clusterRole.rules[0].apiGroups[0]": "",
 					"operator.agent0Connector.clusterRole.rules[0].resources":    "{configmaps}",
 					"operator.agent0Connector.clusterRole.rules[0].verbs":        "{get,list}",
 					// "get" for the required API discovery URLs (/api, /apis, /openapi/v3, ...) is usually granted automatically
 					// via the group system:authenticated/cluster role binding system:discovery cluster, so this is not necessary
-					// in most clusters.
-					"operator.agent0Connector.clusterRole.rules[1].nonResourceURLs": "{*}",
-					"operator.agent0Connector.clusterRole.rules[1].verbs":           "{get}",
+					// in most clusters, but it also does not hurt to set this anyway.
+					"operator.agent0Connector.clusterRole.rules[1].nonResourceURLs": "{/api,/api/*,/apis,/apis/*," +
+						"/healthz,/livez,/openapi,/openapi/*,/readyz,/version,/version/}",
+					"operator.agent0Connector.clusterRole.rules[1].verbs":        "{get}",
+					"operator.agent0Connector.clusterRole.rules[2].apiGroups[0]": "",
+					"operator.agent0Connector.clusterRole.rules[2].resources":    "{pods}",
+					"operator.agent0Connector.clusterRole.rules[2].verbs":        "{get,list}",
+					"operator.agent0Connector.clusterRole.rules[3].apiGroups[0]": "",
+					"operator.agent0Connector.clusterRole.rules[3].resources":    "{pods/log}",
+					"operator.agent0Connector.clusterRole.rules[3].verbs":        "{get}",
+
+					// Helm merges these values into the default allowlist, all other kubectl commands keep their
+					// default setting.
+					"operator.agent0Connector.allowedKubectlCommands.logs":         "true",
+					"operator.agent0Connector.allowedKubectlCommands.cluster-info": "false",
 				},
 			)
 		})
@@ -2709,7 +2721,7 @@ spec:
 			))).To(Succeed())
 		})
 
-		It("grants the custom rules and not the default rules", func() {
+		It("grants the custom rules and not the default rules, and only allows the configured kubectl commands", func() {
 			waitForAgent0ConnectorDeploymentToBecomeAvailable()
 
 			verifyAgent0ConnectorIsReportedAsDeployed(dash0OperatorConfigurationResourceAutomaticallyManagedName)
@@ -2809,14 +2821,15 @@ spec:
 					"the rest of the config map should stay readable")
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 
-			By("triggering a command request for pods, which only the replaced default rules would allow")
+			By("triggering a command request for namespaces, which the default rules would have allowed but the custom " +
+				"rules do not")
 			var forbiddenRequestId string
 			Eventually(func(g Gomega) {
 				forbiddenRequestId = triggerOutboundConnectorMockCommandRequest(
 					g,
 					pseudoClusterUid,
 					"kubectl",
-					[]string{"get", "pods", "--all-namespaces"},
+					[]string{"get", "namespaces"},
 				)
 			}, 30*time.Second, pollingInterval).Should(Succeed())
 
@@ -2825,13 +2838,77 @@ spec:
 				response := findOutboundConnectorMockCommandResponse(g, forbiddenRequestId)
 				g.Expect(response.ExitCode).ToNot(
 					BeEquivalentTo(0),
-					"\"kubectl get pods\" should have failed; stdout was: %s", response.Stdout)
+					"\"kubectl get namespaces\" should have failed; stdout was: %s", response.Stdout)
 				g.Expect(response.Stderr).To(
-					ContainSubstring("pods is forbidden"),
-					"the request for pods should have been rejected by RBAC; stderr was: %s", response.Stderr)
+					ContainSubstring("namespaces is forbidden"),
+					"the request for namespaces should have been rejected by RBAC; stderr was: %s", response.Stderr)
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("determining the name of the outbound-connector mock pod")
+			outboundConnectorMockPodName, err := run(exec.Command(
+				"kubectl",
+				"get", "pods",
+				"-n", outboundConnectorMockNamespace,
+				"-l", "app=outbound-connector-mock-app",
+				"-o", "jsonpath={.items[0].metadata.name}",
+			), false)
+			Expect(err).ToNot(HaveOccurred())
+			outboundConnectorMockPodName = strings.TrimSpace(outboundConnectorMockPodName)
+			Expect(outboundConnectorMockPodName).ToNot(BeEmpty())
+
+			By("triggering a \"kubectl logs\" command request, which the custom command allowlist enables")
+			var logsRequestId string
+			Eventually(func(g Gomega) {
+				logsRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"logs", outboundConnectorMockPodName, "-n", outboundConnectorMockNamespace},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the agent0-connector returned the logs of the pod")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, logsRequestId)
+				g.Expect(response.ExitCode).To(
+					BeEquivalentTo(0),
+					"\"kubectl logs %s\" should have succeeded; stderr was: %s",
+					outboundConnectorMockPodName,
+					response.Stderr,
+				)
+				g.Expect(response.Stdout).To(
+					ContainSubstring("outbound-connector-mock gRPC server listening on"),
+					"stdout should contain the startup log line of the outbound-connector mock")
+			}, 90*time.Second, pollingInterval).Should(Succeed())
+
+			By("triggering a \"kubectl cluster-info\" command request, which the custom command allowlist disables")
+			var clusterInfoRequestId string
+			Eventually(func(g Gomega) {
+				clusterInfoRequestId = triggerOutboundConnectorMockCommandRequest(
+					g,
+					pseudoClusterUid,
+					"kubectl",
+					[]string{"cluster-info"},
+				)
+			}, 30*time.Second, pollingInterval).Should(Succeed())
+
+			By("verifying the agent0-connector rejected the disabled kubectl command")
+			Eventually(func(g Gomega) {
+				response := findOutboundConnectorMockCommandResponse(g, clusterInfoRequestId)
+				g.Expect(response.ExitCode).ToNot(
+					BeEquivalentTo(0),
+					"\"kubectl cluster-info\" should have been rejected; stdout was: %s", response.Stdout)
+				g.Expect(response.Stdout).To(BeEmpty())
+				g.Expect(response.Stderr).To(Equal(
+					"dash0 agent0-connector rejected the command: the kubectl command \"cluster-info\" has been " +
+						"disabled in the configuration of the agent0-connector (via the Helm value " +
+						"operator.agent0Connector.allowedKubectlCommands), the only allowed kubectl commands are " +
+						"\"api-resources\", \"api-versions\", \"auth\", \"explain\", \"get\", \"logs\", \"top\" " +
+						"and \"version\"",
+				))
 			}, 90*time.Second, pollingInterval).Should(Succeed())
 		})
-	}) // end of suite "with the agent0-connector and a custom cluster role"
+	}) // end of suite "with the agent0-connector, a custom cluster role and a custom command allowlist"
 
 	Context("with an existing operator deployment without an operation configuration resource", func() {
 		BeforeAll(func() {
