@@ -35,6 +35,12 @@ const (
 	// how many command requests it may execute at the same time.
 	maxConcurrentCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_MAX_CONCURRENT_COMMANDS"
 
+	// allowedKubectlCommandsEnvVarName is the environment variable through which the agent0-connector workload
+	// receives the comma-separated list of kubectl commands it may execute (see the Helm value
+	// operator.agent0Connector.allowedKubectlCommands). The variable is required, agent0-connector terminates with an
+	// error if it is absent, empty, when it cannot be parsed, or when it contains no known commands.
+	allowedKubectlCommandsEnvVarName = "DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS"
+
 	// defaultMaxConcurrentCommands is the number of command requests the agent0-connector executes at the same time when
 	// the extra config does not specify a value (e.g. an older config map). It is bounded by memory: a request that
 	// returns the maximum output size costs about 90 MiB, most of it in the kubectl child process and in parsing the
@@ -572,6 +578,19 @@ func assembleClusterRoleBinding(c *util.Agent0ConnectorConfig) *rbacv1.ClusterRo
 	}
 }
 
+// joinAllowedKubectlCommands renders the allowed kubectl commands as a sorted, comma-separated list. The
+// agent0-connector ignores any entry that is not a kubectl command it supports.
+func joinAllowedKubectlCommands(allowedKubectlCommands map[string]bool) string {
+	enabled := make([]string, 0, len(allowedKubectlCommands))
+	for kubectlCommand, allowed := range allowedKubectlCommands {
+		if allowed {
+			enabled = append(enabled, kubectlCommand)
+		}
+	}
+	slices.Sort(enabled)
+	return strings.Join(enabled, ",")
+}
+
 func assembleDeployment(
 	c *util.Agent0ConnectorConfig,
 	authTokenEnvVar *corev1.EnvVar,
@@ -653,6 +672,13 @@ func assembleDeployment(
 		// A missing authorization token is tolerated here so the desired state can still be assembled for DeleteResources
 		// (where the token is irrelevant).
 		container.Env = append(container.Env, *authTokenEnvVar)
+	}
+
+	if len(extraConfig.Agent0ConnectorAllowedKubectlCommands) > 0 {
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  allowedKubectlCommandsEnvVarName,
+			Value: joinAllowedKubectlCommands(extraConfig.Agent0ConnectorAllowedKubectlCommands),
+		})
 	}
 
 	if c.Insecure {

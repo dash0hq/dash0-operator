@@ -9,7 +9,6 @@ package kubectl
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -17,16 +16,25 @@ import (
 	pb "github.com/dash0hq/dash0-operator/images/agent0-connector/proto"
 )
 
-// allowedKubectlCommands is the allowlist of kubectl commands the executor is allowed to run. Everything else
-// is rejected. The list deliberately contains only kubectl commands that read cluster state and never mutate it. This
-// is additional defense-in-depth on top of the read-only RBAC (get & list only) granted to the agent0-connector service
-// account.
+// supportedKubectlCommands is the allowlist of kubectl commands the executor can run at all. Everything else is
+// rejected, independent of the command allowlist that has been configured. The list deliberately contains only kubectl
+// commands that read cluster state and never mutate it. This is additional defense-in-depth on top of the read-only
+// RBAC (get & list only) granted to the agent0-connector service account.
+//
+// The configuration can restrict this list further (see AllowedKubectlCommands). The default configuration blocks
+// the "logs" and "events" command, these restrictions can be lifted by the user.
 //
 // It also (despite the name) lists rejected kubectl commands that need a more specific rejection message
 // (e.g. kubectl describe)
 //
-// Allowed kubectl commands can be further restricted via allowedSubcommandsPerKubectlCommand.
-var allowedKubectlCommands = map[string]struct{}{
+// The exact shape of supported kubectl commands can be further restricted via allowedSubcommandsPerKubectlCommand
+// (e.g. allowing "kubectl auth can-i", but not other "kubectl auth" subcommands).
+//
+// Maintenance note: The list of supported commands is duplicated in the template
+// dash0-operator.agent0ConnectorAllowedKubectlCommands in helm-chart/dash0-operator/templates/_helpers.tpl and in
+// operator.agent0Connector.allowedKubectlCommands in helm-chart/dash0-operator/values.yaml, see
+// TestHelmChartListsEverySupportedKubectlCommand.
+var supportedKubectlCommands = map[string]struct{}{
 	"api-resources": {},
 	"auth":          {},
 	"api-versions":  {},
@@ -40,33 +48,14 @@ var allowedKubectlCommands = map[string]struct{}{
 	"version":       {},
 }
 
-// unconditionallyRejectedKubectlCommands are kubectl commands that are listed in allowedKubectlCommands so that a later
-// check can reject them with a more specific reason rather than with the generic "not an allowed read-only command".
-// They are left out of allowedKubectlCommandsHumanReadable so that no rejection message advertises a command the
-// connector never runs.
+// unconditionallyRejectedKubectlCommands are kubectl commands that are listed in supportedKubectlCommands so that a
+// later check can reject them with a more specific reason rather than with the generic "not an allowed read-only
+// command". They can never be enabled via the configuration (see AllowedKubectlCommands). They are also not included in
+// the list of allowed commands that rejection messages advertise.
 var unconditionallyRejectedKubectlCommands = map[string]struct{}{
 	// see describeRequested
 	"describe": {},
 }
-
-var allowedKubectlCommandsHumanReadable = func() string {
-	allCmds := slices.DeleteFunc(
-		slices.Sorted(maps.Keys(allowedKubectlCommands)),
-		func(kubectlCmd string) bool {
-			_, rejected := unconditionallyRejectedKubectlCommands[kubectlCmd]
-			return rejected
-		},
-	)
-	allowedCmdsString := fmt.Sprintf("%q", allCmds[0])
-	for idx, kubectlCmd := range allCmds {
-		if idx > 0 && idx < len(allCmds)-1 {
-			allowedCmdsString += fmt.Sprintf(", %q", kubectlCmd)
-		} else if idx == len(allCmds)-1 {
-			allowedCmdsString += fmt.Sprintf(" and %q", kubectlCmd)
-		}
-	}
-	return allowedCmdsString
-}()
 
 // allowedSubcommandsPerKubectlCommand lists the allowed kubectl commands that may only be invoked with one of the
 // listed subcommands. Every other subcommand is rejected for that kubectl command. This way a future kubectl release
@@ -187,7 +176,10 @@ var sensitiveResourceTypes = map[string]sensitiveResource{
 // reuse for further processing (e.g. redacting the response). If the request is allowed, the returned error is nil.
 // If an error is returned, the error describes why the request is rejected. The returned argument list must not be
 // used when the error is non-nil.
-func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments, error) {
+func validateCommandAndParseArguments(
+	req *pb.CommandRequest,
+	allowedKubectlCommands AllowedKubectlCommands,
+) (kubectlArguments, error) {
 	if reason, blocked := disallowedExecutableRequested(req); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
@@ -201,8 +193,9 @@ func validateCommandAndParseArguments(req *pb.CommandRequest) (kubectlArguments,
 		return kubectlArguments{}, fmt.Errorf("the kubectl flag %q is not allowed", arguments.disallowedFlags[0])
 	}
 
-	// Check the kubectl command first, reject any kubectl command that is not on the allowlist (allowedKubectlCommands).
-	if reason, blocked := disallowedKubectlCommandRequested(arguments); blocked {
+	// Check the kubectl command first, reject any kubectl command that is not on the allowlist (supportedKubectlCommands)
+	// or that has not been enabled via the configuration (allowedKubectlCommands).
+	if reason, blocked := disallowedKubectlCommandRequested(arguments, allowedKubectlCommands); blocked {
 		return kubectlArguments{}, errors.New(reason)
 	}
 	if reason, blocked := disallowedSubcommandRequested(arguments); blocked {
@@ -247,17 +240,32 @@ func disallowedExecutableRequested(req *pb.CommandRequest) (string, bool) {
 	return "", false
 }
 
-func disallowedKubectlCommandRequested(parsed kubectlArguments) (string, bool) {
+func disallowedKubectlCommandRequested(
+	parsed kubectlArguments,
+	allowedKubectlCommands AllowedKubectlCommands,
+) (string, bool) {
 	if parsed.kubectlCommand == "" {
 		// Invoking kubectl with no command at all - bare `kubectl`, or only global flags such as `kubectl --help` - is
 		// allowed.
 		return "", false
 	}
-	if _, allowed := allowedKubectlCommands[parsed.kubectlCommand]; !allowed {
+	if _, supported := supportedKubectlCommands[parsed.kubectlCommand]; !supported {
 		return fmt.Sprintf(
-			"the kubectl command %q is not an allowed read-only command, the only allowed kubectl commands are %s",
+			"the kubectl command %q is not an allowed read-only command, %s",
 			parsed.kubectlCommand,
-			allowedKubectlCommandsHumanReadable,
+			allowedKubectlCommands.humanReadable,
+		), true
+	}
+	if _, rejected := unconditionallyRejectedKubectlCommands[parsed.kubectlCommand]; rejected {
+		// Rejected by a later check, with a more specific reason, see
+		return "", false
+	}
+	if !allowedKubectlCommands.Allows(parsed.kubectlCommand) {
+		return fmt.Sprintf(
+			"the kubectl command %q has been disabled in the configuration of the agent0-connector (via the Helm value "+
+				"operator.agent0Connector.allowedKubectlCommands), %s",
+			parsed.kubectlCommand,
+			allowedKubectlCommands.humanReadable,
 		), true
 	}
 	return "", false
