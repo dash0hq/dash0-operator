@@ -2225,7 +2225,7 @@ func createOrUpdateAutoOperatorConfigurationResource(
 		startupTasksK8sClient,
 		readyCheckExecuter,
 		*operatorConfigurationValues,
-		extraConfig.MonitoringTemplateRaw,
+		extraConfig,
 	)
 	leaderElectionAwareRunnable.AddLeaderElectionClient(autoOperatorConfigurationResourceHandler)
 	if operatorConfigurationResource, err :=

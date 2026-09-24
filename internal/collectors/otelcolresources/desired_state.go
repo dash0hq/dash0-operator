@@ -124,11 +124,16 @@ type oTelColConfig struct {
 	OffsetStorageVolume            *corev1.Volume
 	SignalControl                  SignalControlConfig
 	AutoNamespaceMonitoringEnabled bool
-	DevelopmentMode                bool
-	DebugVerbosityDetailed         bool
-	EnableProfExtension            bool
-	ProfilingEnabled               bool
-	CompressConfigMap              bool
+	// GlobalFilter and GlobalNormalizedTransform are the cluster-wide filters and transformations from the operator
+	// configuration resource. In contrast to the filters and transformations of monitoring resources, their conditions
+	// are not scoped to a namespace.
+	GlobalFilter              *dash0common.Filter
+	GlobalNormalizedTransform *dash0common.NormalizedTransformSpec
+	DevelopmentMode           bool
+	DebugVerbosityDetailed    bool
+	EnableProfExtension       bool
+	ProfilingEnabled          bool
+	CompressConfigMap         bool
 	// DaemonSetCollectorMemoryLimit, DeploymentCollectorMemoryLimit and SignalControlCollectorMemoryLimit are the
 	// container memory limits of the three collectors, used to derive the memory_limiter thresholds. A zero value
 	// makes the templates fall back to the percentage-based memory_limiter configuration.

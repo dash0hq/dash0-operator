@@ -4,6 +4,8 @@
 package webhooks
 
 import (
+	"encoding/json"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -282,6 +284,111 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			})
 		Expect(err).To(MatchError(ContainSubstring(
 			"profiling explicitly enabled, although telemetry collection is disabled")))
+	})
+
+	It("should reject a new operator configuration resource with telemetry collection disabled but filters set", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Filter: &dash0common.Filter{
+						Traces: &dash0common.TraceFilter{
+							SpanFilter: []string{`attributes["http.route"] == "/ready"`},
+						},
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"telemetry filters, although telemetry collection is disabled")))
+	})
+
+	It("should reject a new operator configuration resource with telemetry collection disabled but transformations set", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Transform: &dash0common.Transform{
+						Traces: []json.RawMessage{
+							json.RawMessage(`"truncate_all(span.attributes, 128)"`),
+						},
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: new(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"telemetry transformations, although telemetry collection is disabled")))
+	})
+
+	It("should reject a new operator configuration resource with an invalid filter condition", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Filter: &dash0common.Filter{
+						Traces: &dash0common.TraceFilter{
+							SpanFilter: []string{`NoSuchFunction(attributes["http.route"])`},
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(`undefined function "NoSuchFunction"`)))
+	})
+
+	It("should reject a new operator configuration resource with an invalid transform statement", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Transform: &dash0common.Transform{
+						Traces: []json.RawMessage{
+							json.RawMessage(`"no_such_function(span.attributes, 128)"`),
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			`inferred context "span" does not support the function "no_such_function"`)))
+	})
+
+	It("should allow a new operator configuration resource with valid filters and transformations", func() {
+		operatorConfigurationResource, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Exports: []dash0common.Export{*Dash0ExportWithEndpointAndToken()},
+					Filter: &dash0common.Filter{
+						Traces: &dash0common.TraceFilter{
+							SpanFilter: []string{`attributes["http.route"] == "/ready"`},
+						},
+					},
+					Transform: &dash0common.Transform{
+						Traces: []json.RawMessage{
+							json.RawMessage(`"truncate_all(span.attributes, 128)"`),
+						},
+					},
+				},
+			})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(operatorConfigurationResource).ToNot(BeNil())
 	})
 
 	It("should reject a new operator configuration resource with a GRPC export having both insecure and insecureSkipVerify set to true", func() {

@@ -9,6 +9,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
@@ -108,6 +109,68 @@ var _ = Describe("The mutating webhook for the operator configuration resource",
 				g.Expect(spec.TelemetryCollection.Enabled).To(Equal(new(false)))
 			})
 		})
+	})
+
+	DescribeTable("should normalize the transform spec",
+		func(transform *dash0common.Transform, wanted *dash0common.NormalizedTransformSpec) {
+			spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				Transform: transform,
+			}
+
+			_, errorResponse := operatorConfigurationMutatingWebhookHandler.
+				normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+
+			Expect(errorResponse).To(BeNil())
+			Expect(spec.NormalizedTransformSpec).To(Equal(wanted))
+		},
+		Entry("no transform: nothing to normalize", nil, nil),
+		Entry("basic config style",
+			&dash0common.Transform{
+				Traces: []json.RawMessage{
+					json.RawMessage(`"truncate_all(span.attributes, 128)"`),
+				},
+			},
+			&dash0common.NormalizedTransformSpec{
+				Traces: []dash0common.NormalizedTransformGroup{
+					{Statements: []string{"truncate_all(span.attributes, 128)"}},
+				},
+			},
+		),
+		Entry("advanced config style",
+			&dash0common.Transform{
+				Metrics: []json.RawMessage{
+					json.RawMessage(
+						`{"context":"datapoint","conditions":["metric.name == \"foo\""],` +
+							`"statements":["truncate_all(attributes, 128)"]}`),
+				},
+			},
+			&dash0common.NormalizedTransformSpec{
+				Metrics: []dash0common.NormalizedTransformGroup{
+					{
+						Context:    ptr.To("datapoint"),
+						Conditions: []string{`metric.name == "foo"`},
+						Statements: []string{"truncate_all(attributes, 128)"},
+					},
+				},
+			},
+		),
+	)
+
+	It("should clear the normalized transform spec when the transform has been removed", func() {
+		spec := dash0v1alpha1.Dash0OperatorConfigurationSpec{
+			NormalizedTransformSpec: &dash0common.NormalizedTransformSpec{
+				Traces: []dash0common.NormalizedTransformGroup{
+					{Statements: []string{"truncate_all(span.attributes, 128)"}},
+				},
+			},
+		}
+
+		patchRequired, errorResponse := operatorConfigurationMutatingWebhookHandler.
+			normalizeOperatorConfigurationResourceSpec(admission.Request{}, &spec, logger)
+
+		Expect(errorResponse).To(BeNil())
+		Expect(patchRequired).To(BeTrue())
+		Expect(spec.NormalizedTransformSpec).To(BeNil())
 	})
 
 	DescribeTable("should never modify agent0Connector.enabled",

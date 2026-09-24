@@ -111,9 +111,10 @@ type Filter struct {
 	//
 	// This is optional, default to "ignore", there is usually no reason to change this.
 	//
-	// Note that although this can be specified per namespace, the filter conditions will be aggregated into one
-	// single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-	// specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+	// Note that although this can be specified per namespace and cluster-wide, the filter conditions will be aggregated
+	// into one single filter processor in the resulting OpenTelemetry collector configuration; if different error modes
+	// are specified in different namespaces, or cluster-wide in the operator configuration resource, the "most severe"
+	// error mode will be used (propagate > ignore > silent).
 	//
 	// +kubebuilder:default=ignore
 	ErrorMode FilterTransformErrorMode `json:"error_mode,omitempty"`
@@ -256,9 +257,10 @@ type Transform struct {
 	//
 	// This is optional, default to "ignore".
 	//
-	// Note that although this can be specified per namespace, the transform statements will be aggregated into one
-	// single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
-	// specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+	// Note that although this can be specified per namespace and cluster-wide, the transform statements will be
+	// aggregated into one single transform processor in the resulting OpenTelemetry collector configuration; if
+	// different error modes are specified in different namespaces, or cluster-wide in the operator configuration
+	// resource, the "most severe" error mode will be used (propagate > ignore > silent).
 	//
 	// +kubebuilder:default=ignore
 	ErrorMode *FilterTransformErrorMode `json:"error_mode,omitempty"`
