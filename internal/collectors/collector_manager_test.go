@@ -599,7 +599,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 					skippedHasBeenReconciled, skippedErr = collectorManager.ReconcileOpenTelemetryCollector(ctx)
 				}
 				return true, nil
-			}, nil)
+			}, nil, nil)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(skippedErr).ToNot(HaveOccurred())

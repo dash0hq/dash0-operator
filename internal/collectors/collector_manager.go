@@ -116,6 +116,10 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 			logger.Debug("creation/update of the OpenTelemetry collector resources is already in progress, the " +
 				"additional reconciliation request will be served by the reconciliation which is in progress.")
 		},
+		func() {
+			logger.Warn("the reconciliation of the OpenTelemetry collector resources kept being triggered while it was " +
+				"running, stopped repeating it, the pending reconciliation request is dropped.")
+		},
 	)
 }
 

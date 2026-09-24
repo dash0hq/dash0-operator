@@ -513,7 +513,7 @@ var _ = Describe("The target-allocator manager", Ordered, func() {
 					)
 				}
 				return true, nil
-			}, nil)
+			}, nil, nil)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(skippedErr).ToNot(HaveOccurred())

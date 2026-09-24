@@ -98,6 +98,10 @@ func (m *TargetAllocatorManager) ReconcileTargetAllocator(
 					"the additional reconciliation request will be served by the reconciliation which is in progress.")
 			}
 		},
+		func() {
+			logger.Warn("the reconciliation of the OpenTelemetry target-allocator resources kept being triggered while it was " +
+				"running, stopped repeating it, the pending reconciliation request is dropped.")
+		},
 	)
 }
 
