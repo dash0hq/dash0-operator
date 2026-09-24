@@ -67,7 +67,7 @@ func TestExecuteCommandRequestRecordsMetrics(t *testing.T) {
 	t.Run("counts a rejected request as rejected and records no duration for it", func(t *testing.T) {
 		reader := installMetricReader(t)
 
-		ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-rejected",
 			Command:   "helm",
 			Arguments: []string{"list"},
@@ -85,7 +85,7 @@ func TestExecuteCommandRequestRecordsMetrics(t *testing.T) {
 		fakeKubectlOnPath(t, "#!/bin/sh\necho stdout-line\nexit 0\n")
 		reader := installMetricReader(t)
 
-		ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-ok",
 			Command:   "kubectl",
 			Arguments: []string{"get", "pods"},
@@ -103,7 +103,7 @@ func TestExecuteCommandRequestRecordsMetrics(t *testing.T) {
 		fakeKubectlOnPath(t, "#!/bin/sh\necho boom >&2\nexit 3\n")
 		reader := installMetricReader(t)
 
-		ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-failed",
 			Command:   "kubectl",
 			Arguments: []string{"get", "pods"},

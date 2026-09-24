@@ -109,11 +109,13 @@ func RunSubscriber(ctx context.Context, logger *slog.Logger) {
 	authToken := resolveAuthToken(logger)
 	kubectlTmpDir := resolveKubectlTmpDir(logger)
 	maxConcurrentCommands := resolveMaxConcurrentCommands(logger)
+	allowedKubectlCommands := resolveAllowedKubectlCommands(logger)
 	logger.Info(
 		"connecting to the Dash0 backend",
 		"address", serverAddress,
 		"clientId", clientID,
 		"maxConcurrentCommands", maxConcurrentCommands,
+		"allowedKubectlCommands", allowedKubectlCommands.String(),
 	)
 
 	reconnectDelay := initialReconnectDelay
@@ -127,6 +129,7 @@ func RunSubscriber(ctx context.Context, logger *slog.Logger) {
 			clientID,
 			authToken,
 			kubectlTmpDir,
+			allowedKubectlCommands,
 			maxConcurrentCommands,
 		)
 		if ctx.Err() != nil {
@@ -325,6 +328,26 @@ func resolveMaxConcurrentCommands(logger *slog.Logger) int {
 	return maxConcurrentCommands
 }
 
+// resolveAllowedKubectlCommands returns the kubectl commands the connector executes, read from the
+// DASH0_AGENT0_CONNECTOR_ALLOWED_KUBECTL_COMMANDS environment variable. An absent variable falls back to
+// kubectl.DefaultAllowedKubectlCommands. Entries that the connector does not support, or that it rejects
+// unconditionally, are ignored.
+func resolveAllowedKubectlCommands(logger *slog.Logger) kubectl.AllowedKubectlCommands {
+	value, isSet := os.LookupEnv(kubectl.AllowedKubectlCommandsEnvVarName)
+	if !isSet {
+		return kubectl.DefaultAllowedKubectlCommands()
+	}
+	allowedKubectlCommands, ignored := kubectl.ParseAllowedKubectlCommands(value)
+	if len(ignored) > 0 {
+		logger.Warn(
+			"ignoring kubectl commands from the list of allowed kubectl commands which the connector does not support",
+			"envVar", kubectl.AllowedKubectlCommandsEnvVarName,
+			"ignored", strings.Join(ignored, ","),
+		)
+	}
+	return allowedKubectlCommands
+}
+
 // runStream opens a single SubscribeToCommandRequests stream and listens to incoming CommandRequest, until the stream
 // fails or the context is cancelled. For every received CommandRequest it executes the requested (read-only) kubectl
 // command and sends back the CommandResponse.
@@ -336,6 +359,7 @@ func runStream(
 	clientID string,
 	authToken string,
 	kubectlTmpDir string,
+	allowedKubectlCommands kubectl.AllowedKubectlCommands,
 	maxConcurrentCommands int,
 ) error {
 	conn, err := grpc.NewClient(
@@ -377,6 +401,7 @@ func runStream(
 		logger,
 		stream,
 		kubectlTmpDir,
+		allowedKubectlCommands,
 		maxConcurrentCommands,
 		kubectl.ExecuteCommandRequest,
 	)
@@ -396,6 +421,7 @@ type commandExecutor func(
 	ctx context.Context,
 	logger *slog.Logger,
 	kubectlTmpDir string,
+	allowedKubectlCommands kubectl.AllowedKubectlCommands,
 	req *pb.CommandRequest,
 ) *pb.CommandResponse
 
@@ -411,6 +437,7 @@ func listenToCommandRequests(
 	logger *slog.Logger,
 	stream commandRequestStream,
 	kubectlTmpDir string,
+	allowedKubectlCommands kubectl.AllowedKubectlCommands,
 	maxConcurrentCommands int,
 	execute commandExecutor,
 ) error {
@@ -429,7 +456,14 @@ func listenToCommandRequests(
 		go func() {
 			defer workers.Done()
 			for req := range requests {
-				responses <- executeWithPanicBoundary(workerCtx, logger, kubectlTmpDir, req, execute)
+				responses <- executeWithPanicBoundary(
+					workerCtx,
+					logger,
+					kubectlTmpDir,
+					allowedKubectlCommands,
+					req,
+					execute,
+				)
 			}
 		}()
 	}
@@ -499,6 +533,7 @@ func executeWithPanicBoundary(
 	ctx context.Context,
 	logger *slog.Logger,
 	kubectlTmpDir string,
+	allowedKubectlCommands kubectl.AllowedKubectlCommands,
 	req *pb.CommandRequest,
 	execute commandExecutor,
 ) (resp *pb.CommandResponse) {
@@ -524,7 +559,7 @@ func executeWithPanicBoundary(
 				"not handle",
 		}
 	}()
-	return execute(ctx, logger, kubectlTmpDir, req)
+	return execute(ctx, logger, kubectlTmpDir, allowedKubectlCommands, req)
 }
 
 // receiveCommandRequests reads CommandRequests from the stream and hands them to the worker queue, until the stream is

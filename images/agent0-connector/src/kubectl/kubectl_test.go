@@ -167,7 +167,7 @@ func TestExecuteCommandRequest(t *testing.T) {
 	logger := discardLogger()
 
 	t.Run("rejects an invalid command without executing it", func(t *testing.T) {
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-1",
 			Command:   "helm",
 			Arguments: []string{"list"},
@@ -194,7 +194,7 @@ func TestExecuteCommandRequest(t *testing.T) {
 		// A fake "kubectl" that writes to stdout and stderr and exits successfully stands in for the real binary.
 		fakeKubectlOnPath(t, "#!/bin/sh\necho stdout-line\necho stderr-line >&2\nexit 0\n")
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-ok",
 			Command:   "kubectl",
 			Arguments: []string{"get", "pods"},
@@ -223,7 +223,7 @@ func TestExecuteCommandRequest(t *testing.T) {
 		fakeKubectlOnPath(t, "#!/bin/sh\nsleep 1\n")
 		setCommandTimeout(t, 10*time.Millisecond)
 
-		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", &pb.CommandRequest{
+		resp := ExecuteCommandRequest(context.Background(), logger, "/tmp", defaultKubectlCommands, &pb.CommandRequest{
 			RequestId: "req-timeout",
 			Command:   "kubectl",
 			Arguments: []string{"get", "pods"},

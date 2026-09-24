@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -287,6 +288,7 @@ func startListeningWithContext(
 			logger,
 			stream,
 			"/tmp",
+			kubectl.DefaultAllowedKubectlCommands(),
 			maxConcurrentCommands,
 			execute,
 		)
@@ -374,6 +376,7 @@ func TestListenToCommandRequests(t *testing.T) {
 			ctx context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			if req.GetRequestId() == "slow-1" {
@@ -431,6 +434,7 @@ func TestListenToCommandRequests(t *testing.T) {
 			_ context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			current := running.Add(1)
@@ -495,6 +499,7 @@ func TestListenToCommandRequestsAbortsRunningCommands(t *testing.T) {
 			ctx context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			if req.GetRequestId() == "blocked-1" {
@@ -538,6 +543,7 @@ func TestListenToCommandRequestsAbortsRunningCommands(t *testing.T) {
 			execCtx context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			close(longStarted)
@@ -600,6 +606,7 @@ func TestWorkerSurvivesAPanickingExecutor(t *testing.T) {
 			_ context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			req *pb.CommandRequest,
 		) *pb.CommandResponse {
 			if req.GetRequestId() == "req-panics" {
@@ -641,6 +648,7 @@ func TestWorkerSurvivesAPanickingExecutor(t *testing.T) {
 			_ context.Context,
 			_ *slog.Logger,
 			_ string,
+			_ kubectl.AllowedKubectlCommands,
 			resp *pb.CommandRequest,
 		) *pb.CommandResponse {
 			// What a panic in the middle of the redaction walk leaves behind: a response that still holds the
@@ -660,6 +668,43 @@ func TestWorkerSurvivesAPanickingExecutor(t *testing.T) {
 		if strings.Contains(sent[0].GetStdout(), "my-unredacted-token") ||
 			strings.Contains(sent[0].GetStderr(), "my-unredacted-token") {
 			t.Errorf("expected the panic value to be kept out of the response, got %v", sent[0])
+		}
+	})
+}
+
+func TestResolveAllowedKubectlCommands(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("falls back to the defaults when the environment variable is absent", func(t *testing.T) {
+		// t.Setenv registers the restoration of the original value, so that unsetting it does not leak into other tests.
+		t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "")
+		if err := os.Unsetenv(kubectl.AllowedKubectlCommandsEnvVarName); err != nil {
+			t.Fatal(err)
+		}
+		got := resolveAllowedKubectlCommands(logger)
+		if expected := kubectl.DefaultAllowedKubectlCommands().String(); got.String() != expected {
+			t.Errorf("expected the default allowed kubectl commands %q, got %q", expected, got.String())
+		}
+	})
+
+	t.Run("uses the value from the environment", func(t *testing.T) {
+		t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "logs,get")
+		if got := resolveAllowedKubectlCommands(logger).String(); got != "get,logs" {
+			t.Errorf("expected the allowed kubectl commands from the environment variable, got %q", got)
+		}
+	})
+
+	t.Run("allows no kubectl command when the environment variable is empty", func(t *testing.T) {
+		t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "")
+		if got := resolveAllowedKubectlCommands(logger).String(); got != "" {
+			t.Errorf("expected no allowed kubectl command, got %q", got)
+		}
+	})
+
+	t.Run("ignores kubectl commands the connector does not support", func(t *testing.T) {
+		t.Setenv(kubectl.AllowedKubectlCommandsEnvVarName, "get,describe,delete")
+		if got := resolveAllowedKubectlCommands(logger).String(); got != "get" {
+			t.Errorf("expected only the supported kubectl command to be allowed, got %q", got)
 		}
 	})
 }

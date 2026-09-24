@@ -768,7 +768,7 @@ func TestValidateCommandRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := &pb.CommandRequest{Command: tt.command, Arguments: tt.arguments}
-			_, err := validateCommandAndParseArguments(req)
+			_, err := validateCommandAndParseArguments(req, everySupportedKubectlCommandAllowed())
 
 			if tt.allowed {
 				if tt.rejectionReason != "" {
@@ -802,7 +802,7 @@ func TestValidateCommandRequest(t *testing.T) {
 	}
 }
 
-// kubectlCommandRedactionRationale records, for every kubectl command in allowedKubectlCommands, why its response
+// kubectlCommandRedactionRationale records, for every kubectl command in supportedKubectlCommands, why its response
 // cannot be used to exfiltrate secrets. Only "get" is routed through redaction (see responseHasToBeRedacted, which
 // returns false for every other kubectl command). Therefor every other entry has to justify itself by not rendering the
 // content of a resource at all. Adding a kubectl command to the allowlist without recording a rationale here fails
@@ -816,35 +816,39 @@ var kubectlCommandRedactionRationale = map[string]string{
 	"api-resources": "prints the known resource types and their metadata, never the content of an instance",
 	"api-versions":  "prints the available API group/versions only",
 	"explain":       "prints the schema of a resource type, not the content of an instance",
-	"events": "renders Event objects, whose messages are emitted by the kubelet and by controllers rather than " +
-		"copied from the content of a resource. This is the one entry that is a judgement call rather than a " +
-		"guarantee: an admission webhook is free to quote what was submitted to it into a rejection message, which " +
-		"the connector cannot redact. Events are kept allowed because they are what makes a failing reconciliation " +
-		"diagnosable, and because the content a webhook echoes is content the submitter already had",
+	"events": "Renders Event objects, whose messages are emitted by the kubelet and by controllers rather than " +
+		"copied from the content of a resource. Allowing access to events is a judgement: an admission webhook is free " +
+		"to quote what was submitted to it into a rejection message, which the connector cannot reliably redact. Events " +
+		"are supported, but disabled by default (see disabledByDefaultKubectlCommands). Users have to explicitly opt-in.",
 	"top": "prints a CPU/memory usage table only",
 	"auth": "restricted to \"can-i\", see allowedSubcommandsPerKubectlCommand; it answers with yes/no or with the rule " +
 		"list of the agent0-connector's own service account, never with the content of a resource",
 	"version": "prints the client and server version only",
-	"logs": "streams the raw log output of a container, which is not resource content; a credential a workload " +
-		"logs itself is out of reach of response redaction",
+	"logs": "Streams the raw log output of a container. Logs cannot be reliably redacted. Logs are supported, but " +
+		"disabled by default (see disabledByDefaultKubectlCommands). Users have to explicitly opt-in.",
 }
 
 // TestEveryAllowedKubectlCommandHasARedactionRationale guards against the drift that would for example let
 // "kubectl cluster-info dump" hand out pod specs etc. unredacted. This checks for the kubectl command that are on the
-// allowlist without their response being redacted. Whenever allowedKubectlCommands grows, the new command has to be
+// allowlist without their response being redacted. Whenever supportedKubectlCommands grows, the new command has to be
 // classified deliberately.
-// TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally pins that allowedKubectlCommandsHumanReadable, which
+// TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally pins that the list of allowed kubectl commands, which
 // rejection messages hand to the calling agent as the list of commands it may use, names no command that a later check
-// rejects for every invocation. Advertising such a command sends the agent into a retry that cannot succeed.
+// rejects for every invocation, even when the configuration lists it. Advertising such a command sends the agent into
+// a retry that cannot succeed.
 func TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally(t *testing.T) {
+	allowed := everySupportedKubectlCommandAllowed()
 	for kubectlCmd := range unconditionallyRejectedKubectlCommands {
-		if _, allowed := allowedKubectlCommands[kubectlCmd]; !allowed {
+		if _, supported := supportedKubectlCommands[kubectlCmd]; !supported {
 			t.Errorf(
 				"unconditionallyRejectedKubectlCommands has a stale entry for %q, which is not on the allowlist any more",
 				kubectlCmd,
 			)
 		}
-		if strings.Contains(allowedKubectlCommandsHumanReadable, fmt.Sprintf("%q", kubectlCmd)) {
+		if allowed.Allows(kubectlCmd) {
+			t.Errorf("the kubectl command %q is rejected for every invocation, but the configuration can enable it", kubectlCmd)
+		}
+		if strings.Contains(allowed.humanReadable, fmt.Sprintf("%q", kubectlCmd)) {
 			t.Errorf(
 				"the kubectl command %q is rejected for every invocation, but rejection messages advertise it as allowed",
 				kubectlCmd,
@@ -854,7 +858,7 @@ func TestAdvertisedKubectlCommandsAreNotRejectedUnconditionally(t *testing.T) {
 }
 
 func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
-	for kubectlCmd := range allowedKubectlCommands {
+	for kubectlCmd := range supportedKubectlCommands {
 		if _, hasRationale := kubectlCommandRedactionRationale[kubectlCmd]; !hasRationale {
 			t.Errorf(
 				"the kubectl command %q is allowed, but no rationale records why its response cannot expose a credential; "+
@@ -866,7 +870,7 @@ func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
 		}
 	}
 	for kubectlCmd := range kubectlCommandRedactionRationale {
-		if _, allowed := allowedKubectlCommands[kubectlCmd]; !allowed {
+		if _, supported := supportedKubectlCommands[kubectlCmd]; !supported {
 			t.Errorf(
 				"kubectlCommandRedactionRationale has a stale entry for %q, which is not an allowed kubectl command any more",
 				kubectlCmd,
@@ -878,7 +882,7 @@ func TestEveryAllowedKubectlCommandHasARedactionRationale(t *testing.T) {
 // TestOnlyGetIsRoutedThroughRedaction pins the invariant the rationales above rely on: responseHasToBeRedacted
 // redacts the response of "get" only.
 func TestOnlyGetIsRoutedThroughRedaction(t *testing.T) {
-	for kubectlCmd := range allowedKubectlCommands {
+	for kubectlCmd := range supportedKubectlCommands {
 		parsed := parseKubectlArguments([]string{kubectlCmd, "dash0monitorings", "-o", "yaml"})
 		canContainSecrets := responseHasToBeRedacted(parsed)
 		if kubectlCmd == "get" && !canContainSecrets {
