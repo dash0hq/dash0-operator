@@ -1542,12 +1542,14 @@ operator:
       rules: []
 
     # The kubectl commands the agent0-connector may execute on behalf of Agent0. A command set to false is rejected by
-    # the agent0-connector. This setting can only restrict the set of commands the agent0-connector supports, it cannot
-    # add new ones: kubectl commands that the agent0-connector always rejects (e.g. "kubectl describe", or any command
-    # that modifies the cluster state) cannot be enabled here. Listing any other key than the ones below fails the
-    # installation. Disabling all commands also fails the installation - set operator.agent0Connector.enabled=false
-    # instead. Allowing a command does not automatically grant the RBAC permissions it needs, see
-    # operator.agent0Connector.clusterRole.rules.
+    # the agent0-connector. Note that Helm merges the map you provide with the defaults below, so this is not an
+    # exclusive list: to disable a command that is enabled by default, you need to set it to false explicitly. Commands
+    # that you do not list keep their default value, and an empty map ({}) leaves all defaults in place. This setting
+    # can only restrict the set of commands the agent0-connector supports, it cannot add new ones: kubectl commands that
+    # the agent0-connector always rejects (e.g. "kubectl describe", or any command that modifies the cluster state)
+    # cannot be enabled here. Listing any other key than the ones below fails the installation. Disabling all commands
+    # also fails the installation - set operator.agent0Connector.enabled=false instead. Allowing a command does not
+    # automatically grant the RBAC permissions it needs, see operator.agent0Connector.clusterRole.rules.
     allowedKubectlCommands:
       api-resources: true
       auth: true
