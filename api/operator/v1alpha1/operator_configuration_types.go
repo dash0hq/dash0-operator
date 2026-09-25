@@ -32,6 +32,7 @@ import (
 // +kubebuilder:printcolumn:name="Collect Namespace Meta",type="boolean",JSONPath=".spec.collectNamespaceLabelsAndAnnotations.enabled"
 // +kubebuilder:printcolumn:name="Collect Node Meta",type="boolean",JSONPath=".spec.collectNodeLabelsAndAnnotations.enabled"
 // +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
+// +kubebuilder:printcolumn:name="Synthetics Worker Ready",type="boolean",JSONPath=".status.syntheticsWorker.ready"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Dash0OperatorConfiguration struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -810,13 +811,10 @@ func (d *Dash0OperatorConfiguration) SetAgent0ConnectorStatus(deployed bool, rea
 	return changed
 }
 
-// SyntheticsWorkerStatus reports the aggregate and per-instance state of the synthetics-worker feature, that is,
-// whether the operator has successfully created or updated each instance's service account and deployment. It does
-// not report whether an instance's pod is up: a successful deployment can still fail to start, which the deployment
-// resource itself reports.
-//
-// This is deliberately not a status condition: the synthetics-worker is an optional feature, and an issue with it
-// neither makes the operator configuration resource unavailable nor degraded.
+// SyntheticsWorkerStatus reports the aggregate and per-instance state of the synthetics-worker feature: whether the
+// operator has deployed each instance, and whether its replicas are ready (connected to Dash0). It does not cover a
+// cluster that is unreachable entirely; see dash0.synthetic_check.private_location.connected_workers for that.
+// Deliberately not a status condition: the feature is optional, an issue with it does not make the resource degraded.
 type SyntheticsWorkerStatus struct {
 	// Deployed reports whether every configured instance was successfully created or updated the last time the
 	// operator tried. It is false if the feature is disabled, or if any single instance failed.
@@ -839,6 +837,16 @@ type SyntheticsWorkerStatus struct {
 	// +kubebuilder:validation:Optional
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 
+	// Ready reports whether every configured instance has every desired replica ready. False if there are no
+	// instances or any single instance is not fully ready; see Instances for the per-instance state.
+	Ready bool `json:"ready"`
+
+	// ReadyReason is a programmatic identifier for the aggregate readiness outcome, e.g. "PartiallyReady"; see
+	// Instances for the per-instance reasons.
+	//
+	// +kubebuilder:validation:Optional
+	ReadyReason string `json:"readyReason,omitempty"`
+
 	// Instances reports the individual outcome for each configured synthetics-worker instance.
 	//
 	// +kubebuilder:validation:Optional
@@ -847,7 +855,8 @@ type SyntheticsWorkerStatus struct {
 	Instances []SyntheticsWorkerInstanceStatus `json:"instances,omitempty"`
 }
 
-// SyntheticsWorkerInstanceStatus reports whether the operator has deployed one synthetics-worker instance.
+// SyntheticsWorkerInstanceStatus reports whether the operator has deployed one synthetics-worker instance and
+// whether its replicas are ready.
 type SyntheticsWorkerInstanceStatus struct {
 	// LocationID identifies the instance this status refers to, matching spec.syntheticsWorker.instances[].locationId.
 	LocationID string `json:"locationId"`
@@ -870,6 +879,22 @@ type SyntheticsWorkerInstanceStatus struct {
 	//
 	// +kubebuilder:validation:Optional
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+
+	// ReadyReplicas is the number of ready replicas reported by this instance's Deployment.
+	ReadyReplicas int32 `json:"readyReplicas"`
+
+	// DesiredReplicas is the number of replicas configured for this instance's Deployment.
+	DesiredReplicas int32 `json:"desiredReplicas"`
+
+	// Ready reports whether every desired replica of this instance is ready, i.e. has an open task-dispatch stream to
+	// Dash0.
+	Ready bool `json:"ready"`
+
+	// ReadyReason is a programmatic identifier for the readiness outcome: "Ready", "NoReadyReplicas" or
+	// "PartiallyReady".
+	//
+	// +kubebuilder:validation:Optional
+	ReadyReason string `json:"readyReason,omitempty"`
 }
 
 // SetSyntheticsWorkerStatus records the outcome of the last attempt to create or update every synthetics-worker
@@ -893,53 +918,23 @@ func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(instances []Synth
 	}
 
 	changed := previous == nil || len(previous.Instances) != len(instances)
-	aggregateDeployed := len(instances) > 0
-	firstFailureReason := ""
-	firstFailureMessage := ""
 	for i, instance := range instances {
-		if previousInstance, ok := previousByLocationID[instance.LocationID]; ok {
-			if previousInstance.Deployed == instance.Deployed {
-				instance.LastTransitionTime = previousInstance.LastTransitionTime
-			} else {
-				changed = true
-			}
-			if !instance.Deployed && previousInstance.Reason != instance.Reason {
-				changed = true
-			}
-		} else {
-			changed = true
-			instance.LastTransitionTime = now
-		}
-		instances[i] = instance
-
-		if !instance.Deployed {
-			aggregateDeployed = false
-			if firstFailureReason == "" {
-				firstFailureReason = instance.Reason
-				firstFailureMessage = instance.Message
-			} else if firstFailureReason != instance.Reason {
-				firstFailureReason = "PartiallyDeployed"
-				firstFailureMessage = "some synthetics-worker instances failed to deploy for different reasons"
-			}
-		}
+		merged, instanceChanged := mergeSyntheticsWorkerInstanceStatus(previousByLocationID, now, instance)
+		instances[i] = merged
+		changed = changed || instanceChanged
 	}
 
-	aggregateReason := "Deployed"
-	aggregateMessage := "The operator has deployed the synthetics-worker."
-	switch {
-	case len(instances) == 0:
-		aggregateReason = "NoInstancesConfigured"
-		aggregateMessage = "The synthetics-worker is enabled but spec.syntheticsWorker.instances is empty."
-	case !aggregateDeployed:
-		aggregateReason = firstFailureReason
-		aggregateMessage = firstFailureMessage
-	}
+	aggregateDeployed, aggregateReason, aggregateMessage := aggregateSyntheticsWorkerDeployment(instances)
+	aggregateReady, aggregateReadyReason := aggregateSyntheticsWorkerReadiness(instances)
 
 	previousDeployed := previous != nil && previous.Deployed
 	if previousDeployed != aggregateDeployed {
 		changed = true
 	}
 	if previous != nil && !aggregateDeployed && previous.Reason != aggregateReason {
+		changed = true
+	}
+	if previous != nil && (previous.Ready != aggregateReady || previous.ReadyReason != aggregateReadyReason) {
 		changed = true
 	}
 
@@ -952,9 +947,86 @@ func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(instances []Synth
 		Reason:             aggregateReason,
 		Message:            aggregateMessage,
 		LastTransitionTime: lastTransitionTime,
+		Ready:              aggregateReady,
+		ReadyReason:        aggregateReadyReason,
 		Instances:          instances,
 	}
 	return changed
+}
+
+// mergeSyntheticsWorkerInstanceStatus carries LastTransitionTime forward from the previous status of the same
+// instance (matched by LocationID) and reports whether anything about the instance changed.
+func mergeSyntheticsWorkerInstanceStatus(
+	previousByLocationID map[string]SyntheticsWorkerInstanceStatus,
+	now metav1.Time,
+	instance SyntheticsWorkerInstanceStatus,
+) (SyntheticsWorkerInstanceStatus, bool) {
+	previousInstance, ok := previousByLocationID[instance.LocationID]
+	if !ok {
+		instance.LastTransitionTime = now
+		return instance, true
+	}
+
+	changed := false
+	if previousInstance.Deployed == instance.Deployed {
+		instance.LastTransitionTime = previousInstance.LastTransitionTime
+	} else {
+		changed = true
+	}
+	if !instance.Deployed && previousInstance.Reason != instance.Reason {
+		changed = true
+	}
+	if previousInstance.Ready != instance.Ready || previousInstance.ReadyReason != instance.ReadyReason {
+		changed = true
+	}
+	return instance, changed
+}
+
+// aggregateSyntheticsWorkerDeployment reports Deployed/Reason/Message for the whole feature: true only if every
+// instance deployed, "PartiallyDeployed" if multiple instances failed for different reasons.
+func aggregateSyntheticsWorkerDeployment(instances []SyntheticsWorkerInstanceStatus) (bool, string, string) {
+	if len(instances) == 0 {
+		return false, "NoInstancesConfigured", "The synthetics-worker is enabled but spec.syntheticsWorker.instances is empty."
+	}
+	reason, message := "", ""
+	for _, instance := range instances {
+		if instance.Deployed {
+			continue
+		}
+		if reason == "" {
+			reason, message = instance.Reason, instance.Message
+		} else if reason != instance.Reason {
+			reason = "PartiallyDeployed"
+			message = "some synthetics-worker instances failed to deploy for different reasons"
+		}
+	}
+	if reason != "" {
+		return false, reason, message
+	}
+	return true, "Deployed", "The operator has deployed the synthetics-worker."
+}
+
+// aggregateSyntheticsWorkerReadiness reports Ready/ReadyReason for the whole feature: true only if every instance is
+// ready, "PartiallyReady" if multiple instances are not ready for different reasons.
+func aggregateSyntheticsWorkerReadiness(instances []SyntheticsWorkerInstanceStatus) (bool, string) {
+	if len(instances) == 0 {
+		return false, "NoInstancesConfigured"
+	}
+	reason := ""
+	for _, instance := range instances {
+		if instance.Ready {
+			continue
+		}
+		if reason == "" {
+			reason = instance.ReadyReason
+		} else if reason != instance.ReadyReason {
+			reason = "PartiallyReady"
+		}
+	}
+	if reason != "" {
+		return false, reason
+	}
+	return true, "Ready"
 }
 
 // SetSyntheticsWorkerDisabledStatus records that the synthetics-worker feature itself is disabled (as opposed to
@@ -962,7 +1034,8 @@ func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerStatus(instances []Synth
 // whether the recorded state changed, using the same semantics as SetSyntheticsWorkerStatus.
 func (d *Dash0OperatorConfiguration) SetSyntheticsWorkerDisabledStatus(reason string, message string) bool {
 	previous := d.Status.SyntheticsWorker
-	changed := previous == nil || previous.Deployed || previous.Reason != reason || len(previous.Instances) != 0
+	changed := previous == nil || previous.Deployed || previous.Ready || previous.Reason != reason ||
+		len(previous.Instances) != 0
 
 	lastTransitionTime := metav1.Now()
 	if previous != nil && !previous.Deployed {

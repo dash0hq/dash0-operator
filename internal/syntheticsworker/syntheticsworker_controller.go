@@ -51,11 +51,31 @@ func (r *SyntheticsWorkerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&appsv1.Deployment{},
 			&handler.EnqueueRequestForObject{},
-			builder.WithPredicates(r.createFeatureFilterPredicate(), generationOrLabelChangePredicate)).
+			builder.WithPredicates(
+				r.createFeatureFilterPredicate(),
+				predicate.Or(generationOrLabelChangePredicate, deploymentReadyReplicasChangedPredicate),
+			)).
 		Complete(r)
 }
 
 var generationOrLabelChangePredicate = predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{})
+
+// deploymentReadyReplicasChangedPredicate reacts to a Deployment's ready-replica count changing. Generation only
+// bumps on a spec change, so without this, the worker's readiness (status.syntheticsWorker.instances[].ready) would
+// only refresh on the next unrelated reconcile of the Dash0OperatorConfiguration resource.
+var deploymentReadyReplicasChangedPredicate = predicate.Funcs{
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		oldDeployment, ok := e.ObjectOld.(*appsv1.Deployment)
+		if !ok {
+			return false
+		}
+		newDeployment, ok := e.ObjectNew.(*appsv1.Deployment)
+		if !ok {
+			return false
+		}
+		return oldDeployment.Status.ReadyReplicas != newDeployment.Status.ReadyReplicas
+	},
+}
 
 // createFeatureFilterPredicate restricts the watch to synthetics-worker resources (identified by label, since the set
 // of instance names is dynamic) in the operator namespace. Every resource the synthetics-worker controller watches

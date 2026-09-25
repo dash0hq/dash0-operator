@@ -106,6 +106,23 @@ var _ = Describe("The synthetics-worker failure reason", func() {
 	})
 
 	DescribeTable(
+		"derives the per-instance readiness from its Deployment's ready-replica count",
+		func(result swresources.InstanceResult, expectedReady bool, expectedReason string) {
+			ready, reason := syntheticsWorkerInstanceReadiness(result)
+			Expect(ready).To(Equal(expectedReady))
+			Expect(reason).To(Equal(expectedReason))
+		},
+		Entry("every desired replica ready",
+			swresources.InstanceResult{DesiredReplicas: 2, ReadyReplicas: 2}, true, StatusReasonReady),
+		Entry("no ready replicas",
+			swresources.InstanceResult{DesiredReplicas: 2, ReadyReplicas: 0}, false, StatusReasonNoReadyReplicas),
+		Entry("a failed instance never reads back replica counts",
+			swresources.InstanceResult{DesiredReplicas: 0, ReadyReplicas: 0}, false, StatusReasonNoReadyReplicas),
+		Entry("fewer ready replicas than desired",
+			swresources.InstanceResult{DesiredReplicas: 3, ReadyReplicas: 1}, false, StatusReasonPartiallyReady),
+	)
+
+	DescribeTable(
 		"reports whether a reconcile error must not cause a reconcile retry",
 		func(err error, expectedNonBlocking bool) {
 			Expect(isNonBlockingSyntheticsWorkerError(err)).To(Equal(expectedNonBlocking))

@@ -38,6 +38,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type == "Available")].status
       name: Available
       type: string
+    - jsonPath: .status.syntheticsWorker.ready
+      name: Synthetics Worker Ready
+      type: boolean
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -3527,14 +3530,20 @@ spec:
                     description: Instances reports the individual outcome for each
                       configured synthetics-worker instance.
                     items:
-                      description: SyntheticsWorkerInstanceStatus reports whether
-                        the operator has deployed one synthetics-worker instance.
+                      description: |-
+                        SyntheticsWorkerInstanceStatus reports whether the operator has deployed one synthetics-worker instance and
+                        whether its replicas are ready.
                       properties:
                         deployed:
                           description: |-
                             Deployed reports whether the operator has successfully created or updated this instance's resources the last
                             time it tried.
                           type: boolean
+                        desiredReplicas:
+                          description: DesiredReplicas is the number of replicas configured
+                            for this instance's Deployment.
+                          format: int32
+                          type: integer
                         lastTransitionTime:
                           description: LastTransitionTime is the time at which Deployed
                             last changed for this instance.
@@ -3548,13 +3557,31 @@ spec:
                           description: Message describes the last outcome in a human-readable
                             form.
                           type: string
+                        ready:
+                          description: |-
+                            Ready reports whether every desired replica of this instance is ready, i.e. has an open task-dispatch stream to
+                            Dash0.
+                          type: boolean
+                        readyReason:
+                          description: |-
+                            ReadyReason is a programmatic identifier for the readiness outcome: "Ready", "NoReadyReplicas" or
+                            "PartiallyReady".
+                          type: string
+                        readyReplicas:
+                          description: ReadyReplicas is the number of ready replicas
+                            reported by this instance's Deployment.
+                          format: int32
+                          type: integer
                         reason:
                           description: Reason is a programmatic identifier for the
                             last negative outcome, e.g. "NoAuthorizationToken".
                           type: string
                       required:
                       - deployed
+                      - desiredReplicas
                       - locationId
+                      - ready
+                      - readyReplicas
                       type: object
                     type: array
                     x-kubernetes-list-map-keys:
@@ -3569,6 +3596,16 @@ spec:
                     description: Message describes the last outcome in a human-readable
                       form.
                     type: string
+                  ready:
+                    description: |-
+                      Ready reports whether every configured instance has every desired replica ready. False if there are no
+                      instances or any single instance is not fully ready; see Instances for the per-instance state.
+                    type: boolean
+                  readyReason:
+                    description: |-
+                      ReadyReason is a programmatic identifier for the aggregate readiness outcome, e.g. "PartiallyReady"; see
+                      Instances for the per-instance reasons.
+                    type: string
                   reason:
                     description: |-
                       Reason is a programmatic identifier for the last negative outcome, e.g. "NoAuthorizationToken". When multiple
@@ -3577,6 +3614,7 @@ spec:
                     type: string
                 required:
                 - deployed
+                - ready
                 type: object
             type: object
         type: object

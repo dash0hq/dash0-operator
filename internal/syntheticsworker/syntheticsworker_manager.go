@@ -158,11 +158,16 @@ func (m *SyntheticsWorkerManager) reportSyntheticsWorkerStatus(
 			reason = syntheticsWorkerFailureReason(result.Err)
 			message = syntheticsWorkerFailureMessage(reason, result.Err)
 		}
+		ready, readyReason := syntheticsWorkerInstanceReadiness(result)
 		instanceStatuses = append(instanceStatuses, dash0v1alpha1.SyntheticsWorkerInstanceStatus{
-			LocationID: result.LocationID,
-			Deployed:   deployed,
-			Reason:     reason,
-			Message:    message,
+			LocationID:      result.LocationID,
+			Deployed:        deployed,
+			Reason:          reason,
+			Message:         message,
+			ReadyReplicas:   result.ReadyReplicas,
+			DesiredReplicas: result.DesiredReplicas,
+			Ready:           ready,
+			ReadyReason:     readyReason,
 		})
 	}
 
@@ -253,6 +258,12 @@ const (
 	StatusReasonNoAuthorizationToken       = "NoAuthorizationToken"
 	StatusReasonOperatorMissingPermissions = "OperatorMissingPermissions"
 	StatusReasonReconcileFailed            = "ReconcileFailed"
+
+	// StatusReasonReady, StatusReasonNoReadyReplicas and StatusReasonPartiallyReady are the readyReason identifiers,
+	// see syntheticsWorkerInstanceReadiness.
+	StatusReasonReady           = "Ready"
+	StatusReasonNoReadyReplicas = "NoReadyReplicas"
+	StatusReasonPartiallyReady  = "PartiallyReady"
 )
 
 // syntheticsWorkerFailureReason maps a reconcile error to the programmatic identifier reported in the status.
@@ -264,6 +275,19 @@ func syntheticsWorkerFailureReason(err error) string {
 		return StatusReasonOperatorMissingPermissions
 	default:
 		return StatusReasonReconcileFailed
+	}
+}
+
+// syntheticsWorkerInstanceReadiness derives an instance's Ready/ReadyReason from its Deployment's ready-replica count.
+// An instance that failed to deploy has no replicas of its own, and is reported as StatusReasonNoReadyReplicas.
+func syntheticsWorkerInstanceReadiness(result swresources.InstanceResult) (bool, string) {
+	switch {
+	case result.DesiredReplicas > 0 && result.ReadyReplicas >= result.DesiredReplicas:
+		return true, StatusReasonReady
+	case result.ReadyReplicas == 0:
+		return false, StatusReasonNoReadyReplicas
+	default:
+		return false, StatusReasonPartiallyReady
 	}
 }
 
