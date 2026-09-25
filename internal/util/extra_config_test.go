@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -1156,6 +1157,95 @@ collectorDaemonSetConfigurationReloaderContainerResources:
 					Expect(containerResources.Requests.Cpu().IsZero()).To(BeTrue())
 					Expect(containerResources.Requests.Memory().String()).To(Equal("12Mi"))
 					Expect(containerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+				})
+
+				It("should have no exports if the config map has none", func() {
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.Exports).To(BeEmpty())
+				})
+
+				It("should parse grpc and http exports", func() {
+					_, err := tmpFile.WriteString(`
+exports:
+  - grpc:
+      endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+      insecure: true
+      balancer_name: pick_first
+      keepalive:
+        time: 30s
+        timeout: 10s
+        permit_without_stream: true
+      headers:
+        - name: x-tenant
+          value: tenant-1
+  - http:
+      endpoint: https://otlp.example.com
+      encoding: json
+      insecureSkipVerify: true
+      headers:
+        - name: authorization
+          valueFrom:
+            secretKeyRef:
+              name: my-backend-secret
+              key: token
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.Exports).To(HaveLen(2))
+
+					grpcExport := extraConfig.Exports[0].Grpc
+					Expect(grpcExport).ToNot(BeNil())
+					Expect(grpcExport.Endpoint).To(Equal("otel-collector.other-namespace.svc.cluster.local:4317"))
+					Expect(*grpcExport.Insecure).To(BeTrue())
+					Expect(grpcExport.BalancerName).To(Equal(dash0common.PickFirst))
+					Expect(*grpcExport.Keepalive.Time).To(Equal("30s"))
+					Expect(*grpcExport.Keepalive.Timeout).To(Equal("10s"))
+					Expect(*grpcExport.Keepalive.PermitWithoutStream).To(BeTrue())
+					Expect(grpcExport.Headers).To(HaveLen(1))
+					Expect(grpcExport.Headers[0].Name).To(Equal("x-tenant"))
+					Expect(grpcExport.Headers[0].Value).To(Equal("tenant-1"))
+
+					httpExport := extraConfig.Exports[1].Http
+					Expect(httpExport).ToNot(BeNil())
+					Expect(httpExport.Endpoint).To(Equal("https://otlp.example.com"))
+					Expect(httpExport.Encoding).To(Equal(dash0common.Json))
+					Expect(*httpExport.InsecureSkipVerify).To(BeTrue())
+					Expect(httpExport.Headers).To(HaveLen(1))
+					Expect(httpExport.Headers[0].Name).To(Equal("authorization"))
+					Expect(httpExport.Headers[0].Value).To(BeEmpty())
+					Expect(httpExport.Headers[0].ValueFrom.SecretKeyRef.Name).To(Equal("my-backend-secret"))
+					Expect(httpExport.Headers[0].ValueFrom.SecretKeyRef.Key).To(Equal("token"))
+				})
+
+				It("should parse a dash0 export", func() {
+					_, err := tmpFile.WriteString(`
+exports:
+  - dash0:
+      endpoint: ingress.dash0.com:4317
+      dataset: my-dataset
+      apiEndpoint: https://api.dash0.com
+      authorization:
+        secretRef:
+          name: dash0-authorization-secret
+          key: token
+`)
+					Expect(err).ToNot(HaveOccurred())
+
+					extraConfig, err := readExtraConfigurationFromFile(tmpFile.Name())
+					Expect(err).ToNot(HaveOccurred())
+					Expect(extraConfig.Exports).To(HaveLen(1))
+
+					dash0Export := extraConfig.Exports[0].Dash0
+					Expect(dash0Export).ToNot(BeNil())
+					Expect(dash0Export.Endpoint).To(Equal("ingress.dash0.com:4317"))
+					Expect(dash0Export.Dataset).To(Equal("my-dataset"))
+					Expect(dash0Export.ApiEndpoint).To(Equal("https://api.dash0.com"))
+					Expect(dash0Export.Authorization.Token).To(BeNil())
+					Expect(dash0Export.Authorization.SecretRef.Name).To(Equal("dash0-authorization-secret"))
+					Expect(dash0Export.Authorization.SecretRef.Key).To(Equal("token"))
 				})
 			})
 		})

@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util/logd"
 )
 
@@ -129,6 +130,11 @@ type ExtraConfig struct {
 	// Actually we would like to use the type *dash0v1alpha1.MonitoringTemplate here, but that leads to circular package
 	// dependencies. We should revisit how to untangle this.
 	MonitoringTemplateRaw *json.RawMessage `json:"monitoringTemplate,omitempty"`
+
+	// Exports are the exports for the automatically created operator configuration resource, provided via the Helm
+	// value operator.exports. They are appended to the Dash0 export that is derived from the operator.dash0Export.*
+	// Helm values (if any).
+	Exports []dash0common.Export `json:"exports,omitempty"`
 }
 
 type ExtraConfigClient interface {

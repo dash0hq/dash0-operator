@@ -9,6 +9,8 @@ import (
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -301,6 +303,11 @@ func validateTelemetryCollectionDisabledConsistency(
 func (h *OperatorConfigurationValidationWebhookHandler) hasEnabledSignalControl(ctx context.Context) (bool, string, error) {
 	allSignalControlResources := &dash0v1alpha1.Dash0SignalControlList{}
 	if err := h.Client.List(ctx, allSignalControlResources); err != nil {
+		// The Dash0SignalControl CRD is only installed when operator.signalControl.enabled is true. Without it, listing
+		// fails with a no-match error, which means no Signal Control resource can exist, not that the check failed.
+		if meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
+			return false, "", nil
+		}
 		return false, "", fmt.Errorf("failed to list all Dash0 Signal Control resources: %w", err)
 	}
 	for _, signalControlResource := range allSignalControlResources.Items {

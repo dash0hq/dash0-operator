@@ -130,6 +130,7 @@ type commandLineArguments struct {
 	allowlistSynchronizerReadyCheck                                       bool
 	allowlistVersion                                                      string
 	deleteAllowlistSynchronizer                                           bool
+	operatorConfigurationManagedViaHelm                                   bool
 	operatorConfigurationEndpoint                                         string
 	operatorConfigurationToken                                            string
 	operatorConfigurationSecretRefName                                    string
@@ -511,6 +512,13 @@ func defineCommandLineArguments(fs *flag.FlagSet) *commandLineArguments {
 		false,
 		"If set, the process will remove the GKE Autopilot AllowlistSynchronizer resource from the cluster, then "+
 			"exit.",
+	)
+	fs.BoolVar(
+		&cliArgs.operatorConfigurationManagedViaHelm,
+		"operator-configuration-managed-via-helm",
+		false,
+		"If set, the operator manager creates and updates the operator configuration resource from the values provided "+
+			"via Helm, that is, from the operator-configuration-* arguments and the exports in the extra config map.",
 	)
 	fs.StringVar(
 		&cliArgs.operatorConfigurationEndpoint,
@@ -2278,8 +2286,10 @@ func findDeploymentReference(
 }
 
 func operatorConfigurationIsManagedViaHelm(cliArgs *commandLineArguments) bool {
-	// cliArgs.operatorConfigurationEndpoint is provided via Helm if and only if operator.dash0Export.enabled is true.
-	return len(cliArgs.operatorConfigurationEndpoint) > 0
+	// cliArgs.operatorConfigurationManagedViaHelm is provided via Helm if and only if operator.dash0Export.enabled is
+	// true or operator.exports is non-empty. The check for cliArgs.operatorConfigurationEndpoint keeps argument sets
+	// that predate that flag working, where the endpoint was the only signal.
+	return cliArgs.operatorConfigurationManagedViaHelm || len(cliArgs.operatorConfigurationEndpoint) > 0
 }
 
 func createOrUpdateAutoOperatorConfigurationResource(
@@ -2296,6 +2306,7 @@ func createOrUpdateAutoOperatorConfigurationResource(
 		readyCheckExecuter,
 		*operatorConfigurationValues,
 		extraConfig.MonitoringTemplateRaw,
+		extraConfig.Exports,
 	)
 	leaderElectionAwareRunnable.AddLeaderElectionClient(autoOperatorConfigurationResourceHandler)
 	if operatorConfigurationResource, err :=

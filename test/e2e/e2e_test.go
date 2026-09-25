@@ -2900,6 +2900,61 @@ spec:
 			})
 		})
 
+		Describe("with a gRPC export provided via the Helm value operator.exports", func() {
+
+			var timestampLowerBound time.Time
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator with a gRPC export instead of a Dash0 export")
+				Expect(deployOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					"",
+					&images,
+					// no operator.dash0Export.* values, the export is provided via operator.exports only
+					nil,
+					map[string]string{
+						"operator.exports[0].grpc.endpoint": defaultEndpoint,
+						"operator.exports[0].grpc.insecure": "true",
+						"operator.clusterName":              e2eKubernetesContext,
+						// Self-monitoring would send the operator's own, namespace-scoped metrics to the same
+						// gRPC endpoint, which would break the assertion that only non-namespace-scoped metrics
+						// arrive.
+						"operator.selfMonitoringEnabled": "false",
+					},
+				)).To(Succeed())
+				waitForCollectorToStart(operatorNamespace, operatorHelmChart)
+				waitForAutoOperatorConfigurationResourceToBecomeAvailable()
+				time.Sleep(10 * time.Second)
+				timestampLowerBound = time.Now()
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should create an operator configuration resource with the gRPC export and send telemetry to it", func() {
+				By("verifying the exports of the automatically created operator configuration resource")
+				Eventually(func(g Gomega) {
+					operatorConfiguration := loadOperatorConfigurationResource(g, util.OperatorConfigurationAutoResourceName)
+					exports := operatorConfiguration.Spec.Exports
+					g.Expect(exports).To(HaveLen(1))
+					g.Expect(exports[0].Dash0).To(BeNil())
+					g.Expect(exports[0].Http).To(BeNil())
+					g.Expect(exports[0].Grpc).ToNot(BeNil())
+					g.Expect(exports[0].Grpc.Endpoint).To(Equal(defaultEndpoint))
+					g.Expect(exports[0].Grpc.Insecure).ToNot(BeNil())
+					g.Expect(*exports[0].Grpc.Insecure).To(BeTrue())
+				}, 30*time.Second, pollingInterval).Should(Succeed())
+
+				By("waiting for metrics")
+				Eventually(func(g Gomega) {
+					verifyNonNamespaceScopedKubeletStatsMetricsOnly(g, timestampLowerBound)
+				}, 50*time.Second, time.Second).Should(Succeed())
+			})
+		})
+
 		Describe("with operatorConfiguration.telemetryCollection.enabled=false", func() {
 
 			var timestampLowerBound time.Time

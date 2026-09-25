@@ -41,6 +41,9 @@ Here is a list of configuration options for this resource:
   If multiple exports are defined, the telemetry will be exported to all defined exports and CRs (views, synthetic
   checks, dashboards, check rules, notification channels, spam filters, signal-to-metrics rules) will be synced to all
   defined Dash0 exports.
+  Next to `dash0`, an export can also be an `http` or a `grpc` export, to send telemetry to an arbitrary
+  OTLP-compatible backend; see
+  [Exporting Data to Other Observability Backends](advanced-configuration.md#exporting-data-to-other-observability-backends).
 
 * <a href="#operatorconfigurationresource.spec.exports[].dash0.endpoint"><span id="operatorconfigurationresource.spec.exports[].dash0.endpoint">**`spec.exports[].dash0.endpoint`**</span></a>:
   The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
@@ -220,6 +223,18 @@ provided values at startup.
 This automatically created operator configuration resource will have the name
 `dash0-operator-configuration-auto-resource`.
 
+Providing a non-empty list for the Helm value `operator.exports` has the same effect.
+Use it to configure `http` or `grpc` exports, or a combination of exports, which `operator.dash0Export.*` cannot
+express; see
+[Configuring Other Backends Via Helm](advanced-configuration.md#configuring-other-backends-via-helm).
+Both settings can be combined: the Dash0 export derived from `operator.dash0Export.*` becomes the first entry of
+`spec.exports`, the entries of `operator.exports` follow.
+However, for any setup with more than one export, we recommend configuring all exports via `operator.exports`,
+including the `dash0` export(s), instead of spreading them over two different Helm values.
+Note that the entries of `operator.exports` are transported to the operator manager via a Kubernetes ConfigMap, that is,
+unlike the `operator.dash0Export.*` values, they are applied without restarting the operator manager pod when you change
+them via `helm upgrade`.
+
 If an operator configuration resource with any other name already exists in the cluster (e.g. a manually created
 operator configuration resource), the operator will treat this as an error and refuse to overwrite the existing operator
 configuration resource with the values provided via Helm.
@@ -240,8 +255,8 @@ operator configuration.
 Any changes you want to be permanent should be applied via Helm and the `operator.dash0Export.*` settings.
 
 If you would rather retain manual control over the operator configuration resource, you should omit any
-`operator.dash0Export.*` Helm values and create and manage the operator configuration resource manually (that is, via
-kubectl, ArgoCD etc.).
+`operator.dash0Export.*` and `operator.exports` Helm values and create and manage the operator configuration resource
+manually (that is, via kubectl, ArgoCD etc.).
 
 ### Enable Dash0 Monitoring For a Namespace
 

@@ -913,24 +913,27 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --operator-configuration-endpoint=https://ingress.dash0.com
+          value: --operator-configuration-managed-via-helm=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --operator-configuration-token=very-secret-dash0-auth-token
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[5]
-          value: --operator-configuration-api-endpoint=https://api.dash0.com
+          value: --operator-configuration-token=very-secret-dash0-auth-token
       - equal:
           path: spec.template.spec.containers[0].args[6]
-          value: --operator-configuration-self-monitoring-enabled=true
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[7]
-          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+          value: --operator-configuration-self-monitoring-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[11]
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-prometheus-crd-support-enabled=false
 
   - it: should add args for creating an operator configuration resource with a custom dataset to the deployment
@@ -948,30 +951,33 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --operator-configuration-endpoint=https://ingress.dash0.com
+          value: --operator-configuration-managed-via-helm=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --operator-configuration-token=very-secret-dash0-auth-token
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[5]
-          value: --operator-configuration-api-endpoint=https://api.dash0.com
+          value: --operator-configuration-token=very-secret-dash0-auth-token
       - equal:
           path: spec.template.spec.containers[0].args[6]
-          value: --operator-configuration-self-monitoring-enabled=true
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[7]
-          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+          value: --operator-configuration-self-monitoring-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[11]
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[12]
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-profiling-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[13]
+          path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-dataset=test-dataset
 
   - it: should add args for creating an operator configuration resource with keepalive settings to the deployment
@@ -991,13 +997,16 @@ tests:
             permit_without_stream: true
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[13]
-          value: --operator-configuration-keepalive-time=30s
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
       - equal:
           path: spec.template.spec.containers[0].args[14]
-          value: --operator-configuration-keepalive-timeout=10s
+          value: --operator-configuration-keepalive-time=30s
       - equal:
           path: spec.template.spec.containers[0].args[15]
+          value: --operator-configuration-keepalive-timeout=10s
+      - equal:
+          path: spec.template.spec.containers[0].args[16]
           value: --operator-configuration-keepalive-permit-without-stream=true
 
   - it: should not add keepalive args when keepalive is not configured
@@ -1014,7 +1023,10 @@ tests:
     asserts:
       # Without keepalive, auto-monitor args should be at index 13 (where keepalive-time would otherwise be).
       - equal:
-          path: spec.template.spec.containers[0].args[13]
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
+      - equal:
+          path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-auto-monitor-namespaces-enabled=false
 
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
@@ -1032,30 +1044,33 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --operator-configuration-endpoint=https://ingress.dash0.com
+          value: --operator-configuration-managed-via-helm=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --operator-configuration-token=very-secret-dash0-auth-token
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[5]
-          value: --operator-configuration-api-endpoint=https://api.dash0.com
+          value: --operator-configuration-token=very-secret-dash0-auth-token
       - equal:
           path: spec.template.spec.containers[0].args[6]
-          value: --operator-configuration-self-monitoring-enabled=true
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[7]
-          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+          value: --operator-configuration-self-monitoring-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
-          path: spec.template.spec.containers[0].args[11]
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-prometheus-crd-support-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[12]
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-profiling-enabled=false
       - equal:
-          path: spec.template.spec.containers[0].args[13]
+          path: spec.template.spec.containers[0].args[14]
           value: --operator-configuration-cluster-name=cluster-name
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
@@ -1074,33 +1089,36 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --operator-configuration-endpoint=https://ingress.dash0.com
+          value: --operator-configuration-managed-via-helm=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --operator-configuration-secret-ref-name=secret-name
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[5]
-          value: --operator-configuration-secret-ref-key=secret-key
+          value: --operator-configuration-secret-ref-name=secret-name
       - equal:
           path: spec.template.spec.containers[0].args[6]
-          value: --operator-configuration-api-endpoint=https://api.dash0.com
+          value: --operator-configuration-secret-ref-key=secret-key
       - equal:
           path: spec.template.spec.containers[0].args[7]
-          value: --operator-configuration-self-monitoring-enabled=true
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[8]
-          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+          value: --operator-configuration-self-monitoring-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[9]
-          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[10]
-          value: --operator-configuration-collect-namespace-labels-and-annotations-enabled=false
+          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[11]
-          value: --operator-configuration-collect-node-labels-and-annotations-enabled=false
+          value: --operator-configuration-collect-namespace-labels-and-annotations-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[12]
+          value: --operator-configuration-collect-node-labels-and-annotations-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[13]
           value: --operator-configuration-prometheus-crd-support-enabled=false
 
   - it: should disable self-monitoring & Kubernetes infrastructure metrics collection
@@ -1119,18 +1137,21 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --operator-configuration-endpoint=https://ingress.dash0.com
+          value: --operator-configuration-managed-via-helm=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --operator-configuration-token=very-secret-dash0-auth-token
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[5]
-          value: --operator-configuration-api-endpoint=https://api.dash0.com
+          value: --operator-configuration-token=very-secret-dash0-auth-token
       - equal:
           path: spec.template.spec.containers[0].args[6]
-          value: --operator-configuration-self-monitoring-enabled=false
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
       - equal:
           path: spec.template.spec.containers[0].args[7]
+          value: --operator-configuration-self-monitoring-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=false
 
   - it: should disable pod label and annotation collection
@@ -1148,7 +1169,10 @@ tests:
         collectPodLabelsAndAnnotationsEnabled: false
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[8]
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
           value: --operator-configuration-collect-pod-labels-and-annotations-enabled=false
 
   - it: should enable namespace label and annotation collection
@@ -1166,7 +1190,10 @@ tests:
         collectNamespaceLabelsAndAnnotationsEnabled: true
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[9]
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
+      - equal:
+          path: spec.template.spec.containers[0].args[10]
           value: --operator-configuration-collect-namespace-labels-and-annotations-enabled=true
 
   - it: should enable node label and annotation collection
@@ -1184,7 +1211,10 @@ tests:
         collectNodeLabelsAndAnnotationsEnabled: true
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[10]
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
+      - equal:
+          path: spec.template.spec.containers[0].args[11]
           value: --operator-configuration-collect-node-labels-and-annotations-enabled=true
 
   - it: should enable support for prometheus crds
@@ -1202,7 +1232,10 @@ tests:
         prometheusCrdSupportEnabled: true
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[11]
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
+      - equal:
+          path: spec.template.spec.containers[0].args[12]
           value: --operator-configuration-prometheus-crd-support-enabled=true
 
   - it: should enable support for automatic namespace monitoring
@@ -1221,10 +1254,13 @@ tests:
           labelSelector: dash0.com/custom==false
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[13]
-          value: --operator-configuration-auto-monitor-namespaces-enabled=true
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-managed-via-helm=true
       - equal:
           path: spec.template.spec.containers[0].args[14]
+          value: --operator-configuration-auto-monitor-namespaces-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[15]
           value: --operator-configuration-auto-monitor-namespaces-label-selector=dash0.com/custom==false
 
   - it: should disable telemetry collection via Helm
@@ -2115,3 +2151,66 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: "Error: operator.agent0Connector.enabled is set to true, but neither operator.agent0Connector.token nor operator.agent0Connector.secretRef.name & operator.agent0Connector.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator."
+
+  - it: should not add the operator-configuration args if neither dash0Export nor exports are set
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-managed-via-helm=true
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-self-monitoring-enabled=true
+
+  - it: should add the operator-configuration args if only operator.exports is set
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        exports:
+          - grpc:
+              endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+              insecure: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-managed-via-helm=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-self-monitoring-enabled=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-instrumentation-delivery=init-container
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-endpoint=
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-dataset=default
+
+  - it: should add the operator-configuration args for a combination of dash0Export and exports
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+        exports:
+          - http:
+              endpoint: https://otlp.example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-endpoint=https://ingress.dash0.com
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-token=very-secret-dash0-auth-token
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --operator-configuration-managed-via-helm=true

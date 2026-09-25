@@ -117,3 +117,16 @@ tests:
           path: spec.template.spec.imagePullSecrets
           value:
             - name: secret-for-private-reg
+
+  - it: hook should wait for the operator configuration resource if only operator.exports is set
+    set:
+      operator:
+        exports:
+          - grpc:
+              endpoint: otel-collector.other-namespace.svc.cluster.local:4317
+              insecure: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - "--auto-operator-configuration-resource-available-check"

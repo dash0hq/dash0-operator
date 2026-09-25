@@ -579,6 +579,38 @@ update_via_helm() {
   run_helm upgrade
 }
 
+yaml_single_quote() {
+  printf "'%s'" "${1//\'/\'\'}"
+}
+
+# Writes a Helm values file with a single gRPC export in operator.exports, based on
+# OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT and OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS (a
+# comma-separated list of name=value pairs), and prints the path of that file.
+write_grpc_export_values_file() {
+  local values_file
+  values_file="$(mktemp -t dash0-operator-grpc-export-values.XXXXXX)"
+  {
+    echo "operator:"
+    echo "  exports:"
+    echo "    - grpc:"
+    echo "        endpoint: $(yaml_single_quote "$OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT")"
+    if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS:-}" ]]; then
+      echo "        headers:"
+      local header_pairs header_pair
+      IFS=',' read -r -a header_pairs <<< "$OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS"
+      for header_pair in "${header_pairs[@]}"; do
+        if [[ "$header_pair" != *=* ]]; then
+          echo "error: invalid header \"$header_pair\" in OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_HEADERS, expected name=value" >&2
+          exit 1
+        fi
+        echo "          - name: $(yaml_single_quote "${header_pair%%=*}")"
+        echo "            value: $(yaml_single_quote "${header_pair#*=}")"
+      done
+    fi
+  } > "$values_file"
+  echo "$values_file"
+}
+
 run_helm() {
   deploy_otlp_sink_if_requested
 
@@ -760,7 +792,13 @@ run_helm() {
 
   # Deploy an operator configuration right away.
   if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != "false" ]]; then
-    if [[ "${USE_OTLP_SINK:-}" = "true" ]]; then
+    if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_GRPC_EXPORT_ENDPOINT:-}" ]]; then
+      # Configure a plain OTLP/gRPC export via operator.exports instead of a Dash0 export. The export is rendered into a
+      # values file since header values (e.g. "Bearer ...") can contain spaces, which a --set argument cannot carry here.
+      local grpc_export_values_file
+      grpc_export_values_file="$(write_grpc_export_values_file)" || exit 1
+      helm_install_command+=" --values $grpc_export_values_file"
+    elif [[ "${USE_OTLP_SINK:-}" = "true" ]]; then
       helm_install_command+=" --set operator.dash0Export.enabled=true"
       helm_install_command+=" --set operator.dash0Export.endpoint=http://otlp-sink.otlp-sink.svc.cluster.local:4317"
       helm_install_command+=" --set operator.dash0Export.token=dummy-token"
