@@ -110,16 +110,14 @@ jobs:
   # would otherwise only surface as crash-looping collectors in a customer cluster, and only for the configurations
   # that actually render the affected setting.
   #
-  # This job builds the collector image itself instead of waiting for build_and_push_images: that job does not push
-  # images for pull requests, so its images would not be available here, which is exactly where this check is needed.
-  # Reading the same build cache keeps the build cheap.
+  # This job runs before build_and_push_images, so that no images are pushed when the check fails. It builds the
+  # collector image itself and writes the layers to the build cache, from which build_and_push_images then reads them.
+  # Both jobs need to run on Depot runners for that: Depot runners redirect the GitHub Actions cache to Depot's own
+  # cache store, a job on a GitHub-hosted runner would neither see nor write the layers in that store.
   collector_configs_validation:
     name: Collector Configuration Validation
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 20
-
-    needs: verify
-    if: always() && (needs.verify.result == 'skipped' || needs.verify.result == 'success')
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -141,9 +139,10 @@ jobs:
           platforms: 'linux/amd64'
           load: true
           push: false
-          # Only read from the cache that build_and_push_images maintains, so that the two jobs do not write the same
-          # cache scope concurrently.
           cache-from: type=gha,scope=collector
+          # Write to the Depot container image layer cache, so that build_and_push_images has access to the cached
+          # collector image layers.
+          cache-to: type=gha,mode=max,scope=collector
 
       - name: validate collector configurations
         run: |
@@ -159,12 +158,15 @@ jobs:
     name: Build Images
     runs-on: depot-ubuntu-24.04-4
     needs:
+      # only publish images if all validation steps have passed
       - verify
       - instrumentation_image_tests
+      - collector_configs_validation
     if: |
       always() &&
       (needs.verify.result == 'skipped' || needs.verify.result == 'success') &&
-      (needs.instrumentation_image_tests.result == 'skipped' || needs.instrumentation_image_tests.result == 'success')
+      (needs.instrumentation_image_tests.result == 'skipped' || needs.instrumentation_image_tests.result == 'success') &&
+      (needs.collector_configs_validation.result == 'skipped' || needs.collector_configs_validation.result == 'success')
 
     # Building all container images across architectures via qemu can take _really_ long, especially if the build cache
     # is empty.
